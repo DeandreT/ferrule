@@ -115,6 +115,8 @@ pub(super) fn call_builtin(
         BuiltinId::JsonSerializeObject => json::serialize_object(args),
         BuiltinId::JsonParseField => json::parse_field(args),
         BuiltinId::JsonParseObjectExists => json::object_exists(args),
+        BuiltinId::JsonParseArrayLength => json::array_length(args),
+        BuiltinId::JsonParseArrayField => json::array_field(args),
         BuiltinId::FlextextParseField => flextext::parse_field(args),
     }
 }

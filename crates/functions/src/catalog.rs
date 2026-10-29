@@ -232,6 +232,8 @@ pub(crate) enum BuiltinId {
     JsonSerializeObject,
     JsonParseField,
     JsonParseObjectExists,
+    JsonParseArrayLength,
+    JsonParseArrayField,
     FlextextParseField,
     DelayPassthrough,
     CoerceDatetime,
@@ -1380,6 +1382,42 @@ pub(crate) const BUILTINS: &[BuiltinDefinition] = &[
         true,
         Internal,
         "Tests ordinary object presence after validating the complete JSON document."
+    ),
+    builtin!(
+        JsonParseArrayLength,
+        "json_parse_array_length",
+        "JSON Array Length",
+        Json,
+        &[
+            parameter("input", JsonText),
+            parameter("schema", JsonText),
+            parameter("array", JsonText)
+        ],
+        BuiltinArity::fixed(3),
+        Integer,
+        true,
+        true,
+        Internal,
+        "Counts array items after validating the complete JSON document."
+    ),
+    builtin!(
+        JsonParseArrayField,
+        "json_parse_array_field",
+        "JSON Array Field",
+        Json,
+        &[
+            parameter("input", JsonText),
+            parameter("schema", JsonText),
+            parameter("array", JsonText),
+            parameter("path", JsonText),
+            parameter("index", Integer)
+        ],
+        BuiltinArity::fixed(5),
+        Any,
+        true,
+        true,
+        Internal,
+        "Projects a typed field from a one-based JSON array item."
     ),
     builtin!(
         FlextextParseField,

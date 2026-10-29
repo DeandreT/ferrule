@@ -3048,7 +3048,11 @@ fn build_target_scope_inner(
     let mut group_projections = Vec::new();
     let mut structured_udf_targets = Vec::new();
     let mut csv_singleton_bindings = BTreeMap::new();
+    let array_parser_ports = json_parser::install_array_records(target, builder, &mut scopes);
     for (&inpkey, target_path) in &target.ports {
+        if array_parser_ports.contains(&inpkey) {
+            continue;
+        }
         let Some(&from) = edge_from.get(&inpkey) else {
             continue;
         };

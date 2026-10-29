@@ -43,6 +43,16 @@ fn lowers_exact_numeric_and_delay_scalar_calls() {
             ScalarFunction::JsonSerializeObject,
             vec![20, 20, 20],
         ),
+        (
+            "json_parse_array_length",
+            ScalarFunction::JsonParseArrayLength,
+            vec![20, 20, 20],
+        ),
+        (
+            "json_parse_array_field",
+            ScalarFunction::JsonParseArrayField,
+            vec![20, 20, 20, 20, 10],
+        ),
         ("format_number", ScalarFunction::FormatNumber, vec![10, 20]),
         (
             "substitute_missing_with_xml_nil",
@@ -107,6 +117,14 @@ fn newly_supported_names_are_closed_and_canonical() {
             ScalarFunction::JsonParseObjectExists,
         ),
         ("json_serialize_object", ScalarFunction::JsonSerializeObject),
+        (
+            "json_parse_array_length",
+            ScalarFunction::JsonParseArrayLength,
+        ),
+        (
+            "json_parse_array_field",
+            ScalarFunction::JsonParseArrayField,
+        ),
         ("format_number", ScalarFunction::FormatNumber),
         (
             "substitute_missing_with_xml_nil",

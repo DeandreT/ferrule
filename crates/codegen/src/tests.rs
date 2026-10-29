@@ -616,6 +616,8 @@ fn scalar_call_whitelist_is_closed_and_name_addressable() {
         "random",
         "json_parse_field",
         "json_parse_object_exists",
+        "json_parse_array_length",
+        "json_parse_array_field",
         "json_serialize_object",
         "format_number",
         "substitute_missing",

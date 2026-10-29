@@ -6,6 +6,114 @@ const FUNCTION: &str = "json_serialize_object";
 const PARSE_FUNCTION: &str = "json_parse_field";
 const OBJECT_FUNCTION: &str = "json_parse_object_exists";
 
+pub(super) fn array_length(args: &[Value]) -> Result<Value, FunctionError> {
+    const FUNCTION: &str = "json_parse_array_length";
+    if args.len() != 3 {
+        return Err(FunctionError::ArityMismatch {
+            function: FUNCTION,
+            expected: 3,
+            got: args.len(),
+        });
+    }
+    let array = parse_array(args, FUNCTION)?;
+    i64::try_from(array.len())
+        .map(Value::Int)
+        .map_err(|_| FunctionError::InvalidArgument {
+            function: FUNCTION,
+            message: "array length exceeds the supported range",
+        })
+}
+
+pub(super) fn array_field(args: &[Value]) -> Result<Value, FunctionError> {
+    const FUNCTION: &str = "json_parse_array_field";
+    if args.len() != 5 {
+        return Err(FunctionError::ArityMismatch {
+            function: FUNCTION,
+            expected: 5,
+            got: args.len(),
+        });
+    }
+    let array = parse_array(args, FUNCTION)?;
+    let Value::String(path) = &args[3] else {
+        return Err(FunctionError::TypeMismatch {
+            function: FUNCTION,
+            got: args[3].type_name(),
+        });
+    };
+    let path: Vec<String> =
+        serde_json::from_str(path).map_err(|_| FunctionError::InvalidArgument {
+            function: FUNCTION,
+            message: "field path descriptor is invalid",
+        })?;
+    let index = match args[4] {
+        Value::Int(index) => index
+            .checked_sub(1)
+            .and_then(|index| usize::try_from(index).ok()),
+        _ => {
+            return Err(FunctionError::TypeMismatch {
+                function: FUNCTION,
+                got: args[4].type_name(),
+            });
+        }
+    };
+    let item = index
+        .and_then(|index| array.get(index))
+        .ok_or(FunctionError::InvalidArgument {
+            function: FUNCTION,
+            message: "array index is out of range",
+        })?;
+    scalar_at(item, &path)
+        .cloned()
+        .ok_or(FunctionError::InvalidArgument {
+            function: FUNCTION,
+            message: "field path does not resolve to a scalar",
+        })
+}
+
+fn parse_array(args: &[Value], function: &'static str) -> Result<Vec<Instance>, FunctionError> {
+    let mut text = Vec::with_capacity(3);
+    for value in &args[..3] {
+        let Value::String(value) = value else {
+            return Err(FunctionError::TypeMismatch {
+                function,
+                got: value.type_name(),
+            });
+        };
+        text.push(value);
+    }
+    let schema: SchemaNode =
+        serde_json::from_str(text[1]).map_err(|_| FunctionError::InvalidArgument {
+            function,
+            message: "schema descriptor is invalid",
+        })?;
+    let path: Vec<String> =
+        serde_json::from_str(text[2]).map_err(|_| FunctionError::InvalidArgument {
+            function,
+            message: "array path descriptor is invalid",
+        })?;
+    let mut current =
+        format_json::from_str(text[0], &schema).map_err(|_| FunctionError::InvalidArgument {
+            function,
+            message: "input does not match the JSON schema",
+        })?;
+    for segment in path {
+        current = current
+            .field(&segment)
+            .cloned()
+            .ok_or(FunctionError::InvalidArgument {
+                function,
+                message: "array path does not resolve to an array",
+            })?;
+    }
+    match current {
+        Instance::Repeated(items) => Ok(items),
+        _ => Err(FunctionError::InvalidArgument {
+            function,
+            message: "array path does not resolve to an array",
+        }),
+    }
+}
+
 pub(super) fn object_exists(args: &[Value]) -> Result<Value, FunctionError> {
     let [input, schema, path] = args else {
         return Err(FunctionError::ArityMismatch {
@@ -287,7 +395,7 @@ mod tests {
 
     use crate::FunctionError;
 
-    use super::{object_exists, parse_field, serialize_object};
+    use super::{array_field, array_length, object_exists, parse_field, serialize_object};
 
     #[test]
     fn object_presence_keeps_empty_objects_and_omits_missing_or_null_objects() {
@@ -390,6 +498,77 @@ mod tests {
                     message
                 })
             );
+        }
+    }
+
+    #[test]
+    fn array_projection_validates_descriptors_indices_and_complete_input() {
+        let schema = SchemaNode::group(
+            "Payload",
+            vec![
+                SchemaNode::group(
+                    "Rows",
+                    vec![
+                        SchemaNode::scalar("Code", ScalarType::String),
+                        SchemaNode::scalar("Qty", ScalarType::Int),
+                    ],
+                )
+                .repeating(),
+            ],
+        );
+        let args = vec![
+            Value::String(r#"{"Rows":[{"Code":"A","Qty":2},{"Code":"B","Qty":3}]}"#.into()),
+            Value::String(serde_json::to_string(&schema).unwrap()),
+            Value::String(r#"["Rows"]"#.into()),
+            Value::String(r#"["Qty"]"#.into()),
+            Value::Int(2),
+        ];
+        assert_eq!(array_length(&args[..3]), Ok(Value::Int(2)));
+        assert_eq!(array_field(&args), Ok(Value::Int(3)));
+        for index in [i64::MIN, -1, 0, 3, i64::MAX] {
+            let mut invalid = args.clone();
+            invalid[4] = Value::Int(index);
+            assert_eq!(
+                array_field(&invalid),
+                Err(FunctionError::InvalidArgument {
+                    function: "json_parse_array_field",
+                    message: "array index is out of range",
+                })
+            );
+        }
+        for (position, value, message) in [
+            (0, "not JSON", "input does not match the JSON schema"),
+            (
+                0,
+                r#"{"Rows":[{"Qty":2},{"Qty":"bad"}]}"#,
+                "input does not match the JSON schema",
+            ),
+            (1, "bad schema", "schema descriptor is invalid"),
+            (2, "bad path", "array path descriptor is invalid"),
+            (2, "[]", "array path does not resolve to an array"),
+            (3, "bad path", "field path descriptor is invalid"),
+            (3, "[]", "field path does not resolve to a scalar"),
+        ] {
+            let mut invalid = args.clone();
+            invalid[position] = Value::String(value.into());
+            assert_eq!(
+                array_field(&invalid),
+                Err(FunctionError::InvalidArgument {
+                    function: "json_parse_array_field",
+                    message,
+                })
+            );
+        }
+        for position in 0..5 {
+            let mut invalid = args.clone();
+            invalid[position] = Value::Null;
+            assert!(matches!(
+                array_field(&invalid),
+                Err(FunctionError::TypeMismatch {
+                    function: "json_parse_array_field",
+                    ..
+                })
+            ));
         }
     }
 

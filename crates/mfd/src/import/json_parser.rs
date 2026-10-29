@@ -6,6 +6,10 @@ use mapping::{Node, NodeId};
 use super::graph::GraphBuilder;
 use super::schema::{SchemaComponent, parse_u32, schema_node_at};
 
+#[path = "json_parser_array.rs"]
+mod array;
+pub(super) use array::install as install_array_records;
+
 pub(super) struct Recipe {
     pub(super) input: u32,
     pub(super) schema: SchemaNode,
@@ -89,10 +93,17 @@ pub(super) fn read(
             ));
         };
         if has_repeating_ancestor(schema, &path) {
-            return Err(format!(
-                "output port `{output}` path `{}` crosses an array",
-                path.join("/")
-            ));
+            if !schema.json_schema_authoritative {
+                return Err("array outputs require a resolved JSON schema".to_string());
+            }
+            if array::record_path(&schema.schema, &path).is_none() {
+                return Err(format!(
+                    "output port `{output}` path `{}` crosses an unsupported array; requires one array of ordinary records and scalar descendants",
+                    path.join("/")
+                ));
+            }
+            outputs.insert(output, path);
+            continue;
         }
         if ordinary_object(node) {
             if required_string_inputs.is_empty() && optional_string_inputs.is_empty() {
@@ -248,6 +259,12 @@ impl GraphBuilder<'_> {
             .iter()
             .find(|parser| parser.outputs.contains_key(&output))?;
         let path = parser.outputs.get(&output)?.clone();
+        if array::record_path(&parser.schema, &path).is_some() {
+            self.warnings.push(format!(
+                "JSON string parser array output `{output}` requires a direct connection to a repeating record target; scalar use was skipped"
+            ));
+            return None;
+        }
         let schema = crate::json_parser_recipe::encode_schema(
             &parser.schema,
             parser.unresolved_schema_reference.as_deref(),
