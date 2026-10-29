@@ -706,3 +706,75 @@ fn runtime_rejects_schema_mismatches_and_oversized_input() {
         Err(FlexTextError::InputTooLarge)
     ));
 }
+
+#[test]
+fn wide_fixed_columns_refuse_padding_past_the_output_limit_before_allocating() {
+    let layout = layout(FlexCommand::SplitOnce {
+        name: "parts".into(),
+        splitter: OnceSplitter::FixedColumns(nonzero(u32::MAX)),
+        first: Box::new(FlexCommand::store("head", ScalarType::String, None)),
+        second: Box::new(FlexCommand::store("tail", ScalarType::String, None)),
+    });
+    let parsed = parse(&layout, "abc");
+    assert!(matches!(
+        to_string(&layout.schema(), &parsed, &layout),
+        Err(FlexTextError::OutputTooLarge)
+    ));
+}
+
+#[test]
+fn many_wide_fixed_width_records_stop_at_the_output_limit() {
+    let wide = |width| {
+        FlexTextLayout::new(
+            "document",
+            FlexCommand::FixedWidthRecords {
+                name: "rows".into(),
+                fields: vec![
+                    FixedWidthRecordField::new("value", ScalarType::String, nonzero(width))
+                        .unwrap(),
+                ],
+                fill_char: ' ',
+                record_delimiters: true,
+                treat_empty_as_absent: false,
+            },
+            FlexLineEnding::Lf,
+            false,
+        )
+        .unwrap()
+    };
+    let rows = |count| {
+        Instance::Group(
+            vec![(
+                "rows".into(),
+                Instance::Repeated(
+                    (0..count)
+                        .map(|_| {
+                            Instance::Group(
+                                vec![("value".into(), scalar(Value::String("x".into())))].into(),
+                            )
+                        })
+                        .collect(),
+                ),
+            )]
+            .into(),
+        )
+    };
+    // Each record alone is within the limit; together they are not.
+    let layout = wide(8_000_000);
+    assert!(matches!(
+        to_string(&layout.schema(), &rows(400), &layout),
+        Err(FlexTextError::OutputTooLarge)
+    ));
+    // A field wider than the whole limit is refused before padding it.
+    let layout = wide(u32::MAX);
+    assert!(matches!(
+        to_string(&layout.schema(), &rows(1), &layout),
+        Err(FlexTextError::OutputTooLarge)
+    ));
+    // Ordinary padding is unchanged.
+    let layout = wide(3);
+    assert_eq!(
+        to_string(&layout.schema(), &rows(2), &layout).unwrap(),
+        "x  \nx  "
+    );
+}

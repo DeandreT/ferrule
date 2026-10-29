@@ -773,7 +773,7 @@ fn render_split_once(
                     format!("first split has {got} columns, exceeding {width}"),
                 ));
             }
-            let padding = " ".repeat(width - got);
+            let padding = bounded_padding(' ', width - got)?;
             bounded_concat([first_text.as_str(), padding.as_str(), second_text.as_str()])
         }
         OnceSplitter::FixedLines(lines) => {
@@ -884,7 +884,9 @@ fn render_fixed_records(
     if items.len() > MAX_RECORDS {
         return Err(FlexTextError::TooManyRecords);
     }
+    let separator = if record_delimiters { "\n" } else { "" };
     let mut records = Vec::with_capacity(items.len());
+    let mut total = 0;
     for (index, item) in items.iter().enumerate() {
         let item_path = indexed_path(path, index);
         let values =
@@ -901,7 +903,7 @@ fn render_fixed_records(
                     format!("value has {got} characters, exceeding field width {width}"),
                 ));
             }
-            let padding = fill_char.to_string().repeat(width - got);
+            let padding = bounded_padding(fill_char, width - got)?;
             if field.ty() == ScalarType::String {
                 push_bounded(&mut record, &raw)?;
                 push_bounded(&mut record, &padding)?;
@@ -910,9 +912,10 @@ fn render_fixed_records(
                 push_bounded(&mut record, &raw)?;
             }
         }
+        total = charge_record(total, &record, separator)?;
         records.push(record);
     }
-    bounded_join(&records, if record_delimiters { "\n" } else { "" })
+    bounded_join(&records, separator)
 }
 
 fn render_delimited_records(
@@ -926,6 +929,7 @@ fn render_delimited_records(
         return Err(FlexTextError::TooManyRecords);
     }
     let mut records = Vec::with_capacity(items.len());
+    let mut total = 0;
     for (index, item) in items.iter().enumerate() {
         let item_path = indexed_path(path, index);
         let values =
@@ -939,7 +943,9 @@ fn render_delimited_records(
             )?;
             encoded.push(quote_field(&raw, dialect)?);
         }
-        records.push(bounded_join(&encoded, dialect.field_separator())?);
+        let record = bounded_join(&encoded, dialect.field_separator())?;
+        total = charge_record(total, &record, dialect.record_separator())?;
+        records.push(record);
     }
     bounded_join(&records, dialect.record_separator())
 }
@@ -1265,6 +1271,26 @@ fn bounded_join(values: &[String], separator: &str) -> Result<String, FlexTextEr
         push_bounded(&mut output, value)?;
     }
     Ok(output)
+}
+
+/// Padding is charged before it is allocated, so a wide field cannot
+/// amplify a short value past the output limit.
+fn bounded_padding(fill: char, count: usize) -> Result<String, FlexTextError> {
+    count
+        .checked_mul(fill.len_utf8())
+        .filter(|bytes| *bytes <= MAX_OUTPUT_BYTES)
+        .ok_or(FlexTextError::OutputTooLarge)?;
+    Ok(fill.to_string().repeat(count))
+}
+
+/// Records are joined only after they are all rendered; the running total
+/// keeps their combined size within the output limit while they accumulate.
+fn charge_record(total: usize, record: &str, separator: &str) -> Result<usize, FlexTextError> {
+    total
+        .checked_add(record.len())
+        .and_then(|total| total.checked_add(separator.len()))
+        .filter(|total| *total <= MAX_OUTPUT_BYTES.saturating_add(separator.len()))
+        .ok_or(FlexTextError::OutputTooLarge)
 }
 
 fn push_bounded(output: &mut String, value: &str) -> Result<(), FlexTextError> {
