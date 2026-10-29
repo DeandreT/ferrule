@@ -225,7 +225,8 @@ fn parse_command(
                     total.checked_add(field.width().get() as usize)
                 })
                 .ok_or_else(|| data_error(&command_path, "fixed-width record width overflowed"))?;
-            let records = fixed_width_input_records(input, width, *record_delimiters)?;
+            let records =
+                fixed_width_input_records(input, width, *record_delimiters, &command_path)?;
             state.add_records(records.len())?;
             let mut items = Vec::with_capacity(records.len());
             for (index, record) in records.into_iter().enumerate() {
@@ -498,6 +499,7 @@ fn fixed_width_input_records(
     input: &str,
     width: usize,
     delimited: bool,
+    path: &str,
 ) -> Result<Vec<String>, FlexTextError> {
     if input.is_empty() {
         return Ok(Vec::new());
@@ -509,7 +511,7 @@ fn fixed_width_input_records(
     let characters = input.chars().collect::<Vec<_>>();
     if !characters.len().is_multiple_of(width) {
         return Err(data_error(
-            "document",
+            path,
             format!(
                 "fixed-width input has {} character(s), which is not a multiple of record width {width}",
                 characters.len()
