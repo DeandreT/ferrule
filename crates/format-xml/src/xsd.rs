@@ -1673,6 +1673,9 @@ fn parse_complex_type(
     state: &mut ParseState,
 ) -> ParsedComplexType {
     let mut parsed = ParsedComplexType::default();
+    if let Some(reason) = open_content_refusal(complex_type, schema_el) {
+        state.reject_wildcard(XmlFormatError::UnsupportedXmlOpenContent { reason });
+    }
     if complex_type
         .attribute("mixed")
         .is_some_and(|value| matches!(value, "true" | "1"))
@@ -2935,6 +2938,38 @@ fn is_single_occurrence(particle: &Node<'_, '_>) -> bool {
         && particle
             .attribute("maxOccurs")
             .is_none_or(|value| value == "1")
+}
+
+/// Open content admits wildcard elements anywhere in a content model. It isn't
+/// represented, so a type it applies to is refused rather than read without it.
+fn open_content_refusal(complex_type: &Node, schema_el: &Node) -> Option<&'static str> {
+    fn child<'a, 'input>(node: &Node<'a, 'input>, names: &[&str]) -> Option<Node<'a, 'input>> {
+        node.children()
+            .find(|child| child.is_element() && names.contains(&child.tag_name().name()))
+    }
+    // Extensions and restrictions carry their own open content.
+    let derivation = child(complex_type, &["complexContent"])
+        .and_then(|content| child(&content, &["extension", "restriction"]));
+    let local = child(complex_type, &["openContent"])
+        .or_else(|| derivation.and_then(|node| child(&node, &["openContent"])));
+    if let Some(open) = local {
+        return (open.attribute("mode") != Some("none"))
+            .then_some("xs:openContent adds wildcard content the schema model does not keep");
+    }
+    let default = child(schema_el, &["defaultOpenContent"])?;
+    if default.attribute("mode") == Some("none")
+        || child(complex_type, &["simpleContent"]).is_some()
+    {
+        return None;
+    }
+    let particles = ["sequence", "choice", "all", "group"];
+    let has_content = child(complex_type, &particles).is_some()
+        || derivation.is_some_and(|node| {
+            child(&node, &particles).is_some() || node.tag_name().name() == "extension"
+        });
+    let applies_to_empty = matches!(default.attribute("appliesToEmpty"), Some("true" | "1"));
+    (has_content || applies_to_empty)
+        .then_some("xs:defaultOpenContent adds wildcard content the schema model does not keep")
 }
 
 fn unsupported_wildcard(reason: &'static str) -> XmlFormatError {
