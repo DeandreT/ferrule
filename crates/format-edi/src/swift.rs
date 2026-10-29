@@ -1,4 +1,5 @@
-//! Bounded SWIFT MT envelope and text-block input.
+//! Bounded SWIFT MT envelope and text-block input, plus the documented output
+//! subset described on [`to_bytes`].
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -8,9 +9,162 @@ use mapping::{SwiftCharset, SwiftFieldLayout, SwiftMessageLayout, SwiftMtLayout,
 
 use crate::{EdiFormatError, MAX_RUNTIME_INPUT_BYTES, read_bounded_input};
 
+mod output;
+#[cfg(test)]
+mod output_tests;
+
+pub use output::{SwiftWriteError, to_bytes, write};
+
 const MAX_MESSAGES: usize = 100_000;
 const MAX_FIELDS_PER_MESSAGE: usize = 100_000;
 const MAX_PARSE_STATES: usize = 100_000;
+
+/// Header values for one message, which the read instance does not carry.
+///
+/// Values are checked against their FIN positions using character classes
+/// only; dates, times and addresses are not otherwise interpreted. A FIN
+/// stream must not repeat a basic header (session and sequence) or an output
+/// message input reference, so [`to_bytes`] takes one set per message and
+/// refuses repeats.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SwiftHeaders {
+    basic: String,
+    input: Option<String>,
+    output: Option<String>,
+}
+
+impl SwiftHeaders {
+    /// `basic_header` is the complete block 1 content: application ID
+    /// (`F`, `A` or `L`), two-digit service ID, 12-character logical-terminal
+    /// address, four-digit session and six-digit sequence number.
+    pub fn new(basic_header: impl Into<String>) -> Result<Self, SwiftWriteError> {
+        let basic = basic_header.into();
+        let valid = matches_classes(
+            &basic,
+            &[
+                (Class::OneOf(b"FAL"), 1),
+                (Class::Digit, 2),
+                (Class::UpperOrDigit, 12),
+                (Class::Digit, 4),
+                (Class::Digit, 6),
+            ],
+        );
+        if !valid {
+            return Err(SwiftWriteError::InvalidHeader {
+                block: "basic header",
+                value: basic,
+            });
+        }
+        Ok(Self {
+            basic,
+            input: None,
+            output: None,
+        })
+    }
+
+    /// The input application-header content after `I` and the message type:
+    /// a 12-character receiver address, then optionally a priority (`S`, `N`
+    /// or `U`), a delivery-monitoring code (`1`–`3`) and a three-digit
+    /// obsolescence period, each requiring the previous one.
+    pub fn with_input(mut self, tail: impl Into<String>) -> Result<Self, SwiftWriteError> {
+        let tail = tail.into();
+        let receiver = (Class::UpperOrDigit, 12);
+        let priority = (Class::OneOf(b"SNU"), 1);
+        let monitoring = (Class::OneOf(b"123"), 1);
+        let obsolescence = (Class::Digit, 3);
+        let valid = [
+            &[receiver][..],
+            &[receiver, priority],
+            &[receiver, priority, monitoring],
+            &[receiver, priority, monitoring, obsolescence],
+        ]
+        .iter()
+        .any(|pattern| matches_classes(&tail, pattern));
+        if !valid {
+            return Err(SwiftWriteError::InvalidHeader {
+                block: "input application header",
+                value: tail,
+            });
+        }
+        self.input = Some(tail);
+        Ok(self)
+    }
+
+    /// The output application-header content after `O` and the message type:
+    /// four-digit input time, the 28-character message input reference
+    /// (date, logical terminal, session, sequence), six-digit output date,
+    /// four-digit output time and an optional priority (`S`, `N` or `U`).
+    pub fn with_output(mut self, tail: impl Into<String>) -> Result<Self, SwiftWriteError> {
+        let tail = tail.into();
+        let required = [
+            (Class::Digit, 4),
+            (Class::Digit, 6),
+            (Class::UpperOrDigit, 12),
+            (Class::Digit, 4),
+            (Class::Digit, 6),
+            (Class::Digit, 6),
+            (Class::Digit, 4),
+        ];
+        let mut prioritized = required.to_vec();
+        prioritized.push((Class::OneOf(b"SNU"), 1));
+        if !matches_classes(&tail, &required) && !matches_classes(&tail, &prioritized) {
+            return Err(SwiftWriteError::InvalidHeader {
+                block: "output application header",
+                value: tail,
+            });
+        }
+        self.output = Some(tail);
+        Ok(self)
+    }
+
+    pub fn basic_header(&self) -> &str {
+        &self.basic
+    }
+
+    pub fn input_tail(&self) -> Option<&str> {
+        self.input.as_deref()
+    }
+
+    pub fn output_tail(&self) -> Option<&str> {
+        self.output.as_deref()
+    }
+
+    fn message_input_reference(&self) -> Option<&str> {
+        self.output.as_deref().and_then(|tail| tail.get(4..32))
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum Class {
+    Digit,
+    UpperOrDigit,
+    OneOf(&'static [u8]),
+}
+
+impl Class {
+    fn accepts(self, byte: u8) -> bool {
+        match self {
+            Self::Digit => byte.is_ascii_digit(),
+            Self::UpperOrDigit => byte.is_ascii_uppercase() || byte.is_ascii_digit(),
+            Self::OneOf(values) => values.contains(&byte),
+        }
+    }
+}
+
+fn matches_classes(value: &str, pattern: &[(Class, usize)]) -> bool {
+    let bytes = value.as_bytes();
+    let mut cursor = 0usize;
+    for (class, count) in pattern {
+        let Some(part) = bytes.get(cursor..cursor + count) else {
+            return false;
+        };
+        if !part.iter().all(|byte| class.accepts(*byte)) {
+            return false;
+        }
+        cursor += count;
+    }
+    cursor == bytes.len()
+}
 
 pub fn read(
     path: &Path,
@@ -66,22 +220,28 @@ pub fn from_bytes(
             std::slice::from_ref(&message_type),
             &parsed,
         );
-        messages.push(Instance::Group(
-            (vec![
-                (
-                    "Application Header".into(),
-                    Instance::Group(
-                        (vec![(direction.into(), Instance::Group((Vec::new()).into()))]).into(),
-                    ),
-                ),
-                (message_type, selected),
-            ])
-            .into(),
-        ));
+        messages.push(message_instance(direction, message_type, selected));
     }
-    Ok(Instance::Group(
-        (vec![("Message".into(), Instance::Repeated(messages))]).into(),
-    ))
+    Ok(root_instance(messages))
+}
+
+fn message_instance(direction: &str, message_type: String, selected: Instance) -> Instance {
+    Instance::Group(
+        (vec![
+            (
+                "Application Header".into(),
+                Instance::Group(
+                    (vec![(direction.into(), Instance::Group((Vec::new()).into()))]).into(),
+                ),
+            ),
+            (message_type, selected),
+        ])
+        .into(),
+    )
+}
+
+fn root_instance(messages: Vec<Instance>) -> Instance {
+    Instance::Group((vec![("Message".into(), Instance::Repeated(messages))]).into())
 }
 
 fn scalar_union_name(schema: &SchemaNode) -> Option<&str> {
@@ -578,5 +738,62 @@ mod tests {
                 .map(<[Instance]>::len),
             Some(0)
         );
+    }
+
+    #[test]
+    fn headers_accept_only_the_documented_positions() {
+        const BASIC: &str = "F01BANKBEBBAXXX0000000000";
+        const OUTPUT_TAIL: &str = "1200240101BANKBEBBAXXX22221234562401011201N";
+        let invalid = |result, expected: &str| match result {
+            Err(SwiftWriteError::InvalidHeader { block, .. }) => block == expected,
+            _ => false,
+        };
+        for basic in [
+            "F01BANK",
+            "f01BANKBEBBAXXX0000000000",
+            "X01BANKBEBBAXXX0000000000",
+            "F01BANKBEBBAXXX00000000000",
+            "F01BANKbEBBAXXX0000000000",
+        ] {
+            assert!(invalid(SwiftHeaders::new(basic), "basic header"), "{basic}");
+        }
+        let base = || SwiftHeaders::new(BASIC).unwrap();
+        for tail in [
+            "BANKDEFFXXXX",
+            "BANKDEFFXXXXU",
+            "BANKDEFFXXXXU3",
+            "BANKDEFFXXXXU3003",
+        ] {
+            assert_eq!(base().with_input(tail).unwrap().input_tail(), Some(tail));
+        }
+        for tail in [
+            "BANKDEFFXXX",
+            "BANKDEFFXXXXX",
+            "BANKDEFFXXXX3",
+            "BANKDEFFXXXXU4",
+            "BANKDEFFXXXXU30",
+        ] {
+            assert!(
+                invalid(base().with_input(tail), "input application header"),
+                "{tail}"
+            );
+        }
+        let unprioritized = &OUTPUT_TAIL[..OUTPUT_TAIL.len() - 1];
+        let output = base().with_output(unprioritized).unwrap();
+        assert_eq!(output.output_tail(), Some(unprioritized));
+        assert_eq!(
+            output.message_input_reference(),
+            Some("240101BANKBEBBAXXX2222123456")
+        );
+        for tail in [
+            "1200",
+            "1200240101BANKBEBBAXXX22221234562401011201X",
+            "1200240101bankBEBBAXXX22221234562401011201N",
+        ] {
+            assert!(
+                invalid(base().with_output(tail), "output application header"),
+                "{tail}"
+            );
+        }
     }
 }
