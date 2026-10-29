@@ -382,8 +382,9 @@ fn refused(path: &Path) {
         mfd::ImportProfile::Executable,
     );
     assert!(
-        matches!(result, Err(mfd::MfdError::UnsupportedImport(_))),
-        "{result:?}"
+        matches!(&result, Err(mfd::MfdError::UnsupportedImport(_))),
+        "unexpected import outcome: {:?}",
+        result.err()
     );
     let best = mfd::import(path).unwrap();
     assert!(
