@@ -16,7 +16,11 @@
 
 * { box-sizing: border-box; }
 
-html { scroll-behavior: smooth; }
+html {
+  scroll-behavior: smooth;
+  /* Keep focused elements and fragment targets clear of the sticky header. */
+  scroll-padding-top: 72px;
+}
 
 body {
   margin: 0;
@@ -33,6 +37,24 @@ body {
 
 a { color: var(--copper-hi); text-decoration: none; }
 a:hover { text-decoration: underline; }
+/* Links inside running text differ from it only slightly in luminance, so they keep an underline. */
+main p a, footer a { text-decoration: underline; text-underline-offset: 0.18em; }
+
+/* The browser default ring is thin and merges with the ghost-button border on this dark theme. */
+:focus-visible {
+  outline: 2px solid var(--copper-hi);
+  outline-offset: 3px;
+}
+
+.skip-link {
+  position: absolute; left: 12px; top: -100px; z-index: 20;
+  padding: 8px 14px;
+  background: var(--bg-raise);
+  color: var(--ink);
+  border: 1px solid var(--copper);
+  border-radius: 8px;
+}
+.skip-link:focus { top: 12px; }
 
 code, pre { font-family: var(--mono); }
 code { background: #ffffff10; padding: 0.1em 0.35em; border-radius: 4px; font-size: 0.92em; }
@@ -171,6 +193,11 @@ footer {
   font-size: 0.9rem;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .hero-canvas .w { animation: none; }
+}
+
 @media (max-width: 880px) {
   .hero { padding-top: 48px; }
   .hero-grid { grid-template-columns: 1fr; }
@@ -178,6 +205,9 @@ footer {
 }
 
 @media (max-width: 620px) {
+  /* The header grows to about 127px once its links wrap onto two rows. */
+  html { scroll-padding-top: 140px; }
+
   .nav-inner {
     align-items: flex-start;
     flex-direction: column;
