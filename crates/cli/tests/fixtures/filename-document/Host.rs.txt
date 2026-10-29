@@ -4,7 +4,7 @@ use ferrule_generated_mapping::{execute_primary_edi_document_bytes, evaluate_out
 
 const INPUT_NODE: u32 = __INPUT_NODE__;
 const OUTPUT_NODE: u32 = __OUTPUT_NODE__;
-const EXPECTED: &[u8] = b"{\n  \"label\": \"blue widget\",\n  \"units\": \"7\"\n}";
+const EXPECTED: &[u8] = b"{\n  \"label\": \"blue widget\",\n  \"units\": \"7\"\n}\n";
 
 #[derive(Default)]
 struct Host { calls: RefCell<Vec<String>>, count: Option<usize>, malformed: bool }

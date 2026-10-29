@@ -21,7 +21,7 @@ impl Fixture {
             std::process::id(),
             NEXT.fetch_add(1, Ordering::Relaxed)
         ));
-        std::fs::create_dir_all(&root)?;
+        std::fs::create_dir(&root)?;
         for (name, text) in [
             (
                 "design.mfd",
@@ -42,6 +42,19 @@ impl Fixture {
     }
     fn document(&self) -> Result<mapping::DocumentProject> {
         Ok(mfd::import_filename_document(&self.0.join("design.mfd"))?.document)
+    }
+    fn with_string_parser() -> Result<Self> {
+        let fixture = Self::new()?;
+        let parser = r#"<component name="label-parser" library="json" kind="31"><data><root><entry name="FileInstance" inpkey="40"><entry name="document"><entry name="root"><entry name="object"><entry name="label" type="json-property"><entry name="string" outkey="41"/></entry></entry></entry></entry></entry></root><parameter usageKind="stringparse"/><json schema="label.schema.json" inputinstance="unused-parser.json"/></data></component>"#;
+        let text = include_str!("fixtures/filename-document/design.mfd")
+            .replace("<component name=\"summary\"", &format!("{parser}<component name=\"summary\""))
+            .replace("<vertex vertexkey=\"11\"><edges><edge vertexkey=\"21\"/></edges></vertex>", "<vertex vertexkey=\"11\"><edges><edge vertexkey=\"40\"/></edges></vertex><vertex vertexkey=\"41\"><edges><edge vertexkey=\"21\"/></edges></vertex>");
+        std::fs::write(fixture.0.join("design.mfd"), text)?;
+        std::fs::write(
+            fixture.0.join("label.schema.json"),
+            r#"{"type":"object","properties":{"label":{"type":"string"}},"required":["label"]}"#,
+        )?;
+        Ok(fixture)
     }
 }
 impl Drop for Fixture {
@@ -183,6 +196,28 @@ fn literal_filenames_and_protocol_preview_metadata_are_not_rewritten() -> Result
         ["select: ./雪 & β/input.hl7 ", "load: ./雪 & β/input.hl7 "]
     );
     assert_eq!(std::fs::read_to_string(path)?, text);
+    Ok(())
+}
+
+#[test]
+fn existing_json_string_parser_is_business_mapping_not_a_filename_endpoint() -> Result {
+    let fixture = Fixture::with_string_parser()?;
+    let document = fixture.document()?;
+    let host = Host::new(b"MSH|^~\\&|\rABC|{\"label\":\"blue widget\"}|7\r");
+    let params = parameters(Some("input.hl7"), Some("output.json"))?;
+    let (bytes, _) = cli::execute_primary_document_with_host(
+        &document,
+        Path::new("mapping.json"),
+        &host,
+        1,
+        Some(&params),
+    )?;
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&bytes)?,
+        serde_json::json!({"label":"blue widget","units":"7"})
+    );
+    assert_eq!(*host.calls.borrow(), ["select:input.hl7", "load:input.hl7"]);
+    assert!(document.project().graph.nodes.values().any(|node| matches!(node, mapping::Node::Call { function, .. } if function == "json_parse_field")));
     Ok(())
 }
 
@@ -449,6 +484,17 @@ fn cli_import_run_and_generation_preserve_explicit_transport() -> Result {
 #[ignore = "builds a generated .NET 10 Release host"]
 fn generated_csharp_release_host_preserves_values_errors_and_transport() -> Result {
     let fixture = Fixture::new()?;
+    check_csharp_host(&fixture, false)
+}
+
+#[test]
+#[ignore = "builds a generated .NET 10 Release host"]
+fn generated_csharp_release_host_retains_existing_business_parser() -> Result {
+    let fixture = Fixture::with_string_parser()?;
+    check_csharp_host(&fixture, true)
+}
+
+fn check_csharp_host(fixture: &Fixture, parser: bool) -> Result {
     let document = fixture.document()?;
     let artifacts =
         codegen_csharp::emit_with_primary_edi_documents(&codegen::lower_document(&document)?)?;
@@ -461,13 +507,21 @@ fn generated_csharp_release_host_preserves_values_errors_and_transport() -> Resu
     std::fs::create_dir_all(&host)?;
     std::fs::write(
         host.join("Program.cs"),
-        include_str!("fixtures/filename-document/Host.cs.txt"),
+        if parser {
+            include_str!("fixtures/filename-document/Host.cs.txt").replace(
+                "ABC|blue widget|7",
+                "ABC|{\\\"label\\\":\\\"blue widget\\\"}|7",
+            )
+        } else {
+            include_str!("fixtures/filename-document/Host.cs.txt").to_string()
+        },
     )?;
     std::fs::write(
         host.join("Harness.csproj"),
         r#"<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><TreatWarningsAsErrors>true</TreatWarningsAsErrors></PropertyGroup><ItemGroup><ProjectReference Include="../Ferrule.Generated.csproj" /></ItemGroup></Project>"#,
     )?;
-    let sdk = Command::new("dotnet")
+    let dotnet = std::env::var_os("FERRULE_DOTNET_EXE").unwrap_or_else(|| "dotnet".into());
+    let sdk = Command::new(&dotnet)
         .arg("--version")
         .env("DOTNET_CLI_HOME", fixture.0.join("dotnet-home"))
         .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
@@ -488,10 +542,10 @@ fn generated_csharp_release_host_preserves_values_errors_and_transport() -> Resu
         fixture.0.join("host-command.json"),
         serde_json::to_vec_pretty(&serde_json::json!({
             "sdk": String::from_utf8_lossy(&sdk.stdout).trim(), "cwd": fixture.0,
-        "command": ["dotnet", "run", "--configuration", "Release", "--disable-build-servers", "-p:UseSharedCompilation=false", "-p:TreatWarningsAsErrors=true", "--project", "Harness/Harness.csproj", "--", document.primary_source().filename.to_string(), document.output_filename().unwrap().to_string()]
+        "command": [dotnet.to_string_lossy(), "run", "--configuration", "Release", "--disable-build-servers", "-p:UseSharedCompilation=false", "-p:TreatWarningsAsErrors=true", "--project", "Harness/Harness.csproj", "--", document.primary_source().filename.to_string(), document.output_filename().unwrap().to_string()]
         }))?,
     )?;
-    let run = Command::new("dotnet")
+    let run = Command::new(&dotnet)
         .args([
             "run",
             "--configuration",

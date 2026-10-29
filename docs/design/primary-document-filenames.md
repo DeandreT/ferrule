@@ -160,6 +160,8 @@ The raw filename declaration must be a string literal or a required global
 string parameter, with unique pins and no controls or default feed. Supported
 protocol namespace headers and static preview file metadata remain metadata.
 The original mapping file and filename text are not rewritten.
+String parsers, string serializers and variables remain business components,
+admitted by their existing readers rather than counted as file endpoints.
 
 The output filename is not a target data field or a document-producing scope.
 Only direct selection and singular document roots are admitted. Wildcard

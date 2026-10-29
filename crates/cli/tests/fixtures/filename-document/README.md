@@ -15,3 +15,8 @@ the equivalent generated Rust APIs; the CLI integration test materializes it
 beside the generated crate. Both check complete output, filename identity,
 pre-host filename refusals, direct-selection cardinality and malformed input.
 Hosts perform no output publication.
+
+The companion case adds an existing object JSON string parser to the business
+mapping. Its `FileInstance` input carries JSON content, not a filename. The
+filename importer delegates that component to the existing parser admission
+rather than counting it as another document endpoint.

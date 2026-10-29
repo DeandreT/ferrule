@@ -223,6 +223,23 @@ impl Endpoints {
             if !is_edi && !is_json {
                 continue;
             }
+            let data = component
+                .children()
+                .filter(|node| node.has_tag_name("data"))
+                .collect::<Vec<_>>();
+            let [data] = data.as_slice() else {
+                return Err(unsupported("requires one data declaration per endpoint"));
+            };
+            // These FileInstance inputs carry values, not filenames. Their
+            // existing readers still own admission and every business binding.
+            let parameters = data
+                .children()
+                .filter(|node| node.has_tag_name("parameter"))
+                .collect::<Vec<_>>();
+            if matches!(parameters.as_slice(), [parameter] if matches!(parameter.attribute("usageKind"), Some("stringparse" | "stringserialize" | "variable")))
+            {
+                continue;
+            }
             if component.attribute("kind") != Some(if is_edi { "16" } else { "31" }) {
                 return Err(unsupported("unsupported endpoint component kind"));
             }
@@ -244,13 +261,6 @@ impl Endpoints {
             }) {
                 return Err(unsupported("unsupported endpoint component controls"));
             }
-            let data = component
-                .children()
-                .filter(|node| node.has_tag_name("data"))
-                .collect::<Vec<_>>();
-            let [data] = data.as_slice() else {
-                return Err(unsupported("requires one data declaration per endpoint"));
-            };
             if data.attributes().len() != 0 {
                 return Err(unsupported("unsupported endpoint data controls"));
             }
