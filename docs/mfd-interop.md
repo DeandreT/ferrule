@@ -920,6 +920,10 @@ scalar fields. Empty or absent non-nullable arrays produce no records. Explicit
 JSON scalar null values retain their schema-defined null behavior, distinct from missing
 fields. Malformed JSON, invalid item types and incompatible structures remain
 typed parsing failures, not null or zero fallbacks.
+Absent optional object parents preserve scalar absence or an empty selected
+array only after the descriptor resolves to a declared scalar or array and the
+complete input passes schema validation. Invalid descriptor paths, missing
+required properties, incompatible values and disallowed nulls remain failures.
 
 This adapter validates the complete document before iterating and again for each
 selected field. It materializes the input and is not a streaming or large-array
@@ -929,6 +933,11 @@ iterations, cloned target occurrences, target node controls and nullable contain
 remain outside this profile and produce
 executable-import diagnostics. Schema array constraints and the existing
 generated-sequence item limit still apply.
+There is no shared parsed-input cache: work grows with mapped fields times
+records times document size, which can be quadratic in record count. Existing
+input-size and item-count ceilings do not make large arrays efficient. Using the
+parsed key/value records as a lookup or filter against another document's current
+item is not admitted by this profile.
 
 A JSON string parser with no declared output ports can retain a directly connected,
 uniquely declared required global String parameter without evaluating that parser.

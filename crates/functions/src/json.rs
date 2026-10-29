@@ -16,7 +16,7 @@ pub(super) fn array_length(args: &[Value]) -> Result<Value, FunctionError> {
         });
     }
     let array = parse_array(args, FUNCTION)?;
-    i64::try_from(array.len())
+    i64::try_from(array.items.len())
         .map(Value::Int)
         .map_err(|_| FunctionError::InvalidArgument {
             function: FUNCTION,
@@ -45,6 +45,14 @@ pub(super) fn array_field(args: &[Value]) -> Result<Value, FunctionError> {
             function: FUNCTION,
             message: "field path descriptor is invalid",
         })?;
+    if !declared_path(&array.item_schema, &path)
+        .is_some_and(|node| node.is_scalar() && !node.repeating)
+    {
+        return Err(FunctionError::InvalidArgument {
+            function: FUNCTION,
+            message: "field path does not resolve to a scalar",
+        });
+    }
     let index = match args[4] {
         Value::Int(index) => index
             .checked_sub(1)
@@ -56,21 +64,50 @@ pub(super) fn array_field(args: &[Value]) -> Result<Value, FunctionError> {
             });
         }
     };
-    let item = index
-        .and_then(|index| array.get(index))
-        .ok_or(FunctionError::InvalidArgument {
-            function: FUNCTION,
-            message: "array index is out of range",
-        })?;
-    scalar_at(item, &path)
-        .cloned()
-        .ok_or(FunctionError::InvalidArgument {
-            function: FUNCTION,
-            message: "field path does not resolve to a scalar",
-        })
+    let item =
+        index
+            .and_then(|index| array.items.get(index))
+            .ok_or(FunctionError::InvalidArgument {
+                function: FUNCTION,
+                message: "array index is out of range",
+            })?;
+    let error = || FunctionError::InvalidArgument {
+        function: FUNCTION,
+        message: "field path does not resolve to a scalar",
+    };
+    let mut current = item;
+    for segment in &path {
+        match current {
+            Instance::Group(_) => {
+                let Some(child) = current.field(segment) else {
+                    return Ok(Value::Null);
+                };
+                current = child;
+            }
+            Instance::Scalar(Value::Null) => return Ok(Value::Null),
+            _ => return Err(error()),
+        }
+    }
+    current.as_scalar().cloned().ok_or_else(error)
 }
 
-fn parse_array(args: &[Value], function: &'static str) -> Result<Vec<Instance>, FunctionError> {
+struct ParsedArray {
+    item_schema: SchemaNode,
+    items: Vec<Instance>,
+}
+
+fn declared_path<'a>(schema: &'a SchemaNode, path: &[String]) -> Option<&'a SchemaNode> {
+    let mut current = schema;
+    for segment in path {
+        if current.repeating || !matches!(current.kind, SchemaKind::Group { .. }) {
+            return None;
+        }
+        current = current.child(segment)?;
+    }
+    Some(current)
+}
+
+fn parse_array(args: &[Value], function: &'static str) -> Result<ParsedArray, FunctionError> {
     let mut text = Vec::with_capacity(3);
     for value in &args[..3] {
         let Value::String(value) = value else {
@@ -96,21 +133,42 @@ fn parse_array(args: &[Value], function: &'static str) -> Result<Vec<Instance>, 
             function,
             message: "input does not match the JSON schema",
         })?;
+    let error = || FunctionError::InvalidArgument {
+        function,
+        message: "array path does not resolve to an array",
+    };
+    let mut item_schema = declared_path(&schema, &path)
+        .filter(|node| node.repeating)
+        .cloned()
+        .ok_or_else(error)?;
+    item_schema.repeating = false;
     for segment in path {
-        current = current
-            .field(&segment)
-            .cloned()
-            .ok_or(FunctionError::InvalidArgument {
-                function,
-                message: "array path does not resolve to an array",
-            })?;
+        match current {
+            Instance::Group(fields) => {
+                let Some((_, child)) = fields.into_iter().find(|(name, _)| name == &segment) else {
+                    return Ok(ParsedArray {
+                        item_schema,
+                        items: Vec::new(),
+                    });
+                };
+                current = child;
+            }
+            Instance::Scalar(Value::Null) => {
+                return Ok(ParsedArray {
+                    item_schema,
+                    items: Vec::new(),
+                });
+            }
+            _ => return Err(error()),
+        }
     }
     match current {
-        Instance::Repeated(items) => Ok(items),
-        _ => Err(FunctionError::InvalidArgument {
-            function,
-            message: "array path does not resolve to an array",
+        Instance::Repeated(items) => Ok(ParsedArray { item_schema, items }),
+        Instance::Scalar(Value::Null) => Ok(ParsedArray {
+            item_schema,
+            items: Vec::new(),
         }),
+        _ => Err(error()),
     }
 }
 

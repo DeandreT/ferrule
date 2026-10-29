@@ -166,6 +166,31 @@ public static partial class FerruleJson
         return Ordinary(current);
     }
 
+    private static JsonSchemaNode? FunctionPath(
+        JsonSchemaNode current, IReadOnlyList<string> path, bool arrayItem = false)
+    {
+        for (var index = 0; index < path.Count; index++)
+        {
+            if (current.IsScalar || (current.Repeating && !(arrayItem && index == 0)) ||
+                current.Child(path[index]) is not { } child)
+                return null;
+            current = child;
+        }
+        return current;
+    }
+
+    internal static bool IsFunctionArrayPath(string schemaJson, IReadOnlyList<string> path) =>
+        FunctionPath(ParseSchema(schemaJson), path) is { Repeating: true };
+
+    internal static bool IsFunctionArrayScalarPath(
+        string schemaJson, IReadOnlyList<string> arrayPath, IReadOnlyList<string> fieldPath)
+    {
+        var array = FunctionPath(ParseSchema(schemaJson), arrayPath);
+        if (array is not { Repeating: true }) return false;
+        if (fieldPath.Count == 0) return array.IsScalar;
+        return FunctionPath(array, fieldPath, arrayItem: true) is { IsScalar: true, Repeating: false };
+    }
+
     public static string Serialize(string schemaJson, FerruleInstance instance)
         => SerializeCore(schemaJson, instance, embedded: false).Text.ToString();
 

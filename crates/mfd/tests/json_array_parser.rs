@@ -74,6 +74,47 @@ fn array_records_preserve_order_cardinality_nested_fields_and_null_layers() {
 }
 
 #[test]
+fn optional_parent_absence_requires_valid_descriptors_and_schema_valid_input() {
+    let suite: serde_json::Value = serde_json::from_str(include_str!(
+        "fixtures/json-array-parser/absence-cases.json"
+    ))
+    .unwrap();
+    for case in suite["cases"].as_array().unwrap() {
+        let mut schema = suite["schema"].clone();
+        match case["required"].as_str() {
+            Some("root") => schema["kind"]["required"] = serde_json::json!(["Envelope"]),
+            Some("rows") => {
+                schema["kind"]["children"][0]["kind"]["required"] = serde_json::json!(["Rows"])
+            }
+            _ => {}
+        }
+        let function = case["function"].as_str().unwrap();
+        let mut args = vec![
+            Value::String(case["input"].as_str().unwrap().into()),
+            Value::String(schema.to_string()),
+            Value::String(case["array"].to_string()),
+        ];
+        if function == "json_parse_array_field" {
+            args.extend([Value::String(case["path"].to_string()), Value::Int(1)]);
+        }
+        let result = functions::call(function, &args);
+        if let Some(message) = case["error"].as_str() {
+            assert!(
+                matches!(result, Err(functions::FunctionError::InvalidArgument { function: actual_function, message: actual }) if actual_function == function && actual == message),
+                "{case}: {result:?}"
+            );
+        } else {
+            let expected = match &case["expected"] {
+                serde_json::Value::Null => Value::Null,
+                serde_json::Value::String(value) => Value::String(value.clone()),
+                value => Value::Int(value.as_i64().unwrap()),
+            };
+            assert_eq!(result.unwrap(), expected, "{case}");
+        }
+    }
+}
+
+#[test]
 fn array_records_infer_the_same_driver_from_scalar_connections() {
     let dir = copy_fixture();
     let path = dir.0.join("mapping.mfd");
@@ -312,7 +353,8 @@ fn generated_array_record_release_hosts_match_complete_values_and_typed_failures
             .args(["--bin", "array-record-host", "--"])
             .arg(fixtures.join("cases.json"))
             .arg(dir.0.join("target-schema.json"))
-            .arg(dir.0.join("parser-schema.json")),
+            .arg(dir.0.join("parser-schema.json"))
+            .arg(fixtures.join("absence-cases.json")),
     );
     let host = dir.0.join("csharp/host");
     std::fs::create_dir(&host).unwrap();
@@ -340,7 +382,8 @@ fn generated_array_record_release_hosts_match_complete_values_and_typed_failures
             .arg("--")
             .arg(fixtures.join("cases.json"))
             .arg(dir.0.join("target-schema.json"))
-            .arg(dir.0.join("parser-schema.json")),
+            .arg(dir.0.join("parser-schema.json"))
+            .arg(fixtures.join("absence-cases.json")),
     );
 }
 

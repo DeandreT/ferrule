@@ -49,4 +49,38 @@ foreach (var input in new[] { FerruleValue.Null, FerruleValue.JsonNull, FerruleV
     catch (FerruleRuntimeException error) when (error.Error == FerruleRuntimeError.FunctionType
         && error.Function == "json_parse_array_length" && error.FoundKind == input.Kind) { }
 }
+var suite = JsonNode.Parse(File.ReadAllText(args[3]))!;
+foreach (var item in suite["cases"]!.AsArray())
+{
+    var test = item!;
+    var descriptor = suite["schema"]!.DeepClone();
+    if (test["required"]?.GetValue<string>() == "root")
+        descriptor["kind"]!["required"] = new JsonArray("Envelope");
+    if (test["required"]?.GetValue<string>() == "rows")
+        descriptor["kind"]!["children"]![0]!["kind"]!["required"] = new JsonArray("Rows");
+    var function = test["function"]!.GetValue<string>();
+    var arguments = new List<FerruleValue> {
+        FerruleValue.FromString(test["input"]!.GetValue<string>()), FerruleValue.FromString(descriptor.ToJsonString()),
+        FerruleValue.FromString(test["array"]!.ToJsonString())
+    };
+    if (function == "json_parse_array_field")
+    {
+        arguments.Add(FerruleValue.FromString(test["path"]!.ToJsonString()));
+        arguments.Add(FerruleValue.FromInt64(1));
+    }
+    try
+    {
+        var actual = FerruleFunctions.Call(function, arguments);
+        if (test["error"] is not null) throw new InvalidOperationException("Expected typed failure: " + test);
+        var expected = test["expected"] is not { } value ? FerruleValue.Null
+            : value.GetValueKind() == System.Text.Json.JsonValueKind.String
+                ? FerruleValue.FromString(value.GetValue<string>()) : FerruleValue.FromInt64(value.GetValue<long>());
+        if (!actual.Equals(expected)) throw new InvalidOperationException("Value mismatch: " + test);
+    }
+    catch (FerruleRuntimeException error) when (test["error"] is not null)
+    {
+        if (error.Error != FerruleRuntimeError.FunctionInvalidArgument || error.Function != function
+            || error.Detail != test["error"]!.GetValue<string>()) throw;
+    }
+}
 Console.WriteLine("C# array-record host passed");

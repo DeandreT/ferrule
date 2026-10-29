@@ -18,5 +18,8 @@
   {"input":"{\"Rows\":[{},{},{},{},{}]}","error":"input does not match the JSON schema"},
   {"input":"{\"Rows\":[{\"Code\":\"A\",\"Qty\":2,\"Detail\":{\"Label\":\"same\"}},{\"Code\":\"A\",\"Qty\":2,\"Detail\":{\"Label\":\"same\"}}]}","expected":{"Records":[{"Code":"A","Qty":2,"Label":"same"},{"Code":"A","Qty":2,"Label":"same"}]}},
   {"input":"{\"Rows\":[{\"Qty\":\"bad\"},{\"Qty\":2,\"Detail\":{\"Label\":\"valid\"}}]}","error":"input does not match the JSON schema"},
-  {"input":"{\"Rows\":[{\"Qty\":2,\"Detail\":{\"Label\":\"valid\"}},{\"Qty\":\"bad\"}]}","error":"input does not match the JSON schema"}
+  {"input":"{\"Rows\":[{\"Qty\":2,\"Detail\":{\"Label\":\"valid\"}},{\"Qty\":\"bad\"}]}","error":"input does not match the JSON schema"},
+  {"input":"{\"Rows\":[{\"Code\":\"A\",\"Qty\":2}]}","expected":{"Records":[{"Code":"A","Qty":2}]}},
+  {"input":"{\"Rows\":[{},{\"Detail\":{}},{\"Code\":null}]}","expected":{"Records":[{},{},{"Code":null}]}},
+  {"input":"{\"Rows\":[{\"Detail\":null}]}","error":"input does not match the JSON schema"}
 ]

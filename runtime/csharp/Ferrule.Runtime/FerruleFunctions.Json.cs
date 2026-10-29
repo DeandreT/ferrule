@@ -10,7 +10,8 @@ public static partial class FerruleFunctions
     private const string JsonParseObjectExistsName = "json_parse_object_exists";
     private const string JsonSerializeObjectName = "json_serialize_object";
 
-    private static FerruleRepeated ParseJsonArray(IReadOnlyList<FerruleValue> arguments, string function)
+    private static (FerruleRepeated Array, string Schema, IReadOnlyList<string> Path) ParseJsonArray(
+        IReadOnlyList<FerruleValue> arguments, string function)
     {
         var input = RequireString(arguments[0], function);
         var schema = RequireString(arguments[1], function);
@@ -23,30 +24,41 @@ public static partial class FerruleFunctions
         try { current = FerruleJson.ParseFunctionInput(schema, input); }
         catch (FerruleRuntimeException error) when (error.Error == FerruleRuntimeError.JsonBoundary)
         { throw InvalidArgument(function, "input does not match the JSON schema"); }
+        if (!FerruleJson.IsFunctionArrayPath(schema, segments))
+            throw InvalidArgument(function, "array path does not resolve to an array");
         foreach (var segment in segments)
         {
-            if (current is not FerruleGroup group || !group.TryGetField(segment, out var child))
+            if (current is FerruleScalar { Value.Kind: FerruleValueKind.Null })
+                return (new FerruleRepeated(Array.Empty<FerruleInstance>()), schema, segments);
+            if (current is not FerruleGroup group)
                 throw InvalidArgument(function, "array path does not resolve to an array");
+            if (!group.TryGetField(segment, out var child))
+                return (new FerruleRepeated(Array.Empty<FerruleInstance>()), schema, segments);
             current = child;
         }
-        return current as FerruleRepeated
-            ?? throw InvalidArgument(function, "array path does not resolve to an array");
+        if (current is FerruleScalar { Value.Kind: FerruleValueKind.Null })
+            return (new FerruleRepeated(Array.Empty<FerruleInstance>()), schema, segments);
+        return current is FerruleRepeated array ? (array, schema, segments)
+            : throw InvalidArgument(function, "array path does not resolve to an array");
     }
 
     private static FerruleValue JsonParseArrayLength(IReadOnlyList<FerruleValue> arguments)
     {
         const string function = "json_parse_array_length";
         RequireArity(function, arguments, 3);
-        return FerruleValue.FromInt64(ParseJsonArray(arguments, function).Items.Count);
+        return FerruleValue.FromInt64(ParseJsonArray(arguments, function).Array.Items.Count);
     }
 
     private static FerruleValue JsonParseArrayField(IReadOnlyList<FerruleValue> arguments)
     {
         const string function = "json_parse_array_field";
         RequireArity(function, arguments, 5);
-        var array = ParseJsonArray(arguments, function);
+        var parsed = ParseJsonArray(arguments, function);
+        var array = parsed.Array;
         var segments = ParseJsonStringArray(RequireString(arguments[3], function), function,
             "field path descriptor is invalid");
+        if (!FerruleJson.IsFunctionArrayScalarPath(parsed.Schema, parsed.Path, segments))
+            throw InvalidArgument(function, "field path does not resolve to a scalar");
         if (arguments[4].Kind != FerruleValueKind.Int64) throw Type(function, arguments[4]);
         var index = arguments[4].Int64Value;
         if (index < 1 || index > array.Items.Count)
@@ -54,8 +66,11 @@ public static partial class FerruleFunctions
         var current = array.Items[(int)index - 1];
         foreach (var segment in segments)
         {
-            if (current is not FerruleGroup group || !group.TryGetField(segment, out var child))
+            if (current is FerruleScalar { Value.Kind: FerruleValueKind.Null })
+                return FerruleValue.Null;
+            if (current is not FerruleGroup group)
                 throw InvalidArgument(function, "field path does not resolve to a scalar");
+            if (!group.TryGetField(segment, out var child)) return FerruleValue.Null;
             current = child;
         }
         return current is FerruleScalar scalar ? scalar.Value
