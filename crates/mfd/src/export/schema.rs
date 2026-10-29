@@ -138,6 +138,7 @@ pub(super) fn render_schema_component(
     component_uid: u32,
     sibling_suffix: &str,
     default_output: bool,
+    schema_hint: bool,
     used_ports: &BTreeSet<u32>,
     file_instance_port: Option<u32>,
     filesystem: bool,
@@ -171,14 +172,17 @@ pub(super) fn render_schema_component(
         Side::Target => (
             "target",
             // Native XML components otherwise default to adding a schema URI.
-            // Ordinary Ferrule XML output has no hint; encode that choice.
-            match (format, default_output) {
-                (SideFormat::Xml, true) => {
+            // Ordinary Ferrule XML output has no hint; encode that choice. A
+            // derived schema-location hint keeps the native default instead.
+            match (format, default_output, schema_hint) {
+                (SideFormat::Xml, true, false) => {
                     "<properties XSLTDefaultOutput=\"1\" AddSchemaLocation=\"0\"/>\n\t\t\t\t\t"
                 }
-                (SideFormat::Xml, false) => "<properties AddSchemaLocation=\"0\"/>\n\t\t\t\t\t",
-                (_, true) => "<properties XSLTDefaultOutput=\"1\"/>\n\t\t\t\t\t",
-                (_, false) => "",
+                (SideFormat::Xml, false, false) => {
+                    "<properties AddSchemaLocation=\"0\"/>\n\t\t\t\t\t"
+                }
+                (_, true, _) => "<properties XSLTDefaultOutput=\"1\"/>\n\t\t\t\t\t",
+                (_, false, _) => "",
             },
             "<view ltx=\"700\" rbx=\"1000\" rby=\"400\"/>",
         ),

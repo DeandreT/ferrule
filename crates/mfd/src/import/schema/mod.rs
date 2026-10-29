@@ -269,6 +269,10 @@ pub(super) struct SchemaComponent {
     pub(super) db_queries: Vec<super::db_query::DbQuery>,
     pub(super) db_xml_columns: BTreeMap<u32, database_xml::Column>,
     pub(super) dynamic_json: Option<super::dynamic_json::DynamicJsonTarget>,
+    /// Output schema-location hint derived from an XML document component's
+    /// settings. It applies only where the component is assembled as a
+    /// target; source and variable roles never write it.
+    pub(super) target_schema_hints: Option<ir::XmlSchemaHints>,
 }
 
 impl SchemaComponent {
@@ -690,6 +694,33 @@ fn read_schema_component_resolved(
     let is_pass_through = component
         .children()
         .any(|node| node.has_tag_name("properties") && node.attribute("PassThrough") == Some("1"));
+    let schema_setting = component
+        .children()
+        .filter(|node| node.has_tag_name("properties"))
+        .find_map(|node| node.attribute(crate::schema_location::PROPERTY));
+    // The hint names the stored schema, so its own namespace must be known.
+    let schema_namespace = authoritative_schema_namespace(
+        authoritative_schema_path.as_deref(),
+        authoritative_schema_bytes.as_deref(),
+    );
+    let target_schema_hints = match crate::schema_location::derived_hints(
+        schema_setting,
+        schema_namespace
+            .as_ref()
+            .and(document.and_then(|document| document.attribute("schema"))),
+        schema_namespace.clone().flatten().as_deref(),
+        &schema,
+    ) {
+        Ok(hints) => hints,
+        Err(error) => {
+            if !is_source || is_pass_through {
+                warnings.push(format!(
+                    "component `{name}`: {error}; its output schema-location hint is not imported"
+                ));
+            }
+            None
+        }
+    };
     Some(XmlSchemaComponentRead {
         component: SchemaComponent {
             name,
@@ -729,6 +760,7 @@ fn read_schema_component_resolved(
             db_queries: Vec::new(),
             db_xml_columns: BTreeMap::new(),
             dynamic_json: None,
+            target_schema_hints,
         },
         entry_tree_fallback: schema_from_entry_tree,
         schema_file_authoritative,
@@ -736,6 +768,27 @@ fn read_schema_component_resolved(
         authoritative_schema_bytes,
         no_port_warning_index,
     })
+}
+
+/// The authoritative schema document's own `targetNamespace`, or `None` when
+/// it cannot be read as an XML Schema within the metadata bound.
+fn authoritative_schema_namespace(
+    path: Option<&Path>,
+    bytes: Option<&[u8]>,
+) -> Option<Option<String>> {
+    const MAX_BYTES: u64 = 8 * 1024 * 1024;
+    let text = match (bytes, path) {
+        (Some(bytes), _) => format_xml::xsd::decode_schema_bytes(bytes, MAX_BYTES).ok()?,
+        (None, Some(path)) => {
+            let file = std::fs::File::open(path).ok()?;
+            let mut bytes = Vec::new();
+            std::io::Read::read_to_end(&mut std::io::Read::take(file, MAX_BYTES + 1), &mut bytes)
+                .ok()?;
+            format_xml::xsd::decode_schema_bytes(&bytes, MAX_BYTES).ok()?
+        }
+        (None, None) => return None,
+    };
+    crate::schema_location::schema_target_namespace(&text)
 }
 
 fn is_local_file_set_pattern(path: &str) -> bool {
@@ -1085,6 +1138,7 @@ fn read_json_component_resolved(
         db_queries: Vec::new(),
         db_xml_columns: BTreeMap::new(),
         dynamic_json,
+        target_schema_hints: None,
     })
 }
 
@@ -1618,6 +1672,7 @@ pub(super) fn read_csv_component(
         db_queries: Vec::new(),
         db_xml_columns: BTreeMap::new(),
         dynamic_json: None,
+        target_schema_hints: None,
     })
 }
 
@@ -2322,6 +2377,7 @@ fn read_db_component_resolved(
         db_queries: Vec::new(),
         db_xml_columns,
         dynamic_json: None,
+        target_schema_hints: None,
     })
 }
 

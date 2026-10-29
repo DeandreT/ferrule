@@ -47,8 +47,8 @@ public static partial class FerruleXml
         {
             if (scalarOutputJson is not null)
             {
-                if (defaultNamespace is not null || schemaHintsJson is not null)
-                    throw new InvalidOperationException("XML scalar output cannot be combined with namespace or schema hints");
+                if (defaultNamespace is not null)
+                    throw new InvalidOperationException("XML scalar output cannot be combined with a default namespace");
                 (parsedSchema, instance) = ProjectScalarOutput(payload, parsedSchema, instance, scalarOutputJson);
             }
             if (defaultNamespace is not null &&
@@ -111,8 +111,8 @@ public static partial class FerruleXml
         {
             if (scalarOutputJson is not null)
             {
-                if (defaultNamespace is not null || schemaHintsJson is not null)
-                    throw new InvalidOperationException("XML scalar output cannot be combined with namespace or schema hints");
+                if (defaultNamespace is not null)
+                    throw new InvalidOperationException("XML scalar output cannot be combined with a default namespace");
                 (parsedSchema, instance) = ProjectScalarOutput(payload, parsedSchema, instance, scalarOutputJson);
             }
             if (defaultNamespace is not null &&

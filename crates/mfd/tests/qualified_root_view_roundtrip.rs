@@ -108,7 +108,6 @@ fn detected_invalid_root_profile_refuses_both_import_profiles() {
         ),
         original.replace("name=\"equal\"", "name=\"unequal\""),
         original.replace("datatype=\"QName\"", "datatype=\"string\""),
-        original.replace("AddSchemaLocation=\"0\"", "AddSchemaLocation=\"1\""),
         original.replace("AddSchemaLocation=\"0\"", "AddSchemaLocation=\"invalid\""),
     ] {
         assert_ne!(invalid, original);
@@ -119,6 +118,68 @@ fn detected_invalid_root_profile_refuses_both_import_profiles() {
         ] {
             assert!(
                 matches!(mfd::import_with_profile(&path, &Default::default(), profile), Err(mfd::MfdError::UnsupportedImport(reason)) if reason.starts_with("closed XML root profile "))
+            );
+        }
+    }
+}
+
+#[test]
+fn reference_default_schema_location_imports_the_hint_and_reexports_the_default() {
+    let directory = Directory::new();
+    for (index, shape) in [Shape::Unqualified, Shape::Qualified]
+        .into_iter()
+        .enumerate()
+    {
+        let original = project(shape, true, false);
+        let path = directory.0.join(format!("hint-{index}.mfd"));
+        mfd::export_with_profile(&original, &path, mfd::ExportProfile::NativeMfd).unwrap();
+        let exported = std::fs::read_to_string(&path).unwrap();
+        for setting in ["", " AddSchemaLocation=\"1\""] {
+            std::fs::write(&path, exported.replace(" AddSchemaLocation=\"0\"", setting)).unwrap();
+            let imported = mfd::import_with_profile(
+                &path,
+                &Default::default(),
+                mfd::ImportProfile::Executable,
+            )
+            .unwrap()
+            .imported
+            .project;
+            let hint = |location: &str| match &imported.target.xml_namespace {
+                Some(ir::XmlNamespace::Qualified(uri)) => ir::XmlSchemaHints {
+                    no_namespace_location: None,
+                    locations: vec![ir::XmlSchemaLocation {
+                        namespace: uri.as_str().into(),
+                        location: location.into(),
+                    }],
+                    derivation: Some(ir::XmlSchemaHintDerivation {
+                        schema_reference: location.into(),
+                    }),
+                },
+                _ => ir::XmlSchemaHints {
+                    no_namespace_location: Some(location.into()),
+                    locations: Vec::new(),
+                    derivation: Some(ir::XmlSchemaHintDerivation {
+                        schema_reference: location.into(),
+                    }),
+                },
+            };
+            assert_eq!(
+                imported.target_options.xml_schema_hints,
+                Some(hint(&format!("hint-{index}-target.xsd")))
+            );
+            assert_eq!(imported.source, original.source);
+            assert_eq!(imported.target, original.target);
+            let again = directory.0.join(format!("again-{index}.mfd"));
+            mfd::export_with_profile(&imported, &again, mfd::ExportProfile::NativeMfd).unwrap();
+            assert!(
+                !std::fs::read_to_string(&again)
+                    .unwrap()
+                    .contains("AddSchemaLocation")
+            );
+            let reimported = mfd::import(&again).unwrap().project;
+            assert_eq!(
+                reimported.target_options.xml_schema_hints,
+                Some(hint(&format!("again-{index}-target.xsd")))
             );
         }
     }

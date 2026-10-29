@@ -27,22 +27,18 @@ const INPUTS: [(&str, &str); 4] = [
 
 // Complete, independently authored document bytes: the public XML writer uses
 // a UTF-8 declaration, LF separators, two-space indentation, and no final LF.
+// The imported target keeps the reference default schema-location hint.
 // Neither a serializer nor an interpreter supplies any expected document.
-const A: &str =
-    "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Output>\n  <Choice>A</Choice>\n</Output>";
-const B: &str =
-    "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Output>\n  <Choice>B</Choice>\n</Output>";
-const C: &str =
-    "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Output>\n  <Choice>C</Choice>\n</Output>";
-const B_NESTED: &str =
-    "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Output>\n  <Choice>B!</Choice>\n</Output>";
-const C_NESTED: &str =
-    "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Output>\n  <Choice>C?</Choice>\n</Output>";
-const A_MULTI: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Output>\n  <Choice>A</Choice>\n  <Marker>D</Marker>\n</Output>";
-const B_MULTI: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Output>\n  <Choice>B</Choice>\n  <Marker>D</Marker>\n</Output>";
-const C_MULTI: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Output>\n  <Choice>C</Choice>\n  <Marker>D</Marker>\n</Output>";
-const B_NESTED_MULTI: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Output>\n  <Choice>B!</Choice>\n  <Marker>D</Marker>\n</Output>";
-const C_NESTED_MULTI: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Output>\n  <Choice>C?</Choice>\n  <Marker>D</Marker>\n</Output>";
+const A: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Output xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:noNamespaceSchemaLocation=\"target.xsd\">\n  <Choice>A</Choice>\n</Output>";
+const B: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Output xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:noNamespaceSchemaLocation=\"target.xsd\">\n  <Choice>B</Choice>\n</Output>";
+const C: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Output xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:noNamespaceSchemaLocation=\"target.xsd\">\n  <Choice>C</Choice>\n</Output>";
+const B_NESTED: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Output xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:noNamespaceSchemaLocation=\"target.xsd\">\n  <Choice>B!</Choice>\n</Output>";
+const C_NESTED: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Output xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:noNamespaceSchemaLocation=\"target.xsd\">\n  <Choice>C?</Choice>\n</Output>";
+const A_MULTI: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Output xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:noNamespaceSchemaLocation=\"target.xsd\">\n  <Choice>A</Choice>\n  <Marker>D</Marker>\n</Output>";
+const B_MULTI: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Output xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:noNamespaceSchemaLocation=\"target.xsd\">\n  <Choice>B</Choice>\n  <Marker>D</Marker>\n</Output>";
+const C_MULTI: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Output xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:noNamespaceSchemaLocation=\"target.xsd\">\n  <Choice>C</Choice>\n  <Marker>D</Marker>\n</Output>";
+const B_NESTED_MULTI: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Output xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:noNamespaceSchemaLocation=\"target.xsd\">\n  <Choice>B!</Choice>\n  <Marker>D</Marker>\n</Output>";
+const C_NESTED_MULTI: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Output xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:noNamespaceSchemaLocation=\"target.xsd\">\n  <Choice>C?</Choice>\n  <Marker>D</Marker>\n</Output>";
 
 fn document_cases(multi: bool, nested: bool, bad: Option<NestedFailure>) -> Vec<serde_json::Value> {
     let documents = match (multi, nested) {
@@ -138,7 +134,13 @@ fn import_document(path: &Path, multi: bool, outer_name: &str) -> TestResult<Pro
     );
     assert!(boundary.output.declaration && boundary.output.indent);
     assert!(boundary.output.default_namespace.is_none());
-    assert!(boundary.output.schema_hints.is_none());
+    assert_eq!(
+        boundary.output.schema_hints,
+        Some(ir::XmlSchemaHints {
+            no_namespace_location: Some("target.xsd".into()),
+            ..Default::default()
+        })
+    );
     Ok(project)
 }
 
