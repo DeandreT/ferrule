@@ -179,6 +179,18 @@ fn unsupported_array_profiles_refuse_executable_import() {
         ),
         (
             "mapping.mfd",
+            "schema=\"payload.schema.json\"",
+            "schema=\"missing.schema.json\"",
+            "resolved JSON schema",
+        ),
+        (
+            "mapping.mfd",
+            "<json schema=\"payload.schema.json\"/>",
+            "<json schema=\"payload.schema.json\"/><json schema=\"payload.schema.json\"/>",
+            "resolved JSON schema",
+        ),
+        (
+            "mapping.mfd",
             "<entry name=\"number\" inpkey=\"32\"/>",
             "<entry name=\"number\" inpkey=\"32\" casttotargettypemode=\"0\"/>",
             "target node controls",

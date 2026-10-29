@@ -93,7 +93,7 @@ pub(super) fn read(
             ));
         };
         if has_repeating_ancestor(schema, &path) {
-            if !schema.json_schema_authoritative {
+            if !has_resolved_parser_schema(component, schema) {
                 return Err("array outputs require a resolved JSON schema".to_string());
             }
             if array::record_path(&schema.schema, &path).is_none() {
@@ -149,6 +149,32 @@ pub(super) fn read(
         optional_string_inputs,
         outputs,
     }))
+}
+
+fn has_resolved_parser_schema(
+    component: &roxmltree::Node<'_, '_>,
+    schema: &SchemaComponent,
+) -> bool {
+    // Ordinary file-reader authority excludes parameter children. A string
+    // parser instead needs its own exact schema declaration and the resource
+    // reader's unresolved-reference witness; never promote an inferred tree.
+    let data: Vec<_> = component
+        .children()
+        .filter(|node| node.has_tag_name("data"))
+        .collect();
+    let [data] = data.as_slice() else {
+        return false;
+    };
+    let roots: Vec<_> = data
+        .children()
+        .filter(|node| node.has_tag_name("root"))
+        .collect();
+    let json: Vec<_> = data
+        .children()
+        .filter(|node| node.has_tag_name("json"))
+        .collect();
+    matches!((roots.as_slice(), json.as_slice()), ([_], [json]) if json.attribute("schema").is_some_and(|reference| !reference.is_empty()))
+        && schema.options.json_schema_unresolved_reference.is_none()
 }
 
 pub(super) fn ordinary_object(node: &SchemaNode) -> bool {
