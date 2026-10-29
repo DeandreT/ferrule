@@ -53,7 +53,7 @@ for a complete format standard or another product.
 | CSV | Primary filename document runs (`run-document`, `generate --primary-documents`, and editor Run and Preview) | Every CSV document a literal or runtime-parameter filename selects beneath an explicit local input root, mapped once into one CSV document | [conformance/primary-filename-documents/README.md](../conformance/primary-filename-documents/README.md) |
 | Fixed-width | Primary filename document runs (`run-document`, `generate --primary-documents`, and editor Run and Preview) | Ordered fixed-width documents using saved Unicode-scalar layouts, mapped once with bounded input and output | [conformance/primary-fixed-width-documents/README.md](../conformance/primary-fixed-width-documents/README.md) |
 | XLSX | Native editor flat-worksheet setup, save, and reopen | One flat-row XLSX source and target configuration on the Linux desktop | [docs/getting-started.md](getting-started.md) |
-| X12 / EDIFACT | Generated C# X12 companions (`generate --x12-adapters`) | Raw X12 text and bytes with single-transaction, grouped-transaction, or repeating-interchange envelopes around the typed mapping | [docs/design/generated-x12-csharp.md](design/generated-x12-csharp.md) |
+| X12 / EDIFACT | Generated C# X12 companions (`generate --x12-adapters`) | Raw X12 text and bytes with single-transaction, grouped-transaction, or repeating-interchange envelopes around the ordinary typed mapping | [docs/design/generated-x12-csharp.md](design/generated-x12-csharp.md) |
 | X12 / EDIFACT | Primary filename document runs (`run-document`, `generate --primary-documents`, and editor Run and Preview) | Explicit X12 or EDIFACT direct documents or wildcard document sets, parsed in order and mapped once into one same-family output | [conformance/primary-edi-documents/README.md](../conformance/primary-edi-documents/README.md) |
 | X12 / EDIFACT | Generated C# static EDIFACT document adapters | Primary and named static inputs and outputs, with strict interchange validation and syntax-v4 repetitions | [docs/design/static-edifact-documents.md](design/static-edifact-documents.md) |
 | HL7 v2 / TRADACOMS | Primary filename document runs (`run-document`, `generate --primary-documents`, and editor Run and Preview) | Explicit HL7 or TRADACOMS direct documents or wildcard document sets, parsed in order and mapped once into one same-family output | [conformance/primary-edi-documents/README.md](../conformance/primary-edi-documents/README.md) |
@@ -64,7 +64,7 @@ for a complete format standard or another product.
 | Format | Profile |
 | --- | --- |
 | XML | XSD 1.1 wildcard exclusions (`notNamespace`, `notQName`) and `xs:any` inside `xs:all` |
-| XML | Strict wildcards whose matching declaration set is not closed, and same-local-name strict declarations with incompatible typed shapes |
+| XML | Strict wildcards whose matching declaration set is not closed, same-local-name strict declarations with incompatible typed shapes, strict wildcards that follow a single-occurrence declaration of a name they match, and strict wildcards outside a choice whose port shares a local name with a declaration covering only some of its namespaces |
 | XML | Element wildcard occurrences other than `1..1`, `0..1`, or `0..unbounded`, and optional single-occurrence `skip` wildcards |
 | XML | Sibling elements or attributes that differ only by namespace, because mapping paths use local field names |
 | XML | External DTD subsets and external entities, which are never loaded |
@@ -142,6 +142,13 @@ for a complete format standard or another product.
   resolved to exact singular or repeating typed choices, and namespace-aware
   attribute wildcards are supported. Lax processing gives resolved declarations
   typed mapping fields and reserves the generic fallback for undeclared names.
+  An extra occurrence of a single-occurrence declared element is a generic
+  item after the typed field takes the first one; reads refuse extras the
+  wildcard cannot keep, such as names outside its namespace constraint. A
+  wildcard's typed port for a declaration the type already declares yields to
+  that declaration for the namespaces it covers. A strict wildcard after a
+  single-occurrence declaration of the same name is refused, because it has
+  no generic fallback for that declaration's extra occurrences.
   Strict attribute processing rejects undeclared runtime names. XSD 1.1
   exclusions, unordered wildcard compositors, and unresolved strict declaration
   sets remain outside the subset.
