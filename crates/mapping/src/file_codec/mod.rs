@@ -16,7 +16,10 @@ const MAX_POINTER_BYTES: usize = 4096;
 const PLAIN_VERSION: u64 = 2;
 /// Capability envelopes also name the features older readers must refuse.
 const CAPABILITY_VERSION: u64 = 3;
-const KNOWN_CAPABILITIES: [&str; 1] = [crate::SQLITE_READ_V1_CAPABILITY];
+const KNOWN_CAPABILITIES: [&str; 2] = [
+    crate::SQLITE_READ_V1_CAPABILITY,
+    crate::XML_TARGET_SCALAR_OUTPUT_V1_CAPABILITY,
+];
 
 /// A file document and the capabilities it requires from a reader.
 ///
@@ -35,6 +38,10 @@ impl FileModel for crate::Project {
         self.uses_sqlite_read()
             .then_some(crate::SQLITE_READ_V1_CAPABILITY)
             .into_iter()
+            .chain(
+                self.uses_xml_scalar_output()
+                    .then_some(crate::XML_TARGET_SCALAR_OUTPUT_V1_CAPABILITY),
+            )
             .collect()
     }
 }

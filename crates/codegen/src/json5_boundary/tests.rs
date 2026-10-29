@@ -234,6 +234,7 @@ fn extra_static_dynamic_inputs_and_targets_refuse_before_graph_validation() {
         },
         extra_inputs: Vec::new(),
         output: crate::XmlOutputPolicy {
+            scalar_output: None,
             declaration: true,
             indent: true,
             default_namespace: None,

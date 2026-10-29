@@ -765,6 +765,7 @@ pub(super) fn eval_basic_owned_selected<'a>(
             renumber_extension(&mut output_positions, next);
         }
         let evaluator = ItemEvaluator {
+            preserve_scalars: None,
             program: program
                 .with_owned_context(&item_state)
                 .with_owned_trace_phase(crate::TraceOwnedPhase::Output),

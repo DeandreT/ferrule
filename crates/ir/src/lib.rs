@@ -18,7 +18,15 @@ mod primary_root;
 mod scalar_lexical;
 mod schema;
 mod source_origin;
+mod xml_scalar_output;
 mod xml_schema_hints;
+pub use xml_scalar_output::{
+    MAX_XML_SCALAR_OUTPUT_DETAIL_BYTES, MAX_XML_SCALAR_OUTPUT_DOCUMENT_DEPTH,
+    MAX_XML_SCALAR_OUTPUT_DOCUMENT_NODES, MAX_XML_SCALAR_OUTPUT_FIELDS,
+    MAX_XML_SCALAR_OUTPUT_NAME_BYTES, MAX_XML_SCALAR_OUTPUT_NAMES_BYTES, XmlDoubleFields,
+    XmlScalarOutputError, XmlScalarOutputPolicy, XmlScalarOutputUnresolved,
+    XmlScalarOutputUnresolvedReason, XmlScalarPreservation,
+};
 mod xml_structured_input;
 mod xml_type_origin;
 pub use xml_schema_hints::{

@@ -125,6 +125,7 @@ fn generated_xml_serialization_keeps_origin_separate_from_selected_identity() {
             &schema,
             source,
             &format_xml::XmlWriteOptions {
+                scalar_output: None,
                 declaration: false,
                 indent: false,
                 default_namespace: None,

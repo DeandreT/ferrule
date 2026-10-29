@@ -20,6 +20,7 @@ pub(super) enum XmlRequest {
     /// Ordinary structured format identity on every boundary. The adapter is
     /// optional: lowering drops it if the Program cannot prove it.
     Ordinary,
+    RequiredScalarOutput,
     /// An observed root-view primary input on one admitted route.
     RootView(RootViewRoute),
 }
@@ -42,6 +43,20 @@ impl XmlRequest {
     /// policies and unsupported literal hints with their diagnostics in
     /// declaration order.
     pub(super) fn classify(project: &Project) -> Result<Self, LowerError> {
+        if project.uses_xml_scalar_output() {
+            project.validate_xml_scalar_output().map_err(|error| {
+                LowerError::new(vec![Diagnostic::Validation {
+                    location: "XML scalar output".into(),
+                    message: error.to_string(),
+                }])
+            })?;
+            if project.source_options != structured_input_options()
+                || !ir::xml_structured_document_input_is_supported(&project.source)
+            {
+                return Err(LowerError::new(vec![Diagnostic::Validation { location: "XML scalar output".into(), message: "explicit XML scalar output requires an ordinary structured XML source adapter".into() }]));
+            }
+            return Ok(Self::RequiredScalarOutput);
+        }
         let primary_xml = project.source_options.xml_root_view_read_policy;
         // Ordinary XML format identity does not make adapter support mandatory.
         // Existing core-only generation survives an unproved ordinary schema.
@@ -165,6 +180,7 @@ impl XmlRequest {
         match self {
             Self::None => false,
             Self::OrdinaryInput | Self::Ordinary => true,
+            Self::RequiredScalarOutput => false,
             Self::RootView(RootViewRoute::StaticOutputs | RootViewRoute::StaticCombined) => true,
             Self::RootView(RootViewRoute::Primary | RootViewRoute::StaticInputs) => primary,
         }
@@ -177,7 +193,10 @@ impl XmlRequest {
 
     /// The exact primary-then-declaration-order policies of the requested adapter.
     pub(super) fn boundary(self, project: &Project) -> Option<XmlBoundaryProgram> {
-        if !matches!(self, Self::Ordinary | Self::RootView(_)) {
+        if !matches!(
+            self,
+            Self::Ordinary | Self::RequiredScalarOutput | Self::RootView(_)
+        ) {
             return None;
         }
         Some(XmlBoundaryProgram {
@@ -201,6 +220,7 @@ impl XmlRequest {
                 })
                 .collect(),
             output: XmlOutputPolicy {
+                scalar_output: project.target_options.xml_scalar_output.clone(),
                 schema_hints: project.target_options.xml_schema_hints.clone(),
                 ..Default::default()
             },

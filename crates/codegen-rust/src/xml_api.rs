@@ -27,10 +27,24 @@ fn output_arguments(policy: &XmlOutputPolicy) -> Result<String, EmitError> {
         .map_err(|error| EmitError::SchemaSerialization(error.to_string()))?
         .map(|json| format!("Some({})", rust_string(&json)))
         .unwrap_or_else(|| "None".into());
-    Ok(format!(
+    let mut arguments = format!(
         "{}, {}, {namespace}, {hints}",
         policy.declaration, policy.indent
-    ))
+    );
+    if let Some(scalar_output) = &policy.scalar_output {
+        let json = serde_json::to_string(scalar_output)
+            .map_err(|error| EmitError::SchemaSerialization(error.to_string()))?;
+        arguments.push_str(&format!(", Some({})", rust_string(&json)));
+    }
+    Ok(arguments)
+}
+
+fn serializer(policy: &XmlOutputPolicy) -> &'static str {
+    if policy.scalar_output.is_some() {
+        "serialize_xml_document_with_scalar_output"
+    } else {
+        "serialize_xml_document"
+    }
 }
 
 /// Renders the proved XML adapter. Every route reads its classification and
@@ -170,7 +184,8 @@ fn render_single_document(
         }
         output.push_str(&format!("fn {helper}(mapped: ExecutionOutputs) -> Result<{result_type}, codegen_runtime::XmlOutputSetError> {{\n    if mapped.extras.len() != EXTRA_XML_OUTPUT_NAMES.len() || mapped.extras.iter().zip(EXTRA_XML_OUTPUT_NAMES).any(|(target, name)| target.name != *name) {{\n        return Err(codegen_runtime::XmlOutputSetError::alignment(\"XML mapped outputs do not match declared target names/order\"));\n    }}\n    let mut budget = codegen_runtime::XmlOutputSetBudget::new(mapped.extras.len() + 1)?;\n"));
         let args = output_arguments(&policy.output)?;
-        output.push_str(&format!("    let primary_xml = codegen_runtime::serialize_xml_document(TARGET_XML_SCHEMA, &mapped.primary, {args}).map_err(|error| codegen_runtime::XmlOutputSetError::new(Some(codegen_runtime::XmlOutputTarget::Primary), error))?;\n    budget.charge(codegen_runtime::XmlOutputTarget::Primary, primary_xml.len())?;\n    let primary = {};\n", if bytes { "primary_xml.into_bytes()" } else { "primary_xml" }));
+        let serializer = serializer(&policy.output);
+        output.push_str(&format!("    let primary_xml = codegen_runtime::{serializer}(TARGET_XML_SCHEMA, &mapped.primary, {args}).map_err(|error| codegen_runtime::XmlOutputSetError::new(Some(codegen_runtime::XmlOutputTarget::Primary), error))?;\n    budget.charge(codegen_runtime::XmlOutputTarget::Primary, primary_xml.len())?;\n    let primary = {};\n", if bytes { "primary_xml.into_bytes()" } else { "primary_xml" }));
         if program.extra_targets.is_empty() {
             output.push_str("    let extras = Vec::new();\n");
         } else {
@@ -223,6 +238,7 @@ fn render_dynamic_documents(
     );
     output.push_str("\n#[derive(Debug, Clone, PartialEq, Eq)]\npub struct XmlDocumentOutput { pub path: String, pub document: String }\n#[derive(Debug, Clone, PartialEq, Eq)]\npub struct XmlBytesDocumentOutput { pub path: String, pub document: Vec<u8> }\n\n");
     let arguments = output_arguments(&policy.output)?;
+    let document_serializer = serializer(&policy.output);
     for bytes in [false, true] {
         let stem = if bytes {
             "execute_xml_bytes_documents"
@@ -260,7 +276,7 @@ fn render_dynamic_documents(
             };
             output.push_str(&format!("pub fn {stem}{suffix}(source: {source_type}{context_arg}) -> Result<Vec<{dto}>, codegen_runtime::XmlDocumentExecutionError> {{\n    let parsed = codegen_runtime::{parser}(SOURCE_XML_SCHEMA, source).map_err(codegen_runtime::XmlDocumentExecutionError::from)?;\n    let mapped = {execute}(&parsed{context_call}).map_err(codegen_runtime::XmlBoundaryError::from).map_err(codegen_runtime::XmlDocumentExecutionError::from)?;\n    {helper}(mapped)\n}}\n\n"));
         }
-        output.push_str(&format!("fn {helper}(mapped: ExecutionOutputs) -> Result<Vec<{dto}>, codegen_runtime::XmlDocumentExecutionError> {{\n    if !mapped.extras.is_empty() {{\n        return Err(codegen_runtime::XmlDocumentExecutionError::alignment(\"dynamic XML documents require no named mapped outputs\"));\n    }}\n    let Instance::DocumentSet(members) = mapped.primary else {{\n        return Err(codegen_runtime::XmlDocumentExecutionError::alignment(\"dynamic XML documents require a primary document set\"));\n    }};\n    let mut budget = codegen_runtime::XmlDocumentSetBudget::new(members.len())?;\n    let mut outputs = Vec::with_capacity(members.len());\n    for (index, member) in members.into_iter().enumerate() {{\n        let xml = codegen_runtime::serialize_xml_document(TARGET_XML_SCHEMA, member.value(), {arguments}).map_err(|error| codegen_runtime::XmlDocumentExecutionError::serialization(index, member.path(), error))?;\n        budget.charge(index, member.path(), xml.len())?;\n        outputs.push({dto} {{ path: member.path().to_owned(), document: {} }});\n    }}\n    Ok(outputs)\n}}\n\n", if bytes { "xml.into_bytes()" } else { "xml" }));
+        output.push_str(&format!("fn {helper}(mapped: ExecutionOutputs) -> Result<Vec<{dto}>, codegen_runtime::XmlDocumentExecutionError> {{\n    if !mapped.extras.is_empty() {{\n        return Err(codegen_runtime::XmlDocumentExecutionError::alignment(\"dynamic XML documents require no named mapped outputs\"));\n    }}\n    let Instance::DocumentSet(members) = mapped.primary else {{\n        return Err(codegen_runtime::XmlDocumentExecutionError::alignment(\"dynamic XML documents require a primary document set\"));\n    }};\n    let mut budget = codegen_runtime::XmlDocumentSetBudget::new(members.len())?;\n    let mut outputs = Vec::with_capacity(members.len());\n    for (index, member) in members.into_iter().enumerate() {{\n        let xml = codegen_runtime::{document_serializer}(TARGET_XML_SCHEMA, member.value(), {arguments}).map_err(|error| codegen_runtime::XmlDocumentExecutionError::serialization(index, member.path(), error))?;\n        budget.charge(index, member.path(), xml.len())?;\n        outputs.push({dto} {{ path: member.path().to_owned(), document: {} }});\n    }}\n    Ok(outputs)\n}}\n\n", if bytes { "xml.into_bytes()" } else { "xml" }));
     }
     Ok(output)
 }

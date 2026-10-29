@@ -73,6 +73,32 @@ pub(crate) fn eval_scope(
     source_loader: Option<&dyn DynamicSourceLoader>,
     trace_scope: &TraceScope,
 ) -> Result<Instance, EngineError> {
+    eval_scope_with_scalar_output(
+        program,
+        scope,
+        target,
+        context,
+        positions,
+        extra_sources,
+        source_loader,
+        trace_scope,
+        None,
+    )
+}
+
+/// The target dispatcher alone supplies this validated, non-inherited policy.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn eval_scope_with_scalar_output(
+    program: EvalProgram<'_>,
+    scope: &Scope,
+    target: Option<&ir::SchemaNode>,
+    context: &[&Instance],
+    positions: &[PositionFrame],
+    extra_sources: &[NamedSource],
+    source_loader: Option<&dyn DynamicSourceLoader>,
+    trace_scope: &TraceScope,
+    preserve_scalars: Option<ir::XmlScalarPreservation<'_>>,
+) -> Result<Instance, EngineError> {
     if let Some(owned) = program.owned_context {
         if owned.owned_ancestry || scope_needs_owned(program, scope) {
             return eval_basic_owned_scope(
@@ -492,6 +518,7 @@ pub(crate) fn eval_scope(
     };
     let mut produced = Vec::new();
     let item_evaluator = ItemEvaluator {
+        preserve_scalars,
         program,
         scope,
         trace_scope,

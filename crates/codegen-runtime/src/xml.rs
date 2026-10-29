@@ -47,6 +47,7 @@ pub fn serialize_xml(
     let schema = shared_schema(schema_json)
         .map_err(|source| error(node, format!("embedded schema is invalid: {source}")))?;
     let options = XmlWriteOptions {
+        scalar_output: None,
         declaration,
         indent,
         default_namespace: namespace.map(str::to_owned),
@@ -104,6 +105,7 @@ mod strict_character_tests {
             &schema,
             &data(String::new()),
             &XmlWriteOptions {
+                scalar_output: None,
                 declaration: false,
                 indent: false,
                 default_namespace: None,
@@ -187,6 +189,7 @@ mod tests {
         let overhead = explicit_v2(&base).len();
         let instance = group([field("Amount", scalar(Value::Float(high)))]);
         let options = XmlWriteOptions {
+            scalar_output: None,
             declaration: false,
             indent: false,
             default_namespace: None,

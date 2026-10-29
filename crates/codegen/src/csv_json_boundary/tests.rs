@@ -436,6 +436,7 @@ fn mutate(
                         },
                         extra_inputs: Vec::new(),
                         output: XmlOutputPolicy {
+                            scalar_output: None,
                             declaration: serde_json::from_value(
                                 value["output"]["declaration"].clone(),
                             )?,

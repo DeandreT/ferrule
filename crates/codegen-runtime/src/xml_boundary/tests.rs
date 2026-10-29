@@ -353,6 +353,7 @@ mod strict_finalization_tests {
 
     fn options(namespace: Option<&str>) -> XmlWriteOptions {
         XmlWriteOptions {
+            scalar_output: None,
             declaration: false,
             indent: false,
             default_namespace: namespace.map(str::to_owned),
@@ -675,6 +676,7 @@ fn new_document_namespace_preserves_value_without_changing_legacy_writer() {
             &schema,
             &instance,
             &XmlWriteOptions {
+                scalar_output: None,
                 declaration: false,
                 indent: false,
                 default_namespace: Some(uri.into()),

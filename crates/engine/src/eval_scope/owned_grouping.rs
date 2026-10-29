@@ -522,6 +522,7 @@ pub(super) fn eval_basic_owned_groups<'a>(
             position.grouped = wrapper.is_some();
         }
         let evaluator = ItemEvaluator {
+            preserve_scalars: None,
             program: program
                 .with_owned_context(&grouped)
                 .with_owned_trace_phase(crate::TraceOwnedPhase::Output),

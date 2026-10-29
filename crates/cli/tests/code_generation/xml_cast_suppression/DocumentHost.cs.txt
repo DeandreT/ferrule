@@ -1,0 +1,17 @@
+using System.Text;
+using System.Text.Json;
+using Ferrule.Generated;
+
+using var cases = JsonDocument.Parse(File.ReadAllBytes("cases.json"));
+var context = new Ferrule.Runtime.FerruleExecutionContext("mapping.json");
+foreach (var item in cases.RootElement.EnumerateArray()) {
+    var input = item.GetProperty("input").GetString()!;
+    var expected = item.GetProperty("expected").GetString()!;
+    if (GeneratedMapping.ExecuteXml(input) != expected) throw new InvalidOperationException("XML text changed: " + GeneratedMapping.ExecuteXml(input));
+    if (!GeneratedMapping.ExecuteXmlBytes(Encoding.UTF8.GetBytes(input)).SequenceEqual(Encoding.UTF8.GetBytes(expected))) throw new InvalidOperationException("XML bytes changed");
+    if (GeneratedMapping.ExecuteXml(input, context) != expected) throw new InvalidOperationException("XML context output changed");
+    if (GeneratedMapping.ExecuteXmlBytesSelectedTarget(Encoding.UTF8.GetBytes(input), Ferrule.Runtime.FerruleTargetSelection.Primary()) is not SelectedXmlBytesTargetOutput.Primary primary
+        || !primary.Document.SequenceEqual(Encoding.UTF8.GetBytes(expected))) throw new InvalidOperationException("selected XML policy lost");
+    using var json = JsonDocument.Parse(GeneratedMapping.ExecuteJson(item.GetProperty("json").GetRawText()));
+    if (json.RootElement.GetProperty("Orders").GetProperty("Order")[0].GetProperty("Price").ValueKind != JsonValueKind.Number) throw new InvalidOperationException("JSON schema lost numeric type");
+}

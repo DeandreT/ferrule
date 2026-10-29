@@ -63,12 +63,36 @@ their source files and sentinels unchanged. Their native saved/resaved designs
 are byte-identical. Successful execution of the invalid-number case does not
 make its output schema-valid.
 
-Ferrule's current interpretation normalizes the three numeric strings and
-rejects the invalid one. [#1136](https://github.com/DeandreT/ferrule/issues/1136)
-tracks explicit disabled-casting support. Disabling native casting is not a
-lossless substitute for `coerce_float`: it changes both formatting and invalid
-value detection. The conversion helper therefore remains an explicit Ferrule
-extension, and strict native export remains refused.
+Ferrule's ordinary typed writer normalizes the three numeric strings and
+rejects the invalid one. Its explicit
+[target-cast suppression policy](../design/xml-cast-suppression.md) preserves
+the raw values on the supported flat XML boundary while retaining the numeric
+schema. Unsupported explicit requests remain execution-blocking. Disabling
+native casting is not a lossless substitute for `coerce_float`: it changes both
+formatting and invalid value detection. The conversion helper therefore remains
+an explicit Ferrule extension, and strict native export remains refused.
+
+## Nested formatted output
+
+A reference sample design writes `format-number(price, "00000.00")` into a
+repeated `Article` whose `SinglePrice` is a pattern-restricted `xs:decimal`,
+with target casting disabled on the document. It was observed with case-local
+instance paths, the built-in engine and its preview-only stylesheet reference
+removed.
+
+| Design | Native `SinglePrice` values | Target XSD |
+| --- | --- | --- |
+| Target casting disabled | `00025.00`, `00002.30`, `00034.00`, `00057.50` | Valid |
+| Same design, casting enabled | `25`, `2.3`, `34`, `57.5` | Invalid |
+| Ferrule native export of its import | `00025.00`, `00002.30`, `00034.00`, `00057.50` | Valid |
+
+Ferrule imports the disabled design with the document-wide suppression
+profile; its interpreter, generated Rust and generated C# produce the same
+article values. All three native runs saved and resaved byte-identical
+designs. The reference application also adds an absolute
+`xsi:noNamespaceSchemaLocation` when `AddSchemaLocation` is absent; Ferrule's
+XML import does not reproduce that automatic hint for any target;
+[#1138](https://github.com/DeandreT/ferrule/issues/1138) tracks it.
 
 These controls do not establish other numeric types, arbitrary schemas, general
 null semantics, or a way to select a winner among competing singular bindings.

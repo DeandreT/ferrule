@@ -1818,7 +1818,12 @@ fn render_scope(
         if iteration.concatenated().is_some() {
             output.push_str(&render_concatenated_scope(iteration, segment_names));
         } else if let Some(presence) = iteration.presence() {
-            output.push_str(&render_presence_scope(scope, presence, child_names));
+            output.push_str(&render_presence_scope(
+                scope,
+                presence,
+                child_names,
+                scope_preservation(program, scope),
+            ));
         } else {
             output.push_str(&render_iteration_scope(
                 program,
@@ -1828,7 +1833,13 @@ fn render_scope(
             )?);
         }
     } else {
-        output.push_str(&render_scope_item(scope, child_names, "    ", "context"));
+        output.push_str(&render_scope_item_with_scalar_output(
+            scope,
+            child_names,
+            "    ",
+            "context",
+            scope_preservation(program, scope),
+        ));
         if scope.repeating {
             output.push_str("    Ok(repeated([output]))\n");
         } else {
@@ -1862,14 +1873,33 @@ fn render_presence_scope(
     scope: &TargetScope,
     presence: codegen::OptionalPresence,
     child_names: &[String],
+    preserve: Option<ir::XmlScalarPreservation<'_>>,
 ) -> String {
     let condition = presence.condition();
     let mut output = format!(
         "    if !require_bool({condition}, expression_{condition}(context)?)? {{\n        return Ok(repeated(Vec::new()));\n    }}\n"
     );
-    output.push_str(&render_scope_item(scope, child_names, "    ", "context"));
+    output.push_str(&render_scope_item_with_scalar_output(
+        scope,
+        child_names,
+        "    ",
+        "context",
+        preserve,
+    ));
     output.push_str("    Ok(repeated([output]))\n");
     output
+}
+
+/// The validated policy alone selects preserved bindings: the flat profile
+/// owns only the root group, the document profile every primary scope.
+fn scope_preservation<'a>(
+    program: &'a Program,
+    scope: &TargetScope,
+) -> Option<ir::XmlScalarPreservation<'a>> {
+    match program.xml_scalar_preservation()? {
+        ir::XmlScalarPreservation::RootFields(_) if !std::ptr::eq(scope, &program.root) => None,
+        preservation => Some(preservation),
+    }
 }
 
 fn render_iteration_scope(
@@ -1964,11 +1994,12 @@ fn render_iteration_scope(
         "&item_context"
     };
     output.push_str(&format!("        let _ = {item_context};\n"));
-    output.push_str(&render_scope_item(
+    output.push_str(&render_scope_item_with_scalar_output(
         scope,
         child_names,
         "        ",
         item_context,
+        scope_preservation(program, scope),
     ));
     if let Some(dynamic) = iteration.dynamic_document_iteration() {
         output.push_str(&format!(
@@ -2412,6 +2443,16 @@ fn render_scope_item(
     indent: &str,
     context: &str,
 ) -> String {
+    render_scope_item_with_scalar_output(scope, child_names, indent, context, None)
+}
+
+fn render_scope_item_with_scalar_output(
+    scope: &TargetScope,
+    child_names: &[String],
+    indent: &str,
+    context: &str,
+    preserve: Option<ir::XmlScalarPreservation<'_>>,
+) -> String {
     if matches!(scope.construction, TargetConstruction::CollectDocuments) {
         let mut output = format!("{indent}let output = codegen_runtime::collect_documents([\n");
         for child in child_names {
@@ -2593,10 +2634,12 @@ fn render_scope_item(
         return output;
     }
     for (index, binding) in scope.bindings.iter().enumerate() {
-        let value = render_target_adaptation(
-            &format!("expression_{}({context})?", binding.expression),
-            binding.target_domain,
-        );
+        let expression = format!("expression_{}({context})?", binding.expression);
+        let value = if preserve.is_some_and(|preserve| preserve.preserves(&binding.target_field)) {
+            expression
+        } else {
+            render_target_adaptation(&expression, binding.target_domain)
+        };
         output.push_str(&format!("{indent}let value_{index} = {value};\n"));
     }
 

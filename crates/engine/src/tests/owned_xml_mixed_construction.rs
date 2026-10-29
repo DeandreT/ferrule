@@ -182,6 +182,7 @@ fn colliding() -> Project {
 
 fn write(project: &Project, output: &Instance) -> String {
     let options = format_xml::XmlWriteOptions {
+        scalar_output: None,
         declaration: false,
         indent: false,
         default_namespace: None,

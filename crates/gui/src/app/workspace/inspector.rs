@@ -286,6 +286,19 @@ impl FerruleApp {
             let focused_schema = self.focused_schema.clone();
             if page == InspectorPage::Target {
                 ui.strong("Target schema");
+                if let Some(policy) = &options.xml_scalar_output {
+                    match policy {
+                        ir::XmlScalarOutputPolicy::SuppressCastInSubtreeV1 { .. }
+                        | ir::XmlScalarOutputPolicy::SuppressCastInDocumentV1 {} => {
+                            ui.label("XML target casting: disabled");
+                            ui.weak("Original scalar text is preserved; output may not satisfy the XSD.");
+                        }
+                        ir::XmlScalarOutputPolicy::Unresolved { request } => {
+                            ui.colored_label(egui::Color32::RED, "XML target casting: unresolved");
+                            ui.label(request.detail());
+                        }
+                    }
+                }
                 show_schema_search_input(
                     ui,
                     "target_schema_search",
