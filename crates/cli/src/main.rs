@@ -308,6 +308,9 @@ enum Command {
         /// Import a connected serial XML design as a typed pipeline.
         #[arg(long)]
         pipeline: bool,
+        /// Import one connected EDI input and JSON output filename as a document plan.
+        #[arg(long, conflicts_with_all = ["pipeline", "require_executable"])]
+        filename_document: bool,
         /// Refuse incomplete single-project imports before writing the project.
         #[arg(long, conflicts_with = "pipeline")]
         require_executable: bool,
@@ -961,6 +964,7 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
             mfd,
             out,
             pipeline,
+            filename_document,
             require_executable,
             item_ordered_exceptions,
             package_root,
@@ -968,7 +972,17 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
             edi_catalog_roots,
             json_schema_catalog_roots,
         } => {
-            let warnings = if require_executable && !item_ordered_exceptions {
+            let warnings = if filename_document {
+                cli::import_mfd_filename_document(
+                    &mfd,
+                    &out,
+                    package_root.as_deref(),
+                    package_manifest.as_deref(),
+                    &edi_catalog_roots,
+                    &json_schema_catalog_roots,
+                    item_ordered_exceptions,
+                )?
+            } else if require_executable && !item_ordered_exceptions {
                 cli::import_mfd_with_profile(
                     &mfd,
                     &out,

@@ -173,7 +173,7 @@ mod edi_document;
 mod fixed_width;
 pub use edi_document::{
     EdiBoundaryError, EdiDocumentBoundary, EdiInputBudget, PrimaryEdiDocumentError, PrimaryEdiKind,
-    validate_edifact_envelope,
+    validate_edifact_envelope, validate_filename_endpoint,
 };
 pub use fixed_width::{
     FixedWidthBoundaryError, FixedWidthInputBudget, MAX_FIXED_WIDTH_DOCUMENT_BYTES,
@@ -404,6 +404,9 @@ pub enum RuntimeError {
     PrimaryFilenameType {
         node: u32,
         found: &'static str,
+    },
+    InvalidFilenameEndpoint {
+        node: u32,
     },
     UnknownTarget {
         name: String,
@@ -707,6 +710,10 @@ impl fmt::Display for RuntimeError {
                 formatter,
                 "primary filename node {node} must produce a string, got {found}"
             ),
+            Self::InvalidFilenameEndpoint { node } => write!(
+                formatter,
+                "filename endpoint node {node} requires nonempty text without wildcards or control characters"
+            ),
             Self::UnknownTarget { name } => {
                 write!(formatter, "project has no named target `{name}`")
             }
@@ -883,6 +890,7 @@ impl std::error::Error for RuntimeError {
             | Self::MissingRuntimeParameter { .. }
             | Self::RuntimeParameterType { .. }
             | Self::PrimaryFilenameType { .. }
+            | Self::InvalidFilenameEndpoint { .. }
             | Self::UnknownTarget { .. }
             | Self::MissingNamedSource { .. }
             | Self::DuplicateNamedSource { .. }

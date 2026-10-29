@@ -84,6 +84,7 @@ mod xml_scalar_output;
 mod xml_serializer;
 
 pub use csv_document::{ImportedDocument, import_csv_document, import_csv_document_with_options};
+pub use document_paths::{import_filename_document, import_filename_document_with_options};
 pub use schema::{MAX_FLEXTEXT_CONFIGURATION_BYTES, import_flextext_configuration};
 
 use db_query::is_routine_catalog;
@@ -165,8 +166,16 @@ struct SourceIdentity {
 struct LoweredStage {
     imported: Imported,
     primary_filename: Option<mapping::NodeId>,
+    output_filename: Option<mapping::NodeId>,
     /// Original component identities in primary-then-secondary source order.
     source_components: Vec<SourceIdentity>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum FilenameImport {
+    None,
+    CsvRetention,
+    Endpoints,
 }
 
 /// Filesystem policy for importing one mapping package.
@@ -374,7 +383,12 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
 
 pub(crate) fn import_package(package: &crate::MfdPackage) -> Result<Imported, MfdError> {
     let resources = ResourceResolver::from_package(package)?;
-    let result = import_resolved(&resources, StageSelection::Ordinary, false, false);
+    let result = import_resolved(
+        &resources,
+        StageSelection::Ordinary,
+        false,
+        FilenameImport::None,
+    );
     resources.finish_bindings()?;
     Ok(result?.imported)
 }
@@ -385,7 +399,7 @@ pub fn import_with_options(path: &Path, options: &ImportOptions) -> Result<Impor
         &resources,
         StageSelection::Ordinary,
         options.item_ordered_exceptions,
-        false,
+        FilenameImport::None,
     );
     resources.finish_bindings()?;
     Ok(result?.imported)
@@ -430,7 +444,7 @@ fn import_pipeline_resolved(
             target_inputs: &first_intermediate.inputs,
         },
         options.item_ordered_exceptions,
-        false,
+        FilenameImport::None,
     )?];
     for pair in chain.intermediates.windows(2) {
         let [first_intermediate, second_intermediate] = pair else {
@@ -445,7 +459,7 @@ fn import_pipeline_resolved(
                 target_inputs: &second_intermediate.inputs,
             },
             options.item_ordered_exceptions,
-            false,
+            FilenameImport::None,
         )?);
     }
     let last_intermediate = chain
@@ -462,7 +476,7 @@ fn import_pipeline_resolved(
             final_inputs: &chain.final_inputs,
         },
         options.item_ordered_exceptions,
-        false,
+        FilenameImport::None,
     )?);
 
     resources.finish_bindings()?;
@@ -1553,8 +1567,9 @@ fn import_resolved(
     resources: &ResourceResolver,
     selection: StageSelection<'_>,
     item_ordered_exceptions: bool,
-    retain_primary_filename: bool,
+    filename_import: FilenameImport,
 ) -> Result<LoweredStage, MfdError> {
+    let retain_primary_filename = filename_import != FilenameImport::None;
     let path = resources.mapping_path();
     let text = resources.read_design()?;
     let doc = roxmltree::Document::parse(&text)?;
@@ -1593,10 +1608,20 @@ fn import_resolved(
     let edges = read_edge_inputs(&structure, Some(&wrapper));
     if retain_primary_filename && (!edges.complete || !edges.conflicts.is_empty()) {
         return Err(MfdError::UnsupportedImport(
-            "CSV document filename retention requires complete, unambiguous input feeds".into(),
+            if filename_import == FilenameImport::CsvRetention {
+                "CSV document filename retention requires complete, unambiguous input feeds"
+            } else {
+                "filename endpoints require complete, unambiguous input feeds"
+            }
+            .into(),
         ));
     }
     let mut warnings = edges.conflicts.clone();
+    let filename_endpoints = if filename_import == FilenameImport::Endpoints {
+        Some(document_paths::Endpoints::read(structure, &edges.feeds)?)
+    } else {
+        None
+    };
     let csv_occurrence_raw_authority =
         edges.complete && target_iteration::csv_raw_authority(&structure, &edges.feeds);
     let mut schema_components = Vec::new();
@@ -1640,6 +1665,7 @@ fn import_resolved(
         resources.append_refusals(&mut resource_warnings);
         return Ok(LoweredStage {
             primary_filename: None,
+            output_filename: None,
             imported: Imported {
                 project,
                 warnings: resource_warnings,
@@ -1799,10 +1825,14 @@ fn import_resolved(
                                     Ok(Some(parser)) => json_parsers.push(parser),
                                     Ok(None) => {
                                         if !sc.is_variable {
-                                            document_paths::warn(
+                                            document_paths::warn_with_admitted_outputs(
                                                 component,
                                                 &edges.feeds,
                                                 "JSON",
+                                                &filename_endpoints
+                                                    .as_ref()
+                                                    .map(|endpoints| endpoints.inputs())
+                                                    .unwrap_or_default(),
                                                 &mut warnings,
                                             );
                                         }
@@ -1850,10 +1880,14 @@ fn import_resolved(
                         match read_edi_component(&component, resources, &mut warnings) {
                             Some(sc) => {
                                 if !sc.is_variable {
-                                    document_paths::warn(
+                                    document_paths::warn_with_admitted_outputs(
                                         component,
                                         &edges.feeds,
                                         "EDI",
+                                        &filename_endpoints
+                                            .as_ref()
+                                            .map(|endpoints| endpoints.inputs())
+                                            .unwrap_or_default(),
                                         &mut warnings,
                                     );
                                 }
@@ -2704,14 +2738,20 @@ fn import_resolved(
     } else {
         (exception::lower(exception_recipes, &mut builder), None)
     };
-    let primary_filename = if retain_primary_filename {
-        Some(csv_document::retain_filename(
-            structure,
-            primary,
-            &mut builder,
-        )?)
+    let (primary_filename, output_filename) = if let Some(endpoints) = &filename_endpoints {
+        let (input, output) = endpoints.retain(primary, target, &mut builder)?;
+        (Some(input), Some(output))
+    } else if retain_primary_filename {
+        (
+            Some(csv_document::retain_filename(
+                structure,
+                primary,
+                &mut builder,
+            )?),
+            None,
+        )
     } else {
-        None
+        (None, None)
     };
     let global_auto_number_nodes = builder
         .fn_nodes
@@ -2781,6 +2821,9 @@ fn import_resolved(
     if let Some(filename) = primary_filename {
         let mut document =
             mapping::DocumentProject::new(project, mapping::PrimarySourcePlan::new(filename));
+        if let Some(output) = output_filename {
+            document = document.with_output_filename(output);
+        }
         document.prune_unreachable_nodes();
         project = document.project().clone();
     } else {
@@ -2844,6 +2887,7 @@ fn import_resolved(
     resources.append_refusals(&mut warnings);
     Ok(LoweredStage {
         primary_filename,
+        output_filename,
         imported: Imported {
             project,
             warnings,

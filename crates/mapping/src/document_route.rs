@@ -1,8 +1,9 @@
 //! How a primary document plan's documents are read and combined.
 //!
 //! A route is decided from the saved format identities alone, before any
-//! filename is evaluated or any host is called. The source and target must
-//! name the same format. Row formats combine every selected document's rows
+//! filename is evaluated or any host is called. Ordinary plans require matching
+//! formats; explicit output-filename plans admit one direct EDI-to-JSON document.
+//! Row formats combine every selected document's rows
 //! into one row sequence; document formats map one document directly, or a
 //! document set of every selected document for a filename wildcard.
 
@@ -106,11 +107,14 @@ pub enum PrimaryRouteError {
     /// An observed XML root view describes one document; a filename wildcard
     /// selects a document set.
     RootViewDocumentSet,
+    /// Explicit filename endpoints admit one EDI document to one strict JSON document.
+    FilenameEndpoints,
 }
 
 impl fmt::Display for PrimaryRouteError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::FilenameEndpoints => f.write_str("filename endpoints require a direct single EDI input and strict JSON output with global string filenames"),
             Self::FixedWidthSchema { side } => write!(
                 f,
                 "fixed-width {side} requires a flat non-repeating scalar row schema"
@@ -263,6 +267,41 @@ impl DocumentProject {
             project.target_path.as_deref(),
             PrimaryRouteSide::Target,
         );
+        if self.output_filename().is_some() {
+            if !matches!(format, PrimaryDocumentFormat::Edi(_))
+                || target != Ok(PrimaryDocumentFormat::Json)
+                || !self.primary_source().selection.is_direct()
+                || project.source.repeating
+                || project.target.repeating
+                || project.root.produces_documents()
+                || self.global_filename().is_err()
+                || self.global_output_filename().is_err()
+            {
+                return Err(PrimaryRouteError::FilenameEndpoints);
+            }
+            validate_options(&project.source_options, format, PrimaryRouteSide::Source)?;
+            validate_options(
+                &project.target_options,
+                PrimaryDocumentFormat::Json,
+                PrimaryRouteSide::Target,
+            )?;
+            for (node, filename) in [
+                (self.primary_source().filename, self.global_filename().ok()),
+                (
+                    self.output_filename().expect("output filename"),
+                    self.global_output_filename().ok().flatten(),
+                ),
+            ] {
+                if let Some(crate::GlobalFilename::Literal(text)) = filename {
+                    Self::validate_endpoint_text(node, text)
+                        .map_err(|_| PrimaryRouteError::FilenameEndpoints)?;
+                }
+            }
+            return Ok(PrimaryDocumentRoute {
+                format,
+                shape: PrimaryDocumentShape::Document,
+            });
+        }
         if target.as_ref().ok() != Some(&format) {
             return Err(match target {
                 Err(error @ PrimaryRouteError::NotAdmitted { .. }) => error,
