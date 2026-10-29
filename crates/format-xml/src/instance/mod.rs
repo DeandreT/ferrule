@@ -191,6 +191,8 @@ pub enum XmlFormatError {
     UnsupportedNestedRepeatingSequence { element_count: usize },
     #[error("xs:any wildcard cannot be represented: {reason}")]
     UnsupportedXmlWildcard { reason: &'static str },
+    #[error("XSD 1.1 open content cannot be represented: {reason}")]
+    UnsupportedXmlOpenContent { reason: &'static str },
     #[error("xs:any wildcard does not allow element `{name}` in namespace `{namespace}`")]
     XmlWildcardNamespaceMismatch { name: String, namespace: String },
     #[error(
