@@ -807,3 +807,61 @@ fn undelimited_fixed_width_length_errors_name_the_command_path() {
         other => panic!("expected a data error, got {other:?}"),
     }
 }
+
+#[test]
+fn data_carriage_returns_before_line_breaks_round_trip_or_refuse() {
+    let store = |ending| {
+        FlexTextLayout::new(
+            "document",
+            FlexCommand::store("text", ScalarType::String, None),
+            ending,
+            false,
+        )
+        .unwrap()
+    };
+    let split = |ending| {
+        FlexTextLayout::new(
+            "document",
+            FlexCommand::SplitOnce {
+                name: "parts".into(),
+                splitter: OnceSplitter::Delimiter("\r".into()),
+                first: Box::new(FlexCommand::store("head", ScalarType::String, None)),
+                second: Box::new(FlexCommand::store("tail", ScalarType::String, None)),
+            },
+            ending,
+            false,
+        )
+        .unwrap()
+    };
+    for (layout, input) in [
+        (store(FlexLineEnding::Lf), "x\r\r\n"),
+        (split(FlexLineEnding::Lf), "a\r\r\nb"),
+    ] {
+        let parsed = parse(&layout, input);
+        match to_string(&layout.schema(), &parsed, &layout) {
+            Err(FlexTextError::Data { message, .. }) => {
+                assert!(
+                    message.contains("carriage return before a line break"),
+                    "{message}"
+                );
+            }
+            other => panic!("{input:?} should be refused under LF, got {other:?}"),
+        }
+    }
+    for (layout, input) in [
+        (store(FlexLineEnding::Crlf), "x\r\r\n"),
+        (split(FlexLineEnding::Crlf), "a\r\r\nb"),
+    ] {
+        let parsed = parse(&layout, input);
+        let output = to_string(&layout.schema(), &parsed, &layout).unwrap();
+        assert_eq!(output, input);
+        assert_eq!(parse(&layout, &output), parsed);
+    }
+    // A CRLF break inside data still becomes the layout's LF break.
+    let layout = store(FlexLineEnding::Lf);
+    let parsed = parse(&layout, "a\r\nb");
+    assert_eq!(
+        to_string(&layout.schema(), &parsed, &layout).unwrap(),
+        "a\nb"
+    );
+}

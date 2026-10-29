@@ -62,17 +62,6 @@ For each input:
    deterministic. Output small enough is read again under rule 3. Writing need
    not reproduce the original input.
 
-## Known limits
-
-These are current behavior that the harness tolerates rather than reports:
-
-- **Carriage returns before line breaks**
-  ([#1152](https://github.com/DeandreT/ferrule/issues/1152)). Writing removes
-  exactly one `\r` before each `\n`, so a carriage return in the data, or in a
-  split delimiter or record separator, that sits before a line break survives
-  as `\r\n` in LF output. The harness accepts `\r\n` in LF output only when
-  the instance or one of those layout strings holds a carriage return.
-
 ## Per-input budget
 
 - **Input size:** the target ignores inputs larger than 64 KiB
