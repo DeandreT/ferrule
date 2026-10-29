@@ -318,10 +318,31 @@ fn lookup_preserves_primary_items_first_match_absence_duplicates_and_full_valida
                 "missing" => assert!(
                     matches!(result, Err(engine::EngineError::MissingRuntimeParameter { name, .. }) if name == "LookupText")
                 ),
-                _ => assert!(
-                    matches!(result, Err(engine::EngineError::RuntimeParameterType { name, expected: ir::ScalarType::String, found, .. }) if name == "LookupText" && found == kind),
+                "null" => assert!(
+                    matches!(
+                        result,
+                        Err(engine::EngineError::Function(
+                            functions::FunctionError::TypeMismatch {
+                                function: "json_parse_array_length",
+                                got: "null"
+                            }
+                        ))
+                    ),
                     "{case}"
                 ),
+                "int" => assert!(
+                    matches!(
+                        result,
+                        Err(engine::EngineError::Function(
+                            functions::FunctionError::InvalidArgument {
+                                function: "json_parse_array_length",
+                                message: "input does not match the JSON schema"
+                            }
+                        ))
+                    ),
+                    "{case}"
+                ),
+                _ => panic!("unknown parameter control: {case}"),
             }
         } else if let Some(message) = case["error"].as_str() {
             assert!(

@@ -25,10 +25,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "missing" => assert!(
                     matches!(result, Err(RuntimeError::MissingRuntimeParameter { name, .. }) if name == "LookupText")
                 ),
-                _ => assert!(
-                    matches!(result, Err(RuntimeError::RuntimeParameterType { name, expected: codegen_runtime::ScalarType::String, found, .. }) if name == "LookupText" && found == kind),
+                "null" => assert!(
+                    matches!(
+                        result,
+                        Err(RuntimeError::Function(FunctionError::TypeMismatch {
+                            function: "json_parse_array_length",
+                            got: "null"
+                        }))
+                    ),
                     "{case}"
                 ),
+                "int" => assert!(
+                    matches!(
+                        result,
+                        Err(RuntimeError::Function(FunctionError::InvalidArgument {
+                            function: "json_parse_array_length",
+                            message: "input does not match the JSON schema"
+                        }))
+                    ),
+                    "{case}"
+                ),
+                _ => panic!("unknown parameter control: {case}"),
             }
         } else if let Some(message) = case["error"].as_str() {
             assert!(

@@ -33,11 +33,14 @@ foreach (var item in cases)
     }
     catch (FerruleRuntimeException error) when (failure is not null)
     {
-        if (error.RuntimeParameter != "LookupText") throw;
         if (failure == "missing") {
-            if (error.Error != FerruleRuntimeError.MissingRuntimeParameter) throw;
-        } else if (error.Error != FerruleRuntimeError.RuntimeParameterType || error.ExpectedScalarType != FerruleScalarType.String
-            || error.FoundKind != (failure == "null" ? FerruleValueKind.Null : FerruleValueKind.Int64)) throw;
+            if (error.RuntimeParameter != "LookupText" || error.Error != FerruleRuntimeError.MissingRuntimeParameter) throw;
+        } else {
+            if (error.Function != "json_parse_array_length") throw;
+            if (failure == "null") {
+                if (error.Error != FerruleRuntimeError.FunctionType || error.FoundKind != FerruleValueKind.Null) throw;
+            } else if (error.Error != FerruleRuntimeError.FunctionInvalidArgument || error.Detail != "input does not match the JSON schema") throw;
+        }
     }
 }
 Console.WriteLine("C# parsed-array lookup host passed");

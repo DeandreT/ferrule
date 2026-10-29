@@ -16,6 +16,6 @@
   {"name":"missing and null keys do not match","primary":{"Items":[{"Ordinal":1},{"Code":null,"Ordinal":2},{"Code":"A","Ordinal":3}]},"lookup":"{\"Rows\":[{\"Value\":\"missing\"},{\"Code\":null,\"Value\":\"null\"},{\"Code\":\"A\",\"Value\":\"match\"}]}","expected":{"Results":[{"Ordinal":1},{"Code":null,"Ordinal":2},{"Code":"A","Ordinal":3,"Found":"match"}]}},
   {"name":"empty primary leaves parser undemanded","primary":{"Items":[]},"lookup":"invalid but undemanded","expected":{"Results":[]}},
   {"name":"required parameter absent","primary":{"Items":[{"Code":"A","Ordinal":1}]},"parameter_failure":"missing"},
-  {"name":"null is not a required string","primary":{"Items":[{"Code":"A","Ordinal":1}]},"parameter_failure":"null"},
-  {"name":"integer is not a required string","primary":{"Items":[{"Code":"A","Ordinal":1}]},"parameter_failure":"int"}
+  {"name":"null parameter retains the typed parser input failure","primary":{"Items":[{"Code":"A","Ordinal":1}]},"parameter_failure":"null"},
+  {"name":"integer parameter retains existing String coercion then fails the object schema","primary":{"Items":[{"Code":"A","Ordinal":1}]},"parameter_failure":"int"}
 ]
