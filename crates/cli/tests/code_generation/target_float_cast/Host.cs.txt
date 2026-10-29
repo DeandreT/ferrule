@@ -24,4 +24,4 @@ foreach (var item in cases.RootElement.EnumerateArray()) {
     }
 }
 File.WriteAllText("complete-outcomes.json", JsonSerializer.Serialize(outcomes, new JsonSerializerOptions { WriteIndented = true }));
-if (outcomes.Count != 8 || !good) throw new InvalidOperationException("complete XML values or exact failure phases differed");
+if (outcomes.Count != cases.RootElement.GetArrayLength() * 2 || !good) throw new InvalidOperationException("complete XML values or exact failure phases differed");
