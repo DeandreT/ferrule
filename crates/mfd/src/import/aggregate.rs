@@ -5,7 +5,7 @@ use super::function::{
     aggregate_op, is_distinct_values as is_distinct_values_component, is_filter,
 };
 use super::iteration::{compatible_collection, split_at_innermost_repeating};
-use super::schema::schema_node_at;
+use super::schema::{ComponentFormat, schema_node_at};
 use super::source::SourcePath;
 
 impl GraphBuilder<'_> {
@@ -111,6 +111,66 @@ impl GraphBuilder<'_> {
                 plan,
                 expression,
                 arg,
+            }));
+        }
+
+        if op == AggregateOp::Count
+            && let Some(source_path) = self.source_abs_path(sequence_feed)
+            && let Some(source) = self.sources.get(source_path.source)
+            && source.format == ComponentFormat::Edi
+            && schema_node_at(&source.schema, &source_path.path)
+                .is_some_and(|node| matches!(node.kind, ir::SchemaKind::Group { .. }))
+        {
+            if super::constructed_variable_driver::declared_producer_count(sequence_feed, self) != 1
+                || !source.unambiguous_declared_output(sequence_feed)
+                || self.has_source_node_functions(sequence_feed)
+            {
+                return Err(
+                    "structured EDI count requires one unambiguous physical group feed".into(),
+                );
+            }
+            if input_count > 2 || arg_feed.is_some() {
+                return Err("structured EDI count does not accept an extra argument".into());
+            }
+            if source_path.path.is_empty() {
+                return Err("structured EDI count requires a named group occurrence path".into());
+            }
+            if let Some(context_feed) = self.input_feed(idx, 0) {
+                let context = self.sequence_source_path(context_feed).ok_or_else(|| {
+                    "structured EDI count has an unresolvable context feed".to_string()
+                })?;
+                if context.source != source_path.source
+                    || !source_path.path.starts_with(&context.path)
+                {
+                    return Err("structured EDI count context must enclose its group feed".into());
+                }
+            }
+            // Count occurrences of the selected group, not its nearest repeated
+            // ancestor. A required segment is one occurrence, an absent optional
+            // group has none, and nested repetitions flatten only below the
+            // receiving scope's active parent frame. No scalar witness is needed:
+            // a present segment still counts when all its elements are Null.
+            let collection = match active_anchor {
+                Some(anchor)
+                    if source_path.source > 0
+                        && !anchor.starts_with(&self.context_path(&SourcePath {
+                            source: source_path.source,
+                            path: Vec::new(),
+                        })) =>
+                {
+                    Some(self.context_path(&source_path))
+                }
+                Some(anchor) => {
+                    self.collection_path_at_anchor(source_path.source, &source_path.path, anchor)
+                }
+                None => self.collection_path(source_path.source, &source_path.path),
+            };
+            return Ok(collection.map(|collection| Node::Aggregate {
+                function: op,
+                collection,
+                value: Vec::new(),
+                expression: None,
+                arg: None,
             }));
         }
 

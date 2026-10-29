@@ -1,0 +1,29 @@
+[
+  {
+    "name": "absent_optional_and_empty_repetitions",
+    "groups": [["ST*940*0001~W05*N*ALPHA~SE*3*0001~"]],
+    "expected": {"Headers":1,"Parties":0,"Notes":0,"Orders":[{"Order":"ALPHA","Headers":1,"Parties":0,"Lines":0,"Notes":0,"Details":[]}]}
+  },
+  {
+    "name": "present_optional_with_empty_elements_and_nested_repetition",
+    "groups": [["ST*940*0001~W05*N*BETA~N1~LX*1~N9*AA~N9*BB*Second~LX*2~N9*CC*Third~SE*9*0001~"]],
+    "expected": {"Headers":1,"Parties":1,"Notes":3,"Orders":[{"Order":"BETA","Headers":1,"Parties":1,"Lines":2,"Notes":3,"Details":[{"Number":"1","Notes":2},{"Number":"2","Notes":1}]}]}
+  },
+  {
+    "name": "equal_valued_occurrences_are_not_deduplicated",
+    "groups": [["ST*940*0001~W05*N*REPEATED~LX*1~N9*AA*Same~N9*AA*Same~SE*6*0001~"]],
+    "expected": {"Headers":1,"Parties":0,"Notes":2,"Orders":[{"Order":"REPEATED","Headers":1,"Parties":0,"Lines":1,"Notes":2,"Details":[{"Number":"1","Notes":2}]}]}
+  },
+  {
+    "name": "independent_messages_and_groups",
+    "groups": [
+      ["ST*940*0001~W05*N*GAMMA~LX*1~N9*AA*First~SE*5*0001~", "ST*940*0002~W05*N*DELTA~N1*ST*Depot~LX*2~SE*5*0002~"],
+      ["ST*940*0003~W05*N*EPSILON~LX*3~N9*BB*One~N9*CC*Two~SE*6*0003~"]
+    ],
+    "expected": {"Headers":3,"Parties":1,"Notes":3,"Orders":[
+      {"Order":"GAMMA","Headers":1,"Parties":0,"Lines":1,"Notes":1,"Details":[{"Number":"1","Notes":1}]},
+      {"Order":"DELTA","Headers":1,"Parties":1,"Lines":1,"Notes":0,"Details":[{"Number":"2","Notes":0}]},
+      {"Order":"EPSILON","Headers":1,"Parties":0,"Lines":1,"Notes":2,"Details":[{"Number":"3","Notes":2}]}
+    ]}
+  }
+]

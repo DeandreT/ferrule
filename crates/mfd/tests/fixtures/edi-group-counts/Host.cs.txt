@@ -1,0 +1,55 @@
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+static void Verify(FerruleInstance actual, JsonElement expected)
+{
+    switch (expected.ValueKind)
+    {
+        case JsonValueKind.Object:
+            if (actual is not FerruleGroup group || group.Fields.Count != expected.EnumerateObject().Count()) throw new Exception("Whole group differs");
+            foreach (var property in expected.EnumerateObject()) Verify(group.Fields.Single(field => field.Name == property.Name).Value, property.Value);
+            break;
+        case JsonValueKind.Array:
+            if (actual is not FerruleRepeated repeated || repeated.Items.Count != expected.GetArrayLength()) throw new Exception("Whole sequence differs");
+            for (int index = 0; index < repeated.Items.Count; index++) Verify(repeated.Items[index], expected[index]);
+            break;
+        case JsonValueKind.Number:
+            if (actual is not FerruleScalar number || number.Value.Kind != FerruleValueKind.Int64 || number.Value.Int64Value != expected.GetInt64()) throw new Exception("Integer count differs");
+            break;
+        case JsonValueKind.String:
+            if (actual is not FerruleScalar text || text.Value.Kind != FerruleValueKind.String || text.Value.StringValue != expected.GetString()) throw new Exception("Text differs");
+            break;
+        default: throw new Exception("Outside authored output domain");
+    }
+}
+
+static void Refuses(Action action)
+{
+    try { action(); }
+    catch (FerruleX12Exception) { return; }
+    throw new Exception("Malformed whole X12 was accepted");
+}
+
+using var cases = JsonDocument.Parse(File.ReadAllText("cases.json"));
+foreach (var test in cases.RootElement.EnumerateArray())
+{
+    string wire = test.GetProperty("input").GetString()!;
+    byte[] bytes = Encoding.UTF8.GetBytes(wire);
+    if (test.TryGetProperty("reject", out var reject) && reject.GetBoolean())
+    {
+        Refuses(() => GeneratedMapping.ParseX12(wire));
+        Refuses(() => GeneratedMapping.ParseX12Bytes(bytes));
+        Refuses(() => GeneratedMapping.ExecuteX12ToJson(wire));
+        Refuses(() => GeneratedMapping.ExecuteX12ToJsonBytes(bytes));
+        continue;
+    }
+    var expected = test.GetProperty("expected");
+    Verify(GeneratedMapping.Execute(GeneratedMapping.ParseX12(wire)), expected);
+    Verify(GeneratedMapping.Execute(GeneratedMapping.ParseX12Bytes(bytes)), expected);
+    foreach (string json in new[] { GeneratedMapping.ExecuteX12ToJson(wire), Encoding.UTF8.GetString(GeneratedMapping.ExecuteX12ToJsonBytes(bytes)) })
+        if (!JsonNode.DeepEquals(JsonNode.Parse(json), JsonNode.Parse(expected.GetRawText()))) throw new Exception($"Whole output differs: {json}");
+}
+Console.WriteLine($"EDI group-count Release cases: {cases.RootElement.GetArrayLength()}");
