@@ -28,7 +28,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
     }
     fs::write("complete-outcomes.txt", format!("{outcomes:#?}\n"))?;
-    assert_eq!(outcomes.len(), 8);
+    assert_eq!(outcomes.len(), cases.len() * 2);
     assert!(good, "complete XML values or exact failure phases differed");
     Ok(())
 }
