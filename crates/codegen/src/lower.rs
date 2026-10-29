@@ -1410,7 +1410,8 @@ mod structured_xml_admission_tests {
             program.xml_boundary.unwrap().output.schema_hints,
             project.target_options.xml_schema_hints
         );
+        // Without an XML adapter no generated writer emits the hint.
         project.source_options.xml_document = false;
-        assert!(lower(&project).is_err());
+        assert!(lower(&project).unwrap().xml_boundary.is_none());
     }
 }

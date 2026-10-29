@@ -319,6 +319,7 @@ fn xml_document_boundary_rejects_reserved_default_namespace_with_or_without_hint
                 output.schema_hints = Some(ir::XmlSchemaHints {
                     no_namespace_location: Some("literal.xsd".into()),
                     locations: vec![],
+                    derivation: None,
                 });
             }
             assert_eq!(
@@ -348,6 +349,7 @@ fn xml_document_boundary_rejects_reserved_schema_root_namespace() {
                 output.schema_hints = Some(ir::XmlSchemaHints {
                     no_namespace_location: Some("literal.xsd".into()),
                     locations: vec![],
+                    derivation: None,
                 });
             }
             assert_eq!(

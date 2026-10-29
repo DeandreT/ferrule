@@ -331,7 +331,6 @@ pub(super) fn validate_boundary(
                     || !program.root.children.is_empty()
                     || !matches!(program.root.construction, crate::TargetConstruction::Group)))
             || policy.output.default_namespace.is_some()
-            || policy.output.schema_hints.is_some()
         {
             return Err(reject(
                 "XML scalar output v1 requires one flat constructed primary target",

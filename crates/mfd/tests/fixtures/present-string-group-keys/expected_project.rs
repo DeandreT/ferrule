@@ -73,8 +73,16 @@ pub fn expected(ty: ScalarType, literal: Option<Value>) -> Project {
             json_document: true,
             ..Default::default()
         },
+        // Import derives the output schema-location hint from the target schema.
         target_options: FormatOptions {
             xml_document: true,
+            xml_schema_hints: Some(ir::XmlSchemaHints {
+                no_namespace_location: Some("target.xsd".into()),
+                derivation: Some(ir::XmlSchemaHintDerivation {
+                    schema_reference: "target.xsd".into(),
+                }),
+                ..Default::default()
+            }),
             ..Default::default()
         },
         graph: Graph { nodes },
@@ -177,8 +185,16 @@ pub fn legacy_csv() -> Project {
             has_header_row: Some(true),
             ..Default::default()
         },
+        // Import derives the output schema-location hint from the target schema.
         target_options: FormatOptions {
             xml_document: true,
+            xml_schema_hints: Some(ir::XmlSchemaHints {
+                no_namespace_location: Some("legacy-csv-target.xsd".into()),
+                derivation: Some(ir::XmlSchemaHintDerivation {
+                    schema_reference: "legacy-csv-target.xsd".into(),
+                }),
+                ..Default::default()
+            }),
             ..Default::default()
         },
         graph: Graph {

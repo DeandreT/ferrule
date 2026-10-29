@@ -1974,6 +1974,11 @@ fn fixed_width_final_chain_rejects_unsupported_boundaries_without_artifacts() {
         .unwrap()
         .pipeline;
     intermediate_fixed.stages[0].project.target_path = Some("buffer.dat".into());
+    // A fixed-width buffer has no XML schema-location hint.
+    intermediate_fixed.stages[0]
+        .project
+        .target_options
+        .xml_schema_hints = None;
     intermediate_fixed.stages[0]
         .project
         .target_options

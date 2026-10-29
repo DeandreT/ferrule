@@ -396,6 +396,7 @@ fn read_uncorrelated_component(
         }],
         db_xml_columns: BTreeMap::new(),
         dynamic_json: None,
+        target_schema_hints: None,
     })
 }
 
