@@ -1,11 +1,8 @@
 # XML target float conversion
 
-In the qualified native XML controls, the reported failure matches the first
-declared Amount feed. This identifies diagnostic selection, not the native
-application's internal evaluation timing. The bounded import path for
-[#1133](https://github.com/DeandreT/ferrule/issues/1133) reproduces that selection
-by evaluating an internal `coerce_float` graph call at the binding, rather than
-deferring the conversion to output serialization.
+For supported XML bindings, Ferrule evaluates the internal `coerce_float`
+operation at the binding. If two feeds fail, declaration order determines
+the first error; deferring conversion to the writer would change that order.
 
 ## Scalar behavior
 
@@ -43,7 +40,10 @@ date-time lowering remains available without removing the float helper.
 Canonical generic Float schemas remain `xs:decimal`, so they do not introduce
 another double-only conversion during reimport.
 
-Native target-casting controls cover these value counterexamples; disabling casting changes the result.
+For example, Ferrule trims a trailing space and preserves the round-trip
+value of `0.30000000000000004`. MFD target casting can reject the former
+or write `0.3` for the latter. [Suppressing the target cast](xml-cast-suppression.md)
+instead preserves raw text, even when that text is invalid for the target type.
 
 Extension export also refuses before publication when canonical port order
 would change a flat root's cross-field binding order. This check applies even

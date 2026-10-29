@@ -1,0 +1,39 @@
+use std::fs;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let context = codegen_runtime::ExecutionContext::new(std::path::Path::new("mapping.json"));
+    let cases: Vec<serde_json::Value> = serde_json::from_slice(&fs::read("cases.json")?)?;
+    for case in cases {
+        let input = case["input"].as_str().unwrap();
+        let expected = format!("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Envelope>\n  <Amount>{}</Amount>\n  <Amount>{}</Amount>\n  <Label>safe</Label>\n</Envelope>", case["expected"].as_str().unwrap(), case["second"].as_str().unwrap());
+        assert_eq!(ferrule_generated_mapping::execute_xml(input)?, expected);
+        assert_eq!(ferrule_generated_mapping::execute_xml_bytes(input.as_bytes())?, expected.as_bytes());
+        assert_eq!(ferrule_generated_mapping::execute_xml_with_context(input, &context)?, expected);
+        assert_eq!(ferrule_generated_mapping::execute_xml_bytes_with_context(input.as_bytes(), &context)?, expected.as_bytes());
+        for selected in [
+            ferrule_generated_mapping::execute_xml_bytes_selected_target(input.as_bytes(), codegen_runtime::TargetSelection::Primary)?,
+            ferrule_generated_mapping::execute_xml_bytes_selected_target_with_host(input.as_bytes(), &[], Some(&context), codegen_runtime::TargetSelection::Primary)?,
+        ] {
+            let ferrule_generated_mapping::SelectedXmlBytesTargetOutput::Primary(bytes) = selected else { panic!("primary target expected"); };
+            assert_eq!(bytes, expected.as_bytes());
+        }
+        if case["typed_int"] == true {
+            let source = codegen_runtime::group([
+                codegen_runtime::field("Text", codegen_runtime::scalar(codegen_runtime::Value::String("00029".into()))),
+                codegen_runtime::field("Label", codegen_runtime::scalar(codegen_runtime::Value::String("safe".into()))),
+            ]);
+            let mapped = ferrule_generated_mapping::execute(&source)?;
+            let codegen_runtime::Instance::Repeated(values) = mapped.field("Amount").unwrap() else { panic!("repeated target"); };
+            assert_eq!(values[1], codegen_runtime::scalar(codegen_runtime::Value::Int(17)));
+        }
+        let json_input = serde_json::json!({"Numerator":case["numerator"],"Denominator":2,"Text":case["expected"],"Label":"safe"});
+        let json = ferrule_generated_mapping::execute_json(&json_input.to_string());
+        if case["invalid"] == true { assert!(json.is_err()); }
+        else {
+            let output: serde_json::Value = serde_json::from_str(&json?)?;
+            assert!(output["Amount"][0].is_number());
+            assert_eq!(output["Amount"][1].as_f64().unwrap(), case["second"].as_str().unwrap().parse::<f64>()?);
+        }
+    }
+    Ok(())
+}

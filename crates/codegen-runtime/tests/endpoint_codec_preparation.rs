@@ -2,7 +2,7 @@
 //!
 //! Run
 //! `cargo test -p codegen-runtime --release --test endpoint_codec_preparation -- --nocapture`
-//! to print the tables for this run.
+//! to print the per-call measurements.
 
 mod support;
 
@@ -394,6 +394,7 @@ fn xml_endpoint_per_call_cost_attribution() {
         measure(LARGE, || serialize(&large_instance)),
     );
     let options = format_xml::XmlWriteOptions {
+        scalar_output: None,
         declaration: true,
         indent: true,
         default_namespace: None,

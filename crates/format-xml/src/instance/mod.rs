@@ -25,6 +25,7 @@ use quick_xml::events::{BytesEnd, BytesStart, BytesText, Event};
 use thiserror::Error;
 
 use crate::declaration::validate_schema;
+mod scalar_output;
 
 use generic::{
     push_generic_attributes, read_generic_element, read_group_fields, write_generic_element,
@@ -36,6 +37,8 @@ const MAX_ROOT_VIEW_DOCUMENT_BYTES: usize = 64 * 1024 * 1024;
 
 #[derive(Debug, Error)]
 pub enum XmlFormatError {
+    #[error("invalid XML scalar output: {0}")]
+    InvalidScalarOutput(ir::XmlScalarOutputError),
     #[error(
         "XML output contains forbidden XML 1.0 character U+{codepoint:04X} at UTF-8 byte {byte_offset}"
     )]
@@ -990,6 +993,7 @@ pub fn write_with_options(
 /// Controls document-level details when rendering an XML instance in memory.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct XmlWriteOptions {
+    pub scalar_output: Option<ir::XmlScalarOutputPolicy>,
     pub declaration: bool,
     pub indent: bool,
     pub default_namespace: Option<String>,
@@ -999,6 +1003,7 @@ pub struct XmlWriteOptions {
 impl Default for XmlWriteOptions {
     fn default() -> Self {
         Self {
+            scalar_output: None,
             declaration: true,
             indent: true,
             default_namespace: None,
@@ -1047,6 +1052,26 @@ fn render_with_options(
     instance: &Instance,
     options: &XmlWriteOptions,
 ) -> Result<String, XmlFormatError> {
+    if let Some(policy) = &options.scalar_output {
+        let preservation = policy
+            .validate_schema(schema)
+            .map_err(XmlFormatError::InvalidScalarOutput)?;
+        if options
+            .default_namespace
+            .as_ref()
+            .is_some_and(|namespace| !namespace.is_empty())
+            || options.schema_hints.is_some()
+        {
+            return Err(XmlFormatError::InvalidScalarOutput(
+                ir::XmlScalarOutputError::UnsupportedSchema,
+            ));
+        }
+        let (projected_schema, projected_instance) =
+            scalar_output::project(schema, instance, preservation)?;
+        let mut strict = options.clone();
+        strict.scalar_output = None;
+        return render_with_options(&projected_schema, &projected_instance, &strict);
+    }
     validate_schema(schema)?;
     if let Some(hints) = &options.schema_hints {
         hints

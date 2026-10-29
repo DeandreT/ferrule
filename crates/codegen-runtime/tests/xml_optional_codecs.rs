@@ -36,6 +36,7 @@ fn public_string_and_bytes_codecs_preserve_optional_xml_host_fixed_points() {
                     &s,
                     &native,
                     &format_xml::XmlWriteOptions {
+                        scalar_output: None,
                         declaration: false,
                         indent: false,
                         default_namespace: None,

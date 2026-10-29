@@ -44,6 +44,7 @@ internal static partial class Program
             ("typed resolver errors", TypedResolverErrors),
             ("null and XML nil", NullAndXmlNil),
             ("double domain", DoubleDomain),
+            ("explicit XML scalar output policy", XmlScalarOutputPolicyCases),
             ("invocation counter state", InvocationCounters),
             ("invocation counter contexts", InvocationCounterContexts),
             ("standalone decimal lexical domain", Decimal96Domain),

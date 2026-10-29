@@ -1,0 +1,35 @@
+using System.Text;
+using System.Text.Json;
+using Ferrule.Generated;
+
+using var cases = JsonDocument.Parse(File.ReadAllBytes("cases.json"));
+var context = new Ferrule.Runtime.FerruleExecutionContext("mapping.json");
+foreach (var item in cases.RootElement.EnumerateArray()) {
+    var expected = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Envelope>\n  <Amount>" + item.GetProperty("expected").GetString() + "</Amount>\n  <Amount>" + item.GetProperty("second").GetString() + "</Amount>\n  <Label>safe</Label>\n</Envelope>";
+    var input = item.GetProperty("input").GetString()!;
+    if (GeneratedMapping.ExecuteXml(input) != expected) throw new InvalidOperationException("XML text changed");
+    if (!GeneratedMapping.ExecuteXmlBytes(Encoding.UTF8.GetBytes(input)).SequenceEqual(Encoding.UTF8.GetBytes(expected))) throw new InvalidOperationException("XML bytes changed");
+    if (GeneratedMapping.ExecuteXml(input, context) != expected || !GeneratedMapping.ExecuteXmlBytes(Encoding.UTF8.GetBytes(input), context).SequenceEqual(Encoding.UTF8.GetBytes(expected))) throw new InvalidOperationException("XML context output changed");
+    foreach (var selected in new[] {
+        GeneratedMapping.ExecuteXmlBytesSelectedTarget(Encoding.UTF8.GetBytes(input), Ferrule.Runtime.FerruleTargetSelection.Primary()),
+        GeneratedMapping.ExecuteXmlBytesSelectedTargetWithHost(Encoding.UTF8.GetBytes(input), Ferrule.Runtime.FerruleTargetSelection.Primary(), Array.Empty<NamedXmlBytesInput>(), context),
+    }) {
+        if (selected is not SelectedXmlBytesTargetOutput.Primary primary || !primary.Document.SequenceEqual(Encoding.UTF8.GetBytes(expected))) throw new InvalidOperationException("selected XML policy lost");
+    }
+    if (item.TryGetProperty("typed_int", out var typed) && typed.GetBoolean()) {
+        var source = new Ferrule.Runtime.FerruleGroup(new[] {
+            new Ferrule.Runtime.FerruleField("Text", new Ferrule.Runtime.FerruleScalar(Ferrule.Runtime.FerruleValue.FromString("00029"))),
+            new Ferrule.Runtime.FerruleField("Label", new Ferrule.Runtime.FerruleScalar(Ferrule.Runtime.FerruleValue.FromString("safe"))),
+        });
+        var mapped = (Ferrule.Runtime.FerruleGroup)GeneratedMapping.Execute(source);
+        var values = (Ferrule.Runtime.FerruleRepeated)mapped.Fields.Single(field => field.Name == "Amount").Value;
+        if (((Ferrule.Runtime.FerruleScalar)values.Items[1]).Value.Kind != Ferrule.Runtime.FerruleValueKind.Int64) throw new InvalidOperationException("suppressed integer was adapted");
+    }
+    var jsonInput = JsonSerializer.Serialize(new { Numerator=item.GetProperty("numerator").GetDouble(), Denominator=2, Text=item.GetProperty("expected").GetString(), Label="safe" });
+    var invalid = item.GetProperty("invalid").GetBoolean();
+    try {
+        using var json = JsonDocument.Parse(GeneratedMapping.ExecuteJson(jsonInput));
+        if (invalid) throw new InvalidOperationException("invalid numeric JSON accepted");
+        if (json.RootElement.GetProperty("Amount")[0].ValueKind != JsonValueKind.Number) throw new InvalidOperationException("JSON schema lost numeric type");
+    } catch (Ferrule.Runtime.FerruleRuntimeException error) when (invalid && error.Error == Ferrule.Runtime.FerruleRuntimeError.JsonBoundary) { }
+}

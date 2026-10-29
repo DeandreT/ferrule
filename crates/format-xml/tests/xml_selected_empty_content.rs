@@ -43,6 +43,7 @@ fn write(schema: &SchemaNode, value: &Instance, indent: bool) -> String {
         schema,
         value,
         &XmlWriteOptions {
+            scalar_output: None,
             declaration: false,
             indent,
             default_namespace: None,
@@ -227,6 +228,7 @@ fn explicit_selection_is_order_independent_and_does_not_admit_foreign_fields() {
                     &schema,
                     &value,
                     &XmlWriteOptions {
+                        scalar_output: None,
                         declaration: false,
                         indent,
                         default_namespace: None,

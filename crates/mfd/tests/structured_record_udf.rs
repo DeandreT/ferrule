@@ -74,6 +74,23 @@ fn setup() -> TempDir {
     dir
 }
 
+#[test]
+fn unsupported_internal_cast_requests_do_not_escape_through_udf_lowering() {
+    for mode in ["suppress-cast-in-subtree", "unknown-mode"] {
+        let dir = setup();
+        let path = dir.0.join("mapping.mfd");
+        let text = std::fs::read_to_string(&path).unwrap();
+        let needle = "<entry name=\"Details\"><entry name=\"Display\" inpkey=\"207\"/>";
+        assert!(text.contains(needle));
+        std::fs::write(&path, text.replace(needle, &format!("<entry name=\"Details\" casttotargettypemode=\"{mode}\"><entry name=\"Display\" inpkey=\"207\"/>"))).unwrap();
+        let error = mfd::import(&path)
+            .err()
+            .expect("suppressed UDF refused")
+            .to_string();
+        assert!(error.contains("inside a user function"), "{error}");
+    }
+}
+
 fn text(value: &str) -> Instance {
     Instance::Scalar(Value::String(value.to_owned()))
 }

@@ -13065,7 +13065,7 @@ csharp   ...................x.......... err:44c8fad24295016e DynamicOwner
 csharp   ............................x. ok:7661761f1ec214d1
 
 ## basic-owned-xml-document-set/nested (project)
-lower    xx.........................xxx ok:d37774a2fab4aec7
+lower    xx.........................xxx ok:527a700655758f2b
 lower    ..xxxxxxxxxxxxxxxxxxxxxxxxx... err:590e8f031f7ba988 Document
 validate xx.........................xxx ok
 validate ..xxxxxxxxxxxxxxxxxxxxxxxxx... err:6f8d0ba74aa56719 Document
@@ -13086,7 +13086,7 @@ csharp   ............................x. ok:250f8270b38ab1fe
 csharp   .............................x ok:d7434a6cf5a341be
 
 ## basic-owned-xml-document-set/cross (project)
-lower    xx.........................xxx ok:633979a6b536063a
+lower    xx.........................xxx ok:3ea99d3f2b2d8dbe
 lower    ..xxxxxxxxxxxxxxxxxxxxxxxxx... err:590e8f031f7ba988 Document
 validate xx.........................xxx ok
 validate ..xxxxxxxxxxxxxxxxxxxxxxxxx... err:6f8d0ba74aa56719 Document
@@ -13109,7 +13109,7 @@ csharp   .............................x ok:f3a008306be45d0f
 ## basic-owned-xml-document-set/sorted (project)
 lower    xxx........................... err:e49079596b5bf968 ScopeControl
 lower    ...xxxxxxxxxxxxxxxxxxxxxxxx... err:590e8f031f7ba988 Document
-lower    ...........................xxx ok:ef7ab8f48caa8ef5
+lower    ...........................xxx ok:ebd621deacd08819
 validate xxx........................... err:cab2182e8bc8b5d1 ScopeControl
 validate ...xxxxxxxxxxxxxxxxxxxxxxxx... err:6f8d0ba74aa56719 Document
 validate ...........................xxx ok

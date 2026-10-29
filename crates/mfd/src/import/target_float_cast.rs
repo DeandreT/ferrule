@@ -27,6 +27,9 @@ pub(super) fn install(
     scope: &mut Scope,
     witnesses: &[Witness],
 ) {
+    if target.options.xml_scalar_output.is_some() {
+        return;
+    }
     let [source] = builder.sources else { return };
     if target.format != ComponentFormat::Xml
         || source.format != ComponentFormat::Xml
@@ -178,7 +181,18 @@ fn owner<'a, 'input>(
         .then_some(owner)
 }
 
-fn ordinary_component(owner: XmlNode<'_, '_>, root_name: &str) -> bool {
+pub(super) fn ordinary_component(owner: XmlNode<'_, '_>, root_name: &str) -> bool {
+    ordinary_component_with(owner, root_name, &[])
+}
+
+/// `document_attributes` names further document metadata that has no output
+/// semantics for the caller's profile; such a profile also accepts an empty
+/// WSDL placeholder.
+pub(super) fn ordinary_component_with(
+    owner: XmlNode<'_, '_>,
+    root_name: &str,
+    document_attributes: &[&str],
+) -> bool {
     if owner.tag_name().namespace().is_some()
         || owner
             .attributes()
@@ -212,10 +226,15 @@ fn ordinary_component(owner: XmlNode<'_, '_>, root_name: &str) -> bool {
     let Some(data) = unique_child(owner, "data") else {
         return false;
     };
-    if data
-        .children()
-        .any(|child| child.is_element() && !matches!(child.tag_name().name(), "root" | "document"))
-    {
+    if data.children().any(|child| {
+        child.is_element()
+            && !matches!(child.tag_name().name(), "root" | "document")
+            // An empty WSDL placeholder carries no settings.
+            && !(!document_attributes.is_empty()
+                && child.has_tag_name("wsdl")
+                && child.attributes().len() == 0
+                && !child.has_children())
+    }) {
         return false;
     }
     let Some(document) = unique_child(data, "document") else {
@@ -225,7 +244,7 @@ fn ordinary_component(owner: XmlNode<'_, '_>, root_name: &str) -> bool {
         !matches!(
             attribute.name(),
             "schema" | "instanceroot" | "inputinstance" | "outputinstance"
-        )
+        ) && !document_attributes.contains(&attribute.name())
     }) {
         return false;
     }
@@ -234,7 +253,7 @@ fn ordinary_component(owner: XmlNode<'_, '_>, root_name: &str) -> bool {
         .is_none_or(|name| name == root_name || name == format!("{{}}{root_name}"))
 }
 
-fn entry_root<'a, 'input>(
+pub(super) fn entry_root<'a, 'input>(
     owner: XmlNode<'a, 'input>,
     schema: &SchemaNode,
 ) -> Option<(XmlNode<'a, 'input>, XmlNode<'a, 'input>)> {
@@ -419,7 +438,7 @@ fn model_fields(schema: &SchemaNode) -> BTreeMap<&str, &SchemaNode> {
     }
 }
 
-fn field_types(
+pub(super) fn field_types(
     owner: XmlNode<'_, '_>,
     root_name: &str,
     resources: &ResourceResolver,
@@ -433,7 +452,11 @@ fn field_types(
         8 * 1024 * 1024,
     )
     .ok()??;
-    let document = roxmltree::Document::parse(&text).ok()?;
+    field_types_text(&text, root_name)
+}
+
+pub(super) fn field_types_text(text: &str, root_name: &str) -> Option<BTreeMap<String, String>> {
+    let document = roxmltree::Document::parse(text).ok()?;
     let schema = document.root_element();
     const XSD: &str = "http://www.w3.org/2001/XMLSchema";
     if !schema.has_tag_name((XSD, "schema")) || schema.attribute("targetNamespace").is_some() {

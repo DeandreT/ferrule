@@ -49,7 +49,11 @@ mod wsdl;
 mod xbrl;
 mod xlsx_output;
 mod xml_mixed_content_owned;
+mod xml_scalar_output;
 mod xml_serialize_owned;
+pub use xml_scalar_output::{
+    XML_TARGET_SCALAR_OUTPUT_V1_CAPABILITY, XmlScalarOutputAdmissionError,
+};
 
 pub use adjacency::AdjacencyTreePlan;
 pub use adjacency_owned::OwnedAdjacencyTreePlan;

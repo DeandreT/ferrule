@@ -35,6 +35,7 @@ fn compact_xml(
         &project.target,
         instance,
         &format_xml::XmlWriteOptions {
+            scalar_output: None,
             declaration: false,
             indent: false,
             default_namespace: None,

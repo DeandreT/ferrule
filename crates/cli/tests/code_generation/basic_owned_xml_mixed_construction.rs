@@ -152,6 +152,7 @@ fn basic_xml_mixed470_interpreter_writes_complete_mixed_xml() -> TestResult<()> 
     ];
     let output = engine::run_with_sources(&project, &source, inputs)?;
     let options = format_xml::XmlWriteOptions {
+        scalar_output: None,
         declaration: false,
         indent: false,
         default_namespace: None,

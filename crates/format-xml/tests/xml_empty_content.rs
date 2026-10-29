@@ -30,6 +30,7 @@ fn render(schema: &SchemaNode, value: &Instance, indent: bool) -> String {
         schema,
         value,
         &XmlWriteOptions {
+            scalar_output: None,
             declaration: false,
             indent,
             default_namespace: None,

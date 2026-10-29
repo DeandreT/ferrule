@@ -227,4 +227,25 @@ fn imports_executes_and_exports_structured_xml_string_serializer() {
     );
     let compact_roundtrip_output = engine::run(&compact_roundtrip.project, &input()).unwrap();
     assert_eq!(payload(&compact_roundtrip_output), payload(&compact_output));
+    let mapping = dir.0.join("mapping.mfd");
+    let original = std::fs::read_to_string(&mapping).unwrap();
+    for mode in ["suppress-cast-in-subtree", "unknown-mode"] {
+        assert_eq!(original.matches("<entry name=\"document\">").count(), 1);
+        std::fs::write(
+            &mapping,
+            original.replace(
+                "<entry name=\"document\">",
+                &format!("<entry name=\"document\" casttotargettypemode=\"{mode}\">"),
+            ),
+        )
+        .unwrap();
+        let error = mfd::import(&mapping)
+            .err()
+            .expect("suppressed serializer refused")
+            .to_string();
+        assert!(
+            error.contains("transformed or unidentified component"),
+            "{error}"
+        );
+    }
 }

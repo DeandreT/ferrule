@@ -30,6 +30,7 @@ pub(crate) use xml_api::render_owned_document_sets;
 const JSON_RECORDS: &str = "public sealed record NamedJsonInput(\n    string Name,\n    string Document);\n\npublic sealed record NamedJsonBytesInput(\n    string Name,\n    byte[] Document);\n\npublic sealed record NamedJsonOutput(\n    string Name,\n    string Document);\n\npublic sealed record NamedJsonBytesOutput(\n    string Name,\n    byte[] Document);\n\npublic sealed record JsonExecutionOutputs(\n    string Primary,\n    global::System.Collections.Generic.IReadOnlyList<NamedJsonOutput> Extras);\n\npublic sealed record JsonBytesExecutionOutputs(\n    byte[] Primary,\n    global::System.Collections.Generic.IReadOnlyList<NamedJsonBytesOutput> Extras);\n\n";
 
 struct ScopePlan<'a> {
+    preserve_scalars: Option<ir::XmlScalarPreservation<'a>>,
     repeating: bool,
     iteration: Option<&'a IterationPlan>,
     construction: &'a TargetConstruction,
@@ -122,6 +123,15 @@ fn render_mapping(
 
     let mut scopes = Vec::new();
     let primary_scope = add_scope(&program.root, &mut scopes);
+    // Named targets are refused with a policy, so every scope is primary.
+    match program.xml_scalar_preservation() {
+        Some(preservation @ ir::XmlScalarPreservation::Document) => {
+            scopes
+                .iter_mut()
+                .for_each(|scope| scope.preserve_scalars = Some(preservation));
+        }
+        preservation => scopes[primary_scope].preserve_scalars = preservation,
+    }
     let extra_scopes = program
         .extra_targets
         .iter()
@@ -1701,6 +1711,7 @@ const fn runtime_value_name(value: codegen::RuntimeValue) -> &'static str {
 fn add_scope<'a>(scope: &'a TargetScope, scopes: &mut Vec<ScopePlan<'a>>) -> usize {
     let scope_index = scopes.len();
     scopes.push(ScopePlan {
+        preserve_scalars: None,
         repeating: false,
         iteration: None,
         construction: &scope.construction,
@@ -1751,6 +1762,7 @@ fn add_scope<'a>(scope: &'a TargetScope, scopes: &mut Vec<ScopePlan<'a>>) -> usi
         })
         .unwrap_or_default();
     scopes[scope_index] = ScopePlan {
+        preserve_scalars: None,
         repeating: scope.repeating,
         iteration: scope.iteration.as_ref(),
         construction: &scope.construction,
@@ -2497,6 +2509,26 @@ fn render_bound_group(scope_index: usize, scope: &ScopePlan<'_>, output: &mut St
         output.push_str("            new global::Ferrule.Runtime.FerruleField(");
         output.push_str(&literal::string(binding.target_field));
         output.push_str(", ");
+        if scope
+            .preserve_scalars
+            .is_some_and(|preserve| preserve.preserves(binding.target_field))
+        {
+            if binding.repeating {
+                let values = binding
+                    .values
+                    .iter()
+                    .map(|index| format!("value_{scope_index}_{index}"))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                output.push_str(&format!("new global::Ferrule.Runtime.FerruleRepeated(new global::Ferrule.Runtime.FerruleValue[] {{ {values} }}.Where(value => value.Kind != global::Ferrule.Runtime.FerruleValueKind.Null).Select(value => new global::Ferrule.Runtime.FerruleScalar(value)))) ,\n"));
+            } else {
+                output.push_str(&format!(
+                    "new global::Ferrule.Runtime.FerruleScalar(value_{scope_index}_{})),\n",
+                    binding.values[0]
+                ));
+            }
+            continue;
+        }
         if binding.repeating {
             output.push_str(
                 "TargetBuilder.RepeatedScalar(new global::Ferrule.Runtime.FerruleValue[] { ",

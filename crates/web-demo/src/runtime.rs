@@ -249,6 +249,11 @@ pub fn serialize_target(
         DataSide::Target,
     )?;
     validate_xml_schema_hint_format(project, format)?;
+    if project.target_options.xml_scalar_output.is_some() && format != DataFormat::Xml {
+        return Err(RuntimeError::InvalidProject(vec![
+            "explicit XML scalar output requires XML output".into(),
+        ]));
+    }
     project
         .target_options
         .validate_xml_schema_hint_options(true)
@@ -260,6 +265,7 @@ pub fn serialize_target(
             &project.target,
             target,
             &format_xml::XmlWriteOptions {
+                scalar_output: project.target_options.xml_scalar_output.clone(),
                 schema_hints: project.target_options.xml_schema_hints.clone(),
                 ..Default::default()
             },

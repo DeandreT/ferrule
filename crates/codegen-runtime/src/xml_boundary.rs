@@ -446,7 +446,45 @@ pub fn serialize_xml_document(
     default_namespace: Option<&str>,
     schema_hints_json: Option<&str>,
 ) -> Result<String, XmlBoundaryError> {
+    serialize_xml_document_with_scalar_output(
+        descriptor,
+        instance,
+        declaration,
+        indent,
+        default_namespace,
+        schema_hints_json,
+        None,
+    )
+}
+
+pub fn serialize_xml_document_with_scalar_output(
+    descriptor: &str,
+    instance: &Instance,
+    declaration: bool,
+    indent: bool,
+    default_namespace: Option<&str>,
+    schema_hints_json: Option<&str>,
+    scalar_output_json: Option<&str>,
+) -> Result<String, XmlBoundaryError> {
     let schema = schema(descriptor)?;
+    let scalar_output = scalar_output_json
+        .map(|json| {
+            if json.len() > 32 * 1024 {
+                return Err(XmlBoundaryError::detail(
+                    XmlBoundaryErrorKind::Output,
+                    "XML scalar output descriptor exceeds 32 KiB",
+                ));
+            }
+            let policy: ir::XmlScalarOutputPolicy =
+                serde_json::from_str(json).map_err(|source| {
+                    XmlBoundaryError::with_source(XmlBoundaryErrorKind::Output, source)
+                })?;
+            policy.validate_schema(&schema).map_err(|source| {
+                XmlBoundaryError::with_source(XmlBoundaryErrorKind::Output, source)
+            })?;
+            Ok(policy)
+        })
+        .transpose()?;
     validate_document_names(&schema, true)?;
     if !document_namespace_metadata_supported(&schema, true) {
         return Err(XmlBoundaryError::detail(
@@ -514,6 +552,7 @@ pub fn serialize_xml_document(
         })
         .transpose()?;
     let options = XmlWriteOptions {
+        scalar_output,
         declaration,
         indent,
         default_namespace: default_namespace.map(str::to_owned),

@@ -117,7 +117,8 @@ pub fn execute_xml_bytes_selected_target_with_host(
                 )
             }
         };
-        output.push_str(&format!("        {pattern} => {{\n            let owner = {owner};\n            let xml = codegen_runtime::serialize_xml_document({schema}, {instance}, {args})\n                .map_err(|error| codegen_runtime::XmlOutputSetError::new(Some(owner), error))?;\n            budget.charge(owner, xml.len())?;\n            Ok({result})\n        }}\n"));
+        let serializer = super::serializer(policy);
+        output.push_str(&format!("        {pattern} => {{\n            let owner = {owner};\n            let xml = codegen_runtime::{serializer}({schema}, {instance}, {args})\n                .map_err(|error| codegen_runtime::XmlOutputSetError::new(Some(owner), error))?;\n            budget.charge(owner, xml.len())?;\n            Ok({result})\n        }}\n"));
     }
     output.push_str("        _ => Err(codegen_runtime::XmlOutputSetError::alignment(\"XML selected output does not match its target\").into()),\n");
     output.push_str("    }\n}\n\nfn selected_xml_input_owner(name: &str) -> codegen_runtime::XmlInputSource {\n    match name {\n");
