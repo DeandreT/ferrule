@@ -41,8 +41,45 @@ The large-number and whitespace controls are counterexamples, not passing
 qualification. The output does not establish where or how the reference lost
 precision internally. Ferrule's existing XML writer accepts the tested
 whitespace and uses its own round-trip numeric rendering; those rules are not
-weakened to imitate these isolated outputs. [#1134](https://github.com/DeandreT/ferrule/issues/1134)
-tracks the remaining native value boundary.
+weakened to imitate these isolated outputs.
+
+## Enabled casting lexical boundary
+
+Further enabled controls reuse the independently authored exponent design and
+schemas unchanged; only the input String differs. Each design was saved,
+reopened and resaved, and its complete output and messages were retained.
+
+| Input String | Native first Amount | Ferrule `coerce_float` |
+| --- | --- | --- |
+| `+2.5`, `.5`, `5.`, `1E+03` | `2.5`, `0.5`, `5`, `1000` | Same |
+| Leading space, `2.5` | `2.5` | `2.5` |
+| `2.5`, trailing space | Fails | `2.5` (trimmed) |
+| Empty, `Infinity`, `0x10`, `2,5` | Fails | Fails |
+| `INF`, `NaN` | `INF`, `NaN` | Fails (finite values only) |
+| `-INF` | `INF` | Fails |
+| `1e400` | `INF` | Fails |
+| `1e-400` | `0` | `0` |
+| `00029`, `0.1`, `0.0001`, `123456789012345` | `29`, `0.1`, `0.0001`, `123456789012345` | Same |
+| `0.30000000000000004` | `0.3` | `0.30000000000000004` |
+| `3.141592653589793` | `3.14159265358979` | `3.141592653589793` |
+| `1234567890123456` | `1.23456789012346E+15` | `1234567890123456` |
+| `123456789012345678` | `1.23456789012346E+17` | `123456789012345680` |
+| `1e21`, `1e-7` | `1E+21`, `1E-07` | `1000000000000000000000`, `0.0000001` |
+| `1.5e300`, `1.7976931348623157e308` | `1.5E+300`, `1.79769313486232E+308` | Full positional round-trip decimal |
+| `4.9406564584124654e-324` | `4.94065645841247E-324` | Full positional round-trip decimal |
+
+Native failures report `Conversion to double failed for '<text>'`. Native output
+keeps at most 15 significant digits, switches to an exponent from 16 digits or
+below `1E-05`, and writes signed two-digit exponents. It accepts XML Schema
+special values and overflow, rejects trailing whitespace, and writes `-INF` as
+`INF`. The second Amount `17` and Label `safe` were unchanged in every
+successful run.
+
+Ferrule keeps its own contract: trimmed input, finite binary64 values only, and
+shortest round-trip positional output. Native `xs:double` casting therefore has
+no value-independent lossless subset that could replace the helper, so strict
+native export keeps its typed refusal. `target_float_cast_lexical_edges_match_across_backends`
+pins these inputs for the interpreter and generated Rust and C#.
 
 ## Disabling casting is a different contract
 
