@@ -1,0 +1,22 @@
+[
+  {
+    "name":"conditional qualifier keys keep current items branches literals nulls and duplicate-first values",
+    "primary":{"Items":[
+      {"Ordinal":7,"TagA":"ID","ValueA":"B","TagB":"ALT","ValueB":"A"},
+      {"Ordinal":2,"TagA":"ALT","ValueA":"B","TagB":"ID","ValueB":"A"},
+      {"Ordinal":9,"TagA":"ID","ValueA":"B","ValueB":"C"},
+      {"Ordinal":1,"TagB":"ID","ValueB":"C"},
+      {"Ordinal":4,"TagA":"ID","TagB":"ID","ValueB":"A"},
+      {"Ordinal":5,"TagA":"ID","ValueA":null,"TagB":"ID","ValueB":"A"},
+      {"Ordinal":6,"TagA":null,"TagB":"ID","ValueB":"D"},
+      {"Ordinal":8,"TagA":"id","ValueA":"B","TagB":"ID","ValueB":" A "},
+      {"Ordinal":3,"TagA":"ID","ValueA":"007","TagB":"ALT","ValueB":"A"},
+      {"Ordinal":10,"TagA":"ALT","ValueA":"A","TagB":"ALT","ValueB":"B"}
+    ]},
+    "lookup":"{\"Rows\":[{\"Code\":\"A\",\"Value\":\"alpha-first\"},{\"Code\":\"A\",\"Value\":\"alpha-later\"},{\"Code\":\"B\",\"Value\":\"beta-first\"},{\"Code\":\"B\",\"Value\":\"beta-later\"},{\"Code\":\"C\"},{\"Code\":\"C\",\"Value\":\"never\"},{\"Code\":\"D\",\"Value\":null},{\"Code\":\"D\",\"Value\":\"never\"},{\"Code\":\"007\",\"Value\":\"exact\"},{\"Code\":\"FALLBACK\",\"Value\":\"authored-literal\"}]}",
+    "expected":{"Results":[{"Code":"B","Ordinal":7,"Found":"beta-first"},{"Code":"A","Ordinal":2,"Found":"alpha-first"},{"Code":"B","Ordinal":9,"Found":"beta-first"},{"Code":"C","Ordinal":1},{"Ordinal":4},{"Code":null,"Ordinal":5},{"Code":"D","Ordinal":6,"Found":null},{"Code":" A ","Ordinal":8},{"Code":"007","Ordinal":3,"Found":"exact"},{"Code":"FALLBACK","Ordinal":10,"Found":"authored-literal"}]}
+  },
+  {"name":"missing selected conditional value does not choose the other branch","primary":{"Items":[{"Ordinal":1,"TagA":"ID","TagB":"ID","ValueB":"A"}]},"lookup":"{\"Rows\":[{\"Code\":\"A\",\"Value\":\"never\"}]}","expected":{"Results":[{"Ordinal":1}]}},
+  {"name":"conditional miss still validates unused parser data","primary":{"Items":[{"Ordinal":1,"TagA":"ID","ValueA":"Z"}]},"lookup":"{\"Rows\":[{\"Code\":\"A\",\"Value\":\"ok\",\"Unused\":\"wrong\"}]}","error":"input does not match the JSON schema"},
+  {"name":"empty conditional primary leaves parser undemanded","primary":{"Items":[]},"lookup":"invalid but undemanded","expected":{"Results":[]}}
+]

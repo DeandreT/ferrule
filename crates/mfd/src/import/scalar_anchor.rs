@@ -59,6 +59,9 @@ impl GraphBuilder<'_> {
 
         let index = *self.fn_by_output.get(&key)?;
         let function = self.fn_components.get(index)?;
+        if self.json_parser_array_filter(index) {
+            return self.json_parser_lookup_at_anchor(index, key, active_anchor);
+        }
         if function.name == "group-by"
             && function.output_pins.get(1).copied().flatten() == Some(key)
             && let Some(node) = self.group_by_key_node(index, active_anchor)

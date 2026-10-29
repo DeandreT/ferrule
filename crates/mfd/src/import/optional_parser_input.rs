@@ -313,6 +313,7 @@ mod tests {
             runtime_scalar_outputs: BTreeSet::new(),
             required_string_inputs: Vec::new(),
             optional_string_inputs: read(parser),
+            lookup_pins: Default::default(),
         }];
         let edges = BTreeMap::from([(410, 401)]);
         let sources = [];

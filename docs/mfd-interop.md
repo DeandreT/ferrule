@@ -969,9 +969,55 @@ executable-import diagnostics. Schema array constraints and the existing
 generated-sequence item limit still apply.
 There is no shared parsed-input cache: work grows with mapped fields times
 records times document size, which can be quadratic in record count. Existing
-input-size and item-count ceilings do not make large arrays efficient. Using the
-parsed key/value records as a lookup or filter against another document's current
-item is not admitted by this profile.
+input-size and item-count ceilings do not make large arrays efficient.
+
+A separate bounded scalar lookup accepts a parsed record-array value wired to
+the first input of a core filter, with `equal` comparing a String key from the
+same array to a String field of the current primary-document item. The first
+filter output must connect directly to scalar targets in that item's actual
+iteration frame. The parser requires a uniquely declared required global String
+input and a resolved schema. The equality and connected parser fields must belong
+exclusively to that filter; unconnected declared ports do not change admission.
+An empty, attribute-free second output placeholder retains its unused false
+slot; it never receives an invented output identity. Malformed or shared output
+declarations remain refused.
+The primary document owns output repetition and order, including repeated keys.
+The lookup scans the parsed array in its original order and selects the first
+matching record, even when that record's value is absent or JSON null. Missing
+values remain absent, permitted JSON null remains distinct, and missing/null keys
+do not match. Identifiers are not trimmed, case-folded or converted to numbers.
+
+This lookup uses a private generated index and the existing ItemAt reducer, not
+a physical parsed-array source. Shared predicates, mixed parser ownership,
+additional connected array fields, secondary or scalar-repeating key dependencies,
+inverted filter outputs, indirect consumers, and sibling or nested receiving
+frames outside the primary key's actual frame retain executable-import refusals.
+An ordinary primary-document ancestor chain may contain nested repeating groups,
+including EDI interchange, group, message and detail owners. Every repeated
+prefix must be declared and framed, and the actual receiving anchor must equal
+the key's innermost repeated owner. Ancestor keys are not silently broadcast to
+a different current-item frame, nor are deeper unframed repetitions read as one
+scalar.
+The primary key can also be a bounded pure expression: current-item String
+fields, exact core String constants, core String equality predicates, and core
+`if-else` with two connected String branches. All physical leaves, including
+untaken branches, must share that same actual innermost primary owner. At least
+one physical leaf is required. Raw pins, saved feed identities and unique output
+owners are proved before lowering, with a 16-level depth and 64-visited-node work
+bound and cycle refusal. The complete lowered graph must then match the proved
+fields, constants, operator types and branch order; fallback or cached nodes
+outside that proof are refused. Missing selected values stay absent and allowed
+JSON null remains null, without choosing another branch or inventing a default.
+Other functions, parameter reads, coercions, stateful or recursive expressions,
+aggregates, filters, parser reads and foreign-frame leaves remain outside this
+key-expression profile.
+The complete parser input is validated whenever a lookup is demanded, including
+later duplicates, nonmatching records and unused properties. An empty primary
+iteration does not demand the parser. There is no shared parsing cache; repeated
+lookups can cost primary-item count times lookup-record count times document
+size, in addition to value projections. This is not a large-array performance
+contract; shared parsing and work bounds remain separate work in
+[#1175](https://github.com/DeandreT/ferrule/issues/1175).
 
 A JSON string parser with no declared output ports can retain a directly connected,
 uniquely declared required global String parameter without evaluating that parser.
