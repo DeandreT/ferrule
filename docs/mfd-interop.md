@@ -906,9 +906,38 @@ marks the export incomplete and rejects publication; the generated schema is
 not evidence that the original external schema was recovered.
 JSON string parsers lower connected scalar property outputs. Unconnected object,
 array and item views do not participate in parser admission. Connected structural
-outputs, root arrays, array-crossing property paths and missing schema paths retain
+outputs outside the bounded profiles below, root arrays and missing schema paths retain
 their explicit refusal. Each admitted field still parses and validates the complete
 JSON document against its schema, including properties whose ports are unused.
+
+One array of ordinary records can feed a repeating target group from a uniquely
+declared required global String input and a resolved JSON schema. Direct scalar
+connections below the array select fields of the same item, including scalar
+fields inside ordinary nested objects. A direct array-to-group connection is
+optional; the scalar connections can establish the record driver. Ordered,
+one-based item indices preserve every record, including records with absent
+scalar fields. Empty or absent non-nullable arrays produce no records. Explicit
+JSON scalar null values retain their schema-defined null behavior, distinct from missing
+fields. Malformed JSON, invalid item types and incompatible structures remain
+typed parsing failures, not null or zero fallbacks.
+Absent optional object parents preserve scalar absence or an empty selected
+array only after the descriptor resolves to a declared scalar or array and the
+complete input passes schema validation. Invalid descriptor paths, missing
+required properties, incompatible values and disallowed nulls remain failures.
+
+This adapter validates the complete document before iterating and again for each
+selected field. It materializes the input and is not a streaming or large-array
+performance contract. Nested arrays, scalar arrays, computed or optional parser
+inputs, indirect scalar consumers, mixed record feeds and enclosing target
+iterations, cloned target occurrences, target node controls and nullable containers
+remain outside this profile and produce
+executable-import diagnostics. Schema array constraints and the existing
+generated-sequence item limit still apply.
+There is no shared parsed-input cache: work grows with mapped fields times
+records times document size, which can be quadratic in record count. Existing
+input-size and item-count ceilings do not make large arrays efficient. Using the
+parsed key/value records as a lookup or filter against another document's current
+item is not admitted by this profile.
 
 A JSON string parser with no declared output ports can retain a directly connected,
 uniquely declared required global String parameter without evaluating that parser.

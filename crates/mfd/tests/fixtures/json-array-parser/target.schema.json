@@ -1,0 +1,18 @@
+{
+  "type": "object",
+  "properties": {
+    "Records": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "Code": { "type": ["string", "null"] },
+          "Qty": { "type": "integer" },
+          "Label": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}
