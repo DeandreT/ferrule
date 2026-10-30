@@ -97,7 +97,7 @@ mod tests {
     }
 
     #[test]
-    fn computed_join_sources_are_refused_on_load() {
+    fn computed_join_sources_load_and_run() {
         let mut project = valid_project();
         project.source = SchemaNode::group(
             "source",
@@ -139,15 +139,32 @@ mod tests {
         });
 
         let json = to_json(&project).expect("computed plans serialize");
-        let error = parse_and_validate(&json).expect_err("computed plans are not executable");
-        let ProjectDocumentError::Validation(issues) = &error else {
-            panic!("expected validation issues, got {error}");
+        let parsed = parse_and_validate(&json).expect("computed plans validate");
+        assert_eq!(
+            serde_json::to_value(&parsed).expect("parsed project serializes"),
+            serde_json::to_value(&project).expect("original project serializes")
+        );
+
+        let row = |value: &str| {
+            ir::Instance::Group(
+                vec![(
+                    "value".into(),
+                    ir::Instance::Scalar(Value::String(value.into())),
+                )]
+                .into(),
+            )
         };
-        assert!(
-            issues.iter().any(|issue| issue
-                .message
-                .contains("computed join sources are not yet executable")),
-            "{issues:?}"
+        let source = ir::Instance::Group(
+            vec![(
+                "row".into(),
+                ir::Instance::Repeated(vec![row("a"), row("b"), row("a")]),
+            )]
+            .into(),
+        );
+        let output = engine::run(&parsed, &source).expect("computed plans run");
+        assert_eq!(
+            output.field("count").and_then(ir::Instance::as_scalar),
+            Some(&Value::Int(2))
         );
     }
 

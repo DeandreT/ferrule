@@ -1,8 +1,8 @@
 use std::collections::BTreeSet;
 
 use mapping::{
-    ComputedJoinSourceId, FailureIteration, JoinId, JoinPlan, NamedTarget, Node, NodeId, Project,
-    Scope, ScopeConstruction, SequenceExpr,
+    FailureIteration, JoinPlan, NamedTarget, Node, NodeId, Project, Scope, ScopeConstruction,
+    SequenceExpr,
 };
 
 use crate::{EngineError, TargetSelection, scope_slots};
@@ -39,9 +39,6 @@ pub(crate) fn required_for_target<'a>(
     analysis.inspect_scope(selected.map_or(&project.root, |target| &target.root));
     analysis.inspect_failure_rules();
     analysis.inspect_graph();
-    if let Some((join, computed)) = analysis.computed {
-        return Err(EngineError::ComputedJoinSource { join, computed });
-    }
     let static_sources = project
         .extra_sources
         .iter()
@@ -72,8 +69,6 @@ struct Analysis<'a> {
     inspected_dynamic: BTreeSet<usize>,
     pending: Vec<NodeId>,
     visited: BTreeSet<NodeId>,
-    /// The first reachable computed join source, which refuses planning.
-    computed: Option<(JoinId, ComputedJoinSourceId)>,
 }
 
 impl<'a> Analysis<'a> {
@@ -84,14 +79,12 @@ impl<'a> Analysis<'a> {
             inspected_dynamic: BTreeSet::new(),
             pending: Vec::new(),
             visited: BTreeSet::new(),
-            computed: None,
         }
     }
 
-    fn inspect_join(&mut self, join: JoinId, plan: &JoinPlan) {
-        if let Some(computed) = plan.computed_source() {
-            self.computed.get_or_insert((join, computed.id()));
-        }
+    /// A computed key is a graph input of its scope or aggregate, so its
+    /// reads are inspected with the graph.
+    fn inspect_join(&mut self, plan: &JoinPlan) {
         for source in plan.collection_sources() {
             self.inspect_path(source.collection());
         }
@@ -106,8 +99,8 @@ impl<'a> Analysis<'a> {
         if let Some(sequence) = scope.sequence() {
             self.inspect_sequence_sources(sequence);
         }
-        if let Some((id, join)) = scope.join() {
-            self.inspect_join(id, join);
+        if let Some((_, join)) = scope.join() {
+            self.inspect_join(join);
         }
         if let Some((_, join)) = scope.iteration.owned_join() {
             for source in join.sources() {
@@ -207,7 +200,7 @@ impl<'a> Analysis<'a> {
             Node::SequenceExists { sequence, .. }
             | Node::SequenceItemAt { sequence, .. }
             | Node::SequenceAggregate { sequence, .. } => self.inspect_sequence_sources(sequence),
-            Node::JoinAggregate { join, plan, .. } => self.inspect_join(*join, plan),
+            Node::JoinAggregate { plan, .. } => self.inspect_join(plan),
             Node::OwnedSourceField(field) => self.inspect_owner(&field.source.owner),
             Node::OwnedPosition(position) => self.inspect_owner(&position.owner),
             Node::OwnedRowDocumentPath(path) => self.inspect_owner(&path.owner),

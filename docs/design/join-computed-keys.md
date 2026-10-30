@@ -302,6 +302,11 @@ own scope merges with the matching tests.
      field the key depends on is absent, `Null` or `XmlNil`, the lowered key
      is `Null`. Ferrule's `upper` refuses `Null` and its `concat` treats it as
      `""`, so the plain call graph would not give the native result.
+   - The `numeric` design adds a decimal constant. Lowering must not produce a
+     `Value::Decimal` there: ferrule's `add` and `equal` refuse decimals, so
+     the admitted row would fail. A float constant gives a result that
+     compares by the same canonical text, so `7` matches `"7"` only; this is
+     how the engine scope's hand-built `numeric` project reproduces the row.
    - The connection kind and the input entry name are not significant on
      import.
    - Everything else keeps today's "not a plain source feed" refusal, and the
