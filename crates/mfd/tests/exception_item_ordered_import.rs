@@ -932,3 +932,66 @@ fn singular_owner_descendant_scalar_keeps_current_item_lazy_message_and_full_tar
         })
     );
 }
+
+/// A target's input instance is a design-time preview, so a wildcard there
+/// neither refuses the item-ordered import nor names the output document.
+#[test]
+fn wildcard_target_preview_input_imports_runs_and_reexports() {
+    let dir = Directory::new("target-preview");
+    let output = "outputinstance=\"accepted.xml\"";
+    let plain_path = dir.case("plain");
+    let plain = imported(
+        &plain_path,
+        &stage(&plain_path, &design(false), "", ""),
+        true,
+    );
+    let source = input(vec![
+        expense(Value::Bool(true), Value::String("one".into()), 10),
+        expense(Value::Bool(false), Value::String("late".into()), 20),
+    ]);
+    for (label, document) in [
+        (
+            "with-output",
+            format!("inputinstance=\"prior*.xml\" {output}"),
+        ),
+        (
+            "without-output",
+            "inputinstance=\"accepted?.xml\"".to_string(),
+        ),
+    ] {
+        let path = dir.case(label);
+        let mapping = stage(&path, &design(false).replace(output, &document), "", "");
+        let project = imported(&path, &mapping, true);
+        let (_, raise, _) = guard(&project, false);
+        assert!(!project.target_options.local_xml_file_set);
+        assert_eq!(
+            evaluate(&path, label, &project, &source),
+            Err(EngineError::MappingException {
+                node: raise,
+                message: Some("late".into())
+            })
+        );
+        if label == "without-output" {
+            assert_eq!(project.target_path, None);
+            continue;
+        }
+        assert_eq!(
+            serde_json::to_value(&project).unwrap(),
+            serde_json::to_value(&plain).unwrap()
+        );
+        let exported = path.join("export/roundtrip.mfd");
+        let report =
+            mfd::export_with_profile(&project, &exported, mfd::ExportProfile::NativeMfd).unwrap();
+        assert!(report.is_native_compatible(), "{report}");
+        let reimported = imported(&path, &exported, true);
+        assert_eq!(reimported.target_path.as_deref(), Some("accepted.xml"));
+        let (_, raise, _) = guard(&reimported, false);
+        assert_eq!(
+            evaluate(&path, "reimported", &reimported, &source),
+            Err(EngineError::MappingException {
+                node: raise,
+                message: Some("late".into())
+            })
+        );
+    }
+}
