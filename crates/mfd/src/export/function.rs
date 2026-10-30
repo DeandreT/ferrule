@@ -67,8 +67,8 @@ pub(super) fn unmap_function_name(name: &str) -> String {
         "length" => "string-length",
         "starts_with" => "starts-with",
         "ends_with" => "ends-with",
-        "upper" => "upper-case",
-        "lower" => "lower-case",
+        "upper" => "uppercase",
+        "lower" => "lowercase",
         "left_trim" => "left-trim",
         "right_trim" => "right-trim",
         "pad_string_left" => "pad-string-left",
@@ -113,12 +113,18 @@ pub(super) fn unmap_function_name(name: &str) -> String {
     .to_string()
 }
 
+/// Library of the native component for a canonical function.
+///
+/// Exported designs always select the built-in execution language, so each
+/// name and library pair must be one that language offers. The xpath2 library
+/// (`upper-case`, `lower-case`) exists only for XSLT 2.0, XSLT 3.0 and XQuery,
+/// and core has no case functions; import still accepts those spellings.
 pub(super) fn function_library(name: &str) -> &'static str {
     if canonical_function::is_internal(name) {
         return "ferrule";
     }
     match name {
-        "left" | "right" => "lang",
+        "left" | "right" | "upper" | "lower" => "lang",
         "left_trim"
         | "right_trim"
         | "pad_string_left"
@@ -126,6 +132,7 @@ pub(super) fn function_library(name: &str) -> &'static str {
         | "format_guid_string"
         | "is_numeric"
         | "is_empty"
+        | "date_from_datetime"
         | "year_from_datetime"
         | "month_from_datetime"
         | "day_from_datetime"
@@ -140,7 +147,6 @@ pub(super) fn function_library(name: &str) -> &'static str {
         | "create_guid"
         | "random"
         | "delay_passthrough" => "lang",
-        "boolean" | "floor" | "format_date" | "format_datetime" | "format_time" => "xpath2",
         "edifact_to_datetime" => "edifact",
         _ => "core",
     }
@@ -186,5 +192,22 @@ mod tests {
         assert_eq!(function_library("to_number"), "ferrule");
         assert_eq!(function_library("sql_like"), "ferrule");
         assert_eq!(function_library("json_serialize_object"), "ferrule");
+    }
+
+    #[test]
+    fn built_in_language_functions_export_under_their_native_libraries() {
+        for (function, name, library) in [
+            ("upper", "uppercase", "lang"),
+            ("lower", "lowercase", "lang"),
+            ("date_from_datetime", "date-from-datetime", "lang"),
+            ("boolean", "boolean", "core"),
+            ("floor", "floor", "core"),
+            ("format_date", "format-date", "core"),
+            ("format_datetime", "format-dateTime", "core"),
+            ("format_time", "format-time", "core"),
+        ] {
+            assert_eq!(unmap_function_name(function), name, "{function}");
+            assert_eq!(function_library(function), library, "{function}");
+        }
     }
 }
