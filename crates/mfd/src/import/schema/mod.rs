@@ -647,13 +647,20 @@ fn read_schema_component_resolved(
     reconcile_explicit_text_entries(&entry, &mut schema);
     normalize_xml_text_ports(&schema, &mut ports);
 
+    let is_pass_through = component
+        .children()
+        .any(|node| node.has_tag_name("properties") && node.attribute("PassThrough") == Some("1"));
     let input_instance = document
         .and_then(|document| document.attribute("inputinstance"))
         .map(str::to_string)
         .or_else(|| nested_file_instance(&root_el, "inputinstance"));
-    let local_xml_file_set = input_instance
-        .as_deref()
-        .is_some_and(is_local_file_set_pattern);
+    // The input instance is read only in a source role; a target's is a
+    // design-time preview. Pass-through components keep it for their source
+    // role and drop it in their target role.
+    let local_xml_file_set = (is_source || is_pass_through)
+        && input_instance
+            .as_deref()
+            .is_some_and(is_local_file_set_pattern);
     if local_xml_file_set
         && is_source
         && let Some(key) = root_el
@@ -691,9 +698,6 @@ fn read_schema_component_resolved(
     {
         ports.insert(key, vec![TARGET_DOCUMENT_PATH_PORT.to_string()]);
     }
-    let is_pass_through = component
-        .children()
-        .any(|node| node.has_tag_name("properties") && node.attribute("PassThrough") == Some("1"));
     let schema_setting = component
         .children()
         .filter(|node| node.has_tag_name("properties"))
@@ -791,7 +795,7 @@ fn authoritative_schema_namespace(
     crate::schema_location::schema_target_namespace(&text)
 }
 
-fn is_local_file_set_pattern(path: &str) -> bool {
+pub(super) fn is_local_file_set_pattern(path: &str) -> bool {
     !path.contains("://")
         && Path::new(path.replace('\\', "/").as_str())
             .file_name()

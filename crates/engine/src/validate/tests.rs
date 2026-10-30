@@ -186,6 +186,37 @@ fn validates_worksheet_set_direction_and_layout_exclusivity() {
 }
 
 #[test]
+fn local_xml_file_sets_are_source_only() {
+    let mut project = valid_project();
+    let file_set = mapping::FormatOptions {
+        xml_document: true,
+        local_xml_file_set: true,
+        ..Default::default()
+    };
+    project.target_options = file_set.clone();
+    project.extra_targets.push(mapping::NamedTarget {
+        name: "archive".into(),
+        path: Some("archive.xml".into()),
+        schema: project.target.clone(),
+        options: file_set,
+        root: project.root.clone(),
+    });
+
+    let rejected = validate(&project)
+        .into_iter()
+        .filter(|issue| issue.message == "local XML file sets are valid only for mapping sources")
+        .map(|issue| issue.location)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        rejected,
+        [
+            "target format options",
+            "extra target `archive` format options"
+        ]
+    );
+}
+
+#[test]
 fn validates_wsdl_roles_xml_identity_and_format_exclusivity() {
     let mut project = valid_project();
     project.source_options.wsdl = Some(

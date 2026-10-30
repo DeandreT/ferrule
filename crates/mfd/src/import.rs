@@ -2627,7 +2627,7 @@ fn import_resolved(
             extra
                 .output_instance
                 .clone()
-                .or_else(|| extra.input_instance.clone())
+                .or_else(|| target_preview_path(extra))
                 .or_else(|| default_pass_through_output_path(extra))
         };
         extra_targets.push(NamedTarget {
@@ -2718,7 +2718,7 @@ fn import_resolved(
         target
             .output_instance
             .clone()
-            .or_else(|| target.input_instance.clone())
+            .or_else(|| target_preview_path(target))
             .or_else(|| builder.static_target_document_path(target))
             .or_else(|| default_pass_through_output_path(target))
     };
@@ -2906,6 +2906,9 @@ fn target_format_options(
     edge_from: &BTreeMap<u32, u32>,
 ) -> mapping::FormatOptions {
     let mut options = component.options.clone();
+    // An input instance is read only in a source role, so a pass-through
+    // component's file set never applies to its output.
+    options.local_xml_file_set = false;
     let feeds_root_wildcard = component.schema.child(ir::XML_ATTRIBUTES_FIELD).is_some()
         && component.input_keys.iter().any(|key| {
             edge_from.contains_key(key)
@@ -2918,6 +2921,14 @@ fn target_format_options(
         options.xml_schema_hints = component.target_schema_hints.clone();
     }
     options
+}
+
+/// A target without an output instance writes to its input instance, unless
+/// that names a file set, which no single output document can be.
+fn target_preview_path(component: &SchemaComponent) -> Option<String> {
+    component.input_instance.clone().filter(|path| {
+        component.format != ComponentFormat::Xml || !schema::is_local_file_set_pattern(path)
+    })
 }
 
 fn default_pass_through_output_path(component: &SchemaComponent) -> Option<String> {

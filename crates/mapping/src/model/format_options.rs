@@ -488,17 +488,15 @@ impl FormatOptions {
         // Establish the token/pair bounds before constructing the comparison profile.
         hints.validate().map_err(|error| error.to_string())?;
         // Hints annotate the written document root, so they combine with the
-        // target's scalar output policy. A wildcard input instance retained on
-        // an imported target describes its preview input, not its output.
+        // target's scalar output policy.
         let accepted = Self {
             xml_document: true,
             xml_schema_hints: Some(hints.clone()),
             xml_scalar_output: self.xml_scalar_output.clone(),
-            local_xml_file_set: self.local_xml_file_set,
             ..Default::default()
         };
         if !output || *self != accepted {
-            return Err("`xml_schema_hints` requires an XML target with `xml_document` and no format options other than XML scalar output or `local_xml_file_set`".into());
+            return Err("`xml_schema_hints` requires an XML target with `xml_document` and no format options other than XML scalar output".into());
         }
         Ok(())
     }
