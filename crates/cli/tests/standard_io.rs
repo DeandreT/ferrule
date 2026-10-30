@@ -189,6 +189,30 @@ fn stream_mode_rejects_persistent_sqlite_and_update_existing_xlsx() -> anyhow::R
             .contains("update-existing XLSX output requires a persistent workbook")
     );
 
+    let mfd_fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("../mfd/tests/fixtures");
+    let mut hierarchical = mfd::import(&mfd_fixtures.join("xlsx-hierarchical.mfd"))?.project;
+    hierarchical.source_path = Some("input.xml".into());
+    hierarchical.target_path = Some("output.xlsx".into());
+    hierarchical.target_options.xlsx_update_existing = true;
+    let hierarchical_mapping = write_project(&directory, &hierarchical)?;
+    let hierarchical_run = run_with_stdin(
+        &[
+            "run",
+            hierarchical_mapping.to_str().context("mapping utf-8")?,
+            "-",
+            "-",
+        ],
+        &std::fs::read(mfd_fixtures.join("xlsx-hierarchical-source.xml"))?,
+    )?;
+    assert!(!hierarchical_run.status.success());
+    assert!(hierarchical_run.stdout.is_empty());
+    assert!(
+        String::from_utf8_lossy(&hierarchical_run.stderr)
+            .contains("update-existing XLSX output requires a persistent workbook"),
+        "{}",
+        String::from_utf8_lossy(&hierarchical_run.stderr)
+    );
+
     std::fs::remove_dir_all(directory)?;
     Ok(())
 }

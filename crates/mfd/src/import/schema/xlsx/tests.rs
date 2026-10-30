@@ -151,6 +151,44 @@ fn flat_target_retains_existing_workbook_update_mode() {
 }
 
 #[test]
+fn hierarchical_target_retains_existing_workbook_update_mode() {
+    let design = |excel: &str| {
+        format!(
+            r#"
+            <component name="Report"><data><root><entry name="Workbook">
+              <entry name="Worksheet" inpkey="1">
+                <ranges><range id="lines" start="3"/></ranges>
+                <entry name="Name" type="attribute" inpkey="2"/>
+                <entry name="Row" inpkey="10" enabletitlerow="1"><condition><function name="is-range-id"><constant value="lines"/></function></condition>
+                  <entry name="Cell" inpkey="11" annotation="Item" datatype="string"><condition><function name="equal"><attribute name="n"/><constant value="2"/></function></condition></entry>
+                </entry>
+              </entry>
+            </entry></root>{excel}</data></component>
+            "#
+        )
+    };
+    for (excel, update_existing) in [
+        (
+            r#"<excel outputinstance="report.xlsx" updateexistingfile="1"/>"#,
+            true,
+        ),
+        (r#"<excel outputinstance="report.xlsx"/>"#, false),
+    ] {
+        let text = design(excel);
+        let document = roxmltree::Document::parse(&text).unwrap();
+        let mut warnings = Vec::new();
+        let component = read(&document.root_element(), &mut warnings)
+            .unwrap_or_else(|| panic!("hierarchical target was skipped: {warnings:?}"));
+
+        assert!(warnings.is_empty(), "{warnings:?}");
+        let layout = component.options.xlsx_hierarchical.as_ref().unwrap();
+        assert_eq!(layout.ranges.len(), 1);
+        assert_eq!(component.options.xlsx_update_existing, update_existing);
+        assert_eq!(component.output_instance.as_deref(), Some("report.xlsx"));
+    }
+}
+
+#[test]
 fn flat_columns_keep_distinct_physical_indexes_when_annotations_repeat() {
     let mut columns = vec![
         Column {

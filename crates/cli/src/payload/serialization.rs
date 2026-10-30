@@ -6,7 +6,7 @@ use mapping::{EdiAutocomplete, EdiBoundaryKind, FormatOptions};
 
 use super::super as cli;
 use super::super::format_selection::{self, Direction, JsonMode, Origin, SelectedFormat};
-use super::super::{formatted_edi_output, has_legacy_xlsx_layout, protobuf_layout, x12_separators};
+use super::super::{formatted_edi_output, has_flat_xlsx_layout, protobuf_layout, x12_separators};
 use super::profile::{self, BoundaryProfile};
 use super::{
     MAX_PAYLOAD_DOCUMENT_BYTES, MAX_PAYLOAD_RUN_BYTES, PayloadArtifact, PayloadDestination,
@@ -486,7 +486,7 @@ fn render_xlsx_payload(
         if options.xlsx_grid.is_some()
             || options.xlsx_composite.is_some()
             || options.xlsx_worksheet_set.is_some()
-            || has_legacy_xlsx_layout(options)
+            || has_flat_xlsx_layout(options)
         {
             bail!("`xlsx_hierarchical` cannot be combined with other XLSX layout options");
         }

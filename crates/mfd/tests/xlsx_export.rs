@@ -460,6 +460,82 @@ fn exports_and_reimports_hierarchical_xlsx_target() {
 }
 
 #[test]
+fn hierarchical_update_existing_target_imports_runs_and_roundtrips() {
+    let dir = TempDir::new("hierarchical-update");
+    for name in [
+        "xlsx-hierarchical-source.xsd",
+        "xlsx-hierarchical-source.xml",
+    ] {
+        std::fs::copy(fixture(name), dir.0.join(name)).unwrap();
+    }
+    let original = std::fs::read_to_string(fixture("xlsx-hierarchical.mfd")).unwrap();
+    let text = original.replace(
+        "<excel/>",
+        "<excel outputinstance=\"report.xlsx\" updateexistingfile=\"1\"/>",
+    );
+    assert_ne!(text, original);
+    let design = dir.0.join("update.mfd");
+    std::fs::write(&design, text).unwrap();
+
+    let imported = mfd::import(&design).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    let project = imported.project;
+    assert!(project.target_options.xlsx_update_existing);
+    assert_eq!(project.target_path.as_deref(), Some("report.xlsx"));
+    let layout = project.target_options.xlsx_hierarchical.as_ref().unwrap();
+    assert!(
+        engine::validate(&project).is_empty(),
+        "{:?}",
+        engine::validate(&project)
+    );
+
+    let source =
+        format_xml::read(&fixture("xlsx-hierarchical-source.xml"), &project.source).unwrap();
+    let target = engine::run(&project, &source).unwrap();
+    let workbook_path = dir.0.join("report.xlsx");
+    let mut workbook = rust_xlsxwriter::Workbook::new();
+    workbook
+        .add_worksheet()
+        .set_name("Design")
+        .unwrap()
+        .write_string(0, 6, "Keep")
+        .unwrap();
+    workbook.add_worksheet().set_name("Research").unwrap();
+    workbook.save(&workbook_path).unwrap();
+    let worksheets = format_xlsx::update_hierarchical(
+        &workbook_path,
+        &project.target,
+        &target,
+        layout,
+        &format_xlsx::XlsxLimits::default(),
+    )
+    .unwrap();
+    assert_eq!(worksheets, 2);
+    // Reads return schema field order, so compare with a fresh workbook's read.
+    let updated = std::fs::read(&workbook_path).unwrap();
+    let (fresh, _) = format_xlsx::to_bytes_hierarchical(&project.target, &target, layout).unwrap();
+    assert_eq!(
+        format_xlsx::from_bytes_hierarchical(&updated, &project.target, layout).unwrap(),
+        format_xlsx::from_bytes_hierarchical(&fresh, &project.target, layout).unwrap()
+    );
+
+    let exported = dir.0.join("exported.mfd");
+    let warnings = mfd::export(&project, &exported).unwrap();
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let text = std::fs::read_to_string(&exported).unwrap();
+    assert!(
+        text.contains("<excel outputinstance=\"report.xlsx\" updateexistingfile=\"1\"/>"),
+        "{text}"
+    );
+    let reimported = mfd::import(&exported).unwrap();
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    assert_eq!(reimported.project.target, project.target);
+    assert_eq!(reimported.project.target_path, project.target_path);
+    assert_eq!(reimported.project.target_options, project.target_options);
+    assert_same_execution(&project, &reimported.project, &source);
+}
+
+#[test]
 fn invalid_hierarchical_xlsx_layout_does_not_replace_existing_design() {
     let mut project = mfd::import(&fixture("xlsx-hierarchical.mfd"))
         .unwrap()
