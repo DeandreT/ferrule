@@ -396,3 +396,29 @@ fn created_repeating_trailers_reserve_exact_text_ids_and_nodes_before_writer() {
         );
     }
 }
+
+#[test]
+fn only_the_segment_terminator_may_be_lf_and_lf_round_trips() {
+    let profile = test_profile(fields("NTE", 1).repeating());
+    let with = |separators: serde_json::Value| {
+        let mut descriptor: serde_json::Value =
+            serde_json::from_str(&descriptor_for(&profile)).unwrap();
+        descriptor["separators"] = separators;
+        descriptor.to_string()
+    };
+    let lf = with(serde_json::json!({"element":"*","component":":","segment":"\n"}));
+    let wire = WIRE.replace("~\n", "\n");
+    let parsed = parse_x12(&lf, &wire).unwrap();
+    assert_eq!(parsed, parse_x12(&descriptor_for(&profile), WIRE).unwrap());
+    assert_eq!(serialize_x12(&lf, &parsed, None).unwrap(), wire);
+    for separators in [
+        serde_json::json!({"element":"*","component":":","segment":"\r"}),
+        serde_json::json!({"element":"\n","component":":","segment":"~"}),
+        serde_json::json!({"element":"*","component":"\n","segment":"\n"}),
+    ] {
+        assert!(matches!(
+            parse_x12(&with(separators), WIRE),
+            Err(X12BoundaryError::Syntax { segment: 0, .. })
+        ));
+    }
+}

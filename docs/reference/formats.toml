@@ -231,9 +231,10 @@ evidence = [
     "crates/format-edi/src/edifact.rs",
     "crates/format-edi/src/validation.rs",
     "crates/cli/tests/edi_output.rs",
+    "crates/cli/tests/x12_line_break_terminators.rs",
 ]
 unsupported = [
-    "Invisible or whitespace explicit X12 output separators, including LF",
+    "X12 CR LF segment terminators, and whitespace or invisible X12 element, component, repetition or release separators",
 ]
 
 [[format.qualified]]
