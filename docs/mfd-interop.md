@@ -672,6 +672,21 @@ Rust/C# generation, and export/re-import share one bounded implementation.
 Filtered predicates and computed values can use the generated item's 1-based
 `position()` as well as the item value.
 
+Physical XML and X12 scalar filter outputs consumed by `count` use a bounded
+conditional integer sum in the exact receiving source frame. A predicate may use
+exact String/Bool constants, supported equality/inequality, trim/normalization,
+empty tests and native logical operators. Every physical operand must be the
+exact counted field, identified by source and full path. Read XML fields must be
+non-nillable; X12 fields must be singular and have a complete compiled physical
+configuration. Independent predicate fields (including declared-required fields),
+nil-reading predicates and repeating X12 scalar values are refused by executable
+import, with actionable warnings in best-effort imports, never unfiltered counts.
+Counted absence contributes zero before exclusion inversion. Empty XML text and
+Boolean false are present, and XML nil can be counted by a constant-only predicate
+that does not read it. Logical AND/OR retain eager evaluation and require proved
+operands on both sides. This profile does not establish independent qualifier,
+missing/nil predicate or distinct-count semantics.
+
 Import is deliberately resilient: unsupported constructs are skipped with one
 actionable warning where possible. A design is rejected only when no usable
 source or target can be recovered.

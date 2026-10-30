@@ -1,0 +1,27 @@
+[
+  {
+    "name":"no_records",
+    "input":"<Source/>",
+    "expected":{"Included":0,"Excluded":0,"Nonblank":0,"Repeated":0,"Present":0,"Batches":[]}
+  },
+  {
+    "name":"mixed_missing_empty_nil_and_normalized_predicates",
+    "input":"<Source xmlns:xsi='http://www.w3.org/2001/XMLSchema-instance'><Batch><Name>mixed</Name><Record><Flag>keep</Flag><Tag>A</Tag><Value>A</Value><Value>A</Value></Record><Record><Flag>skip</Flag><Tag>B</Tag><Value>X</Value></Record><Record><Flag>keep</Flag></Record><Record><Flag>keep</Flag><Tag/><Value/><Value xsi:nil='true'/></Record><Record><Flag> keep </Flag><Tag>  </Tag><Value>Y</Value></Record><Record><Flag>keep</Flag><Tag xsi:nil='true'/><Value>Z</Value></Record><Record><Tag>C</Tag></Record></Batch></Source>",
+    "expected":{"Included":3,"Excluded":3,"Nonblank":1,"Repeated":5,"Present":6,"Batches":[{"Name":"mixed","Included":3,"Excluded":3,"Nonblank":1,"Repeated":5,"Present":6,"Records":[{"Included":1,"Nonblank":1},{"Included":0,"Nonblank":0},{"Included":0,"Nonblank":0},{"Included":1,"Nonblank":0},{"Included":0,"Nonblank":0},{"Included":1,"Nonblank":0},{"Included":0,"Nonblank":0}]}]}
+  },
+  {
+    "name":"none_selected_equal_values_remain_occurrences",
+    "input":"<Source><Batch><Name>none</Name><Record><Flag>skip</Flag><Tag>same</Tag></Record><Record><Flag>skip</Flag><Tag>same</Tag></Record></Batch></Source>",
+    "expected":{"Included":0,"Excluded":2,"Nonblank":0,"Repeated":0,"Present":2,"Batches":[{"Name":"none","Included":0,"Excluded":2,"Nonblank":0,"Repeated":0,"Present":2,"Records":[{"Included":0,"Nonblank":0},{"Included":0,"Nonblank":0}]}]}
+  },
+  {
+    "name":"all_selected_equal_values_are_not_distinct",
+    "input":"<Source><Batch><Name>all</Name><Record><Flag>keep</Flag><Tag>same</Tag><Value>one</Value></Record><Record><Flag>keep</Flag><Tag>same</Tag><Value>two</Value><Value>two</Value></Record><Record><Flag>keep</Flag><Tag>same</Tag></Record></Batch></Source>",
+    "expected":{"Included":3,"Excluded":0,"Nonblank":3,"Repeated":3,"Present":3,"Batches":[{"Name":"all","Included":3,"Excluded":0,"Nonblank":3,"Repeated":3,"Present":3,"Records":[{"Included":1,"Nonblank":1},{"Included":1,"Nonblank":1},{"Included":1,"Nonblank":1}]}]}
+  },
+  {
+    "name":"independent_nested_receiving_frames",
+    "input":"<Source xmlns:xsi='http://www.w3.org/2001/XMLSchema-instance'><Batch><Name>left</Name><Record><Flag>keep</Flag><Tag>L</Tag><Value>one</Value><Value>two</Value></Record><Record><Flag>skip</Flag></Record></Batch><Batch><Name>right</Name><Record><Flag>skip</Flag><Tag>R</Tag><Value>other</Value></Record><Record><Flag>keep</Flag><Tag xsi:nil='true'/></Record><Record><Flag>keep</Flag><Tag/><Value xsi:nil='true'/></Record></Batch></Source>",
+    "expected":{"Included":3,"Excluded":1,"Nonblank":1,"Repeated":3,"Present":4,"Batches":[{"Name":"left","Included":1,"Excluded":0,"Nonblank":1,"Repeated":2,"Present":1,"Records":[{"Included":1,"Nonblank":1},{"Included":0,"Nonblank":0}]},{"Name":"right","Included":2,"Excluded":1,"Nonblank":0,"Repeated":1,"Present":3,"Records":[{"Included":0,"Nonblank":0},{"Included":1,"Nonblank":0},{"Included":1,"Nonblank":0}]}]}
+  }
+]

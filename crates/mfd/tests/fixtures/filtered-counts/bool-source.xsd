@@ -1,0 +1,11 @@
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:element name="Source"><xs:complexType><xs:sequence>
+    <xs:element name="Record" minOccurs="0" maxOccurs="unbounded"><xs:complexType><xs:sequence>
+      <xs:element name="Flag" type="xs:string" minOccurs="0"/>
+      <xs:element name="Qualifier" type="xs:string" minOccurs="0"/>
+      <xs:element name="Enabled" type="xs:boolean" minOccurs="0" nillable="true"/>
+      <xs:element name="Toggle" type="xs:boolean" minOccurs="0" maxOccurs="unbounded" nillable="true"/>
+      <xs:element name="Gate" type="xs:boolean" minOccurs="0" nillable="true"/>
+    </xs:sequence></xs:complexType></xs:element>
+  </xs:sequence></xs:complexType></xs:element>
+</xs:schema>

@@ -8,6 +8,8 @@ use super::iteration::{compatible_collection, split_at_innermost_repeating};
 use super::schema::{ComponentFormat, schema_node_at};
 use super::source::SourcePath;
 
+pub(super) mod filtered_count;
+
 impl GraphBuilder<'_> {
     pub(super) fn unsupported_aggregate_call(&mut self, name: &str, detail: &str) -> Node {
         self.warnings.push(format!(
@@ -112,6 +114,12 @@ impl GraphBuilder<'_> {
                 expression,
                 arg,
             }));
+        }
+
+        if op == AggregateOp::Count
+            && let Some(node) = self.physical_filtered_count(idx, sequence_feed, active_anchor)?
+        {
+            return Ok(Some(node));
         }
 
         if op == AggregateOp::Count

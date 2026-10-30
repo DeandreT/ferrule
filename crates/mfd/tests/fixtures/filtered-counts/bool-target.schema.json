@@ -1,0 +1,8 @@
+{"type":"object","properties":{
+  "Included":{"type":"integer"},"Excluded":{"type":"integer"},
+  "Repeated":{"type":"integer"},"Gated":{"type":"integer"},
+  "Records":{"type":"array","items":{"type":"object","properties":{
+    "Included":{"type":"integer"},"Excluded":{"type":"integer"},
+    "Repeated":{"type":"integer"},"Gated":{"type":"integer"}
+  }}}
+}}

@@ -1,0 +1,12 @@
+{
+  "source":{"source.xsd":"4925b69abe95db06c0218a3379570fc21b7e32e763579135f5c98cc7dd1e3cbb","target.schema.json":"acb7a4e00c4aff78294e7485e1a95172f0a57eca8482a5206d3ca2136fe15aec"},
+  "bool-source":{"bool-source.xsd":"0423de875f364cdc4a9059204c3fb7243934543954f43213a0d52c0c87164f0d","bool-target.schema.json":"20db58acef7ea987243523e7b1817f8cf8986fa866519ef8a622075a64d80f9e"},
+  "edi":{"940.Config":"a427c04f94fa29d22dc91dc61b932c2fedf27e67a8d338cba0fb7c6985c7369d","Envelope.Config":"eaf82b66583c2f07d90c280d59f03a88cab885551f434f9e4cb882cf481bf970","edi-target.schema.json":"a177bcdd8e2baabb5cff56ae6b086c52a98db6d912f129ad5cd0bf1c286d39a0"},
+  "guarded-source":{"guarded-source.xsd":"0221cbe9b9199c622444d9af0e89a3c0da3ffebb409652c6c3d5358b2fd4feab","target.schema.json":"acb7a4e00c4aff78294e7485e1a95172f0a57eca8482a5206d3ca2136fe15aec"},
+  "guarded-bool-source":{"guarded-bool-source.xsd":"fd15365f5ea314736625492936ac21fbd84472b816914f45a2b8e4959ec11194","guarded-bool-target.schema.json":"5768a286bb613ef7ff2b63e65afa16457babd512ec0f954d3678261ad7a61f11"},
+  "refusal-source-nil":{"refusal-source.xsd":"4adf2d0751972ed724aa4a668cbf66cbb39d04a329b627f3aac649f2789b0549","refusal-target.schema.json":"559527bbb9914820a3a6d319a909e5fe4ac60adee0b074ddd1940cd654230921"},
+  "refusal-source":{"refusal-source.xsd":"c7c4f8bc52bc651be0904f1dc2a281e1f9465d54fcda99fa35c8f6da5190205e","refusal-target.schema.json":"559527bbb9914820a3a6d319a909e5fe4ac60adee0b074ddd1940cd654230921"},
+  "guarded-bool-source-nil":{"guarded-bool-source.xsd":"82bdf865b8c56119f3c04c013304d1c316089f94572aa7aa4a1a3048a60883dd","guarded-bool-target.schema.json":"5768a286bb613ef7ff2b63e65afa16457babd512ec0f954d3678261ad7a61f11"},
+  "edi-no-config":{"edi-target.schema.json":"a177bcdd8e2baabb5cff56ae6b086c52a98db6d912f129ad5cd0bf1c286d39a0"},
+  "edi-repeating":{"940.Config":"8ade9eaa07f318a5ea0b72b3a62c8c0e38463208610c0a740e6c863053d9f53f","Envelope.Config":"eaf82b66583c2f07d90c280d59f03a88cab885551f434f9e4cb882cf481bf970","edi-target.schema.json":"a177bcdd8e2baabb5cff56ae6b086c52a98db6d912f129ad5cd0bf1c286d39a0"}
+}
