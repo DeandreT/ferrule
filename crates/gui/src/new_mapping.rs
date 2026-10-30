@@ -117,7 +117,7 @@ impl SqliteBoundaryDraft {
                 Ok(())
             }
             Err(error) => {
-                self.introspection_error = Some(error.to_string());
+                self.introspection_error = Some(format!("{error:#}"));
                 Err(error)
             }
         }
@@ -258,7 +258,7 @@ impl CsvBoundaryDraft {
         }) {
             Ok(sample) => sample,
             Err(error) => {
-                self.sample_error = Some(error.to_string());
+                self.sample_error = Some(format!("{error:#}"));
                 return Err(error);
             }
         };
