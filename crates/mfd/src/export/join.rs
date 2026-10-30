@@ -1,4 +1,4 @@
-mod correlated_three;
+mod nested;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
@@ -14,7 +14,7 @@ use super::source::SourceExports;
 
 use crate::MfdError;
 
-use correlated_three::resolved_correlated_source_paths;
+use nested::resolved_nested_source_paths;
 
 pub(super) fn validate(project: &Project) -> Result<(), MfdError> {
     let dynamic_sources = project
@@ -467,45 +467,7 @@ fn resolved_source_paths(
         .as_deref()
         .filter(|anchor| !anchor.is_empty())
         .ok_or("nested join is not enclosed by one ordinary source iteration")?;
-    if join_sources.len() >= 3 {
-        return resolved_correlated_source_paths(&join_sources, anchor, sources);
-    }
-    if join_sources.len() != 2
-        || join_sources
-            .iter()
-            .filter(|source| source.cardinality() == JoinSourceCardinality::Singleton)
-            .count()
-            != 1
-        || join_sources
-            .iter()
-            .filter(|source| source.cardinality() == JoinSourceCardinality::Repeating)
-            .count()
-            != 1
-    {
-        return Err(
-            "nested join must contain exactly one correlated singleton and one repeating source"
-                .to_string(),
-        );
-    }
-    join_sources
-        .into_iter()
-        .map(|source| match source.cardinality() {
-            JoinSourceCardinality::Repeating => Ok(source.collection().to_vec()),
-            JoinSourceCardinality::Singleton => {
-                if source.collection().is_empty()
-                    || sources.is_named_extra_path(source.collection())
-                {
-                    return Err(
-                        "nested join singleton must be a field of the active primary source item"
-                            .to_string(),
-                    );
-                }
-                let mut absolute = anchor.to_vec();
-                absolute.extend(source.collection().iter().cloned());
-                Ok(absolute)
-            }
-        })
-        .collect()
+    resolved_nested_source_paths(&join_sources, anchor, sources)
 }
 
 #[allow(clippy::too_many_arguments)]
