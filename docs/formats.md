@@ -26,7 +26,7 @@ for a complete format standard or another product.
 | Format | Source | Target | Selected by | Implemented capability |
 | --- | :---: | :---: | --- | --- |
 | XML | Yes | Yes | `.xml` or `xml_document` | Hierarchical instance I/O with namespace-aware element and attribute names; XSD-lite with local import graphs, compatible `complexContent` and scalar-text/attribute-only `simpleContent` derivations, and named model and attribute groups; `xs:any` and `xs:anyAttribute` wildcards with `##any`, `##other`, `##local`, `##targetNamespace`, or listed-namespace constraints under `skip`, declaration-aware `lax`, or closed `strict` processing, plus XSD 1.1 `notNamespace` and `notQName` exclusions on `skip` and `lax` element wildcards and on attribute wildcards; bounded DTD import with internal content-model parameter entities; `xsi:nil`, generic elements, and ordered mixed content |
-| JSON | Yes | Yes | `.json`; `.jsonl`, `.ndjson`, or `json_lines` for JSON Lines | Hierarchical instance I/O and JSON Lines; JSON Schema import with traversal-confined local-file and document-local references, compatible structural `allOf` intersections, bounded exact scalar `const`/`enum` domains, numeric ranges and decimal `multipleOf`, array-count, `contains`, object-property-count, and Unicode string-length intervals, structural `uniqueItems`, bounded portable `pattern` assertions, closed homogeneous `patternProperties`, property dependencies, dependent-schema predicates, single-property-presence conditionals, `propertyNames`, open or closed object contracts, heterogeneous scalar type arrays, exact scalar `anyOf`, pairwise-disjoint scalar `oneOf`, selected object alternatives, nullable scalar/object/array shapes, and typed or unconstrained dynamic properties |
+| JSON | Yes | Yes | `.json`; `.jsonl`, `.ndjson`, or `json_lines` for JSON Lines | Hierarchical instance I/O and JSON Lines; JSON Schema import with traversal-confined local-file and document-local references, compatible structural `allOf` intersections, bounded exact scalar `const`/`enum` domains, numeric ranges and decimal `multipleOf`, array-count, `contains`, object-property-count, and Unicode string-length intervals, structural `uniqueItems`, bounded portable `pattern` assertions, closed homogeneous `patternProperties`, property dependencies, dependent-schema predicates, single-property-presence conditionals, `propertyNames`, open or closed object contracts, exact tuple arrays from `prefixItems` or tuple-form `items`, heterogeneous scalar type arrays, exact scalar `anyOf`, pairwise-disjoint scalar `oneOf`, selected object alternatives, nullable scalar/object/array shapes, and typed or unconstrained dynamic properties |
 | JSON5 | Yes | Yes | `.json5` or `json5` | One schema-shaped document in JSON5 instance syntax with ordinary JSON schemas and the same typed mapping boundary; input accepts comments, trailing commas, and single-quoted strings, and is limited to 64 MiB and 128 nested containers; output omits property-name quotes where JSON5 allows; CLI and browser runtime |
 | CSV | Yes | Yes | `.csv` or `.txt` | Delimited flat rows with a configurable delimiter, printable or disabled quoting, headers, optional present-empty text, and optional UTF-8 BOM output |
 | Fixed-width | Yes | Yes | `fixed_width` layout | Validated Unicode-scalar column layouts, configurable fill, record separators, and empty-value handling |
@@ -71,7 +71,7 @@ for a complete format standard or another product.
 | XML | External DTD subsets and external entities, which are never loaded |
 | XML | Output to a local XML file set or an HTTP URL (`local_xml_file_set` and HTTP sources are input-only) |
 | JSON | General heterogeneous array composition, heterogeneous or correlated numeric-range scalar unions, and mixed structural unions |
-| JSON | Heterogeneous `prefixItems` or legacy tuple members and active `unevaluatedItems` |
+| JSON | Tuple alternatives, per-position `allOf` intersection, `contains` or `uniqueItems` on tuples, nested or recursive tuples, and active `unevaluatedItems` |
 | JSON | Required-only schemas without an object shape |
 | JSON | External references from in-memory schema import (`json_schema::import_str`) |
 | JSON | Enforcement of other shape-neutral validation keywords, which are accepted only for schema recovery |
@@ -141,9 +141,8 @@ for a complete format standard or another product.
   non-empty `rest` is a typed gap error. Root rows and JSON Lines refuse a
   non-repeating frame root, while a repeating frame root writes one tuple per
   line. A recursive reference that would nest a frame inside one of its own
-  positions, or that expands a frame, is refused rather than expanded. JSON
-  Schema export, including the schema files written by `.mfd` export, refuses
-  schemas that contain a frame before writing anything.
+  positions, or that expands a frame, is refused rather than expanded. `.mfd`
+  export refuses schemas that contain a frame before writing anything.
 - PDF targets are not supported.
 - XBRL taxonomy formula, presentation, calculation, and linkbase execution are
   outside the current runtime.
@@ -463,34 +462,34 @@ for a complete format standard or another product.
   schemas without `$schema` apply Ferrule's supported numeric, `multipleOf`,
   item-count, string-length, and annotation metadata. Concrete string-capable scalar
   domains retain exact non-negative `minLength` and `maxLength` intervals.
-  Ferrule supports an exact bounded homogeneous `prefixItems` subset for Draft
-  2020-12 and schemas without `$schema`.
-  Every entry in the bounded finite prefix must normalize to one identical,
-  non-repeating item shape. The tail must use that same shape, be `false`
-  (which derives an exact `maxItems` at the prefix length), or be provably
-  unreachable under an existing maximum; an unconstrained tail is also exact
-  when the common prefix shape accepts arbitrary JSON. Conflicting item-count
-  bounds, heterogeneous entries or tails, concrete nested-array entries, and
-  active `unevaluatedItems` reject rather than widen. Canonical export writes
-  the equivalent ordinary `items` schema plus
-  `maxItems` when the tail is closed, so no tuple-specific runtime or mapping
-  IR is required. Draft 4 through Draft 2019-09 treat
-  `prefixItems` as an unknown keyword according to their dialects.
-  The complementary bounded homogeneous legacy tuple profile accepts
-  array-valued `items` in Draft 4, 6, 7, and 2019-09 resources and in schemas
-  without `$schema`. Each tuple must contain 1 to 4,096 positional members,
-  all of which normalize to one identical, non-repeating item shape. The
-  `additionalItems` tail must use that same shape, be `false` so the tuple
-  length becomes `maxItems`, or be provably unreachable under an existing
-  maximum. An absent or `true` tail is exact
-  only when the common item shape accepts arbitrary JSON or the explicit
-  maximum makes the tail unreachable. Explicit `minItems`/`maxItems` and the
-  derived closed-tail maximum are intersected, so contradictory bounds reject.
-  Canonical export writes ordinary schema-valued `items` plus `maxItems` when
-  closed; no positional-array runtime or mapping IR is retained. Draft 2020-12
-  requires schema-valued `items`, so array-valued `items` are rejected there
-  rather than being interpreted as `prefixItems`. Heterogeneous members, reachable
-  heterogeneous tails, and concrete nested-array members remain unsupported.
+  Tuple arrays use `prefixItems` in Draft 2020-12 and schemas without
+  `$schema`, and array-valued `items` with `additionalItems` in Draft 4, 6, 7,
+  2019-09 and schemas without `$schema`; Draft 2020-12 rejects array-valued
+  `items`, and earlier drafts ignore `prefixItems`. Every member and tail is
+  validated first, even a tail that `maxItems` makes unreachable. The tuple's
+  own `minItems`/`maxItems`, modern `$ref` sibling counts and count-only
+  `allOf` branches are then intersected, and only the result is put into
+  canonical form: positions beyond the maximum are dropped, and a maximum at
+  or below the member count closes the tuple. Identical members whose tail is
+  closed, identical, or open over an arbitrary-JSON member lower to an ordinary
+  homogeneous array; every other tuple of 1 to 4,096 members imports as a
+  [JSON tuple frame](design/json-tuple-arrays.md) and is never widened.
+  Members and the tail may be scalars, scalar unions, objects or arbitrary JSON,
+  through any supported reference or composition, and the frame takes the usual
+  nullable wrappers, including arrays of tuples. Refused shapes include tuple
+  `anyOf`/`oneOf` alternatives, two positional `allOf` branches, a branch
+  beside a tuple that contributes more than `type: array` and item counts,
+  `contains` or `uniqueItems: true` on a tuple, a tuple beside its own
+  composition or under `not`, conditionals, `contains` or `dependentSchemas`, a
+  tuple as an `additionalProperties` or `patternProperties` value, a `false`
+  member, a member or tail that is itself an array or tuple, a reference cycle
+  through a position, `prefixItems` beside `additionalItems` without `$schema`
+  when the result is a frame, and active `unevaluatedItems`. Export writes a
+  frame without `$schema` as `prefixItems`, with `items: false` for a closed
+  tail, the tail schema for an open tail and no `items` for an arbitrary tail;
+  `minItems` appears when it is above zero and `maxItems` only on an open frame.
+  Homogeneous tuples keep their ordinary `items` export, and re-import
+  reproduces the same schema.
   Concrete array wrappers also retain `uniqueItems: true` through supported
   references and compatible composition. Native and generated Rust/C#
   boundaries compare complete raw input values and normalized output values:

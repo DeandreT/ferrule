@@ -29,7 +29,9 @@
 //! annotations are retained without asserting their vocabulary-specific
 //! semantics. Exact structural `uniqueItems` assertions are enforced on
 //! concrete arrays. Exact `minProperties`/`maxProperties` intervals are
-//! enforced on concrete object shapes. Other shape-neutral validation
+//! enforced on concrete object shapes. Exact `prefixItems` and tuple-form
+//! `items` arrays import as homogeneous arrays or tuple frames and export as
+//! `prefixItems`. Other shape-neutral validation
 //! keywords are accepted but are not enforced by the mapping schema.
 
 use ir::{GroupAlternativeMode, ScalarType, ScalarTypeSet, SchemaKind, SchemaNode};
@@ -58,6 +60,7 @@ mod ranges;
 mod ref_required;
 mod render;
 mod string_lengths;
+mod tuple_frames;
 pub mod unique_items;
 
 use all_of::parse_all_of;
@@ -132,6 +135,8 @@ fn import_value(value: &files::LoadedSchema) -> Result<SchemaNode, JsonFormatErr
     let name = schema_title(value, value)?.unwrap_or("root");
     let schema = parse(name, value, value, &mut Vec::new())?;
     reject_contentless_root(name, value)?;
+    tuple_frames::check_tree(&schema)
+        .map_err(|(name, reason)| tuple_frames::unrepresentable(&name, reason))?;
     crate::runtime_constraints::validate_private_unique_items(&schema)?;
     if !schema.json_pattern_budget_is_valid() {
         return Err(unsupported_union(
@@ -695,21 +700,14 @@ fn parse_array_schema(
     nullable: bool,
 ) -> Result<SchemaNode, JsonFormatError> {
     if let Some(mut node) = positional_items::normalize(name, schema, doc, active_refs)? {
-        let object_item_nullable = if matches!(node.kind, SchemaKind::Group { .. })
-            && !node.json_array_wrapper
-            && !node.json_any
-        {
-            Some(crate::null_layers::single_null(&node)?)
-        } else {
-            None
-        };
-        node.container_nullable = nullable;
-        if let Some(item_nullable) = object_item_nullable {
-            node.json_object_item_nullable = (nullable || item_nullable).then_some(item_nullable);
-        }
+        tuple_frames::set_array_nullability(&mut node, nullable)?;
         ranges::validate_ignored(name, schema)?;
         multiples::validate_ignored(name, schema)?;
-        contains::apply(name, schema, &mut node, doc, active_refs, false)?;
+        if node.repeating {
+            contains::apply(name, schema, &mut node, doc, active_refs, false)?;
+        } else {
+            tuple_frames::reject_cross_position_assertions(name, schema, doc, active_refs)?;
+        }
         conditionals::apply(name, schema, &mut node, doc, active_refs, false)?;
         unique_items::apply(name, schema, &mut node, false)?;
         string_lengths::validate_ignored(name, schema)?;
@@ -740,7 +738,13 @@ fn parse_array_schema(
     } else {
         name
     };
-    let item = parse(item_name, items, doc, active_refs)?;
+    let mut item = parse(item_name, items, doc, active_refs)?;
+    // An array of tuples is a repeating frame named after the array.
+    let tuple_items = item.json_tuple.is_some();
+    if tuple_items {
+        name.clone_into(&mut item.name);
+        tuple_frames::reject_cross_position_assertions(name, schema, doc, active_refs)?;
+    }
     let object_item_nullable = if !item.repeating && matches!(item.kind, SchemaKind::Group { .. }) {
         Some(crate::null_layers::container_null(&item)?)
     } else {
@@ -762,7 +766,9 @@ fn parse_array_schema(
     };
     node.container_nullable = nullable;
     if let Some(item_nullable) = object_item_nullable {
-        node.json_object_item_nullable = (nullable || item_nullable).then_some(item_nullable);
+        // A repeating frame always states whether each tuple may be null.
+        node.json_object_item_nullable =
+            (nullable || item_nullable || tuple_items).then_some(item_nullable);
     }
     ranges::validate_ignored(name, schema)?;
     multiples::validate_ignored(name, schema)?;
@@ -922,7 +928,9 @@ fn apply_known_shape_constraints(
     dependent_schemas::apply(name, schema, node, doc, active_refs, false)?;
     conditionals::apply(name, schema, node, doc, active_refs, false)?;
     property_names::apply(name, schema, node, doc, active_refs, false)?;
-    if node.repeating {
+    if tuple_frames::is_single_frame(node) {
+        tuple_frames::apply_array_constraints(name, schema, node, doc, active_refs)
+    } else if node.repeating {
         ranges::validate_ignored(name, schema)?;
         multiples::validate_ignored(name, schema)?;
         item_counts::apply(name, schema, node, false)?;
@@ -1161,6 +1169,7 @@ fn attach_dynamic_fields(
         }
     };
     let value = parse("*", additional, doc, active_refs)?;
+    tuple_frames::reject_dynamic_value(&group.name, &value, "additionalProperties")?;
     let name = group.name.clone();
     group
         .with_dynamic_fields(value)
@@ -1366,11 +1375,8 @@ pub fn export(schema: &SchemaNode) -> Result<String, JsonFormatError> {
             name: schema.name.clone(),
         });
     }
-    // Without frame rendering a tuple would export as an object schema.
-    if schema.contains_json_tuple() {
-        return Err(JsonFormatError::UnsupportedJsonTupleFrameExport {
-            schema: schema.name.clone(),
-        });
+    if let Err((name, reason)) = tuple_frames::check_tree(schema) {
+        return Err(JsonFormatError::InvalidJsonTupleFrameMetadata { name, reason });
     }
     if !schema.json_allowed_values_tree_is_valid() {
         return Err(JsonFormatError::InvalidAllowedValuesMetadata {
