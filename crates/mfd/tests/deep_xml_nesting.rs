@@ -109,3 +109,65 @@ fn packaged_schema_past_the_xsd_depth_limit_falls_back_with_a_warning() {
         imported.warnings
     );
 }
+
+/// A design whose source schema reaches its declarations through a long
+/// chain of include files on disk imports them instead of overflowing the
+/// stack.
+#[test]
+fn design_schema_behind_a_long_include_chain_imports() {
+    const FILES: usize = 10_000;
+    let directory =
+        std::env::temp_dir().join(format!("ferrule_mfd_include_chain_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&directory);
+    std::fs::create_dir_all(&directory).unwrap();
+    let xs = r#"xmlns:xs="http://www.w3.org/2001/XMLSchema""#;
+    for index in 1..FILES {
+        let body = if index + 1 < FILES {
+            format!(r#"<xs:include schemaLocation="chain{}.xsd"/>"#, index + 1)
+        } else {
+            r#"<xs:complexType name="CatalogType"><xs:sequence><xs:element name="Book" minOccurs="0" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Title" type="xs:string"/></xs:sequence><xs:attribute name="isbn" type="xs:string"/><xs:attribute name="pages" type="xs:int"/></xs:complexType></xs:element></xs:sequence></xs:complexType>"#
+                .to_string()
+        };
+        std::fs::write(
+            directory.join(format!("chain{index}.xsd")),
+            format!("<xs:schema {xs}>{body}</xs:schema>"),
+        )
+        .unwrap();
+    }
+    std::fs::write(
+        directory.join("books-source.xsd"),
+        format!(
+            r#"<xs:schema {xs} elementFormDefault="qualified"><xs:include schemaLocation="chain1.xsd"/><xs:element name="Catalog" type="CatalogType"/></xs:schema>"#
+        ),
+    )
+    .unwrap();
+    std::fs::write(
+        directory.join("books.mfd"),
+        include_bytes!("fixtures/books.mfd"),
+    )
+    .unwrap();
+    std::fs::write(
+        directory.join("books-target.xsd"),
+        include_bytes!("fixtures/books-target.xsd"),
+    )
+    .unwrap();
+    let design = directory.join("books.mfd");
+    let imported = std::thread::Builder::new()
+        .stack_size(8 << 20)
+        .spawn(move || mfd::import(&design))
+        .unwrap()
+        .join()
+        .unwrap();
+    std::fs::remove_dir_all(&directory).unwrap();
+    let imported = imported.unwrap();
+    assert!(
+        !imported
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("books-source.xsd")),
+        "{:?}",
+        imported.warnings
+    );
+    let book = imported.project.source.child("Book").unwrap();
+    assert!(book.repeating && book.child("Title").is_some(), "{book:#?}");
+}

@@ -163,6 +163,13 @@ for a complete format standard or another product.
   named types, 85 of anonymous types, or 128 derivation or group hops fit.
   Deeper schemas return a typed depth-limit error before stack exhaustion; MFD
   import then falls back to the component's entry tree with a warning.
+  Following `xs:include` and `xs:import` links from one schema file to the
+  next takes no level and no stack: the documents are visited depth first in
+  document order from a heap worklist, and a document already visited is not
+  expanded again, so cycles end. A filesystem import may therefore follow a
+  chain of any length, and each file in it costs only its bounded read.
+  Imports through an `XmlSchemaByteReader`, including MFD packages, read at
+  most 64 distinct documents and make at most 4,096 reads.
   Because mapping paths use local field names, strict wildcard declarations
   with the same local name collapse onto one port only when their complete
   typed shapes match. The port retains every exact expanded name and ordered
