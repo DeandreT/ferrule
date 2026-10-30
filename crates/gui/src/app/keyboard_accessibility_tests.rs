@@ -634,7 +634,6 @@ fn keyboard_accessibility_gap_every_tab_stop_is_visible() {
 }
 
 #[test]
-#[ignore = "keyboard gap: Escape does not close modal dialogs (see docs/qualification/keyboard-only-editor.md)"]
 fn keyboard_accessibility_gap_escape_closes_modal_dialogs() {
     let (_scratch, path) = saved_project();
     let mut failures = Vec::new();
@@ -660,7 +659,6 @@ fn keyboard_accessibility_gap_escape_closes_modal_dialogs() {
 }
 
 #[test]
-#[ignore = "keyboard gap: opening a dialog leaves focus outside it (see docs/qualification/keyboard-only-editor.md)"]
 fn keyboard_accessibility_gap_opening_a_dialog_focuses_it() {
     let (_scratch, path) = saved_project();
     let mut harness = editor(&path);
@@ -682,7 +680,6 @@ fn keyboard_accessibility_gap_opening_a_dialog_focuses_it() {
 }
 
 #[test]
-#[ignore = "keyboard gap: closing a dialog does not restore focus (see docs/qualification/keyboard-only-editor.md)"]
 fn keyboard_accessibility_gap_closing_a_dialog_restores_focus() {
     let (_scratch, path) = saved_project();
     let mut harness = editor(&path);
@@ -701,7 +698,6 @@ fn keyboard_accessibility_gap_closing_a_dialog_restores_focus() {
 }
 
 #[test]
-#[ignore = "keyboard gap: dialog footer Tab order differs from visual order (see docs/qualification/keyboard-only-editor.md)"]
 fn keyboard_accessibility_gap_dialog_footer_tab_order_is_visual() {
     let (_scratch, path) = saved_project();
     let mut harness = editor(&path);

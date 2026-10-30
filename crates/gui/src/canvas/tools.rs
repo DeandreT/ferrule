@@ -828,7 +828,10 @@ pub(crate) fn toolbar(
     let picker_keyboard = !search_open
         && !egui::Popup::is_any_open(ui.ctx())
         && !GraphViewer::properties_open(ui.ctx());
-    let escape = (!editing || (!state.picker.is_empty() && picker_keyboard))
+    // Another open modal takes Escape as Cancel; it is drawn after the canvas,
+    // so leave the key unconsumed. The connection picker is handled here.
+    let escape = !crate::ui_kit::other_modal_open(ui.ctx(), id.with("picker"))
+        && (!editing || (!state.picker.is_empty() && picker_keyboard))
         && ui.input_mut(|input| input.consume_key(egui::Modifiers::NONE, egui::Key::Escape));
     if !state.picker.is_empty() {
         if escape {
