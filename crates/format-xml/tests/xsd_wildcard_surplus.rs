@@ -9,7 +9,7 @@ use format_xml::{XmlFormatError, from_str, to_string, xsd};
 use ir::{
     Instance, SchemaNode, Value, XML_ELEMENTS_FIELD, XML_LOCAL_NAME_FIELD, XML_MIXED_CONTENT_FIELD,
     XML_MIXED_CONTENT_VALUE_FIELD, XML_NAMESPACE_URI_FIELD, XML_NODE_NAME_FIELD, XML_TEXT_FIELD,
-    XmlWildcardProcessContents,
+    XmlNamespace, XmlWildcardProcessContents,
 };
 
 const TARGET: &str = "urn:ferrule:wildcard-surplus:t";
@@ -676,33 +676,43 @@ fn nil_first_occurrences_keep_later_extras() -> Result<(), Box<dyn Error>> {
 }
 
 #[test]
-fn declarations_without_namespace_identity_match_qualified_items_by_name()
+fn unqualified_declarations_leave_qualified_look_alikes_to_the_wildcard()
 -> Result<(), Box<dyn Error>> {
     let schema = import(&unqualified_schema("", REPEATING_LAX, ""), "Root")?;
     assert!(
         schema
             .child("Head")
-            .is_some_and(|head| head.xml_namespace.is_none())
+            .is_some_and(|head| head.xml_namespace == Some(XmlNamespace::Unqualified))
     );
     let instance = round_trip(
         &schema,
-        r#"<Root><Head>1</Head><x:Head xmlns:x="urn:x">2</x:Head></Root>"#,
+        r#"<Root><x:Head xmlns:x="urn:x">q</x:Head><Head>1</Head></Root>"#,
     )?;
-    let item = &generic_items(&instance)?[0];
-    assert_eq!(item.field(XML_NAMESPACE_URI_FIELD), Some(&text("urn:x")));
+    assert_eq!(instance.field("Head"), Some(&text("1")));
+    let items = generic_items(&instance)?;
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].field(XML_LOCAL_NAME_FIELD), Some(&text("Head")));
+    assert_eq!(
+        items[0].field(XML_NAMESPACE_URI_FIELD),
+        Some(&text("urn:x"))
+    );
+    assert_eq!(items[0].field(XML_TEXT_FIELD), Some(&text("q")));
+    let output = to_string(&schema, &instance)?;
+    assert!(
+        output.contains(r#"<Head xmlns="urn:x">q</Head>"#),
+        "{output}"
+    );
 
-    // Read alone, `x:Head` fills the typed field, so the writer refuses a
-    // generic `x:Head` while that field is empty.
+    // Read alone, `x:Head` stays generic, so the writer keeps it generic
+    // while the typed field is empty.
     let constructed = with_field(
         &with_field(&instance, "Head", Instance::Scalar(Value::Null)),
         XML_ELEMENTS_FIELD,
-        Instance::Repeated(vec![item.clone()]),
+        Instance::Repeated(vec![items[0].clone()]),
     );
-    assert!(matches!(
-        to_string(&schema, &constructed),
-        Err(XmlFormatError::KnownXmlWildcardElementRequiresTypedField { name, namespace })
-            if name == "Head" && namespace == "urn:x"
-    ));
+    let output = to_string(&schema, &constructed)?;
+    assert!(!output.contains("<Head>"), "{output}");
+    assert_eq!(from_str(&output, &schema)?, constructed);
     Ok(())
 }
 

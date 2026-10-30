@@ -239,7 +239,7 @@ impl ParseState {
         path
     }
 
-    fn finish(self, schema: SchemaNode) -> Result<SchemaNode, XmlFormatError> {
+    fn finish(self, mut schema: SchemaNode) -> Result<SchemaNode, XmlFormatError> {
         // Checked first: the levels past the limit were not imported, so the
         // other refusals may only describe the truncated schema.
         if self.depth_limit_reached {
@@ -274,6 +274,7 @@ impl ParseState {
                 limit: MAX_MATERIALIZED_SCHEMA_ELEMENTS,
             });
         }
+        qualify_wildcard_siblings(&mut schema);
         if let Some(group) = invalid_repeating_sequence_group(&schema) {
             return Err(XmlFormatError::InvalidRepeatingSequenceSchema {
                 group: group.to_string(),
@@ -310,6 +311,46 @@ impl ParseState {
     fn reject_wildcard(&mut self, error: XmlFormatError) {
         self.unsupported_wildcard.get_or_insert(error);
     }
+}
+
+/// Beside a `lax` or `strict` element wildcard, a qualified element with a
+/// declared local name is a valid wildcard item rather than that declaration.
+/// Element declarations without namespace identity, which only a schema
+/// without a target namespace yields there, therefore take their explicit
+/// unqualified identity. Closed content keeps the legacy local-name match,
+/// since no valid instance has such a look-alike.
+fn qualify_wildcard_siblings(node: &mut SchemaNode) {
+    if is_virtual_wildcard(node) {
+        return;
+    }
+    let SchemaKind::Group {
+        children, dynamic, ..
+    } = &mut node.kind
+    else {
+        return;
+    };
+    let open = children.iter().any(|child| {
+        child.name == XML_ELEMENTS_FIELD
+            && child.xml_wildcard_process_contents != XmlWildcardProcessContents::Skip
+    });
+    for child in children.iter_mut() {
+        if open
+            && !child.attribute
+            && !child.text
+            && !is_virtual_wildcard(child)
+            && child.xml_namespace.is_none()
+        {
+            child.xml_namespace = Some(XmlNamespace::Unqualified);
+        }
+        qualify_wildcard_siblings(child);
+    }
+    if let Some(dynamic) = dynamic {
+        qualify_wildcard_siblings(dynamic);
+    }
+}
+
+fn is_virtual_wildcard(node: &SchemaNode) -> bool {
+    node.name == XML_ELEMENTS_FIELD || node.name == XML_ATTRIBUTES_FIELD
 }
 
 /// Reads one XML Schema document with bounded UTF-8/UTF-16 decoding.
