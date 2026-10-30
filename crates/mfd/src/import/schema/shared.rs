@@ -87,7 +87,7 @@ impl XmlSchemaResource {
             }
         };
         retain_xsd_resource_refusal(resources, &result);
-        result
+        result.and_then(refuse_wildcard_exclusions)
     }
 
     pub(in crate::import) fn import_type(
@@ -120,7 +120,7 @@ impl XmlSchemaResource {
             }
         };
         retain_xsd_resource_refusal(resources, &result);
-        result
+        result.and_then(refuse_wildcard_exclusions)
     }
 
     pub(in crate::import) fn import_type_base(
@@ -281,6 +281,37 @@ pub(in crate::import) fn read_xml_schema_file(
         let result = schema_path.import_root(root, resources);
         retain_xsd_resource_refusal(resources, &result);
         result.map_err(XmlSchemaReadError::Xsd)
+    }
+}
+
+/// MFD components cannot carry XSD 1.1 wildcard exclusions yet, so a schema
+/// that uses them fails like any other unsupported wildcard and the caller's
+/// usual fallback applies.
+fn refuse_wildcard_exclusions(
+    schema: SchemaNode,
+) -> Result<SchemaNode, format_xml::XmlFormatError> {
+    fn first_exclusion(node: &SchemaNode) -> Option<&SchemaNode> {
+        if node.has_xml_wildcard_exclusions() {
+            return Some(node);
+        }
+        let ir::SchemaKind::Group {
+            children, dynamic, ..
+        } = &node.kind
+        else {
+            return None;
+        };
+        children
+            .iter()
+            .find_map(first_exclusion)
+            .or_else(|| dynamic.as_deref().and_then(first_exclusion))
+    }
+    const REASON: &str = "XSD 1.1 wildcard exclusions are not supported by MFD import";
+    match first_exclusion(&schema) {
+        None => Ok(schema),
+        Some(node) if node.name == ir::XML_ATTRIBUTES_FIELD => {
+            Err(format_xml::XmlFormatError::UnsupportedXmlAttributeWildcard { reason: REASON })
+        }
+        Some(_) => Err(format_xml::XmlFormatError::UnsupportedXmlWildcard { reason: REASON }),
     }
 }
 

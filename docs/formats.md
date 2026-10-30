@@ -25,7 +25,7 @@ for a complete format standard or another product.
 
 | Format | Source | Target | Selected by | Implemented capability |
 | --- | :---: | :---: | --- | --- |
-| XML | Yes | Yes | `.xml` or `xml_document` | Hierarchical instance I/O with namespace-aware element and attribute names; XSD-lite with local import graphs, compatible `complexContent` and scalar-text/attribute-only `simpleContent` derivations, and named model and attribute groups; `xs:any` and `xs:anyAttribute` wildcards with `##any`, `##other`, `##local`, `##targetNamespace`, or listed-namespace constraints under `skip`, declaration-aware `lax`, or closed `strict` processing; bounded DTD import with internal content-model parameter entities; `xsi:nil`, generic elements, and ordered mixed content |
+| XML | Yes | Yes | `.xml` or `xml_document` | Hierarchical instance I/O with namespace-aware element and attribute names; XSD-lite with local import graphs, compatible `complexContent` and scalar-text/attribute-only `simpleContent` derivations, and named model and attribute groups; `xs:any` and `xs:anyAttribute` wildcards with `##any`, `##other`, `##local`, `##targetNamespace`, or listed-namespace constraints under `skip`, declaration-aware `lax`, or closed `strict` processing, plus XSD 1.1 `notNamespace` and `notQName` exclusions on `skip` and `lax` element wildcards and on attribute wildcards; bounded DTD import with internal content-model parameter entities; `xsi:nil`, generic elements, and ordered mixed content |
 | JSON | Yes | Yes | `.json`; `.jsonl`, `.ndjson`, or `json_lines` for JSON Lines | Hierarchical instance I/O and JSON Lines; JSON Schema import with traversal-confined local-file and document-local references, compatible structural `allOf` intersections, bounded exact scalar `const`/`enum` domains, numeric ranges and decimal `multipleOf`, array-count, `contains`, object-property-count, and Unicode string-length intervals, structural `uniqueItems`, bounded portable `pattern` assertions, closed homogeneous `patternProperties`, property dependencies, dependent-schema predicates, single-property-presence conditionals, `propertyNames`, open or closed object contracts, heterogeneous scalar type arrays, exact scalar `anyOf`, pairwise-disjoint scalar `oneOf`, selected object alternatives, nullable scalar/object/array shapes, and typed or unconstrained dynamic properties |
 | JSON5 | Yes | Yes | `.json5` or `json5` | One schema-shaped document in JSON5 instance syntax with ordinary JSON schemas and the same typed mapping boundary; input accepts comments, trailing commas, and single-quoted strings, and is limited to 64 MiB and 128 nested containers; output omits property-name quotes where JSON5 allows; CLI and browser runtime |
 | CSV | Yes | Yes | `.csv` or `.txt` | Delimited flat rows with a configurable delimiter, printable or disabled quoting, headers, optional present-empty text, and optional UTF-8 BOM output |
@@ -63,7 +63,8 @@ for a complete format standard or another product.
 
 | Format | Profile |
 | --- | --- |
-| XML | XSD 1.1 wildcard exclusions (`notNamespace`, `notQName`) and `xs:any` inside `xs:all` |
+| XML | XSD 1.1 wildcard exclusions on strict element wildcards; exclusions beyond 64 `notNamespace` members, 1,024 `notQName` tokens or 256 resolved names; `##defined` when an unresolved include or import, `xs:redefine` or `xs:override` keeps the declaration set from being closed; `##targetNamespace`, namespace-less QNames or `##definedSibling` elements in a chameleon document included from several target namespaces; exclusions on a wildcard that has a `vc:` conditional-inclusion attribute or sits inside an element that has one; and an element whose `xsi:type` alternatives resolve one wildcard to different excluded names |
+| XML | `xs:any` inside `xs:all` |
 | XML | Strict wildcards whose matching declaration set is not closed, same-local-name strict declarations with incompatible typed shapes, strict wildcards that follow a single-occurrence declaration of a name they match, and strict wildcards outside a choice whose port shares a local name with a declaration covering only some of its namespaces |
 | XML | Element wildcard occurrences other than `1..1`, `0..1`, or `0..unbounded`, and optional single-occurrence `skip` wildcards |
 | XML | Sibling elements or attributes that differ only by namespace, because mapping paths use local field names |
@@ -159,9 +160,23 @@ for a complete format standard or another product.
   that declaration for the namespaces it covers. A strict wildcard after a
   single-occurrence declaration of the same name is refused, because it has
   no generic fallback for that declaration's extra occurrences.
-  Strict attribute processing rejects undeclared runtime names. XSD 1.1
-  exclusions, unordered wildcard compositors, and unresolved strict declaration
-  sets remain outside the subset.
+  Strict attribute processing rejects undeclared runtime names.
+  XSD 1.1 `notNamespace` and `notQName` exclusions apply to `skip` and `lax`
+  element wildcards and to attribute wildcards. Import resolves them to exact
+  expanded names: `##defined` takes the matching global declarations, and
+  `##definedSibling` takes the element declarations of the complete governing
+  type, including a derived type's own elements and substitution members. A
+  lax wildcard projects no typed field for an excluded name, and reads and
+  writes refuse excluded names right after the namespace check. With
+  exclusions, an attribute wildcard leaves declared attributes to their typed
+  fields in every mode. XSD export writes the names as explicit QNames, which
+  need an XSD 1.1 processor. The `vc:` refusal applies only to wildcards with
+  exclusions: a schema without them still imports with `vc:minVersion` on
+  `xs:schema`. Strict element wildcards with exclusions, unordered wildcard
+  compositors, and unresolved strict declaration sets remain outside the
+  subset. MFD import falls back to the entry tree when the imported schema
+  keeps exclusions; a wildcard the importer parses and then discards does not
+  trigger that fallback.
   XSD import keeps at most 256 nesting and reference levels open at once.
   Each element declaration or reference, named complex type reference
   (including a derivation base), complex type content, compositor, and model

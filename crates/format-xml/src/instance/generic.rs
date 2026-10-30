@@ -16,11 +16,6 @@ use super::{
     write_ordered_mixed_content, xml_text,
 };
 
-/// Native reading and writing cannot yet refuse excluded names, so a group
-/// that carries them fails closed rather than widening the wildcard.
-const EXCLUDED_NAMES_UNSUPPORTED: &str =
-    "XSD 1.1 wildcard excluded names are not supported by native XML reading or writing";
-
 pub(super) fn read_generic_element(
     element: &roxmltree::Node,
     schema: &SchemaNode,
@@ -47,9 +42,14 @@ pub(super) fn read_generic_element(
             element.tag_name().namespace(),
         ));
     }
-    if schema.xml_wildcard_excluded_names.is_some() {
-        return Err(XmlFormatError::UnsupportedXmlWildcard {
-            reason: EXCLUDED_NAMES_UNSUPPORTED,
+    if excludes(
+        schema,
+        element.tag_name().namespace(),
+        element.tag_name().name(),
+    ) {
+        return Err(XmlFormatError::XmlWildcardExcludedName {
+            name: element.tag_name().name().to_string(),
+            namespace: namespace_label(element.tag_name().namespace()),
         });
     }
     if schema.xml_wildcard_namespace.is_none()
@@ -211,7 +211,10 @@ pub(super) fn read_group_fields(
             let items = element
                 .attributes()
                 .filter(|attribute| {
-                    child.xml_wildcard_process_contents == XmlWildcardProcessContents::Skip
+                    // With exclusions, declared attributes go to their typed
+                    // fields only, as they do for `lax` and `strict`.
+                    (child.xml_wildcard_process_contents == XmlWildcardProcessContents::Skip
+                        && !child.has_xml_wildcard_exclusions())
                         || !children.iter().any(|known| {
                             known.attribute && attribute_matches_schema(attribute, known)
                         })
@@ -228,9 +231,10 @@ pub(super) fn read_group_fields(
                             },
                         );
                     }
-                    if child.xml_wildcard_excluded_names.is_some() {
-                        return Err(XmlFormatError::UnsupportedXmlAttributeWildcard {
-                            reason: EXCLUDED_NAMES_UNSUPPORTED,
+                    if excludes(child, attribute.namespace(), attribute.name()) {
+                        return Err(XmlFormatError::XmlAttributeWildcardExcludedName {
+                            name: attribute.name().to_string(),
+                            namespace: namespace_label(attribute.namespace()),
                         });
                     }
                     if child.xml_wildcard_process_contents
@@ -405,12 +409,18 @@ fn validate_surplus_read(
     // Unordered groups write typed fields in schema order, so an extra
     // occurrence held by an earlier wildcard would read back as the first.
     let position = |name: &str| children.iter().position(|child| child.name == name);
+    // A name the wildcard refuses reports that refusal when it is read.
     if !ordered
         && position(&declared.name) > position(&wildcard.name)
         && wildcard
             .xml_wildcard_namespace
             .as_ref()
             .is_none_or(|constraint| constraint.allows(node.tag_name().namespace()))
+        && !excludes(
+            wildcard,
+            node.tag_name().namespace(),
+            node.tag_name().name(),
+        )
     {
         return Err(surplus_error(
             "the declared element follows the wildcard and element order is not retained",
@@ -494,6 +504,18 @@ fn attribute_matches_schema(attribute: &roxmltree::Attribute<'_, '_>, schema: &S
             .xml_namespace
             .as_ref()
             .is_none_or(|namespace| namespace.matches(attribute.namespace()))
+}
+
+/// Whether a wildcard group's own excluded names contain this expanded name.
+fn excludes(schema: &SchemaNode, namespace: Option<&str>, local: &str) -> bool {
+    schema
+        .xml_wildcard_excluded_names
+        .as_ref()
+        .is_some_and(|names| {
+            names
+                .iter()
+                .any(|name| name.local() == local && name.namespace().matches(namespace))
+        })
 }
 
 fn namespace_label(namespace: Option<&str>) -> String {
@@ -673,9 +695,10 @@ pub(super) fn write_generic_element<W: std::io::Write>(
     {
         return Err(wildcard_namespace_mismatch(name, runtime_namespace));
     }
-    if schema.xml_wildcard_excluded_names.is_some() {
-        return Err(XmlFormatError::UnsupportedXmlWildcard {
-            reason: EXCLUDED_NAMES_UNSUPPORTED,
+    if excludes(schema, runtime_namespace, name) {
+        return Err(XmlFormatError::XmlWildcardExcludedName {
+            name: name.to_string(),
+            namespace: namespace_label(runtime_namespace),
         });
     }
     if schema.xml_wildcard_process_contents != XmlWildcardProcessContents::Skip
@@ -948,9 +971,10 @@ pub(super) fn push_generic_attributes<'a>(
                 namespace: namespace_label(namespace),
             });
         }
-        if schema.xml_wildcard_excluded_names.is_some() {
-            return Err(XmlFormatError::UnsupportedXmlAttributeWildcard {
-                reason: EXCLUDED_NAMES_UNSUPPORTED,
+        if excludes(schema, namespace, attribute_name) {
+            return Err(XmlFormatError::XmlAttributeWildcardExcludedName {
+                name: attribute_name.to_string(),
+                namespace: namespace_label(namespace),
             });
         }
         if schema.xml_wildcard_process_contents == XmlWildcardProcessContents::Strict {
@@ -959,7 +983,10 @@ pub(super) fn push_generic_attributes<'a>(
                 namespace: namespace_label(namespace),
             });
         }
-        if schema.xml_wildcard_process_contents != XmlWildcardProcessContents::Skip
+        // With exclusions, a `skip` group also leaves declared attributes to
+        // their typed fields, matching how it reads them.
+        if (schema.xml_wildcard_process_contents != XmlWildcardProcessContents::Skip
+            || schema.has_xml_wildcard_exclusions())
             && known_attributes.iter().any(|known| {
                 known.attribute
                     && known.name == attribute_name
