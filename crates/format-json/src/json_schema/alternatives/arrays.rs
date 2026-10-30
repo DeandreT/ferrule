@@ -20,7 +20,10 @@ pub(in crate::json_schema) fn parse_scalar_domain_array_any_of(
     for alternative in alternatives {
         match classify_exact_array_alternative(name, alternative, doc, active_refs)? {
             ArrayAlternative::Null => nullable = true,
-            ArrayAlternative::Array(candidate) => arrays.push(*candidate),
+            ArrayAlternative::Array(candidate) => {
+                super::super::tuple_frames::reject_alternative(name, &candidate)?;
+                arrays.push(*candidate);
+            }
             ArrayAlternative::Other => return Ok(None),
         }
     }
@@ -53,7 +56,9 @@ pub(super) fn set_container_nullable(
     };
     node.container_nullable = nullable;
     if let Some(item_nullable) = object_item_nullable {
-        node.json_object_item_nullable = (nullable || item_nullable).then_some(item_nullable);
+        // A repeating tuple frame always states each tuple's null admission.
+        node.json_object_item_nullable =
+            (nullable || item_nullable || node.json_tuple.is_some()).then_some(item_nullable);
     }
     Ok(())
 }

@@ -1,7 +1,7 @@
 //! A referenced JSON Schema whose positional array items differ keeps the
 //! schema-fallback diagnostic and the design's entry tree. The importer
-//! refuses such schemas today; once it models them as tuple frames (#1227),
-//! the MFD boundary refuses the frames until entries can address them (#1230).
+//! models such schemas as tuple frames, and the MFD boundary refuses the
+//! frames until entries can address them (#1230).
 
 use std::error::Error;
 use std::path::{Path, PathBuf};
