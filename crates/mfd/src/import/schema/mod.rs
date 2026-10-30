@@ -333,6 +333,10 @@ const JSON_DYNAMIC_STRING_PORT: &str = "\u{1f}ferrule-json-dynamic-string";
 pub(super) const SOURCE_DOCUMENT_PATH_PORT: &str = "\u{1f}ferrule-source-document-path";
 pub(super) const SOURCE_INPUT_DOCUMENT_PATH_PORT: &str = "\u{1f}ferrule-source-input-document-path";
 pub(super) const TARGET_DOCUMENT_PATH_PORT: &str = "\u{1f}ferrule-target-document-path";
+/// The `n` input of a transposed XLSX target row after the driver row. Its
+/// second path segment is the row's one-based position among the data rows.
+/// It must carry the same feed as the driver row's `n`, which owns the field.
+pub(super) const TRANSPOSED_ROW_INDEX_PORT: &str = "\u{1f}ferrule-xlsx-transposed-row-index";
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum JsonDynamicPort {

@@ -157,6 +157,13 @@ impl<'a> TargetExport<'a> {
         let mut explicit_text_ports = explicit_scope_text_ports(spec.schema, spec.root);
         explicit_text_ports.extend(mapped_scope_plans.explicit_text_ports());
         explicit_text_ports.extend(xbrl::explicit_text_ports(spec.schema, spec.options));
+        let mut ports = PortTree::build_with_explicit_text(spec.schema, keys, &explicit_text_ports);
+        if transposed_target(format, spec.options) {
+            require_plain_record_scope(spec.root)?;
+            // Every worksheet row reads the record's column from its own `n`.
+            let extra_rows = spec.options.xlsx_rows.len().saturating_sub(1);
+            ports.add_fanout(&["n".to_string()], extra_rows, keys);
+        }
         Ok(Self {
             component_name: spec.component_name,
             schema: spec.schema,
@@ -169,7 +176,7 @@ impl<'a> TargetExport<'a> {
                 SideFormat::Csv | SideFormat::FixedWidth | SideFormat::Xlsx | SideFormat::Db
             ) || (format == SideFormat::Json && spec.schema.repeating),
             force_root_port,
-            ports: PortTree::build_with_explicit_text(spec.schema, keys, &explicit_text_ports),
+            ports,
             branches: concatenation::TargetBranches::build(
                 spec.schema,
                 spec.root,
@@ -190,6 +197,28 @@ impl<'a> TargetExport<'a> {
             document_path_port,
         })
     }
+}
+
+fn transposed_target(format: SideFormat, options: &FormatOptions) -> bool {
+    format == SideFormat::Xlsx && !options.xlsx_rows.is_empty()
+}
+
+/// The reference application iterates a transposed target's Cell feeds
+/// directly, so only an uncontrolled source iteration with plain field
+/// bindings has an equivalent design.
+fn require_plain_record_scope(root: &Scope) -> Result<(), MfdError> {
+    let plain = Scope {
+        iteration: root.iteration.clone(),
+        bindings: root.bindings.clone(),
+        ..Scope::default()
+    };
+    if !matches!(root.iteration, ScopeIteration::Source(_)) || *root != plain {
+        return Err(MfdError::Unsupported(
+            "a transposed XLSX target exports only an uncontrolled source iteration with field bindings"
+                .to_string(),
+        ));
+    }
+    Ok(())
 }
 
 fn explicit_scope_text_ports(schema: &SchemaNode, root: &Scope) -> BTreeSet<Vec<String>> {
@@ -1144,6 +1173,11 @@ fn prepare_export_mode(
         target_components.push(rendered);
     }
     out.push_str(&components);
+    for target in &targets {
+        if transposed_target(target.format, target.options) {
+            xlsx::connect_transposed_target(&target.ports, &mut edges, &mut structural_edges);
+        }
+    }
     let (structural_edge_keys, edge_metadata) = render_edge_metadata(&structural_edges, &mut keys);
     let _ = write!(
         out,

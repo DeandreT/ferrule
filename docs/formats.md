@@ -30,7 +30,7 @@ for a complete format standard or another product.
 | JSON5 | Yes | Yes | `.json5` or `json5` | One schema-shaped document in JSON5 instance syntax with ordinary JSON schemas and the same typed mapping boundary; input accepts comments, trailing commas, and single-quoted strings, and is limited to 64 MiB and 128 nested containers; output omits property-name quotes where JSON5 allows; CLI and browser runtime |
 | CSV | Yes | Yes | `.csv` or `.txt` | Delimited flat rows with a configurable delimiter, printable or disabled quoting, headers, optional present-empty text, and optional UTF-8 BOM output |
 | Fixed-width | Yes | Yes | `fixed_width` layout | Validated Unicode-scalar column layouts, configurable fill, record separators, and empty-value handling |
-| XLSX | Yes | Yes | `.xlsx` | Typed worksheets, flat, transposed, composite, worksheet-set, and grid source shapes, flat and hierarchical targets, and update-existing writes for flat and hierarchical targets |
+| XLSX | Yes | Yes | `.xlsx` | Typed worksheets, flat, transposed, composite, worksheet-set, and grid source shapes, flat, transposed, and hierarchical targets, and update-existing writes for flat and hierarchical targets |
 | SQLite | Yes | Yes | `.db`, `.sqlite`, or `.sqlite3` | Read-only table introspection, typed reads, imported relational query shapes, declared read-only single-table queries with typed named parameters, validated declared relations, structured XML text columns, and idempotent full-replace writes |
 | X12 / EDIFACT | Yes | Yes | `.edi`, `.x12`, or `.edifact` with a schema dialect, or `edi_kind` | Schema-guided interchange I/O, custom syntax separators, repetitions, qualifier loops, retained field lengths and code lists, optional lenient parsing, and bounded output validation that leaves the destination unchanged on failure |
 | HL7 v2 / TRADACOMS | Yes | Yes | `.hl7` or an EDI schema dialect | Bounded schema-guided message I/O, retained field lengths and code lists, HL7 escapes and subcomponents, and TRADACOMS release escaping |
@@ -82,9 +82,10 @@ for a complete format standard or another product.
 | JSON5 | Native `.mfd` export of JSON5 boundaries |
 | CSV | Unquoted output of field text that requires escaping when quoting is disabled |
 | Fixed-width | Combining a fixed-width layout with CSV dialect options |
-| XLSX | Grid, worksheet-set, composite, and transposed output, which are input-only layouts |
+| XLSX | Grid, worksheet-set, and composite output, which are input-only layouts |
 | XLSX | Update-existing writes for grid, worksheet-set, composite, and transposed layouts |
 | XLSX | Update-existing writes on payload, standard-stream, and pipeline-preview runs, in pipeline `.mfd` final targets, and in generated code |
+| XLSX | Transposed output on standard-stream and bounded-document runs |
 | SQLite | Other database engines, general SQL mutation, and multi-database connections |
 | SQLite | SQL text, joins, views and declared queries on payload, stream, REST, pipeline, generated-code and MFD routes |
 | X12 / EDIFACT | X12 CR LF segment terminators, and whitespace or invisible X12 element, component, repetition or release separators |
@@ -580,10 +581,36 @@ for a complete format standard or another product.
   rewrite, such as absolute drawing anchors or unmodeled chart types. Worksheet
   features the library does not model are dropped, for example `extLst`
   sparklines, x14 conditional formats, `ignoredErrors`, protected ranges, and
-  custom sheet views. Grid, worksheet-set, composite, and transposed layouts
-  are input-only and refuse update-existing. Payload, standard-stream, and
+  custom sheet views. Transposed targets always write a new workbook, and grid,
+  worksheet-set, and composite layouts are input-only; all four refuse
+  update-existing. Payload, standard-stream, and
   pipeline-preview runs refuse it because it needs the persistent workbook,
   and pipeline `.mfd` import and export refuse it on the final target.
+- Transposed XLSX targets (`xlsx_rows` on a target) write each record into one
+  worksheet column and each data field into its selected row, in schema order.
+  There is no header row, and `xlsx_start_row`, `xlsx_columns`, and
+  `xlsx_headers` are refused. Records fill columns from A in order. An integer
+  field named `n` places a record at that column instead (1 to 16,384, each
+  column once), and a missing value then leaves its cell empty. Without `n`,
+  every record needs a value in every row, and at most 16,384 records fit. The
+  first selected row is the driver: a record whose driver value is missing or
+  an empty string is refused, because reading the workbook back would skip
+  that column. Every record is checked before the file is written. The file,
+  payload, and pipeline-preview routes write transposed targets;
+  standard-stream and bounded-document runs refuse them. Generated code
+  returns the target's records as schema-shaped values, as for other XLSX
+  targets, and writes no workbook.
+- In the reference application each transposed target row is an independent
+  run of cells: a missing value adds no cell, so later values in that row move
+  left unless the row's `n` input is connected, and an empty string still adds
+  an empty cell. When `n` repeats, the first value wins and later ones are
+  dropped. Ferrule keeps records aligned instead, so a design without `n`
+  fails on a missing value rather than shifting it, and a repeated `n` is
+  refused. MFD import maps a target's rows to one record per item of the first
+  row's feed, and warns when another row or an `n` input follows a different
+  feed. `n` must be connected to every row from the same value; the reference
+  application positions only the rows whose `n` is connected. Export writes
+  every row's `n` input from the record's `n` binding.
 - EDI output validates every present configured field after wire lexical
   formatting. The bounded report includes all length and code-list violations
   it finds, and validation failures do not replace the destination.

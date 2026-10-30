@@ -686,12 +686,28 @@ pub(super) fn render_schema_component(
             }
             let retained_source_layout = options.xlsx_grid.is_some()
                 || options.xlsx_composite.is_some()
-                || options.xlsx_worksheet_set.is_some()
-                || !options.xlsx_rows.is_empty();
+                || options.xlsx_worksheet_set.is_some();
             if retained_source_layout && side != Side::Source {
                 return Err(MfdError::Unsupported(format!(
                     "the {side_name} XLSX layout is source-only and cannot be exported as a target"
                 )));
+            }
+            if !options.xlsx_rows.is_empty() && side == Side::Target {
+                let xml = super::xlsx::render_transposed_target(
+                    super::xlsx::RenderArgs {
+                        schema,
+                        ports,
+                        instance_path,
+                        options,
+                        component_name,
+                        component_uid,
+                    },
+                    default_output,
+                )?;
+                return Ok(RenderedSchemaComponent {
+                    xml,
+                    siblings: Vec::new(),
+                });
             }
             if let Some(xml) = super::xlsx::render(super::xlsx::RenderArgs {
                 schema,
@@ -1213,6 +1229,10 @@ impl KeyAlloc {
 pub(super) struct PortTree {
     by_abs: BTreeMap<Vec<String>, u32>,
     by_alternative: BTreeMap<(Vec<String>, String), u32>,
+    /// Extra input ports that receive every connection made to a primary
+    /// port, for one field that the reference component reads in several
+    /// places.
+    fanout: BTreeMap<u32, Vec<u32>>,
 }
 
 // Recursive schemas are represented in the IR by finite references. Entry
@@ -1355,7 +1375,21 @@ impl PortTree {
         Self {
             by_abs,
             by_alternative,
+            fanout: BTreeMap::new(),
         }
+    }
+
+    /// Allocates `count` extra input ports that mirror the port at `abs`.
+    pub(super) fn add_fanout(&mut self, abs: &[String], count: usize, keys: &mut KeyAlloc) {
+        let Some(primary) = self.key_for_abs(abs) else {
+            return;
+        };
+        let extra = (0..count).map(|_| keys.next()).collect::<Vec<_>>();
+        self.fanout.entry(primary).or_default().extend(extra);
+    }
+
+    pub(super) fn fanout_keys(&self, primary: u32) -> &[u32] {
+        self.fanout.get(&primary).map_or(&[], Vec::as_slice)
     }
 
     pub(super) fn key_for_abs(&self, abs: &[String]) -> Option<u32> {

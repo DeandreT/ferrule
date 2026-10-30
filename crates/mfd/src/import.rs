@@ -77,6 +77,7 @@ mod target_mixed_content;
 mod target_node_default;
 mod target_node_function;
 mod target_type_cast;
+mod transposed_target;
 mod udf;
 mod unused_xml_source;
 mod xml_root_view;
@@ -3132,6 +3133,7 @@ fn build_target_scope_inner(
             }
         })).flatten();
     let dynamic_target = dynamic_json::prepare_target(target, builder);
+    transposed_target::install(target, builder, &mut scopes);
     let mut iterations = Vec::new();
     let mut bindings = Vec::new();
     let mut float_cast_witnesses = Vec::new();
@@ -3147,7 +3149,9 @@ fn build_target_scope_inner(
         let Some(&from) = edge_from.get(&inpkey) else {
             continue;
         };
-        if target_path.as_slice() == [schema::TARGET_DOCUMENT_PATH_PORT] {
+        if target_path.as_slice() == [schema::TARGET_DOCUMENT_PATH_PORT]
+            || transposed_target::is_row_index_port(target_path)
+        {
             continue;
         }
         if let Some((position, field)) = schema::split_singleton_port(target_path) {
@@ -3389,9 +3393,11 @@ fn build_target_scope_inner(
     scopes.root
 }
 
+/// A record-per-row target without an iterated record writes one record.
 fn ensure_singleton_csv_row_set(target: &SchemaComponent, scopes: &mut ScopeBuilder) {
     let has_row_port = target.ports.values().any(Vec::is_empty);
-    if target.format != ComponentFormat::Csv || has_row_port || scopes.root.iterates() {
+    let record_rows = target.format == ComponentFormat::Csv || transposed_target::is_target(target);
+    if !record_rows || has_row_port || scopes.root.iterates() {
         return;
     }
     let row = std::mem::take(&mut scopes.root);
