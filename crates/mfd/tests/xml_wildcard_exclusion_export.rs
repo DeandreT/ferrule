@@ -1,4 +1,6 @@
-//! `.mfd` export refuses wildcard exclusion metadata before writing anything.
+//! `.mfd` export writes valid wildcard exclusions into the generated XSD
+//! siblings of XML document components and refuses every other placement
+//! before writing anything.
 
 use std::error::Error;
 use std::path::PathBuf;
@@ -99,25 +101,70 @@ fn refused(result: Result<impl std::fmt::Debug, MfdError>) -> bool {
     matches!(result, Err(MfdError::Unsupported(message)) if message.contains("wildcard exclusions"))
 }
 
+fn qualified(uri: &str) -> XmlNamespace {
+    XmlNamespace::qualified(uri).unwrap()
+}
+
+fn names(namespace: XmlNamespace, local: &str) -> XmlWildcardExcludedNames {
+    XmlWildcardExcludedNames::new([XmlExpandedName::new(namespace, local).unwrap()]).unwrap()
+}
+
 #[test]
-fn exclusion_metadata_is_refused_before_any_artifact_is_written() -> Result<(), Box<dyn Error>> {
+fn misplaced_or_unexportable_exclusions_are_refused_before_any_artifact_is_written()
+-> Result<(), Box<dyn Error>> {
     let plain = || wildcard(XmlWildcardNamespaceConstraint::Any);
-    let mut cases = vec![
-        project(
-            document("Source", wildcard(negated())),
-            document("Target", plain()),
-        ),
-        project(document("Source", plain()), document("Target", excluding())),
-    ];
+    let mut cases = Vec::new();
+
+    // Excluded names on a node that is not a wildcard group.
+    let mut head = SchemaNode::scalar("Head", ScalarType::String);
+    head.xml_wildcard_excluded_names = Some(names(XmlNamespace::Unqualified, "Head"));
+    cases.push(project(
+        SchemaNode::group("Source", vec![head, plain()]),
+        document("Target", plain()),
+    ));
+    // A negated namespace set on an ordinary group.
+    let mut ordinary =
+        SchemaNode::group("Body", vec![SchemaNode::scalar("Line", ScalarType::String)]);
+    ordinary.xml_wildcard_namespace = Some(negated());
+    cases.push(project(
+        document("Source", plain()),
+        SchemaNode::group("Target", vec![ordinary]),
+    ));
+    // An excluded name in a namespace the wildcard's own constraint rejects.
+    let mut listed =
+        wildcard(XmlWildcardNamespaceConstraint::list([qualified("urn:ferrule:wx:a")]).unwrap());
+    listed.xml_wildcard_excluded_names = Some(names(qualified("urn:ferrule:wx:b"), "Other"));
+    cases.push(project(
+        document("Source", listed),
+        document("Target", plain()),
+    ));
+    // Valid exclusions on boundaries that export without an XSD sibling.
+    let mut json = project(document("Source", excluding()), document("Target", plain()));
+    json.source_path = Some("source.json".into());
+    cases.push(json);
     let mut named = project(document("Source", plain()), document("Target", plain()));
     named.extra_sources.push(NamedSource {
         name: "lookup".into(),
-        path: "lookup.xml".into(),
+        path: "lookup.csv".into(),
         schema: document("Lookup", excluding()),
         options: Default::default(),
         dynamic_path: None,
     });
     cases.push(named);
+    // An XML serializer schema.
+    let mut serializer = project(document("Source", plain()), document("Target", plain()));
+    serializer.graph.nodes.insert(
+        0,
+        mapping::Node::XmlSerialize {
+            path: vec!["Head".into()],
+            frame: None,
+            schema: Box::new(document("Head", excluding())),
+            declaration: false,
+            indent: false,
+            namespace: None,
+        },
+    );
+    cases.push(serializer);
 
     for (index, project) in cases.iter().enumerate() {
         let directory = TempDir::new()?;
@@ -144,13 +191,53 @@ fn exclusion_metadata_is_refused_before_any_artifact_is_written() -> Result<(), 
         );
         assert!(directory.is_empty()?, "case {index} wrote artifacts");
     }
+    Ok(())
+}
 
-    // The same designs without exclusions are not refused for this reason.
-    let control = project(document("Source", plain()), document("Target", plain()));
-    let directory = TempDir::new()?;
-    assert!(!refused(mfd::preflight_export(
-        &control,
-        &directory.0.join("mapping.mfd")
-    )));
+#[test]
+fn valid_exclusions_on_xml_documents_export_into_their_schema_siblings()
+-> Result<(), Box<dyn Error>> {
+    let plain = || wildcard(XmlWildcardNamespaceConstraint::Any);
+    let mut named = project(document("Source", plain()), document("Target", plain()));
+    named.extra_sources.push(NamedSource {
+        name: "lookup".into(),
+        path: "lookup.xml".into(),
+        schema: document("Lookup", excluding()),
+        options: Default::default(),
+        dynamic_path: None,
+    });
+    let cases = [
+        (
+            project(
+                document("Source", wildcard(negated())),
+                document("Target", plain()),
+            ),
+            "notNamespace",
+        ),
+        (
+            project(document("Source", plain()), document("Target", excluding())),
+            "notQName",
+        ),
+        (named, "notQName"),
+    ];
+    for (index, (project, attribute)) in cases.iter().enumerate() {
+        let directory = TempDir::new()?;
+        let design = directory.0.join("mapping.mfd");
+        assert!(
+            !refused(mfd::preflight_export(project, &design)),
+            "case {index}"
+        );
+        mfd::export(project, &design)?;
+        // Every generated XSD sibling together carries the exclusions.
+        let siblings = std::fs::read_dir(&directory.0)?
+            .map(|entry| entry.map(|entry| entry.path()))
+            .collect::<Result<Vec<_>, _>>()?;
+        let written = siblings
+            .iter()
+            .filter(|path| path.extension().is_some_and(|extension| extension == "xsd"))
+            .map(std::fs::read_to_string)
+            .collect::<Result<String, _>>()?;
+        assert!(written.contains(attribute), "case {index}: {written}");
+    }
     Ok(())
 }

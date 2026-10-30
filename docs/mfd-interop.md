@@ -1317,9 +1317,10 @@ expected to re-import and validate as ferrule projects.
 
 The main remaining gaps are some XML derived-type input shapes beyond compatible
 `complexContent` and scalar-text/attribute-only `simpleContent` hierarchies,
-XSD 1.1 wildcard exclusions, unordered wildcard compositors, unresolved strict
-wildcard declaration sets, heterogeneous or correlated numeric-range scalar
-unions and general heterogeneous arrays,
+XSD 1.1 wildcard exclusions outside the native XSD subset (such as strict
+element wildcards), unordered wildcard compositors, unresolved strict wildcard
+declaration sets, heterogeneous or correlated numeric-range scalar unions and
+general heterogeneous arrays,
 overlapping cross-mode, and incompatible typed-wrapper JSON union composition,
 first-class sequence composition, general SQL and database mutation, broader
 XLSX/PDF/FlexText configuration shapes, taxonomy-level XBRL execution, and
@@ -1487,6 +1488,15 @@ declarations as typed fields and route only undeclared matching names to the
 generic fallback. Direct or named-attribute-group wildcards preserve namespace
 constraints and processing mode; known declarations remain typed, lax unknowns
 remain generic, and strict unknowns reject at the XML boundary.
+XSD 1.1 `notNamespace` and `notQName` exclusions in an XML component's schema
+import with the component, so its runs refuse excluded names at the XML
+boundary. Export writes them into the generated XSD siblings of XML document
+components as explicit names, and re-import restores the same schema. A
+`<selections>` QName that the wildcard's namespace constraint or excluded names
+reject is refused with a warning and adds no typed port, since a selected port
+would admit an element the schema forbids. Export refuses exclusions anywhere
+else before writing anything: on non-XML or WSDL boundaries, in XML serializer
+schemas, in request contracts, and on nodes that are not valid wildcard groups.
 
 The exact supported surface evolves quickly. The
 [workflow-parity roadmap](../ROADMAP.md) records the strategic gaps, while the

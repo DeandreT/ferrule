@@ -69,6 +69,7 @@ mod exception_presence_tests;
 #[cfg(test)]
 mod filter_map_model_tests;
 mod udf;
+mod wildcard_exclusions;
 mod wsdl;
 mod xbrl;
 mod xlsx;
@@ -364,12 +365,7 @@ fn prepare_export_mode(
     path: &Path,
     filesystem: bool,
 ) -> Result<PreparedExport, MfdError> {
-    if project.uses_xml_wildcard_exclusions() {
-        return Err(MfdError::Unsupported(
-            "XSD 1.1 wildcard exclusions (notNamespace/notQName) cannot be preserved in .mfd export"
-                .into(),
-        ));
-    }
+    wildcard_exclusions::validate(project)?;
     // Derived target schema-location hints export as the native default
     // setting. Every other proof sees the unhinted project; only the target
     // renderer receives the per-target setting.
