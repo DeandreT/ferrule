@@ -16,6 +16,8 @@ pub mod json5_boundary;
 mod json5_finite;
 mod json5_unique;
 pub mod json_schema;
+#[doc(hidden)]
+pub mod json_tuple;
 mod null_layers;
 mod prepared;
 mod reader;
@@ -208,10 +210,35 @@ pub enum JsonFormatError {
     InvalidXmlAttributeRequired { node: String },
     #[error("JSON array-wrapper metadata on `{name}` is invalid")]
     InvalidArrayWrapperMetadata { name: String },
+    #[error("JSON tuple frame metadata on `{name}` is invalid: {reason}")]
+    InvalidJsonTupleFrameMetadata {
+        name: String,
+        reason: ir::JsonTupleFrameError,
+    },
     #[error(
-        "schema `{schema}` contains a JSON tuple frame; JSON tuple frames are not supported by native JSON reading or writing until #1225"
+        "recursive JSON schema reference `{node}` expands tuple frame `{frame}` through one of its own positions; recursive tuple frames are not supported"
     )]
-    UnsupportedJsonTupleFrame { schema: String },
+    RecursiveJsonTupleFrame { node: String, frame: String },
+    #[error("`{name}` requires a tuple of {range} items, got {got}")]
+    TupleLengthMismatch {
+        name: String,
+        range: String,
+        got: usize,
+    },
+    #[error(
+        "`{name}` cannot write tuple position {position} as absent before a later present item"
+    )]
+    TupleGap { name: String, position: usize },
+    #[error("`{name}` tuple position {position}: {error}")]
+    TuplePosition {
+        name: String,
+        position: usize,
+        error: Box<JsonFormatError>,
+    },
+    #[error("tuple `{name}` does not declare field `{field}`")]
+    UndeclaredTupleField { name: String, field: String },
+    #[error("non-repeating tuple frame root `{name}` cannot hold root rows or JSON Lines records")]
+    TupleRootRows { name: String },
     #[error(
         "schema `{schema}` contains a JSON tuple frame; JSON Schema export does not support JSON tuple frames until #1227"
     )]
@@ -253,13 +280,6 @@ impl<'a> RecursiveSchemas<'a> {
     /// The schema preflight shared by every native reader and writer,
     /// including prepared schemas, JSON Lines, JSON5 and the borrowed writer.
     fn new(root: &'a SchemaNode) -> Result<Self, JsonFormatError> {
-        // Without frame handling the codec would read and write a tuple as an
-        // object, so it refuses frames anywhere in the schema instead.
-        if root.contains_json_tuple() {
-            return Err(JsonFormatError::UnsupportedJsonTupleFrame {
-                schema: root.name.clone(),
-            });
-        }
         let mut anchors = BTreeMap::new();
         let mut duplicates = BTreeSet::new();
         let mut references = Vec::new();
@@ -273,6 +293,12 @@ impl<'a> RecursiveSchemas<'a> {
             if !node.json_array_wrapper_is_valid() {
                 return Err(JsonFormatError::InvalidArrayWrapperMetadata {
                     name: node.name.clone(),
+                });
+            }
+            if let Err(reason) = node.check_json_tuple_frame() {
+                return Err(JsonFormatError::InvalidJsonTupleFrameMetadata {
+                    name: node.name.clone(),
+                    reason,
                 });
             }
             // Every value read or written below derives its null admission
@@ -305,10 +331,16 @@ impl<'a> RecursiveSchemas<'a> {
                 }
             }
         }
-        for (node, anchor) in references {
-            if !anchors.contains_key(&anchor) || duplicates.contains(&anchor) {
-                return Err(JsonFormatError::MissingRecursiveAnchor { node, anchor });
+        for (node, anchor) in &references {
+            if !anchors.contains_key(anchor) || duplicates.contains(anchor) {
+                return Err(JsonFormatError::MissingRecursiveAnchor {
+                    node: node.clone(),
+                    anchor: anchor.clone(),
+                });
             }
+        }
+        if !references.is_empty() {
+            json_tuple::refuse_recursive_frames(root, &anchors)?;
         }
         Ok(Self { anchors })
     }
@@ -481,6 +513,7 @@ fn to_value_with(
     // schema-directed.
     let value = match instance {
         Instance::Repeated(items) if !schema.repeating => {
+            json_tuple::refuse_root_rows(schema)?;
             let mut values = Vec::with_capacity(items.len());
             for item in items {
                 values.push(write_single_node_with_patterns(
@@ -557,6 +590,7 @@ pub fn to_lines(schema: &SchemaNode, instance: &Instance) -> Result<String, Json
 }
 
 fn reject_nullable_json_lines_container(schema: &SchemaNode) -> Result<(), JsonFormatError> {
+    json_tuple::refuse_root_rows(schema)?;
     if schema.repeating && null_layers::instance_null(schema)?.whole {
         return Err(JsonFormatError::NullableJsonLinesContainer {
             name: schema.name.clone(),
@@ -683,6 +717,24 @@ fn write_single_node_with_patterns(
     let null = null_layers::instance_null(schema)?;
     if null.single && matches!(instance, Instance::Scalar(Value::JsonNull(_))) {
         return Ok(serde_json::Value::Null);
+    }
+    if let Some(roles) = json_tuple::roles(schema) {
+        let items = json_tuple::plan(schema, roles, instance)?;
+        let mut values = Vec::with_capacity(items.len());
+        for (position, item_schema, item) in items {
+            values.push(json_tuple::at_position(
+                schema,
+                position,
+                write_single_node_with_patterns(
+                    item_schema,
+                    item,
+                    recursive,
+                    recursion_depth,
+                    patterns,
+                ),
+            )?);
+        }
+        return Ok(serde_json::Value::Array(values));
     }
     match (&schema.kind, instance) {
         (SchemaKind::Scalar { ty }, Instance::Scalar(value)) => {
@@ -888,10 +940,12 @@ fn is_boundary_absence(schema: &SchemaNode, instance: &Instance) -> Result<bool,
     {
         return Ok(true);
     }
-    // A Null scalar, or a Null nullable object or array, is boundary-level
-    // absence; an explicit JSON null is a value.
+    // A Null scalar, or a Null nullable object or array or single tuple, is
+    // boundary-level absence; an explicit JSON null is a value.
     Ok(matches!(instance, Instance::Scalar(Value::Null))
-        && (null_layers::instance_null(schema)?.whole || (!schema.repeating && schema.is_scalar()))
+        && (null_layers::instance_null(schema)?.whole
+            || (!schema.repeating && schema.is_scalar())
+            || json_tuple::is_single_frame(schema))
         || matches!(instance, Instance::Repeated(items) | Instance::MappedSequence(items) if items.is_empty())
             && schema
                 .item_count_range
