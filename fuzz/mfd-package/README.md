@@ -98,8 +98,8 @@ one-time warning saying so.
 ## Known limits
 
 These are current behavior that the harness tolerates rather than reports. The
-first two overflow the 8 MiB worker stack; the harness skips the import of a
-package that reaches one (`known_limit_exemption` in `src/lib.rs`).
+first overflows the 8 MiB worker stack; the harness skips the import of a
+package that reaches it (`known_limit_exemption` in `src/lib.rs`).
 
 - **Deep entry trees** ([#1167](https://github.com/DeandreT/ferrule/issues/1167)).
   A design component's `<entry>` tree is walked recursively, one call per
@@ -110,23 +110,6 @@ package that reaches one (`known_limit_exemption` in `src/lib.rs`).
   1,219 nested typed entries. The harness skips a package whose design, read
   as strict UTF-8 like the importer reads it, nests more than 512 `<entry>`
   elements inside a `<component>` (`MAX_EXEMPT_ENTRY_DEPTH`).
-- **Large XML Schemas** ([#1168](https://github.com/DeandreT/ferrule/issues/1168)).
-  `format_xml::xsd` imports by recursive descent with no depth limit: once per
-  nested particle (`parse_element`, `parse_complex_type`,
-  `collect_sequence_contents`), per named type reference or extension base
-  (`resolve_complex_type`, `parse_complex_type_declaration`) and per group
-  reference (`groups::parse_model_group`). Reference chains recurse as deeply
-  as nesting, so the bound is the number of schema components, not their
-  nesting. Below the `xs:schema` root the importer matches local names in any
-  namespace, so the harness counts elements by local name (`XSD_COMPONENTS`),
-  unprefixed or not, outside `annotation` subtrees. The fuzz build overflows at
-  523 nested anonymous types (1,569 counted components) and at a 448-type
-  named chain (1,345, a 45 KB input); each recursion level takes at least three
-  counted components, since a complex type descends only through a
-  compositor, group or complex content. The harness
-  skips a package whose XSD documents hold more than 512 counted components
-  in total (`MAX_EXEMPT_XSD_ELEMENTS`). DTD and JSON Schema imports stop at
-  their own 64-level depth limits instead.
 - **Silent JSON Schema substitution**
   ([#1169](https://github.com/DeandreT/ferrule/issues/1169)). A source JSON
   Schema that is not an object (`[1,2,3]`) or a content-free `$ref` cycle
@@ -200,7 +183,7 @@ Pointer targets, design, include and `$ref` references that try to leave the
 package, include and `$ref` chains, cycles and dangling links, unreferenced
 invalid entries, and truncated, non-UTF-8, wrong-kind and deeply nested
 designs, entry trees, schemas, schema annotations and referenced instances,
-a named-type chain below the XSD exemption, IDoc, SWIFT and database sources
+a long named-type chain, IDoc, SWIFT and database sources
 that must refuse with `FilesystemResource`, and a substitution that would
 expand a 4 MiB entry to 1 GiB without the program's per-entry cap. `regressions/deep_design_xml.bin`
 nests 20,000 unclosed elements and must fail with an XML error. Regenerate after changing the generator:
