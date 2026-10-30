@@ -117,7 +117,7 @@ pub(super) fn validate_scope(
         None => {}
     }
     if let Some((_, join)) = scope.join() {
-        legacy.extend(join.sources().map(|source| source.collection()));
+        legacy.extend(join.collection_sources().map(|source| source.collection()));
     }
     match &scope.construction {
         mapping::ScopeConstruction::PathHierarchy { plan } => legacy.push(plan.collection()),
@@ -206,9 +206,10 @@ fn legacy_paths(node: &Node) -> Vec<&[String]> {
             SequenceExpr::RecursiveCollect { collection, .. } => vec![collection],
             _ => Vec::new(),
         },
-        Node::JoinAggregate { plan, .. } => {
-            plan.sources().map(|source| source.collection()).collect()
-        }
+        Node::JoinAggregate { plan, .. } => plan
+            .collection_sources()
+            .map(|source| source.collection())
+            .collect(),
         _ => Vec::new(),
     }
 }

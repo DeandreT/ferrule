@@ -24,7 +24,7 @@ pub(super) fn active_legacy_join(join: JoinId, plan: &JoinPlan) -> ActiveJoin {
     (
         join,
         ActiveJoinSources::Legacy(
-            plan.sources()
+            plan.collection_sources()
                 .map(|source| source.collection().to_vec())
                 .collect(),
         ),
@@ -53,7 +53,18 @@ pub(super) fn validate_plan(
     location: &str,
     issues: &mut Vec<ValidationIssue>,
 ) {
-    for source in plan.sources() {
+    if let Some(computed) = plan.computed_source() {
+        issues.push(ValidationIssue::new(
+            location,
+            format!(
+                "join {} computed source {} (node {}): computed join sources are not yet executable",
+                join.get(),
+                computed.id(),
+                computed.value()
+            ),
+        ));
+    }
+    for source in plan.collection_sources() {
         let collection = source.collection();
         let singleton = |node: &SchemaNode| !node.repeating && node.is_scalar();
         let valid = match source.cardinality() {
@@ -91,24 +102,29 @@ pub(super) fn validate_plan(
             ));
         }
     }
+    // A computed member is its own key; its refusal above covers it.
     for (right, conditions) in plan.stages() {
         for key in conditions.iter() {
-            validate_collection_value(
-                project,
-                location,
-                key.left_collection(),
-                key.left_path(),
-                "join left key",
-                issues,
-            );
-            validate_collection_value(
-                project,
-                location,
-                right.collection(),
-                key.right_path(),
-                "join right key",
-                issues,
-            );
+            if let Some(left) = key.left_collection() {
+                validate_collection_value(
+                    project,
+                    location,
+                    left,
+                    key.left_path(),
+                    "join left key",
+                    issues,
+                );
+            }
+            if let Some(right) = right.as_collection() {
+                validate_collection_value(
+                    project,
+                    location,
+                    right.collection(),
+                    key.right_path(),
+                    "join right key",
+                    issues,
+                );
+            }
         }
     }
 }
@@ -218,7 +234,7 @@ pub(super) fn validate_root_singletons(
     issues: &mut Vec<ValidationIssue>,
 ) {
     let singleton = |node: &SchemaNode| !node.repeating && node.is_scalar();
-    for source in plan.sources() {
+    for source in plan.collection_sources() {
         let collection = source.collection();
         // Missing or repetition-crossing paths already have their own issue.
         if source.cardinality() == JoinSourceCardinality::Singleton

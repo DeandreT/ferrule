@@ -287,6 +287,13 @@ fn references_to_inner(
         {
             found.add(format!("{label} owned adjacency-tree root"), true);
         }
+        if scope
+            .join()
+            .and_then(|(_, plan)| plan.computed_source())
+            .is_some_and(|computed| computed.value() == needle)
+        {
+            found.add(format!("{label} computed join key"), true);
+        }
         for binding in &scope.bindings {
             if binding.node == needle {
                 // Reference identity is separate from its display label.

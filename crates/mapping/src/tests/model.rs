@@ -833,7 +833,7 @@ fn join_plan_enforces_ordered_distinct_sources() {
         .unwrap();
     let sources: Vec<_> = plan
         .sources()
-        .map(|source| source.collection().join("/"))
+        .map(|source| source.as_collection().unwrap().collection().join("/"))
         .collect();
     assert_eq!(sources, ["orders", "products", "inventory"]);
     assert_eq!(plan.stages().count(), 2);

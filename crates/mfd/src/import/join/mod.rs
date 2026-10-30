@@ -87,8 +87,13 @@ impl ParsedJoin {
         }
         let collections = sources
             .iter()
-            .map(|source| source.collection().to_vec())
-            .collect::<Vec<_>>();
+            .map(|source| {
+                source
+                    .as_collection()
+                    .map(|source| source.collection().to_vec())
+            })
+            .collect::<Option<Vec<_>>>()
+            .ok_or("join import resolves collection sources only")?;
         let mut plan = JoinPlan::new(
             sources[0].clone(),
             sources[1].clone(),

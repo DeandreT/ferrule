@@ -134,7 +134,32 @@ fn legacy_parent_roots(scope: &Scope) -> Vec<NodeId> {
         parent_roots.extend(sequence.inputs());
     }
     parent_roots.extend(scope.presence());
+    parent_roots.extend(
+        scope
+            .join()
+            .and_then(|(_, plan)| plan.computed_source())
+            .map(|computed| computed.value()),
+    );
     parent_roots
+}
+
+/// A join keyed by a computed value, with a window and a filter.
+fn computed_join() -> Scope {
+    let key = mapping::ComputedJoinSourceId::new(1);
+    Scope {
+        iteration: ScopeIteration::InnerJoin {
+            id: JoinId::new(1),
+            plan: mapping::JoinPlan::new(
+                mapping::JoinSource::computed(key, 40),
+                mapping::JoinSource::new(vec!["Rows".into()]),
+                mapping::JoinConditions::new(mapping::JoinKey::computed(key, vec!["Id".into()])),
+            )
+            .unwrap(),
+        },
+        windows: vec![SequenceWindow::Last { count: 41 }],
+        filter: Some(42),
+        ..Scope::default()
+    }
 }
 
 /// Parent roots of every kind a scope can combine, with several windows.
@@ -167,6 +192,7 @@ fn parent_fixtures() -> Vec<Scope> {
         present,
         sequence,
         blocks_only,
+        computed_join(),
         Scope::default(),
     ]
 }
@@ -191,6 +217,10 @@ fn parent_join_validation_reads_the_roots_it_listed_by_hand() {
     assert_eq!(
         ranked_roots(&parent_fixtures()[4], parent_join_validation),
         [35, 30, 31, 32, 33, 1, 2, 5]
+    );
+    assert_eq!(
+        ranked_roots(&computed_join(), parent_join_validation),
+        [41, 40]
     );
 }
 
@@ -443,6 +473,12 @@ fn legacy_scope_graph_roots(scope: &Scope, roots: &mut BTreeSet<NodeId>) {
         }
     }
     roots.extend(scope.bindings.iter().map(|binding| binding.node));
+    roots.extend(
+        scope
+            .join()
+            .and_then(|(_, plan)| plan.computed_source())
+            .map(|computed| computed.value()),
+    );
     for binding in &scope.dynamic_bindings {
         roots.extend([binding.key, binding.value]);
     }
