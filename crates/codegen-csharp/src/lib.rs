@@ -110,6 +110,7 @@ fn library_with_companions(
     program: &Program,
     companions: CompanionSelection,
 ) -> Result<composition::Library, EmitError> {
+    refuse_json_tuple_frames(program)?;
     let plan = codegen::prepare_boundary_emission(program, companions)?;
     codegen::validate_owned_emission(program)?;
     let mapping = mapping::render(program, &plan)?;
@@ -122,6 +123,7 @@ fn library_with_companions(
 /// The typed library beneath the CSV adapters. It omits every companion
 /// entry point yet keeps the JSON records its artifacts have always declared.
 fn typed_library(program: &Program) -> Result<composition::Library, EmitError> {
+    refuse_json_tuple_frames(program)?;
     let plan = codegen::prepare_boundary_emission(program, CompanionSelection::TypedOnly)?;
     codegen::validate_owned_emission(program)?;
     let mapping = mapping::render_with_json_records(program, &plan)?;
@@ -129,6 +131,24 @@ fn typed_library(program: &Program) -> Result<composition::Library, EmitError> {
         mapping,
         dynamic_input_document_outputs(&plan),
     ))
+}
+
+/// The generated C# runtime cannot read or write tuple frames yet and
+/// rejects their version-5 descriptors, so every library path refuses them
+/// before any artifact exists.
+fn refuse_json_tuple_frames(program: &Program) -> Result<(), EmitError> {
+    let schemas = std::iter::once(&program.source)
+        .chain(program.extra_sources.iter().map(|source| &source.source))
+        .chain(std::iter::once(&program.target))
+        .chain(program.extra_targets.iter().map(|target| &target.target));
+    for schema in schemas {
+        if schema.contains_json_tuple() {
+            return Err(EmitError::JsonTupleFrame {
+                schema: schema.name.clone(),
+            });
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -146,6 +166,7 @@ fn emit_typed(program: &Program) -> Result<ArtifactSet, EmitError> {
 /// runtime owns bounded admission and parsed-input storage. Ordinary emitters and
 /// the other Basic control profiles retain their existing admission and APIs.
 pub fn emit_with_basic_owned_sources(program: &Program) -> Result<ArtifactSet, EmitError> {
+    refuse_json_tuple_frames(program)?;
     let plan = codegen::prepare_boundary_emission(program, CompanionSelection::Complete)?;
     codegen::validate_basic_owned_emission(program)?;
     let mut generated_mapping = owned_basic::render_public_basic_owned_mapping(program)?;
@@ -160,6 +181,7 @@ fn emit_with_owned_capabilities(
     program: &Program,
     capabilities: codegen::OwnedCapabilities,
 ) -> Result<ArtifactSet, EmitError> {
+    refuse_json_tuple_frames(program)?;
     codegen::validate_basic_owned_emission_with_capabilities(program, capabilities)?;
     let mut generated_mapping =
         owned_basic::render_public_basic_owned_capability_mapping(program, capabilities)?;

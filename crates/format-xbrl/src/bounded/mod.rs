@@ -165,6 +165,7 @@ pub fn from_bytes_bounded(
     options: &mapping::XbrlBoundaryOptions,
     limits: &XbrlLimits,
 ) -> Result<Instance, XbrlFormatError> {
+    crate::refuse_json_tuple(schema)?;
     let limits = limits.options();
     check(XbrlLimit::InputBytes, bytes.len(), limits.max_input_bytes)?;
     let text = std::str::from_utf8(bytes)
@@ -191,6 +192,7 @@ pub fn to_bytes_bounded(
     options: &mapping::XbrlBoundaryOptions,
     limits: &XbrlLimits,
 ) -> Result<Vec<u8>, XbrlFormatError> {
+    crate::refuse_json_tuple(schema)?;
     let limits = limits.options();
     let mut budget = ModelBudget::new(limits);
     budget.schema(schema, 1, false)?;

@@ -1366,6 +1366,12 @@ pub fn export(schema: &SchemaNode) -> Result<String, JsonFormatError> {
             name: schema.name.clone(),
         });
     }
+    // Without frame rendering a tuple would export as an object schema.
+    if schema.contains_json_tuple() {
+        return Err(JsonFormatError::UnsupportedJsonTupleFrameExport {
+            schema: schema.name.clone(),
+        });
+    }
     if !schema.json_allowed_values_tree_is_valid() {
         return Err(JsonFormatError::InvalidAllowedValuesMetadata {
             reason: "allowed values are incompatible with their scalar domains or nullability"

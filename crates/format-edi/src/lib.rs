@@ -616,12 +616,25 @@ pub enum Dialect {
     Tradacoms,
 }
 
+/// Tuple frames are JSON arrays with no segment, element or record encoding.
+/// Every EDI, IDoc and SWIFT reader and writer refuses them, including the
+/// explicitly selected dialect routes that bypass [`dialect_of`].
+pub(crate) fn refuse_json_tuple(schema: &SchemaNode) -> Result<(), EdiFormatError> {
+    if schema.contains_json_tuple() {
+        return Err(EdiFormatError::UnsupportedSchema(
+            "JSON tuple frame metadata requires a JSON boundary".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
 pub fn dialect_of(schema: &SchemaNode) -> Result<Dialect, EdiFormatError> {
     if schema.contains_json_array_wrapper() {
         return Err(EdiFormatError::UnsupportedSchema(
             "JSON array-wrapper metadata requires a JSON boundary".to_owned(),
         ));
     }
+    refuse_json_tuple(schema)?;
     if matches!(schema.name.as_str(), "MFD-X12" | "MFD-EDIFACT") {
         return Err(EdiFormatError::UnsupportedSchema(
             "an MFD entry-tree schema has no reliable element positions; supply a complete EDI schema before execution"
@@ -1029,5 +1042,66 @@ mod tests {
                 Some(&Value::String(lexical.into()))
             );
         }
+    }
+
+    #[test]
+    fn json_tuple_frames_require_a_json_boundary() {
+        let frame = SchemaNode::group(
+            "ISA",
+            vec![
+                SchemaNode::scalar("item1", ScalarType::String),
+                SchemaNode::scalar("item2", ScalarType::Int),
+            ],
+        )
+        .with_json_tuple(ir::JsonTupleLayout {
+            length: ir::ItemCountRange::new(0, Some(2)),
+            tail: ir::JsonTupleTail::Closed,
+        })
+        .unwrap();
+        let schema = SchemaNode::group("X12", vec![frame.clone()]);
+        assert!(matches!(
+            dialect_of(&schema),
+            Err(EdiFormatError::UnsupportedSchema(message)) if message.contains("tuple frame")
+        ));
+
+        // Explicitly selected dialects bypass `dialect_of`; a frame under a
+        // segment is refused by their readers and writers as well.
+        let mut point = frame;
+        point.name = "point".into();
+        let segment = |id: &str| {
+            SchemaNode::group(
+                "Root",
+                vec![SchemaNode::group(
+                    id,
+                    vec![SchemaNode::scalar("01", ScalarType::String), point.clone()],
+                )],
+            )
+        };
+        let instance = Instance::Group(Vec::new().into());
+        let refused = |result: Result<(), EdiFormatError>| matches!(result, Err(EdiFormatError::UnsupportedSchema(message)) if message.contains("tuple frame"));
+        let x12 = segment("ISA");
+        let text = "ISA*00~";
+        assert!(refused(
+            x12::from_str_with_separators(text, &x12, true, None).map(|_| ())
+        ));
+        assert!(refused(x12::from_str(text, &x12, true).map(|_| ())));
+        assert!(refused(x12::to_string(&x12, &instance).map(|_| ())));
+        let edifact = segment("UNH");
+        assert!(refused(
+            edifact::from_str("UNH+1'", &edifact, true).map(|_| ())
+        ));
+        assert!(refused(edifact::to_string(&edifact, &instance).map(|_| ())));
+        let hl7 = segment("MSH");
+        assert!(refused(
+            hl7::from_str("MSH|^~\\&|A\r", &hl7, true).map(|_| ())
+        ));
+        assert!(refused(hl7::to_string(&hl7, &instance).map(|_| ())));
+        let tradacoms = segment("STX");
+        assert!(refused(
+            tradacoms::from_str("STX=ANA:1'", &tradacoms, true).map(|_| ())
+        ));
+        assert!(refused(
+            tradacoms::to_string(&tradacoms, &instance).map(|_| ())
+        ));
     }
 }

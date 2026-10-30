@@ -144,7 +144,7 @@ struct TransposedField<'a> {
 }
 
 fn row_fields(schema: &SchemaNode) -> Result<Vec<(&str, ScalarType)>, XlsxFormatError> {
-    if schema.repeating {
+    if schema.repeating || schema.contains_json_tuple() {
         return Err(XlsxFormatError::UnsupportedSchema);
     }
     match &schema.kind {
@@ -1474,5 +1474,31 @@ mod tests {
             error,
             XlsxFormatError::MissingWorksheet(sheet) if sheet == "Missing"
         ));
+    }
+
+    fn tuple_frame(name: &str) -> SchemaNode {
+        SchemaNode::group(
+            name,
+            vec![
+                SchemaNode::scalar("item1", ScalarType::String),
+                SchemaNode::scalar("item2", ScalarType::Int),
+            ],
+        )
+        .with_json_tuple(ir::JsonTupleLayout {
+            length: ir::ItemCountRange::new(0, Some(2)),
+            tail: ir::JsonTupleTail::Closed,
+        })
+        .unwrap()
+    }
+
+    #[test]
+    fn json_tuple_frames_are_not_worksheet_rows() {
+        let nested = SchemaNode::group("records", vec![tuple_frame("point")]);
+        for schema in [tuple_frame("records"), nested] {
+            assert!(matches!(
+                row_fields(&schema),
+                Err(XlsxFormatError::UnsupportedSchema)
+            ));
+        }
     }
 }

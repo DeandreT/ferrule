@@ -1813,6 +1813,14 @@ rejects explicit object-item metadata. Scalar arrays likewise admit a null
 item only when the item's own value domain is nullable, independent of
 array-container nullability.
 
+Schemas that contain a [JSON tuple frame](design/json-tuple-arrays.md) use
+embedded descriptor version 5, which older runtimes reject. C# generation
+refuses a primary or named boundary schema that contains a frame before any
+artifact exists, and the selected JSON5 companion profile rejects frames.
+Generated Rust JSON entry points share the native JSON codec, which refuses
+frames with a typed error. Generated CSV output in both languages refuses a
+target schema that contains a frame.
+
 Rust:
 
 ```rust
@@ -2197,6 +2205,12 @@ instance-node cap. Both backends still enforce JSON syntax depth, recursive
 schema and keyword-specific validation limits, and valid Unicode/numbers.
 Null inputs return Null before either descriptor is parsed; non-null calls
 validate the schema, field path, and input in that order.
+
+Graph-level schema descriptors carry no file capability or descriptor version.
+The Rust evaluator of `json_parse_field`, `json_parse_object_exists`,
+`json_parse_array_length`, and `json_parse_array_field` therefore refuses a
+descriptor that contains a [JSON tuple frame](design/json-tuple-arrays.md)
+during schema validation.
 
 Embedded scalar constants, bounded exact scalar allowed-value sets, and
 exact integer/finite-number ranges are enforced on both input and generated

@@ -91,6 +91,24 @@ pub(super) fn array_field(args: &[Value]) -> Result<Value, FunctionError> {
     current.as_scalar().cloned().ok_or_else(error)
 }
 
+/// Reads one graph-level schema descriptor. These descriptors carry no file
+/// capability or descriptor version, so a reader that predates tuple frames
+/// would read a frame as an object; frames are therefore refused here.
+fn parse_schema(text: &str, function: &'static str) -> Result<SchemaNode, FunctionError> {
+    let schema: SchemaNode =
+        serde_json::from_str(text).map_err(|_| FunctionError::InvalidArgument {
+            function,
+            message: "schema descriptor is invalid",
+        })?;
+    if schema.contains_json_tuple() {
+        return Err(FunctionError::InvalidArgument {
+            function,
+            message: "schema descriptor contains a JSON tuple frame",
+        });
+    }
+    Ok(schema)
+}
+
 struct ParsedArray {
     item_schema: SchemaNode,
     items: Vec<Instance>,
@@ -118,11 +136,7 @@ fn parse_array(args: &[Value], function: &'static str) -> Result<ParsedArray, Fu
         };
         text.push(value);
     }
-    let schema: SchemaNode =
-        serde_json::from_str(text[1]).map_err(|_| FunctionError::InvalidArgument {
-            function,
-            message: "schema descriptor is invalid",
-        })?;
+    let schema = parse_schema(text[1], function)?;
     let path: Vec<String> =
         serde_json::from_str(text[2]).map_err(|_| FunctionError::InvalidArgument {
             function,
@@ -201,11 +215,7 @@ pub(super) fn object_exists(args: &[Value]) -> Result<Value, FunctionError> {
             got: input.type_name(),
         });
     };
-    let schema: SchemaNode =
-        serde_json::from_str(schema).map_err(|_| FunctionError::InvalidArgument {
-            function: OBJECT_FUNCTION,
-            message: "schema descriptor is invalid",
-        })?;
+    let schema = parse_schema(schema, OBJECT_FUNCTION)?;
     let path: Vec<String> =
         serde_json::from_str(path).map_err(|_| FunctionError::InvalidArgument {
             function: OBJECT_FUNCTION,
@@ -288,11 +298,7 @@ pub(super) fn parse_field(args: &[Value]) -> Result<Value, FunctionError> {
             got: input.type_name(),
         });
     };
-    let schema: SchemaNode =
-        serde_json::from_str(schema).map_err(|_| FunctionError::InvalidArgument {
-            function: PARSE_FUNCTION,
-            message: "schema descriptor is invalid",
-        })?;
+    let schema = parse_schema(schema, PARSE_FUNCTION)?;
     let path: Vec<String> =
         serde_json::from_str(path).map_err(|_| FunctionError::InvalidArgument {
             function: PARSE_FUNCTION,
@@ -801,5 +807,59 @@ mod tests {
                 .is_err()
             );
         }
+    }
+
+    #[test]
+    fn graph_level_descriptors_refuse_tuple_frames_before_reading_input() {
+        let point = SchemaNode::group(
+            "Point",
+            vec![
+                SchemaNode::scalar("item1", ScalarType::String),
+                SchemaNode::scalar("item2", ScalarType::Int),
+            ],
+        )
+        .with_json_tuple(ir::JsonTupleLayout {
+            length: ir::ItemCountRange::new(0, Some(2)),
+            tail: ir::JsonTupleTail::Closed,
+        })
+        .unwrap();
+        let schema = SchemaNode::group(
+            "Payload",
+            vec![
+                point,
+                SchemaNode::group("Rows", vec![SchemaNode::scalar("Qty", ScalarType::Int)])
+                    .repeating(),
+            ],
+        );
+        let descriptor = Value::String(serde_json::to_string(&schema).unwrap());
+        // The input is not even JSON: the descriptor is refused first.
+        let input = Value::String("not JSON".into());
+        let refused = |function| {
+            Err(FunctionError::InvalidArgument {
+                function,
+                message: "schema descriptor contains a JSON tuple frame",
+            })
+        };
+        assert_eq!(
+            parse_field(&[
+                input.clone(),
+                descriptor.clone(),
+                Value::String(r#"["Point","item1"]"#.into()),
+            ]),
+            refused("json_parse_field")
+        );
+        assert_eq!(
+            object_exists(&[
+                input.clone(),
+                descriptor.clone(),
+                Value::String("[]".into())
+            ]),
+            refused("json_parse_object_exists")
+        );
+        let array = [input, descriptor, Value::String(r#"["Rows"]"#.into())];
+        assert_eq!(array_length(&array), refused("json_parse_array_length"));
+        let mut field = array.to_vec();
+        field.extend([Value::String(r#"["Qty"]"#.into()), Value::Int(1)]);
+        assert_eq!(array_field(&field), refused("json_parse_array_field"));
     }
 }

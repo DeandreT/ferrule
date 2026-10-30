@@ -124,6 +124,12 @@ for a complete format standard or another product.
    retains observed JSON5 metadata separately and refuses execution/export: the
    vendor setting, filename selection and numeric behavior differ from these
    codecs. See the [interchange observation](conformance/json5-interchange.md).
+- Native JSON, JSON Lines and JSON5 reading and writing, including generated
+  Rust hosts, refuse a schema that contains a
+  [JSON tuple frame](design/json-tuple-arrays.md) with a typed error rather
+  than reading or writing the tuple as an object. JSON Schema export, including
+  the schema files written by `.mfd` export, refuses such schemas the same way
+  before writing anything.
 - PDF targets are not supported.
 - XBRL taxonomy formula, presentation, calculation, and linkbase execution are
   outside the current runtime.
