@@ -187,6 +187,29 @@ fn public_xml_document_profile_refuses_namespace_declaration_roles_before_artifa
     );
 }
 
+#[test]
+fn public_xml_document_profile_refuses_mixed_targets_built_from_typed_fields() {
+    // The generated serializers have no mixed-content layout, so a target
+    // with both text and element children refuses before emission, even
+    // without an ordered content field.
+    let mut project = document_project();
+    project.target = SchemaNode::group(
+        "Output",
+        vec![
+            scalar("Value").attribute(),
+            SchemaNode::scalar(ir::XML_TEXT_FIELD, ScalarType::String).text(),
+        ],
+    );
+    assert!(lower(&project).unwrap().xml_boundary.is_some());
+    if let SchemaKind::Group { children, .. } = &mut project.target.kind {
+        children.push(scalar("Child"));
+    }
+    assert!(lower(&project).unwrap_err().diagnostics().iter().any(|d| {
+        d.to_string()
+            .contains("unsupported XML document target schema")
+    }));
+}
+
 fn root_view_static_inputs_project() -> Project {
     serde_json::from_str(include_str!(
         "fixtures/root_view_static_named_xml_inputs.json"
