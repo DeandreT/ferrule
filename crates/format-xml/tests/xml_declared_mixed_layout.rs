@@ -225,3 +225,109 @@ fn element_only_typed_content_keeps_its_indentation() -> Result<(), Box<dyn Erro
     );
     Ok(())
 }
+
+/// `instance` without the ordered content stream of the element at `path`,
+/// as a mapping builds it from typed fields alone.
+fn typed_fields(mut instance: Instance, path: &[&str]) -> Instance {
+    let mut group = &mut instance;
+    for name in path {
+        let Instance::Group(fields) = group else {
+            panic!("`{name}` has no parent group");
+        };
+        group = fields
+            .iter_mut()
+            .find_map(|(field, value)| (field.as_str() == *name).then_some(value))
+            .unwrap_or_else(|| panic!("no field `{name}`"));
+    }
+    let Instance::Group(fields) = group else {
+        panic!("the typed element is not a group");
+    };
+    fields.retain(|(name, _)| name != XML_MIXED_CONTENT_FIELD);
+    instance
+}
+
+/// Writes the typed form of `input` and requires `expected` after the XML
+/// declaration. Re-reading it on the first pass gives the same typed fields.
+fn assert_typed_written(
+    schema: &SchemaNode,
+    input: &str,
+    path: &[&str],
+    expected: &str,
+) -> Result<Instance, Box<dyn Error>> {
+    let typed = typed_fields(from_str(input, schema)?, path);
+    let output = to_string(schema, &typed)?;
+    assert_eq!(output, format!("{DECLARATION}{expected}"));
+    let reread = from_str(&output, schema)?;
+    assert_eq!(typed_fields(reread.clone(), path), typed, "{output}");
+    Ok(reread)
+}
+
+#[test]
+fn typed_mixed_parent_gets_no_added_layout() -> Result<(), Box<dyn Error>> {
+    let schema = sequence_schema(true)?;
+    let elements =
+        "<Root><Head>1</Head><Head>2</Head><Tail><Part>p</Part><Part>q</Part></Tail></Root>";
+    let reread = assert_typed_written(&schema, elements, &[], elements)?;
+    assert!(stream_texts(&reread).is_empty());
+
+    // Typed text is written before the typed children, and is the only text
+    // that reads back.
+    let reread = assert_typed_written(
+        &schema,
+        "<Root>a<Head>1</Head><Head>2</Head></Root>",
+        &[],
+        "<Root>a<Head>1</Head><Head>2</Head></Root>",
+    )?;
+    assert_eq!(stream_texts(&reread), ["a"]);
+    Ok(())
+}
+
+#[test]
+fn element_only_parent_stays_indented_around_a_typed_mixed_child() -> Result<(), Box<dyn Error>> {
+    let schema = import_xsd(
+        r#"<xs:sequence>
+      <xs:element name="Head" type="xs:string"/>
+      <xs:element name="Note"><xs:complexType mixed="true"><xs:sequence>
+        <xs:element name="B" type="xs:string" maxOccurs="unbounded"/>
+        <xs:element name="Tail" minOccurs="0"><xs:complexType><xs:sequence>
+          <xs:element name="Part" type="xs:string" maxOccurs="unbounded"/>
+        </xs:sequence></xs:complexType></xs:element>
+      </xs:sequence></xs:complexType></xs:element>
+      <xs:element name="End" type="xs:string"/>
+    </xs:sequence>"#,
+        false,
+    )?;
+    let reread = assert_typed_written(
+        &schema,
+        "<Root><Head>1</Head><Note><B>x</B><B>z</B><Tail><Part>p</Part></Tail></Note><End>e</End></Root>",
+        &["Note"],
+        "<Root>\n  <Head>1</Head>\n  <Note><B>x</B><B>z</B><Tail><Part>p</Part></Tail></Note>\n  <End>e</End>\n</Root>",
+    )?;
+    let note = reread.field("Note").ok_or("no Note")?;
+    assert!(stream_texts(note).is_empty());
+    Ok(())
+}
+
+#[test]
+fn typed_dtd_mixed_and_any_parents_get_no_added_layout() -> Result<(), Box<dyn Error>> {
+    let schema = dtd::import_root_str(
+        "<!ELEMENT Root (#PCDATA | Bold | Italic)*>
+         <!ELEMENT Bold (#PCDATA)>
+         <!ELEMENT Italic (#PCDATA)>",
+        Some("Root"),
+    )?;
+    let reread = assert_typed_written(
+        &schema,
+        "<Root><Bold>x</Bold><Italic>y</Italic><Bold>w</Bold></Root>",
+        &[],
+        "<Root><Bold>x</Bold><Bold>w</Bold><Italic>y</Italic></Root>",
+    )?;
+    assert!(stream_texts(&reread).is_empty());
+
+    let schema = dtd::import_root_str("<!ELEMENT Root ANY>", Some("Root"))?;
+    let elements =
+        r#"<Root><Local a="1">x</Local><Other><Leaf>y</Leaf></Other><Local></Local></Root>"#;
+    let reread = assert_typed_written(&schema, elements, &[], elements)?;
+    assert!(stream_texts(&reread).is_empty());
+    Ok(())
+}
