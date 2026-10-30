@@ -12,6 +12,8 @@
 //!   disabled.
 //! - [`dialog`] + [`dialog_buttons`]: window chrome with a fixed placement
 //!   policy, a scrolling body, a pinned footer and consistent button order.
+//!   Modal dialogs take keyboard focus when they open and return it when
+//!   they close.
 //! - [`list_area`]: a vertical scroll area with a token height.
 //! - [`tab`]: a document tab with an inline close button.
 //! - [`plural`] and [`sentence`] for user-facing counts and messages.
@@ -22,6 +24,8 @@ use egui::{Align, Align2, Layout, Pos2, Rect, Response, RichText, Ui, Vec2, Widg
 use lucide_icons::Icon;
 
 pub use crate::theme::{DialogWidth, FieldWidth, ListHeight, METRICS, TextRole, space};
+
+mod modal_focus;
 
 /// Formats a count with its noun: `plural(1, "record")` is "1 record",
 /// `plural(3, "match")` is "3 matches".
@@ -378,6 +382,20 @@ fn workspace_rect(ctx: &egui::Context) -> Rect {
         .unwrap_or_else(|| ctx.content_rect())
 }
 
+/// Whether a modal dialog was on top last frame. Key handlers that run before
+/// the dialogs are drawn leave Escape and Enter to the dialog while it is.
+pub fn modal_open(ctx: &egui::Context) -> bool {
+    ctx.memory(|memory| memory.top_modal_layer().is_some())
+}
+
+/// Like [`modal_open`], ignoring the dialog whose [`Dialog::id_salt`] is
+/// `own`, for a caller that handles that dialog's keys itself.
+pub fn other_modal_open(ctx: &egui::Context, own: impl egui::AsIdSalt) -> bool {
+    let own = egui::Id::unique(("ferrule_dialog", own));
+    ctx.memory(|memory| memory.top_modal_layer())
+        .is_some_and(|layer| layer.id != own)
+}
+
 /// A dialog under construction; see [`dialog`].
 #[must_use = "show the dialog with `show`"]
 pub struct Dialog<'c> {
@@ -466,24 +484,32 @@ impl Dialog<'_> {
         let content_width = (placement.width - frame.total_margin().sum().x).max(0.0);
         let content_height = (placement.max_height - frame.total_margin().sum().y).max(0.0);
         let mut close_requested = false;
+        let mut focus = if kind == DialogKind::Modal && modal_focus::shown(ctx, id) {
+            InitialFocus::Wanted
+        } else {
+            InitialFocus::Keep
+        };
         let contents = |ui: &mut Ui| {
             ui.set_width(content_width);
             ui.set_max_height(content_height);
             let footer = has_footer.then_some(footer);
-            dialog_contents(
-                ui,
+            let chrome = DialogChrome {
                 id,
-                &title,
+                title: &title,
                 content_height,
-                &mut close_requested,
-                body,
-                footer,
-            )
+            };
+            dialog_contents(ui, chrome, &mut close_requested, &mut focus, body, footer)
         };
         let (body, footer) = match kind {
             DialogKind::Modal => {
                 let modal = egui::Modal::new(id).frame(frame).show(ctx, contents);
                 close_requested |= modal.should_close();
+                modal_focus::record(
+                    ctx,
+                    id,
+                    modal.response.layer_id,
+                    focus == InitialFocus::Placed,
+                );
                 modal.inner
             }
             DialogKind::Docked => {
@@ -504,28 +530,74 @@ impl Dialog<'_> {
     }
 }
 
+/// The parts of a dialog that frame its body and footer.
+#[derive(Clone, Copy)]
+struct DialogChrome<'t> {
+    id: egui::Id,
+    title: &'t str,
+    content_height: f32,
+}
+
+/// Progress of a modal dialog's initial keyboard focus during one frame.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum InitialFocus {
+    /// Focus stays where it is.
+    Keep,
+    /// The dialog's first control should take focus.
+    Wanted,
+    /// A control of the dialog took focus.
+    Placed,
+}
+
+fn default_action_id() -> egui::Id {
+    egui::Id::unique("ferrule_dialog_default_action")
+}
+
 fn dialog_contents<B, F>(
     ui: &mut Ui,
-    id: egui::Id,
-    title: &str,
-    content_height: f32,
+    chrome: DialogChrome<'_>,
     close_requested: &mut bool,
+    focus: &mut InitialFocus,
     body: impl FnOnce(&mut Ui) -> B,
     footer: Option<impl FnOnce(&mut Ui) -> F>,
 ) -> (B, F)
 where
     F: Default,
 {
+    let DialogChrome {
+        id,
+        title,
+        content_height,
+    } = chrome;
+    // A sizing pass draws nothing and disables its widgets; focus waits.
+    if ui.is_sizing_pass() || !ui.is_visible() {
+        *focus = InitialFocus::Keep;
+    }
     let header_top = ui.cursor().top();
-    ui.horizontal(|ui| {
-        ui.label(TextRole::Title.text(title));
-        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            if icon_button(ui, Icon::X, "Close", None).clicked() {
-                *close_requested = true;
-            }
-        });
-    });
+    let close = ui
+        .horizontal(|ui| {
+            ui.label(TextRole::Title.text(title));
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                let close = icon_button(ui, Icon::X, "Close", None);
+                if close.clicked() {
+                    *close_requested = true;
+                }
+                close.id
+            })
+            .inner
+        })
+        .inner;
     ui.separator();
+    if *focus == InitialFocus::Wanted {
+        // Tab traversal hands focus to the next control that accepts it: the
+        // body's first control, otherwise the footer's.
+        ui.memory_mut(|memory| {
+            if let Some(focused) = memory.focused() {
+                memory.surrender_focus(focused);
+            }
+            memory.move_focus(egui::FocusDirection::Next);
+        });
+    }
     let header_height = ui.cursor().top() - header_top;
     // The footer is drawn after the body, so its height comes from the
     // previous frame; the first frame assumes one row of buttons.
@@ -544,16 +616,41 @@ where
         .auto_shrink([false, true])
         .show(ui, body)
         .inner;
+    if *focus == InitialFocus::Wanted && ui.memory(|memory| memory.focused().is_some()) {
+        *focus = InitialFocus::Placed;
+    }
     let Some(footer) = footer else {
+        settle_initial_focus(ui, focus, close);
         return (body, F::default());
     };
     let footer_top = ui.cursor().top();
     ui.separator();
+    if *focus == InitialFocus::Wanted {
+        // Without a body control, dialog_buttons focuses the default action.
+        ui.data_mut(|data| data.insert_temp(default_action_id(), true));
+    }
     let footer = footer(ui);
+    ui.data_mut(|data| data.remove_temp::<bool>(default_action_id()));
+    settle_initial_focus(ui, focus, close);
     let measured = ui.min_rect().bottom() - footer_top;
     ui.ctx()
         .data_mut(|data| data.insert_temp(footer_id, measured));
     (body, footer)
+}
+
+/// Completes the initial focus once the dialog is drawn, falling back to the
+/// close button when no other control accepted it.
+fn settle_initial_focus(ui: &Ui, focus: &mut InitialFocus, close: egui::Id) {
+    if *focus != InitialFocus::Wanted {
+        return;
+    }
+    ui.memory_mut(|memory| {
+        if memory.focused().is_none() {
+            memory.move_focus(egui::FocusDirection::None);
+            memory.request_focus(close);
+        }
+    });
+    *focus = InitialFocus::Placed;
 }
 
 /// One button of [`dialog_buttons`].
@@ -597,7 +694,9 @@ pub enum DialogAction {
 
 /// The standard dialog footer: the destructive action alone on the left in
 /// the error color, then the secondary action and the filled primary action
-/// right-aligned, primary last.
+/// right-aligned, primary last. Tab follows the same order. A modal dialog
+/// without body controls opens with the primary action focused, or the
+/// secondary one while the primary is disabled.
 pub fn dialog_buttons(
     ui: &mut Ui,
     primary: DialogButton<'_>,
@@ -605,6 +704,9 @@ pub fn dialog_buttons(
     destructive: Option<DialogButton<'_>>,
 ) -> Option<DialogAction> {
     let palette = crate::theme::active_palette(ui.ctx());
+    let default_focus = ui
+        .data_mut(|data| data.remove_temp::<bool>(default_action_id()))
+        .unwrap_or_default();
     let mut action = None;
     ui.horizontal(|ui| {
         if let Some(destructive) = destructive {
@@ -615,15 +717,44 @@ pub fn dialog_buttons(
             }
         }
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            let button = egui::Button::new(RichText::new(primary.label).color(palette.on_action))
-                .fill(palette.action);
-            if add_dialog_button(ui, button, primary).clicked() {
+            // Add the right-aligned buttons left to right so Tab order matches
+            // what is shown. Their width comes from the previous frame; a
+            // change redraws this frame before it is shown.
+            let width_id = ui.scope_id().with("trailing_width");
+            let width = ui
+                .data(|data| data.get_temp::<f32>(width_id))
+                .unwrap_or_default();
+            let trailing = ui.allocate_ui_with_layout(
+                vec2(width, ui.available_height()),
+                Layout::left_to_right(Align::Center),
+                |ui| {
+                    let secondary = secondary.map(|secondary| {
+                        add_dialog_button(ui, egui::Button::new(secondary.label), secondary)
+                    });
+                    let button =
+                        egui::Button::new(RichText::new(primary.label).color(palette.on_action))
+                            .fill(palette.action);
+                    (add_dialog_button(ui, button, primary), secondary)
+                },
+            );
+            let measured = trailing.response.rect.width();
+            if (measured - width).abs() > 0.5 {
+                ui.data_mut(|data| data.insert_temp(width_id, measured));
+                ui.ctx().request_discard("dialog footer width changed");
+            }
+            let (primary, secondary) = trailing.inner;
+            if primary.clicked() {
                 action = Some(DialogAction::Primary);
             }
-            if let Some(secondary) = secondary
-                && add_dialog_button(ui, egui::Button::new(secondary.label), secondary).clicked()
-            {
+            if secondary.as_ref().is_some_and(Response::clicked) {
                 action = Some(DialogAction::Secondary);
+            }
+            if default_focus
+                && let Some(default) = std::iter::once(&primary)
+                    .chain(secondary.as_ref())
+                    .find(|response| response.enabled())
+            {
+                default.request_focus();
             }
         });
     });
