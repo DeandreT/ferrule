@@ -381,11 +381,17 @@ fn retained_settings_xml(kind: EdiBoundaryKind, options: &FormatOptions) -> Stri
         ),
         _ => ("", "", String::new()),
     };
+    // Line-break terminators use the native percent encoding and declare that
+    // no further line feed follows them, matching the runtime writer.
+    let (segment, line_feed) = match separators.segment {
+        '\n' => ("%0A".to_string(), " terminatewithlinefeed=\"false\""),
+        '\r' => ("%0D".to_string(), " terminatewithlinefeed=\"false\""),
+        segment => (xml_escape(&segment.to_string()), ""),
+    };
     format!(
-        "\n\t\t\t\t\t\t\t<settings{autocomplete}{acknowledgement}{transaction_set}{version}><separators dataelement=\"{}\" component=\"{}\" segment=\"{}\" repetition=\"{}\" escape=\"{}\"/></settings>",
+        "\n\t\t\t\t\t\t\t<settings{autocomplete}{acknowledgement}{transaction_set}{line_feed}{version}><separators dataelement=\"{}\" component=\"{}\" segment=\"{segment}\" repetition=\"{}\" escape=\"{}\"/></settings>",
         xml_escape(&separators.element.to_string()),
         xml_escape(&separators.component.to_string()),
-        xml_escape(&separators.segment.to_string()),
         xml_escape(&repetition),
         xml_escape(&release),
     )

@@ -85,7 +85,7 @@ for a complete format standard or another product.
 | XLSX | Update-existing writes for hierarchical output |
 | SQLite | Other database engines, general SQL mutation, and multi-database connections |
 | SQLite | SQL text, joins, views and declared queries on payload, stream, REST, pipeline, generated-code and MFD routes |
-| X12 / EDIFACT | Invisible or whitespace explicit X12 output separators, including LF |
+| X12 / EDIFACT | X12 CR LF segment terminators, and whitespace or invisible X12 element, component, repetition or release separators |
 | SAP IDoc | `.idoc` input without an embedded layout |
 | SWIFT MT | SWIFT MT output |
 | Protocol Buffers | Recursive messages, which the tree-shaped instance model cannot represent |
@@ -597,9 +597,30 @@ control values retain their supplied spelling. Incomplete ISA schemas retain
 positional serialization. Invalid complete ISA data returns its typed boundary
 error before the public file writer replaces its destination.
 
-Native input can discover LF segment terminators from ISA. Explicit native
-output separators require visible, non-whitespace characters, so selecting LF
-for output returns an invalid-separator error.
+### Native X12 segment terminators
+
+Native input discovers each interchange's segment terminator from the
+character after ISA16, so LF and CR terminators read like any other. Whitespace
+between segments is ignored, so CR LF input reads as a CR terminator.
+
+Explicit output separators may select LF or CR as the segment terminator. A
+visible terminator is followed by a line feed, giving one segment per line; an
+LF or CR terminator is written alone. An interchange read with LF or CR
+terminators therefore writes back byte for byte with the same terminator
+selected. A two-character CR LF terminator cannot be selected, and a
+CR-terminated boundary writes CR alone. Element, component, repetition and
+release separators must remain visible, non-alphanumeric characters.
+
+Data containing the selected terminator follows the same rule as the other
+separators: without a release character the writer refuses it before the
+destination is replaced. The fixed-width ISA always refuses it because every
+ISA field requires printable ASCII.
+
+In `.mfd` designs, an LF or CR terminator is stored as `%0A` or `%0D` with
+`terminatewithlinefeed="false"`. Import refuses a line-break terminator with
+`terminatewithlinefeed="true"`, because that requests CR LF or a blank line
+after every segment, and keeps the standard separators with a warning.
+Generated Rust and C# X12 profiles accept LF but not CR.
 
 ### CSV empty text
 

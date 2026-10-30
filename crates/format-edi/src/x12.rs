@@ -6,7 +6,9 @@
 //! terminator from the character after ISA16, and the 5010 repetition
 //! separator from ISA11 when ISA12 selects the 5010-or-newer envelope
 //! layout. Writing uses the standard
-//! `*`/`:`/`~`/`^` with one segment per line. A schema that writes X12
+//! `*`/`:`/`~`/`^` with one segment per line unless the mapping boundary
+//! selects other separators; an LF or CR segment terminator is written
+//! alone, without the extra line break. A schema that writes X12
 //! must declare all 16 ISA elements, since re-reading depends on them.
 
 use std::path::Path;
@@ -167,6 +169,14 @@ impl Default for Separators {
     }
 }
 
+/// LF and CR end a segment on their own. The writer appends no line break
+/// after them, unlike the one-segment-per-line layout after a visible
+/// terminator, so an LF-terminated interchange writes back byte for byte.
+/// A two-character CR LF terminator cannot be represented.
+pub(crate) fn is_line_break_terminator(character: char) -> bool {
+    matches!(character, '\n' | '\r')
+}
+
 impl Separators {
     fn write_options(self) -> Result<WriteOptions, EdiFormatError> {
         self.validate()?;
@@ -182,16 +192,26 @@ impl Separators {
     }
 
     pub(crate) fn validate(self) -> Result<(), EdiFormatError> {
-        let mut characters = vec![self.element, self.component, self.segment];
-        characters.extend(self.repetition);
-        characters.extend(self.release);
-        if characters.iter().any(|character| {
-            character.is_alphanumeric() || character.is_control() || character.is_whitespace()
-        }) {
+        let visible = |character: char| {
+            !(character.is_alphanumeric() || character.is_control() || character.is_whitespace())
+        };
+        if !(visible(self.segment) || is_line_break_terminator(self.segment)) {
             return Err(EdiFormatError::InvalidX12Separators(
-                "separators must be non-alphanumeric, visible characters".to_string(),
+                "the segment terminator must be LF, CR, or a non-alphanumeric, visible character"
+                    .to_string(),
             ));
         }
+        let mut characters = vec![self.element, self.component];
+        characters.extend(self.repetition);
+        characters.extend(self.release);
+        if !characters.iter().copied().all(visible) {
+            return Err(EdiFormatError::InvalidX12Separators(
+                "element, component, repetition, and release separators must be \
+                 non-alphanumeric, visible characters"
+                    .to_string(),
+            ));
+        }
+        characters.push(self.segment);
         characters.sort_unstable();
         if characters.windows(2).any(|pair| pair[0] == pair[1]) {
             return Err(EdiFormatError::InvalidX12Separators(
