@@ -900,69 +900,113 @@ fn tuple_frame_project(source: SchemaNode, target: SchemaNode) -> Project {
     project
 }
 
+/// An open `[string, integer, ...strings]` tuple.
 fn tuple_frame() -> SchemaNode {
     SchemaNode::group(
         "Point",
         vec![
             SchemaNode::scalar("item1", ScalarType::String),
             SchemaNode::scalar("item2", ScalarType::Int),
+            SchemaNode::scalar("rest", ScalarType::String).repeating(),
         ],
     )
     .with_json_tuple(ir::JsonTupleLayout {
-        length: ir::ItemCountRange::new(0, Some(2)),
-        tail: ir::JsonTupleTail::Closed,
+        length: ir::ItemCountRange::new(0, Some(4)),
+        tail: ir::JsonTupleTail::Open,
     })
     .expect("the test frame is canonical")
 }
 
-#[test]
-fn payload_runs_refuse_json_tuple_frames_at_native_json_boundaries() -> anyhow::Result<()> {
-    let plain = || SchemaNode::group("Plain", Vec::new());
-    for (side, project, input) in [
-        (
-            "source",
-            tuple_frame_project(SchemaNode::group("Input", vec![tuple_frame()]), plain()),
-            br#"{"Point":["x",1]}"#.as_slice(),
-        ),
-        (
-            "target",
-            tuple_frame_project(plain(), SchemaNode::group("Output", vec![tuple_frame()])),
-            br#"{}"#.as_slice(),
-        ),
-    ] {
-        // Frames are valid model metadata; only the native codec refuses them.
-        assert!(cli::validate(&project).is_empty(), "{side}");
-        let source = cli::PayloadDocument::new(Path::new("input.json"), input)?;
-        let error = cli::run_project_value_payloads(
-            &project,
-            Path::new("/virtual/project.json"),
-            &cli::PayloadRunOptions::new(source),
-        )
-        .expect_err("native JSON must refuse tuple frames");
-        let message = format!("{error:#}");
-        assert!(
-            message.contains(
-                "JSON tuple frames are not supported by native JSON reading or writing until #1225"
-            ),
-            "{side}: {message}"
-        );
-    }
-
-    let mut ordinary = tuple_frame();
-    ordinary.json_tuple = None;
-    let project = tuple_frame_project(
-        SchemaNode::group("Input", vec![ordinary]),
-        SchemaNode::group("Output", Vec::new()),
-    );
-    let source = cli::PayloadDocument::new(
-        Path::new("input.json"),
-        br#"{"Point":{"item1":"x","item2":1}}"#,
-    )?;
+fn run_tuple_payload(project: &Project, input: &[u8]) -> anyhow::Result<String> {
+    let source = cli::PayloadDocument::new(Path::new("input.json"), input)?;
     let outcome = cli::run_project_value_payloads(
-        &project,
+        project,
         Path::new("/virtual/project.json"),
         &cli::PayloadRunOptions::new(source),
     )?;
-    assert_eq!(outcome.artifacts.len(), 1);
+    anyhow::ensure!(outcome.artifacts.len() == 1, "one artifact");
+    let text = String::from_utf8(outcome.artifacts[0].bytes.clone())?;
+    let value: serde_json::Value = serde_json::from_str(&text)?;
+    Ok(serde_json::to_string(&value)?)
+}
+
+#[test]
+fn payload_runs_read_and_write_json_tuple_frames() -> anyhow::Result<()> {
+    let field = |path: &[&str]| Node::SourceField {
+        path: path.iter().map(|segment| (*segment).to_owned()).collect(),
+        frame: None,
+    };
+    let bind = |target_field: &str, node| Binding {
+        target_field: target_field.into(),
+        node,
+    };
+    let mut project = tuple_frame_project(
+        SchemaNode::group("Input", vec![tuple_frame()]),
+        SchemaNode::group(
+            "Output",
+            vec![
+                tuple_frame(),
+                SchemaNode::scalar("Label", ScalarType::String),
+                SchemaNode::scalar("Count", ScalarType::Int),
+            ],
+        ),
+    );
+    project.graph.nodes = BTreeMap::from([
+        (0, field(&["Point", "item1"])),
+        (1, field(&["Point", "item2"])),
+        (
+            2,
+            Node::Aggregate {
+                function: mapping::AggregateOp::Count,
+                collection: vec!["Point".into(), "rest".into()],
+                value: Vec::new(),
+                expression: None,
+                arg: None,
+            },
+        ),
+    ]);
+    project.root = Scope {
+        bindings: vec![bind("Label", 0), bind("Count", 2)],
+        children: vec![Scope {
+            target_field: "Point".into(),
+            bindings: vec![bind("item1", 0), bind("item2", 1)],
+            ..Scope::default()
+        }],
+        ..Scope::default()
+    };
+    assert!(cli::validate(&project).is_empty());
+    assert_eq!(
+        run_tuple_payload(&project, br#"{"Point":["x",1,"a","b"]}"#)?,
+        r#"{"Point":["x",1],"Label":"x","Count":2}"#
+    );
+    // A missing position and an absent frame read as absent data; the
+    // constructed target tuple then has every position absent.
+    assert_eq!(
+        run_tuple_payload(&project, br#"{"Point":["x"]}"#)?,
+        r#"{"Point":["x"],"Label":"x","Count":0}"#
+    );
+    assert_eq!(
+        run_tuple_payload(&project, br#"{}"#)?,
+        r#"{"Point":[],"Count":0}"#
+    );
+
+    // Reading reports the one-based position of a rejected item.
+    let error = run_tuple_payload(&project, br#"{"Point":["x",1,2]}"#)
+        .expect_err("tail item 3 is not a string");
+    let message = format!("{error:#}");
+    assert!(
+        message.contains("`Point` tuple position 3: `rest`: expected string, got number"),
+        "{message}"
+    );
+
+    // Writing never pads a gap with null.
+    project.root.children[0].bindings = vec![bind("item2", 1)];
+    let error = run_tuple_payload(&project, br#"{"Point":["x",1]}"#)
+        .expect_err("position 1 is absent before position 2");
+    let message = format!("{error:#}");
+    assert!(
+        message.contains("`Point` cannot write tuple position 1 as absent"),
+        "{message}"
+    );
     Ok(())
 }

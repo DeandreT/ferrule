@@ -124,12 +124,22 @@ for a complete format standard or another product.
    retains observed JSON5 metadata separately and refuses execution/export: the
    vendor setting, filename selection and numeric behavior differ from these
    codecs. See the [interchange observation](conformance/json5-interchange.md).
-- Native JSON, JSON Lines and JSON5 reading and writing, including generated
-  Rust hosts, refuse a schema that contains a
-  [JSON tuple frame](design/json-tuple-arrays.md) with a typed error rather
-  than reading or writing the tuple as an object. JSON Schema export, including
-  the schema files written by `.mfd` export, refuses such schemas the same way
-  before writing anything.
+- Native JSON, JSON Lines and JSON5 reading and writing, including prepared
+  schemas and generated Rust hosts, read and write
+  [JSON tuple frames](design/json-tuple-arrays.md). Array position *k* is the
+  frame's `item`*k* field, and an open frame's later items are its repeating
+  `rest` field. A missing frame property and a position beyond the end of the
+  array read as absent (`Null`); writing omits an absent frame, and writes
+  `null` only for an explicit JSON null that the frame or member admits. The
+  array length is checked against the frame's bounds before any position is
+  read, and an error inside a position names its one-based position. Writing
+  never pads with `null`: an absent position before a present position or a
+  non-empty `rest` is a typed gap error. Root rows and JSON Lines refuse a
+  non-repeating frame root, while a repeating frame root writes one tuple per
+  line. A recursive reference that would nest a frame inside one of its own
+  positions, or that expands a frame, is refused rather than expanded. JSON
+  Schema export, including the schema files written by `.mfd` export, refuses
+  schemas that contain a frame before writing anything.
 - PDF targets are not supported.
 - XBRL taxonomy formula, presentation, calculation, and linkbase execution are
   outside the current runtime.

@@ -1,0 +1,4068 @@
+{
+  "description": "Self-authored JSON Schema tuple-array corpus (docs/design/json-tuple-arrays.md). Each case gives the JSON Schema and the model it imports to; accepted instances with their instance trees and, when it differs from the wire, the normalized output; rejected instances with the error kind, the failing node and the one-based tuple position of the outermost positional error (null when the error is not inside a position); and write-only instance trees. codec_cases and codec_refusal_cases are model-only shapes no JSON Schema imports to.",
+  "cases": [
+    {
+      "id": "closed-draft-2020-12",
+      "design_example": 1,
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "Record",
+        "type": "array",
+        "prefixItems": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "integer"
+          },
+          {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        ],
+        "items": false,
+        "minItems": 2
+      },
+      "expected_model": {
+        "name": "Record",
+        "repeating": false,
+        "json_tuple": {
+          "length": {
+            "minimum": 2,
+            "maximum": 3
+          },
+          "tail": "closed"
+        },
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "item1",
+              "repeating": false,
+              "kind": {
+                "kind": "scalar",
+                "ty": "string"
+              }
+            },
+            {
+              "name": "item2",
+              "repeating": false,
+              "kind": {
+                "kind": "scalar",
+                "ty": "int"
+              }
+            },
+            {
+              "name": "item3",
+              "repeating": false,
+              "nullable": true,
+              "kind": {
+                "kind": "scalar",
+                "ty": "bool"
+              }
+            }
+          ]
+        }
+      },
+      "accepted": [
+        {
+          "wire": "[\"a\",1]",
+          "typed": {
+            "kind": "Group",
+            "fields": [
+              {
+                "name": "item1",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "String",
+                    "value": "a"
+                  }
+                }
+              },
+              {
+                "name": "item2",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "Int",
+                    "value": 1
+                  }
+                }
+              },
+              {
+                "name": "item3",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "Null"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "wire": "[\"a\",1,null]",
+          "typed": {
+            "kind": "Group",
+            "fields": [
+              {
+                "name": "item1",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "String",
+                    "value": "a"
+                  }
+                }
+              },
+              {
+                "name": "item2",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "Int",
+                    "value": 1
+                  }
+                }
+              },
+              {
+                "name": "item3",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "JsonNull"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "wire": "[\"a\",1,true]",
+          "typed": {
+            "kind": "Group",
+            "fields": [
+              {
+                "name": "item1",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "String",
+                    "value": "a"
+                  }
+                }
+              },
+              {
+                "name": "item2",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "Int",
+                    "value": 1
+                  }
+                }
+              },
+              {
+                "name": "item3",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "Bool",
+                    "value": true
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "rejected": [
+        {
+          "wire": "[\"a\"]",
+          "error": {
+            "kind": "TupleLengthMismatch",
+            "name": "Record",
+            "position": null
+          }
+        },
+        {
+          "wire": "[\"a\",1,true,4]",
+          "error": {
+            "kind": "TupleLengthMismatch",
+            "name": "Record",
+            "position": null
+          }
+        },
+        {
+          "wire": "[1,\"a\"]",
+          "error": {
+            "kind": "Shape",
+            "name": "item1",
+            "position": 1
+          }
+        },
+        {
+          "wire": "[\"a\",null]",
+          "error": {
+            "kind": "Shape",
+            "name": "item2",
+            "position": 2
+          },
+          "note": "position 2 is not nullable"
+        },
+        {
+          "wire": "{\"item1\":\"a\",\"item2\":1}",
+          "error": {
+            "kind": "Shape",
+            "name": "Record",
+            "position": null
+          },
+          "note": "a tuple is an array, not an object"
+        },
+        {
+          "wire": "null",
+          "error": {
+            "kind": "Shape",
+            "name": "Record",
+            "position": null
+          },
+          "note": "the frame is not nullable"
+        }
+      ],
+      "write_only": [
+        {
+          "typed": {
+            "kind": "Group",
+            "fields": [
+              {
+                "name": "item1",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "String",
+                    "value": "a"
+                  }
+                }
+              },
+              {
+                "name": "item2",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "Null"
+                  }
+                }
+              },
+              {
+                "name": "item3",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "Bool",
+                    "value": true
+                  }
+                }
+              }
+            ]
+          },
+          "error": {
+            "kind": "TupleGap",
+            "name": "Record",
+            "position": 2
+          }
+        },
+        {
+          "typed": {
+            "kind": "Group",
+            "fields": [
+              {
+                "name": "item1",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "String",
+                    "value": "a"
+                  }
+                }
+              },
+              {
+                "name": "item3",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "Bool",
+                    "value": true
+                  }
+                }
+              }
+            ]
+          },
+          "error": {
+            "kind": "TupleGap",
+            "name": "Record",
+            "position": 2
+          },
+          "note": "a missing field is an absent position"
+        },
+        {
+          "typed": {
+            "kind": "Group",
+            "fields": [
+              {
+                "name": "item1",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "String",
+                    "value": "a"
+                  }
+                }
+              },
+              {
+                "name": "item2",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "Null"
+                  }
+                }
+              },
+              {
+                "name": "item3",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "Null"
+                  }
+                }
+              }
+            ]
+          },
+          "error": {
+            "kind": "TupleLengthMismatch",
+            "name": "Record",
+            "position": null
+          }
+        },
+        {
+          "typed": {
+            "kind": "Group",
+            "fields": [
+              {
+                "name": "item1",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "String",
+                    "value": "a"
+                  }
+                }
+              },
+              {
+                "name": "item2",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "String",
+                    "value": "7"
+                  }
+                }
+              },
+              {
+                "name": "item3",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "Null"
+                  }
+                }
+              }
+            ]
+          },
+          "output": "[\"a\",7]",
+          "note": "positions use the ordinary normalization for array items"
+        },
+        {
+          "typed": {
+            "kind": "Group",
+            "fields": [
+              {
+                "name": "item1",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "String",
+                    "value": "a"
+                  }
+                }
+              },
+              {
+                "name": "item2",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "Int",
+                    "value": 1
+                  }
+                }
+              },
+              {
+                "name": "item3",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "JsonNull"
+                  }
+                }
+              }
+            ]
+          },
+          "output": "[\"a\",1,null]"
+        },
+        {
+          "typed": {
+            "kind": "Group",
+            "fields": [
+              {
+                "name": "item1",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "String",
+                    "value": "a"
+                  }
+                }
+              },
+              {
+                "name": "item2",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "Int",
+                    "value": 1
+                  }
+                }
+              },
+              {
+                "name": "extra",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "Int",
+                    "value": 2
+                  }
+                }
+              }
+            ]
+          },
+          "error": {
+            "kind": "UndeclaredTupleField",
+            "name": "Record",
+            "position": null
+          }
+        },
+        {
+          "typed": {
+            "kind": "Group",
+            "fields": [
+              {
+                "name": "item1",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "String",
+                    "value": "a"
+                  }
+                }
+              },
+              {
+                "name": "item2",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "String",
+                    "value": "x"
+                  }
+                }
+              },
+              {
+                "name": "item3",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "Null"
+                  }
+                }
+              }
+            ]
+          },
+          "error": {
+            "kind": "Shape",
+            "name": "item2",
+            "position": 2
+          }
+        },
+        {
+          "typed": {
+            "kind": "Repeated",
+            "items": [
+              {
+                "kind": "Group",
+                "fields": [
+                  {
+                    "name": "item1",
+                    "value": {
+                      "kind": "Scalar",
+                      "value": {
+                        "kind": "String",
+                        "value": "a"
+                      }
+                    }
+                  },
+                  {
+                    "name": "item2",
+                    "value": {
+                      "kind": "Scalar",
+                      "value": {
+                        "kind": "Int",
+                        "value": 1
+                      }
+                    }
+                  },
+                  {
+                    "name": "item3",
+                    "value": {
+                      "kind": "Scalar",
+                      "value": {
+                        "kind": "Null"
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "error": {
+            "kind": "TupleRootRows",
+            "name": "Record",
+            "position": null
+          },
+          "note": "root rows refuse a non-repeating frame root"
+        }
+      ],
+      "json_lines_error": {
+        "kind": "TupleRootRows",
+        "name": "Record",
+        "position": null
+      }
+    },
+    {
+      "id": "legacy-draft-07-open-tail",
+      "design_example": 2,
+      "schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "title": "Codes",
+        "definitions": {
+          "code": {
+            "type": "string",
+            "minLength": 1
+          },
+          "quantity": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "type": "array",
+        "items": [
+          {
+            "$ref": "#/definitions/code"
+          },
+          {
+            "$ref": "#/definitions/quantity"
+          }
+        ],
+        "additionalItems": {
+          "$ref": "#/definitions/code"
+        },
+        "maxItems": 4
+      },
+      "expected_model": {
+        "name": "Codes",
+        "repeating": false,
+        "json_tuple": {
+          "length": {
+            "maximum": 4
+          },
+          "tail": "open"
+        },
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "item1",
+              "repeating": false,
+              "string_length_range": {
+                "minimum": 1
+              },
+              "kind": {
+                "kind": "scalar",
+                "ty": "string"
+              }
+            },
+            {
+              "name": "item2",
+              "repeating": false,
+              "numeric_range": {
+                "kind": "integer",
+                "bounds": {
+                  "minimum": 0
+                }
+              },
+              "kind": {
+                "kind": "scalar",
+                "ty": "int"
+              }
+            },
+            {
+              "name": "rest",
+              "repeating": true,
+              "string_length_range": {
+                "minimum": 1
+              },
+              "kind": {
+                "kind": "scalar",
+                "ty": "string"
+              }
+            }
+          ]
+        }
+      },
+      "accepted": [
+        {
+          "wire": "[]",
+          "typed": {
+            "kind": "Group",
+            "fields": [
+              {
+                "name": "item1",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "Null"
+                  }
+                }
+              },
+              {
+                "name": "item2",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "Null"
+                  }
+                }
+              },
+              {
+                "name": "rest",
+                "value": {
+                  "kind": "Repeated",
+                  "items": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "wire": "[\"A\"]",
+          "typed": {
+            "kind": "Group",
+            "fields": [
+              {
+                "name": "item1",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "String",
+                    "value": "A"
+                  }
+                }
+              },
+              {
+                "name": "item2",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "Null"
+                  }
+                }
+              },
+              {
+                "name": "rest",
+                "value": {
+                  "kind": "Repeated",
+                  "items": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "wire": "[\"A\",2,\"B\",\"C\"]",
+          "typed": {
+            "kind": "Group",
+            "fields": [
+              {
+                "name": "item1",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "String",
+                    "value": "A"
+                  }
+                }
+              },
+              {
+                "name": "item2",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "Int",
+                    "value": 2
+                  }
+                }
+              },
+              {
+                "name": "rest",
+                "value": {
+                  "kind": "Repeated",
+                  "items": [
+                    {
+                      "kind": "Scalar",
+                      "value": {
+                        "kind": "String",
+                        "value": "B"
+                      }
+                    },
+                    {
+                      "kind": "Scalar",
+                      "value": {
+                        "kind": "String",
+                        "value": "C"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "rejected": [
+        {
+          "wire": "[\"A\",2,\"B\",\"C\",\"D\"]",
+          "error": {
+            "kind": "TupleLengthMismatch",
+            "name": "Codes",
+            "position": null
+          }
+        },
+        {
+          "wire": "[\"A\",-1]",
+          "error": {
+            "kind": "RangeMismatch",
+            "name": "item2",
+            "position": 2
+          }
+        },
+        {
+          "wire": "[\"\",2]",
+          "error": {
+            "kind": "StringLengthMismatch",
+            "name": "item1",
+            "position": 1
+          }
+        },
+        {
+          "wire": "[\"A\",2,3]",
+          "error": {
+            "kind": "Shape",
+            "name": "rest",
+            "position": 3
+          },
+          "note": "tail item 3 expects a string"
+        },
+        {
+          "wire": "[\"A\",2,\"B\",\"\"]",
+          "error": {
+            "kind": "StringLengthMismatch",
+            "name": "rest",
+            "position": 4
+          }
+        }
+      ],
+      "write_only": [
+        {
+          "typed": {
+            "kind": "Group",
+            "fields": []
+          },
+          "output": "[]",
+          "note": "every position absent writes an empty tuple"
+        },
+        {
+          "typed": {
+            "kind": "Group",
+            "fields": [
+              {
+                "name": "item1",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "String",
+                    "value": "A"
+                  }
+                }
+              }
+            ]
+          },
+          "output": "[\"A\"]"
+        },
+        {
+          "typed": {
+            "kind": "Group",
+            "fields": [
+              {
+                "name": "item1",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "Null"
+                  }
+                }
+              },
+              {
+                "name": "item2",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "Int",
+                    "value": 2
+                  }
+                }
+              },
+              {
+                "name": "rest",
+                "value": {
+                  "kind": "Repeated",
+                  "items": []
+                }
+              }
+            ]
+          },
+          "error": {
+            "kind": "TupleGap",
+            "name": "Codes",
+            "position": 1
+          }
+        },
+        {
+          "typed": {
+            "kind": "Group",
+            "fields": [
+              {
+                "name": "item1",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "String",
+                    "value": "A"
+                  }
+                }
+              },
+              {
+                "name": "item2",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "Null"
+                  }
+                }
+              },
+              {
+                "name": "rest",
+                "value": {
+                  "kind": "Repeated",
+                  "items": [
+                    {
+                      "kind": "Scalar",
+                      "value": {
+                        "kind": "String",
+                        "value": "B"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          "error": {
+            "kind": "TupleGap",
+            "name": "Codes",
+            "position": 2
+          },
+          "note": "a non-empty tail requires every position"
+        },
+        {
+          "typed": {
+            "kind": "Group",
+            "fields": [
+              {
+                "name": "item1",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "String",
+                    "value": "A"
+                  }
+                }
+              },
+              {
+                "name": "item2",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "Int",
+                    "value": 2
+                  }
+                }
+              },
+              {
+                "name": "rest",
+                "value": {
+                  "kind": "Repeated",
+                  "items": [
+                    {
+                      "kind": "Scalar",
+                      "value": {
+                        "kind": "String",
+                        "value": "B"
+                      }
+                    },
+                    {
+                      "kind": "Scalar",
+                      "value": {
+                        "kind": "String",
+                        "value": "C"
+                      }
+                    },
+                    {
+                      "kind": "Scalar",
+                      "value": {
+                        "kind": "String",
+                        "value": "D"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          "error": {
+            "kind": "TupleLengthMismatch",
+            "name": "Codes",
+            "position": null
+          }
+        },
+        {
+          "typed": {
+            "kind": "Group",
+            "fields": [
+              {
+                "name": "item1",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "String",
+                    "value": "A"
+                  }
+                }
+              },
+              {
+                "name": "item2",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "Int",
+                    "value": 2
+                  }
+                }
+              },
+              {
+                "name": "rest",
+                "value": {
+                  "kind": "Repeated",
+                  "items": [
+                    {
+                      "kind": "Scalar",
+                      "value": {
+                        "kind": "String",
+                        "value": ""
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          "error": {
+            "kind": "StringLengthMismatch",
+            "name": "rest",
+            "position": 3
+          }
+        },
+        {
+          "typed": {
+            "kind": "Group",
+            "fields": [
+              {
+                "name": "item1",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "String",
+                    "value": "A"
+                  }
+                }
+              },
+              {
+                "name": "item2",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "Int",
+                    "value": 2
+                  }
+                }
+              },
+              {
+                "name": "rest",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "Null"
+                  }
+                }
+              }
+            ]
+          },
+          "output": "[\"A\",2]",
+          "note": "a Null tail is an empty tail"
+        }
+      ],
+      "json_lines_error": {
+        "kind": "TupleRootRows",
+        "name": "Codes",
+        "position": null
+      }
+    },
+    {
+      "id": "draft-2019-09-frame-properties",
+      "design_example": 3,
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2019-09/schema",
+        "title": "Document",
+        "$defs": {
+          "point": {
+            "type": "array",
+            "items": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "additionalItems": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "origin"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "origin": {
+            "$ref": "#/$defs/point",
+            "minItems": 2
+          },
+          "target": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/point"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "label": {
+            "$ref": "#/$defs/point"
+          },
+          "path": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/point"
+            },
+            "maxItems": 3
+          }
+        }
+      },
+      "expected_model": {
+        "name": "Document",
+        "repeating": false,
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "origin",
+              "repeating": false,
+              "json_tuple": {
+                "length": {
+                  "minimum": 2,
+                  "maximum": 3
+                },
+                "tail": "closed"
+              },
+              "kind": {
+                "kind": "group",
+                "children": [
+                  {
+                    "name": "item1",
+                    "repeating": false,
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "float"
+                    }
+                  },
+                  {
+                    "name": "item2",
+                    "repeating": false,
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "float"
+                    }
+                  },
+                  {
+                    "name": "item3",
+                    "repeating": false,
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "name": "target",
+              "repeating": false,
+              "container_nullable": true,
+              "json_tuple": {
+                "length": {
+                  "maximum": 3
+                },
+                "tail": "closed"
+              },
+              "kind": {
+                "kind": "group",
+                "children": [
+                  {
+                    "name": "item1",
+                    "repeating": false,
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "float"
+                    }
+                  },
+                  {
+                    "name": "item2",
+                    "repeating": false,
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "float"
+                    }
+                  },
+                  {
+                    "name": "item3",
+                    "repeating": false,
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "name": "label",
+              "repeating": false,
+              "json_tuple": {
+                "length": {
+                  "maximum": 3
+                },
+                "tail": "closed"
+              },
+              "kind": {
+                "kind": "group",
+                "children": [
+                  {
+                    "name": "item1",
+                    "repeating": false,
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "float"
+                    }
+                  },
+                  {
+                    "name": "item2",
+                    "repeating": false,
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "float"
+                    }
+                  },
+                  {
+                    "name": "item3",
+                    "repeating": false,
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "name": "path",
+              "repeating": true,
+              "json_tuple": {
+                "length": {
+                  "maximum": 3
+                },
+                "tail": "closed"
+              },
+              "kind": {
+                "kind": "group",
+                "children": [
+                  {
+                    "name": "item1",
+                    "repeating": false,
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "float"
+                    }
+                  },
+                  {
+                    "name": "item2",
+                    "repeating": false,
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "float"
+                    }
+                  },
+                  {
+                    "name": "item3",
+                    "repeating": false,
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  }
+                ]
+              },
+              "json_object_item_nullable": false,
+              "item_count_range": {
+                "maximum": 3
+              }
+            }
+          ],
+          "required": [
+            "origin"
+          ]
+        }
+      },
+      "accepted": [
+        {
+          "wire": "{\"origin\":[0,0]}",
+          "typed": {
+            "kind": "Group",
+            "fields": [
+              {
+                "name": "origin",
+                "value": {
+                  "kind": "Group",
+                  "fields": [
+                    {
+                      "name": "item1",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Float",
+                          "value": 0
+                        }
+                      }
+                    },
+                    {
+                      "name": "item2",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Float",
+                          "value": 0
+                        }
+                      }
+                    },
+                    {
+                      "name": "item3",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Null"
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "target",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "Null"
+                  }
+                }
+              },
+              {
+                "name": "label",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "Null"
+                  }
+                }
+              },
+              {
+                "name": "path",
+                "value": {
+                  "kind": "Repeated",
+                  "items": []
+                }
+              }
+            ]
+          },
+          "output": "{\"origin\":[0.0,0.0],\"path\":[]}"
+        },
+        {
+          "wire": "{\"origin\":[0,0],\"label\":[]}",
+          "typed": {
+            "kind": "Group",
+            "fields": [
+              {
+                "name": "origin",
+                "value": {
+                  "kind": "Group",
+                  "fields": [
+                    {
+                      "name": "item1",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Float",
+                          "value": 0
+                        }
+                      }
+                    },
+                    {
+                      "name": "item2",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Float",
+                          "value": 0
+                        }
+                      }
+                    },
+                    {
+                      "name": "item3",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Null"
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "target",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "Null"
+                  }
+                }
+              },
+              {
+                "name": "label",
+                "value": {
+                  "kind": "Group",
+                  "fields": [
+                    {
+                      "name": "item1",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Null"
+                        }
+                      }
+                    },
+                    {
+                      "name": "item2",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Null"
+                        }
+                      }
+                    },
+                    {
+                      "name": "item3",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Null"
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "path",
+                "value": {
+                  "kind": "Repeated",
+                  "items": []
+                }
+              }
+            ]
+          },
+          "output": "{\"origin\":[0.0,0.0],\"label\":[],\"path\":[]}"
+        },
+        {
+          "wire": "{\"origin\":[0,0,\"o\"],\"target\":null}",
+          "typed": {
+            "kind": "Group",
+            "fields": [
+              {
+                "name": "origin",
+                "value": {
+                  "kind": "Group",
+                  "fields": [
+                    {
+                      "name": "item1",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Float",
+                          "value": 0
+                        }
+                      }
+                    },
+                    {
+                      "name": "item2",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Float",
+                          "value": 0
+                        }
+                      }
+                    },
+                    {
+                      "name": "item3",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "String",
+                          "value": "o"
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "target",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "JsonNull"
+                  }
+                }
+              },
+              {
+                "name": "label",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "Null"
+                  }
+                }
+              },
+              {
+                "name": "path",
+                "value": {
+                  "kind": "Repeated",
+                  "items": []
+                }
+              }
+            ]
+          },
+          "output": "{\"origin\":[0.0,0.0,\"o\"],\"target\":null,\"path\":[]}"
+        },
+        {
+          "wire": "{\"origin\":[0,0],\"path\":[[1,2],[3,4,\"x\"]]}",
+          "typed": {
+            "kind": "Group",
+            "fields": [
+              {
+                "name": "origin",
+                "value": {
+                  "kind": "Group",
+                  "fields": [
+                    {
+                      "name": "item1",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Float",
+                          "value": 0
+                        }
+                      }
+                    },
+                    {
+                      "name": "item2",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Float",
+                          "value": 0
+                        }
+                      }
+                    },
+                    {
+                      "name": "item3",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Null"
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "target",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "Null"
+                  }
+                }
+              },
+              {
+                "name": "label",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "Null"
+                  }
+                }
+              },
+              {
+                "name": "path",
+                "value": {
+                  "kind": "Repeated",
+                  "items": [
+                    {
+                      "kind": "Group",
+                      "fields": [
+                        {
+                          "name": "item1",
+                          "value": {
+                            "kind": "Scalar",
+                            "value": {
+                              "kind": "Float",
+                              "value": 1
+                            }
+                          }
+                        },
+                        {
+                          "name": "item2",
+                          "value": {
+                            "kind": "Scalar",
+                            "value": {
+                              "kind": "Float",
+                              "value": 2
+                            }
+                          }
+                        },
+                        {
+                          "name": "item3",
+                          "value": {
+                            "kind": "Scalar",
+                            "value": {
+                              "kind": "Null"
+                            }
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "Group",
+                      "fields": [
+                        {
+                          "name": "item1",
+                          "value": {
+                            "kind": "Scalar",
+                            "value": {
+                              "kind": "Float",
+                              "value": 3
+                            }
+                          }
+                        },
+                        {
+                          "name": "item2",
+                          "value": {
+                            "kind": "Scalar",
+                            "value": {
+                              "kind": "Float",
+                              "value": 4
+                            }
+                          }
+                        },
+                        {
+                          "name": "item3",
+                          "value": {
+                            "kind": "Scalar",
+                            "value": {
+                              "kind": "String",
+                              "value": "x"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          "output": "{\"origin\":[0.0,0.0],\"path\":[[1.0,2.0],[3.0,4.0,\"x\"]]}"
+        }
+      ],
+      "rejected": [
+        {
+          "wire": "{\"origin\":[0]}",
+          "error": {
+            "kind": "TupleLengthMismatch",
+            "name": "origin",
+            "position": null
+          },
+          "note": "the $ref sibling requires length 2"
+        },
+        {
+          "wire": "{\"origin\":[0,0,\"o\",\"extra\"]}",
+          "error": {
+            "kind": "TupleLengthMismatch",
+            "name": "origin",
+            "position": null
+          },
+          "note": "closed tail"
+        },
+        {
+          "wire": "{\"origin\":[0,0],\"path\":[[1,2,3]]}",
+          "error": {
+            "kind": "Shape",
+            "name": "item3",
+            "position": 3
+          }
+        },
+        {
+          "wire": "{\"origin\":[0,0],\"path\":[null]}",
+          "error": {
+            "kind": "Shape",
+            "name": "path",
+            "position": null
+          },
+          "note": "tuples in path are not nullable"
+        },
+        {
+          "wire": "{\"origin\":[0,0],\"path\":[[],[],[],[]]}",
+          "error": {
+            "kind": "ItemCountMismatch",
+            "name": "path",
+            "position": null
+          }
+        },
+        {
+          "wire": "{\"target\":[1,2]}",
+          "error": {
+            "kind": "MissingRequiredProperty",
+            "name": "Document",
+            "position": null
+          }
+        },
+        {
+          "wire": "{\"origin\":[0,0],\"label\":null}",
+          "error": {
+            "kind": "Shape",
+            "name": "label",
+            "position": null
+          },
+          "note": "label is not nullable"
+        }
+      ],
+      "write_only": [
+        {
+          "typed": {
+            "kind": "Group",
+            "fields": [
+              {
+                "name": "origin",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "Null"
+                  }
+                }
+              }
+            ]
+          },
+          "error": {
+            "kind": "MissingRequiredProperty",
+            "name": "Document",
+            "position": null
+          },
+          "note": "a Null frame property is absent"
+        },
+        {
+          "typed": {
+            "kind": "Group",
+            "fields": [
+              {
+                "name": "origin",
+                "value": {
+                  "kind": "Group",
+                  "fields": [
+                    {
+                      "name": "item1",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Float",
+                          "value": 0
+                        }
+                      }
+                    },
+                    {
+                      "name": "item2",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Float",
+                          "value": 0
+                        }
+                      }
+                    },
+                    {
+                      "name": "item3",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Null"
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "target",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "Null"
+                  }
+                }
+              },
+              {
+                "name": "label",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "Null"
+                  }
+                }
+              }
+            ]
+          },
+          "output": "{\"origin\":[0.0,0.0]}",
+          "note": "absent frames are omitted"
+        },
+        {
+          "typed": {
+            "kind": "Group",
+            "fields": [
+              {
+                "name": "origin",
+                "value": {
+                  "kind": "Group",
+                  "fields": [
+                    {
+                      "name": "item1",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Float",
+                          "value": 0
+                        }
+                      }
+                    },
+                    {
+                      "name": "item2",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Float",
+                          "value": 0
+                        }
+                      }
+                    },
+                    {
+                      "name": "item3",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Null"
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "label",
+                "value": {
+                  "kind": "Group",
+                  "fields": []
+                }
+              }
+            ]
+          },
+          "output": "{\"origin\":[0.0,0.0],\"label\":[]}",
+          "note": "a present frame with every position absent writes []"
+        },
+        {
+          "typed": {
+            "kind": "Group",
+            "fields": [
+              {
+                "name": "origin",
+                "value": {
+                  "kind": "Group",
+                  "fields": [
+                    {
+                      "name": "item1",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Float",
+                          "value": 0
+                        }
+                      }
+                    },
+                    {
+                      "name": "item2",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Float",
+                          "value": 0
+                        }
+                      }
+                    },
+                    {
+                      "name": "item3",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Null"
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "target",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "JsonNull"
+                  }
+                }
+              }
+            ]
+          },
+          "output": "{\"origin\":[0.0,0.0],\"target\":null}"
+        },
+        {
+          "typed": {
+            "kind": "Group",
+            "fields": [
+              {
+                "name": "origin",
+                "value": {
+                  "kind": "Group",
+                  "fields": [
+                    {
+                      "name": "item1",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Float",
+                          "value": 0
+                        }
+                      }
+                    },
+                    {
+                      "name": "item2",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Float",
+                          "value": 0
+                        }
+                      }
+                    },
+                    {
+                      "name": "item3",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Null"
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "label",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "JsonNull"
+                  }
+                }
+              }
+            ]
+          },
+          "error": {
+            "kind": "Shape",
+            "name": "label",
+            "position": null
+          },
+          "note": "label is not nullable"
+        },
+        {
+          "typed": {
+            "kind": "Group",
+            "fields": [
+              {
+                "name": "origin",
+                "value": {
+                  "kind": "Group",
+                  "fields": [
+                    {
+                      "name": "item1",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Float",
+                          "value": 0
+                        }
+                      }
+                    },
+                    {
+                      "name": "item2",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Float",
+                          "value": 0
+                        }
+                      }
+                    },
+                    {
+                      "name": "item3",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Null"
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "path",
+                "value": {
+                  "kind": "Repeated",
+                  "items": [
+                    {
+                      "kind": "Group",
+                      "fields": [
+                        {
+                          "name": "item1",
+                          "value": {
+                            "kind": "Scalar",
+                            "value": {
+                              "kind": "Float",
+                              "value": 1
+                            }
+                          }
+                        },
+                        {
+                          "name": "item2",
+                          "value": {
+                            "kind": "Scalar",
+                            "value": {
+                              "kind": "Null"
+                            }
+                          }
+                        },
+                        {
+                          "name": "item3",
+                          "value": {
+                            "kind": "Scalar",
+                            "value": {
+                              "kind": "Null"
+                            }
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "Group",
+                      "fields": []
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          "output": "{\"origin\":[0.0,0.0],\"path\":[[1.0],[]]}"
+        },
+        {
+          "typed": {
+            "kind": "Group",
+            "fields": [
+              {
+                "name": "origin",
+                "value": {
+                  "kind": "Group",
+                  "fields": [
+                    {
+                      "name": "item1",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Float",
+                          "value": 0
+                        }
+                      }
+                    },
+                    {
+                      "name": "item2",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Float",
+                          "value": 0
+                        }
+                      }
+                    },
+                    {
+                      "name": "item3",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Null"
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "path",
+                "value": {
+                  "kind": "Repeated",
+                  "items": [
+                    {
+                      "kind": "Group",
+                      "fields": [
+                        {
+                          "name": "item1",
+                          "value": {
+                            "kind": "Scalar",
+                            "value": {
+                              "kind": "Null"
+                            }
+                          }
+                        },
+                        {
+                          "name": "item2",
+                          "value": {
+                            "kind": "Scalar",
+                            "value": {
+                              "kind": "Float",
+                              "value": 2
+                            }
+                          }
+                        },
+                        {
+                          "name": "item3",
+                          "value": {
+                            "kind": "Scalar",
+                            "value": {
+                              "kind": "Null"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          "error": {
+            "kind": "TupleGap",
+            "name": "path",
+            "position": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "allof-count-branch",
+      "design_example": 4,
+      "schema": {
+        "title": "Pair",
+        "allOf": [
+          {
+            "type": "array",
+            "prefixItems": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "items": false
+          },
+          {
+            "type": "array",
+            "minItems": 1
+          }
+        ]
+      },
+      "expected_model": {
+        "name": "Pair",
+        "repeating": false,
+        "json_tuple": {
+          "length": {
+            "minimum": 1,
+            "maximum": 2
+          },
+          "tail": "closed"
+        },
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "item1",
+              "repeating": false,
+              "kind": {
+                "kind": "scalar",
+                "ty": "string"
+              }
+            },
+            {
+              "name": "item2",
+              "repeating": false,
+              "kind": {
+                "kind": "scalar",
+                "ty": "int"
+              }
+            }
+          ]
+        }
+      },
+      "accepted": [
+        {
+          "wire": "[\"a\"]",
+          "typed": {
+            "kind": "Group",
+            "fields": [
+              {
+                "name": "item1",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "String",
+                    "value": "a"
+                  }
+                }
+              },
+              {
+                "name": "item2",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "Null"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "wire": "[\"a\",1]",
+          "typed": {
+            "kind": "Group",
+            "fields": [
+              {
+                "name": "item1",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "String",
+                    "value": "a"
+                  }
+                }
+              },
+              {
+                "name": "item2",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "Int",
+                    "value": 1
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "rejected": [
+        {
+          "wire": "[]",
+          "error": {
+            "kind": "TupleLengthMismatch",
+            "name": "Pair",
+            "position": null
+          }
+        },
+        {
+          "wire": "[1]",
+          "error": {
+            "kind": "Shape",
+            "name": "item1",
+            "position": 1
+          }
+        },
+        {
+          "wire": "[\"a\",1,2]",
+          "error": {
+            "kind": "TupleLengthMismatch",
+            "name": "Pair",
+            "position": null
+          }
+        }
+      ],
+      "write_only": [
+        {
+          "typed": {
+            "kind": "Group",
+            "fields": []
+          },
+          "error": {
+            "kind": "TupleLengthMismatch",
+            "name": "Pair",
+            "position": null
+          }
+        },
+        {
+          "typed": {
+            "kind": "Group",
+            "fields": [
+              {
+                "name": "item1",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "Null"
+                  }
+                }
+              },
+              {
+                "name": "item2",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "Int",
+                    "value": 1
+                  }
+                }
+              }
+            ]
+          },
+          "error": {
+            "kind": "TupleGap",
+            "name": "Pair",
+            "position": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "allof-maximum-lowers-homogeneous",
+      "design_example": 4,
+      "schema": {
+        "title": "Pair",
+        "allOf": [
+          {
+            "type": "array",
+            "prefixItems": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "items": false
+          },
+          {
+            "type": "array",
+            "maxItems": 1
+          }
+        ]
+      },
+      "expected_model": {
+        "name": "Pair",
+        "repeating": true,
+        "kind": {
+          "kind": "scalar",
+          "ty": "string"
+        },
+        "item_count_range": {
+          "maximum": 1
+        }
+      },
+      "accepted": [
+        {
+          "wire": "[\"a\"]",
+          "typed": {
+            "kind": "Repeated",
+            "items": [
+              {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "String",
+                  "value": "a"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "rejected": [
+        {
+          "wire": "[\"a\",\"b\"]",
+          "error": {
+            "kind": "ItemCountMismatch",
+            "name": "Pair",
+            "position": null
+          }
+        }
+      ],
+      "write_only": []
+    },
+    {
+      "id": "repeating-frame-root",
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "Pairs",
+        "type": "array",
+        "items": {
+          "type": "array",
+          "prefixItems": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            }
+          ],
+          "items": false
+        }
+      },
+      "expected_model": {
+        "name": "Pairs",
+        "repeating": true,
+        "json_tuple": {
+          "length": {
+            "maximum": 2
+          },
+          "tail": "closed"
+        },
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "item1",
+              "repeating": false,
+              "kind": {
+                "kind": "scalar",
+                "ty": "string"
+              }
+            },
+            {
+              "name": "item2",
+              "repeating": false,
+              "kind": {
+                "kind": "scalar",
+                "ty": "int"
+              }
+            }
+          ]
+        },
+        "json_object_item_nullable": false
+      },
+      "accepted": [
+        {
+          "wire": "[[\"a\",1],[\"b\"],[]]",
+          "typed": {
+            "kind": "Repeated",
+            "items": [
+              {
+                "kind": "Group",
+                "fields": [
+                  {
+                    "name": "item1",
+                    "value": {
+                      "kind": "Scalar",
+                      "value": {
+                        "kind": "String",
+                        "value": "a"
+                      }
+                    }
+                  },
+                  {
+                    "name": "item2",
+                    "value": {
+                      "kind": "Scalar",
+                      "value": {
+                        "kind": "Int",
+                        "value": 1
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "kind": "Group",
+                "fields": [
+                  {
+                    "name": "item1",
+                    "value": {
+                      "kind": "Scalar",
+                      "value": {
+                        "kind": "String",
+                        "value": "b"
+                      }
+                    }
+                  },
+                  {
+                    "name": "item2",
+                    "value": {
+                      "kind": "Scalar",
+                      "value": {
+                        "kind": "Null"
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "kind": "Group",
+                "fields": [
+                  {
+                    "name": "item1",
+                    "value": {
+                      "kind": "Scalar",
+                      "value": {
+                        "kind": "Null"
+                      }
+                    }
+                  },
+                  {
+                    "name": "item2",
+                    "value": {
+                      "kind": "Scalar",
+                      "value": {
+                        "kind": "Null"
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "lines": "[\"a\",1]\n[\"b\"]\n[]\n"
+        },
+        {
+          "wire": "[]",
+          "typed": {
+            "kind": "Repeated",
+            "items": []
+          },
+          "lines": ""
+        }
+      ],
+      "rejected": [
+        {
+          "wire": "[[\"a\",1,2]]",
+          "error": {
+            "kind": "TupleLengthMismatch",
+            "name": "Pairs",
+            "position": null
+          }
+        },
+        {
+          "wire": "[null]",
+          "error": {
+            "kind": "Shape",
+            "name": "Pairs",
+            "position": null
+          },
+          "note": "tuples are not nullable"
+        },
+        {
+          "wire": "[[\"a\",\"b\"]]",
+          "error": {
+            "kind": "Shape",
+            "name": "item2",
+            "position": 2
+          }
+        }
+      ],
+      "write_only": [
+        {
+          "typed": {
+            "kind": "Repeated",
+            "items": [
+              {
+                "kind": "Group",
+                "fields": [
+                  {
+                    "name": "item1",
+                    "value": {
+                      "kind": "Scalar",
+                      "value": {
+                        "kind": "Null"
+                      }
+                    }
+                  },
+                  {
+                    "name": "item2",
+                    "value": {
+                      "kind": "Scalar",
+                      "value": {
+                        "kind": "Int",
+                        "value": 1
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "error": {
+            "kind": "TupleGap",
+            "name": "Pairs",
+            "position": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "object-any-union-members-open-tail",
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "Mixed",
+        "type": "array",
+        "prefixItems": [
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "additionalProperties": false
+          },
+          {},
+          {
+            "type": [
+              "string",
+              "integer"
+            ]
+          }
+        ]
+      },
+      "expected_model": {
+        "name": "Mixed",
+        "repeating": false,
+        "json_tuple": {
+          "tail": "open"
+        },
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "item1",
+              "repeating": false,
+              "kind": {
+                "kind": "group",
+                "children": [
+                  {
+                    "name": "id",
+                    "repeating": false,
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "int"
+                    }
+                  }
+                ],
+                "required": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "name": "item2",
+              "repeating": false,
+              "json_any": true,
+              "kind": {
+                "kind": "scalar",
+                "ty": "string"
+              }
+            },
+            {
+              "name": "item3",
+              "repeating": false,
+              "kind": {
+                "kind": "scalar_union",
+                "types": [
+                  "string",
+                  "int"
+                ]
+              }
+            },
+            {
+              "name": "rest",
+              "repeating": true,
+              "json_any": true,
+              "kind": {
+                "kind": "scalar",
+                "ty": "string"
+              }
+            }
+          ]
+        }
+      },
+      "accepted": [
+        {
+          "wire": "[{\"id\":1},{\"x\":[1,2]},\"s\",true,null,[3]]",
+          "typed": {
+            "kind": "Group",
+            "fields": [
+              {
+                "name": "item1",
+                "value": {
+                  "kind": "Group",
+                  "fields": [
+                    {
+                      "name": "id",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Int",
+                          "value": 1
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "item2",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "String",
+                    "value": "{\"x\":[1,2]}"
+                  }
+                }
+              },
+              {
+                "name": "item3",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "String",
+                    "value": "s"
+                  }
+                }
+              },
+              {
+                "name": "rest",
+                "value": {
+                  "kind": "Repeated",
+                  "items": [
+                    {
+                      "kind": "Scalar",
+                      "value": {
+                        "kind": "String",
+                        "value": "true"
+                      }
+                    },
+                    {
+                      "kind": "Scalar",
+                      "value": {
+                        "kind": "String",
+                        "value": "null"
+                      }
+                    },
+                    {
+                      "kind": "Scalar",
+                      "value": {
+                        "kind": "String",
+                        "value": "[3]"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "wire": "[{\"id\":1},null]",
+          "typed": {
+            "kind": "Group",
+            "fields": [
+              {
+                "name": "item1",
+                "value": {
+                  "kind": "Group",
+                  "fields": [
+                    {
+                      "name": "id",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Int",
+                          "value": 1
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "item2",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "String",
+                    "value": "null"
+                  }
+                }
+              },
+              {
+                "name": "item3",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "Null"
+                  }
+                }
+              },
+              {
+                "name": "rest",
+                "value": {
+                  "kind": "Repeated",
+                  "items": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "wire": "[]",
+          "typed": {
+            "kind": "Group",
+            "fields": [
+              {
+                "name": "item1",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "Null"
+                  }
+                }
+              },
+              {
+                "name": "item2",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "Null"
+                  }
+                }
+              },
+              {
+                "name": "item3",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "Null"
+                  }
+                }
+              },
+              {
+                "name": "rest",
+                "value": {
+                  "kind": "Repeated",
+                  "items": []
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "rejected": [
+        {
+          "wire": "[{\"id\":\"x\"}]",
+          "error": {
+            "kind": "Shape",
+            "name": "id",
+            "position": 1
+          }
+        },
+        {
+          "wire": "[{}]",
+          "error": {
+            "kind": "MissingRequiredProperty",
+            "name": "item1",
+            "position": 1
+          }
+        },
+        {
+          "wire": "[null]",
+          "error": {
+            "kind": "Shape",
+            "name": "item1",
+            "position": 1
+          },
+          "note": "an object member is not nullable"
+        },
+        {
+          "wire": "[{\"id\":1},1,true]",
+          "error": {
+            "kind": "Shape",
+            "name": "item3",
+            "position": 3
+          }
+        }
+      ],
+      "write_only": [
+        {
+          "typed": {
+            "kind": "Group",
+            "fields": [
+              {
+                "name": "item1",
+                "value": {
+                  "kind": "Group",
+                  "fields": [
+                    {
+                      "name": "id",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Int",
+                          "value": 1
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "item2",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "Null"
+                  }
+                }
+              },
+              {
+                "name": "item3",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "String",
+                    "value": "s"
+                  }
+                }
+              },
+              {
+                "name": "rest",
+                "value": {
+                  "kind": "Repeated",
+                  "items": []
+                }
+              }
+            ]
+          },
+          "error": {
+            "kind": "TupleGap",
+            "name": "Mixed",
+            "position": 2
+          }
+        },
+        {
+          "typed": {
+            "kind": "Group",
+            "fields": [
+              {
+                "name": "item1",
+                "value": {
+                  "kind": "Group",
+                  "fields": [
+                    {
+                      "name": "id",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Int",
+                          "value": 1
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "item2",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "String",
+                    "value": "[1]"
+                  }
+                }
+              },
+              {
+                "name": "item3",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "Int",
+                    "value": 5
+                  }
+                }
+              },
+              {
+                "name": "rest",
+                "value": {
+                  "kind": "Repeated",
+                  "items": [
+                    {
+                      "kind": "Scalar",
+                      "value": {
+                        "kind": "String",
+                        "value": "{}"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          "output": "[{\"id\":1},[1],5,{}]"
+        }
+      ]
+    },
+    {
+      "id": "unevaluated-items-false-closes",
+      "design_example": 6,
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "U",
+        "type": "array",
+        "prefixItems": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "integer"
+          }
+        ],
+        "unevaluatedItems": false
+      },
+      "expected_model": {
+        "name": "U",
+        "repeating": false,
+        "json_tuple": {
+          "length": {
+            "maximum": 2
+          },
+          "tail": "closed"
+        },
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "item1",
+              "repeating": false,
+              "kind": {
+                "kind": "scalar",
+                "ty": "string"
+              }
+            },
+            {
+              "name": "item2",
+              "repeating": false,
+              "kind": {
+                "kind": "scalar",
+                "ty": "int"
+              }
+            }
+          ]
+        }
+      },
+      "accepted": [
+        {
+          "wire": "[\"a\",1]",
+          "typed": {
+            "kind": "Group",
+            "fields": [
+              {
+                "name": "item1",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "String",
+                    "value": "a"
+                  }
+                }
+              },
+              {
+                "name": "item2",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "Int",
+                    "value": 1
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "rejected": [
+        {
+          "wire": "[\"a\",1,2]",
+          "error": {
+            "kind": "TupleLengthMismatch",
+            "name": "U",
+            "position": null
+          }
+        }
+      ],
+      "write_only": []
+    },
+    {
+      "id": "unevaluated-items-after-schema-items",
+      "design_example": 6,
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "U",
+        "type": "array",
+        "prefixItems": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "integer"
+          }
+        ],
+        "items": {
+          "type": "boolean"
+        },
+        "unevaluatedItems": false
+      },
+      "expected_model": {
+        "name": "U",
+        "repeating": false,
+        "json_tuple": {
+          "tail": "open"
+        },
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "item1",
+              "repeating": false,
+              "kind": {
+                "kind": "scalar",
+                "ty": "string"
+              }
+            },
+            {
+              "name": "item2",
+              "repeating": false,
+              "kind": {
+                "kind": "scalar",
+                "ty": "int"
+              }
+            },
+            {
+              "name": "rest",
+              "repeating": true,
+              "kind": {
+                "kind": "scalar",
+                "ty": "bool"
+              }
+            }
+          ]
+        }
+      },
+      "accepted": [
+        {
+          "wire": "[\"a\",1,true]",
+          "typed": {
+            "kind": "Group",
+            "fields": [
+              {
+                "name": "item1",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "String",
+                    "value": "a"
+                  }
+                }
+              },
+              {
+                "name": "item2",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "Int",
+                    "value": 1
+                  }
+                }
+              },
+              {
+                "name": "rest",
+                "value": {
+                  "kind": "Repeated",
+                  "items": [
+                    {
+                      "kind": "Scalar",
+                      "value": {
+                        "kind": "Bool",
+                        "value": true
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "rejected": [],
+      "write_only": []
+    },
+    {
+      "id": "unevaluated-items-homogeneous-items",
+      "design_example": 6,
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "U",
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "unevaluatedItems": false
+      },
+      "expected_model": {
+        "name": "U",
+        "repeating": true,
+        "kind": {
+          "kind": "scalar",
+          "ty": "string"
+        }
+      },
+      "accepted": [
+        {
+          "wire": "[\"a\",\"b\"]",
+          "typed": {
+            "kind": "Repeated",
+            "items": [
+              {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "String",
+                  "value": "a"
+                }
+              },
+              {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "String",
+                  "value": "b"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "rejected": [],
+      "write_only": []
+    },
+    {
+      "id": "unevaluated-items-as-items",
+      "design_example": 6,
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "U",
+        "type": "array",
+        "unevaluatedItems": {
+          "type": "string"
+        }
+      },
+      "expected_model": {
+        "name": "U",
+        "repeating": true,
+        "kind": {
+          "kind": "scalar",
+          "ty": "string"
+        }
+      },
+      "accepted": [
+        {
+          "wire": "[\"a\"]",
+          "typed": {
+            "kind": "Repeated",
+            "items": [
+              {
+                "kind": "Scalar",
+                "value": {
+                  "kind": "String",
+                  "value": "a"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "rejected": [],
+      "write_only": []
+    },
+    {
+      "id": "unevaluated-items-draft-2019-09-tail",
+      "design_example": 6,
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2019-09/schema",
+        "title": "U",
+        "type": "array",
+        "items": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "integer"
+          }
+        ],
+        "unevaluatedItems": {
+          "type": "boolean"
+        }
+      },
+      "expected_model": {
+        "name": "U",
+        "repeating": false,
+        "json_tuple": {
+          "tail": "open"
+        },
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "item1",
+              "repeating": false,
+              "kind": {
+                "kind": "scalar",
+                "ty": "string"
+              }
+            },
+            {
+              "name": "item2",
+              "repeating": false,
+              "kind": {
+                "kind": "scalar",
+                "ty": "int"
+              }
+            },
+            {
+              "name": "rest",
+              "repeating": true,
+              "kind": {
+                "kind": "scalar",
+                "ty": "bool"
+              }
+            }
+          ]
+        }
+      },
+      "accepted": [
+        {
+          "wire": "[\"a\",1,false]",
+          "typed": {
+            "kind": "Group",
+            "fields": [
+              {
+                "name": "item1",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "String",
+                    "value": "a"
+                  }
+                }
+              },
+              {
+                "name": "item2",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "Int",
+                    "value": 1
+                  }
+                }
+              },
+              {
+                "name": "rest",
+                "value": {
+                  "kind": "Repeated",
+                  "items": [
+                    {
+                      "kind": "Scalar",
+                      "value": {
+                        "kind": "Bool",
+                        "value": false
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "rejected": [
+        {
+          "wire": "[\"a\",1,\"x\"]",
+          "error": {
+            "kind": "Shape",
+            "name": "rest",
+            "position": 3
+          }
+        }
+      ],
+      "write_only": []
+    },
+    {
+      "id": "unevaluated-items-ignored-by-draft-07",
+      "design_example": 6,
+      "schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "title": "U",
+        "type": "array",
+        "items": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "integer"
+          }
+        ],
+        "additionalItems": {
+          "type": "boolean"
+        },
+        "unevaluatedItems": false
+      },
+      "expected_model": {
+        "name": "U",
+        "repeating": false,
+        "json_tuple": {
+          "tail": "open"
+        },
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "item1",
+              "repeating": false,
+              "kind": {
+                "kind": "scalar",
+                "ty": "string"
+              }
+            },
+            {
+              "name": "item2",
+              "repeating": false,
+              "kind": {
+                "kind": "scalar",
+                "ty": "int"
+              }
+            },
+            {
+              "name": "rest",
+              "repeating": true,
+              "kind": {
+                "kind": "scalar",
+                "ty": "bool"
+              }
+            }
+          ]
+        }
+      },
+      "accepted": [
+        {
+          "wire": "[\"a\",1,true,false]",
+          "typed": {
+            "kind": "Group",
+            "fields": [
+              {
+                "name": "item1",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "String",
+                    "value": "a"
+                  }
+                }
+              },
+              {
+                "name": "item2",
+                "value": {
+                  "kind": "Scalar",
+                  "value": {
+                    "kind": "Int",
+                    "value": 1
+                  }
+                }
+              },
+              {
+                "name": "rest",
+                "value": {
+                  "kind": "Repeated",
+                  "items": [
+                    {
+                      "kind": "Scalar",
+                      "value": {
+                        "kind": "Bool",
+                        "value": true
+                      }
+                    },
+                    {
+                      "kind": "Scalar",
+                      "value": {
+                        "kind": "Bool",
+                        "value": false
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "rejected": [
+        {
+          "wire": "[\"a\",1,\"x\"]",
+          "error": {
+            "kind": "Shape",
+            "name": "rest",
+            "position": 3
+          }
+        }
+      ],
+      "write_only": []
+    }
+  ],
+  "codec_cases": [
+    {
+      "id": "recursion-outside-positions",
+      "note": "A recursive reference that does not pass through a position expands normally.",
+      "expected_model": {
+        "name": "Tree",
+        "repeating": false,
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "point",
+              "repeating": false,
+              "json_tuple": {
+                "length": {
+                  "maximum": 2
+                },
+                "tail": "closed"
+              },
+              "kind": {
+                "kind": "group",
+                "children": [
+                  {
+                    "name": "item1",
+                    "repeating": false,
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "item2",
+                    "repeating": false,
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "int"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "name": "children",
+              "repeating": true,
+              "recursive_ref": "Tree",
+              "kind": {
+                "kind": "group",
+                "children": []
+              },
+              "json_object_item_nullable": false
+            }
+          ]
+        }
+      },
+      "accepted": [
+        {
+          "wire": "{\"point\":[\"a\",1],\"children\":[{\"point\":[\"b\"]},{}]}",
+          "typed": {
+            "kind": "Group",
+            "fields": [
+              {
+                "name": "point",
+                "value": {
+                  "kind": "Group",
+                  "fields": [
+                    {
+                      "name": "item1",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "String",
+                          "value": "a"
+                        }
+                      }
+                    },
+                    {
+                      "name": "item2",
+                      "value": {
+                        "kind": "Scalar",
+                        "value": {
+                          "kind": "Int",
+                          "value": 1
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "children",
+                "value": {
+                  "kind": "Repeated",
+                  "items": [
+                    {
+                      "kind": "Group",
+                      "fields": [
+                        {
+                          "name": "point",
+                          "value": {
+                            "kind": "Group",
+                            "fields": [
+                              {
+                                "name": "item1",
+                                "value": {
+                                  "kind": "Scalar",
+                                  "value": {
+                                    "kind": "String",
+                                    "value": "b"
+                                  }
+                                }
+                              },
+                              {
+                                "name": "item2",
+                                "value": {
+                                  "kind": "Scalar",
+                                  "value": {
+                                    "kind": "Null"
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        },
+                        {
+                          "name": "children",
+                          "value": {
+                            "kind": "Repeated",
+                            "items": []
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "Group",
+                      "fields": [
+                        {
+                          "name": "point",
+                          "value": {
+                            "kind": "Scalar",
+                            "value": {
+                              "kind": "Null"
+                            }
+                          }
+                        },
+                        {
+                          "name": "children",
+                          "value": {
+                            "kind": "Repeated",
+                            "items": []
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          "output": "{\"point\":[\"a\",1],\"children\":[{\"point\":[\"b\"],\"children\":[]},{\"children\":[]}]}"
+        }
+      ],
+      "rejected": [
+        {
+          "wire": "{\"children\":[{\"point\":[1]}]}",
+          "error": {
+            "kind": "Shape",
+            "name": "item1",
+            "position": 1
+          }
+        }
+      ],
+      "write_only": []
+    }
+  ],
+  "codec_refusal_cases": [
+    {
+      "id": "member-refers-to-its-frame",
+      "expected_model": {
+        "name": "T",
+        "repeating": false,
+        "json_tuple": {
+          "length": {
+            "maximum": 2
+          },
+          "tail": "closed"
+        },
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "item1",
+              "repeating": false,
+              "kind": {
+                "kind": "scalar",
+                "ty": "string"
+              }
+            },
+            {
+              "name": "item2",
+              "repeating": false,
+              "recursive_ref": "T",
+              "kind": {
+                "kind": "group",
+                "children": []
+              }
+            }
+          ]
+        }
+      },
+      "wire": "[\"a\"]",
+      "error": {
+        "kind": "RecursiveJsonTupleFrame",
+        "name": "item2",
+        "frame": "T"
+      }
+    },
+    {
+      "id": "cycle-through-a-position",
+      "expected_model": {
+        "name": "Doc",
+        "repeating": false,
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "point",
+              "repeating": false,
+              "json_tuple": {
+                "length": {
+                  "maximum": 2
+                },
+                "tail": "closed"
+              },
+              "kind": {
+                "kind": "group",
+                "children": [
+                  {
+                    "name": "item1",
+                    "repeating": false,
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "item2",
+                    "repeating": false,
+                    "kind": {
+                      "kind": "group",
+                      "children": [
+                        {
+                          "name": "back",
+                          "repeating": false,
+                          "recursive_ref": "Doc",
+                          "kind": {
+                            "kind": "group",
+                            "children": []
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "wire": "{\"point\":[\"a\",{}]}",
+      "error": {
+        "kind": "RecursiveJsonTupleFrame",
+        "name": "back",
+        "frame": "point"
+      }
+    },
+    {
+      "id": "reference-expands-a-frame",
+      "expected_model": {
+        "name": "Doc",
+        "repeating": false,
+        "kind": {
+          "kind": "group",
+          "children": [
+            {
+              "name": "point",
+              "repeating": false,
+              "json_tuple": {
+                "length": {
+                  "maximum": 2
+                },
+                "tail": "closed"
+              },
+              "kind": {
+                "kind": "group",
+                "children": [
+                  {
+                    "name": "item1",
+                    "repeating": false,
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "string"
+                    }
+                  },
+                  {
+                    "name": "item2",
+                    "repeating": false,
+                    "kind": {
+                      "kind": "scalar",
+                      "ty": "int"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "name": "again",
+              "repeating": false,
+              "recursive_ref": "point",
+              "kind": {
+                "kind": "group",
+                "children": []
+              }
+            }
+          ]
+        }
+      },
+      "wire": "{\"point\":[\"a\",1]}",
+      "error": {
+        "kind": "RecursiveJsonTupleFrame",
+        "name": "again",
+        "frame": "point"
+      }
+    }
+  ],
+  "schema_refusal_cases": [
+    {
+      "id": "allof-positional-intersection",
+      "schema": {
+        "allOf": [
+          {
+            "type": "array",
+            "prefixItems": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ]
+          },
+          {
+            "type": "array",
+            "prefixItems": [
+              {
+                "minLength": 1
+              }
+            ]
+          }
+        ]
+      },
+      "reason": "needs per-position intersection"
+    },
+    {
+      "id": "positional-alternatives",
+      "schema": {
+        "anyOf": [
+          {
+            "type": "array",
+            "prefixItems": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ]
+          },
+          {
+            "type": "array",
+            "prefixItems": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          }
+        ]
+      },
+      "reason": "positional alternatives"
+    },
+    {
+      "id": "unique-items",
+      "schema": {
+        "type": "array",
+        "prefixItems": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "integer"
+          }
+        ],
+        "uniqueItems": true
+      },
+      "reason": "a cross-position predicate"
+    },
+    {
+      "id": "ambiguous-tail-spelling",
+      "schema": {
+        "type": "array",
+        "prefixItems": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "integer"
+          }
+        ],
+        "additionalItems": false
+      },
+      "reason": "ambiguous tail spelling without $schema"
+    },
+    {
+      "id": "array-member",
+      "schema": {
+        "type": "array",
+        "prefixItems": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            }
+          }
+        ]
+      },
+      "reason": "violates the member rule"
+    },
+    {
+      "id": "recursive-frame",
+      "schema": {
+        "$defs": {
+          "t": {
+            "type": "array",
+            "prefixItems": [
+              {
+                "type": "string"
+              },
+              {
+                "$ref": "#/$defs/t"
+              }
+            ]
+          }
+        },
+        "$ref": "#/$defs/t"
+      },
+      "reason": "a recursive frame"
+    },
+    {
+      "id": "unevaluated-items-beside-contains",
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "array",
+        "prefixItems": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "integer"
+          }
+        ],
+        "contains": {
+          "type": "integer"
+        },
+        "unevaluatedItems": false
+      },
+      "reason": "contains contributes evaluated items"
+    },
+    {
+      "id": "unevaluated-items-beside-allof",
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "array",
+        "allOf": [
+          {
+            "prefixItems": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ]
+          }
+        ],
+        "unevaluatedItems": false
+      },
+      "reason": "depends on annotations"
+    }
+  ]
+}
