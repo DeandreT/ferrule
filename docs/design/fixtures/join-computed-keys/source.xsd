@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:element name="Source"><xs:complexType><xs:sequence>
+    <xs:element name="Header"><xs:complexType><xs:sequence>
+      <xs:element name="Code" type="xs:string"/>
+    </xs:sequence></xs:complexType></xs:element>
+    <xs:element name="Order" minOccurs="0" maxOccurs="unbounded"><xs:complexType><xs:sequence>
+      <xs:element name="Id" type="xs:string"/>
+      <xs:element name="CustomerNumber" type="xs:string" minOccurs="0" nillable="true"/>
+      <xs:element name="Codes" type="xs:string" minOccurs="0"/>
+      <xs:element name="Qty" type="xs:integer" minOccurs="0"/>
+    </xs:sequence></xs:complexType></xs:element>
+    <xs:element name="Customer" minOccurs="0" maxOccurs="unbounded"><xs:complexType><xs:sequence>
+      <xs:element name="Number" type="xs:string"/>
+      <xs:element name="Name" type="xs:string"/>
+      <xs:element name="Rank" type="xs:integer"/>
+    </xs:sequence></xs:complexType></xs:element>
+  </xs:sequence></xs:complexType></xs:element>
+</xs:schema>
