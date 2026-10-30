@@ -636,6 +636,7 @@ fn scalar_call_whitelist_is_closed_and_name_addressable() {
         "format_guid_string",
         "isbn10_to_isbn13",
         "round",
+        "round_half_ceiling",
         "delay_passthrough",
         "date_from_datetime",
         "year_from_datetime",

@@ -108,7 +108,7 @@ fn target_descendant_rule_inlines_nested_scalar_udf_and_uses_fraction_digits() {
     assert!(
         matches!(
             imported.project.graph.nodes.get(&amount.node),
-            Some(Node::Call { function, .. }) if function == "round"
+            Some(Node::Call { function, .. }) if function == "round_half_ceiling"
         ),
         "{:?}",
         imported.project.graph.nodes.get(&amount.node)
