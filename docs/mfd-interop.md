@@ -1322,9 +1322,10 @@ Exported designs select the built-in execution language, so each function call
 exports only as a function that language provides with the same inputs and
 meaning; otherwise export fails before writing anything and names the function:
 
-- Two-argument `round` exports as `core/round-precision`. The native `round` has
-  one input: a design that connects a second one still runs, but the precision
-  is ignored, and saving drops that input.
+- `round_half_ceiling` exports as `core/round` with one input and as
+  `core/round-precision` with two. The native `round` has one input: a design
+  that connects a second one still runs, but the precision is ignored, and
+  saving drops that input. Ferrule's `round` is refused; see below.
 - `format_date` and `format_datetime` export with at most three inputs (value,
   format, language) and `format_time` with at most two. The native functions have
   no calendar or place inputs, and `format-time` has no language input; extra
@@ -1364,8 +1365,38 @@ Native `core/round` and `core/round-precision` round exact halves toward
 positive infinity (`-2.5` becomes `-2`) and work on decimal values, so `1.005`
 rounds to two places as `1.01`. Ferrule's `round` rounds halves away from zero
 on binary floating-point values, so negative halves, and decimal fractions that
-binary floating point cannot represent exactly, can round differently. This
-applies to both arities and to imported designs as well as exports.
+binary floating point cannot represent exactly, can round differently.
+
+Import therefore maps `round` and `round-precision`, in any library, to the
+separate `round_half_ceiling` function, which follows the native rule. Ferrule's
+own `round` keeps its behavior, so native Ferrule projects are unchanged. Export
+writes `round_half_ceiling` back as `core/round` or `core/round-precision`. It
+refuses Ferrule's `round`, because it can't prove that the inputs avoid the
+cases where the two differ.
+
+`round_half_ceiling` rounds decimal digits, never a scaled binary float:
+
+- Text is rounded on its own digits. A floating-point value is rounded on its
+  shortest round-trip digits, so `1.005` keeps its digits after a numeric
+  conversion. Decimals with at most 15 significant digits survive that
+  conversion exactly.
+- Integers stay integers, including with negative precision, and fail with an
+  integer overflow error beyond the 64-bit range. Other results are the nearest
+  floating-point value to the rounded decimal; a zero result has no negative
+  sign, and a result beyond the floating-point range becomes infinity.
+- NaN and infinities pass through, as they do for `round`.
+- Precision is read like `round`'s: integers directly, floating-point values
+  rounded half away from zero with NaN as zero, and numeric text as `to_number`
+  reads it. Precision beyond the 32-bit range saturates.
+- Non-numeric text fails as an invalid argument; booleans, absent values and
+  `Decimal96` values fail with a type error.
+
+The interpreter, generated Rust and generated C# give the same results. Native
+runs established the half rule and decimal text inputs; the integer, precision
+and non-finite rules above follow Ferrule's numeric conventions and haven't been
+checked against native runs. Arithmetic that feeds a rounding still uses binary
+floating point, so a computed input can differ from the native decimal result
+before it is rounded.
 
 The default `ferrule-extensions` profile preserves the existing Ferrule
 round-trip representation. Export now reports whether the rendered design has

@@ -285,7 +285,7 @@ fn group_branch(
     op: AggregateOp,
     seen: &mut BTreeSet<NodeId>,
 ) -> Option<NodeId> {
-    let [rounded] = call(take(graph, result, seen)?, "round")? else {
+    let [rounded] = call(take(graph, result, seen)?, "round_half_ceiling")? else {
         return None;
     };
     let sum = unary(graph, *rounded, "to_number", seen)?;
@@ -341,7 +341,8 @@ fn annual_body_aliases(function: &UserFunction) -> Option<BTreeMap<NodeId, NodeI
     let g = &function.body;
     let mut seen = BTreeSet::new();
     let mut aliases = BTreeMap::new();
-    let [product, precision] = call(take(g, function.output, &mut seen)?, "round")? else {
+    let [product, precision] = call(take(g, function.output, &mut seen)?, "round_half_ceiling")?
+    else {
         return None;
     };
     let product = alias(g, *product, &mut seen, &mut aliases)?;
@@ -849,7 +850,7 @@ mod tests {
         let thirty_two = convert(nodes, thirty_two);
         let sum = call(nodes, "add", vec![quotient, thirty_two]);
         let sum = convert(nodes, sum);
-        call(nodes, "round", vec![sum])
+        call(nodes, "round_half_ceiling", vec![sum])
     }
 
     fn project() -> Project {

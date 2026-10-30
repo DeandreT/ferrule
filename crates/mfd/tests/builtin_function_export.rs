@@ -246,6 +246,135 @@ fn two_argument_round_exports_as_round_precision() -> TestResult {
 }
 
 #[test]
+fn imported_rounding_matches_the_reference_and_round_trips() -> TestResult {
+    // The first three rows are native results for these inputs (#1264).
+    let cases = [
+        (
+            "round-precision",
+            vec![Literal::Decimal(-0.125), Literal::Integer(2)],
+            Value::Float(-0.12),
+        ),
+        ("round", vec![Literal::Decimal(-10.5)], Value::Float(-10.0)),
+        (
+            "round-precision",
+            vec![Literal::string("1.005"), Literal::Integer(2)],
+            Value::Float(1.01),
+        ),
+        ("round", vec![Literal::Decimal(2.5)], Value::Float(3.0)),
+        ("round", vec![Literal::Decimal(-2.51)], Value::Float(-3.0)),
+        (
+            "round-precision",
+            vec![Literal::Decimal(-2.5), Literal::Integer(0)],
+            Value::Float(-2.0),
+        ),
+        (
+            "round-precision",
+            vec![Literal::Decimal(-1250.0), Literal::Integer(-2)],
+            Value::Float(-1200.0),
+        ),
+        (
+            "round-precision",
+            vec![
+                Literal::Decimal(4_503_599_627_370_495.5),
+                Literal::Integer(0),
+            ],
+            Value::Float(4_503_599_627_370_496.0),
+        ),
+    ];
+    for context in CONTEXTS {
+        for (index, (function, arguments, expected)) in cases.iter().enumerate() {
+            let function = *function;
+            let fixture = ScalarMfdBuilder::new(
+                format!("reference_round_{index}"),
+                function,
+                "core",
+                arguments.clone(),
+                "decimal",
+            )
+            .context(context)
+            .write()?;
+            let imported = mfd::import(fixture.design())?;
+            let calls = imported
+                .project
+                .user_functions
+                .values()
+                .flat_map(|function| function.body.nodes.values())
+                .chain(imported.project.graph.nodes.values())
+                .filter_map(|node| match node {
+                    Node::Call { function, .. } if function.starts_with("round") => {
+                        Some(function.as_str())
+                    }
+                    _ => None,
+                })
+                .collect::<Vec<_>>();
+            // A nested definition can also be retained beside its inlined copy.
+            assert!(
+                !calls.is_empty() && calls.iter().all(|call| *call == "round_half_ceiling"),
+                "{function} {context:?}: {calls:?}"
+            );
+
+            let (value, functions) = round_trip(
+                &format!("reference_round_{index}"),
+                function,
+                "core",
+                arguments.clone(),
+                "decimal",
+                context,
+            )?;
+            assert_eq!(
+                value.as_ref(),
+                Some(expected),
+                "{function} {arguments:?} {context:?}"
+            );
+            let exported = functions
+                .iter()
+                .filter(|(name, _, _)| name.starts_with("round"))
+                .collect::<Vec<_>>();
+            let native = (function.to_string(), "core".to_string(), arguments.len());
+            assert!(
+                !exported.is_empty() && exported.iter().all(|component| **component == native),
+                "{context:?}: {exported:?}"
+            );
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn native_rounding_function_exports_under_both_arities() -> TestResult {
+    let number = |value| Node::Const {
+        value: Value::Float(value),
+    };
+    let precision = Node::Const {
+        value: Value::Int(2),
+    };
+    for (arguments, name, expected) in [
+        (vec![number(-10.5)], "round", Value::Float(-10.0)),
+        (
+            vec![number(-0.125), precision],
+            "round-precision",
+            Value::Float(-0.12),
+        ),
+    ] {
+        let native = project(
+            call_graph("round_half_ceiling", &arguments),
+            ScalarType::Float,
+        );
+        assert_eq!(run(&native)?, Some(expected.clone()));
+        let directory = TempDir::new()?;
+        let path = directory.0.join("mapping.mfd");
+        let warnings = mfd::export(&native, &path)?;
+        assert!(warnings.is_empty(), "{warnings:?}");
+        let components = function_components(&std::fs::read_to_string(&path)?)?;
+        assert_eq!(components, [(name.into(), "core".into(), arguments.len())]);
+        let reimported = mfd::import(&path)?;
+        assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+        assert_eq!(run(&reimported.project)?, Some(expected), "{name}");
+    }
+    Ok(())
+}
+
+#[test]
 fn format_functions_export_their_native_inputs() -> TestResult {
     for (function, value, picture, expected) in [
         (
@@ -397,7 +526,22 @@ fn assert_refused(project: &Project, function: &str, reason: &str, label: &str) 
 fn functions_without_built_in_equivalents_are_refused_before_writing() -> TestResult {
     let date = || text("2010-12-01");
     let picture = || text("[D01] [MNn] [Y]");
-    let cases: [(&str, Vec<Node>, ScalarType, &str); 8] = [
+    let number = |value| Node::Const {
+        value: Value::Float(value),
+    };
+    let cases: [(&str, Vec<Node>, ScalarType, &str); 10] = [
+        (
+            "round",
+            vec![number(-10.5)],
+            ScalarType::Float,
+            "use `round_half_ceiling`",
+        ),
+        (
+            "round",
+            vec![number(1.005), number(2.0)],
+            ScalarType::Float,
+            "halves away from zero",
+        ),
         (
             "positive",
             vec![Node::Const {

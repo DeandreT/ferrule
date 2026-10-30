@@ -1404,7 +1404,9 @@ pub(super) fn map_name(name: &str) -> Option<&'static str> {
         "is-xsi-nil" => "is_xml_nil",
         "substitute-missing-with-xsi-nil" => "substitute_missing_with_xml_nil",
         "exists" => "exists",
-        "round" | "round-precision" => "round",
+        // Native rounding sends exact halves toward positive infinity on
+        // decimal values, unlike Ferrule's away-from-zero `round`.
+        "round" | "round-precision" => "round_half_ceiling",
         "date-from-datetime" => "date_from_datetime",
         "year-from-datetime" => "year_from_datetime",
         "month-from-datetime" => "month_from_datetime",

@@ -61,6 +61,11 @@ fn lowers_exact_numeric_and_delay_scalar_calls() {
         ),
         ("format_number", ScalarFunction::FormatNumber, vec![10, 20]),
         (
+            "round_half_ceiling",
+            ScalarFunction::RoundHalfCeiling,
+            vec![10, 10],
+        ),
+        (
             "substitute_missing_with_xml_nil",
             ScalarFunction::SubstituteMissingWithXmlNil,
             vec![20],
@@ -134,6 +139,7 @@ fn newly_supported_names_are_closed_and_canonical() {
             ScalarFunction::JsonParseArrayField,
         ),
         ("format_number", ScalarFunction::FormatNumber),
+        ("round_half_ceiling", ScalarFunction::RoundHalfCeiling),
         (
             "substitute_missing_with_xml_nil",
             ScalarFunction::SubstituteMissingWithXmlNil,
