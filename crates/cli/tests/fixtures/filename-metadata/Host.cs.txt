@@ -1,0 +1,59 @@
+using System.Text;
+using System.Text.Json.Nodes;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+foreach (var (source, target, success) in new (string?, string?, bool)[] {
+    (" ./source.hl7 ", " ./report.json ", true),
+    (null, "report.json", false), ("source.hl7", null, false),
+    ("*.hl7", "report.json", false), ("source.hl7", "*.json", false)
+}) {
+    var parameters = new Dictionary<string, FerruleValue>();
+    if (source is not null) parameters["SourcePath"] = FerruleValue.FromString(source);
+    if (target is not null) parameters["TargetPath"] = FerruleValue.FromString(target);
+    var context = FerruleExecutionContext.WithParameters("mapping.json", new FerruleRuntimeParameters(parameters));
+    var host = new Host();
+    byte[]? bytes = null;
+    try { bytes = GeneratedMapping.ExecutePrimaryEdiDocumentBytes(context, host, 1); }
+    catch (FerrulePrimaryDocumentException error) when (!success && error.Error == FerruleDocumentAcquisitionError.Filename) {
+        if (host.Calls.Count != 0) throw new Exception("host called before filename refusal");
+        if (error.Path is not null || error.Count is not null) throw new Exception("wrong filename failure details");
+        string? missing = source is null ? "SourcePath" : target is null ? "TargetPath" : null;
+        if (missing is not null) {
+            if (error.InnerException is not FerruleRuntimeException runtime || runtime.Error != FerruleRuntimeError.MissingRuntimeParameter || runtime.RuntimeParameter != missing) throw new Exception("wrong missing parameter", error);
+        } else if (error.InnerException is not GeneratedMapping.FilenameEndpointException) throw new Exception("wrong endpoint error", error);
+    }
+    if (!success) {
+        if (bytes is not null) throw new Exception("filename refusal missing");
+        continue;
+    }
+    if (bytes is null || bytes.AsSpan().StartsWith(new byte[] { 0xef, 0xbb, 0xbf })) throw new Exception("missing output or unexpected BOM");
+    var text = new UTF8Encoding(false, true).GetString(bytes);
+    if (!JsonNode.DeepEquals(JsonNode.Parse(text), JsonNode.Parse("{\"reading\":\"café 雪\",\"count\":\"007\"}"))) throw new Exception("complete typed document differs");
+    if (GeneratedMapping.EvaluateOutputFilename(context) != target) throw new Exception("output filename changed");
+    if (!host.Calls.SequenceEqual(new[] { "select:" + source, "load:" + source })) throw new Exception("transport changed");
+    foreach (var count in new[] { 0, 2 }) {
+        var multiple = new Host { Count = count };
+        try {
+            GeneratedMapping.ExecutePrimaryEdiDocumentBytes(context, multiple, 3);
+            throw new Exception("direct selection cardinality admitted");
+        } catch (FerrulePrimaryDocumentException error) when (error.Error == FerruleDocumentAcquisitionError.DirectSelection && error.Count == count) {
+            if (!multiple.Calls.SequenceEqual(new[] { "select:" + source })) throw new Exception("loaded invalid selection");
+        }
+    }
+}
+Console.WriteLine("filename metadata C# Release host passed");
+
+sealed class Host : IFerrulePrimarySourceHost {
+    public List<string> Calls { get; } = new();
+    public int Count { get; init; } = 1;
+    public IReadOnlyList<string> Select(string name, FerrulePrimaryFileSelection selection) {
+        if (selection != FerrulePrimaryFileSelection.Direct) throw new Exception("selection changed");
+        Calls.Add("select:" + name);
+        return Enumerable.Repeat(name, Count).ToArray();
+    }
+    public FerruleCsvSourceData Load(string name) {
+        Calls.Add("load:" + name);
+        return new FerruleCsvSourceData(Encoding.UTF8.GetBytes("MSH|^~\\&|\rZRD|café 雪|007\r"), null);
+    }
+}

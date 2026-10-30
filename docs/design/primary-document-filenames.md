@@ -163,6 +163,30 @@ The original mapping file and filename text are not rewritten.
 String parsers, string serializers and variables remain business components,
 admitted by their existing readers rather than counted as file endpoints.
 
+Saved endpoint properties have a closed grammar. `DynamicFilenames="1"` on
+either file endpoint selects its already-connected filename graph root; it
+does not enable wildcard or multiple-document selection. `XSLTTargetEncoding`
+is admitted only as exact `UTF-8` on the JSON target, whose result is UTF-8
+bytes. Duplicate property blocks, unknown or namespaced properties, conflicting
+values, and source-side target-encoding settings refuse.
+
+A required filename parameter may have no `sources`, an empty `sources`, or
+one empty keyless `datapoint` with absent or zero `pos`. That placeholder cannot
+name a default feed. Keyed placeholders, optional parameters, duplicate blocks,
+extra pins, attributes and nested controls remain outside this profile.
+
+EDI encoding/BOM declarations, nested text settings/messages and target cast
+markers are not transport decoration. A reader policy or conversion must be
+preserved explicitly before those saved forms can be admitted. The filename
+gate refuses them rather than relying on an ordinary reader's ignored metadata
+or a successful String-only example. It never rewrites the original design.
+
+The [dynamic file-name rules](https://www.altova.com/manual/en/mapforceenterprise/2024.0/mffdynamic_input_output-per-comp.html),
+[simple-input defaults](https://www.altova.com/manual/en/mapforceenterprise/2024.0/mff_in_create_default_value.html),
+and [JSON component encoding settings](https://www.altova.com/manual/en/mapforceenterprise/2024.0/mff_json_component_settings.html)
+describe separate settings. Documentation of their meaning is not evidence of
+their complete behavior in a generated reference executable.
+
 The output filename is not a target data field or a document-producing scope.
 Only direct selection and singular document roots are admitted. Wildcard
 selection, empty/wildcard/control-character filename values, source-dependent
