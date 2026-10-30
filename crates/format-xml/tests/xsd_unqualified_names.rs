@@ -8,8 +8,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use format_xml::{dtd, from_str, to_string, xsd};
 use ir::{
-    Instance, ScalarType, SchemaNode, Value, XML_ELEMENTS_FIELD, XML_NAMESPACE_URI_FIELD,
-    XmlNamespace,
+    Instance, ScalarType, SchemaNode, Value, XML_ATTRIBUTES_FIELD, XML_ELEMENTS_FIELD,
+    XML_NAMESPACE_URI_FIELD, XmlNamespace,
 };
 
 static NEXT_DIRECTORY: AtomicUsize = AtomicUsize::new(0);
@@ -178,6 +178,98 @@ fn unqualified_locals_in_a_namespaced_schema_match_only_unqualified_elements()
     assert_eq!(
         look_alike.field("Head"),
         Some(&Instance::Scalar(Value::Null))
+    );
+    Ok(())
+}
+
+const LOCAL_WILDCARDS: &str = r###"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" targetNamespace="urn:t" elementFormDefault="qualified">
+  <xs:element name="Root"><xs:complexType><xs:sequence>
+    <xs:element name="Head" type="xs:string" form="unqualified" minOccurs="0"/>
+    <xs:any namespace="##local" processContents="lax" minOccurs="0" maxOccurs="unbounded"/>
+  </xs:sequence><xs:anyAttribute namespace="##any" processContents="lax"/></xs:complexType></xs:element>
+</xs:schema>"###;
+
+/// roxmltree reports a name under `xmlns=""` as being in the empty namespace;
+/// it reads as no namespace, as an unprefixed name without a default does.
+#[test]
+fn undeclared_default_namespaces_read_as_no_namespace() -> Result<(), Box<dyn Error>> {
+    let schema = import(LOCAL_WILDCARDS, "{urn:t}Root")?;
+    let instance = from_str(r#"<t:Root xmlns:t="urn:t"><x/></t:Root>"#, &schema)?;
+    let items = instance
+        .field(XML_ELEMENTS_FIELD)
+        .and_then(Instance::as_repeated)
+        .ok_or("missing generic items")?;
+    assert_eq!(
+        items[0].field(XML_NAMESPACE_URI_FIELD),
+        Some(&Instance::Scalar(Value::Null))
+    );
+    let output = to_string(&schema, &instance)?;
+    assert!(output.contains(r#"<x xmlns="">"#), "{output}");
+    assert_eq!(from_str(&output, &schema)?, instance, "{output}");
+    // A prefix bound to the empty string is no namespace either.
+    let prefixed = from_str(
+        r#"<t:Root xmlns:t="urn:t" xmlns:e=""><e:x/></t:Root>"#,
+        &schema,
+    )?;
+    assert_eq!(prefixed, instance);
+
+    // A typed unqualified field under `xmlns=""` keeps its typed match.
+    let typed = from_str(
+        r#"<Root xmlns="urn:t"><Head xmlns="">h</Head><x xmlns=""/></Root>"#,
+        &schema,
+    )?;
+    assert_eq!(typed.field("Head"), Some(&text("h")));
+    assert_eq!(
+        typed.field(XML_ELEMENTS_FIELD),
+        instance.field(XML_ELEMENTS_FIELD)
+    );
+    Ok(())
+}
+
+#[test]
+fn attributes_in_the_empty_namespace_read_as_no_namespace() -> Result<(), Box<dyn Error>> {
+    let schema = import(LOCAL_WILDCARDS, "{urn:t}Root")?;
+    let unqualified = from_str(r#"<t:Root xmlns:t="urn:t" a="1"/>"#, &schema)?;
+    let attributes = unqualified
+        .field(XML_ATTRIBUTES_FIELD)
+        .and_then(Instance::as_repeated)
+        .ok_or("missing generic attributes")?;
+    assert_eq!(
+        attributes[0].field(XML_NAMESPACE_URI_FIELD),
+        Some(&Instance::Scalar(Value::Null))
+    );
+    let prefixed = from_str(r#"<t:Root xmlns:t="urn:t" xmlns:e="" e:a="1"/>"#, &schema)?;
+    assert_eq!(prefixed, unqualified);
+    let output = to_string(&schema, &prefixed)?;
+    assert_eq!(from_str(&output, &schema)?, unqualified, "{output}");
+    Ok(())
+}
+
+/// Substitution members are found by expanded name, which has no braces for
+/// a name in no namespace.
+#[test]
+fn substitution_members_under_an_undeclared_default_namespace_match() -> Result<(), Box<dyn Error>>
+{
+    let schema = import(
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:complexType name="ItemType"><xs:sequence>
+    <xs:element name="Title" type="xs:string"/>
+  </xs:sequence></xs:complexType>
+  <xs:element name="Item" type="ItemType" abstract="true"/>
+  <xs:element name="Book" type="ItemType" substitutionGroup="Item"/>
+  <xs:element name="Root"><xs:complexType><xs:sequence>
+    <xs:element ref="Item"/>
+  </xs:sequence></xs:complexType></xs:element>
+</xs:schema>"#,
+        "Root",
+    )?;
+    let plain = from_str("<Root><Book><Title>t</Title></Book></Root>", &schema)?;
+    assert_eq!(
+        from_str(
+            r#"<Root><Book xmlns=""><Title>t</Title></Book></Root>"#,
+            &schema
+        )?,
+        plain
     );
     Ok(())
 }
