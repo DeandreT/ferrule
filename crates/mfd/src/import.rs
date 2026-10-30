@@ -754,7 +754,7 @@ pub(crate) fn validate_pipeline_export_graph(xml: &str) -> Result<(), MfdError> 
 }
 
 fn discover_pipeline_chain_text(text: &str) -> Result<DiscoveredPipelineChain, MfdError> {
-    let doc = roxmltree::Document::parse(text)?;
+    let doc = crate::design::parse(text)?;
     let mapping = doc.root_element();
     if !mapping.has_tag_name("mapping") {
         return Err(MfdError::NotMfd("root element is not <mapping>"));
@@ -1572,7 +1572,7 @@ fn import_resolved(
     let retain_primary_filename = filename_import != FilenameImport::None;
     let path = resources.mapping_path();
     let text = resources.read_design()?;
-    let doc = roxmltree::Document::parse(&text)?;
+    let doc = crate::design::parse(&text)?;
     let mapping_el = doc.root_element();
     if mapping_el.tag_name().name() != "mapping" {
         return Err(MfdError::NotMfd("root element is not <mapping>"));

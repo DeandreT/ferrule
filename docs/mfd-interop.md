@@ -786,6 +786,13 @@ checks file size before reading and bounds the actual read; export checks the
 complete XML, including escaping and embedded metadata, before publishing any
 design or schema sibling. Each connected stage and the combined design must
 fit the same limit.
+Import also refuses a design whose `<entry>` elements nest more than 128
+levels deep (`MAX_MFD_ENTRY_DEPTH`), anywhere in the design, before it reads
+any component. Real designs nest about 20 levels. The limit keeps the
+recursive entry-tree importers, and engine validation of the imported scopes,
+within a default 8 MiB stack. It applies to file, package, pipeline and
+filename-document import, and so to the GUI and to the re-import that package
+export performs.
 MFD entries and generated XSD attributes preserve tabs and line breaks through
 XML character references, including field names, paths, fixed values, and
 defaults.
