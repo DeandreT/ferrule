@@ -121,7 +121,7 @@ fn text(value: &str) -> ir::Instance {
     ir::Instance::Scalar(ir::Value::String(value.into()))
 }
 
-/// `XmlSerialize` uses the native XML writer, which refuses excluded names
+/// `XmlSerialize` uses the native XML writer, which refuses an excluded name
 /// rather than serializing a wider wildcard.
 #[test]
 fn xml_serialize_refuses_excluded_names() {
@@ -183,5 +183,10 @@ fn xml_serialize_refuses_excluded_names() {
         ]),
     )]);
     let error = engine::run(&project, &input).unwrap_err();
-    assert!(error.to_string().contains("excluded names"), "{error}");
+    assert!(
+        error
+            .to_string()
+            .contains("excludes element `Secret` in namespace `urn:ferrule:wx:a`"),
+        "{error}"
+    );
 }

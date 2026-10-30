@@ -49,6 +49,7 @@ mod schema_links;
 mod substitution;
 mod substitution_expansion;
 mod type_alternative_profiles;
+mod wildcard_exclusions;
 mod wildcard_ports;
 
 use resources::SchemaReader;
@@ -56,6 +57,7 @@ pub use resources::XmlSchemaByteReader;
 use schema_links::{Follow, LinkedSchema};
 use substitution_expansion::attach_substitution_alternatives;
 use type_alternative_profiles::{incompatible_attribute_use, incompatible_optional_occurrence};
+use wildcard_exclusions::{ExclusionSyntax, Exclusions, NamespaceContext, WildcardKind};
 
 pub use export::{XsdExportArtifact, XsdExportSet, export, export_namespace, export_set};
 
@@ -111,6 +113,9 @@ struct ParseState {
     unsupported_substitution: Option<XmlFormatError>,
     unsupported_wildcard: Option<XmlFormatError>,
     substitutions: substitution::SubstitutionIndex,
+    /// Local names of element declarations left without a namespace because
+    /// their document is reached through several namespace contexts.
+    ambiguous_unqualified_elements: BTreeSet<String>,
 }
 
 enum ComplexTypeResolution {
@@ -273,6 +278,11 @@ impl ParseState {
             return Err(XmlFormatError::SchemaMaterializationLimit {
                 limit: MAX_MATERIALIZED_SCHEMA_ELEMENTS,
             });
+        }
+        if wildcard_exclusions::has_unresolved_mark(&schema) {
+            return Err(unsupported_wildcard(
+                "##definedSibling was not resolved against a complete complex type",
+            ));
         }
         qualify_wildcard_siblings(&mut schema);
         if let Some(group) = invalid_repeating_sequence_group(&schema) {
@@ -806,6 +816,7 @@ fn parse_element_level(
         state.substitutions.effective_namespace(schema_path),
         false,
     );
+    record_ambiguous_namespace(&node, schema_el, schema_path, state);
     apply_exported_alternative_view(el, &mut node, schema_el, schema_path, state);
     apply_fixed_value(el, &mut node);
     apply_default_value(el, &mut node, state);
@@ -816,6 +827,24 @@ fn parse_element_level(
         node.nillable()
     } else {
         node
+    }
+}
+
+/// Records an element declaration whose namespace is unknowable because its
+/// chameleon document is reached through several namespace contexts.
+fn record_ambiguous_namespace(
+    node: &SchemaNode,
+    schema_el: &Node,
+    schema_path: &Path,
+    state: &mut ParseState,
+) {
+    if node.xml_namespace.is_none()
+        && schema_el.attribute("targetNamespace").is_none()
+        && state.substitutions.namespace_contexts(schema_path) > 1
+    {
+        state
+            .ambiguous_unqualified_elements
+            .insert(node.name.clone());
     }
 }
 
@@ -1058,6 +1087,12 @@ fn attach_type_alternatives(
         .map(|child| child.name.clone())
         .collect::<Vec<_>>();
     let original_children = base_children.clone();
+    // One `element()` field serves every alternative, so all must resolve
+    // the shared wildcard to one excluded-name set. Each alternative is
+    // checked first, as every later difference refuses or returns silently.
+    let base_excluded = node
+        .child(XML_ELEMENTS_FIELD)
+        .map(|wildcard| wildcard.xml_wildcard_excluded_names.clone());
     let mut resolved = Vec::new();
     for derived in &derived {
         let Ok(text) = state.reader.read(&derived.path) else {
@@ -1081,6 +1116,18 @@ fn attach_type_alternatives(
         ) else {
             return;
         };
+        if let Some(base_excluded) = &base_excluded
+            && group
+                .children
+                .iter()
+                .find(|child| child.name == XML_ELEMENTS_FIELD)
+                .is_some_and(|wildcard| &wildcard.xml_wildcard_excluded_names != base_excluded)
+        {
+            state.reject_wildcard(unsupported_wildcard(
+                "the declared type and an xsi:type alternative resolve one wildcard to different excluded names",
+            ));
+            return;
+        }
         if !group.repeating_sequences.is_empty()
             || group.repeating_choices != node.xml_repeating_choices
         {
@@ -1501,6 +1548,7 @@ fn parse_element_declaration_inner(
             state.substitutions.effective_namespace(schema_path),
             false,
         );
+        record_ambiguous_namespace(&node, schema_el, schema_path, state);
         return Some(node);
     }
     let mut node = parse_element(declaration, schema_el, schema_path, state);
@@ -1629,6 +1677,7 @@ fn parse_complex_type_declaration_level(
     state.complex_type_anchors.push(anchor.clone());
     let content = parse_complex_type_content(declaration, schema_el, schema_path, state);
     let mut group = content.clone();
+    wildcard_exclusions::resolve(&mut group, state);
     wildcard_ports::resolve(&mut group, state);
     state.complex_type_anchors.pop();
     state.leave();
@@ -1812,6 +1861,7 @@ fn parse_complex_type(
     state: &mut ParseState,
 ) -> ParsedComplexType {
     let mut parsed = parse_complex_type_content(complex_type, schema_el, schema_path, state);
+    wildcard_exclusions::resolve(&mut parsed, state);
     wildcard_ports::resolve(&mut parsed, state);
     parsed
 }
@@ -2777,30 +2827,35 @@ fn parse_wildcard(
             "unbounded wildcards require minOccurs=\"0\"",
         ));
     }
-    if wildcard
-        .attributes()
-        .any(|attribute| matches!(attribute.name(), "notNamespace" | "notQName"))
+    let syntax = ExclusionSyntax::read(wildcard, WildcardKind::Element)?;
+    let context = NamespaceContext::new(schema, schema_path, state);
+    let namespace = match syntax
+        .as_ref()
+        .and_then(|syntax| syntax.namespace_constraint(&context, WildcardKind::Element))
     {
-        return Err(unsupported_wildcard(
-            "XSD 1.1 wildcard exclusions are not supported",
-        ));
-    }
-    let target_namespace = schema
-        .attribute("targetNamespace")
-        .or_else(|| state.substitutions.effective_namespace(schema_path));
-    let namespace = parse_wildcard_namespace(
-        wildcard.attribute("namespace").unwrap_or("##any"),
-        target_namespace,
-    )?;
+        Some(namespace) => namespace?,
+        None => parse_wildcard_namespace(
+            wildcard.attribute("namespace").unwrap_or("##any"),
+            context.target,
+        )?,
+    };
+    let exclusions = match &syntax {
+        Some(syntax) => {
+            syntax.names(wildcard, &context, &namespace, WildcardKind::Element, state)?
+        }
+        None => Exclusions::default(),
+    };
     match wildcard.attribute("processContents").unwrap_or("strict") {
         "skip" if !occurrence.repeating && !occurrence.required => Err(unsupported_wildcard(
             "optional single-occurrence skip wildcards require explicit occurrence metadata",
         )),
-        "skip" => Ok(ParsedWildcard::Generic(Box::new(
-            generic_wildcard_schema_with(namespace, occurrence.repeating),
-        ))),
+        "skip" => {
+            let mut generic = generic_wildcard_schema_with(namespace, occurrence.repeating);
+            exclusions.apply(&mut generic)?;
+            Ok(ParsedWildcard::Generic(Box::new(generic)))
+        }
         "strict" => parse_strict_wildcard(namespace, occurrence, state),
-        "lax" => parse_lax_wildcard(namespace, occurrence, state),
+        "lax" => parse_lax_wildcard(namespace, occurrence, &exclusions, state),
         _ => Err(unsupported_wildcard(
             "processContents must be skip, strict, or lax",
         )),
@@ -2822,7 +2877,13 @@ fn parse_strict_wildcard(
             "a matching include or import could not be resolved, so the strict wildcard declaration set is not closed",
         ));
     }
-    let children = parse_known_wildcard_declarations(&namespace, occurrence, true, state)?;
+    let children = parse_known_wildcard_declarations(
+        &namespace,
+        occurrence,
+        true,
+        &Exclusions::default(),
+        state,
+    )?;
     if children.is_empty() {
         return Err(unsupported_wildcard(
             "no matching concrete global element declaration could be resolved for a strict wildcard",
@@ -2835,11 +2896,14 @@ fn parse_strict_wildcard(
 fn parse_lax_wildcard(
     namespace: XmlWildcardNamespaceConstraint,
     occurrence: WildcardOccurrence,
+    exclusions: &Exclusions,
     state: &mut ParseState,
 ) -> Result<ParsedWildcard, XmlFormatError> {
-    let mut children = parse_known_wildcard_declarations(&namespace, occurrence, false, state)?;
+    let mut children =
+        parse_known_wildcard_declarations(&namespace, occurrence, false, exclusions, state)?;
     let mut fallback = generic_wildcard_schema_with(namespace, occurrence.repeating);
     fallback.xml_wildcard_process_contents = XmlWildcardProcessContents::Lax;
+    exclusions.apply(&mut fallback)?;
     children.push(fallback);
     let choice = wildcard_projection_choice(&children, occurrence);
     Ok(ParsedWildcard::Projection { children, choice })
@@ -2849,6 +2913,7 @@ fn parse_known_wildcard_declarations(
     namespace: &XmlWildcardNamespaceConstraint,
     occurrence: WildcardOccurrence,
     strict: bool,
+    exclusions: &Exclusions,
     state: &mut ParseState,
 ) -> Result<Vec<SchemaNode>, XmlFormatError> {
     let declarations = state
@@ -2856,7 +2921,9 @@ fn parse_known_wildcard_declarations(
         .concrete_global_elements()?
         .iter()
         .filter(|declaration| {
-            !declaration.abstract_element && namespace.allows(declaration.namespace.as_deref())
+            !declaration.abstract_element
+                && namespace.allows(declaration.namespace.as_deref())
+                && !exclusions.excludes(declaration.namespace.as_deref(), &declaration.local)
         })
         .cloned()
         .collect::<Vec<_>>();
@@ -3036,26 +3103,34 @@ fn parse_attribute_wildcard(
     schema_path: &Path,
     state: &mut ParseState,
 ) -> Result<Vec<SchemaNode>, XmlFormatError> {
-    if wildcard
-        .attributes()
-        .any(|attribute| matches!(attribute.name(), "notNamespace" | "notQName"))
+    let syntax = ExclusionSyntax::read(wildcard, WildcardKind::Attribute)?;
+    let context = NamespaceContext::new(schema, schema_path, state);
+    let namespace = match syntax
+        .as_ref()
+        .and_then(|syntax| syntax.namespace_constraint(&context, WildcardKind::Attribute))
     {
-        return Err(unsupported_attribute_wildcard(
-            "XSD 1.1 wildcard exclusions are not supported",
-        ));
-    }
-    let target_namespace = schema
-        .attribute("targetNamespace")
-        .or_else(|| state.substitutions.effective_namespace(schema_path));
-    let namespace = parse_wildcard_namespace(
-        wildcard.attribute("namespace").unwrap_or("##any"),
-        target_namespace,
-    )
-    .map_err(|_| {
-        unsupported_attribute_wildcard(
-            "the namespace constraint is not a supported XML Schema wildcard predicate",
+        Some(namespace) => namespace?,
+        None => parse_wildcard_namespace(
+            wildcard.attribute("namespace").unwrap_or("##any"),
+            context.target,
         )
-    })?;
+        .map_err(|_| {
+            unsupported_attribute_wildcard(
+                "the namespace constraint is not a supported XML Schema wildcard predicate",
+            )
+        })?,
+    };
+    let exclusions = match &syntax {
+        Some(syntax) => syntax.names(
+            wildcard,
+            &context,
+            &namespace,
+            WildcardKind::Attribute,
+            state,
+        )?,
+        None => Exclusions::default(),
+    };
+    let excluded_names = exclusions.names(WildcardKind::Attribute)?;
     let process = match wildcard.attribute("processContents").unwrap_or("strict") {
         "skip" => XmlWildcardProcessContents::Skip,
         "lax" => XmlWildcardProcessContents::Lax,
@@ -3083,7 +3158,10 @@ fn parse_attribute_wildcard(
             .substitutions
             .concrete_global_attributes()?
             .iter()
-            .filter(|declaration| namespace.allows(declaration.namespace.as_deref()))
+            .filter(|declaration| {
+                namespace.allows(declaration.namespace.as_deref())
+                    && !exclusions.excludes(declaration.namespace.as_deref(), &declaration.local)
+            })
             .cloned()
             .collect::<Vec<_>>();
         for declaration in declarations {
@@ -3108,7 +3186,11 @@ fn parse_attribute_wildcard(
             ));
         }
     }
-    attributes.push(generic_attribute_wildcard_schema_with(namespace, process));
+    attributes.push(generic_attribute_wildcard_schema_with(
+        namespace,
+        process,
+        excluded_names,
+    ));
     Ok(attributes)
 }
 
@@ -3125,16 +3207,23 @@ fn generic_attribute_wildcard_schema() -> SchemaNode {
     attributes
 }
 
+/// A local-only `skip` wildcard keeps the legacy group without
+/// `NamespaceURI`, unless it excludes names.
 fn generic_attribute_wildcard_schema_with(
     namespace: XmlWildcardNamespaceConstraint,
     process: XmlWildcardProcessContents,
+    excluded_names: Option<ir::XmlWildcardExcludedNames>,
 ) -> SchemaNode {
-    if namespace.is_local_only() && process == XmlWildcardProcessContents::Skip {
+    if namespace.is_local_only()
+        && process == XmlWildcardProcessContents::Skip
+        && excluded_names.is_none()
+    {
         return generic_attribute_wildcard_schema();
     }
     let mut attributes = generic_attribute_storage_schema();
     attributes.xml_wildcard_namespace = Some(namespace);
     attributes.xml_wildcard_process_contents = process;
+    attributes.xml_wildcard_excluded_names = excluded_names;
     attributes
 }
 
