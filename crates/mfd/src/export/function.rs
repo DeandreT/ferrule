@@ -74,6 +74,7 @@ pub(super) fn unmap_function_name(name: &str) -> String {
         "pad_string_left" => "pad-string-left",
         "pad_string_right" => "pad-string-right",
         "format_guid_string" => "format-guid-string",
+        "replace_literal" => "replace",
         "substring_before" => "substring-before",
         "substring_after" => "substring-after",
         "normalize_space" => "normalize-space",
@@ -177,6 +178,7 @@ pub(super) fn function_library(name: &str) -> &'static str {
         | "pad_string_left"
         | "pad_string_right"
         | "format_guid_string"
+        | "replace_literal"
         | "is_numeric"
         | "is_empty"
         | "date_from_datetime"
@@ -276,6 +278,8 @@ mod tests {
             ("matches", 2, None),
             ("matches", 3, None),
             ("replace", 3, None),
+            ("replace", 4, None),
+            ("replace_literal", 3, Some(("replace", "lang"))),
             ("left_trim", 1, Some(("left-trim", "lang"))),
         ] {
             let actual = native_function(function, arity);

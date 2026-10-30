@@ -1154,6 +1154,12 @@ pub(super) fn is_lang_positive(component: &FnComponent) -> bool {
     component.kind == 5 && component.library == "lang" && component.name == "positive"
 }
 
+/// `lang.replace` substitutes literal text, while the `core` (earlier Ferrule
+/// exports) and `xpath2` spellings are regular-expression replacement.
+pub(super) fn is_lang_replace(component: &FnComponent) -> bool {
+    component.kind == 5 && component.library == "lang" && component.name == "replace"
+}
+
 pub(super) fn map_component_name(component: &FnComponent) -> Option<&str> {
     if component.name == "format-guid-string" {
         return (component.library == "lang" && component.kind == 5)
@@ -1164,6 +1170,9 @@ pub(super) fn map_component_name(component: &FnComponent) -> Option<&str> {
     }
     if is_lang_positive(component) {
         return None;
+    }
+    if is_lang_replace(component) {
+        return Some("replace_literal");
     }
     if component.library == "ferrule"
         && component.kind == 5
@@ -1536,6 +1545,26 @@ mod tests {
             assert_eq!(
                 super::is_lang_positive(&component),
                 mapped.is_none(),
+                "{library}/{kind}"
+            );
+            assert!(produces_scalar(&component), "{library}/{kind}");
+        }
+    }
+
+    #[test]
+    fn only_lang_replace_is_literal_replacement() {
+        for (library, kind, mapped) in [
+            ("lang", "5", "replace_literal"),
+            ("core", "5", "replace"),
+            ("xpath2", "5", "replace"),
+            ("lang", "6", "replace"),
+        ] {
+            let text = format!(r#"<component library="{library}" name="replace" kind="{kind}"/>"#);
+            let document = roxmltree::Document::parse(&text).expect("authored component XML");
+            let component = read(&document.root_element());
+            assert_eq!(
+                map_component_name(&component),
+                Some(mapped),
                 "{library}/{kind}"
             );
             assert!(produces_scalar(&component), "{library}/{kind}");
