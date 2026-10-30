@@ -1312,8 +1312,49 @@ options reject before output publication.
 The fixed-per-run current date/time value exports as the native `lang/now`
 component, which the built-in execution language provides. Both that component
 and `xpath2/current-dateTime` import to the same typed runtime value and round
-trip under a fixed execution clock.
+trip under a fixed execution clock. In native runs every `lang/now` read in one
+execution returned the same value, whether it came from separate components, a
+reused component or successive target rows, and even with `lang/sleep` delays
+between the reads. Several date/time uses therefore export without refusal.
 Target-type date/time coercion remains a separate extension dependency.
+
+Exported designs select the built-in execution language, so each function call
+exports only as a function that language provides with the same inputs and
+meaning; otherwise export fails before writing anything and names the function:
+
+- Two-argument `round` exports as `core/round-precision`. The native `round` has
+  one input: a design that connects a second one still runs, but the precision
+  is ignored, and saving drops that input.
+- `format_date` and `format_datetime` export with at most three inputs (value,
+  format, language) and `format_time` with at most two. The native functions have
+  no calendar or place inputs, and `format-time` has no language input; extra
+  connections are ignored when the mapping runs and dropped when it is saved, so
+  export refuses those calls. An empty language selects English natively, as it
+  does in Ferrule. A named language such as `de` gives localized month and day
+  names natively, while Ferrule refuses any language other than the default.
+- The unary-plus `positive`, `trim`, `ends_with`, `matches` and `replace` are
+  refused. The reference application reports `core/trim`, `core/ends-with`,
+  `core/matches`, `core/replace` and `core/positive` as functions it cannot find
+  for the built-in language. The built-in `lang/left-trim`, `lang/right-trim`
+  and `core/normalize-space` keep non-breaking and other non-ASCII spaces that
+  `trim` removes. `lang/replace` substitutes literal text, not
+  regular-expression matches. `lang/match-pattern` succeeds only when the
+  pattern matches the whole text, whereas `matches` succeeds on a match
+  anywhere.
+
+Native `lang/positive` returns true only for numbers greater than zero; `0` and
+`-0` give false, unlike its vendor description ("equal to or greater than
+zero"). Import reads it as `greater_than(add(value, 0), 0)`: adding
+zero converts numeric text the way its decimal input does, and both functions
+export natively. Non-numeric text fails in both. The `core/positive` spelling
+written by earlier Ferrule exports still imports as unary plus.
+
+Native `core/round` and `core/round-precision` round exact halves toward
+positive infinity (`-2.5` becomes `-2`) and work on decimal values, so `1.005`
+rounds to two places as `1.01`. Ferrule's `round` rounds halves away from zero
+on binary floating-point values, so negative halves, and decimal fractions that
+binary floating point cannot represent exactly, can round differently. This
+applies to both arities and to imported designs as well as exports.
 
 The default `ferrule-extensions` profile preserves the existing Ferrule
 round-trip representation. Export now reports whether the rendered design has
