@@ -2,6 +2,12 @@ use crate::{DocumentProgram, Expression, TargetConstruction};
 use mapping::{JsonParameterInvocationPlan, JsonParameterPlanError};
 use std::collections::{BTreeMap, BTreeSet};
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct JsonParameterObjectBinding {
+    pub source_name: String,
+    pub filename_member: String,
+}
+
 #[derive(Debug)]
 pub enum JsonParameterBoundaryError {
     Plan(JsonParameterPlanError),
@@ -28,12 +34,64 @@ pub fn prepare_json_parameter_invocation(
     document: &DocumentProgram,
     plan: &JsonParameterInvocationPlan,
 ) -> Result<String, JsonParameterBoundaryError> {
+    prepare(document, plan, None)
+}
+
+/// Admit one exact host-supplied parameter object beside the physical source.
+/// The ordinary filename-only profile remains unchanged and refuses this input.
+pub fn prepare_json_parameter_object_invocation(
+    document: &DocumentProgram,
+    plan: &JsonParameterInvocationPlan,
+    binding: &JsonParameterObjectBinding,
+) -> Result<String, JsonParameterBoundaryError> {
+    prepare(document, plan, Some(binding))
+}
+
+fn prepare(
+    document: &DocumentProgram,
+    plan: &JsonParameterInvocationPlan,
+    object: Option<&JsonParameterObjectBinding>,
+) -> Result<String, JsonParameterBoundaryError> {
     use JsonParameterBoundaryError as Error;
     plan.validate().map_err(Error::Plan)?;
     let program = document.program();
     crate::validate_document_filename_clock(program, None).map_err(Error::Boundary)?;
-    if !program.extra_sources.is_empty()
-        || !program.extra_targets.is_empty()
+    if let Some(binding) = object {
+        fn contains_name(schema: &ir::SchemaNode, name: &str) -> bool {
+            schema.name == name
+                || match &schema.kind {
+                    ir::SchemaKind::Group { children, .. } => {
+                        children.iter().any(|child| contains_name(child, name))
+                    }
+                    _ => false,
+                }
+        }
+        let expected = plan
+            .projection
+            .value_schema(&binding.source_name)
+            .map_err(|_| Error::Unsupported("invalid parameter object schema"))?;
+        let mapping::JsonSourceShape::Object { properties } = &plan.projection else {
+            return Err(Error::Unsupported("parameter input must be an object"));
+        };
+        if plan.iteration != mapping::JsonParameterIteration::RootStringOccurrences
+            || binding.source_name.is_empty()
+            || contains_name(&program.source, &binding.source_name)
+            || !properties.iter().any(|property| {
+                property.name == binding.filename_member
+                    && property.shape == mapping::JsonSourceShape::String
+            })
+            || !matches!(program.extra_sources.as_slice(), [source] if source.name == binding.source_name && source.source == expected && source.dynamic.is_none())
+        {
+            return Err(Error::Unsupported(
+                "requires one exact parameter object and String filename member",
+            ));
+        }
+    } else if !program.extra_sources.is_empty() {
+        return Err(Error::Unsupported(
+            "filename-only invocation cannot use extra sources",
+        ));
+    }
+    if !program.extra_targets.is_empty()
         || !program.user_functions.is_empty()
         || !program.failure_rules.is_empty()
         || program

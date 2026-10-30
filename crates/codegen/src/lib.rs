@@ -72,7 +72,8 @@ pub use join::{
     JoinSourceCardinality, OwnedInnerJoin,
 };
 pub use json_parameter_invocation::{
-    JsonParameterBoundaryError, prepare_json_parameter_invocation,
+    JsonParameterBoundaryError, JsonParameterObjectBinding, prepare_json_parameter_invocation,
+    prepare_json_parameter_object_invocation,
 };
 pub use json_projection::{JsonProjectionBoundaryError, prepare_json_source_projection};
 pub use json5_boundary::{

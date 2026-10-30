@@ -12,6 +12,7 @@ fn conditional(inputs: Vec<Option<u32>>) -> FnComponent {
 fn lower(function: &FnComponent, budget: &mut ExpansionBudget) -> Result<ScalarExpr, String> {
     let context = DefinitionContext {
         functions: &[],
+        native_datetime: false,
         nested_calls: &[],
         by_output: &BTreeMap::new(),
         parameter_by_key: &BTreeMap::new(),
@@ -88,6 +89,7 @@ fn nested_default(outer_pairs: usize, inner_pairs: usize) -> Result<ScalarExpr, 
     *outer.inputs.last_mut().unwrap() = Some(1);
     let context = DefinitionContext {
         functions: &[inner],
+        native_datetime: false,
         nested_calls: &[],
         by_output: &BTreeMap::from([(2, Producer::Function(0))]),
         parameter_by_key: &BTreeMap::new(),
@@ -143,6 +145,7 @@ fn wrapped_default(
         functions: &functions,
         nested_calls: &calls,
         by_output: &outputs,
+        native_datetime: false,
         parameter_by_key: &BTreeMap::new(),
         parameter_default_by_key: &BTreeMap::new(),
         edge_from: &BTreeMap::from([(1, 4), (3, 2)]),
@@ -256,6 +259,7 @@ fn parameterized_default(
         parameter_by_key: &BTreeMap::new(),
         parameter_default_by_key: &BTreeMap::new(),
         edge_from: &edge_from,
+        native_datetime: false,
     };
     let mut active = BTreeSet::new();
     let previous_depth = budget.depth;

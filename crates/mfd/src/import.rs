@@ -87,8 +87,9 @@ pub use csv_document::{
 };
 pub use json_edi_document::{
     ImportedGroupedJsonEdiDocument, ImportedInvokedGroupedJsonEdiDocument, ImportedJsonEdiDocument,
-    import_grouped_json_edi_document_with_options,
+    ImportedObjectInvokedJsonEdiDocument, import_grouped_json_edi_document_with_options,
     import_invoked_grouped_json_edi_document_with_options, import_json_edi_document_with_options,
+    import_object_invoked_json_edi_document_with_options,
 };
 pub use json_source_projection::{
     ImportedJsonParameterProjection, ImportedJsonSourceProjection,

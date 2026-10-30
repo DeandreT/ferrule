@@ -24,6 +24,7 @@ fn is_scalar_component(component: &roxmltree::Node<'_, '_>) -> bool {
     matches!(library, "core" | "lang")
         || kind == Some("19")
         || is_db_scalar_function_component(component)
+        || library == "db" && name == "set-null" && kind == Some("5")
         || is_xbrl_measure_component(component)
         || library == "xpath2"
             && kind == Some("5")
@@ -258,11 +259,27 @@ pub(super) fn read(
                 component_id,
                 name: function.name.clone(),
                 ty: function.input_type,
+                native_datetime: child
+                    .descendants()
+                    .find(|node| node.has_tag_name("input"))
+                    .and_then(|node| {
+                        node.attribute("datatype")
+                            .or_else(|| node.attribute("type"))
+                    })
+                    == Some("dateTime"),
             });
         } else if function.kind == 7 {
             scalar_outputs.push(ScalarOutput {
                 component_id,
                 name: function.name.clone(),
+                native_datetime: child
+                    .descendants()
+                    .find(|node| node.has_tag_name("output"))
+                    .and_then(|node| {
+                        node.attribute("datatype")
+                            .or_else(|| node.attribute("type"))
+                    })
+                    == Some("dateTime"),
                 ty: child
                     .descendants()
                     .find(|node| node.has_tag_name("output"))
@@ -270,7 +287,15 @@ pub(super) fn read(
                         node.attribute("datatype")
                             .or_else(|| node.attribute("type"))
                     })
-                    .and_then(scalar_type),
+                    .and_then(|datatype| {
+                        // Retain an unused native result for the explicitly
+                        // guarded profile, not as a general String type alias.
+                        if datatype == "dateTime" {
+                            Some(ScalarType::String)
+                        } else {
+                            scalar_type(datatype)
+                        }
+                    }),
             });
         }
         if function.kind == 3 && !scalar_only
@@ -353,6 +378,7 @@ pub(super) fn read(
     }
 
     let context = DefinitionContext {
+        native_datetime: scalar_outputs.iter().any(|output| output.native_datetime),
         functions: &functions,
         nested_calls: &nested_calls,
         by_output: &by_output,
@@ -431,6 +457,7 @@ impl ExpansionBudget {
 }
 
 struct DefinitionContext<'a> {
+    native_datetime: bool,
     functions: &'a [FnComponent],
     nested_calls: &'a [NestedScalarCall],
     by_output: &'a BTreeMap<u32, Producer>,
@@ -679,6 +706,9 @@ impl DefinitionContext<'_> {
                 function: "exists".to_string(),
                 args: vec![self.function_input(function, 0, active, budget, sequence_items)?],
             }),
+            ("set-null", 5) if function.library == "db" && function.inputs.is_empty() => {
+                Ok(ScalarExpr::Const(Value::Null))
+            }
             ("not-exists", 5) if function.library == "core" => Ok(ScalarExpr::Call {
                 function: "not".to_string(),
                 args: vec![ScalarExpr::Call {
@@ -706,6 +736,12 @@ impl DefinitionContext<'_> {
             }
             (name, _) => {
                 let mapped = match name {
+                    "parse-date" if function.library == "core" && self.native_datetime => {
+                        Some("parse_datetime")
+                    }
+                    "format-dateTime" if function.library == "core" && self.native_datetime => {
+                        Some("format_datetime_milliseconds")
+                    }
                     "normalize-space" => Some("normalize_space"),
                     "empty" => Some("is_empty"),
                     _ => map_component_name(function),
@@ -1223,12 +1259,43 @@ fn coerce_constant(expression: ScalarExpr, expected: Option<ScalarType>) -> Scal
     ScalarExpr::Const(value)
 }
 
+fn transform_unary_calls(
+    expression: &ScalarExpr,
+    budget: &mut ExpansionBudget,
+    depth: usize,
+    leaf: impl FnOnce(&ScalarExpr, &mut ExpansionBudget, usize) -> Result<ScalarExpr, String>,
+) -> Result<ScalarExpr, String> {
+    let mut functions = Vec::new();
+    let mut current = expression;
+    while let ScalarExpr::Call { function, args } = current {
+        if args.len() != 1 {
+            break;
+        }
+        budget.claim(depth + functions.len())?;
+        functions.push(function);
+        current = &args[0];
+    }
+    let mut result = leaf(current, budget, depth + functions.len())?;
+    for function in functions.into_iter().rev() {
+        result = ScalarExpr::Call {
+            function: function.clone(),
+            args: vec![result],
+        };
+    }
+    Ok(result)
+}
+
 fn substitute(
     expression: &ScalarExpr,
     parameters: &BTreeMap<u32, ScalarExpr>,
     budget: &mut ExpansionBudget,
     depth: usize,
 ) -> Result<ScalarExpr, String> {
+    if matches!(expression, ScalarExpr::Call { args, .. } if args.len() == 1) {
+        return transform_unary_calls(expression, budget, depth, |leaf, budget, depth| {
+            substitute(leaf, parameters, budget, depth)
+        });
+    }
     match expression {
         ScalarExpr::Parameter(component_id) => {
             if let Some(expression) = parameters.get(component_id) {
@@ -1397,6 +1464,9 @@ fn clone_with_budget(
     budget: &mut ExpansionBudget,
     depth: usize,
 ) -> Result<ScalarExpr, String> {
+    if matches!(expression, ScalarExpr::Call { args, .. } if args.len() == 1) {
+        return transform_unary_calls(expression, budget, depth, clone_with_budget);
+    }
     budget.claim(depth)?;
     match expression {
         ScalarExpr::Parameter(component_id) => Ok(ScalarExpr::Parameter(*component_id)),

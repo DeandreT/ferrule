@@ -199,6 +199,7 @@ struct ScalarParameter {
     component_id: u32,
     name: String,
     ty: Option<ScalarType>,
+    native_datetime: bool,
 }
 
 #[derive(Clone)]
@@ -206,6 +207,7 @@ struct ScalarOutput {
     component_id: u32,
     name: String,
     ty: Option<ScalarType>,
+    native_datetime: bool,
 }
 
 #[derive(Clone)]
@@ -444,6 +446,22 @@ impl Registry {
         name: &str,
     ) -> Option<(BTreeSet<u32>, ScalarExpr)> {
         let definition = self.definition_named(library, name)?;
+        if definition
+            .scalar_interface
+            .as_ref()
+            .is_some_and(|interface| {
+                interface
+                    .outputs
+                    .iter()
+                    .any(|output| output.native_datetime)
+                    || interface
+                        .parameters
+                        .iter()
+                        .any(|parameter| parameter.native_datetime)
+            })
+        {
+            return None;
+        }
         let mut outputs = definition.outputs.values();
         let OutputExpr::Scalar(expression) = outputs.next()? else {
             return None;
@@ -457,6 +475,21 @@ impl Registry {
     pub(super) fn string_call_outputs(
         &self,
         component: &roxmltree::Node<'_, '_>,
+    ) -> Result<BTreeMap<u32, ScalarCallOutput>, String> {
+        self.string_call_outputs_with_defaults(component, false)
+    }
+
+    pub(super) fn defaulted_string_call_outputs(
+        &self,
+        component: &roxmltree::Node<'_, '_>,
+    ) -> Result<BTreeMap<u32, ScalarCallOutput>, String> {
+        self.string_call_outputs_with_defaults(component, true)
+    }
+
+    fn string_call_outputs_with_defaults(
+        &self,
+        component: &roxmltree::Node<'_, '_>,
+        allow_defaults: bool,
     ) -> Result<BTreeMap<u32, ScalarCallOutput>, String> {
         let library = component.attribute("library").unwrap_or_default();
         let name = component.attribute("name").unwrap_or_default();
@@ -474,19 +507,31 @@ impl Registry {
             || interface
                 .parameters
                 .iter()
-                .any(|p| p.ty != Some(ScalarType::String))
+                .any(|p| p.ty != Some(ScalarType::String) || p.native_datetime)
             || interface
                 .outputs
                 .iter()
-                .any(|p| p.ty != Some(ScalarType::String))
+                .any(|p| p.ty != Some(ScalarType::String) || p.native_datetime && !allow_defaults)
         {
             return Err("requires a String-only scalar definition".into());
         }
         let call = Call::read(component, index, definition)?;
         let mut outputs = BTreeMap::new();
         for (port, parameter) in call.outputs {
+            if interface
+                .outputs
+                .iter()
+                .any(|output| output.component_id == parameter && output.native_datetime)
+            {
+                return Err("native dateTime results require a separately typed boundary".into());
+            }
             let Some(OutputExpr::Scalar(expression)) = definition.outputs.get(&parameter) else {
                 return Err("requires a scalar definition output".into());
+            };
+            let expression = if allow_defaults {
+                resolve_scalar_defaults(expression, &call.inputs, 0)?
+            } else {
+                expression.clone()
             };
             if expression.requires_inlining() {
                 return Err(
@@ -505,13 +550,7 @@ impl Registry {
                         .ok_or_else(|| "unconnected scalar definition parameter".to_string())
                 })
                 .collect::<Result<_, _>>()?;
-            outputs.insert(
-                port,
-                ScalarCallOutput {
-                    inputs,
-                    expression: expression.clone(),
-                },
-            );
+            outputs.insert(port, ScalarCallOutput { inputs, expression });
         }
         Ok(outputs)
     }
@@ -534,6 +573,59 @@ impl Registry {
     }
 }
 
+fn resolve_scalar_defaults(
+    expression: &ScalarExpr,
+    inputs: &BTreeMap<u32, u32>,
+    depth: usize,
+) -> Result<ScalarExpr, String> {
+    if depth > 64 {
+        return Err("defaulted scalar expression is too deep".into());
+    }
+    let child = |expression| resolve_scalar_defaults(expression, inputs, depth + 1);
+    Ok(match expression {
+        ScalarExpr::DefaultedParameter {
+            component_id,
+            default,
+        } => {
+            if inputs.contains_key(component_id) {
+                ScalarExpr::Parameter(*component_id)
+            } else if let ScalarExpr::Const(value) = default.as_ref() {
+                ScalarExpr::Const(value.clone())
+            } else {
+                return Err("only literal defaults are admitted in this parameter profile".into());
+            }
+        }
+        ScalarExpr::Call { function, args } => ScalarExpr::Call {
+            function: function.clone(),
+            args: args.iter().map(child).collect::<Result<_, _>>()?,
+        },
+        ScalarExpr::If {
+            condition,
+            then,
+            else_,
+        } => ScalarExpr::If {
+            condition: Box::new(child(condition)?),
+            then: Box::new(child(then)?),
+            else_: Box::new(child(else_)?),
+        },
+        ScalarExpr::ValueMap {
+            input,
+            input_type,
+            table,
+            default,
+        } => ScalarExpr::ValueMap {
+            input: Box::new(child(input)?),
+            input_type: *input_type,
+            table: table.clone(),
+            default: default.clone(),
+        },
+        ScalarExpr::Parameter(_) | ScalarExpr::Const(_) | ScalarExpr::RuntimeValue(_) => {
+            expression.clone()
+        }
+        _ => return Err("sequence scalar definitions require separate admission".into()),
+    })
+}
+
 fn function_id(idx: usize) -> Option<FunctionId> {
     u64::try_from(idx).ok()?.checked_add(1).map(FunctionId::new)
 }
@@ -551,11 +643,13 @@ impl Definition {
         (self.outputs.len() == 1
             && self.structured_parameters.is_empty()
             && !expression.requires_inlining()
+            && !output.native_datetime
             && output.ty.is_some()
             && !output.name.trim().is_empty()
             && interface.parameters.len() == self.parameters.len()
             && interface.parameters.iter().all(|parameter| {
                 parameter.ty.is_some()
+                    && !parameter.native_datetime
                     && !parameter.name.trim().is_empty()
                     && parameter_names.insert(parameter.name.clone())
                     && self.parameters.contains(&parameter.component_id)
@@ -1611,6 +1705,93 @@ mod tests {
     use super::{
         Call, Definition, MAX_NESTED_UDF_DEPTH, OutputExpr, Registry, ScalarExpr, instantiate,
     };
+
+    #[test]
+    fn object_profile_resolves_literal_defaults_without_selecting_datetime_outputs() {
+        let xml = r#"<mapping>
+          <component name="DateHelper" library="helpers" inline="1"><structure><children>
+            <component name="Text" library="core" kind="6" uid="1"><sources><datapoint pos="0" key="11"/></sources><targets><datapoint pos="0" key="12"/></targets><data><input datatype="string"/><parameter usageKind="input" name="Text" optional="1"/></data></component>
+            <component name="set-null" library="db" kind="5" uid="2"><targets><datapoint pos="0" key="50"/></targets></component>
+            <component name="constant" library="core" kind="2" uid="3"><targets><datapoint pos="0" key="40"/></targets><data><constant datatype="string" value="[Y,4-4][M,2-2][D,2-2][H,2-2][m,2-2]"/></data></component>
+            <component name="parse-date" library="core" kind="5" uid="4"><sources><datapoint pos="0" key="21"/><datapoint pos="1" key="22"/></sources><targets><datapoint pos="0" key="23"/></targets></component>
+            <component name="NativeDate" library="core" kind="7" uid="5"><sources><datapoint pos="0" key="24"/></sources><data><output datatype="dateTime"/><parameter usageKind="output" name="NativeDate"/></data></component>
+            <component name="format-dateTime" library="core" kind="5" uid="6"><sources><datapoint pos="0" key="31"/><datapoint pos="1" key="32"/><datapoint/></sources><targets><datapoint pos="0" key="33"/></targets></component>
+            <component name="Result" library="core" kind="7" uid="7"><sources><datapoint pos="0" key="34"/></sources><data><output datatype="string"/><parameter usageKind="output" name="Result"/></data></component>
+          </children><graph><vertices>
+            <vertex vertexkey="50"><edges><edge vertexkey="11"/></edges></vertex>
+            <vertex vertexkey="12"><edges><edge vertexkey="21"/></edges></vertex>
+            <vertex vertexkey="40"><edges><edge vertexkey="22"/><edge vertexkey="32"/></edges></vertex>
+            <vertex vertexkey="23"><edges><edge vertexkey="24"/><edge vertexkey="31"/></edges></vertex>
+            <vertex vertexkey="33"><edges><edge vertexkey="34"/></edges></vertex>
+          </vertices></graph></structure></component>
+          <calls><component name="DateHelper" library="helpers" kind="19"><data><root><entry componentid="1" inpkey="101"/></root><root><entry componentid="5"/><entry componentid="7" outkey="102"/></root></data></component></calls>
+        </mapping>"#;
+        let document = Document::parse(xml).unwrap();
+        let registry = Registry::read(
+            &document.root_element(),
+            std::path::Path::new("mapping.mfd"),
+            &mut Vec::new(),
+        );
+        let call = document
+            .descendants()
+            .find(|node| node.attribute("kind") == Some("19"))
+            .unwrap();
+        assert!(registry.string_call_outputs(&call).is_err());
+        let output = registry.defaulted_string_call_outputs(&call).unwrap();
+        assert_eq!(output[&102].inputs, BTreeMap::from([(1, 101)]));
+        fn evaluate(expression: &ScalarExpr) -> Value {
+            match expression {
+                ScalarExpr::Parameter(1) => Value::String("202610281730".into()),
+                ScalarExpr::Const(value) => value.clone(),
+                ScalarExpr::Call { function, args } => {
+                    functions::call(function, &args.iter().map(evaluate).collect::<Vec<_>>())
+                        .unwrap()
+                }
+                _ => panic!("unexpected expression"),
+            }
+        }
+        assert_eq!(
+            evaluate(&output[&102].expression),
+            Value::String("202610281730".into())
+        );
+        let disconnected = xml.replace(" inpkey=\"101\"", "");
+        let disconnected = Document::parse(&disconnected).unwrap();
+        let call = disconnected
+            .descendants()
+            .find(|node| node.attribute("kind") == Some("19"))
+            .unwrap();
+        assert!(
+            registry.defaulted_string_call_outputs(&call).unwrap()[&102]
+                .inputs
+                .is_empty()
+        );
+        let date_output = xml.replace(
+            "<entry componentid=\"5\"/>",
+            "<entry componentid=\"5\" outkey=\"103\"/>",
+        );
+        let date_output = Document::parse(&date_output).unwrap();
+        let call = date_output
+            .descendants()
+            .find(|node| node.attribute("kind") == Some("19"))
+            .unwrap();
+        assert!(registry.defaulted_string_call_outputs(&call).is_err());
+
+        let datetime_input = xml.replace(
+            "<input datatype=\"string\"/>",
+            "<input datatype=\"dateTime\"/>",
+        );
+        let datetime_input = Document::parse(&datetime_input).unwrap();
+        let registry = Registry::read(
+            &datetime_input.root_element(),
+            std::path::Path::new("mapping.mfd"),
+            &mut Vec::new(),
+        );
+        let call = datetime_input
+            .descendants()
+            .find(|node| node.attribute("kind") == Some("19"))
+            .unwrap();
+        assert!(registry.defaulted_string_call_outputs(&call).is_err());
+    }
 
     #[test]
     fn physical_input_guard_rejects_output_and_unused_default_conflicts() {
