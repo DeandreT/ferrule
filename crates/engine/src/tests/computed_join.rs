@@ -1,6 +1,7 @@
-//! Computed join keys execute as one scalar member per join execution,
-//! evaluated in the join's receiving context. Hand-built projects reproduce
-//! every admitted design of the frozen corpus under
+//! Computed join keys execute as one scalar member per join execution, or
+//! one member per item of a sequence-valued key, evaluated in the join's
+//! receiving context. Hand-built projects reproduce every admitted design of
+//! the frozen corpus under
 //! `docs/design/fixtures/join-computed-keys`; MFD import lowers the designs
 //! themselves separately.
 
@@ -16,6 +17,8 @@ use mapping::{
 
 #[path = "computed_join/controls.rs"]
 mod controls;
+#[path = "computed_join/sequence.rs"]
+mod sequence;
 #[path = "computed_join/validation.rs"]
 mod validation;
 
@@ -141,10 +144,12 @@ impl Keys {
     }
 }
 
-/// The key of one fixture: a computed node or the existing singleton form.
+/// The key of one fixture: a computed node, a sequence-valued key, or the
+/// existing singleton form.
 #[derive(Clone)]
 enum Key {
     Computed(NodeId),
+    Sequence(mapping::SequenceExpr),
     Singleton(Vec<String>),
 }
 
@@ -153,6 +158,10 @@ fn plan(key: &Key, right_key: &str, key_first: bool) -> JoinPlan {
     let (source, left) = match key {
         Key::Computed(value) => (
             JoinSource::computed(KEY, *value),
+            JoinKey::computed(KEY, path(&[right_key])),
+        ),
+        Key::Sequence(sequence) => (
+            JoinSource::computed_sequence(KEY, sequence.clone()),
             JoinKey::computed(KEY, path(&[right_key])),
         ),
         Key::Singleton(singleton) => (
@@ -518,7 +527,8 @@ fn every_admitted_fixture_design_reproduces_its_frozen_tuples() {
 }
 
 /// The admitted designs are exactly the corpus rows that scopes 2 and 4
-/// admit; the sequence-valued and refused rows have their own tests.
+/// admit; the sequence-valued rows of scope 6 and the refused rows have
+/// their own tests.
 #[test]
 fn the_fixture_list_covers_every_admitted_corpus_row() {
     let expected: serde_json::Value = serde_json::from_str(EXPECTED).expect("expected.json parses");

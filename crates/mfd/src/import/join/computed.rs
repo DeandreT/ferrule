@@ -1,6 +1,8 @@
 //! Computed join keys: one join input fed by a constant, a runtime input
 //! parameter, or a call chain of the observed scalar functions instead of a
-//! source port (docs/design/join-computed-keys.md, scope 4).
+//! source port (docs/design/join-computed-keys.md, scope 4), or by a
+//! `tokenize` of such a string, whose tokens are the key's values in order
+//! (scope 6).
 //!
 //! Admission happens before any graph node exists, so every refusal keeps
 //! the join and its driven scopes out with its own reason. Lowering happens
@@ -10,7 +12,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use ir::{ScalarType, SchemaKind, Value};
-use mapping::{Node as MappingNode, NodeId};
+use mapping::{ComputedJoinValue, Node as MappingNode, NodeId, SequenceExpr};
 
 use super::super::function::{
     FnComponent, is_input, is_sequence_producer, map_name, parse_constant,
@@ -72,7 +74,7 @@ fn is_constant(component: &FnComponent) -> bool {
 /// and typed so that no admitted call can raise.
 #[derive(Clone)]
 #[cfg_attr(test, derive(Debug))]
-enum KeyExpression {
+pub(super) enum KeyExpression {
     Constant(Value),
     /// The output port of an unconnected named runtime input parameter.
     Parameter(u32),
@@ -89,8 +91,14 @@ enum KeyExpression {
 
 #[derive(Clone)]
 #[cfg_attr(test, derive(Debug))]
-pub(super) struct ComputedInput {
-    expression: KeyExpression,
+pub(super) enum ComputedInput {
+    /// One value.
+    Scalar(KeyExpression),
+    /// The tokens of a string, split around a non-empty constant delimiter.
+    Tokenize {
+        input: KeyExpression,
+        delimiter: String,
+    },
 }
 
 /// Admits the computed input `input` of a keyed join with `input_count`
@@ -123,8 +131,14 @@ pub(super) fn admit(
         index,
         visited: 0,
     };
+    if let Some(component) = context
+        .component(feed)
+        .filter(|component| is_sequence_producer(component))
+    {
+        return walk.sequence(component, feed);
+    }
     let (expression, _) = walk.expression(feed)?;
-    Ok(ComputedInput { expression })
+    Ok(ComputedInput::Scalar(expression))
 }
 
 struct Walk<'c, 'a> {
@@ -134,6 +148,49 @@ struct Walk<'c, 'a> {
 }
 
 impl Walk<'_, '_> {
+    /// A sequence-valued key: only `tokenize` was observed, over a string a
+    /// scalar key could read and a non-empty constant delimiter.
+    fn sequence(&mut self, component: &FnComponent, feed: u32) -> Result<ComputedInput, String> {
+        let index = self.index;
+        if !(component.library == "core" && component.name == "tokenize") {
+            return Err(format!(
+                "input {index} key is a `{}` sequence; only tokenize keys were observed",
+                component.name
+            ));
+        }
+        if component.output_pins.first().copied().flatten() != Some(feed) {
+            return Err(format!(
+                "input {index} key reads a secondary output of `{}`",
+                component.name
+            ));
+        }
+        let [input, delimiter] = component.inputs.as_slice() else {
+            return Err(format!(
+                "input {index} key tokenize takes two inputs, not {}",
+                component.inputs.len()
+            ));
+        };
+        let upstream = |pin: &Option<u32>| {
+            pin.and_then(|pin| self.context.edge_from.get(&pin).copied())
+                .ok_or_else(|| format!("input {index} key tokenize has an unconnected input"))
+        };
+        let (input, delimiter) = (upstream(input)?, upstream(delimiter)?);
+        let (input, ty) = self.expression(input)?;
+        if ty != ScalarType::String {
+            return Err(format!(
+                "input {index} key tokenizes a non-string value, whose tokens were not observed"
+            ));
+        }
+        match self.expression(delimiter)? {
+            (KeyExpression::Constant(Value::String(delimiter)), _) if !delimiter.is_empty() => {
+                Ok(ComputedInput::Tokenize { input, delimiter })
+            }
+            _ => Err(format!(
+                "input {index} key tokenize delimiter is not a non-empty string constant"
+            )),
+        }
+    }
+
     fn expression(&mut self, feed: u32) -> Result<(KeyExpression, ScalarType), String> {
         let index = self.index;
         self.visited += 1;
@@ -188,7 +245,7 @@ impl Walk<'_, '_> {
         }
         if is_sequence_producer(component) {
             return Err(format!(
-                "input {index} key is sequence-valued (`{}`); sequence keys are not supported yet",
+                "input {index} key reads sequence `{}` inside its computation; only a sequence feeding the join input directly was observed",
                 component.name
             ));
         }
@@ -320,15 +377,45 @@ fn call_type(function: &str, args: &[ScalarType]) -> Result<ScalarType, String> 
 impl GraphBuilder<'_> {
     /// Lowers an admitted key into the receiving context anchored at
     /// `anchor`. Source reads are unframed and relative to that context, and
-    /// the key is `Null` whenever a field it reads is absent or nil, so the
-    /// join then yields no tuples, as observed natively.
+    /// a scalar or tokenized value is `Null` whenever a field it reads is
+    /// absent or nil, so the join then yields no tuples, as observed natively.
     pub(super) fn lower_computed_key(
         &mut self,
         computed: &ComputedInput,
         anchor: &[String],
+    ) -> Result<ComputedJoinValue, String> {
+        match computed {
+            ComputedInput::Scalar(expression) => self
+                .lower_guarded_key(expression, anchor)
+                .map(ComputedJoinValue::Scalar),
+            ComputedInput::Tokenize { input, delimiter } => {
+                let input = self.lower_guarded_key(input, anchor)?;
+                let delimiter = self.alloc(MappingNode::Const {
+                    value: Value::String(delimiter.clone()),
+                });
+                // The item is private to the join; nothing reads it.
+                let item = self.alloc(MappingNode::SourceField {
+                    path: Vec::new(),
+                    frame: None,
+                });
+                Ok(ComputedJoinValue::Sequence(Box::new(
+                    SequenceExpr::Tokenize {
+                        input,
+                        delimiter,
+                        item,
+                    },
+                )))
+            }
+        }
+    }
+
+    fn lower_guarded_key(
+        &mut self,
+        expression: &KeyExpression,
+        anchor: &[String],
     ) -> Result<NodeId, String> {
         let mut reads = Vec::new();
-        let value = self.lower_key_expression(&computed.expression, anchor, &mut reads)?;
+        let value = self.lower_key_expression(expression, anchor, &mut reads)?;
         Ok(reads.into_iter().rev().fold(value, |value, field| {
             let present = self.alloc(MappingNode::Call {
                 function: "exists".to_string(),

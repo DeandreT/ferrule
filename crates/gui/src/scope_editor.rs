@@ -234,9 +234,16 @@ fn join_source_label(source: &mapping::JoinSource) -> String {
             "Current rows".to_string()
         }
         mapping::JoinSource::Collection(source) => source.collection().join("/"),
-        mapping::JoinSource::Computed(computed) => {
-            format!("computed key {} (node {})", computed.id(), computed.value())
-        }
+        mapping::JoinSource::Computed(computed) => match computed.value() {
+            mapping::ComputedJoinValue::Scalar(node) => {
+                format!("computed key {} (node {node})", computed.id())
+            }
+            mapping::ComputedJoinValue::Sequence(sequence) => format!(
+                "computed key {} ({} sequence)",
+                computed.id(),
+                sequence.kind_name()
+            ),
+        },
     }
 }
 

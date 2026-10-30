@@ -245,7 +245,7 @@ These stay refused, each with a specific reason:
 | A computed input feeding a joined aggregate | import | unobserved (the model and engine admit it) |
 | Reading the computed key from the tuple (`key-read`) | model, import | fails native validation; a computed member has no readable collection |
 | A key node reading across an inactive repeating level (`root-repeating`) | model, import | the native key is a sequence |
-| A sequence-valued key (`tokens`, `tokens-second`) | import | single-valued keys only, until the sequence-key scope |
+| A sequence-valued key other than `tokenize`, a `tokenize` delimiter that is not a non-empty string constant, or tokens of a non-string | engine (other sequences), import, export | unobserved |
 | A key over a named secondary or dynamic source | import | unobserved |
 | A key with a function outside the admitted list (`unlisted-function`) | import | unobserved empty-input behavior |
 | A computed input with a copy-all connection (`copy-all-computed`) | import | the native application refuses it |
@@ -337,6 +337,18 @@ own scope merges with the matching tests.
    - A key over a repeating field outside any iteration of it
      (`root-repeating`) stays refused until a sequence form can express a
      per-item mapping exactly.
+   - The computed source holds either its scalar node or its sequence. A
+     sequence source serializes as
+     `{"computed":{"id":1,"sequence":{"kind":"tokenize",…}}}` and also
+     requires the `join-computed-sequence-keys-v1` capability. Its inputs are
+     computed-key inputs in the receiving context; its item is private to the
+     join, and no expression may read it.
+   - Import admits a `tokenize` feeding the join input directly, over a string
+     that a single-valued key could read and a non-empty string constant
+     delimiter. Its input takes the same null guard, so an absent or nil field
+     gives no tokens. Export writes the `tokenize` component below that guard
+     into an input named `value` with an ordinary connection.
+   - Generated code keeps refusing sequence-valued keys.
    - *Acceptance:* the `tokens` and `tokens-second` fixtures.
 
 [MFD interop](../mfd-interop.md) and the [project file
@@ -430,8 +442,8 @@ collection unless noted. Orders without a listed result have no matches.
 The designs come in two groups. `direct`, `upper`, `lower`, `concat`, `constant`,
 `parameter`, `numeric`, `integer-direct`, `rank`, `rank-direct`, `rank-text`,
 `rank-text-direct`, `root-constant` and `root-header` are admitted by scopes 2
-and 4. `tokens` and `tokens-second` wait for scope 6, and `root-repeating`
-stays refused.
+and 4. `tokens` and `tokens-second` are admitted by scope 6, and
+`root-repeating` stays refused.
 
 ## Acceptance plan
 

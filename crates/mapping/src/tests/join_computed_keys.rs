@@ -562,3 +562,174 @@ fn owned_join_plans_stay_path_only() {
         assert!(serde_json::from_value::<crate::OwnedJoinPlan>(refused).is_err());
     }
 }
+
+/// `tokenize(12, 13)` as a sequence-valued key with private item 14.
+fn sequence_key() -> JoinSource {
+    JoinSource::computed_sequence(
+        KEY,
+        crate::SequenceExpr::Tokenize {
+            input: 12,
+            delimiter: 13,
+            item: 14,
+        },
+    )
+}
+
+fn sequence_first() -> JoinPlan {
+    JoinPlan::new(
+        sequence_key(),
+        customers(),
+        JoinConditions::new(JoinKey::computed(KEY, vec!["Number".into()])),
+    )
+    .unwrap()
+}
+
+fn sequence_second() -> JoinPlan {
+    JoinPlan::new(
+        customers(),
+        sequence_key(),
+        JoinConditions::new(JoinKey::new(
+            vec!["Customer".into()],
+            vec!["Number".into()],
+            Vec::new(),
+        )),
+    )
+    .unwrap()
+}
+
+#[test]
+fn sequence_sources_round_trip_in_their_wire_form() {
+    let first = sequence_first();
+    let wire = serde_json::to_value(&first).unwrap();
+    assert_eq!(
+        wire["first"],
+        json!({"computed": {
+            "id": 1,
+            "sequence": {"kind": "tokenize", "input": 12, "delimiter": 13, "item": 14}
+        }})
+    );
+    assert_eq!(serde_json::from_value::<JoinPlan>(wire).unwrap(), first);
+    let computed = first.computed_source().unwrap();
+    assert_eq!(computed.scalar(), None);
+    assert_eq!(computed.key_inputs(), [12, 13]);
+    assert!(computed.as_sequence().is_some());
+    let second = sequence_second();
+    let wire = serde_json::to_value(&second).unwrap();
+    assert_eq!(serde_json::from_value::<JoinPlan>(wire).unwrap(), second);
+    // The plan rules do not depend on the source's value.
+    assert_eq!(
+        JoinPlan::new(
+            sequence_key(),
+            key_source(),
+            JoinConditions::new(JoinKey::computed(KEY, Vec::new())),
+        ),
+        Err(JoinPlanError::DuplicateComputedSource(KEY))
+    );
+
+    let source = |computed: serde_json::Value| {
+        serde_json::from_value::<JoinSource>(json!({ "computed": computed }))
+            .map_err(|error| error.to_string())
+    };
+    let tokenize = json!({"kind": "tokenize", "input": 12, "delimiter": 13, "item": 14});
+    assert!(
+        source(json!({"id": 1, "value": 12, "sequence": tokenize}))
+            .unwrap_err()
+            .contains("either a `value` or a `sequence`")
+    );
+    assert!(source(json!({"id": 1})).unwrap_err().contains("`value`"));
+    assert!(source(json!({"id": 1, "sequence": null})).is_err());
+    assert!(source(json!({"id": 1, "sequence": tokenize, "extra": 1})).is_err());
+
+    // A reader that knows only single-valued keys refuses the sequence form.
+    #[derive(Debug, serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
+    #[allow(dead_code)]
+    struct OlderComputedSource {
+        id: u32,
+        value: u32,
+    }
+    let older = serde_json::from_value::<OlderComputedSource>(
+        serde_json::to_value(sequence_first()).unwrap()["first"]["computed"].clone(),
+    );
+    assert!(older.is_err());
+}
+
+#[test]
+fn sequence_inputs_are_parent_context_key_inputs_and_the_item_is_private() {
+    let mut roots = Vec::new();
+    join_scope(sequence_second()).visit_roots(&mut |root| roots.push(root));
+    assert_eq!(
+        roots
+            .iter()
+            .map(|root| (root.node, root.slot, root.role))
+            .collect::<Vec<_>>(),
+        [
+            (12, ScopeRootSlot::ComputedJoinKey, ScopeRootRole::Parent),
+            (13, ScopeRootSlot::ComputedJoinKey, ScopeRootRole::Parent),
+            (
+                14,
+                ScopeRootSlot::SequenceItem,
+                ScopeRootRole::GeneratedItem
+            ),
+        ]
+    );
+    let aggregate = join_aggregate(sequence_first());
+    let mut inputs = Vec::new();
+    aggregate.visit_inputs(&mut |input| inputs.push(input));
+    assert_eq!(
+        inputs
+            .iter()
+            .map(|input| (input.node, input.slot, input.role))
+            .collect::<Vec<_>>(),
+        [
+            (12, NodeInputSlot::ComputedJoinKey, NodeInputRole::Parent),
+            (13, NodeInputSlot::ComputedJoinKey, NodeInputRole::Parent),
+            (14, NodeInputSlot::SequenceItem, NodeInputRole::ItemIdentity),
+        ]
+    );
+    assert_eq!(aggregate.evaluated_inputs(), [12, 13]);
+}
+
+#[test]
+fn every_sequence_placement_requires_both_capabilities() {
+    for computed in [computed_first(), computed_second()]
+        .iter()
+        .flat_map(placements)
+    {
+        assert!(!computed.uses_join_computed_sequence_keys());
+    }
+    for sequence in [sequence_first(), sequence_second()]
+        .iter()
+        .flat_map(placements)
+    {
+        assert!(sequence.uses_join_computed_keys());
+        assert!(sequence.uses_join_computed_sequence_keys());
+        let text = project_file::encode_pretty(&sequence).unwrap();
+        let saved: serde_json::Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(saved["__ferrule_file"]["version"], 3);
+        assert_eq!(
+            saved["__ferrule_file"]["capabilities"],
+            json!([
+                JOIN_COMPUTED_KEYS_V1_CAPABILITY,
+                JOIN_COMPUTED_SEQUENCE_KEYS_V1_CAPABILITY
+            ])
+        );
+        assert_eq!(reopened(&text), serde_json::to_value(&sequence).unwrap());
+    }
+
+    // The sequence capability is neither missing nor stale.
+    let mut project = project();
+    project.root = join_scope(sequence_first());
+    let saved: serde_json::Value =
+        serde_json::from_str(&project_file::encode_pretty(&project).unwrap()).unwrap();
+    let mut missing = saved.clone();
+    missing["__ferrule_file"]["capabilities"] = json!([JOIN_COMPUTED_KEYS_V1_CAPABILITY]);
+    let mut stale = saved;
+    stale["document"]["root"]["join"]["plan"] = serde_json::to_value(computed_first()).unwrap();
+    for refused in [missing, stale] {
+        assert!(matches!(
+            project_file::decode_str(&refused.to_string()),
+            Err(FileCodecError::CapabilityMismatch)
+        ));
+    }
+}

@@ -290,7 +290,7 @@ fn references_to_inner(
         if scope
             .join()
             .and_then(|(_, plan)| plan.computed_source())
-            .is_some_and(|computed| computed.value() == needle)
+            .is_some_and(|computed| computed.key_inputs().contains(&needle))
         {
             found.add(format!("{label} computed join key"), true);
         }

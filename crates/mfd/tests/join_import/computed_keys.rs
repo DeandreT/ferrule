@@ -20,8 +20,6 @@ const FIXTURES: &str = concat!(
 
 /// Designs the import still refuses, with the reason each warning names.
 const REFUSED: &[(&str, &str)] = &[
-    ("tokens", "key is sequence-valued (`tokenize`)"),
-    ("tokens-second", "key is sequence-valued (`tokenize`)"),
     (
         "root-repeating",
         "the key reads `Order/CustomerNumber` across a repeating level outside its iteration",
@@ -39,6 +37,9 @@ const REFUSED: &[(&str, &str)] = &[
         "input 0 key uses `normalize-space`, outside the admitted",
     ),
 ];
+
+/// Designs whose key is sequence-valued.
+const SEQUENCE: &[&str] = &["tokens", "tokens-second"];
 
 /// Designs that keep today's singleton form rather than a computed key.
 const DIRECT: &[&str] = &[
@@ -196,6 +197,13 @@ fn admitted_computed_key_designs_reproduce_their_frozen_tuples() {
             !DIRECT.contains(&id),
             "{id}: {plan:?}"
         );
+        assert_eq!(
+            plan.computed_source()
+                .and_then(|computed| computed.as_sequence())
+                .is_some(),
+            SEQUENCE.contains(&id),
+            "{id}: {plan:?}"
+        );
         let output = run(
             &imported.project,
             case["input"].as_str().expect("input name"),
@@ -203,7 +211,7 @@ fn admitted_computed_key_designs_reproduce_their_frozen_tuples() {
         let root = case["expected"].get("Hit").is_some();
         assert_eq!(tuples(&output, root), expected_tuples(case), "{id}");
     }
-    assert_eq!(admitted, 14);
+    assert_eq!(admitted, 16);
 }
 
 /// A single-valued key gives the same tuples as input 1, after `Customer`,
@@ -391,5 +399,79 @@ fn keys_over_named_sources_stay_refused() {
     assert_refused(
         &text,
         "input 0 key reads named source `Other`; computed keys over named or dynamic sources are not supported",
+    );
+}
+
+/// Sequence-valued keys outside the observed `tokenize` form keep the join
+/// out with their own reason.
+#[test]
+fn unobserved_sequence_keys_stay_refused() {
+    let tokens = design_text("tokens");
+    for (name, library) in [("tokenize-by-length", "core"), ("tokenize-regexp", "core")] {
+        assert_refused(
+            &tokens.replace(
+                r#"<component name="tokenize" library="core""#,
+                &format!(r#"<component name="{name}" library="{library}""#),
+            ),
+            &format!("input 0 key is a `{name}` sequence; only tokenize keys were observed"),
+        );
+    }
+    // The delimiter is a field rather than a constant, or an empty constant.
+    assert_refused(
+        &tokens
+            .replace(
+                r#"<vertex vertexkey="211"><edges><edge vertexkey="202"/>"#,
+                r#"<vertex vertexkey="11"><edges><edge vertexkey="41"/><edge vertexkey="202"/>"#,
+            )
+            .replace(
+                r#"<vertex vertexkey="11"><edges><edge vertexkey="41"/></edges></vertex>"#,
+                "",
+            ),
+        "input 0 key tokenize delimiter is not a non-empty string constant",
+    );
+    assert_refused(
+        &tokens.replace(r#"<constant value=" ""#, r#"<constant value="""#),
+        "input 0 key tokenize delimiter is not a non-empty string constant",
+    );
+    // Tokens of an integer were not observed.
+    assert_refused(
+        &tokens.replace(
+            r#"<vertex vertexkey="13"><edges><edge vertexkey="200"/>"#,
+            r#"<vertex vertexkey="14"><edges><edge vertexkey="200"/>"#,
+        ),
+        "input 0 key tokenizes a non-string value",
+    );
+    // A sequence inside a scalar computation is not a key of its own.
+    assert_refused(
+        &tokens
+            .replace(
+                r#"<vertex vertexkey="201"><edges><edge vertexkey="60"/>"#,
+                r#"<vertex vertexkey="201"><edges><edge vertexkey="220"/>"#,
+            )
+            .replace(
+                "</children>",
+                r#"<component name="uppercase" library="lang" uid="7" kind="5"><sources><datapoint pos="0" key="220"/></sources><targets><datapoint pos="0" key="221"/></targets></component>
+</children>"#,
+            )
+            .replace(
+                "</vertices>",
+                r#"<vertex vertexkey="221"><edges><edge vertexkey="60"/></edges></vertex>
+</vertices>"#,
+            ),
+        "input 0 key reads sequence `tokenize` inside its computation",
+    );
+    // At the root, the codes of every order would be a sequence of sequences.
+    assert_refused(
+        &tokens
+            .replace(
+                r#"<vertex vertexkey="10"><edges><edge vertexkey="40"/></edges></vertex>
+<vertex vertexkey="11"><edges><edge vertexkey="41"/></edges></vertex>
+"#,
+                "",
+            )
+            .replace(r#"<edge vertexkey="42"/>"#, r#"<edge vertexkey="50"/>"#)
+            .replace(r#"<edge vertexkey="43"/>"#, r#"<edge vertexkey="51"/>"#)
+            .replace(r#"<edge vertexkey="44"/>"#, r#"<edge vertexkey="52"/>"#),
+        "the key reads `Order/Codes` across a repeating level outside its iteration",
     );
 }

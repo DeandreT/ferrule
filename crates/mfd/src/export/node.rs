@@ -1343,7 +1343,7 @@ fn xml_type_alternative_operand(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn render_sequence_component(
+pub(super) fn render_sequence_component(
     name: &str,
     library: &str,
     inputs: &[u32],

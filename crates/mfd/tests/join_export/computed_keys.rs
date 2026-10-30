@@ -11,7 +11,7 @@ use engine::{ExecutionContext, RuntimeParameters};
 use ir::{Instance, ScalarType, Value};
 use mapping::{
     AggregateOp, ComputedJoinSourceId, Graph, JoinConditions, JoinId, JoinKey, JoinPlan,
-    JoinSource, Node, NodeId, Project, Scope, ScopeIteration,
+    JoinSource, Node, NodeId, Project, Scope, ScopeIteration, SequenceExpr,
 };
 
 use super::{TempDir, assert_join_input_modes};
@@ -23,8 +23,6 @@ const FIXTURES: &str = concat!(
 
 /// Designs import refuses; export never sees them.
 const REFUSED: &[&str] = &[
-    "tokens",
-    "tokens-second",
     "root-repeating",
     "copy-all-computed",
     "key-read",
@@ -147,11 +145,25 @@ fn canonical_plans(project: &Project) -> Vec<String> {
                 .sources()
                 .map(|source| match source {
                     JoinSource::Collection(source) => format!("{source:?}"),
-                    JoinSource::Computed(source) => format!(
-                        "computed {} = {}",
-                        source.id(),
-                        describe(&project.graph, source.value())
-                    ),
+                    JoinSource::Computed(source) => match (source.scalar(), source.as_sequence()) {
+                        (Some(node), _) => format!(
+                            "computed {} = {}",
+                            source.id(),
+                            describe(&project.graph, node)
+                        ),
+                        (
+                            None,
+                            Some(SequenceExpr::Tokenize {
+                                input, delimiter, ..
+                            }),
+                        ) => format!(
+                            "computed {} = tokenize({}, {})",
+                            source.id(),
+                            describe(&project.graph, *input),
+                            describe(&project.graph, *delimiter)
+                        ),
+                        (None, sequence) => format!("computed {} = {sequence:?}", source.id()),
+                    },
                 })
                 .collect::<Vec<_>>();
             let stages = plan
@@ -224,14 +236,17 @@ fn admitted_computed_key_designs_round_trip_twice_with_their_plans_and_tuples() 
         };
         let (_, plan) = scope.join().expect("a join scope");
         assert_eq!(plan.computed_source().is_some(), computed, "{id}");
+        let computed_index = plan
+            .sources()
+            .position(|source| source.as_computed().is_some());
         assert_round_trips(
             id,
             &design,
             case["input"].as_str().expect("input name"),
-            computed.then_some(0),
+            computed_index,
         );
     }
-    assert_eq!(admitted, 14);
+    assert_eq!(admitted, 16);
 }
 
 /// The `upper` design with the key as input 1, after `Customer`.
@@ -271,7 +286,10 @@ fn key_nodes(project: &Project) -> (NodeId, NodeId) {
     let mut scopes = Vec::new();
     join_scopes(&project.root, &mut scopes);
     let (_, plan) = scopes[0].join().expect("a join scope");
-    let key = plan.computed_source().expect("a computed key").value();
+    let key = plan
+        .computed_source()
+        .and_then(|computed| computed.scalar())
+        .expect("a scalar computed key");
     let Some(Node::If { then, .. }) = project.graph.nodes.get(&key) else {
         return (key, key);
     };
@@ -460,4 +478,143 @@ fn computed_keys_outside_a_target_iteration_or_beside_another_partner_are_refuse
         },
     );
     assert_refused(&project, "computed key feeding a joined aggregate");
+}
+
+/// The `tokens` design's sequence key and the scope that owns it.
+fn sequence_key(project: &mut Project) -> &mut ScopeIteration {
+    &mut join_scope_mut(&mut project.root)
+        .expect("a join scope")
+        .iteration
+}
+
+fn replace_sequence(project: &mut Project, sequence: SequenceExpr) {
+    let ScopeIteration::InnerJoin { plan, .. } = sequence_key(project) else {
+        panic!("not an inner join");
+    };
+    let sources = plan
+        .sources()
+        .map(|source| match source {
+            JoinSource::Computed(source) => {
+                JoinSource::computed_sequence(source.id(), sequence.clone())
+            }
+            other => other.clone(),
+        })
+        .collect::<Vec<_>>();
+    let conditions = plan.stages().next().expect("one stage").1.clone();
+    let mut sources = sources.into_iter();
+    *plan = JoinPlan::new(
+        sources.next().expect("first source"),
+        sources.next().expect("second source"),
+        conditions,
+    )
+    .expect("the plan keeps its shape");
+}
+
+/// The `tokens` design's tokenize input (below its guard), delimiter and
+/// item.
+fn tokenize_nodes(project: &Project) -> (NodeId, NodeId, NodeId, NodeId) {
+    let mut scopes = Vec::new();
+    join_scopes(&project.root, &mut scopes);
+    let (_, plan) = scopes[0].join().expect("a join scope");
+    let Some(SequenceExpr::Tokenize {
+        input,
+        delimiter,
+        item,
+    }) = plan
+        .computed_source()
+        .and_then(|computed| computed.as_sequence())
+    else {
+        panic!("not a tokenize key");
+    };
+    let Some(Node::If { then, .. }) = project.graph.nodes.get(input) else {
+        panic!("the tokenize input has no guard");
+    };
+    let Some(Node::If { else_, .. }) = project.graph.nodes.get(then) else {
+        panic!("the guard has no nil test");
+    };
+    (*input, *else_, *delimiter, *item)
+}
+
+#[test]
+fn a_sequence_key_is_written_as_its_tokenize_component() {
+    let design = import_design(&design_text("tokens"));
+    let dir = TempDir::new("computed-key-tokens");
+    let path = dir.path("mapping.mfd");
+    assert_eq!(
+        mfd::export(&design, &path).expect("tokens exports"),
+        [] as [String; 0]
+    );
+    let xml = fs::read_to_string(&path).expect("export writes the design");
+    assert_eq!(
+        xml.matches(r#"<component name="tokenize" library="core""#)
+            .count(),
+        1,
+        "{xml}"
+    );
+    assert!(
+        xml.contains(r#"<constant value=" " datatype="string"/>"#),
+        "{xml}"
+    );
+    assert_computed_wiring(&xml, "tokens", 0, false);
+}
+
+#[test]
+fn sequence_keys_import_would_not_read_back_are_refused_before_anything_is_written() {
+    let tokens = import_design(&design_text("tokens"));
+    let (guarded, codes, delimiter, item) = tokenize_nodes(&tokens);
+
+    let mut project = tokens.clone();
+    let length = 9_000;
+    project.graph.nodes.insert(
+        length,
+        Node::Const {
+            value: Value::Int(2),
+        },
+    );
+    replace_sequence(
+        &mut project,
+        SequenceExpr::TokenizeByLength {
+            input: guarded,
+            length,
+            item,
+        },
+    );
+    assert_refused(
+        &project,
+        "a sequence-valued key is exported only as tokenize, not `tokenize_by_length`",
+    );
+
+    for value in [Value::String(String::new()), Value::Int(1)] {
+        let mut project = tokens.clone();
+        project.graph.nodes.insert(delimiter, Node::Const { value });
+        assert_refused(
+            &project,
+            "tokenize delimiter must be a non-empty string constant",
+        );
+    }
+
+    // The bare input without the null guard import adds on re-import.
+    let mut project = tokens.clone();
+    replace_sequence(
+        &mut project,
+        SequenceExpr::Tokenize {
+            input: codes,
+            delimiter,
+            item,
+        },
+    );
+    assert_refused(
+        &project,
+        "null guard covers no field but the key reads `Codes`",
+    );
+
+    let mut project = tokens.clone();
+    project.graph.nodes.insert(
+        codes,
+        Node::SourceField {
+            path: vec!["Qty".into()],
+            frame: None,
+        },
+    );
+    assert_refused(&project, "the key's tokenize input is not a string");
 }

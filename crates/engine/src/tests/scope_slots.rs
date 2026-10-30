@@ -138,7 +138,8 @@ fn legacy_parent_roots(scope: &Scope) -> Vec<NodeId> {
         scope
             .join()
             .and_then(|(_, plan)| plan.computed_source())
-            .map(|computed| computed.value()),
+            .into_iter()
+            .flat_map(|computed| computed.key_inputs()),
     );
     parent_roots
 }
@@ -477,7 +478,8 @@ fn legacy_scope_graph_roots(scope: &Scope, roots: &mut BTreeSet<NodeId>) {
         scope
             .join()
             .and_then(|(_, plan)| plan.computed_source())
-            .map(|computed| computed.value()),
+            .into_iter()
+            .flat_map(|computed| computed.key_inputs()),
     );
     for binding in &scope.dynamic_bindings {
         roots.extend([binding.key, binding.value]);
