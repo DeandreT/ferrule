@@ -9,10 +9,10 @@ use quick_xml::Writer;
 use quick_xml::events::{BytesEnd, BytesStart, Event};
 
 use super::{
-    NodeWriteContext, XmlFormatError, attribute_value, element_matches_schema,
-    format_schema_scalar, instance_occurs, parse_input_schema_scalar, parse_schema_scalar,
-    push_attribute, push_element_namespace, push_schema_attribute, read_node, shape_error,
-    validate_group_fields, write_node, write_ordered_mixed_content, xml_text,
+    NodeWriteContext, OrderedContentLayout, XmlFormatError, attribute_value,
+    element_matches_schema, format_schema_scalar, instance_occurs, parse_input_schema_scalar,
+    parse_schema_scalar, push_attribute, push_element_namespace, push_schema_attribute, read_node,
+    shape_error, validate_group_fields, write_node, write_ordered_mixed_content, xml_text,
 };
 
 pub(super) fn read_generic_element(
@@ -741,6 +741,7 @@ pub(super) fn write_generic_element<W: std::io::Write>(
         fields,
         recursion_depth,
         element_namespace,
+        OrderedContentLayout::Verbatim,
     )? {
         writer.write_event(Event::End(BytesEnd::new(name)))?;
         return Ok(());
