@@ -188,6 +188,7 @@ pub(crate) enum BuiltinId {
     Substring,
     SubstringBefore,
     SubstringAfter,
+    Translate,
     String,
     IsNumeric,
     ToNumber,
@@ -754,6 +755,23 @@ pub(crate) const BUILTINS: &[BuiltinDefinition] = &[
         true,
         Authoring,
         "Returns text after a separator."
+    ),
+    builtin!(
+        Translate,
+        "translate",
+        "Translate",
+        String,
+        &[
+            parameter("value", Any),
+            parameter("search", Any),
+            parameter("replacement", Any)
+        ],
+        BuiltinArity::fixed(3),
+        String,
+        true,
+        true,
+        Authoring,
+        "Replaces each search character with the replacement character at the same position, removing characters that have none."
     ),
     builtin!(
         String,

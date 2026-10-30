@@ -337,6 +337,38 @@ public static partial class FerruleFunctions
         return FerruleValue.FromString(result);
     }
 
+    // XPath fn:translate over Unicode scalars: the first occurrence of a search
+    // scalar wins, and search scalars without a replacement are removed.
+    private static FerruleValue Translate(IReadOnlyList<FerruleValue> arguments)
+    {
+        RequireArity("translate", arguments, 3);
+        var replacement = new List<Rune>();
+        foreach (var rune in ScalarText(arguments[2]).EnumerateRunes())
+        {
+            replacement.Add(rune);
+        }
+        var table = new Dictionary<Rune, Rune?>();
+        var index = 0;
+        foreach (var rune in ScalarText(arguments[1]).EnumerateRunes())
+        {
+            table.TryAdd(rune, index < replacement.Count ? replacement[index] : null);
+            index++;
+        }
+        var result = new StringBuilder();
+        foreach (var rune in ScalarText(arguments[0]).EnumerateRunes())
+        {
+            if (!table.TryGetValue(rune, out var mapped))
+            {
+                result.Append(rune.ToString());
+            }
+            else if (mapped is { } output)
+            {
+                result.Append(output.ToString());
+            }
+        }
+        return FerruleValue.FromString(result.ToString());
+    }
+
     private static FerruleValue StringValue(IReadOnlyList<FerruleValue> arguments)
     {
         RequireArity("string", arguments, 1);
