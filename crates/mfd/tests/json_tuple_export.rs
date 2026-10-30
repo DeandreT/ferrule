@@ -1,5 +1,5 @@
 //! `.mfd` export refuses JSON tuple frames before writing anything, because
-//! the generated JSON Schema siblings cannot represent them yet (#1227).
+//! design entries cannot address tuple positions yet.
 
 use std::error::Error;
 use std::path::PathBuf;
