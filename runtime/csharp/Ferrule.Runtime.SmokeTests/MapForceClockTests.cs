@@ -49,7 +49,8 @@ internal static partial class Program
         }
         string text = Encoding.Latin1.GetString(FerruleX12.SerializeMapForceDocumentBytesWithClock(descriptor, body, context, Clock));
         Equal(true, text.Contains("*270102*0405*", StringComparison.Ordinal));
-        Equal(true, text.Contains("GS****20290304*1617*", StringComparison.Ordinal));
+        Equal(true, text.Contains("GS****20290304*1617~", StringComparison.Ordinal));
+        Equal(true, text.Contains("GE*1~", StringComparison.Ordinal));
         Equal(true, calls.SequenceEqual(Enum.GetValues<FerruleMapForceX12ClockField>()));
         var optionalBoundary = System.Text.Json.Nodes.JsonNode.Parse(boundary)!;
         optionalBoundary["schema"] = JsonSerializer.Serialize(Node("Envelope", [Node("Interchange", [Fields("ISA", 16, true), Node("Group", [Fields("GS", 8, true), Node("Message_850", [Fields("ST", 2), Fields("G69", 1), Fields("SE", 2)], true), Fields("GE", 2, true)], true), Fields("IEA", 2, true)], true)]));
@@ -77,7 +78,7 @@ internal static partial class Program
             new { path = new[] { "Interchange", "Group", "GS", "E04" }, kind = (object)"compact_date8" },
             new { path = new[] { "Interchange", "Group", "GS", "E05" }, kind = (object)new { compact_time = new { min_digits = 4, max_digits = 8 } } },
         });
-        var projected = FerruleX12.ParseMapForceSourceBytes(projectedDescriptor.ToJsonString(), Encoding.UTF8.GetBytes(text.Replace("20290304", "491399", StringComparison.Ordinal).Replace("*1617*", "*abCDef*", StringComparison.Ordinal)));
+        var projected = FerruleX12.ParseMapForceSourceBytes(projectedDescriptor.ToJsonString(), Encoding.UTF8.GetBytes(text.Replace("20290304", "491399", StringComparison.Ordinal).Replace("*1617~", "*abCDef~", StringComparison.Ordinal)));
         var projectedInterchange = ((FerruleRepeated)Field(projected, "Interchange")).Items[0];
         var projectedGroup = ((FerruleRepeated)Field(projectedInterchange, "Group")).Items[0];
         var projectedGs = ((FerruleRepeated)Field(projectedGroup, "GS")).Items[0];

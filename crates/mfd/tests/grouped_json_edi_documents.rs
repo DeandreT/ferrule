@@ -4,6 +4,12 @@ use std::path::PathBuf;
 #[path = "grouped_json_edi_documents/compiled.rs"]
 mod compiled;
 
+#[path = "grouped_json_edi_documents/quantity.rs"]
+mod quantity;
+
+#[path = "grouped_json_edi_documents/presence.rs"]
+mod presence;
+
 struct Fixture(PathBuf);
 impl Fixture {
     fn new() -> Self {
