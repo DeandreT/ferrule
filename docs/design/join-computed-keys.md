@@ -50,10 +50,9 @@ These facts describe the code this design builds on.
 - **Export.** `crates/mfd/src/export/join.rs` writes kind-32 components whose
   inputs all come from source ports. A nested two-input plan must contain
   exactly one correlated singleton and one repeating source
-  (`resolved_source_paths`). Repeating inputs, and the first input of a nested
-  plan with three or more inputs, are written as copy-all connections
-  (`dataconnection type="2"`). The singleton input of a nested two-input plan
-  is written as an ordinary connection.
+  (`resolved_source_paths`). Every input, repeating or singleton, at every
+  input count, is written as a copy-all connection (`dataconnection
+  type="2"`), as the [wire form](#wire-form) requires for source feeds.
 
 ## Native semantics
 
