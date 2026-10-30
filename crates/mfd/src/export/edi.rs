@@ -75,6 +75,11 @@ pub(super) fn validate_side(
             )));
         }
     }
+    if options.swift_mt_output.is_some() {
+        return Err(MfdError::Unsupported(format!(
+            "the {side_name} SWIFT MT boundary retains output message headers that `.mfd` export cannot carry"
+        )));
+    }
     let Some(kind) = options.edi_kind else {
         return Ok(());
     };

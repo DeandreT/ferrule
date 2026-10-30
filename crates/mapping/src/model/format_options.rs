@@ -6,8 +6,8 @@ use crate::{
     CsvTextRepairDependency, EdiAutocomplete, EdiBoundaryKind, EdiImpliedDecimal, EdiLexicalFormat,
     EdiValueConstraint, ExternalSourceOptions, FixedWidthLayout, FlexTextLayout, HttpGetOptions,
     IdocLayout, IdocNativeConfig, IdocNativeTextSettings, NodeId, PdfLayout, ProtobufOptions,
-    SqliteReadProfile, SwiftMtLayout, TabularBoundaryKind, WsdlMessageOptions, X12Separators,
-    XbrlBoundaryOptions, XlsxHierarchicalLayout, is_false,
+    SqliteReadProfile, SwiftMtLayout, SwiftMtOutputOptions, TabularBoundaryKind,
+    WsdlMessageOptions, X12Separators, XbrlBoundaryOptions, XlsxHierarchicalLayout, is_false,
 };
 
 macro_rules! xlsx_coordinate {
@@ -300,10 +300,15 @@ pub struct FormatOptions {
     /// This records provenance only; runtime I/O keeps its legacy behavior.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub idoc_native_text_settings: Option<IdocNativeTextSettings>,
-    /// SWIFT MT: embedded selected-message field grammar. This mode is
-    /// input-only and takes precedence over the file extension.
+    /// SWIFT MT: embedded selected-message field grammar. This mode takes
+    /// precedence over the file extension.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub swift_mt: Option<SwiftMtLayout>,
+    /// SWIFT MT targets: the direction and per-message header values that
+    /// the mapped instance does not carry. Required to write `swift_mt`
+    /// output; invalid on sources.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub swift_mt_output: Option<SwiftMtOutputOptions>,
     /// XML document identity retained when no instance filename is available
     /// to carry an `.xml` extension.
     #[serde(default, skip_serializing_if = "core::ops::Not::not")]
