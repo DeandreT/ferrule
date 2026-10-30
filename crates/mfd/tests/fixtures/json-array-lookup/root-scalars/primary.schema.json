@@ -1,0 +1,7 @@
+{
+  "type": "object",
+  "properties": {
+    "Items": {"type":"array","items":{"type":"object","properties":{"Code":{"type":["string","null"]},"Ordinal":{"type":"integer"}},"required":["Ordinal"],"additionalProperties":false}}
+  },
+  "additionalProperties": false
+}

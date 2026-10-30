@@ -490,12 +490,17 @@ impl GraphBuilder<'_> {
                     ty: ScalarType::String
                 }
             )
-            || parser
-                .outputs
-                .keys()
-                .any(|feed| *feed != key_feed && *feed != value_feed)
-            || [key_feed, value_feed].iter().any(|feed| {
-                !parser.runtime_scalar_outputs.contains(feed)
+            || parser.outputs.iter().any(|(feed, path)| {
+                // Independent root scalars retain ordinary scalar parsing
+                // and complete-document validation. They neither supply
+                // array records nor acquire the primary item's frame.
+                (*feed != key_feed
+                    && *feed != value_feed
+                    && !(path.len() == 1
+                        && schema_node_at(&parser.schema, path).is_some_and(|node| {
+                            node.is_scalar() && !node.repeating && !node.json_any
+                        })))
+                    || !parser.runtime_scalar_outputs.contains(feed)
                     || super::super::constructed_parser_scalar::output_is_shadowed(*feed, self)
             })
             || self.edge_from.iter().any(|(input, feed)| {

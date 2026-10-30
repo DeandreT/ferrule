@@ -3,6 +3,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use ir::{Instance, Value};
 
+#[path = "json_array_lookup/retained_export.rs"]
+mod retained_export;
+
 struct TempDir(PathBuf);
 impl TempDir {
     fn new() -> Self {
@@ -82,6 +85,168 @@ fn run(
 }
 fn cases() -> Vec<serde_json::Value> {
     serde_json::from_str(include_str!("fixtures/json-array-lookup/cases.json")).unwrap()
+}
+
+#[test]
+fn independent_root_scalars_preserve_lookup_ownership_and_complete_validation() {
+    let project = imported(&fixtures().join("root-scalars/mapping.mfd"));
+    let cases: Vec<serde_json::Value> = serde_json::from_str(include_str!(
+        "fixtures/json-array-lookup/root-scalars/cases.json"
+    ))
+    .unwrap();
+    for case in cases {
+        let result = run(&project, &case);
+        if case["parameter_failure"] == "missing" {
+            assert!(
+                matches!(result, Err(engine::EngineError::MissingRuntimeParameter { name, .. }) if name == "LookupText"),
+                "{case}"
+            );
+        } else if let Some(message) = case["error"].as_str() {
+            assert!(
+                matches!(result, Err(engine::EngineError::Function(functions::FunctionError::InvalidArgument {
+                    function, message: actual
+                })) if actual == message && case["error_functions"].as_array().unwrap().iter().any(|allowed| allowed.as_str() == Some(function))),
+                "{case}: {result:?}"
+            );
+        } else {
+            assert_eq!(
+                result.unwrap(),
+                format_json::from_str(&case["expected"].to_string(), &project.target).unwrap(),
+                "{case}"
+            );
+        }
+    }
+
+    let mut inputs = std::collections::BTreeSet::new();
+    let mut descriptors = std::collections::BTreeSet::new();
+    let mut fields = std::collections::BTreeSet::new();
+    for node in project.graph.nodes.values() {
+        let mapping::Node::Call { function, args } = node else {
+            continue;
+        };
+        if !matches!(
+            function.as_str(),
+            "json_parse_field" | "json_parse_array_length" | "json_parse_array_field"
+        ) {
+            continue;
+        }
+        inputs.insert(args[0]);
+        let mapping::Node::Const {
+            value: Value::String(descriptor),
+        } = &project.graph.nodes[&args[1]]
+        else {
+            panic!("complete schema descriptor");
+        };
+        descriptors.insert(descriptor);
+        if function == "json_parse_field" {
+            let mapping::Node::Const {
+                value: Value::String(path),
+            } = &project.graph.nodes[&args[2]]
+            else {
+                panic!("scalar path descriptor");
+            };
+            fields.insert(serde_json::from_str::<Vec<String>>(path).unwrap());
+        }
+    }
+    assert_eq!(inputs.len(), 1, "all reads use the same global input");
+    assert!(matches!(
+        &project.graph.nodes[inputs.first().unwrap()],
+        mapping::Node::RuntimeParameter { name, ty: ir::ScalarType::String, .. }
+        if name == "LookupText"
+    ));
+    assert_eq!(
+        descriptors.len(),
+        1,
+        "all reads use the same complete schema"
+    );
+    assert_eq!(
+        fields,
+        ["Label", "Revision", "Enabled"]
+            .into_iter()
+            .map(|name| vec![name.to_string()])
+            .collect()
+    );
+    assert!(project.graph.nodes.values().any(|node| matches!(node,
+        mapping::Node::SourceField { path, frame: Some(frame) }
+        if path == &["Code"] && frame == &["Items"])));
+}
+
+#[test]
+fn root_scalar_composition_refuses_nested_structural_shadowed_and_shared_array_feeds() {
+    for feed in ["24", "127", "128", "129", "130"] {
+        let dir = copy_all_fixtures();
+        let path = dir.0.join("root-scalars/mapping.mfd");
+        replace(
+            &path,
+            "<vertex vertexkey=\"124\"><edges><edge vertexkey=\"134\"/></edges></vertex>",
+            &format!(
+                "<vertex vertexkey=\"{feed}\"><edges><edge vertexkey=\"134\"/></edges></vertex>"
+            ),
+        );
+        refused(&path);
+    }
+    for (from, to) in [
+        ("outkey=\"128\"", "outkey=\"124\""),
+        ("outkey=\"2\"", "outkey=\"124\""),
+        (
+            "<parameter usageKind=\"stringparse\"/>",
+            "<parameter usageKind=\"stringparse\"/><entry name=\"parent-context\"/>",
+        ),
+        (
+            "</children>",
+            "<component name=\"constant\" library=\"core\" kind=\"2\"><data><constant value=\"shadow\" datatype=\"string\"/></data><targets><datapoint key=\"124\"/></targets></component></children>",
+        ),
+        (
+            "<vertex vertexkey=\"124\"><edges><edge vertexkey=\"134\"/></edges></vertex>",
+            "<vertex vertexkey=\"23\"><edges><edge vertexkey=\"134\"/></edges></vertex>",
+        ),
+        (
+            "<vertex vertexkey=\"125\"><edges><edge vertexkey=\"135\"/></edges></vertex>",
+            "<vertex vertexkey=\"22\"><edges><edge vertexkey=\"135\"/></edges></vertex>",
+        ),
+        (
+            "<vertex vertexkey=\"42\"><edges><edge vertexkey=\"51\"/></edges></vertex>",
+            "<vertex vertexkey=\"42\"><edges><edge vertexkey=\"51\"/><edge vertexkey=\"136\"/></edges></vertex>",
+        ),
+    ] {
+        let dir = copy_all_fixtures();
+        let path = dir.0.join("root-scalars/mapping.mfd");
+        if to.contains("<edge vertexkey=\"136\"/>") {
+            replace(
+                &path,
+                "<vertex vertexkey=\"126\"><edges><edge vertexkey=\"136\"/></edges></vertex>",
+                "",
+            );
+        }
+        replace(&path, from, to);
+        refused(&path);
+    }
+    for replacement in [
+        "\"Label\": {}",
+        "\"Label\": {\"type\":\"array\",\"items\":{\"type\":\"string\"}}",
+    ] {
+        let dir = copy_all_fixtures();
+        let root = dir.0.join("root-scalars");
+        replace(
+            &root.join("lookup.schema.json"),
+            "\"Label\": {\"type\":[\"string\",\"null\"]}",
+            replacement,
+        );
+        refused(&root.join("mapping.mfd"));
+    }
+}
+
+#[test]
+fn filtered_final_key_branch_remains_refused_without_a_reference_backed_proof() {
+    refused(&fixtures().join("filtered-key/mapping.mfd"));
+    let dir = copy_all_fixtures();
+    let path = dir.0.join("filtered-key/mapping.mfd");
+    replace(
+        &path,
+        "</vertices>",
+        "<vertex vertexkey=\"124\"><edges><edge vertexkey=\"134\"/></edges></vertex></vertices>",
+    );
+    refused(&path);
 }
 
 #[test]
@@ -695,7 +860,9 @@ fn keys_from_a_second_parser_and_multiply_repeated_primary_keys_refuse() {
     refused(&path);
 }
 
-fn emit(root: &Path, profile: &str) {
+fn generated_artifacts(
+    profile: &str,
+) -> (mapping::Project, codegen::ArtifactSet, codegen::ArtifactSet) {
     let edi = profile.ends_with("edi");
     let project = imported(&fixtures().join(profile).join("mapping.mfd"));
     let program = codegen::lower(&project).unwrap();
@@ -729,6 +896,11 @@ fn emit(root: &Path, profile: &str) {
             codegen_csharp::emit(&program).unwrap(),
         )
     };
+    (project, rust, csharp)
+}
+
+fn emit(root: &Path, profile: &str) {
+    let (project, rust, csharp) = generated_artifacts(profile);
     for (language, artifacts) in [("rust", rust), ("csharp", csharp)] {
         for file in artifacts.files() {
             let path = root.join(language).join(file.path.as_str());
@@ -747,16 +919,22 @@ fn emit(root: &Path, profile: &str) {
 
 #[test]
 fn lookup_graph_lowers_and_emits_both_backends() {
-    for profile in ["", "edi", "conditional", "conditional/edi"] {
+    for profile in ["", "edi", "conditional", "conditional/edi", "root-scalars"] {
         let dir = TempDir::new();
         emit(&dir.0, profile);
     }
 }
 
 #[test]
+#[ignore = "emission only; requires a new absolute FERRULE_LOOKUP_EXPORT_ROOT on native Windows"]
+fn export_retained_lookup_release_projects() {
+    retained_export::export().unwrap();
+}
+
+#[test]
 #[ignore = "compiles generated Rust and C# Release hosts; requires Cargo and .NET 10"]
 fn generated_lookup_release_hosts_match_complete_outputs_and_typed_failures() {
-    for profile in ["", "conditional"] {
+    for profile in ["", "conditional", "root-scalars"] {
         generated_hosts(profile);
     }
 }
@@ -773,7 +951,13 @@ fn generated_hosts(profile: &str) {
     let dir = TempDir::new();
     emit(&dir.0, profile);
     let shared = fixtures();
-    let hosts = shared.join(if profile.ends_with("edi") { "edi" } else { "" });
+    let hosts = shared.join(if profile.ends_with("edi") {
+        "edi"
+    } else if profile == "root-scalars" {
+        profile
+    } else {
+        ""
+    });
     let fixtures = shared.join(profile);
     let rust = dir.0.join("rust");
     let manifest = rust.join("Cargo.toml");

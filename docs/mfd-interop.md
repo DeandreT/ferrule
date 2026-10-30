@@ -1041,8 +1041,16 @@ the first input of a core filter, with `equal` comparing a String key from the
 same array to a String field of the current primary-document item. The first
 filter output must connect directly to scalar targets in that item's actual
 iteration frame. The parser requires a uniquely declared required global String
-input and a resolved schema. The equality and connected parser fields must belong
+input and a resolved schema. The equality and array key/value feeds must belong
 exclusively to that filter; unconnected declared ports do not change admission.
+Independently connected top-level nonrepeating scalar outputs from the same parser
+may coexist with the lookup. Each requires its own unique, unshadowed raw output
+identity and retains ordinary scalar parsing against the same complete schema.
+Objects, nested scalar outputs and additional connected array outputs remain
+outside this composition. Missing optional root scalars retain the reader's
+`Value::Null` absence marker, whether or not their schema permits explicit null.
+Schema-permitted explicit JSON null remains distinct as `Value::JsonNull`;
+missing schema-required properties fail complete-document validation.
 An empty, attribute-free second output placeholder retains its unused false
 slot; it never receives an invented output identity. Malformed or shared output
 declarations remain refused.
@@ -1078,10 +1086,11 @@ aggregates, filters, parser reads and foreign-frame leaves remain outside this
 key-expression profile.
 The complete parser input is validated whenever a lookup is demanded, including
 later duplicates, nonmatching records and unused properties. An empty primary
-iteration does not demand the parser. There is no shared parsing cache; repeated
-lookups can cost primary-item count times lookup-record count times document
-size, in addition to value projections. This is not a large-array performance
-contract; shared parsing and work bounds remain separate work in
+iteration does not demand a lookup, but an independently connected root scalar
+still demands its own complete-document parse. There is no shared parsing cache;
+repeated lookups can cost primary-item count times lookup-record count times
+document size, in addition to value projections and separate root-scalar parses.
+This is not a large-array performance contract; shared parsing and work bounds remain separate work in
 [#1175](https://github.com/DeandreT/ferrule/issues/1175).
 
 A JSON string parser with no declared output ports can retain a directly connected,
