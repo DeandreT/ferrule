@@ -92,6 +92,11 @@ pub fn show(
         rect.right_top() - egui::vec2(28.0, 0.0),
         egui::vec2(28.0, 28.0),
     );
+    let toggle_label = if collapsed {
+        "Show minimap"
+    } else {
+        "Collapse minimap"
+    };
     let toggle = overlay_ui
         .put(
             toggle_rect,
@@ -104,11 +109,8 @@ pub fn show(
                 crate::ui_kit::METRICS.icon_small,
             )),
         )
-        .on_hover_text(if collapsed {
-            "Show minimap"
-        } else {
-            "Collapse minimap"
-        });
+        .accessible_name(toggle_label)
+        .on_hover_text(toggle_label);
     if toggle.clicked() {
         ui.ctx()
             .data_mut(|data| data.insert_temp(collapsed_id, !collapsed));
