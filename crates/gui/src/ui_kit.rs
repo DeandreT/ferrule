@@ -273,8 +273,9 @@ pub fn tab(ui: &mut Ui, label: &str, selected: bool, closable: bool) -> TabRespo
     };
     let mut close_clicked = false;
     // Register the tab background below its children so it cannot steal the
-    // inline close button's pointer events.
-    let inner = ui.scope_builder(egui::UiBuilder::new().sense(egui::Sense::click()), |ui| {
+    // inline close button's pointer events. Only the label takes keyboard
+    // focus, so the tab is one named Tab stop.
+    let inner = ui.scope_builder(egui::UiBuilder::new().sense(egui::Sense::CLICK), |ui| {
         egui::Frame::new()
             .fill(fill)
             .stroke(stroke)

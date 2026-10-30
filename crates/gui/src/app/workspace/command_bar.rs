@@ -14,6 +14,7 @@ struct Shortcuts<'a> {
     save: egui::KeyboardShortcut,
     run: egui::KeyboardShortcut,
     validate: egui::KeyboardShortcut,
+    preview: egui::KeyboardShortcut,
     undo: &'a egui::KeyboardShortcut,
     redo: &'a egui::KeyboardShortcut,
 }
@@ -71,6 +72,10 @@ impl FerruleApp {
             validate: egui::KeyboardShortcut::new(
                 egui::Modifiers::COMMAND | egui::Modifiers::SHIFT,
                 egui::Key::V,
+            ),
+            preview: egui::KeyboardShortcut::new(
+                egui::Modifiers::COMMAND | egui::Modifiers::SHIFT,
+                egui::Key::P,
             ),
             undo: undo_shortcut,
             redo: redo_shortcut,
@@ -133,6 +138,9 @@ impl FerruleApp {
         }
         if pressed(&shortcuts.validate) {
             self.validate_now();
+        }
+        if pressed(&shortcuts.preview) && self.can_preview() {
+            self.begin_preview();
         }
     }
 
@@ -244,7 +252,7 @@ impl FerruleApp {
                 self.debug_run(&ctx);
             }
             let preview_blocked = (!self.can_preview()).then_some(NEEDS_MAPPING);
-            if menu_item(ui, "Preview…", None, preview_blocked) {
+            if menu_item(ui, "Preview…", Some(&shortcuts.preview), preview_blocked) {
                 self.begin_preview();
             }
             let request_unavailable = self.rest_run_unavailable_reason();
@@ -405,7 +413,10 @@ impl FerruleApp {
         if ui_kit::icon_button(
             ui,
             Icon::Eye,
-            "Preview the current target from in-memory input",
+            &label(
+                "Preview the current target from in-memory input",
+                &shortcuts.preview,
+            ),
             preview_blocked,
         )
         .clicked()
