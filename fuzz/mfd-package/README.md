@@ -98,9 +98,8 @@ one-time warning saying so.
 ## Known limits
 
 These are current behavior that the harness tolerates rather than reports. The
-first three overflow the 8 MiB worker stack or exceed the 10 s timeout; the
-harness skips the import of a package that reaches one (`known_limit_exemption`
-in `src/lib.rs`).
+first two overflow the 8 MiB worker stack; the harness skips the import of a
+package that reaches one (`known_limit_exemption` in `src/lib.rs`).
 
 - **Deep entry trees** ([#1167](https://github.com/DeandreT/ferrule/issues/1167)).
   A design component's `<entry>` tree is walked recursively, one call per
@@ -111,20 +110,6 @@ in `src/lib.rs`).
   1,219 nested typed entries. The harness skips a package whose design, read
   as strict UTF-8 like the importer reads it, nests more than 512 `<entry>`
   elements inside a `<component>` (`MAX_EXEMPT_ENTRY_DEPTH`).
-- **Quadratic structure walk** ([#1185](https://github.com/DeandreT/ferrule/issues/1185)).
-  `mfd::import::xml_root_view::Inventory::read` searches the ancestors of
-  every element below the design's `<structure>` for the nearest `structure`
-  and `component`, so each element costs about its depth below that structure
-  and the pass costs their sum, quadratic along a deep chain. It runs once per
-  imported stage over the top structure; a nested `<structure>` is not a
-  separate pass and only shortens its own descendants' walks. Only deep chains
-  are slow, so the harness ignores the first 64 levels of each element's depth
-  (`ANCESTOR_FLOOR`) and a wide, shallow design, however many elements, is
-  never skipped. On the fuzz build a chain of 4,000 plain elements inside a
-  component takes 1.6 s and one of 16,000 takes 24.7 s, both quadratic. The
-  harness skips a design whose deep-tail depths sum past 2,000,000
-  (`MAX_EXEMPT_ANCESTOR_STEPS`), a chain of about 2,060 elements that still
-  imports well under the 10 s timeout.
 - **Large XML Schemas** ([#1168](https://github.com/DeandreT/ferrule/issues/1168)).
   `format_xml::xsd` imports by recursive descent with no depth limit: once per
   nested particle (`parse_element`, `parse_complex_type`,
