@@ -66,8 +66,7 @@ const EXPECTED: &[(&str, &str)] = &[
     ("include_ref_parent", "package InvalidPath"),
     ("include_ref_url", "package InvalidPath"),
     ("json_chain", "imported"),
-    // Silent substitution, #1169.
-    ("json_chain_cycle", "imported"),
+    ("json_chain_cycle", "imported with warnings"),
     ("json_chain_dangling", "package MissingEntry"),
     ("json_chain_long", "imported"),
     ("json_ref", "imported"),
@@ -75,8 +74,7 @@ const EXPECTED: &[(&str, &str)] = &[
     ("json_ref_parent", "package InvalidPath"),
     ("json_schema_deep", "imported with warnings"),
     ("json_schema_invalid_utf8", "imported with warnings"),
-    // Silent substitution, #1169.
-    ("json_schema_not_object", "imported"),
+    ("json_schema_not_object", "imported with warnings"),
     ("json_schema_truncated", "imported with warnings"),
     ("json_to_xml", "imported"),
     ("missing_dtd", "package MissingEntry"),

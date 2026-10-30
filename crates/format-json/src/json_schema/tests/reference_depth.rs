@@ -142,16 +142,28 @@ fn nested_composition_and_contains_predicate_share_the_local_chain_limit() {
 }
 
 #[test]
-fn cyclic_legacy_fallback_and_error_cleanup_remain_stable() {
-    let cyclic = root_chain(64, json!({"$ref":"#/$defs/N0"}));
-    let imported = json_schema::import_str(&cyclic).unwrap();
-    assert_eq!(imported.name, "root");
+fn cyclic_nested_fallback_root_refusal_and_error_cleanup_remain_stable() {
+    let nested = json!({
+        "type":"object",
+        "properties":{"Value":{"$ref":"#/$defs/N0"}},
+        "$defs":definitions(64, json!({"$ref":"#/$defs/N0"}))
+    });
+    let imported = json_schema::import_str(&nested.to_string()).unwrap();
     assert_eq!(
-        imported.kind,
-        SchemaKind::Scalar {
+        imported.child("Value").map(|value| &value.kind),
+        Some(&SchemaKind::Scalar {
             ty: ScalarType::String
-        }
+        })
     );
+
+    let cyclic = root_chain(64, json!({"$ref":"#/$defs/N0"}));
+    assert!(matches!(
+        json_schema::import_str(&cyclic),
+        Err(JsonFormatError::ContentlessSchema {
+            name,
+            reason: crate::ContentlessSchemaReason::ReferenceCycle,
+        }) if name == "root"
+    ));
 
     let invalid: Value = serde_json::from_str(&root_chain(
         3,

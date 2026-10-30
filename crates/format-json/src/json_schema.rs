@@ -3,10 +3,13 @@
 //! `properties` (in document order) and `items`, maps `integer`/`number`/
 //! `boolean` to the corresponding scalar types, and resolves document-local
 //! `$ref` pointers (`#/definitions/...`, `#/$defs/...`) plus bounded,
-//! traversal-confined relative local-file reference graphs. Cyclic references
-//! degrade to string scalars. Compatible closed-object `oneOf` and
-//! `anyOf` unions, their required scalar `const` or scalar-`enum`
-//! discriminators, and typed `additionalProperties` schemas are preserved.
+//! traversal-confined relative local-file reference graphs. Nested cyclic
+//! references degrade to string scalars, while a root whose `$ref` chain is
+//! cyclic or unresolved, and any schema position holding a JSON value that is
+//! neither an object nor a boolean, reject as contentless. Compatible
+//! closed-object `oneOf` and `anyOf` unions, their required scalar `const` or
+//! scalar-`enum` discriminators, and typed `additionalProperties` schemas are
+//! preserved.
 //! Ordinary object `required` declarations retain property-presence semantics,
 //! including runtime-named required properties on open objects.
 //! Compatible `allOf` intersections flatten across objects, scalar domains,
@@ -31,7 +34,7 @@
 
 use ir::{GroupAlternativeMode, ScalarType, ScalarTypeSet, SchemaKind, SchemaNode};
 
-use crate::JsonFormatError;
+use crate::{ContentlessSchemaReason, JsonFormatError};
 
 mod all_of;
 mod allowed_values;
@@ -128,6 +131,7 @@ pub fn import_str(text: &str) -> Result<SchemaNode, JsonFormatError> {
 fn import_value(value: &files::LoadedSchema) -> Result<SchemaNode, JsonFormatError> {
     let name = schema_title(value, value)?.unwrap_or("root");
     let schema = parse(name, value, value, &mut Vec::new())?;
+    reject_contentless_root(name, value)?;
     crate::runtime_constraints::validate_private_unique_items(&schema)?;
     if !schema.json_pattern_budget_is_valid() {
         return Err(unsupported_union(
@@ -166,6 +170,35 @@ fn schema_title<'a>(
         }
         active_refs.push(reference);
         schema = resolved;
+    }
+}
+
+/// Nested cyclic or unresolved references degrade to string scalars, but a
+/// root whose whole `$ref` chain does so has no content of its own; accepting
+/// it would replace the caller's tree with one string. Runs after a successful
+/// parse, so the chain is already within the reference-depth limit.
+fn reject_contentless_root(name: &str, doc: &files::LoadedSchema) -> Result<(), JsonFormatError> {
+    let mut schema: &serde_json::Value = doc;
+    let mut active_refs = Vec::new();
+    while let Some(reference) = schema.get("$ref").and_then(serde_json::Value::as_str) {
+        let reason = if active_refs.contains(&reference) {
+            ContentlessSchemaReason::ReferenceCycle
+        } else if let Some(resolved) = resolve_ref(doc, reference) {
+            active_refs.push(reference);
+            schema = resolved;
+            continue;
+        } else {
+            ContentlessSchemaReason::UnresolvedReference
+        };
+        return Err(contentless(name, reason));
+    }
+    Ok(())
+}
+
+fn contentless(name: &str, reason: ContentlessSchemaReason) -> JsonFormatError {
+    JsonFormatError::ContentlessSchema {
+        name: name.to_string(),
+        reason,
     }
 }
 
@@ -272,6 +305,19 @@ fn parse_non_ref(
         return Err(unsupported_union(
             name,
             "the false schema accepts no JSON value",
+        ));
+    }
+    let found = match schema {
+        serde_json::Value::Object(_) | serde_json::Value::Bool(_) => None,
+        serde_json::Value::Array(_) => Some("an array"),
+        serde_json::Value::String(_) => Some("a string"),
+        serde_json::Value::Number(_) => Some("a number"),
+        serde_json::Value::Null => Some("null"),
+    };
+    if let Some(found) = found {
+        return Err(contentless(
+            name,
+            ContentlessSchemaReason::NotASchema { found },
         ));
     }
     reject_unsupported_dynamic_references(name, schema)?;

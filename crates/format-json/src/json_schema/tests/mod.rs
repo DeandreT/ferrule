@@ -13,6 +13,7 @@ mod allowed_values;
 mod conditionals;
 mod constraints;
 mod contains;
+mod contentless;
 mod dependent_schemas;
 mod effective_import;
 pub(crate) mod effective_layers;

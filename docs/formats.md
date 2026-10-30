@@ -199,6 +199,13 @@ for a complete format standard or another product.
   consume materialization depth. In-memory
   `format_json::json_schema::import_str` resolves document-local references
   without opening files and rejects external resources.
+  A cyclic or unresolved reference inside a schema degrades to a string field.
+  A root whose whole `$ref` chain is cyclic or unresolved, and a schema
+  position holding a JSON value other than an object or boolean, instead return
+  a typed `ContentlessSchema` error; non-UTF-8 schema files return a typed
+  `SchemaEncoding` error naming the file. MFD import then falls back to the
+  component's entry tree with a warning. The `true` and `{}` schemas still
+  import as an arbitrary JSON value.
   Object-shaped `required` declarations preserve property presence independently
   from value nullability, including declared names on closed objects and named
   runtime properties on open objects. Required-only schemas without an object
