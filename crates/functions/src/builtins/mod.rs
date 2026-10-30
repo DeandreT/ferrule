@@ -9,6 +9,7 @@ use super::{
 
 mod float_text;
 mod guid;
+mod half_ceiling;
 mod isbn;
 mod literal_replace;
 mod regex_match;
@@ -87,6 +88,7 @@ pub(super) fn call_builtin(
         BuiltinId::FormatNumber => format_number::format_number(args),
         BuiltinId::Exists => exists(args),
         BuiltinId::Round => round(args),
+        BuiltinId::RoundHalfCeiling => half_ceiling::round_half_ceiling(args),
         BuiltinId::DelayPassthrough => delay_passthrough(args),
         BuiltinId::DateFromDatetime => date_from_datetime(args),
         BuiltinId::YearFromDatetime => year_from_datetime(args),
@@ -876,7 +878,8 @@ fn exists(args: &[Value]) -> Result<Value, FunctionError> {
 }
 
 /// `round(x)` rounds to the nearest integer; `round(x, digits)` to that
-/// many decimal places (the reference application's `round-precision`).
+/// many decimal places. Exact halves round away from zero on binary floats;
+/// `round_half_ceiling` is the reference application's rounding.
 fn round(args: &[Value]) -> Result<Value, FunctionError> {
     match args {
         [Value::Int(i)] => Ok(Value::Int(*i)),

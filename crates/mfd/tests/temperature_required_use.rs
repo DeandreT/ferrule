@@ -95,7 +95,7 @@ fn branch(nodes: &mut BTreeMap<NodeId, Node>, operation: AggregateOp) -> NodeId 
     let thirty_two = convert(nodes, thirty_two);
     let sum = call(nodes, "add", vec![quotient, thirty_two]);
     let sum = convert(nodes, sum);
-    call(nodes, "round", vec![sum])
+    call(nodes, "round_half_ceiling", vec![sum])
 }
 
 fn project() -> Project {

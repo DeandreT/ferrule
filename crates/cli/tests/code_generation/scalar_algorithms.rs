@@ -299,6 +299,56 @@ fn scalar_algorithm_project() -> Project {
         ],
     );
 
+    let half_ceiling =
+        |graph: &mut GraphBuilder, values: Vec<Value>| call(graph, "round_half_ceiling", values);
+    let negative_precision_half =
+        half_ceiling(&mut graph, vec![Value::Float(-0.125), Value::Int(2)]);
+    let negative_half = half_ceiling(&mut graph, vec![Value::Float(-10.5)]);
+    let decimal_text = half_ceiling(
+        &mut graph,
+        vec![Value::String("1.005".into()), Value::Int(2)],
+    );
+    let decimal_float = half_ceiling(&mut graph, vec![Value::Float(1.005), Value::Int(2)]);
+    let positive_half = half_ceiling(&mut graph, vec![Value::Float(2.5)]);
+    let large_half = half_ceiling(&mut graph, vec![Value::Float(-4_503_599_627_370_495.5)]);
+    let large_text = half_ceiling(
+        &mut graph,
+        vec![Value::String("123456789012345678901234567890.5".into())],
+    );
+    let integer_digits = half_ceiling(&mut graph, vec![Value::Int(-125), Value::Int(-1)]);
+    let float_digits = half_ceiling(&mut graph, vec![Value::Float(1250.0), Value::Int(-2)]);
+    let integer_text = half_ceiling(&mut graph, vec![Value::String(" 42 ".into())]);
+    let exponent_text = half_ceiling(
+        &mut graph,
+        vec![Value::String("-1.5E-1".into()), Value::Float(0.6)],
+    );
+    let negative_zero = half_ceiling(&mut graph, vec![Value::Float(-0.4)]);
+    let half_ceiling_infinity = graph.call("round_half_ceiling", vec![infinity]);
+    add_group(
+        &mut target,
+        &mut scopes,
+        "RoundHalfCeiling",
+        vec![
+            (
+                "NegativePrecisionHalf",
+                ScalarType::Float,
+                negative_precision_half,
+            ),
+            ("NegativeHalf", ScalarType::Float, negative_half),
+            ("DecimalText", ScalarType::Float, decimal_text),
+            ("DecimalFloat", ScalarType::Float, decimal_float),
+            ("PositiveHalf", ScalarType::Float, positive_half),
+            ("LargeHalf", ScalarType::Float, large_half),
+            ("LargeText", ScalarType::Float, large_text),
+            ("IntegerDigits", ScalarType::Int, integer_digits),
+            ("FloatDigits", ScalarType::Float, float_digits),
+            ("IntegerText", ScalarType::Int, integer_text),
+            ("ExponentText", ScalarType::Float, exponent_text),
+            ("NegativeZero", ScalarType::Float, negative_zero),
+            ("Infinity", ScalarType::Float, half_ceiling_infinity),
+        ],
+    );
+
     let date_time = call(
         &mut graph,
         "date_from_datetime",
@@ -576,6 +626,24 @@ fn expected() -> Instance {
                     ("Precision", Value::Float(1.23)),
                     ("RoundedDigits", Value::Float(1.23)),
                     ("NegativeDigits", Value::Float(150.0)),
+                    ("Infinity", Value::Float(f64::INFINITY)),
+                ]),
+            ),
+            (
+                "RoundHalfCeiling".into(),
+                values(vec![
+                    ("NegativePrecisionHalf", Value::Float(-0.12)),
+                    ("NegativeHalf", Value::Float(-10.0)),
+                    ("DecimalText", Value::Float(1.01)),
+                    ("DecimalFloat", Value::Float(1.01)),
+                    ("PositiveHalf", Value::Float(3.0)),
+                    ("LargeHalf", Value::Float(-4_503_599_627_370_495.0)),
+                    ("LargeText", Value::Float(1.234_567_890_123_456_8e29)),
+                    ("IntegerDigits", Value::Int(-120)),
+                    ("FloatDigits", Value::Float(1300.0)),
+                    ("IntegerText", Value::Int(42)),
+                    ("ExponentText", Value::Float(-0.1)),
+                    ("NegativeZero", Value::Float(0.0)),
                     ("Infinity", Value::Float(f64::INFINITY)),
                 ]),
             ),

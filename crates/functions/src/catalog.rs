@@ -203,6 +203,7 @@ pub(crate) enum BuiltinId {
     FormatNumber,
     Exists,
     Round,
+    RoundHalfCeiling,
     DateFromDatetime,
     YearFromDatetime,
     MonthFromDatetime,
@@ -963,7 +964,20 @@ pub(crate) const BUILTINS: &[BuiltinDefinition] = &[
         true,
         true,
         Authoring,
-        "Rounds a number with optional precision."
+        "Rounds a number with optional precision; exact halves round away from zero."
+    ),
+    builtin!(
+        RoundHalfCeiling,
+        "round_half_ceiling",
+        "Round Half Ceiling",
+        Numeric,
+        &[parameter("value", Numeric), parameter("precision", Numeric)],
+        BuiltinArity::range(1, 2),
+        Numeric,
+        true,
+        true,
+        Authoring,
+        "Rounds a decimal with optional precision; exact halves round toward positive infinity."
     ),
     builtin!(
         DateFromDatetime,
