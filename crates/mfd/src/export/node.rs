@@ -11,8 +11,8 @@ use super::auto_number::{self, AutoNumbers};
 use super::database_xml::DirectColumns;
 use super::decimal_input::{self, DecimalInputs};
 use super::function::{
-    aggregate_component_name, constant_parts, function_library, scalar_type_name,
-    unmap_function_name, value_scalar_type, value_text,
+    aggregate_component_name, constant_parts, native_function, scalar_type_name, value_scalar_type,
+    value_text,
 };
 use super::join::JoinExports;
 use super::position::render_component;
@@ -1078,13 +1078,17 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<RenderedNodes, MfdError> {
                     );
                     continue;
                 }
+                let (name, library) =
+                    native_function(function, args.len()).map_err(|reason| {
+                        MfdError::Unsupported(format!(
+                            "function `{function}` at node {id} has no built-in .mfd equivalent: {reason}"
+                        ))
+                    })?;
                 let ins: Vec<u32> = args.iter().map(|_| keys.next()).collect();
                 let out = keys.next();
                 node_out_key.insert(id, out);
                 fn_inputs.insert(id, ins.clone());
                 *uid += 1;
-                let name = unmap_function_name(function);
-                let library = function_library(function);
                 let growable = if function == "datetime_add" {
                     " growable=\"1\" growablebasename=\"duration\""
                 } else {

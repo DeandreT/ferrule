@@ -113,6 +113,53 @@ pub(super) fn unmap_function_name(name: &str) -> String {
     .to_string()
 }
 
+/// Native component name and library for a canonical function called with
+/// `arity` arguments, or why the built-in execution language has none.
+///
+/// The reasons come from native runs of self-authored designs and the
+/// vendor's per-function language listings (see `docs/mfd-interop.md`).
+pub(super) fn native_function(
+    function: &str,
+    arity: usize,
+) -> Result<(String, &'static str), &'static str> {
+    let refusal = match function {
+        "positive" => Some(
+            "the built-in `positive` tests whether a number is greater than zero, \
+             while this `positive` returns the number unchanged",
+        ),
+        "trim" => Some(
+            "the built-in trim functions remove only spaces, tabs, carriage returns \
+             and line feeds, while `trim` removes all Unicode whitespace",
+        ),
+        "ends_with" => Some("`ends-with` exists only for XSLT 2.0, XSLT 3.0 and XQuery"),
+        "matches" => Some(
+            "`matches` exists only for XSLT 2.0, XSLT 3.0 and XQuery, and the built-in \
+             `match-pattern` must match the whole text",
+        ),
+        "replace" => Some(
+            "regular-expression `replace` exists only for XSLT 2.0, XSLT 3.0 and XQuery; \
+             the built-in `replace` replaces literal text",
+        ),
+        "format_date" | "format_datetime" if arity > 3 => Some(
+            "the built-in function takes only value, format and language inputs, \
+             so calendar and place arguments have no equivalent",
+        ),
+        "format_time" if arity > 2 => {
+            Some("the built-in `format-time` takes only value and format inputs")
+        }
+        _ => None,
+    };
+    if let Some(reason) = refusal {
+        return Err(reason);
+    }
+    // The built-in `round` has one input; rounding to decimals is
+    // `round-precision`, which import reads back as two-argument `round`.
+    if function == "round" && arity == 2 {
+        return Ok(("round-precision".to_string(), "core"));
+    }
+    Ok((unmap_function_name(function), function_library(function)))
+}
+
 /// Library of the native component for a canonical function.
 ///
 /// Exported designs always select the built-in execution language, so each
@@ -154,7 +201,7 @@ pub(super) fn function_library(name: &str) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::{function_library, unmap_function_name};
+    use super::{function_library, native_function, unmap_function_name};
 
     #[test]
     fn internal_whitespace_function_names_export_canonically() {
@@ -209,6 +256,37 @@ mod tests {
         ] {
             assert_eq!(unmap_function_name(function), name, "{function}");
             assert_eq!(function_library(function), library, "{function}");
+        }
+    }
+
+    #[test]
+    fn calls_export_under_their_native_arity_or_are_refused() {
+        for (function, arity, expected) in [
+            ("round", 1, Some(("round", "core"))),
+            ("round", 2, Some(("round-precision", "core"))),
+            ("format_date", 3, Some(("format-date", "core"))),
+            ("format_datetime", 3, Some(("format-dateTime", "core"))),
+            ("format_time", 2, Some(("format-time", "core"))),
+            ("format_date", 4, None),
+            ("format_datetime", 5, None),
+            ("format_time", 3, None),
+            ("positive", 1, None),
+            ("trim", 1, None),
+            ("ends_with", 2, None),
+            ("matches", 2, None),
+            ("matches", 3, None),
+            ("replace", 3, None),
+            ("left_trim", 1, Some(("left-trim", "lang"))),
+        ] {
+            let actual = native_function(function, arity);
+            match expected {
+                Some((name, library)) => assert_eq!(
+                    actual,
+                    Ok((name.to_string(), library)),
+                    "{function}/{arity}"
+                ),
+                None => assert!(actual.is_err(), "{function}/{arity}: {actual:?}"),
+            }
         }
     }
 }
