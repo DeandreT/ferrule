@@ -134,6 +134,11 @@ for a complete format standard or another product.
   child elements, including whitespace, and the writer adds no indentation
   inside them. In a generic element without child elements, whitespace-only
   text containing a line break reads as empty text.
+  Declared mixed content (XSD `mixed`, DTD mixed `#PCDATA`, and DTD `ANY`)
+  likewise keeps its text exactly, and the writer adds no indentation inside a
+  mixed element, including inside its element-only children, so the output
+  reads back unchanged. Element-only content outside mixed elements stays
+  indented.
   MFD export partitions foreign declarations into deterministic local XSD
   siblings and publishes the complete graph atomically. Bounded local-graph
   substitution groups, compatible element-only or mixed `complexContent`
