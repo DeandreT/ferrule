@@ -51,64 +51,11 @@ pub const MAX_INPUT_BYTES: usize = 64 * 1024;
 /// deeper than this limit (README, Known limits).
 pub const MAX_EXEMPT_ENTRY_DEPTH: usize = 512;
 
-/// Known limit ([#1168](https://github.com/DeandreT/ferrule/issues/1168)):
-/// `format_xml::xsd` imports a schema by recursive descent with no depth
-/// limit: `parse_element`, `parse_complex_type` and
-/// `collect_sequence_contents` per nested particle, `resolve_complex_type`
-/// and `parse_complex_type_declaration` per named type reference or
-/// extension base, and `groups::parse_model_group` per group reference.
-/// Active element and complex type declarations are not re-entered and
-/// group reference cycles are refused, so the depth grows with the number of
-/// schema components in the package's schemas, whether they nest or form a
-/// reference chain; nesting depth alone does not bound it.
-///
-/// Below the `xs:schema` root the importer matches elements by local name in
-/// any namespace, so [`known_limit_exemption`] counts every element named in
-/// [`XSD_COMPONENTS`] outside annotations. Each recursion level takes at
-/// least three counted components, since a complex type descends only
-/// through a compositor, group or complex content. The shallowest overflow
-/// on the fuzz build's 8 MiB worker is a 448-type named chain of 1,345
-/// counted components; this limit leaves a margin of about 2.6 times.
-pub const MAX_EXEMPT_XSD_ELEMENTS: usize = 512;
-
-/// Local names of the schema components the XSD importer descends through.
-pub const XSD_COMPONENTS: &[&str] = &[
-    "all",
-    "alternative",
-    "any",
-    "anyAttribute",
-    "assert",
-    "attribute",
-    "attributeGroup",
-    "choice",
-    "complexContent",
-    "complexType",
-    "defaultOpenContent",
-    "element",
-    "extension",
-    "group",
-    "import",
-    "include",
-    "list",
-    "openContent",
-    "override",
-    "redefine",
-    "restriction",
-    "sequence",
-    "simpleContent",
-    "simpleType",
-    "union",
-];
-
-const XSD_NAMESPACE: &str = "http://www.w3.org/2001/XMLSchema";
-
 /// Why [`known_limit_exemption`] skipped an import.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum KnownLimit {
     /// The design's component entry trees nest `depth` `<entry>` elements.
     EntryTree { depth: usize },
-    /// The package's XSD documents hold `elements` schema components.
-    Schemas { elements: usize },
 }
 
 /// Result of checking one input.
@@ -153,7 +100,6 @@ impl Outcome {
             (Ok(_), Some(Import::Exempt(KnownLimit::EntryTree { .. }))) => {
                 "exempt deep entry tree".into()
             }
-            (Ok(_), Some(Import::Exempt(KnownLimit::Schemas { .. }))) => "exempt large XSD".into(),
             (Ok(_), None) => "admitted".into(),
         }
     }
@@ -300,14 +246,12 @@ pub fn documented_path(path: &str) -> bool {
         })
 }
 
-/// The known limit a package reaches, if any (see [`MAX_EXEMPT_ENTRY_DEPTH`]
-/// and [`MAX_EXEMPT_XSD_ELEMENTS`]).
+/// The known limit a package reaches, if any (see [`MAX_EXEMPT_ENTRY_DEPTH`]).
 ///
-/// Entries are decoded and parsed the way the importer reads them: the
-/// design as strict UTF-8, schemas with format_xml's schema decoder, both
-/// with default `roxmltree` options, which parse iteratively. An entry
-/// neither can read is not measured, since the import cannot descend into
-/// it either.
+/// The design is decoded and parsed the way the importer reads it: as strict
+/// UTF-8, with default `roxmltree` options, which parse iteratively. A design
+/// it cannot read is not measured, since the import cannot descend into it
+/// either.
 pub fn known_limit_exemption(package: &MfdPackage) -> Option<KnownLimit> {
     let design = package
         .get(package.design_path())
@@ -321,21 +265,7 @@ pub fn known_limit_exemption(package: &MfdPackage) -> Option<KnownLimit> {
             return Some(KnownLimit::EntryTree { depth });
         }
     }
-    let mut elements = 0;
-    for (_, bytes) in package.entries() {
-        let Ok(text) = format_xml::xsd::decode_schema_bytes(bytes, u64::MAX) else {
-            continue;
-        };
-        let Ok(document) = roxmltree::Document::parse(&text) else {
-            continue;
-        };
-        let root = document.root_element();
-        if root.tag_name().name() == "schema" && root.tag_name().namespace() == Some(XSD_NAMESPACE)
-        {
-            elements += schema_components(root);
-        }
-    }
-    (elements > MAX_EXEMPT_XSD_ELEMENTS).then_some(KnownLimit::Schemas { elements })
+    None
 }
 
 /// The most `<entry>` elements on one path inside a `<component>`, counted
@@ -356,22 +286,6 @@ fn component_entry_depth(root: roxmltree::Node<'_, '_>) -> usize {
         );
     }
     deepest
-}
-
-/// Elements below `root` named in [`XSD_COMPONENTS`], in any namespace,
-/// outside `annotation` subtrees, counted without recursion.
-fn schema_components(root: roxmltree::Node<'_, '_>) -> usize {
-    let mut count = 0;
-    let mut stack: Vec<_> = root.children().filter(|child| child.is_element()).collect();
-    while let Some(node) = stack.pop() {
-        let name = node.tag_name().name();
-        if name == "annotation" {
-            continue;
-        }
-        count += usize::from(XSD_COMPONENTS.contains(&name));
-        stack.extend(node.children().filter(|child| child.is_element()));
-    }
-    count
 }
 
 fn entries_of(package: &MfdPackage) -> Vec<(String, Vec<u8>)> {

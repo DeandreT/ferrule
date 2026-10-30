@@ -152,6 +152,13 @@ for a complete format standard or another product.
   Strict attribute processing rejects undeclared runtime names. XSD 1.1
   exclusions, unordered wildcard compositors, and unresolved strict declaration
   sets remain outside the subset.
+  XSD import keeps at most 256 nesting and reference levels open at once.
+  Each element declaration or reference, named complex type reference
+  (including a derivation base), complex type content, compositor, and model
+  or attribute group reference takes one level, so about 64 nested elements of
+  named types, 85 of anonymous types, or 128 derivation or group hops fit.
+  Deeper schemas return a typed depth-limit error before stack exhaustion; MFD
+  import then falls back to the component's entry tree with a warning.
   Because mapping paths use local field names, strict wildcard declarations
   with the same local name collapse onto one port only when their complete
   typed shapes match. The port retains every exact expanded name and ordered

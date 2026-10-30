@@ -129,6 +129,47 @@ fn import_failures_are_a_single_json_diagnostic() {
     );
 }
 
+/// The CLI imports on its main thread; a schema far past the XSD import
+/// depth limit is refused there instead of overflowing the stack.
+#[test]
+fn schemas_past_the_xsd_depth_limit_fail_with_a_diagnostic() {
+    let deep = temporary_path("diagnostics_deep_xsd").with_extension("xsd");
+    let mut schema = String::from(
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Input" type="t0"/>"#,
+    );
+    for index in 0..6_000 {
+        schema.push_str(&format!(
+            r#"<xs:complexType name="t{index}"><xs:sequence><xs:element name="Value" type="t{}"/></xs:sequence></xs:complexType>"#,
+            index + 1
+        ));
+    }
+    schema.push_str(r#"<xs:complexType name="t6000"><xs:sequence><xs:element name="Value" type="xs:string"/></xs:sequence></xs:complexType></xs:schema>"#);
+    std::fs::write(&deep, schema).unwrap();
+    let output = ferrule(&[
+        "--diagnostics",
+        "json",
+        "import-xsd",
+        "--xsd",
+        deep.to_str().unwrap(),
+    ]);
+    std::fs::remove_file(&deep).unwrap();
+
+    // A stack overflow would end the process with a signal and no code.
+    assert!(
+        !output.status.success() && output.status.code().is_some(),
+        "{output:?}"
+    );
+    let diagnostics = json_lines(&output.stderr);
+    assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+    assert_eq!(diagnostics[0]["command"], "import-xsd");
+    assert!(
+        diagnostics[0]["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("nesting and reference depth limit")),
+        "{diagnostics:?}"
+    );
+}
+
 #[test]
 fn invalid_usage_requested_as_json_is_one_diagnostic() {
     let output = ferrule(&["--diagnostics", "json", "validate"]);
