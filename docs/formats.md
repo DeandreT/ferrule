@@ -130,6 +130,10 @@ for a complete format standard or another product.
   Scalar, simple-content, and retained mixed-content text preserve carriage
   returns through XML character references; attributes and generated XSD
   fixed/default values also preserve tabs and line breaks.
+  Generic elements matched by a wildcard keep every text node between their
+  child elements, including whitespace, and the writer adds no indentation
+  inside them. In a generic element without child elements, whitespace-only
+  text containing a line break reads as empty text.
   MFD export partitions foreign declarations into deterministic local XSD
   siblings and publishes the complete graph atomically. Bounded local-graph
   substitution groups, compatible element-only or mixed `complexContent`

@@ -1396,6 +1396,7 @@ fn write_single_node<W: std::io::Write>(
                 fields,
                 recursion_depth,
                 element_namespace,
+                OrderedContentLayout::Indented,
             )? {
                 writer.write_event(Event::End(BytesEnd::new(element_name)))?;
                 return Ok(());
@@ -1746,6 +1747,19 @@ fn instance_kind(instance: &Instance) -> &'static str {
     }
 }
 
+/// Whether the writer may indent between the items of an ordered content
+/// stream.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum OrderedContentLayout {
+    /// Declared content keeps the writer's indentation.
+    Indented,
+    /// Generic element content: the content of an undeclared element is
+    /// unconstrained character data, so its text items are written exactly
+    /// and no indentation is added between them.
+    Verbatim,
+}
+
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn write_ordered_mixed_content<W: std::io::Write>(
     writer: &mut Writer<W>,
     schema: &SchemaNode,
@@ -1754,6 +1768,7 @@ pub(crate) fn write_ordered_mixed_content<W: std::io::Write>(
     fields: &[(String, Instance)],
     recursion_depth: usize,
     inherited_namespace: Option<&str>,
+    layout: OrderedContentLayout,
 ) -> Result<bool, XmlFormatError> {
     let Some((_, mixed_content)) = fields
         .iter()
@@ -1905,6 +1920,11 @@ pub(crate) fn write_ordered_mixed_content<W: std::io::Write>(
                     format!("element item {index} has no typed child value"),
                 )
             })?;
+        if layout == OrderedContentLayout::Verbatim {
+            // Mark the position as text-adjacent so quick-xml's indentation
+            // layer does not invent whitespace before this element.
+            writer.write_event(Event::Text(BytesText::new("")))?;
+        }
         let child_depth = recursion_depth + usize::from(child_schema.recursive_ref.is_some());
         let resolved_child;
         let child_schema = if let Some(anchor) = &child_schema.recursive_ref {
