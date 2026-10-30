@@ -1,0 +1,39 @@
+[package]
+name = "mfd-package-fuzz"
+version = "0.0.0"
+edition = "2024"
+license = "GPL-3.0-only"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+# Standalone harness: an empty workspace table keeps this package and its
+# lockfile out of the root ferrule workspace.
+[workspace]
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+format-xml = { path = "../../crates/format-xml" }
+ir = { path = "../../crates/ir" }
+mapping = { path = "../../crates/mapping" }
+mfd = { path = "../../crates/mfd" }
+libfuzzer-sys = "0.4"
+roxmltree = "0.21.2"
+serde_json = "1"
+
+[target.'cfg(all(target_os = "linux", target_arch = "x86_64"))'.dependencies]
+libc = "=0.2.186"
+seccompiler = "=0.5.0"
+
+[[bin]]
+name = "admit"
+path = "fuzz_targets/admit.rs"
+test = false
+doc = false
+bench = false
+
+[profile.release]
+debug = 1
