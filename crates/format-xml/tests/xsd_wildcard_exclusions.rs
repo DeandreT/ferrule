@@ -1,6 +1,6 @@
-//! Native XML reading, writing and XSD export refuse excluded wildcard names
-//! until the native codec (#1220) can evaluate and write them. Export also
-//! refuses `notNamespace`, which instance I/O already enforces.
+//! Native XML reading, writing and XSD export of hand-built wildcard groups
+//! with XSD 1.1 exclusions. The frozen import fixtures live in
+//! `xsd_wildcard_exclusion_fixtures.rs`.
 
 use format_xml::XmlFormatError;
 use format_xml::xsd::{export, export_set};
@@ -14,6 +14,7 @@ use ir::{
 const T: &str = "urn:ferrule:wx:t";
 const A: &str = "urn:ferrule:wx:a";
 const B: &str = "urn:ferrule:wx:b";
+const X: &str = "http://www.w3.org/XML/1998/namespace";
 
 fn qualified(uri: &str) -> XmlNamespace {
     XmlNamespace::qualified(uri).unwrap()
@@ -26,8 +27,13 @@ fn negated() -> XmlWildcardNamespaceConstraint {
     }
 }
 
-fn excluded(namespace: XmlNamespace, local: &str) -> XmlWildcardExcludedNames {
-    XmlWildcardExcludedNames::new([XmlExpandedName::new(namespace, local).unwrap()]).unwrap()
+fn excluded(names: &[(XmlNamespace, &str)]) -> XmlWildcardExcludedNames {
+    XmlWildcardExcludedNames::new(
+        names
+            .iter()
+            .map(|(namespace, local)| XmlExpandedName::new(namespace.clone(), *local).unwrap()),
+    )
+    .unwrap()
 }
 
 fn elements(constraint: XmlWildcardNamespaceConstraint) -> SchemaNode {
@@ -45,8 +51,11 @@ fn elements(constraint: XmlWildcardNamespaceConstraint) -> SchemaNode {
     group
 }
 
-fn attributes(constraint: XmlWildcardNamespaceConstraint) -> SchemaNode {
-    SchemaNode::group(
+fn attributes(
+    constraint: XmlWildcardNamespaceConstraint,
+    process: XmlWildcardProcessContents,
+) -> SchemaNode {
+    let mut group = SchemaNode::group(
         XML_ATTRIBUTES_FIELD,
         vec![
             SchemaNode::scalar(XML_LOCAL_NAME_FIELD, ScalarType::String),
@@ -56,7 +65,9 @@ fn attributes(constraint: XmlWildcardNamespaceConstraint) -> SchemaNode {
     )
     .repeating()
     .with_xml_wildcard_namespace(constraint)
-    .unwrap()
+    .unwrap();
+    group.xml_wildcard_process_contents = process;
+    group
 }
 
 fn root(children: Vec<SchemaNode>) -> SchemaNode {
@@ -71,54 +82,117 @@ fn head() -> SchemaNode {
         .unwrap()
 }
 
-/// Exports through both entry points and returns their two errors.
-fn refusals(schema: &SchemaNode) -> [XmlFormatError; 2] {
-    [
-        export(schema).expect_err("single-document export must refuse"),
-        export_set(schema, "root.xsd").expect_err("export set must refuse"),
-    ]
+fn declared_id() -> SchemaNode {
+    let mut id = SchemaNode::scalar("id", ScalarType::String).attribute();
+    id.xml_namespace = Some(XmlNamespace::Unqualified);
+    id
 }
 
 #[test]
-fn element_wildcards_with_exclusions_are_refused() {
-    let not_only = elements(negated());
-    let names_only = elements(XmlWildcardNamespaceConstraint::Any)
-        .with_xml_wildcard_excluded_names(excluded(qualified(A), "Secret"))
+fn element_wildcards_export_not_namespace_and_explicit_qnames() {
+    let target_only = XmlWildcardNamespaceConstraint::Not {
+        namespaces: XmlWildcardNamespaceList::new([qualified(T)]).unwrap(),
+    };
+    let wildcard = elements(target_only)
+        .with_xml_wildcard_excluded_names(excluded(&[
+            (qualified(B), "Late"),
+            (XmlNamespace::Unqualified, "Plain"),
+            (qualified(A), "Secret"),
+            (qualified(X), "Text"),
+        ]))
         .unwrap();
-    let both = elements(negated())
-        .with_xml_wildcard_excluded_names(excluded(qualified(A), "Secret"))
-        .unwrap();
-    for wildcard in [not_only, names_only, both] {
-        for error in refusals(&root(vec![head(), wildcard.clone()])) {
-            assert!(
-                matches!(
-                    error,
-                    XmlFormatError::UnsupportedXmlWildcard { reason }
-                        if reason.contains("XSD 1.1")
-                ),
-                "{error:?}"
-            );
-        }
+    let schema = root(vec![head(), wildcard]);
+    for text in [
+        export(&schema).unwrap(),
+        match export_set(&schema, "root.xsd") {
+            Ok(set) => set.root,
+            Err(error) => panic!("{error:?}"),
+        },
+    ] {
+        // Canonical order, one prefix per namespace, the predeclared xml
+        // prefix, and an empty default namespace for the unqualified name.
+        assert!(
+            text.contains(
+                r###"<xs:any notNamespace="##targetNamespace" xmlns:fwx1="urn:ferrule:wx:a" xmlns:fwx2="urn:ferrule:wx:b" xmlns="" notQName="Plain xml:Text fwx1:Secret fwx2:Late" processContents="lax""###
+            ),
+            "{text}"
+        );
+        assert!(!text.contains("namespace=\"##any\""), "{text}");
     }
 }
 
 #[test]
-fn attribute_wildcards_with_exclusions_are_refused() {
-    let not_only = attributes(negated());
-    let names_only = attributes(XmlWildcardNamespaceConstraint::Any)
-        .with_xml_wildcard_excluded_names(excluded(XmlNamespace::Unqualified, "internal"))
+fn attribute_wildcards_export_their_canonical_exclusion_group() {
+    let wildcard = attributes(
+        XmlWildcardNamespaceConstraint::list([XmlNamespace::Unqualified]).unwrap(),
+        XmlWildcardProcessContents::Skip,
+    )
+    .with_xml_wildcard_excluded_names(excluded(&[(XmlNamespace::Unqualified, "internal")]))
+    .unwrap();
+    let text = export(&root(vec![head(), wildcard.clone()])).unwrap();
+    assert!(
+        text.contains(
+            r###"<xs:anyAttribute namespace="##local" xmlns="" notQName="internal" processContents="skip"/>"###
+        ),
+        "{text}"
+    );
+
+    // Only the exclusions make the namespace-aware group canonical for a
+    // local-only skip wildcard.
+    let mut without = wildcard;
+    without.xml_wildcard_excluded_names = None;
+    assert!(matches!(
+        export(&root(vec![head(), without])),
+        Err(XmlFormatError::UnsupportedXmlAttributeWildcard { reason })
+            if reason.contains("canonical")
+    ));
+}
+
+#[test]
+fn excluded_names_in_the_xmlns_namespace_are_refused_on_export() {
+    let wildcard = elements(XmlWildcardNamespaceConstraint::Any)
+        .with_xml_wildcard_excluded_names(excluded(&[(
+            qualified("http://www.w3.org/2000/xmlns/"),
+            "prefix",
+        )]))
         .unwrap();
-    for wildcard in [not_only, names_only] {
-        for error in refusals(&root(vec![head(), wildcard.clone()])) {
+    assert!(matches!(
+        export(&root(vec![head(), wildcard])),
+        Err(XmlFormatError::UnsupportedXmlWildcard { reason }) if reason.contains("xmlns")
+    ));
+}
+
+#[test]
+fn misplaced_or_strict_exclusions_are_refused_on_export() {
+    // A name the namespace constraint rejects.
+    let mut disallowed = elements(negated());
+    disallowed.xml_wildcard_excluded_names = Some(excluded(&[(qualified(T), "Tail")]));
+    // Names on an ordinary element.
+    let mut misplaced = head();
+    misplaced.xml_wildcard_excluded_names = Some(secret());
+    for schema in [root(vec![head(), disallowed]), root(vec![misplaced])] {
+        for error in [
+            export(&schema).unwrap_err(),
+            export_set(&schema, "root.xsd").unwrap_err(),
+        ] {
             assert!(
-                matches!(
-                    error,
-                    XmlFormatError::UnsupportedXmlAttributeWildcard { reason }
-                        if reason.contains("XSD 1.1")
-                ),
+                matches!(&error, XmlFormatError::UnsupportedXmlWildcard { reason } if reason.contains("excluded wildcard names")),
                 "{error:?}"
             );
         }
+    }
+
+    let mut strict = elements(XmlWildcardNamespaceConstraint::Any)
+        .with_xml_wildcard_excluded_names(secret())
+        .unwrap();
+    strict.xml_wildcard_process_contents = XmlWildcardProcessContents::Strict;
+    let mut strict_not = elements(negated());
+    strict_not.xml_wildcard_process_contents = XmlWildcardProcessContents::Strict;
+    for wildcard in [strict, strict_not] {
+        assert!(matches!(
+            export(&root(vec![head(), wildcard])),
+            Err(XmlFormatError::UnsupportedXmlWildcard { reason }) if reason.contains("strict")
+        ));
     }
 }
 
@@ -129,7 +203,10 @@ fn existing_wildcards_still_export() {
         elements(XmlWildcardNamespaceConstraint::Other {
             target_namespace: ir::XmlNamespaceUri::new(T),
         }),
-        attributes(XmlWildcardNamespaceConstraint::Any),
+        attributes(
+            XmlWildcardNamespaceConstraint::Any,
+            XmlWildcardProcessContents::Skip,
+        ),
     ]);
     let text = export(&schema).unwrap();
     assert!(text.contains(r###"<xs:any namespace="##other" processContents="lax""###));
@@ -144,7 +221,7 @@ fn anchor_pair(reference: SchemaNode) -> SchemaNode {
     let plain = elements(XmlWildcardNamespaceConstraint::Any);
     let excluding = plain
         .clone()
-        .with_xml_wildcard_excluded_names(excluded(qualified(A), "Secret"))
+        .with_xml_wildcard_excluded_names(secret())
         .unwrap();
     SchemaNode::group(
         "Root",
@@ -188,11 +265,7 @@ fn recursive_anchors_differing_only_by_exclusions_are_refused() {
 const DOCUMENT: &str = r#"<t:Root xmlns:t="urn:ferrule:wx:t" xmlns:a="urn:ferrule:wx:a">"#;
 
 fn secret() -> XmlWildcardExcludedNames {
-    excluded(qualified(A), "Secret")
-}
-
-fn internal() -> XmlWildcardExcludedNames {
-    excluded(XmlNamespace::Unqualified, "internal")
+    excluded(&[(qualified(A), "Secret")])
 }
 
 fn group(fields: Vec<(&str, Instance)>) -> Instance {
@@ -220,95 +293,168 @@ fn generic_item(local: &str, namespace: &str, value: Option<&str>) -> Instance {
     group(fields)
 }
 
-fn excluded_names_refused(error: &XmlFormatError) -> bool {
+fn is_excluded_element(error: &XmlFormatError, local: &str, namespace: &str) -> bool {
     matches!(
         error,
-        XmlFormatError::UnsupportedXmlWildcard { reason }
-            | XmlFormatError::UnsupportedXmlAttributeWildcard { reason }
-            if reason.contains("excluded names")
+        XmlFormatError::XmlWildcardExcludedName { name, namespace: actual }
+            if name == local && actual == namespace
+    )
+}
+
+fn is_excluded_attribute(error: &XmlFormatError, local: &str, namespace: &str) -> bool {
+    matches!(
+        error,
+        XmlFormatError::XmlAttributeWildcardExcludedName { name, namespace: actual }
+            if name == local && actual == namespace
     )
 }
 
 #[test]
-fn native_element_io_refuses_excluded_names() {
+fn native_element_io_refuses_only_excluded_names() {
     let wildcard = elements(XmlWildcardNamespaceConstraint::Any)
         .with_xml_wildcard_excluded_names(secret())
         .unwrap();
     let schema = root(vec![head(), wildcard]);
 
-    // Any generic item fails closed, excluded or not; documents without
-    // wildcard content still read.
-    for content in ["<a:Secret/>", "<a:Other/>"] {
-        let error = format_xml::from_str(
-            &format!("{DOCUMENT}<t:Head>h</t:Head>{content}</t:Root>"),
-            &schema,
-        )
-        .unwrap_err();
-        assert!(
-            matches!(&error, XmlFormatError::UnsupportedXmlWildcard { .. })
-                && excluded_names_refused(&error),
-            "{content}: {error:?}"
-        );
-    }
-    let empty =
-        format_xml::from_str(&format!("{DOCUMENT}<t:Head>h</t:Head></t:Root>"), &schema).unwrap();
+    let error = format_xml::from_str(
+        &format!("{DOCUMENT}<t:Head>h</t:Head><a:Secret/></t:Root>"),
+        &schema,
+    )
+    .unwrap_err();
+    assert!(is_excluded_element(&error, "Secret", A), "{error:?}");
+    let read = format_xml::from_str(
+        &format!("{DOCUMENT}<t:Head>h</t:Head><a:Other/></t:Root>"),
+        &schema,
+    )
+    .unwrap();
+    let written = format_xml::to_string(&schema, &read).unwrap();
+    assert_eq!(format_xml::from_str(&written, &schema).unwrap(), read);
 
-    for local in ["Secret", "Other"] {
-        let instance = group(vec![
-            ("Head", text("h")),
-            (
-                XML_ELEMENTS_FIELD,
-                Instance::Repeated(vec![generic_item(local, A, None)]),
-            ),
-        ]);
-        let error = format_xml::to_string(&schema, &instance).unwrap_err();
-        assert!(
-            matches!(&error, XmlFormatError::UnsupportedXmlWildcard { .. })
-                && excluded_names_refused(&error),
-            "{local}: {error:?}"
-        );
-    }
-    format_xml::to_string(&schema, &empty).unwrap();
+    let instance = group(vec![
+        ("Head", text("h")),
+        (
+            XML_ELEMENTS_FIELD,
+            Instance::Repeated(vec![generic_item("Secret", A, None)]),
+        ),
+    ]);
+    let error = format_xml::to_string(&schema, &instance).unwrap_err();
+    assert!(is_excluded_element(&error, "Secret", A), "{error:?}");
 }
 
 #[test]
-fn native_attribute_io_refuses_excluded_names() {
-    let wildcard = attributes(XmlWildcardNamespaceConstraint::Any)
-        .with_xml_wildcard_excluded_names(internal())
+fn excluded_names_are_checked_after_the_namespace() {
+    let wildcard = elements(negated())
+        .with_xml_wildcard_excluded_names(secret())
         .unwrap();
     let schema = root(vec![head(), wildcard]);
+    let error = format_xml::from_str(
+        &format!("{DOCUMENT}<t:Head>h</t:Head><t:Secret/></t:Root>"),
+        &schema,
+    )
+    .unwrap_err();
+    assert!(
+        matches!(&error, XmlFormatError::XmlWildcardNamespaceMismatch { name, .. } if name == "Secret"),
+        "{error:?}"
+    );
+}
 
-    for attribute in [r#"internal="x""#, r#"mode="m""#] {
-        let document = format!(
-            r#"<t:Root xmlns:t="urn:ferrule:wx:t" {attribute}><t:Head>h</t:Head></t:Root>"#
-        );
-        let error = format_xml::from_str(&document, &schema).unwrap_err();
-        assert!(
-            matches!(
-                &error,
-                XmlFormatError::UnsupportedXmlAttributeWildcard { .. }
-            ) && excluded_names_refused(&error),
-            "{attribute}: {error:?}"
-        );
-    }
+#[test]
+fn native_attribute_io_refuses_only_excluded_names() {
+    let wildcard = attributes(
+        XmlWildcardNamespaceConstraint::Any,
+        XmlWildcardProcessContents::Skip,
+    )
+    .with_xml_wildcard_excluded_names(excluded(&[(XmlNamespace::Unqualified, "internal")]))
+    .unwrap();
+    let schema = root(vec![head(), declared_id(), wildcard]);
 
-    for local in ["internal", "mode"] {
-        let instance = group(vec![
+    let read = |attributes: &str| {
+        format_xml::from_str(
+            &format!(
+                r#"<t:Root xmlns:t="urn:ferrule:wx:t" {attributes}><t:Head>h</t:Head></t:Root>"#
+            ),
+            &schema,
+        )
+    };
+    let error = read(r#"internal="x""#).unwrap_err();
+    assert!(
+        is_excluded_attribute(&error, "internal", "##local"),
+        "{error:?}"
+    );
+
+    // With exclusions, a skip group leaves declared attributes to their typed
+    // fields, on read and on write.
+    let instance = read(r#"id="1" mode="m""#).unwrap();
+    let generic = instance
+        .field(XML_ATTRIBUTES_FIELD)
+        .and_then(Instance::as_repeated)
+        .unwrap();
+    assert_eq!(generic.len(), 1);
+    assert_eq!(
+        generic[0]
+            .field(XML_LOCAL_NAME_FIELD)
+            .and_then(Instance::as_scalar),
+        Some(&Value::String("mode".into()))
+    );
+    let written = format_xml::to_string(&schema, &instance).unwrap();
+    assert_eq!(format_xml::from_str(&written, &schema).unwrap(), instance);
+
+    let attribute_instance = |local: &str| {
+        group(vec![
             ("Head", text("h")),
             (
                 XML_ATTRIBUTES_FIELD,
                 Instance::Repeated(vec![generic_item(local, "", Some("x"))]),
             ),
-        ]);
-        let error = format_xml::to_string(&schema, &instance).unwrap_err();
-        assert!(
-            matches!(
-                &error,
-                XmlFormatError::UnsupportedXmlAttributeWildcard { .. }
-            ) && excluded_names_refused(&error),
-            "{local}: {error:?}"
-        );
-    }
+        ])
+    };
+    let error = format_xml::to_string(&schema, &attribute_instance("internal")).unwrap_err();
+    assert!(
+        is_excluded_attribute(&error, "internal", "##local"),
+        "{error:?}"
+    );
+    let error = format_xml::to_string(&schema, &attribute_instance("id")).unwrap_err();
+    assert!(
+        matches!(&error, XmlFormatError::DuplicateField { field, .. } if field == "id"),
+        "{error:?}"
+    );
+}
+
+#[test]
+fn excluded_names_precede_strict_attribute_checks() {
+    let wildcard = attributes(
+        XmlWildcardNamespaceConstraint::Any,
+        XmlWildcardProcessContents::Strict,
+    )
+    .with_xml_wildcard_excluded_names(excluded(&[(XmlNamespace::Unqualified, "id")]))
+    .unwrap();
+    let schema = root(vec![head(), declared_id(), wildcard]);
+    let read = |attributes: &str| {
+        format_xml::from_str(
+            &format!(
+                r#"<t:Root xmlns:t="urn:ferrule:wx:t" {attributes}><t:Head>h</t:Head></t:Root>"#
+            ),
+            &schema,
+        )
+    };
+    // A declared attribute is typed and never reaches the wildcard.
+    read(r#"id="1""#).unwrap();
+    let error = read(r#"other="1""#).unwrap_err();
+    assert!(
+        matches!(&error, XmlFormatError::UndeclaredStrictXmlWildcardAttribute { name, .. } if name == "other"),
+        "{error:?}"
+    );
+
+    // Writing an excluded name that is also declared reports the exclusion.
+    let instance = group(vec![
+        ("Head", text("h")),
+        (
+            XML_ATTRIBUTES_FIELD,
+            Instance::Repeated(vec![generic_item("id", "", Some("x"))]),
+        ),
+    ]);
+    let error = format_xml::to_string(&schema, &instance).unwrap_err();
+    assert!(is_excluded_attribute(&error, "id", "##local"), "{error:?}");
 }
 
 #[test]
@@ -357,11 +503,11 @@ fn recursive_occurrences_do_not_inherit_anchor_exclusions() {
     let read = format_xml::from_str(document, &schema).unwrap();
     let written = format_xml::to_string(&schema, &read).unwrap();
     assert_eq!(format_xml::from_str(&written, &schema).unwrap(), read);
-    // The anchor itself still refuses its own generic content.
+    // The anchor itself still refuses its own excluded name.
     let error = format_xml::from_str(
-        r#"<Root xmlns:a="urn:ferrule:wx:a"><Closed><a:Other/></Closed></Root>"#,
+        r#"<Root xmlns:a="urn:ferrule:wx:a"><Closed><a:Secret/></Closed></Root>"#,
         &schema,
     )
     .unwrap_err();
-    assert!(excluded_names_refused(&error), "{error:?}");
+    assert!(is_excluded_element(&error, "Secret", A), "{error:?}");
 }

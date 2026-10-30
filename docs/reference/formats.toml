@@ -21,7 +21,9 @@ XSD-lite with local import graphs, compatible `complexContent` and
 scalar-text/attribute-only `simpleContent` derivations, and named model and
 attribute groups; `xs:any` and `xs:anyAttribute` wildcards with `##any`,
 `##other`, `##local`, `##targetNamespace`, or listed-namespace constraints under
-`skip`, declaration-aware `lax`, or closed `strict` processing; bounded DTD
+`skip`, declaration-aware `lax`, or closed `strict` processing, plus XSD 1.1
+`notNamespace` and `notQName` exclusions on `skip` and `lax` element wildcards
+and on attribute wildcards; bounded DTD
 import with internal content-model parameter entities; `xsi:nil`, generic
 elements, and ordered mixed content
 """
@@ -30,10 +32,12 @@ evidence = [
     "crates/format-xml/src/dtd.rs",
     "crates/format-xml/tests/xsd_lax_wildcards.rs",
     "crates/format-xml/tests/xsd_qname_wildcards.rs",
+    "crates/format-xml/tests/xsd_wildcard_exclusion_fixtures.rs",
     "crates/format-xml/tests/mixed_content.rs",
 ]
 unsupported = [
-    "XSD 1.1 wildcard exclusions (`notNamespace`, `notQName`) and `xs:any` inside `xs:all`",
+    "XSD 1.1 wildcard exclusions on strict element wildcards; exclusions beyond 64 `notNamespace` members, 1,024 `notQName` tokens or 256 resolved names; `##defined` when an unresolved include or import, `xs:redefine` or `xs:override` keeps the declaration set from being closed; `##targetNamespace`, namespace-less QNames or `##definedSibling` elements in a chameleon document included from several target namespaces; exclusions on a wildcard that has a `vc:` conditional-inclusion attribute or sits inside an element that has one; and an element whose `xsi:type` alternatives resolve one wildcard to different excluded names",
+    "`xs:any` inside `xs:all`",
     "Strict wildcards whose matching declaration set is not closed, same-local-name strict declarations with incompatible typed shapes, strict wildcards that follow a single-occurrence declaration of a name they match, and strict wildcards outside a choice whose port shares a local name with a declaration covering only some of its namespaces",
     "Element wildcard occurrences other than `1..1`, `0..1`, or `0..unbounded`, and optional single-occurrence `skip` wildcards",
     "Sibling elements or attributes that differ only by namespace, because mapping paths use local field names",

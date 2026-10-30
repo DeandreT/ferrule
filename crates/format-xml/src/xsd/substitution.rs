@@ -36,6 +36,7 @@ pub(super) struct SubstitutionIndex {
     global_attribute_by_identity: BTreeMap<String, usize>,
     effective_namespaces: BTreeMap<PathBuf, BTreeSet<Option<String>>>,
     unresolved_namespaces: BTreeSet<Option<String>>,
+    redefinition: bool,
     conflicting_identity: Option<String>,
     conflicting_global_identity: Option<String>,
     conflicting_global_attribute_identity: Option<String>,
@@ -221,6 +222,25 @@ impl SubstitutionIndex {
         &self.unresolved_namespaces
     }
 
+    /// Whether a document in the graph uses `xs:redefine` or `xs:override`,
+    /// whose changed declarations are not indexed.
+    pub(super) fn has_redefinition(&self) -> bool {
+        self.redefinition
+    }
+
+    /// The number of namespace contexts through which this graph reaches a
+    /// physical schema document.
+    pub(super) fn namespace_contexts(&self, path: &Path) -> usize {
+        let path = if self.supplied_identities {
+            super::resources::lexical_path(path)
+        } else {
+            normalized_path(path)
+        };
+        self.effective_namespaces
+            .get(&path)
+            .map_or(0, BTreeSet::len)
+    }
+
     /// Returns a chameleon schema's adopted namespace only when this graph
     /// reaches the physical file through exactly one namespace context.
     pub(super) fn effective_namespace(&self, path: &Path) -> Option<&str> {
@@ -317,6 +337,9 @@ fn collect_declarations(
     if !visited.insert((path.clone(), effective_namespace.map(str::to_string))) {
         return None;
     }
+    index.redefinition |= schema.children().any(|child| {
+        child.is_element() && matches!(child.tag_name().name(), "redefine" | "override")
+    });
 
     for declaration in schema
         .children()
