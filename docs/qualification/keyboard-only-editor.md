@@ -1,10 +1,12 @@
 # Keyboard-only editor qualification
 
-The tests in `crates/gui/src/app/keyboard_accessibility_tests.rs` drive the
-complete desktop application with key and text events only. They run headless in
-an `egui_kittest` harness at 1280 × 800, with no display, on a self-authored
-`Order { Name, Note }` project written to a temporary directory. Fixtures load
-through the app's own open entry point; every later step uses the keyboard.
+The tests in `crates/gui/src/app/keyboard_accessibility_tests.rs` and its
+`canvas_navigation` module drive the complete desktop application with key and
+text events only. They run headless in an `egui_kittest` harness at 1280 × 800,
+with no display, on self-authored projects written to a temporary directory:
+`Order { Name, Note }`, the same with a concat node, and an `Order` with 20
+fields, more than an endpoint shows at once. Fixtures load through the app's own
+open entry point; every later step uses the keyboard.
 
 The native Open and Save As choosers belong to the operating system and are not
 covered. The tests press Ctrl+O only with unsaved work, so the shortcut stops at
@@ -38,6 +40,11 @@ direct key), **inaccessible control** (no keyboard path).
 | Save and reopen | Ctrl+S; Tab to the recent entry, Enter | Supported (Save As uses the native chooser) | `keyboard_accessibility_saves_and_reopens_a_keyboard_edit` |
 | Preview | Ctrl+Shift+P, or Tab to the Preview toolbar button, Enter; Tab and type both identities and the input; Tab to Preview, Enter | Supported | `keyboard_accessibility_previews_the_unsaved_mapping`, `keyboard_accessibility_gap_preview_has_a_shortcut`, `keyboard_accessibility_preview_shortcut_opens_the_preview`, `keyboard_accessibility_gap_tab_leaves_the_preview_input` |
 | Type a tab character in the Preview input | Ctrl+Tab | Supported | `keyboard_accessibility_ctrl_tab_types_a_tab_in_the_preview_input` |
+| Move between canvas nodes and pins | Arrow keys | Supported | `keyboard_accessibility_arrows_move_between_canvas_nodes_in_layout_order`, `keyboard_accessibility_arrows_move_between_pins_of_a_node` |
+| Reach endpoint fields scrolled out of view | Arrow keys on a field pin; or Tab to the endpoint scrollbar, arrow keys, Page Up/Down, Home, End | Supported | `keyboard_accessibility_arrows_scroll_hidden_endpoint_fields_into_view`, `keyboard_accessibility_endpoint_scrollbar_takes_scroll_keys` |
+| Resize an endpoint | Tab to its width or height handle, arrow keys | Supported | `keyboard_accessibility_endpoint_resize_handles_take_arrow_keys` |
+| Collapse or expand a node | Tab to its collapse button, Enter or Space | Supported | `keyboard_accessibility_enter_and_space_toggle_collapse` |
+| Bring an off-screen node into view | Tab or an arrow key to it | Supported | `keyboard_accessibility_focus_pans_to_an_off_screen_node` |
 
 ## Focus behaviour
 
@@ -58,15 +65,32 @@ direct key), **inaccessible control** (no keyboard path).
 | Cancel keeps unsaved work, dirty state and history | Supported | `keyboard_accessibility_open_shortcut_keeps_unsaved_work_when_cancelled` |
 | Activating Add binding moves focus to the new binding's target field | Supported | `keyboard_accessibility_gap_add_binding_keeps_focus` |
 
-egui's defaults also apply: arrow keys move focus between neighbouring controls,
-Enter or Space activates the focused control, and Escape clears focus.
+egui's defaults also apply: Enter or Space activates the focused control, and
+Escape clears focus. Outside the canvas, arrow keys move focus between
+neighbouring controls.
 
 ## Canvas keys
 
 Forward Tab runs from the canvas surface through each node (its frame, input
-pins, output pins, collapse button and header controls such as Edit), then the
-zoom and fit buttons and the minimap, and then leaves the canvas. Shift+Tab
-reverses it. A focused control outside the view pans the canvas to it.
+pins, output pins, collapse button and header controls such as Edit or the
+endpoint field filters, then an endpoint's scrollbar and its width and height
+handles), then the zoom and fit buttons and the minimap, and then leaves the
+canvas. Shift+Tab reverses it. A control focused by Tab or an arrow key outside
+the view pans the canvas to it.
+
+Arrow keys follow the graph layout rather than egui's spatial search:
+
+- On a node frame, collapse button or Edit button they move to the frame of the
+  nearest node in that direction, within 45° of it. Nodes whose extents overlap
+  across the arrow count as in line, so a tall endpoint is level with every
+  node beside it. Without a node in that direction focus stays.
+- On a pin, Up and Down step through the pins on its side of the node. Inputs
+  are on the left and outputs on the right: Right moves from an input to the
+  output nearest its height, and Left from an output to the nearest input.
+- Stepping from a visible endpoint field onto its "N hidden fields" pin scrolls
+  the list by one row and focuses the field that comes into view, so arrow keys
+  reach every field. The hidden-fields pins remain Tab stops.
+- On the canvas surface arrow keys do nothing.
 
 - Enter or Space on a node frame selects the node, as a click does. On a
   collapse button it collapses or expands the node.
@@ -85,6 +109,13 @@ reverses it. A focused control outside the view pans the canvas to it.
 - Where one output has several connections, Tab reaches its connection count
   button; Enter opens the connection picker, which takes the arrow keys, Enter
   and Escape.
+- An endpoint's scrollbar ("Scroll fields · Source: Order") appears when its
+  fields overflow. Up and Down scroll one row, Page Up and Page Down one page,
+  Home and End to either end.
+- An endpoint's width handle ("Resize width · Source: Order") takes Left and
+  Right, moving its edge 10 units as a drag would. Its height handle ("Resize
+  visible fields · Source: Order") takes Up and Down, showing one fewer or one
+  more field. The corner grip combines both and is not a Tab stop.
 
 ## Candidate product issues
 
@@ -104,3 +135,5 @@ reverses it. A focused control outside the view pans the canvas to it.
 11. **Keep focus on Add binding after activation.** Fixed by #1165. Focus moves
     to the new binding's target field.
 12. **Add a Preview shortcut.** Fixed by #1165 with Ctrl+Shift+P.
+13. **Follow the canvas layout with arrow keys; operate endpoint scrollbars and
+    resize handles from the keyboard.** Fixed by #1211.
