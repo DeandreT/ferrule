@@ -44,6 +44,28 @@ internal static partial class Program
         CallEquals(Text(string.Empty), "substring_before", Text("value"), Text(string.Empty));
         CallEquals(Text("value"), "substring_after", Text("value"), Text(string.Empty));
 
+        CallEquals(Text("(12.3)"), "translate", Text("[12,3]"), Text("[,]"), Text("(.)"));
+        CallEquals(Text("abaaxkh"), "translate", Text("38ab8a7a65xkh3"), Text("0123456789"), Text(string.Empty));
+        CallEquals(Text("xycxyc"), "translate", Text("abcabc"), Text("aba"), Text("xyz"));
+        CallEquals(Text("xx"), "translate", Text("aa"), Text("aa"), Text("x"));
+        CallEquals(Text("xy"), "translate", Text("ab"), Text("abb"), Text("xy"));
+        CallEquals(
+            Text("aé\U00010348"),
+            "translate",
+            Text("a\U0001F642b\U00010348"),
+            Text("\U0001F642b"),
+            Text("é"));
+        CallEquals(Text("x\U0001F600y"), "translate", Text("xéy"), Text("é"), Text("\U0001F600"));
+        CallEquals(Text("e"), "translate", Text("é"), Text("́"), Text(string.Empty));
+        CallEquals(Text(string.Empty), "translate", Text(string.Empty), Text("abc"), Text("x"));
+        CallEquals(Text("abc"), "translate", Text("abc"), Text(string.Empty), Text("xyz"));
+        CallEquals(Text("xbc"), "translate", Text("abc"), Text("a"), Text("xyz"));
+        CallEquals(Text(string.Empty), "translate", FerruleValue.Null, Text("a"), Text("b"));
+        CallEquals(Text("123"), "translate", FerruleValue.FromInt64(1203), Text("0"), Text(string.Empty));
+        CallEquals(Text("True"), "translate", Bool(true), Text("t"), Text("T"));
+        CallEquals(Text("abc"), "translate", Text("abc"), FerruleValue.Null, FerruleValue.Null);
+        CallEquals(Text("91"), "translate", Text("a1"), Text("a"), FerruleValue.FromInt64(9));
+
         CallEquals(Text(string.Empty), "string", FerruleValue.Null);
         CallEquals(Text(string.Empty), "string", FerruleValue.XmlNil);
         CallEquals(Text("false"), "string", Bool(false));
@@ -114,6 +136,7 @@ internal static partial class Program
         AssertFunctionArity("normalize_space", 1, Array.Empty<FerruleValue>());
         AssertFunctionType("left_trim", FerruleValue.FromInt64(1));
         AssertFunctionType("substring_after", Text("value"), FerruleValue.FromInt64(1));
+        AssertFunctionArity("translate", 3, Text("a"), Text("b"));
         AssertFunctionArity("string", 1, Text("one"), Text("two"));
         AssertFunctionArity("substitute_missing", 2, FerruleValue.Null);
         AssertFunctionArity("substitute_missing_with_xml_nil", 1, Array.Empty<FerruleValue>());

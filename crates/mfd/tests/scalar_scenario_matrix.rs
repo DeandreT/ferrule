@@ -208,6 +208,12 @@ fn scalar_cases() -> Vec<FunctionCase> {
             "string",
         ),
         FunctionCase::new(
+            "translate",
+            "core",
+            vec![text("[12,3]"), text("[,]"), text("(.)")],
+            "string",
+        ),
+        FunctionCase::new(
             "normalize-space",
             "xpath2",
             vec![text(" a \t b ")],
