@@ -2,6 +2,7 @@ use super::super::*;
 use crate::{from_str, to_string};
 use ir::{Instance, SchemaKind, Value, XML_TYPE_FIELD, XmlNamespace, XmlRepeatingChoice};
 
+mod depth_limit;
 mod effective_declarations;
 
 #[test]

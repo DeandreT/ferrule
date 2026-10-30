@@ -5,8 +5,8 @@ use mfd_package_fuzz::program::{
     MAX_PROGRAM_BYTES, MAX_PROGRAM_ENTRIES, MAX_PROGRAM_ENTRY_BYTES, Name, Op, encode,
 };
 use mfd_package_fuzz::{
-    KnownLimit, MAX_EXEMPT_ENTRY_DEPTH, MAX_EXEMPT_XSD_ELEMENTS, MAX_INPUT_BYTES, check, decode,
-    documented_path, known_limit_exemption, sandbox, seeds,
+    KnownLimit, MAX_EXEMPT_ENTRY_DEPTH, MAX_INPUT_BYTES, check, decode, documented_path,
+    known_limit_exemption, sandbox, seeds,
 };
 
 /// The outcome label (see `Outcome::label`) each seed was written to reach.
@@ -104,12 +104,12 @@ const EXPECTED: &[(&str, &str)] = &[
     ("xsd_chain_cycle", "imported with warnings"),
     ("xsd_chain_dangling", "package MissingEntry"),
     ("xsd_chain_long", "imported with warnings"),
-    ("xsd_deep_nesting", "exempt large XSD"),
+    ("xsd_deep_nesting", "imported with warnings"),
     ("xsd_deep_appinfo", "imported"),
-    ("xsd_deep_types", "imported"),
+    ("xsd_deep_types", "imported with warnings"),
     ("xsd_include", "imported"),
     ("xsd_invalid_utf8", "imported with warnings"),
-    ("xsd_named_type_chain", "imported"),
+    ("xsd_named_type_chain", "imported with warnings"),
     ("xsd_not_schema", "imported with warnings"),
     ("xsd_truncated", "imported with warnings"),
 ];
@@ -322,8 +322,7 @@ fn documented_paths_follow_the_package_rules() {
 }
 
 /// The exemptions start one past their documented limits. They measure
-/// `<entry>` nesting inside the design's components only, and schema
-/// components by local name in any namespace outside annotations.
+/// `<entry>` nesting inside the design's components only.
 #[test]
 fn known_limit_exemptions_start_past_their_limits() {
     let package = |entries: Vec<(&str, String)>| {
@@ -347,25 +346,8 @@ fn known_limit_exemptions_start_past_their_limits() {
             nest(depth)
         )
     };
-    // Counted: unprefixed and foreign-prefix particles. Not counted: the
-    // root, annotation subtrees and facets.
-    let schema = |components: usize| {
-        format!(
-            "<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\" xmlns:f=\"urn:foreign\">\
-             <xs:annotation><xs:appinfo>{}</xs:appinfo></xs:annotation>\
-             <xs:simpleType name=\"s\"><xs:restriction base=\"xs:string\">{}</xs:restriction></xs:simpleType>\
-             {}{}</xs:schema>",
-            "<xs:element/>".repeat(4096),
-            "<xs:enumeration value=\"v\"/>".repeat(64),
-            "<element/>".repeat((components - 2) / 2),
-            "<f:element/>".repeat(components - 2 - (components - 2) / 2)
-        )
-    };
-    let half = MAX_EXEMPT_XSD_ELEMENTS / 2;
     let at_limits = package(vec![
         ("design.mfd", mapping(MAX_EXEMPT_ENTRY_DEPTH)),
-        ("a.xsd", schema(half)),
-        ("b.xsd", schema(MAX_EXEMPT_XSD_ELEMENTS - half)),
         ("other.mfd", mapping(4096)),
     ]);
     assert_eq!(known_limit_exemption(&at_limits), None);
@@ -375,17 +357,6 @@ fn known_limit_exemptions_start_past_their_limits() {
         known_limit_exemption(&deep),
         Some(KnownLimit::EntryTree {
             depth: MAX_EXEMPT_ENTRY_DEPTH + 1
-        })
-    );
-    let large = package(vec![
-        ("design.mfd", mapping(1)),
-        ("a.xsd", schema(half)),
-        ("b.xsd", schema(MAX_EXEMPT_XSD_ELEMENTS - half + 1)),
-    ]);
-    assert_eq!(
-        known_limit_exemption(&large),
-        Some(KnownLimit::Schemas {
-            elements: MAX_EXEMPT_XSD_ELEMENTS + 1
         })
     );
     // A design the importer cannot read as UTF-8 is not measured.

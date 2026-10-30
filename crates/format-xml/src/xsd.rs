@@ -58,6 +58,18 @@ use type_alternative_profiles::{incompatible_attribute_use, incompatible_optiona
 pub use export::{XsdExportArtifact, XsdExportSet, export, export_namespace, export_set};
 
 const MAX_MATERIALIZED_SCHEMA_ELEMENTS: usize = 4_096;
+/// Most nesting and reference levels one XSD import may have open at once.
+/// Each element declaration or reference, named complex type reference
+/// (including a derivation base), complex type content, compositor, and
+/// model or attribute group reference takes one level. That allows about 64
+/// nested elements of named types, 85 of anonymous types, or 128 derivation
+/// or group hops. The import recurses once per level, and the deepest shape
+/// this allows uses about 3 MiB of stack in unoptimized and AddressSanitizer
+/// builds, under half of a default 8 MiB main thread.
+const MAX_IMPORT_DEPTH: usize = 256;
+/// Bounds the iterative discovery of derived types below one base. Resolving
+/// a derivation takes two import levels per hop, so a discovered type more
+/// than about 128 hops below its base fails with the import depth limit.
 const MAX_TYPE_DERIVATION_DEPTH: usize = 256;
 const MAX_SCHEMA_BYTES: u64 = 64 * 1024 * 1024;
 const ALTERNATIVE_VIEW_NAMESPACE: &str = "urn:ferrule:xsd:group-alternatives";
@@ -86,6 +98,8 @@ struct ParseState {
     declaration_paths: BTreeMap<DeclarationQuery, Option<PathBuf>>,
     materialized_elements: usize,
     materialization_limit_reached: bool,
+    depth: usize,
+    depth_limit_reached: bool,
     unsupported_particle: Option<XmlFormatError>,
     unsupported_default: Option<XmlFormatError>,
     unsupported_schema_group: Option<XmlFormatError>,
@@ -181,6 +195,20 @@ impl ParseState {
         true
     }
 
+    /// Runs `parse` one import level deeper, or returns `fallback` past
+    /// [`MAX_IMPORT_DEPTH`]. [`Self::finish`] then refuses the import, so
+    /// every later level falls back at once instead of descending further.
+    fn nested<T>(&mut self, fallback: impl FnOnce() -> T, parse: impl FnOnce(&mut Self) -> T) -> T {
+        if self.depth_limit_reached || self.depth >= MAX_IMPORT_DEPTH {
+            self.depth_limit_reached = true;
+            return fallback();
+        }
+        self.depth += 1;
+        let result = parse(self);
+        self.depth -= 1;
+        result
+    }
+
     fn has_element_capacity(&mut self) -> bool {
         let has_capacity = self.materialized_elements < MAX_MATERIALIZED_SCHEMA_ELEMENTS;
         if !has_capacity {
@@ -210,6 +238,11 @@ impl ParseState {
     }
 
     fn finish(self, schema: SchemaNode) -> Result<SchemaNode, XmlFormatError> {
+        // Checked first: the levels past the limit were not imported, so the
+        // other refusals may only describe the truncated schema.
+        if self.depth_limit_reached {
+            return Err(depth_limit_error());
+        }
         if let Some(error) = self.unsupported_particle {
             return Err(error);
         }
@@ -664,6 +697,19 @@ fn parse_element(
         .attribute("name")
         .or_else(|| el.attribute("ref").map(local_name))
         .unwrap_or_default();
+    state.nested(
+        || SchemaNode::scalar(fallback_name, ScalarType::String),
+        |state| parse_element_level(el, schema_el, schema_path, fallback_name, state),
+    )
+}
+
+fn parse_element_level(
+    el: &Node,
+    schema_el: &Node,
+    schema_path: &Path,
+    fallback_name: &str,
+    state: &mut ParseState,
+) -> SchemaNode {
     if !state.reserve_element() {
         return SchemaNode::scalar(fallback_name, ScalarType::String);
     }
@@ -1481,6 +1527,31 @@ fn parse_complex_type_declaration(
     occurrence_anchor: Option<&str>,
     type_use: ComplexTypeUse,
 ) -> Option<ComplexTypeResolution> {
+    state.nested(
+        || None,
+        |state| {
+            parse_complex_type_declaration_level(
+                declaration,
+                schema_el,
+                schema_path,
+                name,
+                state,
+                occurrence_anchor,
+                type_use,
+            )
+        },
+    )
+}
+
+fn parse_complex_type_declaration_level(
+    declaration: &Node,
+    schema_el: &Node,
+    schema_path: &Path,
+    name: &str,
+    state: &mut ParseState,
+    occurrence_anchor: Option<&str>,
+    type_use: ComplexTypeUse,
+) -> Option<ComplexTypeResolution> {
     let identity = state.declaration(schema_path, "complexType", name);
     if let Some(cached) = state.complex_types.get(&identity).cloned() {
         let anchor = occurrence_anchor.unwrap_or(&cached.anchor);
@@ -1725,6 +1796,17 @@ fn parse_complex_type(
 /// Parses a complex type's content, leaving projected wildcard ports marked
 /// so that an enclosing derivation can resolve them against its base.
 fn parse_complex_type_content(
+    complex_type: &Node,
+    schema_el: &Node,
+    schema_path: &Path,
+    state: &mut ParseState,
+) -> ParsedComplexType {
+    state.nested(ParsedComplexType::default, |state| {
+        parse_complex_type_content_level(complex_type, schema_el, schema_path, state)
+    })
+}
+
+fn parse_complex_type_content_level(
     complex_type: &Node,
     schema_el: &Node,
     schema_path: &Path,
@@ -2189,18 +2271,21 @@ fn collapse_compatible_xml_names(nodes: &mut Vec<SchemaNode>) {
     }
 }
 
+// Particle walks like this one keep their own stacks: compositors can nest
+// far deeper than the import depth limit, and the walks run ahead of it.
 fn nested_non_sequence_compositor(particle: &Node<'_, '_>) -> Option<String> {
-    for child in particle.children().filter(|node| node.is_element()) {
-        if is_disabled_particle(&child) {
+    let mut pending = vec![particle.children()];
+    while let Some(children) = pending.last_mut() {
+        let Some(child) = children.next() else {
+            pending.pop();
+            continue;
+        };
+        if !child.is_element() || is_disabled_particle(&child) {
             continue;
         }
         match child.tag_name().name() {
             "choice" | "all" => return Some(child.tag_name().name().to_string()),
-            "sequence" => {
-                if let Some(compositor) = nested_non_sequence_compositor(&child) {
-                    return Some(compositor);
-                }
-            }
+            "sequence" => pending.push(child.children()),
             // Element-local complex types own a separate particle tree.
             "element" => {}
             _ => {}
@@ -2210,8 +2295,16 @@ fn nested_non_sequence_compositor(particle: &Node<'_, '_>) -> Option<String> {
 }
 
 fn nested_repeating_multi_member_sequence(particle: &Node<'_, '_>) -> Option<usize> {
-    for child in particle.children().filter(|node| node.is_element()) {
-        if is_disabled_particle(&child) || child.tag_name().name() == "element" {
+    let mut pending = vec![particle.children()];
+    while let Some(children) = pending.last_mut() {
+        let Some(child) = children.next() else {
+            pending.pop();
+            continue;
+        };
+        if !child.is_element()
+            || is_disabled_particle(&child)
+            || child.tag_name().name() == "element"
+        {
             continue;
         }
         if child.tag_name().name() == "sequence" && is_repeating(&child) {
@@ -2221,9 +2314,7 @@ fn nested_repeating_multi_member_sequence(particle: &Node<'_, '_>) -> Option<usi
                 return Some(members.len());
             }
         }
-        if let Some(count) = nested_repeating_multi_member_sequence(&child) {
-            return Some(count);
-        }
+        pending.push(child.children());
     }
     None
 }
@@ -2247,8 +2338,14 @@ fn collect_sequence_members(
 ) {
     let optional = inherited_optional || (!root && particle.attribute("minOccurs") == Some("0"));
     let repeating = inherited_repeating || (!root && is_repeating(particle));
-    for child in particle.children().filter(|node| node.is_element()) {
-        if is_disabled_particle(&child) {
+    let mut pending = vec![(particle.children(), optional, repeating)];
+    while let Some((children, optional, repeating)) = pending.last_mut() {
+        let (optional, repeating) = (*optional, *repeating);
+        let Some(child) = children.next() else {
+            pending.pop();
+            continue;
+        };
+        if !child.is_element() || is_disabled_particle(&child) {
             continue;
         }
         match child.tag_name().name() {
@@ -2261,9 +2358,11 @@ fn collect_sequence_members(
                 required: !optional && child.attribute("minOccurs") != Some("0"),
                 repeating: repeating || is_repeating(&child),
             }),
-            "sequence" | "choice" | "all" => {
-                collect_sequence_members(&child, false, optional, repeating, out);
-            }
+            "sequence" | "choice" | "all" => pending.push((
+                child.children(),
+                optional || child.attribute("minOccurs") == Some("0"),
+                repeating || is_repeating(&child),
+            )),
             _ => {}
         }
     }
@@ -2274,6 +2373,31 @@ fn collect_sequence_members(
 /// repeating (the "wrap a single element in a repeating sequence" idiom) --
 /// it gets propagated onto that sequence's own element(s).
 fn collect_sequence(
+    sequence: &Node,
+    inherited_repeating: bool,
+    schema_el: &Node,
+    schema_path: &Path,
+    state: &mut ParseState,
+    out: &mut Vec<SchemaNode>,
+    repeating_choices: &mut Vec<XmlRepeatingChoice>,
+) {
+    state.nested(
+        || (),
+        |state| {
+            collect_sequence_level(
+                sequence,
+                inherited_repeating,
+                schema_el,
+                schema_path,
+                state,
+                out,
+                repeating_choices,
+            );
+        },
+    );
+}
+
+fn collect_sequence_level(
     sequence: &Node,
     inherited_repeating: bool,
     schema_el: &Node,
@@ -2352,7 +2476,8 @@ fn collect_sequence(
 /// discarding its redundant optional wrapper. Unknown particles and named
 /// group expansion do not supply evidence for this narrow physical grammar.
 fn sequence_contents_accept_empty(sequence: &Node<'_, '_>, depth: usize) -> bool {
-    if depth >= MAX_TYPE_DERIVATION_DEPTH {
+    // A deeper sequence has already exceeded the import depth limit.
+    if depth >= MAX_IMPORT_DEPTH {
         return false;
     }
     sequence.children().filter(Node::is_element).all(|child| {
@@ -3051,14 +3176,17 @@ fn validate_wildcard_ownership(parsed: &mut ParsedComplexType, state: &mut Parse
 }
 
 fn particle_contains_wildcard(particle: &Node<'_, '_>) -> bool {
-    particle
-        .children()
-        .filter(|node| node.is_element())
-        .any(|child| {
-            child.tag_name().name() == "any"
-                || (matches!(child.tag_name().name(), "sequence" | "choice" | "all")
-                    && particle_contains_wildcard(&child))
-        })
+    let mut pending = vec![*particle];
+    while let Some(particle) = pending.pop() {
+        for child in particle.children().filter(|node| node.is_element()) {
+            match child.tag_name().name() {
+                "any" => return true,
+                "sequence" | "choice" | "all" => pending.push(child),
+                _ => {}
+            }
+        }
+    }
+    false
 }
 
 fn is_single_occurrence(particle: &Node<'_, '_>) -> bool {
@@ -3100,6 +3228,12 @@ fn open_content_refusal(complex_type: &Node, schema_el: &Node) -> Option<&'stati
     let applies_to_empty = matches!(default.attribute("appliesToEmpty"), Some("true" | "1"));
     (has_content || applies_to_empty)
         .then_some("xs:defaultOpenContent adds wildcard content the schema model does not keep")
+}
+
+fn depth_limit_error() -> XmlFormatError {
+    XmlFormatError::SchemaDepthLimit {
+        limit: MAX_IMPORT_DEPTH,
+    }
 }
 
 fn unsupported_wildcard(reason: &'static str) -> XmlFormatError {

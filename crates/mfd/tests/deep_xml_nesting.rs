@@ -1,5 +1,6 @@
-//! A design nested far deeper than any real one must be refused with an error.
-//! The XML parser once recursed per level and aborted the whole process.
+//! A design or schema nested far deeper than any real one must return a
+//! result. The XML parser and the XSD importer once recursed per level and
+//! aborted the whole process.
 
 use std::sync::mpsc;
 use std::time::Duration;
@@ -57,4 +58,54 @@ fn nested_chain(levels: usize) -> String {
     let mut text = "<n>".repeat(levels);
     text.push_str(&"</n>".repeat(levels));
     text
+}
+
+/// A packaged source schema whose named-type chain is far past the XSD
+/// import depth limit falls back to the design's entry tree with a warning
+/// instead of overflowing the stack.
+#[test]
+fn packaged_schema_past_the_xsd_depth_limit_falls_back_with_a_warning() {
+    const TYPES: usize = 6_000;
+    let mut schema = String::from(
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Catalog" type="t0"/>"#,
+    );
+    for index in 0..TYPES {
+        schema.push_str(&format!(
+            r#"<xs:complexType name="t{index}"><xs:sequence><xs:element name="Book" type="t{}"/></xs:sequence></xs:complexType>"#,
+            index + 1
+        ));
+    }
+    schema.push_str(&format!(
+        r#"<xs:complexType name="t{TYPES}"><xs:sequence><xs:element name="Title" type="xs:string"/></xs:sequence></xs:complexType></xs:schema>"#
+    ));
+    let imported = std::thread::Builder::new()
+        .stack_size(8 << 20)
+        .spawn(move || {
+            let package = MfdPackage::new(
+                "books.mfd",
+                [
+                    ("books.mfd", include_bytes!("fixtures/books.mfd").as_slice()),
+                    ("books-source.xsd", schema.as_bytes()),
+                    (
+                        "books-target.xsd",
+                        include_bytes!("fixtures/books-target.xsd").as_slice(),
+                    ),
+                ],
+            )
+            .unwrap();
+            import_package(&package)
+        })
+        .unwrap()
+        .join()
+        .unwrap()
+        .unwrap();
+    assert!(
+        imported
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("books-source.xsd")
+                && warning.contains("nesting and reference depth limit")),
+        "{:?}",
+        imported.warnings
+    );
 }
