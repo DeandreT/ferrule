@@ -229,6 +229,8 @@ pub(super) struct FnComponent {
     /// Exact `core` `count` signature: keyless context slot, keyed sequence
     /// input, and one keyed output. Separate from general aggregate lowering.
     pub(super) raw_count_signature_valid: bool,
+    /// Exact raw filter and predicate pins for physical scalar count lowering.
+    pub(super) raw_filtered_count_pins_valid: bool,
     /// Dedicated raw owner and source-position proof for String group-by keys.
     pub(super) group_by_ownership: Option<RawGroupByOwnership>,
     /// Exact raw pins of a group-presence operand operator, retaining keyless
@@ -529,6 +531,9 @@ pub(super) fn read(component: &roxmltree::Node) -> FnComponent {
         parse_date_ownership,
         raw_clock_signature_valid,
         raw_count_signature_valid,
+        raw_filtered_count_pins_valid: super::aggregate::filtered_count::raw_signature_valid(
+            component,
+        ),
         group_by_ownership: group_by::ownership(component),
         presence_operator: presence::operator(component),
         input_type,

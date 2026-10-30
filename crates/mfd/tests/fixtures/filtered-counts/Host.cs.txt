@@ -1,0 +1,98 @@
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+static object Typed(FerruleInstance node) => node switch
+{
+    FerruleGroup group => new { kind = "group", fields = group.Fields.Select(field => new { name = field.Name, value = Typed(field.Value) }).ToArray() },
+    FerruleRepeated repeated => new { kind = "repeated", items = repeated.Items.Select(Typed).ToArray() },
+    FerruleScalar scalar => new { kind = scalar.Value.Kind.ToString(), value = scalar.Value.Kind switch {
+        FerruleValueKind.Int64 => (object?)scalar.Value.Int64Value,
+        FerruleValueKind.String => scalar.Value.StringValue,
+        _ => null,
+    } },
+    _ => throw new Exception("Unexpected mapped instance shape"),
+};
+
+static void Verify(FerruleInstance actual, JsonElement expected)
+{
+    switch (expected.ValueKind)
+    {
+        case JsonValueKind.Object:
+            if (actual is not FerruleGroup group || group.Fields.Count != expected.EnumerateObject().Count()) throw new Exception("Whole group differs");
+            foreach (var field in expected.EnumerateObject()) Verify(group.Fields.Single(item => item.Name == field.Name).Value, field.Value);
+            break;
+        case JsonValueKind.Array:
+            if (actual is not FerruleRepeated repeated || repeated.Items.Count != expected.GetArrayLength()) throw new Exception("Whole sequence differs");
+            for (int index = 0; index < repeated.Items.Count; index++) Verify(repeated.Items[index], expected[index]);
+            break;
+        case JsonValueKind.Number:
+            if (actual is not FerruleScalar number || number.Value.Kind != FerruleValueKind.Int64 || number.Value.Int64Value != expected.GetInt64()) throw new Exception("Integer count differs");
+            break;
+        case JsonValueKind.String:
+            if (actual is not FerruleScalar text || text.Value.Kind != FerruleValueKind.String || text.Value.StringValue != expected.GetString()) throw new Exception("String differs");
+            break;
+        default: throw new Exception("Outside authored output domain");
+    }
+}
+
+static void Refuses(Action action, JsonElement test, string boundary)
+{
+    try { action(); }
+    catch (FerruleXmlBoundaryException error)
+    {
+        Console.WriteLine(JsonSerializer.Serialize(new { name = test.GetProperty("name").GetString(), boundary, stage = "input", category = error.Kind.ToString(), error = error.ToString() }));
+        if (error.Kind.ToString() != test.GetProperty("runtimeCategory").GetString()) throw new Exception("Wrong XML error category", error);
+        return;
+    }
+    catch (FerruleX12Exception error)
+    {
+        Console.WriteLine(JsonSerializer.Serialize(new { name = test.GetProperty("name").GetString(), boundary, stage = "input", category = error.Error.ToString(), error = error.ToString() }));
+        if (error.Error.ToString() != test.GetProperty("runtimeCategory").GetString()) throw new Exception("Wrong X12 error category", error);
+        return;
+    }
+    throw new Exception("Invalid input reached mapping");
+}
+
+string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "source-schema.json"));
+string target = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "target-schema.json"));
+string kind = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "input-kind.txt"));
+using var cases = JsonDocument.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "cases.json")));
+foreach (var test in cases.RootElement.EnumerateArray())
+{
+    string document = test.GetProperty("input").GetString()!;
+    FerruleInstance Text() => kind switch {
+        "xml" => FerruleXml.ParseStructuredEmbedded(source, document),
+        "x12" => FerruleX12.ParseEmbedded(source, document),
+        _ => throw new Exception("Unknown authored input cohort"),
+    };
+    FerruleInstance Bytes() => kind switch {
+        "xml" => FerruleXml.ParseStructuredEmbeddedBytes(source, Encoding.UTF8.GetBytes(document)),
+        "x12" => FerruleX12.ParseEmbeddedBytes(source, Encoding.UTF8.GetBytes(document)),
+        _ => throw new Exception("Unknown authored input cohort"),
+    };
+    if (test.TryGetProperty("reject", out var reject) && reject.GetBoolean())
+    {
+        if (test.GetProperty("stage").GetString() != "input") throw new Exception("Wrong expected error stage");
+        Refuses(() => Text(), test, "text");
+        Refuses(() => Bytes(), test, "utf8");
+        continue;
+    }
+    foreach (var (boundary, input) in new[] {
+        ("text", Text()),
+        ("utf8", Bytes()),
+    })
+    {
+        FerruleInstance output;
+        try { output = GeneratedMapping.Execute(input); }
+        catch (Exception error) { Console.Error.WriteLine(JsonSerializer.Serialize(new { name = test.GetProperty("name").GetString(), boundary, stage = "mapping", error = error.ToString() })); throw; }
+        Console.Error.WriteLine(JsonSerializer.Serialize(new { name = test.GetProperty("name").GetString(), boundary, typed = Typed(output) }));
+        string json = FerruleJson.SerializeEmbedded(target, output);
+        Console.WriteLine(JsonSerializer.Serialize(new { name = test.GetProperty("name").GetString(), boundary, stage = "mapping", output = JsonNode.Parse(json) }));
+        Verify(output, test.GetProperty("expected"));
+        if (!JsonNode.DeepEquals(JsonNode.Parse(json), JsonNode.Parse(test.GetProperty("expected").GetRawText()))) throw new Exception($"Whole output differs: {json}");
+    }
+}
+Console.WriteLine($"filtered-count {kind} Release cases: {cases.RootElement.GetArrayLength()}");

@@ -1,0 +1,15 @@
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:element name="Source"><xs:complexType><xs:sequence>
+    <xs:element name="Batch" minOccurs="0" maxOccurs="unbounded"><xs:complexType><xs:sequence>
+      <xs:element name="Name" type="xs:string"/>
+      <xs:element name="Record" minOccurs="0" maxOccurs="unbounded"><xs:complexType><xs:sequence>
+        <xs:element name="Flag" type="xs:string" minOccurs="0"/>
+        <xs:element name="Tag" type="xs:string" minOccurs="0" nillable="true"/>
+        <xs:element name="Value" type="xs:string" minOccurs="0" maxOccurs="unbounded" nillable="true"/>
+      </xs:sequence></xs:complexType></xs:element>
+      <xs:element name="Other" minOccurs="0" maxOccurs="unbounded"><xs:complexType><xs:sequence>
+        <xs:element name="Flag" type="xs:string"/>
+      </xs:sequence></xs:complexType></xs:element>
+    </xs:sequence></xs:complexType></xs:element>
+  </xs:sequence></xs:complexType></xs:element>
+</xs:schema>

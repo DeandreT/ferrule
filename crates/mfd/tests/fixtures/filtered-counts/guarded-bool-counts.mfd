@@ -1,0 +1,46 @@
+<mapping version="26"><component name="map"><structure><children>
+  <component name="source" library="xml" kind="14"><data><root><entry name="Source"><entry name="Record" outkey="10"><entry name="Enabled" outkey="11"/><entry name="Toggle" outkey="12"/><entry name="NilValue" outkey="13"/></entry></entry></root><document schema="guarded-bool-source.xsd" inputinstance="guarded-bool-source.xml" instanceroot="{}Source"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint key="20"/></targets><data><constant value="false" datatype="boolean"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint key="21"/></targets><data><constant value="true" datatype="boolean"/></data></component>
+  <component name="filter" library="core" kind="3"><sources><datapoint pos="0" key="30"/><datapoint pos="1" key="31"/></sources><targets><datapoint pos="0" key="32"/><datapoint pos="1" key="33"/></targets></component>
+  <component name="count" library="core" kind="5"><sources><datapoint/><datapoint pos="1" key="34"/></sources><targets><datapoint key="35"/></targets></component>
+  <component name="count" library="core" kind="5"><sources><datapoint/><datapoint pos="1" key="36"/></sources><targets><datapoint key="37"/></targets></component>
+  <component name="filter" library="core" kind="3"><sources><datapoint pos="0" key="40"/><datapoint pos="1" key="41"/></sources><targets><datapoint key="42"/></targets></component>
+  <component name="count" library="core" kind="5"><sources><datapoint/><datapoint pos="1" key="43"/></sources><targets><datapoint key="44"/></targets></component>
+  <component name="filter" library="core" kind="3"><sources><datapoint pos="0" key="45"/><datapoint pos="1" key="46"/></sources><targets><datapoint key="47"/></targets></component>
+  <component name="count" library="core" kind="5"><sources><datapoint/><datapoint pos="1" key="48"/></sources><targets><datapoint key="49"/></targets></component>
+  <component name="logical-or" library="core" kind="5"><sources><datapoint pos="0" key="50"/><datapoint pos="1" key="51"/></sources><targets><datapoint key="52"/></targets></component>
+  <component name="filter" library="core" kind="3"><sources><datapoint pos="0" key="53"/><datapoint pos="1" key="54"/></sources><targets><datapoint key="55"/></targets></component>
+  <component name="count" library="core" kind="5"><sources><datapoint/><datapoint pos="1" key="56"/></sources><targets><datapoint key="57"/></targets></component>
+  <component name="logical-or" library="core" kind="5"><sources><datapoint pos="0" key="60"/><datapoint pos="1" key="61"/></sources><targets><datapoint key="62"/></targets></component>
+  <component name="filter" library="core" kind="3"><sources><datapoint pos="0" key="63"/><datapoint pos="1" key="64"/></sources><targets><datapoint key="65"/></targets></component>
+  <component name="count" library="core" kind="5"><sources><datapoint/><datapoint pos="1" key="66"/></sources><targets><datapoint key="67"/></targets></component>
+  <component name="logical-not" library="core" kind="5"><sources><datapoint key="70"/></sources><targets><datapoint key="71"/></targets></component>
+  <component name="logical-and" library="core" kind="5"><sources><datapoint pos="0" key="72"/><datapoint pos="1" key="73"/></sources><targets><datapoint key="74"/></targets></component>
+  <component name="filter" library="core" kind="3"><sources><datapoint pos="0" key="75"/><datapoint pos="1" key="76"/></sources><targets><datapoint key="77"/></targets></component>
+  <component name="count" library="core" kind="5"><sources><datapoint/><datapoint pos="1" key="78"/></sources><targets><datapoint key="79"/></targets></component>
+  <component name="filter" library="core" kind="3"><sources><datapoint pos="0" key="80"/><datapoint pos="1" key="81"/></sources><targets><datapoint key="82"/></targets></component>
+  <component name="count" library="core" kind="5"><sources><datapoint/><datapoint pos="1" key="83"/></sources><targets><datapoint key="84"/></targets></component>
+  <component name="target" library="json" kind="31"><properties XSLTDefaultOutput="1"/><data><root><entry name="document"><entry name="root"><entry name="object">
+    <entry name="Included" type="json-property"><entry name="number" inpkey="100"/></entry><entry name="Excluded" type="json-property"><entry name="number" inpkey="101"/></entry>
+    <entry name="Repeated" type="json-property"><entry name="number" inpkey="102"/></entry><entry name="RepeatedPresent" type="json-property"><entry name="number" inpkey="103"/></entry>
+    <entry name="OrTrue" type="json-property"><entry name="number" inpkey="104"/></entry><entry name="OrFalse" type="json-property"><entry name="number" inpkey="105"/></entry>
+    <entry name="Constant" type="json-property"><entry name="number" inpkey="106"/></entry><entry name="NilPresent" type="json-property"><entry name="number" inpkey="107"/></entry>
+    <entry name="Records" type="json-property"><entry name="array"><entry name="item" type="json-item"><entry name="object" inpkey="110">
+      <entry name="Included" type="json-property"><entry name="number" inpkey="111"/></entry><entry name="Excluded" type="json-property"><entry name="number" inpkey="112"/></entry>
+      <entry name="Repeated" type="json-property"><entry name="number" inpkey="113"/></entry><entry name="RepeatedPresent" type="json-property"><entry name="number" inpkey="114"/></entry>
+      <entry name="OrTrue" type="json-property"><entry name="number" inpkey="115"/></entry><entry name="OrFalse" type="json-property"><entry name="number" inpkey="116"/></entry>
+      <entry name="Constant" type="json-property"><entry name="number" inpkey="117"/></entry><entry name="NilPresent" type="json-property"><entry name="number" inpkey="118"/></entry>
+    </entry></entry></entry></entry>
+  </entry></entry></entry></root><json schema="guarded-bool-target.schema.json"/></data></component>
+</children><connections>
+  <edge from="11" to="30"/><edge from="11" to="31"/><edge from="32" to="34"/><edge from="33" to="36"/>
+  <edge from="12" to="40"/><edge from="12" to="41"/><edge from="42" to="43"/>
+  <edge from="12" to="45"/><edge from="21" to="46"/><edge from="47" to="48"/>
+  <edge from="11" to="50"/><edge from="21" to="51"/><edge from="11" to="53"/><edge from="52" to="54"/><edge from="55" to="56"/>
+  <edge from="11" to="60"/><edge from="20" to="61"/><edge from="11" to="63"/><edge from="62" to="64"/><edge from="65" to="66"/>
+  <edge from="20" to="70"/><edge from="21" to="72"/><edge from="71" to="73"/><edge from="11" to="75"/><edge from="74" to="76"/><edge from="77" to="78"/>
+  <edge from="13" to="80"/><edge from="21" to="81"/><edge from="82" to="83"/>
+  <edge from="35" to="100"/><edge from="37" to="101"/><edge from="44" to="102"/><edge from="49" to="103"/><edge from="57" to="104"/><edge from="67" to="105"/><edge from="79" to="106"/><edge from="84" to="107"/>
+  <edge from="10" to="110"/><edge from="35" to="111"/><edge from="37" to="112"/><edge from="44" to="113"/><edge from="49" to="114"/><edge from="57" to="115"/><edge from="67" to="116"/><edge from="79" to="117"/><edge from="84" to="118"/>
+</connections></structure></component></mapping>

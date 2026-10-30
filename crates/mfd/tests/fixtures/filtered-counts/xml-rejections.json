@@ -1,0 +1,5 @@
+[
+  {"name":"xml_unclosed_document","input":"<Source>","reject":true},
+  {"name":"xml_mismatched_elements","input":"<Source><Batch></Source>","reject":true},
+  {"name":"xml_not_xml","input":"not XML","reject":true}
+]

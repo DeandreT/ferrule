@@ -1,0 +1,5 @@
+[
+  {"name":"guarded_bool_invalid_lexical","input":"<Source><Record><Enabled>maybe</Enabled></Record></Source>","reject":true,"stage":"input","nativeCategory":"ScalarParse","runtimeCategory":"Input"},
+  {"name":"guarded_bool_nil_is_invalid_input","input":"<Source xmlns:xsi='http://www.w3.org/2001/XMLSchema-instance'><Record><Enabled xsi:nil='true'/></Record></Source>","reject":true,"stage":"input","nativeCategory":"UnexpectedXmlNil","runtimeCategory":"Input"},
+  {"name":"guarded_bool_malformed","input":"<Source><Record></Source>","reject":true,"stage":"input","nativeCategory":"Parse","runtimeCategory":"Input"}
+]

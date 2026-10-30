@@ -1,0 +1,5 @@
+[
+  {"name":"guarded_xml_malformed","input":"<Source><Batch></Source>","reject":true,"stage":"input","nativeCategory":"Parse","runtimeCategory":"Input"},
+  {"name":"guarded_xml_nil_reading_is_invalid_input","input":"<Source xmlns:xsi='http://www.w3.org/2001/XMLSchema-instance'><Batch><Name>invalid</Name><Record><Text xsi:nil='true'/></Record></Batch></Source>","reject":true,"stage":"input","nativeCategory":"UnexpectedXmlNil","runtimeCategory":"Input"},
+  {"name":"guarded_xml_repeated_nil_is_invalid_input","input":"<Source xmlns:xsi='http://www.w3.org/2001/XMLSchema-instance'><Batch><Name>invalid</Name><Record><Values xsi:nil='true'/></Record></Batch></Source>","reject":true,"stage":"input","nativeCategory":"UnexpectedXmlNil","runtimeCategory":"Input"}
+]
