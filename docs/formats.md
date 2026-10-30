@@ -174,9 +174,8 @@ for a complete format standard or another product.
   exclusions: a schema without them still imports with `vc:minVersion` on
   `xs:schema`. Strict element wildcards with exclusions, unordered wildcard
   compositors, and unresolved strict declaration sets remain outside the
-  subset. MFD import falls back to the entry tree when the imported schema
-  keeps exclusions; a wildcard the importer parses and then discards does not
-  trigger that fallback.
+  subset. MFD XML components import exclusions with their schemas and export
+  them in their generated XSD siblings ([MFD interop](mfd-interop.md)).
   XSD import keeps at most 256 nesting and reference levels open at once.
   Each element declaration or reference, named complex type reference
   (including a derivation base), complex type content, compositor, and model
