@@ -373,11 +373,7 @@ pub(super) fn validate(project: &Project) -> Result<(), MfdError> {
     }
     exception::validate(project)?;
     wsdl::validate(project)?;
-    if project.uses_join_computed_keys() {
-        return Err(MfdError::Unsupported(
-            join::COMPUTED_SOURCE_REFUSAL.to_string(),
-        ));
-    }
+    join::validate_computed_placement(project)?;
     join::validate(project)?;
     if project.extra_sources.len() > 256 {
         return Err(MfdError::Unsupported(

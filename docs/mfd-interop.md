@@ -1265,6 +1265,24 @@ primary child and a named source, named inputs that an enclosing frame could
 shadow, and named paths that would change when reimport strips the enclosing
 iteration path.
 
+Export writes a computed join key in exactly the form import admits, so the
+design re-imports to the same plan. The key's constant, runtime parameter or
+`uppercase`, `lowercase`, `concat` and `add` call chain is written as ordinary
+components whose output feeds the join input. A function or constant feeds an
+input named `value` through an ordinary connection; a runtime parameter feeds
+an input named after the parameter through a copy-all connection, as the
+reference application requires. The null guard import adds around a key that
+reads source fields is not written: the native functions already yield no key
+for an absent or nil field, and import adds the same guard again. The other
+input is a primary repeating collection: at the root, or, for a join nested in
+a source iteration, outside that iteration. Export refuses, before writing any
+file, every other computed key: keys import would refuse or read back
+differently (a bare source field, a guard that does not cover exactly the
+fields the key reads, or a guard other expressions share), keys beside a
+singleton, a named collection or a collection below the iteration, keys feeding
+a joined aggregate, and keys in additional targets, concatenated segments or
+dynamic child scopes.
+
 JSON5 component settings and `.json5` instance paths are retained as a typed
 repair dependency, not executable native JSON5 mode. Legacy filename attributes
 take precedence over nested input/output file roles. Strict import, runtime and
