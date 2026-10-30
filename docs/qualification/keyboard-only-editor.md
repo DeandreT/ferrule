@@ -48,10 +48,10 @@ direct key), **inaccessible control** (no keyboard path).
 | Forward Tab through the canvas | Gap | `keyboard_accessibility_gap_tab_reaches_every_canvas_control` |
 | Shift+Tab out of the canvas | Gap | `keyboard_accessibility_gap_shift_tab_leaves_the_canvas` |
 | Tab stays inside a modal dialog | Supported | `keyboard_accessibility_open_shortcut_keeps_unsaved_work_when_cancelled` |
-| Focus moves into a dialog when it opens | Gap | `keyboard_accessibility_gap_opening_a_dialog_focuses_it` |
-| Focus returns to the trigger when a dialog closes | Gap | `keyboard_accessibility_gap_closing_a_dialog_restores_focus` |
-| Dialog footer Tab order matches the visual order | Gap | `keyboard_accessibility_gap_dialog_footer_tab_order_is_visual` |
-| Escape closes modal dialogs | Gap | `keyboard_accessibility_gap_escape_closes_modal_dialogs` |
+| Focus moves into a dialog when it opens: its first body control, otherwise its default action | Supported | `keyboard_accessibility_gap_opening_a_dialog_focuses_it` |
+| Focus returns to the trigger when a dialog closes | Supported | `keyboard_accessibility_gap_closing_a_dialog_restores_focus` |
+| Dialog footer Tab order matches the visual order | Supported | `keyboard_accessibility_gap_dialog_footer_tab_order_is_visual` |
+| Escape closes modal dialogs as Cancel | Supported | `keyboard_accessibility_gap_escape_closes_modal_dialogs` |
 | Cancel keeps unsaved work, dirty state and history | Supported | `keyboard_accessibility_open_shortcut_keeps_unsaved_work_when_cancelled` |
 | Activating a control keeps focus | Gap (Add binding) | `keyboard_accessibility_gap_add_binding_keeps_focus` |
 
@@ -71,16 +71,10 @@ commands (F2, Delete, Ctrl+F) run only while no control has keyboard focus.
    and never returns to the inspector, toolbar or menu bar.
 4. **Give the mapping tab one visible Tab stop.** Focus first lands on the tab's
    clickable container, which reports no bounds or name, before the tab label.
-5. **Close modal dialogs with Escape.** The canvas toolbar
-   (`crates/gui/src/canvas/tools.rs`) consumes Escape before modal dialogs read
-   it, so Unsaved changes and Auto-connect fields stay open.
-6. **Move focus into dialogs when they open.** Opening a modal leaves focus on
-   nothing; only the next Tab enters the dialog.
-7. **Return focus when a dialog closes.** After Cancel, focus is on nothing and
-   the next Tab restarts at the menu bar instead of the control that opened it.
-8. **Match dialog footer Tab order to the visual order.** Right-to-left footers
-   put the primary action first: Unsaved changes tabs Discard changes, Save,
-   Cancel but shows Discard changes, Cancel, Save.
+5. **Close modal dialogs with Escape.** Fixed by #1164.
+6. **Move focus into dialogs when they open.** Fixed by #1164.
+7. **Return focus when a dialog closes.** Fixed by #1164.
+8. **Match dialog footer Tab order to the visual order.** Fixed by #1164.
 9. **Let Tab leave the Preview input.** The Primary input inserts a tab character
    for Tab; the dialog buttons are reachable only with Escape, then Shift+Tab.
 10. **Name icon-only and canvas focus stops.** Add source and the minimap toggle

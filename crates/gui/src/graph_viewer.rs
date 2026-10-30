@@ -2541,8 +2541,10 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
             if open {
                 Self::mark_properties_open(ui.ctx());
                 // Handle dismissal before a focused TextEdit consumes Escape.
-                // A nested selector gets the first Escape when it is open.
+                // A nested selector or a modal dialog gets the first Escape
+                // when it is open.
                 if !egui::Popup::is_any_open(ui.ctx())
+                    && !crate::ui_kit::modal_open(ui.ctx())
                     && ui.input_mut(|input| {
                         input.consume_key(egui::Modifiers::NONE, egui::Key::Escape)
                     })
