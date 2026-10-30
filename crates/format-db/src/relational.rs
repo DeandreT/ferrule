@@ -39,6 +39,9 @@ pub(super) fn read_instance(
     db_path: &Path,
     schema: &SchemaNode,
 ) -> Result<Instance, DbFormatError> {
+    if schema.contains_json_tuple() {
+        return Err(DbFormatError::UnsupportedSchema);
+    }
     if is_flat_table(schema) {
         return read(db_path, schema).map(Instance::Repeated);
     }
@@ -83,6 +86,9 @@ pub(super) fn read_instance(
 }
 
 pub(super) fn validate_schema(db_path: &Path, schema: &SchemaNode) -> Result<(), DbFormatError> {
+    if schema.contains_json_tuple() {
+        return Err(DbFormatError::UnsupportedSchema);
+    }
     let conn = open_metadata_connection(db_path)?;
     if schema.repeating {
         let physical_table = physical_table_name(&schema.name)?;
@@ -194,6 +200,9 @@ pub(super) fn write_instance(
     schema: &SchemaNode,
     instance: &Instance,
 ) -> Result<(), DbFormatError> {
+    if schema.contains_json_tuple() {
+        return Err(DbFormatError::UnsupportedSchema);
+    }
     let mut conn = Connection::open(db_path)?;
     let plans = write_plans(&conn, schema)?;
     for plan in &plans {

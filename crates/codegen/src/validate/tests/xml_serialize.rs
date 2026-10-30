@@ -312,3 +312,32 @@ fn xml_serializer_refuses_wildcard_exclusions() {
         );
     }
 }
+
+#[test]
+fn xml_serializer_schemas_refuse_json_tuple_frames() {
+    let mut program = xml_program();
+    let Expression::XmlSerialize { schema, .. } = &mut program.expressions[0].expression else {
+        panic!("fixture has XML serialization expression");
+    };
+    let frame = SchemaNode::group(
+        "Point",
+        vec![
+            SchemaNode::scalar("item1", ScalarType::String),
+            SchemaNode::scalar("item2", ScalarType::Int),
+        ],
+    )
+    .with_json_tuple(ir::JsonTupleLayout {
+        length: ir::ItemCountRange::new(0, Some(2)),
+        tail: ir::JsonTupleTail::Closed,
+    })
+    .expect("the test frame is canonical");
+    **schema = SchemaNode::group("Item", vec![frame]);
+    assert_eq!(
+        validate_program(&program),
+        Err(ProgramValidationError::UnsupportedXmlSerializeSchema {
+            node: 1,
+            schema: "Item".into(),
+            feature: "JSON tuple frame",
+        })
+    );
+}

@@ -69,7 +69,9 @@ pub json_tuple: Option<JsonTupleLayout>,
 
 pub struct JsonTupleLayout {
     /// Bounds on the complete array length: positions plus tail items.
-    pub length: ItemCountRange,
+    /// Absent means unconstrained, as for `item_count_range`; a closed frame
+    /// always has one.
+    pub length: Option<ItemCountRange>,
     pub tail: JsonTupleTail,
 }
 
@@ -92,14 +94,23 @@ The frame check, modeled on `check_json_array_wrapper_frame`
 (`crates/ir/src/schema/json_array_wrapper.rs`), enforces:
 
 - **Children:** exactly the child list above, each following the member rule.
-- **Canonical form:** a closed frame has `length.maximum() == N`; an open
-  frame has no maximum or one above N; and selection step 2 would not lower
-  the frame to a homogeneous array.
+- **Canonical form:** a closed frame has a length maximum of exactly N; an
+  open frame has no length bounds, no maximum, or a maximum above N; and
+  selection step 2 would not lower the frame to a homogeneous array.
+  Positions are identical when their JSON shapes are equal: the position's
+  own name is ignored, and so is XML, database and value-generation metadata
+  anywhere in its tree, because JSON reading, writing and export ignore it.
+  A tail item is compared with its object-item nullability in place of a
+  member's container nullability.
 - **Not allowed on the frame:** `required` names, alternatives, dynamic
   properties, property constraints, scalar value metadata, `recursive_ref`,
   XML metadata, database relations, `json_array_wrapper`, `json_contains` and
   `json_unique_items`.
-- **Not allowed on `rest`:** its own count, `contains` or `uniqueItems`.
+- **Not allowed on `rest`:** its own count, `contains`, `uniqueItems` or
+  container nullability; the frame owns the array.
+- **Placement:** a frame is never a dynamic property value
+  (`additionalProperties` or `patternProperties`), and never appears inside a
+  `contains` or dependent-schema predicate schema.
 
 Every reader of saved schemas, both JSON writers, export, engine validation
 and descriptor decoding call this one check.
@@ -115,9 +126,14 @@ repeating frame, `container_nullable` covers the outer array and
 `json_single_container_nullable` (`crates/ir/src/lib.rs`) otherwise falls back
 to `container_nullable`.
 
+The frame check does not look through `recursive_ref`, so a member whose
+recursive reference names the frame itself passes it. Import refuses a
+reference cycle through a position (see "Unsupported shapes"), and the native
+codec (lane 2) must refuse such a recursive frame rather than expand it.
+
 In the mapping graph a frame is an ordinary group: paths address
-`/point/item2` and iterate `/point/rest`. XML, CSV, XLSX, EDI and database
-boundaries refuse schemas that contain frames.
+`/point/item2` and iterate `/point/rest`. XML, CSV, XLSX, EDI, IDoc, SWIFT,
+XBRL and database boundaries refuse schemas that contain frames.
 
 ## Reading and writing
 

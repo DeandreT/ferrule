@@ -21,6 +21,7 @@ mod idoc;
 mod idoc_native_config;
 mod idoc_native_text;
 mod iteration;
+mod json_tuple_arrays;
 mod model;
 mod node_inputs;
 mod owned_join;
@@ -43,6 +44,7 @@ mod sequence_levels;
 mod source_owner;
 mod source_scope;
 mod sqlite_read;
+mod stored_schemas;
 mod swift;
 mod tabular;
 mod wsdl;
@@ -52,6 +54,7 @@ mod xml_mixed_content_owned;
 mod xml_scalar_output;
 mod xml_serialize_owned;
 mod xml_wildcard_exclusions;
+pub use json_tuple_arrays::JSON_TUPLE_ARRAYS_V1_CAPABILITY;
 pub use xml_scalar_output::{
     XML_TARGET_SCALAR_OUTPUT_V1_CAPABILITY, XmlScalarOutputAdmissionError,
 };

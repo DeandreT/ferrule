@@ -879,6 +879,7 @@ pub(crate) fn write_segments_with_encoding(
     opts: &WriteOptions,
     encoding: Option<SegmentEncoding>,
 ) -> Result<String, EdiFormatError> {
+    crate::refuse_json_tuple(schema)?;
     validate_instance_shape(schema, instance)?;
     let mut out = String::new();
     let mut options = *opts;

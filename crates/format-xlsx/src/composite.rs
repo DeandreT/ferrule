@@ -102,6 +102,9 @@ pub(super) fn validate_composite_layout(
     if schema.repeating || !matches!(schema.kind, SchemaKind::Group { .. }) {
         return Err(XlsxFormatError::CompositeRootSchema);
     }
+    if schema.contains_json_tuple() {
+        return Err(XlsxFormatError::UnsupportedSchema);
+    }
     let mut table_paths = std::collections::BTreeSet::new();
     for table in tables(layout) {
         if !table_paths.insert(table.path.clone()) {

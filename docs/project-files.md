@@ -61,7 +61,9 @@ capabilities are:
   options;
 - `xml-wildcard-exclusions-v1`, carried by a negated namespace set or excluded
   names on an XML wildcard in any stored schema
-  ([XSD 1.1 wildcard exclusions](design/xml-wildcard-exclusions.md)).
+  ([XSD 1.1 wildcard exclusions](design/xml-wildcard-exclusions.md));
+- `json_tuple_arrays_v1`, carried by a
+  [JSON tuple frame](design/json-tuple-arrays.md) in any stored schema.
 
 
 ## Primary XML root reads

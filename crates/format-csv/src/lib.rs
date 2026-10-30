@@ -335,7 +335,7 @@ fn dialect_bytes(
 }
 
 fn row_fields(schema: &SchemaNode) -> Result<Vec<(&str, ScalarType)>, CsvFormatError> {
-    if schema.repeating || schema.contains_json_array_wrapper() {
+    if schema.repeating || schema.contains_json_array_wrapper() || schema.contains_json_tuple() {
         return Err(CsvFormatError::UnsupportedSchema);
     }
     match &schema.kind {
@@ -1238,5 +1238,31 @@ mod tests {
             ));
         }
         std::fs::remove_file(path).unwrap();
+    }
+
+    fn tuple_frame(name: &str) -> SchemaNode {
+        SchemaNode::group(
+            name,
+            vec![
+                SchemaNode::scalar("item1", ScalarType::String),
+                SchemaNode::scalar("item2", ScalarType::Int),
+            ],
+        )
+        .with_json_tuple(ir::JsonTupleLayout {
+            length: ir::ItemCountRange::new(0, Some(2)),
+            tail: ir::JsonTupleTail::Closed,
+        })
+        .unwrap()
+    }
+
+    #[test]
+    fn json_tuple_frames_are_not_csv_rows() {
+        let nested = SchemaNode::group("row", vec![tuple_frame("point")]);
+        for schema in [tuple_frame("row"), nested] {
+            assert!(matches!(
+                row_fields(&schema),
+                Err(CsvFormatError::UnsupportedSchema)
+            ));
+        }
     }
 }

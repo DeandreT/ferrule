@@ -32,6 +32,8 @@ pub enum XbrlFormatError {
     UnexpectedRoot { found: String },
     #[error("XBRL table schema must contain exactly one repeating group")]
     InvalidTableSchema,
+    #[error("XBRL schema `{schema}` contains a JSON tuple frame, which requires a JSON boundary")]
+    UnsupportedJsonTupleFrame { schema: String },
     #[error("XBRL schema recursion exceeds the {limit}-level limit")]
     SchemaDepth { limit: usize },
     #[error("XBRL field `{name}` cannot preserve a heterogeneous scalar union")]
