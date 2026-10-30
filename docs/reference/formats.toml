@@ -84,7 +84,7 @@ evidence = [
 ]
 unsupported = [
     "General heterogeneous array composition, heterogeneous or correlated numeric-range scalar unions, and mixed structural unions",
-    "Tuple alternatives, per-position `allOf` intersection, `contains` or `uniqueItems` on tuples, nested or recursive tuples, and active `unevaluatedItems`",
+    "Tuple alternatives, per-position `allOf` intersection, `contains` or `uniqueItems` on tuples, nested or recursive tuples, and `unevaluatedItems` beside composition, conditionals, `contains`, `dependentSchemas` or a reference",
     "Required-only schemas without an object shape",
     "External references from in-memory schema import (`json_schema::import_str`)",
     "Enforcement of other shape-neutral validation keywords, which are accepted only for schema recovery",
