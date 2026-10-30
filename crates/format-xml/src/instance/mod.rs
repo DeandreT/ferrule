@@ -11,7 +11,7 @@ mod structured;
 pub use soap::{from_wsdl_message_str, read_wsdl_message};
 pub use structured::from_str_structured;
 
-use std::io::{Cursor, Read};
+use std::io::{Cursor, Read, Write};
 use std::path::Path;
 
 use ir::{
@@ -1396,7 +1396,7 @@ fn write_single_node<W: std::io::Write>(
                 fields,
                 recursion_depth,
                 element_namespace,
-                OrderedContentLayout::Indented,
+                OrderedContentLayout::for_children(children),
             )? {
                 writer.write_event(Event::End(BytesEnd::new(element_name)))?;
                 return Ok(());
@@ -1751,12 +1751,26 @@ fn instance_kind(instance: &Instance) -> &'static str {
 /// stream.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum OrderedContentLayout {
-    /// Declared content keeps the writer's indentation.
+    /// Element-only content keeps the writer's indentation, which the reader
+    /// discards.
     Indented,
-    /// Generic element content: the content of an undeclared element is
-    /// unconstrained character data, so its text items are written exactly
-    /// and no indentation is added between them.
+    /// Mixed content, declared or generic: the reader keeps every text node,
+    /// including whitespace, so text items are written exactly and no
+    /// indentation is added between or inside the items.
     Verbatim,
+}
+
+impl OrderedContentLayout {
+    /// The layout for a declared parent. It follows the reader, which keeps
+    /// text in the ordered stream whenever the parent declares a text child
+    /// (XSD `mixed`, DTD mixed `#PCDATA`, or DTD `ANY`).
+    pub(crate) fn for_children(children: &[SchemaNode]) -> Self {
+        if children.iter().any(|child| child.text) {
+            Self::Verbatim
+        } else {
+            Self::Indented
+        }
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1920,11 +1934,6 @@ pub(crate) fn write_ordered_mixed_content<W: std::io::Write>(
                     format!("element item {index} has no typed child value"),
                 )
             })?;
-        if layout == OrderedContentLayout::Verbatim {
-            // Mark the position as text-adjacent so quick-xml's indentation
-            // layer does not invent whitespace before this element.
-            writer.write_event(Event::Text(BytesText::new("")))?;
-        }
         let child_depth = recursion_depth + usize::from(child_schema.recursive_ref.is_some());
         let resolved_child;
         let child_schema = if let Some(anchor) = &child_schema.recursive_ref {
@@ -1938,29 +1947,38 @@ pub(crate) fn write_ordered_mixed_content<W: std::io::Write>(
         } else {
             child_schema
         };
-        if child_schema.name == XML_ELEMENTS_FIELD {
-            write_generic_element(
+        let siblings = GenericSiblings {
+            elements: children,
+            written: &written,
+        };
+        match layout {
+            OrderedContentLayout::Indented => write_ordered_element(
                 writer,
                 child_schema,
                 root_schema,
                 child_instance,
                 child_depth,
                 inherited_namespace,
-                GenericSiblings {
-                    elements: children,
-                    written: &written,
-                },
-            )?;
-        } else {
-            write_single_node(
-                writer,
-                child_schema,
-                root_schema,
-                child_instance,
-                child_depth,
-                inherited_namespace,
-                (None, None),
-            )?;
+                siblings,
+            )?,
+            OrderedContentLayout::Verbatim => {
+                // The reader keeps each element item's string value, so
+                // indentation anywhere in its subtree, even inside
+                // element-only children, would come back as text. Write the
+                // subtree through an unindented writer on the same output,
+                // leaving the outer writer's layout state as it was. The
+                // trait object keeps one writer type at every nesting level.
+                let output: &mut dyn Write = writer.get_mut();
+                write_ordered_element(
+                    &mut Writer::new(output),
+                    child_schema,
+                    root_schema,
+                    child_instance,
+                    child_depth,
+                    inherited_namespace,
+                    siblings,
+                )?;
+            }
         }
         ends_with_element = true;
     }
@@ -1970,6 +1988,39 @@ pub(crate) fn write_ordered_mixed_content<W: std::io::Write>(
         writer.write_event(Event::Text(BytesText::new("")))?;
     }
     Ok(true)
+}
+
+/// Writes one element item of an ordered content stream.
+fn write_ordered_element<W: std::io::Write>(
+    writer: &mut Writer<W>,
+    child_schema: &SchemaNode,
+    root_schema: &SchemaNode,
+    child_instance: &Instance,
+    child_depth: usize,
+    inherited_namespace: Option<&str>,
+    siblings: GenericSiblings<'_>,
+) -> Result<(), XmlFormatError> {
+    if child_schema.name == XML_ELEMENTS_FIELD {
+        write_generic_element(
+            writer,
+            child_schema,
+            root_schema,
+            child_instance,
+            child_depth,
+            inherited_namespace,
+            siblings,
+        )
+    } else {
+        write_single_node(
+            writer,
+            child_schema,
+            root_schema,
+            child_instance,
+            child_depth,
+            inherited_namespace,
+            (None, None),
+        )
+    }
 }
 
 fn invalid_mixed_content(schema: &SchemaNode, reason: impl Into<String>) -> XmlFormatError {
