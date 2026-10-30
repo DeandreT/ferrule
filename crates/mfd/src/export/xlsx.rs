@@ -14,6 +14,10 @@ use crate::MfdError;
 
 use super::schema::{PortTree, xml_escape};
 
+mod transposed;
+
+pub(super) use transposed::{connect_transposed_target, render_transposed_target};
+
 pub(super) struct RenderArgs<'a> {
     pub(super) schema: &'a SchemaNode,
     pub(super) ports: &'a PortTree,
@@ -46,7 +50,7 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<Option<String>, MfdError> {
         return render_composite(&args, layout).map(Some);
     }
     if !args.options.xlsx_rows.is_empty() {
-        return render_transposed(&args).map(Some);
+        return transposed::render_source(&args).map(Some);
     }
     Ok(None)
 }
@@ -382,86 +386,6 @@ fn exact_group_children<'a>(
             "the {label} must be a closed non-recursive group"
         ))),
     }
-}
-
-fn render_transposed(args: &RenderArgs<'_>) -> Result<String, MfdError> {
-    let fields = direct_scalar_fields(args.schema).ok_or_else(|| {
-        unsupported("a transposed XLSX source must have a flat scalar root schema")
-    })?;
-    let row_count = args.options.xlsx_rows.len();
-    let has_index = fields.len() == row_count + 1
-        && fields.last().is_some_and(|field| {
-            field.name == "n"
-                && matches!(
-                    field.kind,
-                    SchemaKind::Scalar {
-                        ty: ScalarType::Int
-                    }
-                )
-        });
-    if fields.len() != row_count + usize::from(has_index) {
-        return Err(unsupported(
-            "a transposed XLSX source needs one scalar field per configured row and only an optional trailing integer `n` field",
-        ));
-    }
-    let mut seen = BTreeSet::new();
-    if args
-        .options
-        .xlsx_rows
-        .iter()
-        .any(|row| *row == 0 || *row > 1_048_576 || !seen.insert(*row))
-    {
-        return Err(unsupported(
-            "transposed XLSX source rows must be unique one-based Excel row numbers",
-        ));
-    }
-
-    let mut ranges = String::new();
-    let mut rows = String::new();
-    for (index, (field, physical_row)) in fields
-        .iter()
-        .take(row_count)
-        .zip(&args.options.xlsx_rows)
-        .enumerate()
-    {
-        let range_id = index + 1;
-        let field_key = args
-            .ports
-            .required_key_for_abs(std::slice::from_ref(&field.name), "transposed XLSX field")?;
-        let SchemaKind::Scalar { ty } = field.kind else {
-            return Err(unsupported(
-                "a transposed XLSX source contains a non-scalar row field",
-            ));
-        };
-        let _ = writeln!(
-            ranges,
-            "\t\t\t\t\t\t\t\t\t\t\t<range id=\"{range_id}\" start=\"{physical_row}\" count=\"1\"/>"
-        );
-        let index_entry = if index == 0 && has_index {
-            let index_key = args
-                .ports
-                .required_key_for_abs(&["n".to_string()], "transposed XLSX column index")?;
-            format!(
-                "\n\t\t\t\t\t\t\t\t\t\t\t\t\t<entry name=\"n\" type=\"attribute\" outkey=\"{index_key}\"/>"
-            )
-        } else {
-            String::new()
-        };
-        let _ = writeln!(
-            rows,
-            "\t\t\t\t\t\t\t\t\t\t\t<entry name=\"Row\" expanded=\"1\">\n\
-             \t\t\t\t\t\t\t\t\t\t\t\t<condition><expression><function name=\"is-range-id\"><expression><constant value=\"{range_id}\" datatype=\"long\"/></expression></function></expression></condition>\n\
-             \t\t\t\t\t\t\t\t\t\t\t\t<entry name=\"Cell\" outkey=\"{field_key}\" annotation=\"{}\" datatype=\"{}\" expanded=\"1\">{index_entry}\n\
-             \t\t\t\t\t\t\t\t\t\t\t\t</entry>\n\
-             \t\t\t\t\t\t\t\t\t\t\t</entry>",
-            xml_escape(&field.name),
-            type_name(ty),
-        );
-    }
-    render_component(
-        args,
-        worksheet(args.options.xlsx_sheet.as_deref(), &ranges, &rows)?,
-    )
 }
 
 fn render_composite(

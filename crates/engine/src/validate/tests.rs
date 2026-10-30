@@ -259,6 +259,108 @@ fn update_existing_accepts_hierarchical_targets_and_refuses_other_retained_layou
 }
 
 #[test]
+fn transposed_xlsx_targets_validate_rows_schema_and_flat_options() {
+    let mut project = valid_project();
+    project.target = SchemaNode::group(
+        "row",
+        vec![
+            SchemaNode::scalar("name", ScalarType::String),
+            SchemaNode::scalar("n", ScalarType::Int),
+        ],
+    );
+    project.target_options = mapping::FormatOptions {
+        tabular_kind: Some(mapping::TabularBoundaryKind::Xlsx),
+        has_header_row: Some(false),
+        xlsx_rows: vec![2],
+        ..Default::default()
+    };
+    assert!(validate(&project).is_empty(), "{:?}", validate(&project));
+
+    let target_messages = |project: &Project| {
+        validate(project)
+            .into_iter()
+            .filter(|issue| issue.location == "target format options")
+            .map(|issue| issue.message)
+            .collect::<Vec<_>>()
+    };
+    let mut flat = project.clone();
+    flat.target_options.has_header_row = Some(true);
+    flat.target_options.xlsx_start_row = Some(3);
+    assert_eq!(
+        target_messages(&flat),
+        [
+            "a transposed XLSX target writes no header row; leave `has_header_row` unset or false",
+            "a transposed XLSX target places fields by `xlsx_rows` and records by column; `xlsx_start_row` and `xlsx_columns` cannot be used with it",
+        ]
+    );
+    let mut columns = project.clone();
+    columns.target_options.xlsx_columns = vec![1];
+    assert_eq!(
+        target_messages(&columns),
+        [
+            "a transposed XLSX target places fields by `xlsx_rows` and records by column; `xlsx_start_row` and `xlsx_columns` cannot be used with it"
+        ]
+    );
+    let mut headers = project.clone();
+    headers.target_options.xlsx_headers = vec!["Name".into(), "n".into()];
+    assert!(
+        target_messages(&headers)
+            .contains(&"`xlsx_headers` can be used only with a flat XLSX table".to_string())
+    );
+
+    let mut rows = project.clone();
+    rows.target_options.xlsx_rows = vec![0];
+    assert_eq!(
+        target_messages(&rows),
+        ["transposed XLSX target rows must be distinct worksheet rows from 1 to 1048576"]
+    );
+    rows.target_options.xlsx_rows = vec![2, 2];
+    assert_eq!(
+        target_messages(&rows),
+        [
+            "transposed XLSX target rows must be distinct worksheet rows from 1 to 1048576",
+            "a transposed XLSX target has 2 row selector(s) for 1 data field(s)",
+        ]
+    );
+
+    let mut position = project.clone();
+    position.target = SchemaNode::group(
+        "row",
+        vec![
+            SchemaNode::scalar("name", ScalarType::String),
+            SchemaNode::scalar("n", ScalarType::String),
+        ],
+    );
+    assert!(target_messages(&position).contains(
+        &"a transposed XLSX target's `n` field must be one integer column position".to_string()
+    ));
+    let mut nested = project.clone();
+    nested.target = SchemaNode::group(
+        "row",
+        vec![SchemaNode::group(
+            "name",
+            vec![SchemaNode::scalar("value", ScalarType::String)],
+        )],
+    );
+    assert!(target_messages(&nested).contains(
+        &"a transposed XLSX target needs a non-repeating group of scalar fields".to_string()
+    ));
+
+    // The same layout on the source side keeps its read-time checks.
+    let mut source = valid_project();
+    source.source_options = mapping::FormatOptions {
+        xlsx_rows: vec![1],
+        has_header_row: Some(true),
+        ..Default::default()
+    };
+    assert!(
+        !validate(&source)
+            .iter()
+            .any(|issue| issue.message.contains("transposed XLSX target"))
+    );
+}
+
+#[test]
 fn validates_worksheet_set_direction_and_layout_exclusivity() {
     let mut project = valid_project();
     project.target_options.xlsx_sheet = Some("Legacy".into());

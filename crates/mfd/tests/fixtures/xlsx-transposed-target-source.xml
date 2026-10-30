@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Data>
+  <Item><Name>Alpha</Name><Amount>10</Amount><Col>2</Col></Item>
+  <Item><Name>Bravo</Name><Col>5</Col></Item>
+  <Item><Name>Echo</Name><Amount>50</Amount><Col>9</Col></Item>
+</Data>
