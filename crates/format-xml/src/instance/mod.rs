@@ -825,8 +825,15 @@ pub(super) fn element_matches_schema(
             .any(|alternative| alternative.name == identity);
     }
     element.tag_name().name() == schema.name
-        && (schema.xml_namespace.is_none()
-            || schema.xml_namespace_matches(element.tag_name().namespace()))
+        && declared_namespace_matches(schema, element.tag_name().namespace())
+}
+
+/// Whether an element namespace names this declaration. A declaration without
+/// namespace identity (DTD, entry-tree, and closed XSD content without a target
+/// namespace) matches its local name in any namespace; an explicitly
+/// unqualified one matches only unqualified elements.
+pub(super) fn declared_namespace_matches(schema: &SchemaNode, namespace: Option<&str>) -> bool {
+    schema.xml_namespace.is_none() || schema.xml_namespace_matches(namespace)
 }
 
 pub(super) fn attribute_value<'a>(
