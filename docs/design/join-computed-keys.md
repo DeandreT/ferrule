@@ -48,8 +48,8 @@ These facts describe the code this design builds on.
   the path and cardinality, and `crates/codegen/src/validate/joins.rs` checks
   the same invariants for generated Rust and C#.
 - **Export.** `crates/mfd/src/export/join.rs` writes kind-32 components whose
-  inputs all come from source ports. A nested two-input plan must contain
-  exactly one correlated singleton and one repeating source
+  inputs all come from source ports. A nested plan needs at least one
+  repeating source and resolves each input against the enclosing iteration
   (`resolved_nested_source_paths` in `export/join/nested.rs`). Every input,
   repeating or singleton, at every input count, is written as a copy-all
   connection (`dataconnection type="2"`), as the [wire form](#wire-form)
