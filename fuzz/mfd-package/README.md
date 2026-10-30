@@ -97,19 +97,8 @@ one-time warning saying so.
 
 ## Known limits
 
-These are current behavior that the harness tolerates rather than reports. The
-first overflows the 8 MiB worker stack; the harness skips the import of a
-package that reaches it (`known_limit_exemption` in `src/lib.rs`).
+These are current behavior that the harness tolerates rather than reports.
 
-- **Deep entry trees** ([#1167](https://github.com/DeandreT/ferrule/issues/1167)).
-  A design component's `<entry>` tree is walked recursively, one call per
-  level, by `mfd::import::schema::typed_xml_entry_tree_schema` (entries with
-  `ferrule-kind` metadata), `xml_ports::reconcile_children` (XML components),
-  `collect_json_ports_with_declarations` (JSON components) and
-  `mfd::import::target_node_default::collect`. The fuzz build overflows at
-  1,219 nested typed entries. The harness skips a package whose design, read
-  as strict UTF-8 like the importer reads it, nests more than 512 `<entry>`
-  elements inside a `<component>` (`MAX_EXEMPT_ENTRY_DEPTH`).
 - **Silent JSON Schema substitution**
   ([#1169](https://github.com/DeandreT/ferrule/issues/1169)). A source JSON
   Schema that is not an object (`[1,2,3]`) or a content-free `$ref` cycle
@@ -196,7 +185,7 @@ cargo run --example write_seeds
 its intended admission and import outcome, that prefixes of every seed satisfy
 the invariants, that program decoding, including expanding substitutions, stays within its
 budget, that the path
-rules and known-limit exemptions behave as documented, that the sandbox detects
+rules behave as documented, that the sandbox detects
 read-only, changing, `io_uring`, x32, network and spawned-thread calls,
 refuses the changes, refuses process creation and execution without counting
 them while keeping thread creation working, ignores the allocator probe and

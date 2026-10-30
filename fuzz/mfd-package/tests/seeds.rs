@@ -1,13 +1,9 @@
 use std::path::{Path, PathBuf};
 
-use mfd::MfdPackage;
 use mfd_package_fuzz::program::{
     MAX_PROGRAM_BYTES, MAX_PROGRAM_ENTRIES, MAX_PROGRAM_ENTRY_BYTES, Name, Op, encode,
 };
-use mfd_package_fuzz::{
-    KnownLimit, MAX_EXEMPT_ENTRY_DEPTH, MAX_INPUT_BYTES, check, decode, documented_path,
-    known_limit_exemption, sandbox, seeds,
-};
+use mfd_package_fuzz::{MAX_INPUT_BYTES, check, decode, documented_path, sandbox, seeds};
 
 /// The outcome label (see `Outcome::label`) each seed was written to reach.
 const EXPECTED: &[(&str, &str)] = &[
@@ -19,8 +15,8 @@ const EXPECTED: &[(&str, &str)] = &[
     ("design_deep_component_elements", "imported with warnings"),
     ("design_deep_elements", "error NotMfd"),
     ("design_deep_resources", "imported"),
-    ("design_deep_source_entries", "exempt deep entry tree"),
-    ("design_deep_target_entries", "exempt deep entry tree"),
+    ("design_deep_source_entries", "error UnsupportedImport"),
+    ("design_deep_target_entries", "error UnsupportedImport"),
     ("design_entity_expansion", "error Xml"),
     ("design_invalid_utf8", "package InvalidText"),
     ("design_not_mapping", "error NotMfd"),
@@ -115,8 +111,7 @@ const EXPECTED: &[(&str, &str)] = &[
 ];
 
 /// Debug builds use far more stack per frame than the release fuzz build, so
-/// checks run on a thread with a stack large enough for the deepest input
-/// the known-limit exemptions still import.
+/// checks run on a thread with a stack large enough for the deepest seeds.
 fn with_large_stack(test: impl FnOnce() + Send + 'static) {
     sandbox::warn_if_unsupported();
     let worker = std::thread::Builder::new()
@@ -319,56 +314,6 @@ fn documented_paths_follow_the_package_rules() {
     ] {
         assert!(!documented_path(invalid), "{invalid:?}");
     }
-}
-
-/// The exemptions start one past their documented limits. They measure
-/// `<entry>` nesting inside the design's components only.
-#[test]
-fn known_limit_exemptions_start_past_their_limits() {
-    let package = |entries: Vec<(&str, String)>| {
-        MfdPackage::new(
-            "design.mfd",
-            entries.iter().map(|(path, text)| (*path, text.as_bytes())),
-        )
-        .unwrap_or_else(|error| panic!("test package must be admitted: {error:?}"))
-    };
-    let nest = |depth: usize| {
-        format!(
-            "{}<n/>{}",
-            "<entry>".repeat(depth),
-            "</entry>".repeat(depth)
-        )
-    };
-    let mapping = |depth: usize| {
-        format!(
-            "<mapping><resources>{}</resources><component><data><root>{}</root></data></component></mapping>",
-            nest(4096),
-            nest(depth)
-        )
-    };
-    let at_limits = package(vec![
-        ("design.mfd", mapping(MAX_EXEMPT_ENTRY_DEPTH)),
-        ("other.mfd", mapping(4096)),
-    ]);
-    assert_eq!(known_limit_exemption(&at_limits), None);
-
-    let deep = package(vec![("design.mfd", mapping(MAX_EXEMPT_ENTRY_DEPTH + 1))]);
-    assert_eq!(
-        known_limit_exemption(&deep),
-        Some(KnownLimit::EntryTree {
-            depth: MAX_EXEMPT_ENTRY_DEPTH + 1
-        })
-    );
-    // A design the importer cannot read as UTF-8 is not measured.
-    let mut utf16 = vec![0xff, 0xfe];
-    utf16.extend(
-        mapping(MAX_EXEMPT_ENTRY_DEPTH + 1)
-            .encode_utf16()
-            .flat_map(u16::to_le_bytes),
-    );
-    let unreadable = MfdPackage::new("design.mfd", [("design.mfd", utf16.as_slice())])
-        .unwrap_or_else(|error| panic!("test package must be admitted: {error:?}"));
-    assert_eq!(known_limit_exemption(&unreadable), None);
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
