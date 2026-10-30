@@ -16,6 +16,11 @@ use super::{
     write_ordered_mixed_content, xml_text,
 };
 
+/// Native reading and writing cannot yet refuse excluded names, so a group
+/// that carries them fails closed rather than widening the wildcard.
+const EXCLUDED_NAMES_UNSUPPORTED: &str =
+    "XSD 1.1 wildcard excluded names are not supported by native XML reading or writing";
+
 pub(super) fn read_generic_element(
     element: &roxmltree::Node,
     schema: &SchemaNode,
@@ -41,6 +46,11 @@ pub(super) fn read_generic_element(
             element.tag_name().name(),
             element.tag_name().namespace(),
         ));
+    }
+    if schema.xml_wildcard_excluded_names.is_some() {
+        return Err(XmlFormatError::UnsupportedXmlWildcard {
+            reason: EXCLUDED_NAMES_UNSUPPORTED,
+        });
     }
     if schema.xml_wildcard_namespace.is_none()
         && schema.xml_namespace == Some(ir::XmlNamespace::Unqualified)
@@ -217,6 +227,11 @@ pub(super) fn read_group_fields(
                                 namespace: namespace_label(attribute.namespace()),
                             },
                         );
+                    }
+                    if child.xml_wildcard_excluded_names.is_some() {
+                        return Err(XmlFormatError::UnsupportedXmlAttributeWildcard {
+                            reason: EXCLUDED_NAMES_UNSUPPORTED,
+                        });
                     }
                     if child.xml_wildcard_process_contents
                         == XmlWildcardProcessContents::Strict
@@ -658,6 +673,11 @@ pub(super) fn write_generic_element<W: std::io::Write>(
     {
         return Err(wildcard_namespace_mismatch(name, runtime_namespace));
     }
+    if schema.xml_wildcard_excluded_names.is_some() {
+        return Err(XmlFormatError::UnsupportedXmlWildcard {
+            reason: EXCLUDED_NAMES_UNSUPPORTED,
+        });
+    }
     if schema.xml_wildcard_process_contents != XmlWildcardProcessContents::Skip
         && let Some(known) = siblings.elements.iter().find(|known| {
             // Match as `element_matches_schema` does on read.
@@ -926,6 +946,11 @@ pub(super) fn push_generic_attributes<'a>(
             return Err(XmlFormatError::XmlAttributeWildcardNamespaceMismatch {
                 name: attribute_name.to_string(),
                 namespace: namespace_label(namespace),
+            });
+        }
+        if schema.xml_wildcard_excluded_names.is_some() {
+            return Err(XmlFormatError::UnsupportedXmlAttributeWildcard {
+                reason: EXCLUDED_NAMES_UNSUPPORTED,
             });
         }
         if schema.xml_wildcard_process_contents == XmlWildcardProcessContents::Strict {
