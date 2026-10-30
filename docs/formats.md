@@ -180,6 +180,13 @@ for a complete format standard or another product.
   typed shapes match. The port retains every exact expanded name and ordered
   runtime occurrences retain the selected namespace. Incompatible same-local
   declarations reject explicitly.
+  Beside a `lax` or `strict` element wildcard, element declarations of a
+  schema without a target namespace match only unqualified elements, so a
+  qualified element with the same local name is a wildcard item.
+  `form="unqualified"` locals match only unqualified elements everywhere.
+  Closed content of a schema without a target namespace, DTD schemas, and
+  entry-tree schemas carry no namespace identity and still match elements by
+  local name.
 - JSON Schema supports compatible structural `allOf` intersections across objects,
   scalar domains, and matching arrays, selected object alternatives, exact nullable
   scalar/object/array wrappers and flat compatible multi-branch nullable
