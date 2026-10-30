@@ -200,12 +200,9 @@ fn assert_export_round_trip(
     }
     let reimported = xsd::import_root(&root, Some(ROOT))?;
     assert_eq!(&reimported, schema, "{}", exported.root);
-    // The same document reads to the same instance under both schemas.
+    // The written document reads back to the instance under the re-import.
     let written = to_string(schema, instance)?;
-    assert_eq!(
-        from_str(&written, &reimported)?,
-        from_str(&written, schema)?
-    );
+    assert_eq!(&from_str(&written, &reimported)?, instance, "{written}");
     Ok(())
 }
 

@@ -832,7 +832,24 @@ pub(super) fn element_matches_schema(
             .any(|alternative| alternative.name == identity);
     }
     element.tag_name().name() == schema.name
-        && declared_namespace_matches(schema, element.tag_name().namespace())
+        && declared_namespace_matches(schema, element_namespace(element))
+}
+
+/// An element's namespace name. roxmltree reports a name under an `xmlns=""`
+/// undeclaration as `Some("")`, which is no namespace.
+pub(super) fn element_namespace<'a>(element: &roxmltree::Node<'a, '_>) -> Option<&'a str> {
+    element
+        .tag_name()
+        .namespace()
+        .filter(|namespace| !namespace.is_empty())
+}
+
+/// An attribute's namespace name, normalised like [`element_namespace`] for a
+/// prefix bound to the empty string.
+pub(super) fn attribute_namespace<'a>(attribute: &roxmltree::Attribute<'a, '_>) -> Option<&'a str> {
+    attribute
+        .namespace()
+        .filter(|namespace| !namespace.is_empty())
 }
 
 /// Whether an element namespace names this declaration. A declaration without
@@ -852,7 +869,7 @@ pub(super) fn attribute_value<'a>(
         Some(namespace) => element
             .attributes()
             .find(|attribute| {
-                attribute.name() == schema.name && namespace.matches(attribute.namespace())
+                attribute.name() == schema.name && namespace.matches(attribute_namespace(attribute))
             })
             .map(|attribute| attribute.value()),
     }
@@ -866,7 +883,7 @@ fn schema_xml_name(schema: &SchemaNode) -> String {
 }
 
 fn expanded_node_name(element: &roxmltree::Node<'_, '_>) -> String {
-    expanded_name(element.tag_name().namespace(), element.tag_name().name())
+    expanded_name(element_namespace(element), element.tag_name().name())
 }
 
 fn expanded_name(namespace: Option<&str>, local: &str) -> String {
