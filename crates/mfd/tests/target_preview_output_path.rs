@@ -72,7 +72,13 @@ fn a_target_preview_input_does_not_change_the_imported_project() {
     let directory = Directory::new();
     let without = executable(&directory.design("none.mfd", OUTPUT));
     assert_eq!(without.target_path.as_deref(), Some("people-out.csv"));
-    for preview in ["prior.csv", "prior*.csv", "prior?.csv"] {
+    for preview in [
+        "prior.csv",
+        "prior*.csv",
+        "prior?.csv",
+        "https://example.invalid/prior.csv",
+        "prior*/prior.csv",
+    ] {
         let project = executable(&directory.design(
             "preview.mfd",
             &format!(r#"inputinstance="{preview}" {OUTPUT}"#),
