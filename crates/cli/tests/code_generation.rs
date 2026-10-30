@@ -88,6 +88,8 @@ mod basic_owned_xml_serialize;
 mod boundary_emission_plan;
 #[path = "code_generation/collection_find.rs"]
 mod collection_find;
+#[path = "code_generation/computed_joins.rs"]
+mod computed_joins;
 #[path = "code_generation/conditional_group_presence.rs"]
 mod conditional_group_presence;
 #[path = "code_generation/copy_current_source.rs"]

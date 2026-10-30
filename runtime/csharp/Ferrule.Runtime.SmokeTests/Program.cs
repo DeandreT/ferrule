@@ -95,6 +95,7 @@ internal static partial class Program
             ("ordered document collections", DocumentCollections),
             ("collection-find contexts", CollectionFindContexts),
             ("inner join contexts", InnerJoinContexts),
+            ("computed-key inner join contexts", ComputedKeyInnerJoinContexts),
             ("owned inner join tuples", OwnedInnerJoinContexts),
             ("owned joined aggregates", OwnedJoinedAggregates),
             ("grouping contexts", GroupingContexts),

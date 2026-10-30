@@ -38,7 +38,10 @@ pub use basic_json_inputs::{
     BasicNamedJsonDocumentRef, admit_basic_json_inputs,
 };
 pub use grouping::GroupedItems;
-pub use join::{InnerJoinKey, InnerJoinStage};
+pub use join::{
+    InnerJoinCondition, InnerJoinKey, InnerJoinLeft, InnerJoinSource, InnerJoinSourceStage,
+    InnerJoinStage,
+};
 pub use named_input_admission::{
     BasicNamedSourceDeclaration, BasicNamedSourceInput, BasicNamedSourceMode,
 };

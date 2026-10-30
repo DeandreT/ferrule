@@ -381,6 +381,12 @@ fn lower_scope(
     }
     roots.extend(scope.output_path());
     roots.extend(scope.presence());
+    roots.extend(
+        scope
+            .join()
+            .and_then(|(_, plan)| plan.computed_source())
+            .and_then(mapping::ComputedJoinSource::scalar),
+    );
     let base_construction = match &scope.construction {
         ScopeConstruction::Scalar { value } => {
             roots.push(*value);
@@ -661,7 +667,7 @@ fn lower_iteration(
             let Some(plan) = JoinPlan::from_mapping(plan) else {
                 return Err(Diagnostic::UnsupportedScope {
                     target_path: target_path.to_vec(),
-                    feature: ScopeFeature::ComputedJoinSource,
+                    feature: ScopeFeature::SequenceComputedJoinKey,
                 });
             };
             InnerJoin::new(JoinId::from(*id), plan).into()
@@ -1199,7 +1205,7 @@ fn lower_expression(id: NodeId, node: &Node, graph: &Graph) -> Result<Expression
                 JoinId::from(*join),
                 JoinPlan::from_mapping(plan).ok_or(Diagnostic::UnsupportedNode {
                     node: id,
-                    kind: UnsupportedNodeKind::ComputedJoinAggregate,
+                    kind: UnsupportedNodeKind::SequenceComputedJoinAggregate,
                 })?,
             ),
             expression: *expression,

@@ -374,6 +374,35 @@ pub enum ProgramValidationError {
         join: crate::JoinId,
         collection: Vec<String>,
     },
+    /// A computed join source names an expression the program lacks.
+    MissingComputedJoinKey {
+        join: crate::JoinId,
+        computed: crate::ComputedJoinSourceId,
+        expression: NodeId,
+    },
+    /// A computed join key reaches an expression kind a computed key does
+    /// not admit.
+    InvalidComputedJoinKeyNode {
+        join: crate::JoinId,
+        computed: crate::ComputedJoinSourceId,
+        node: NodeId,
+    },
+    /// A computed join key reads a source path that crosses or ends at
+    /// repetition, where the native key would be a sequence.
+    ComputedJoinKeyCrossesRepetition {
+        join: crate::JoinId,
+        computed: crate::ComputedJoinSourceId,
+        node: NodeId,
+        path: Vec<String>,
+    },
+    /// A root-context computed join key reads a path that does not resolve
+    /// from the primary root or an explicitly named source.
+    UnresolvedRootComputedJoinKey {
+        join: crate::JoinId,
+        computed: crate::ComputedJoinSourceId,
+        node: NodeId,
+        path: Vec<String>,
+    },
     InvalidJoinKey {
         join: crate::JoinId,
         side: JoinKeySide,

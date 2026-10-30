@@ -462,8 +462,18 @@ fn retained_expression_inputs(expression: &Expression) -> Vec<NodeId> {
             value.expression().into_iter().chain(*arg).collect()
         }
         Expression::JoinAggregate {
-            expression, arg, ..
-        } => expression.iter().copied().chain(*arg).collect(),
+            join,
+            expression,
+            arg,
+            ..
+        } => join
+            .plan()
+            .computed_source()
+            .map(|computed| computed.value())
+            .into_iter()
+            .chain(*expression)
+            .chain(*arg)
+            .collect(),
         Expression::SequenceExists {
             sequence,
             predicate,
