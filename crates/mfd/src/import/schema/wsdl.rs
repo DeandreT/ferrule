@@ -66,6 +66,8 @@ fn read_resolved(
             .map(str::to_string);
     }
     result.options.wsdl = read_contract(component, role, metadata.attribute("faultName"))?;
+    // WSDL messages are not XML documents written to files.
+    result.target_schema_hints = None;
     Ok(result)
 }
 

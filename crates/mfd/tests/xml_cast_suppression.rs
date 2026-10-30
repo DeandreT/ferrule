@@ -144,7 +144,6 @@ fn unsupported_requests_remain_unresolved_and_non_executable() -> Result<(), Box
             "XSLTDefaultOutput=\"1\"",
             "XSLTDefaultOutput=\"1\" UnknownSetting=\"true\"",
         ),
-        ("AddSchemaLocation=\"0\"", "AddSchemaLocation=\"1\""),
     ] {
         let package = Package::new()?;
         package.change(from, to)?;
@@ -179,17 +178,68 @@ fn unsupported_requests_remain_unresolved_and_non_executable() -> Result<(), Box
 }
 
 #[test]
-fn absent_schema_location_setting_keeps_the_flat_profile() -> Result<(), Box<dyn Error>> {
-    // An absent setting is the reference default for every XML target, which
-    // ordinary import already treats as no schema hint.
-    let package = Package::new()?;
-    package.change(" AddSchemaLocation=\"0\"", "")?;
-    let imported = mfd::import(&package.0.join("mapping.mfd"))?;
-    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
-    assert!(matches!(
-        imported.project.target_options.xml_scalar_output,
-        Some(XmlScalarOutputPolicy::SuppressCastInSubtreeV1 { .. })
-    ));
+fn schema_location_settings_keep_the_flat_profile_and_write_the_hint() -> Result<(), Box<dyn Error>>
+{
+    // Absent and "1" both write the reference default schema-location hint.
+    for to in ["", " AddSchemaLocation=\"1\""] {
+        let package = Package::new()?;
+        package.change(" AddSchemaLocation=\"0\"", to)?;
+        let imported = mfd::import_with_profile(
+            &package.0.join("mapping.mfd"),
+            &mfd::ImportOptions::default(),
+            mfd::ImportProfile::Executable,
+        )?
+        .imported;
+        assert!(
+            imported.warnings.is_empty(),
+            "{to}: {:?}",
+            imported.warnings
+        );
+        let project = &imported.project;
+        assert!(matches!(
+            project.target_options.xml_scalar_output,
+            Some(XmlScalarOutputPolicy::SuppressCastInSubtreeV1 { .. })
+        ));
+        assert_eq!(
+            project.target_options.xml_schema_hints,
+            Some(ir::XmlSchemaHints {
+                no_namespace_location: Some("target.xsd".into()),
+                derivation: Some(ir::XmlSchemaHintDerivation {
+                    schema_reference: "target.xsd".into(),
+                }),
+                ..Default::default()
+            })
+        );
+        assert!(engine::validate(project).is_empty(), "{to}");
+        let input = format_xml::from_str(
+            "<Envelope><Numerator>34</Numerator><Denominator>2</Denominator><Text>00029</Text><Label>safe</Label></Envelope>",
+            &project.source,
+        )?;
+        let result = engine::run(project, &input)?;
+        let xml = format_xml::to_string_with_options(
+            &project.target,
+            &result,
+            &format_xml::XmlWriteOptions {
+                scalar_output: project.target_options.xml_scalar_output.clone(),
+                schema_hints: project.target_options.xml_schema_hints.clone(),
+                ..Default::default()
+            },
+        )?;
+        let doc = roxmltree::Document::parse(&xml)?;
+        assert_eq!(
+            doc.root_element().attribute((
+                "http://www.w3.org/2001/XMLSchema-instance",
+                "noNamespaceSchemaLocation"
+            )),
+            Some("target.xsd"),
+            "{xml}"
+        );
+        assert!(codegen::lower(project).is_ok(), "{to}");
+        // Re-export keeps the native default setting.
+        let exported = package.0.join("export/mapping.mfd");
+        mfd::export_with_profile(project, &exported, mfd::ExportProfile::NativeMfd)?;
+        assert!(!std::fs::read_to_string(&exported)?.contains("AddSchemaLocation"));
+    }
     Ok(())
 }
 

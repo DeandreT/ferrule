@@ -8,11 +8,15 @@ named targets that are not the default output. The reference application's
 implicit default is different: a checked **Add schema/DTD reference** control
 with an empty reference field writes the schema's absolute URI on the root.
 
-This change does not alter XML codecs, imported-project defaults, values, error
-ordering or file publication. Explicit `xml_schema_hints` remain unsupported by
-MFD export. WSDL boundaries and intermediate XML string serializers are outside
-this observation. Closed XML root-view admission accepts only the observed `0`
-spelling when this property is present; other values retain their refusal.
+Imported designs keep the reference default: an absent or `"1"` setting imports
+as a schema-location hint naming the stored schema reference, relative to the
+design rather than to the output, and `"0"` imports as no hint. Export writes
+the absent setting for a hint still derived that way, after which re-import
+names the exported schema sibling, and `"0"` for unhinted targets; explicit `xml_schema_hints`
+remain unsupported by MFD export. WSDL boundaries and
+intermediate XML string serializers are outside this observation. Closed XML
+root-view admission accepts the observed `"0"` and `"1"` spellings when this
+property is present; other values retain their refusal.
 
 ## Reference observation
 
@@ -47,6 +51,37 @@ names and exact text/attributes; declaration and element-only indentation are
 not byte-identity requirements. No output prefixes or selected fields substitute
 for full comparison.
 
+## Explicit and namespaced settings
+
+A second set of independently derived controls reused the same unqualified
+design and schemas in separate case directories. An explicit
+`AddSchemaLocation="1"` was written into the saved target properties, and two
+namespaced variants used a target schema with its own `targetNamespace` and
+qualified elements. Each design was opened, validated, saved, reopened and
+saved again, then executed; the complete output was retained and validated
+against its target XSD.
+
+| Target root | Setting | Output root hint | Saved setting |
+| --- | --- | --- | --- |
+| Unqualified | absent | `xsi:noNamespaceSchemaLocation` with the schema's absolute `file:///` URI | absent |
+| Unqualified | `"1"` | the same attribute and URI form as absent | absent |
+| Unqualified | `"0"` | none | `"0"` |
+| Namespaced | absent | `xsi:schemaLocation` of the root namespace and the schema's absolute `file:///` URI | absent |
+| Namespaced | `"1"` | the same pair as absent | absent |
+
+All five designs executed successfully with schema-valid outputs and identical
+element values; save and re-save were byte-identical in every case. Saving an
+explicit `"1"` removes the attribute, so `"1"` and absent are the same setting.
+The namespaced output declares the root namespace as its default namespace and
+adds no `noNamespaceSchemaLocation`. Original inputs, schemas, designs and
+output sentinels stayed unchanged.
+
+Ferrule imports both enabled forms with the schema reference the design stores,
+converted to a URI reference, instead of the machine-specific absolute URI; the
+namespaced form keeps the observed namespace/location pair. A relative
+reference stays relative to the design and is not rebased to the output, so it
+names the schema only for output written beside the design.
+
 ## Actual Ferrule exports
 
 The pre-change Ferrule export opened and executed successfully in the reference
@@ -75,6 +110,10 @@ record is retained but supplies no file-integrity or publication proof.
 targets, strict re-import, unchanged mapping values and the no-hint default.
 `qualified_root_view_roundtrip.rs` covers the closed profile's exact property
 admission and continued refusal of other spellings.
+`crates/mfd/tests/xml_schema_location_hint.rs` and
+`crates/cli/tests/import_mfd_schema_location.rs` cover the imported hint for
+each setting and root form, its target-only role, DTD targets, a mapped `xsi`
+attribute, non-XML sources, and the native export/re-import of the default.
 
 The first handwritten entry-cache attempt and its load-preview schema warning
 were retained rather than treated as a successful execution. The qualified

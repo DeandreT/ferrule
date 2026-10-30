@@ -1058,11 +1058,11 @@ fn render_with_options(
         let preservation = policy
             .validate_schema(schema)
             .map_err(XmlFormatError::InvalidScalarOutput)?;
+        // Schema hints only annotate the projected document's root.
         if options
             .default_namespace
             .as_ref()
             .is_some_and(|namespace| !namespace.is_empty())
-            || options.schema_hints.is_some()
         {
             return Err(XmlFormatError::InvalidScalarOutput(
                 ir::XmlScalarOutputError::UnsupportedSchema,

@@ -1112,9 +1112,17 @@ fn imports_and_runs_an_earlier_result_as_a_final_named_source() -> Result<(), Bo
         &pipeline,
         &std::collections::BTreeMap::from([(name.clone(), source)]),
     )?;
-    let expected = format_xml::to_string(
+    let expected = format_xml::to_string_with_options(
         &pipeline.stages[2].project.target,
         &direct.stage("mfd-stage-3").unwrap().primary,
+        &format_xml::XmlWriteOptions {
+            schema_hints: pipeline.stages[2]
+                .project
+                .target_options
+                .xml_schema_hints
+                .clone(),
+            ..Default::default()
+        },
     )?;
     assert_eq!(xml, expected.as_bytes());
     assert!(expected.contains("<Lookup>main value</Lookup>"));
@@ -1157,7 +1165,11 @@ fn imports_and_runs_an_earlier_result_as_a_final_named_source() -> Result<(), Bo
         .arg(&again_final)
         .output()?;
     assert!(rerun.status.success(), "{}", output_message(&rerun));
-    assert_eq!(std::fs::read(again_final)?, xml);
+    // Re-export renames the stage schemas; the hint location follows them.
+    assert_eq!(
+        without_schema_location(&std::fs::read(again_final)?),
+        without_schema_location(&xml)
+    );
     Ok(())
 }
 
@@ -1323,12 +1335,14 @@ fn imported_chain_previews_all_stages_without_reopening_inputs_or_writing_output
             assert_eq!(artifact.target, None);
             assert_eq!(artifact.path, logical_output);
         }
+        // Native re-export renames every stage schema and the derived output
+        // schema-location hint follows it; everything else must stay exact.
         let documents: Vec<_> = outcome
             .artifacts
             .into_iter()
-            .map(|artifact| artifact.bytes)
+            .map(|artifact| without_schema_location(&artifact.bytes))
             .collect();
-        let xml = std::str::from_utf8(&documents[2])?;
+        let xml = documents[2].as_str();
         assert!(xml.contains("<Result>main value</Result>"));
         assert!(xml.contains("<Lookup>main value</Lookup>"));
         assert!(xml.contains("<Shadow>side value</Shadow>"));
@@ -1378,4 +1392,16 @@ fn unsupported_chain_does_not_replace_an_existing_pipeline_file() -> Result<(), 
     assert!(!imported.status.success(), "{}", output_message(&imported));
     assert_eq!(std::fs::read_to_string(&output)?, "preserve this file");
     Ok(())
+}
+
+/// Clears the value of the root schema-location hint, keeping the attribute.
+fn without_schema_location(document: &[u8]) -> String {
+    let mut text = String::from_utf8(document.to_vec()).expect("UTF-8 XML output");
+    let name = " xsi:noNamespaceSchemaLocation=\"";
+    if let Some(start) = text.find(name) {
+        let value = start + name.len();
+        let end = value + text[value..].find('"').expect("closed attribute");
+        text.replace_range(value..end, "");
+    }
+    text
 }

@@ -288,8 +288,11 @@ fn validate_serial_shape(pipeline: &Pipeline) -> Result<(), MfdError> {
                                 binding.name
                             ))
                         })?;
+                    // The producer's schema-location hint only annotates its root.
+                    let mut produced_options = earlier.target_options.clone();
+                    produced_options.xml_schema_hints = None;
                     if named.schema != earlier.target
-                        || named.options != earlier.target_options
+                        || named.options != produced_options
                         || preview.source != earlier.target
                         || preview.source_options != named.options
                         || preview.source_path.as_deref() != Some(named.path.as_str())

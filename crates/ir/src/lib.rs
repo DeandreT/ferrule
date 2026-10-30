@@ -30,8 +30,8 @@ pub use xml_scalar_output::{
 mod xml_structured_input;
 mod xml_type_origin;
 pub use xml_schema_hints::{
-    MAX_XML_SCHEMA_HINT_PAIRS, MAX_XML_SCHEMA_HINT_TOKEN_BYTES, XmlSchemaHints,
-    XmlSchemaHintsError, XmlSchemaLocation,
+    MAX_XML_SCHEMA_HINT_PAIRS, MAX_XML_SCHEMA_HINT_TOKEN_BYTES, XmlSchemaHintDerivation,
+    XmlSchemaHints, XmlSchemaHintsError, XmlSchemaLocation,
 };
 
 pub use decimal::{

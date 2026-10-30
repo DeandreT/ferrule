@@ -276,12 +276,29 @@ fn lazy_expected() -> Project {
 }
 
 fn expected(design: &str) -> Project {
-    match design {
+    let mut project = match design {
         "nested" | "reversed" => nested_expected(),
         "root" => root_expected(),
         "lazy" => lazy_expected(),
         _ => unreachable!("unknown design {design}"),
-    }
+    };
+    project.target_options.xml_schema_hints = schema_hint(if design == "root" {
+        "root-target.xsd"
+    } else {
+        "target.xsd"
+    });
+    project
+}
+
+/// The output schema-location hint import derives from a target schema reference.
+fn schema_hint(location: &str) -> Option<ir::XmlSchemaHints> {
+    Some(ir::XmlSchemaHints {
+        no_namespace_location: Some(location.into()),
+        derivation: Some(ir::XmlSchemaHintDerivation {
+            schema_reference: location.into(),
+        }),
+        ..Default::default()
+    })
 }
 
 fn cases() -> Vec<serde_json::Value> {
@@ -671,7 +688,7 @@ fn refused_conditional_presence_keeps_the_ordinary_repair_draft() {
             bindings,
             ..Default::default()
         };
-        let draft = project(
+        let mut draft = project(
             rows_source(),
             batch_target(),
             vec![
@@ -689,6 +706,7 @@ fn refused_conditional_presence_keeps_the_ordinary_repair_draft() {
                 ],
             )),
         );
+        draft.target_options.xml_schema_hints = schema_hint("target.xsd");
         assert_eq!(
             mapping::project_file::encode_pretty(&imported.project).unwrap(),
             mapping::project_file::encode_pretty(&draft).unwrap()
