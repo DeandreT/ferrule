@@ -272,6 +272,7 @@ fn exact_focus_survives_filtered_pin_remapping_and_stays_in_its_document() {
                     wire: Default::default(),
                     requested: false,
                     search_open: false,
+                    shortcuts: Default::default(),
                 },
             );
         });

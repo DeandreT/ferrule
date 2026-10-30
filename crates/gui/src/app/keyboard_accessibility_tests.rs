@@ -545,7 +545,6 @@ fn keyboard_accessibility_previews_the_unsaved_mapping() {
 }
 
 #[test]
-#[ignore = "keyboard gap: canvas nodes cannot be selected (see docs/qualification/keyboard-only-editor.md)"]
 fn keyboard_accessibility_gap_selects_a_canvas_node_for_f2() {
     let (_scratch, path) = saved_project();
     let mut harness = editor(&path);
@@ -562,7 +561,6 @@ fn keyboard_accessibility_gap_selects_a_canvas_node_for_f2() {
 }
 
 #[test]
-#[ignore = "keyboard gap: Tab drops focus inside the canvas (see docs/qualification/keyboard-only-editor.md)"]
 fn keyboard_accessibility_gap_tab_reaches_every_canvas_control() {
     let (_scratch, path) = saved_project();
     let mut harness = editor(&path);
@@ -588,7 +586,6 @@ fn keyboard_accessibility_gap_tab_reaches_every_canvas_control() {
 }
 
 #[test]
-#[ignore = "keyboard gap: Shift+Tab is trapped in the canvas (see docs/qualification/keyboard-only-editor.md)"]
 fn keyboard_accessibility_gap_shift_tab_leaves_the_canvas() {
     let (_scratch, path) = saved_project();
     let mut harness = editor(&path);
@@ -788,7 +785,6 @@ fn keyboard_accessibility_gap_tab_stops_have_readable_names() {
 }
 
 #[test]
-#[ignore = "keyboard gap: canvas Tab stops without readable names, #1163 (see docs/qualification/keyboard-only-editor.md)"]
 fn keyboard_accessibility_gap_canvas_tab_stops_have_readable_names() {
     let (_scratch, path) = saved_project();
     let unnamed = unnamed(tab_stops(&path).into_iter().filter(Stop::on_canvas));
@@ -839,4 +835,64 @@ fn keyboard_accessibility_preview_shortcut_opens_the_preview() {
         egui::Key::P,
     );
     assert!(harness.state().preview_draft.is_some());
+}
+
+const SOURCE_NAME_PIN: &str = "Output Name · Source: Order";
+const TARGET_NAME_PIN: &str = "Input Name · Target: Order";
+
+#[test]
+fn keyboard_accessibility_connects_two_fields_on_the_canvas() {
+    let (_scratch, path) = saved_project();
+    let mut harness = editor(&path);
+    let original = project_key(&harness);
+    assert!(
+        tab_to(&mut harness, SOURCE_NAME_PIN),
+        "source pin is a Tab stop"
+    );
+    press(&mut harness, egui::Key::Enter);
+    assert_eq!(bindings(&harness), [("Note".to_owned(), 0)]);
+    assert!(
+        tab_to(&mut harness, TARGET_NAME_PIN),
+        "target pin is a Tab stop"
+    );
+    press(&mut harness, egui::Key::Enter);
+
+    let connected = bindings(&harness);
+    assert_eq!(connected.len(), 2, "{connected:?}");
+    let (_, name_node) = connected
+        .iter()
+        .find(|(field, _)| field == "Name")
+        .expect("the keyboard wire bound Name");
+    assert!(matches!(
+        harness.state().project.graph.nodes.get(name_node),
+        Some(Node::SourceField { .. })
+    ));
+    assert!(cli::validate(&harness.state().project).is_empty());
+    assert!(harness.state().observed_dirty());
+    assert_eq!(focused_name(&harness).as_deref(), Some(TARGET_NAME_PIN));
+
+    press_with(&mut harness, command(), egui::Key::Z);
+    assert_eq!(project_key(&harness), original);
+}
+
+#[test]
+fn keyboard_accessibility_escape_cancels_a_canvas_connection() {
+    let (_scratch, path) = saved_project();
+    let mut harness = editor(&path);
+    let original = project_key(&harness);
+    assert!(tab_to(&mut harness, SOURCE_NAME_PIN));
+    press(&mut harness, egui::Key::Enter);
+    press(&mut harness, egui::Key::Escape);
+    assert_eq!(
+        focused_name(&harness).as_deref(),
+        Some(SOURCE_NAME_PIN),
+        "Escape returns focus to the pin the connection started from"
+    );
+    // With the connection cancelled, Enter on the input starts a new one.
+    assert!(tab_to(&mut harness, TARGET_NAME_PIN));
+    press(&mut harness, egui::Key::Enter);
+    assert_eq!(project_key(&harness), original);
+    press(&mut harness, egui::Key::Escape);
+    assert_eq!(focused_name(&harness).as_deref(), Some(TARGET_NAME_PIN));
+    assert!(!harness.state().observed_dirty());
 }
