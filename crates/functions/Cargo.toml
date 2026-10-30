@@ -16,3 +16,7 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 uuid = { workspace = true }
 rand = { workspace = true }
+
+[[test]]
+name = "mapforce_integer_quotient"
+path = "tests/integer_quotient.rs"

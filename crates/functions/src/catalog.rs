@@ -195,6 +195,7 @@ pub(crate) enum BuiltinId {
     ToNumber,
     DecimalFromNullableText,
     DecimalTruncate,
+    MapforceIntegerQuotientFloor,
     Boolean,
     Positive,
     Floor,
@@ -864,6 +865,19 @@ pub(crate) const BUILTINS: &[BuiltinDefinition] = &[
         true,
         Internal,
         "Drops the fractional part toward zero without narrowing the Decimal range."
+    ),
+    builtin!(
+        MapforceIntegerQuotientFloor,
+        "mapforce_integer_quotient_floor",
+        "Native Integer Quotient Floor",
+        Numeric,
+        &[parameter("left", Decimal), parameter("right", Decimal)],
+        BuiltinArity::fixed(2),
+        Decimal,
+        true,
+        true,
+        Internal,
+        "Truncates Decimal operands, divides with native 96-bit rounding, then applies floor."
     ),
     builtin!(
         Boolean,
