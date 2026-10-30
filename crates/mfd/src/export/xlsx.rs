@@ -147,6 +147,11 @@ pub(super) fn render_hierarchical(
         .instance_path
         .map(|path| format!(" outputinstance=\"{}\"", xml_escape(path)))
         .unwrap_or_default();
+    let update_existing = if args.options.xlsx_update_existing {
+        " updateexistingfile=\"1\""
+    } else {
+        ""
+    };
     Ok(format!(
         "\t\t\t\t<component name=\"{}\" library=\"xlsx\" uid=\"{}\" kind=\"26\">\n\
          \t\t\t\t\t{properties}<view ltx=\"700\" rbx=\"1000\" rby=\"400\"/>\n\
@@ -167,7 +172,7 @@ pub(super) fn render_hierarchical(
          \t\t\t\t\t\t\t\t</entry>\n\
          \t\t\t\t\t\t\t</entry>\n\
          \t\t\t\t\t\t</root>\n\
-         \t\t\t\t\t\t<excel{instance}/>\n\
+         \t\t\t\t\t\t<excel{instance}{update_existing}/>\n\
          \t\t\t\t\t</data>\n\
          \t\t\t\t</component>\n",
         xml_escape(args.component_name),

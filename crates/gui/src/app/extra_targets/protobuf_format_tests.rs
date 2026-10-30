@@ -141,7 +141,7 @@ fn rendering_preserves_default_csv_explicit_documents_and_configured_layouts() -
 }
 
 #[test]
-fn workbook_fallback_follows_path_and_update_requires_flat_layout() {
+fn workbook_fallback_follows_path_and_update_requires_flat_or_hierarchical_layout() {
     let workbook = FormatOptions {
         tabular_kind: Some(mapping::TabularBoundaryKind::Xlsx),
         xlsx_sheet: Some("Data".into()),
@@ -206,18 +206,85 @@ fn workbook_fallback_follows_path_and_update_requires_flat_layout() {
         &transposed,
         "output.xlsx"
     ));
-    let hierarchical = FormatOptions {
+    let hierarchical = hierarchical_workbook();
+    assert!(crate::new_mapping::can_update_existing_workbook(
+        &hierarchical,
+        "output.xlsx"
+    ));
+    assert!(!crate::new_mapping::can_update_existing_workbook(
+        &hierarchical,
+        "output.csv"
+    ));
+    for refused in [
+        FormatOptions {
+            xlsx_composite: Some(mapping::XlsxCompositeLayout {
+                table: mapping::XlsxTableRegion {
+                    path: vec!["Rows".into()],
+                    sheet: None,
+                    start_row: mapping::XlsxRow::new(1).unwrap(),
+                    columns: Vec::new(),
+                    has_header: true,
+                    row_number_field: None,
+                },
+                additional_tables: Vec::new(),
+                records: Vec::new(),
+            }),
+            ..FormatOptions::default()
+        },
+        FormatOptions {
+            xlsx_worksheet_set: Some(mapping::XlsxWorksheetSetLayout {
+                worksheets_path: vec!["Sheets".into()],
+                worksheet_name_path: vec!["Name".into()],
+                rows_path: vec!["Rows".into()],
+                row_number_path: None,
+                start_row: mapping::XlsxRow::new(1).unwrap(),
+                columns: Vec::new(),
+                has_header: false,
+            }),
+            ..FormatOptions::default()
+        },
+    ] {
+        assert!(!crate::new_mapping::can_update_existing_workbook(
+            &refused,
+            "output.xlsx"
+        ));
+    }
+}
+
+fn hierarchical_workbook() -> FormatOptions {
+    FormatOptions {
+        tabular_kind: Some(mapping::TabularBoundaryKind::Xlsx),
         xlsx_hierarchical: Some(mapping::XlsxHierarchicalLayout {
             worksheets_path: vec!["Sheets".into()],
             worksheet_name_path: vec!["Name".into()],
             ranges: vec![],
         }),
         ..FormatOptions::default()
-    };
-    assert!(!crate::new_mapping::can_update_existing_workbook(
-        &hierarchical,
-        "output.xlsx"
-    ));
+    }
+}
+
+#[test]
+fn hierarchical_target_offers_update_existing_workbook() {
+    use egui_kittest::kittest::Queryable as _;
+
+    let mut harness = egui_kittest::Harness::builder()
+        .with_size((640.0, 240.0))
+        .build_ui_state(
+            |ui, options: &mut FormatOptions| {
+                show_target_format_options(ui, "report.xlsx", options);
+            },
+            hierarchical_workbook(),
+        );
+    harness.run();
+    harness.get_by_label("XLSX workbook");
+    harness.get_by_label("Update existing workbook").click();
+    harness.run();
+    assert!(harness.state().xlsx_update_existing);
+    assert!(harness.state().xlsx_hierarchical.is_some());
+
+    harness.get_by_label("Update existing workbook").click();
+    harness.run();
+    assert!(!harness.state().xlsx_update_existing);
 }
 
 #[test]
