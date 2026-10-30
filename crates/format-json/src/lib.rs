@@ -79,6 +79,17 @@ pub enum JsonFormatError {
     },
     #[error("JSON Schema resource graph exceeds the {limit} {kind} limit")]
     SchemaResourceLimit { kind: &'static str, limit: usize },
+    #[error("JSON Schema resource `{}` is not valid UTF-8: {error}", resource.display())]
+    SchemaEncoding {
+        resource: std::path::PathBuf,
+        #[source]
+        error: std::str::Utf8Error,
+    },
+    #[error("JSON Schema `{name}` describes no JSON value: {reason}")]
+    ContentlessSchema {
+        name: String,
+        reason: ContentlessSchemaReason,
+    },
     #[error("object `{name}` matches no declared schema alternative")]
     NoMatchingAlternative { name: String },
     #[error("object `{name}` matches more than one declared schema alternative")]
@@ -210,6 +221,20 @@ pub enum JsonFormatError {
     MissingRecursiveAnchor { node: String, anchor: String },
     #[error("JSON recursion exceeds the {limit}-reference depth limit")]
     RecursionLimit { limit: usize },
+}
+
+/// Why a JSON Schema position cannot describe any JSON value.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub enum ContentlessSchemaReason {
+    /// The position holds a JSON value that is neither an object nor a boolean.
+    #[error("a schema must be an object or a boolean, but this one is {found}")]
+    NotASchema { found: &'static str },
+    /// The root `$ref` chain returns to a reference it is already following.
+    #[error("its `$ref` chain is a cycle that never reaches a schema with content")]
+    ReferenceCycle,
+    /// The root `$ref` chain reaches a JSON Pointer with no target.
+    #[error("its `$ref` chain reaches a reference that does not resolve")]
+    UnresolvedReference,
 }
 
 struct RecursiveSchemas<'a> {

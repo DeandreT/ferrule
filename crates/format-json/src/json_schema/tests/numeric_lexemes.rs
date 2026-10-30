@@ -319,13 +319,15 @@ fn existing_local_ref_chains_reach_opaque_escaped_targets() -> Result<(), JsonFo
     assert_eq!(import_str(&export(&schema))?, schema);
     let cycle = r##"{"$ref":"#/default/chain","default":{
         "chain":{"$ref":"#/default/chain"}}}"##;
-    let schema = both_boundaries(cycle)?;
-    assert_eq!(
-        schema.kind,
-        ir::SchemaKind::Scalar {
-            ty: ir::ScalarType::String
-        }
-    );
+    for result in [import_str(cycle), import_str_result(cycle)] {
+        assert!(matches!(
+            result,
+            Err(JsonFormatError::ContentlessSchema {
+                reason: crate::ContentlessSchemaReason::ReferenceCycle,
+                ..
+            })
+        ));
+    }
     Ok(())
 }
 
