@@ -71,6 +71,116 @@ pub fn emit_invoked_grouped_with_mapforce_x12_writer(
     append_parameter_invocation(base, descriptor, invocation)
 }
 
+pub fn emit_object_invoked_grouped_with_mapforce_x12_writer(
+    document: &DocumentProgram,
+    invocation: &mapping::JsonParameterInvocationPlan,
+    binding: &codegen::JsonParameterObjectBinding,
+    shape: &JsonSourceShape,
+    target_options: &mapping::FormatOptions,
+    minimums: &[mapping::MapForceEdiMinimum],
+) -> Result<ArtifactSet, PrimaryJsonEmitError> {
+    let descriptor =
+        codegen::prepare_json_parameter_object_invocation(document, invocation, binding)
+            .map_err(PrimaryJsonEmitError::Parameter)?;
+    let base = emit_grouped_with_mapforce_x12_writer(document, shape, target_options, minimums)?;
+    let base = append_parameter_invocation(base, descriptor, invocation)?;
+    append_parameter_object(
+        base,
+        invocation,
+        binding,
+        document.json_grouping_preparation().is_some(),
+    )
+}
+
+pub fn emit_object_invoked_with_primary_json_projection(
+    document: &DocumentProgram,
+    invocation: &mapping::JsonParameterInvocationPlan,
+    binding: &codegen::JsonParameterObjectBinding,
+    shape: &JsonSourceShape,
+) -> Result<ArtifactSet, PrimaryJsonEmitError> {
+    let descriptor =
+        codegen::prepare_json_parameter_object_invocation(document, invocation, binding)
+            .map_err(PrimaryJsonEmitError::Parameter)?;
+    let projection = codegen::prepare_json_source_projection(document, shape)
+        .map_err(PrimaryJsonEmitError::Boundary)?;
+    let base = crate::emit_with_static_error_document_clocks(document.program())
+        .map_err(PrimaryJsonEmitError::Visitor)?;
+    let base =
+        crate::primary_filename::append(base, document).map_err(PrimaryJsonEmitError::Emit)?;
+    let base = append_projection(base, projection, document.json_grouping_preparation())?;
+    let base = append_parameter_invocation(base, descriptor, invocation)?;
+    append_parameter_object(
+        base,
+        invocation,
+        binding,
+        document.json_grouping_preparation().is_some(),
+    )
+}
+
+fn append_parameter_object(
+    base: ArtifactSet,
+    invocation: &mapping::JsonParameterInvocationPlan,
+    binding: &codegen::JsonParameterObjectBinding,
+    grouped: bool,
+) -> Result<ArtifactSet, PrimaryJsonEmitError> {
+    let shape = serde_json::to_string(&invocation.projection)
+        .map_err(JsonProjectionBoundaryError::Descriptor)
+        .map_err(PrimaryJsonEmitError::Boundary)?;
+    let grouping = if grouped {
+        "PrimaryJsonGrouping"
+    } else {
+        "null"
+    };
+    let source = format!(
+        r#"
+public static partial class GeneratedMapping
+{{
+    private static readonly global::Ferrule.Runtime.FerruleJsonSourceProjection ParameterObjectProjection = global::Ferrule.Runtime.FerruleJsonSourceProjection.Parse({shape});
+    public static string ParameterSourceName => {name};
+    public static global::Ferrule.Runtime.FerruleInstance? ProjectParameterSource(global::Ferrule.Runtime.FerruleJsonParameterInvocation invocation, global::Ferrule.Runtime.FerruleJsonProjectionLimits? limits = null)
+        => ParameterObjectProjection.ProjectValue(invocation.ParameterObject, limits);
+
+    public static global::System.Collections.Generic.IEnumerable<string> ParameterFilenameMembers(global::Ferrule.Runtime.FerruleJsonParameterInvocation invocation)
+    {{
+        global::System.ArgumentNullException.ThrowIfNull(invocation.ParameterObject);
+        foreach (var member in invocation.ParameterObject.Members)
+            if (member.Key == {member} && member.Value.Kind == global::Ferrule.Runtime.FerruleJsonSourceKind.String)
+                yield return member.Value.StringValue!;
+    }}
+
+    public static global::System.Collections.Generic.IEnumerable<global::Ferrule.Runtime.FerruleInstance> AcquireParameterJson(
+        global::Ferrule.Runtime.FerruleJsonParameterInvocation invocation,
+        global::System.Func<string, global::System.Collections.Generic.IEnumerable<string>> select,
+        global::System.Func<string, global::Ferrule.Runtime.FerruleJsonSourceDocument> load,
+        global::Ferrule.Runtime.FerruleJsonProjectionLimits limits, int maximum)
+    {{
+        global::System.ArgumentNullException.ThrowIfNull(select);
+        global::System.ArgumentNullException.ThrowIfNull(load);
+        return PrimaryJsonProjection.AcquireRequests(Requests(), load, maximum, limits, {grouping});
+        global::System.Collections.Generic.IEnumerable<string> Requests()
+        {{
+            foreach (var pattern in ParameterFilenameMembers(invocation))
+                foreach (var request in select(pattern)) yield return request;
+        }}
+    }}
+}}
+"#,
+        shape = literal::string(&shape),
+        name = literal::string(&binding.source_name),
+        member = literal::string(&binding.filename_member),
+    );
+    let mut files = base.into_files();
+    files
+        .iter_mut()
+        .find(|file| file.path.as_str() == "GeneratedMapping.cs")
+        .expect("C# mapping artifact")
+        .contents
+        .extend_from_slice(source.as_bytes());
+    ArtifactSet::new(files)
+        .map_err(EmitError::from)
+        .map_err(PrimaryJsonEmitError::Emit)
+}
+
 pub fn emit_invoked_with_primary_json_projection(
     document: &DocumentProgram,
     invocation: &mapping::JsonParameterInvocationPlan,
