@@ -1060,7 +1060,8 @@ pub enum Expression {
         arg: Option<NodeId>,
     },
     /// Reduces the tuples produced by a locally owned static inner join.
-    /// The value expression executes once per tuple with the join active;
+    /// A computed key source executes first, once, in the parent context;
+    /// the value expression executes once per tuple with the join active;
     /// `arg` executes once afterward in the unchanged parent context.
     JoinAggregate {
         function: AggregateFunction,
@@ -1983,6 +1984,11 @@ impl IterationPlan {
                     .map(DynamicDocumentIteration::output_path),
             )
             .chain(self.presence().map(OptionalPresence::condition))
+            .chain(
+                self.inner_join()
+                    .and_then(|join| join.plan().computed_source())
+                    .map(crate::ComputedJoinSource::value),
+            )
     }
 }
 

@@ -81,8 +81,9 @@ pub use context::{
     OwnedSourceLimitKind, OwnedSourceLimits, SourceOwnerRef, SourceRoots,
 };
 pub use context::{
-    GeneratedItems, GroupedItems, InnerJoinKey, InnerJoinStage, InstanceKind, NamedInput,
-    ScopeContext, SourcePathError, clone_scalar, resolve_scalar,
+    GeneratedItems, GroupedItems, InnerJoinCondition, InnerJoinKey, InnerJoinLeft, InnerJoinSource,
+    InnerJoinSourceStage, InnerJoinStage, InstanceKind, NamedInput, ScopeContext, SourcePathError,
+    clone_scalar, resolve_scalar,
 };
 pub use csv::{
     CsvBoundaryError, CsvDocumentError, MAX_CSV_DOCUMENT_BYTES, PrimaryCsvDocumentError,

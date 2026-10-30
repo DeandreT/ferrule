@@ -3,8 +3,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use mapping::NodeId;
 
 use crate::{
-    Expression, InnerJoin, JoinId, JoinKeySide, JoinSourceCardinality, OwnedInnerJoin, Program,
-    TargetScope,
+    Expression, InnerJoin, JoinId, JoinKeySide, JoinSource, JoinSourceCardinality, OwnedInnerJoin,
+    Program, TargetScope,
 };
 
 use super::{
@@ -30,7 +30,7 @@ impl ActiveJoin {
             id: join.id(),
             sources: ActiveSources::Legacy(
                 join.plan()
-                    .sources()
+                    .collection_sources()
                     .map(|source| (source.collection().to_vec(), source.cardinality()))
                     .collect(),
             ),
@@ -126,7 +126,7 @@ pub(super) fn validate_plan(
     sources: SourceCatalog<'_>,
     join: &InnerJoin,
 ) -> Result<(), ProgramValidationError> {
-    for source in join.plan().sources() {
+    for source in join.plan().collection_sources() {
         let valid = match source.cardinality() {
             JoinSourceCardinality::Repeating => {
                 source.collection().is_empty()
@@ -150,28 +150,108 @@ pub(super) fn validate_plan(
             });
         }
     }
+    // A computed member is its own key, with no key path to resolve; plan
+    // construction keeps its right paths empty.
     for (right, conditions) in join.plan().stages() {
         for key in conditions.iter() {
-            let left_is_singleton = join.plan().sources().any(|source| {
-                source.collection() == key.left_collection()
-                    && source.cardinality() == JoinSourceCardinality::Singleton
-            });
-            validate_key(
-                sources,
-                join.id(),
-                key.left_collection(),
-                key.left_path(),
-                JoinKeySide::Left,
-                left_is_singleton,
-            )?;
-            validate_key(
-                sources,
-                join.id(),
-                right.collection(),
-                key.right_path(),
-                JoinKeySide::Right,
-                right.cardinality() == JoinSourceCardinality::Singleton,
-            )?;
+            if let Some(left_collection) = key.left_collection() {
+                let left_is_singleton = join.plan().collection_sources().any(|source| {
+                    source.collection() == left_collection
+                        && source.cardinality() == JoinSourceCardinality::Singleton
+                });
+                validate_key(
+                    sources,
+                    join.id(),
+                    left_collection,
+                    key.left_path(),
+                    JoinKeySide::Left,
+                    left_is_singleton,
+                )?;
+            }
+            if let JoinSource::Collection(right) = right {
+                validate_key(
+                    sources,
+                    join.id(),
+                    right.collection(),
+                    key.right_path(),
+                    JoinKeySide::Right,
+                    right.cardinality() == JoinSourceCardinality::Singleton,
+                )?;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// A computed key is one scalar per join execution, so it admits only the
+/// expression kinds the interpreter admits there: unframed source fields,
+/// constants, calls, conditionals, value maps, runtime values and runtime
+/// parameters. Each source read must not cross or end at repetition from
+/// any anchor, and a root-context read must resolve from the root.
+pub(super) fn validate_computed_key(
+    join: &InnerJoin,
+    expressions: &BTreeMap<NodeId, &Expression>,
+    sources: SourceCatalog<'_>,
+    root_context: bool,
+) -> Result<(), ProgramValidationError> {
+    let Some(computed) = join.plan().computed_source() else {
+        return Ok(());
+    };
+    if !expressions.contains_key(&computed.value()) {
+        return Err(ProgramValidationError::MissingComputedJoinKey {
+            join: join.id(),
+            computed: computed.id(),
+            expression: computed.value(),
+        });
+    }
+    let mut pending = vec![computed.value()];
+    let mut visited = BTreeSet::new();
+    while let Some(node) = pending.pop() {
+        if !visited.insert(node) {
+            continue;
+        }
+        // A missing dependency is reported by expression validation.
+        let Some(expression) = expressions.get(&node) else {
+            continue;
+        };
+        match expression {
+            Expression::SourceField { path, frame: None } => {
+                let all = sources.path_targets(path);
+                let direct = sources.direct_path_targets(path);
+                if all.len() != direct.len()
+                    || direct.iter().any(|candidate| candidate.node().repeating)
+                {
+                    return Err(ProgramValidationError::ComputedJoinKeyCrossesRepetition {
+                        join: join.id(),
+                        computed: computed.id(),
+                        node,
+                        path: path.clone(),
+                    });
+                }
+                if root_context && !direct.is_empty() && sources.root_direct_target(path).is_none()
+                {
+                    return Err(ProgramValidationError::UnresolvedRootComputedJoinKey {
+                        join: join.id(),
+                        computed: computed.id(),
+                        node,
+                        path: path.clone(),
+                    });
+                }
+            }
+            Expression::Const { .. }
+            | Expression::RuntimeValue { .. }
+            | Expression::RuntimeParameter { .. }
+            | Expression::RuntimeParameterDefault { .. }
+            | Expression::Call { .. }
+            | Expression::If { .. }
+            | Expression::ValueMap { .. } => pending.extend(graph_dependencies::of(expression)),
+            _ => {
+                return Err(ProgramValidationError::InvalidComputedJoinKeyNode {
+                    join: join.id(),
+                    computed: computed.id(),
+                    node,
+                });
+            }
         }
     }
     Ok(())
@@ -185,7 +265,7 @@ pub(super) fn validate_root_plan(
     join: &InnerJoin,
 ) -> Result<(), ProgramValidationError> {
     validate_plan(sources, join)?;
-    for source in join.plan().sources() {
+    for source in join.plan().collection_sources() {
         if source.cardinality() == JoinSourceCardinality::Singleton
             && !sources
                 .root_direct_target(source.collection())
@@ -325,6 +405,19 @@ pub(super) fn validate_expression(
                     validate_correlated_aggregate(node, sources, current_source, join)?;
                 } else {
                     validate_root_plan(sources, join)?;
+                }
+                // The computed key keeps the receiving context, like the
+                // argument.
+                validate_computed_key(join, expressions, sources, root_context)?;
+                if let Some(computed) = join.plan().computed_source() {
+                    validate_expression(
+                        computed.value(),
+                        expressions,
+                        sources,
+                        current_source,
+                        active_joins,
+                        root_context,
+                    )?;
                 }
                 if let Some(expression) = expression {
                     validate_expression(
@@ -522,7 +615,7 @@ fn is_bounded_correlated_plan(
     current_source: SchemaCursor<'_>,
     join: &InnerJoin,
 ) -> bool {
-    let join_sources = join.plan().sources().collect::<Vec<_>>();
+    let join_sources = join.plan().collection_sources().collect::<Vec<_>>();
     let singleton_sources = join_sources
         .iter()
         .copied()
@@ -537,7 +630,10 @@ fn is_bounded_correlated_plan(
         return false;
     }
     let runtime_ancestors = sources.runtime_ancestors(current_source);
-    let mut has_current_anchor = false;
+    // A computed key is evaluated once per receiving item, so it anchors the
+    // plan there like a current-item singleton; its own reads are validated
+    // in that context.
+    let mut has_current_anchor = join.plan().computed_source().is_some();
     let singletons_are_bounded_scalars = singleton_sources.into_iter().all(|singleton| {
         let candidate =
             match runtime_candidate(current_source, &runtime_ancestors, singleton.collection()) {

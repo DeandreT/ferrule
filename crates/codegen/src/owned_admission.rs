@@ -330,10 +330,18 @@ impl<'a> Analysis<'a> {
         // Item IDs are declarations of permissions, not unconditional reads.
         self.child(parent, Step::Generated(sequence.item()))
     }
-    fn join(&mut self, parent: usize, join: &InnerJoin) -> usize {
-        for source in join.plan().sources() {
+    fn join(&mut self, namespace: Namespace, parent: usize, join: &InnerJoin) -> usize {
+        for source in join.plan().collection_sources() {
             self.path(source.collection());
         }
+        // A computed key is evaluated in the receiving context.
+        self.optional(
+            namespace,
+            parent,
+            join.plan()
+                .computed_source()
+                .map(|computed| computed.value()),
+        );
         self.child(parent, Step::Join(join.id().get()))
     }
     fn iteration(&mut self, parent: usize, iteration: &IterationPlan) -> usize {
@@ -367,7 +375,7 @@ impl<'a> Analysis<'a> {
             IterationSource::Generated(sequence) => {
                 self.sequence(Namespace::Main, parent, sequence)
             }
-            IterationSource::InnerJoin(join) => self.join(parent, join),
+            IterationSource::InnerJoin(join) => self.join(Namespace::Main, parent, join),
             // Owned join sources are demand-driven owned walks.
             IterationSource::OwnedInnerJoin(join) => {
                 self.child(parent, Step::Join(join.id().get()))
@@ -660,7 +668,7 @@ impl<'a> Analysis<'a> {
                     arg,
                     ..
                 } => {
-                    let item = self.join(context, join);
+                    let item = self.join(namespace, context, join);
                     self.optional(namespace, item, *expression);
                     self.optional(namespace, context, *arg);
                 }
