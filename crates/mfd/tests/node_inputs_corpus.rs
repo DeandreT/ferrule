@@ -112,7 +112,7 @@ fn legacy_dependencies(node: &Node) -> Vec<NodeId> {
             ..
         } => plan
             .computed_source()
-            .map(|computed| computed.value())
+            .and_then(|computed| computed.scalar())
             .iter()
             .chain(expression)
             .chain(arg)
@@ -203,7 +203,7 @@ fn legacy_auto_number(node: &Node) -> Vec<NodeId> {
             ..
         } => plan
             .computed_source()
-            .map(|computed| computed.value())
+            .and_then(|computed| computed.scalar())
             .iter()
             .chain(expression)
             .chain(arg)
@@ -330,7 +330,7 @@ fn legacy_recursive(node: &Node) -> Vec<NodeId> {
             ..
         } => plan
             .computed_source()
-            .map(|computed| computed.value())
+            .and_then(|computed| computed.scalar())
             .iter()
             .chain(expression)
             .chain(arg)
@@ -413,7 +413,7 @@ fn legacy_join(node: &Node) -> Vec<NodeId> {
             ..
         } => plan
             .computed_source()
-            .map(|computed| computed.value())
+            .and_then(|computed| computed.scalar())
             .iter()
             .chain(expression)
             .chain(arg)
@@ -528,7 +528,7 @@ fn legacy_graph_references(node: &Node) -> Vec<NodeId> {
             ..
         } => plan
             .computed_source()
-            .map(|computed| computed.value())
+            .and_then(|computed| computed.scalar())
             .iter()
             .chain(expression)
             .chain(arg)
@@ -624,7 +624,7 @@ fn legacy_canvas(node: &Node) -> Vec<NodeId> {
             ..
         } => plan
             .computed_source()
-            .map(|computed| computed.value())
+            .and_then(|computed| computed.scalar())
             .iter()
             .chain(expression)
             .chain(arg)
@@ -733,7 +733,7 @@ fn legacy_dynamic_json(node: &Node) -> Vec<NodeId> {
             ..
         } => plan
             .computed_source()
-            .map(|computed| computed.value())
+            .and_then(|computed| computed.scalar())
             .iter()
             .chain(expression)
             .chain(arg)
@@ -806,7 +806,7 @@ fn legacy_position(node: &Node) -> Vec<NodeId> {
             ..
         } => plan
             .computed_source()
-            .map(|computed| computed.value())
+            .and_then(|computed| computed.scalar())
             .iter()
             .chain(expression)
             .chain(arg)

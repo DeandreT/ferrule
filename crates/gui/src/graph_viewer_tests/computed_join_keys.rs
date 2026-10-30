@@ -110,3 +110,51 @@ fn a_computed_joined_aggregate_pins_its_key_first_and_read_only() {
     drop(viewer);
     assert_eq!(state(&fx), before);
 }
+
+/// A sequence-valued key pins its sequence's inputs, but not its private
+/// item, before the values expression.
+#[test]
+fn a_sequence_key_joined_aggregate_pins_its_sequence_inputs_first() {
+    const DELIMITER: NodeId = 15;
+    const ITEM: NodeId = 16;
+    let (mut fx, _, _) = setup(true);
+    fx.graph.nodes.insert(DELIMITER, constant(" "));
+    fx.graph.nodes.insert(
+        ITEM,
+        Node::SourceField {
+            path: Vec::new(),
+            frame: None,
+        },
+    );
+    let key = ComputedJoinSourceId::new(1);
+    let sequence = JoinPlan::new(
+        JoinSource::computed_sequence(
+            key,
+            mapping::SequenceExpr::Tokenize {
+                input: KEY_NODE,
+                delimiter: DELIMITER,
+                item: ITEM,
+            },
+        ),
+        JoinSource::new(vec!["row".into()]),
+        JoinConditions::new(JoinKey::computed(key, vec!["name".into()])),
+    )
+    .unwrap();
+    if let Some(Node::JoinAggregate { plan, .. }) = fx.graph.nodes.get_mut(&AGGREGATE) {
+        *plan = sequence;
+    }
+    let node = fx.graph.nodes[&AGGREGATE].clone();
+    assert!(graph_sequence::inputs_are_read_only(&node));
+    assert_eq!(GraphViewer::input_count(&node), 3);
+    let before = state(&fx);
+    let mut viewer = fx.viewer();
+    assert_eq!(viewer.input_at(AGGREGATE, 0), Some(KEY_NODE));
+    assert_eq!(viewer.input_at(AGGREGATE, 1), Some(DELIMITER));
+    assert_eq!(viewer.input_at(AGGREGATE, 2), Some(VALUES));
+    assert_eq!(viewer.input_at(AGGREGATE, 3), None);
+    for input in 0..3 {
+        assert!(!viewer.set_input(AGGREGATE, input, 0));
+    }
+    drop(viewer);
+    assert_eq!(state(&fx), before);
+}

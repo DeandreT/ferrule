@@ -56,6 +56,8 @@ capabilities are:
 - `join-computed-keys-v1`, carried by a join plan with a
   [computed key source](design/join-computed-keys.md) in any target scope,
   graph or function body;
+- `join-computed-sequence-keys-v1`, also carried wherever that computed
+  source is sequence-valued;
 - `sqlite_read_v1`, carried by a
   [declared SQLite query](formats.md#declared-sqlite-queries) anywhere in the
   project's format options;

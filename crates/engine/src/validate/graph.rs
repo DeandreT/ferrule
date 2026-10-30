@@ -1,7 +1,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use ir::{SchemaKind, SchemaNode, XML_TEXT_FIELD, XML_TYPE_FIELD};
-use mapping::{FailureIteration, FailureRule, Graph, Node, NodeId, Project, Scope};
+use mapping::{
+    ComputedJoinSource, FailureIteration, FailureRule, Graph, Node, NodeId, Project, Scope,
+};
 
 use super::node_inputs::{context_node_inputs, node_inputs};
 use super::schema::{
@@ -44,10 +46,16 @@ pub(super) fn validate_graph(
     }
     for (&id, node) in &project.graph.nodes {
         let ownership_start = issues.len();
-        if let Node::SequenceExists { sequence, .. }
-        | Node::SequenceItemAt { sequence, .. }
-        | Node::SequenceAggregate { sequence, .. } = node
-        {
+        let sequence = match node {
+            Node::SequenceExists { sequence, .. }
+            | Node::SequenceItemAt { sequence, .. }
+            | Node::SequenceAggregate { sequence, .. } => Some(sequence),
+            Node::JoinAggregate { plan, .. } => plan
+                .computed_source()
+                .and_then(ComputedJoinSource::as_sequence),
+            _ => None,
+        };
+        if let Some(sequence) = sequence {
             for item in sequence.owned_items() {
                 claim_sequence_item(
                     item,
@@ -901,7 +909,13 @@ fn collect_sequence_items(
     items: &mut BTreeMap<NodeId, String>,
     issues: &mut Vec<ValidationIssue>,
 ) {
-    if let Some(sequence) = scope.sequence() {
+    // A scope owns the items of its generated sequence and of its join's
+    // sequence-valued key; the key's items are never readable.
+    let join_sequence = scope
+        .join()
+        .and_then(|(_, plan)| plan.computed_source())
+        .and_then(ComputedJoinSource::as_sequence);
+    for sequence in scope.sequence().into_iter().chain(join_sequence) {
         let start = issues.len();
         let location = if path.is_empty() {
             "root scope".to_string()

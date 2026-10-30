@@ -9,8 +9,8 @@
 //! can recover evaluation order from this visit order.
 
 use crate::{
-    FailureIteration, FailureRule, NodeId, NodeInputRole, NodeInputSlot, Scope, ScopeConstruction,
-    SequenceExpr,
+    ComputedJoinValue, FailureIteration, FailureRule, NodeId, NodeInputRole, NodeInputSlot, Scope,
+    ScopeConstruction, SequenceExpr,
 };
 
 /// Where and how often a root expression is evaluated.
@@ -63,7 +63,8 @@ pub enum ScopeRootSlot {
     SequenceInput,
     /// The generated item identity returned by [`SequenceExpr::item`].
     SequenceItem,
-    /// The value of an inner join's computed source.
+    /// The value of an inner join's computed source, or an input of its
+    /// sequence.
     ComputedJoinKey,
     /// A reserved source item that a composed sequence owns besides its item.
     SequenceReservedItem,
@@ -176,7 +177,19 @@ impl Scope {
             visit_sequence_roots(sequence, &mut root);
         }
         if let Some(computed) = self.join().and_then(|(_, plan)| plan.computed_source()) {
-            root(computed.value(), Slot::ComputedJoinKey, Parent);
+            // A sequence key's inputs keep the computed-key slot; its item
+            // identity is private to the join, like a scope sequence's.
+            match computed.value() {
+                ComputedJoinValue::Scalar(node) => root(*node, Slot::ComputedJoinKey, Parent),
+                ComputedJoinValue::Sequence(sequence) => {
+                    for node in sequence.inputs() {
+                        root(node, Slot::ComputedJoinKey, Parent);
+                    }
+                    for item in sequence.owned_items() {
+                        root(item, Slot::SequenceItem, ScopeRootRole::GeneratedItem);
+                    }
+                }
+            }
         }
         for (index, child) in self.dynamic_children.iter().enumerate() {
             root(child.key, Slot::DynamicChildKey(index), Output);

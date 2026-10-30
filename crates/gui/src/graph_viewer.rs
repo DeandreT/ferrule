@@ -1525,14 +1525,15 @@ impl GraphViewer<'_> {
             Node::Aggregate {
                 expression, arg, ..
             } => usize::from(expression.is_some()) + usize::from(arg.is_some()),
-            // A computed key is the first, read-only pin.
+            // A computed key's inputs are the first, read-only pins.
             Node::JoinAggregate {
                 plan,
                 expression,
                 arg,
                 ..
             } => {
-                usize::from(plan.computed_source().is_some())
+                plan.computed_source()
+                    .map_or(0, |computed| computed.key_inputs().len())
                     + usize::from(expression.is_some())
                     + usize::from(arg.is_some())
             }
@@ -2392,16 +2393,17 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                         expression,
                         arg,
                         ..
-                    }) => [
-                        plan.computed_source().map(|_| "key"),
-                        expression.as_ref().map(|_| "values"),
-                        arg.as_ref().map(|_| "arg"),
-                    ]
-                    .into_iter()
-                    .flatten()
-                    .nth(idx)
-                    .unwrap_or_default()
-                    .to_string(),
+                    }) => plan
+                        .computed_source()
+                        .map(|computed| computed.key_inputs())
+                        .unwrap_or_default()
+                        .into_iter()
+                        .map(|_| "key")
+                        .chain(expression.as_ref().map(|_| "values"))
+                        .chain(arg.as_ref().map(|_| "arg"))
+                        .nth(idx)
+                        .unwrap_or_default()
+                        .to_string(),
                     Some(Node::Aggregate { expression, .. })
                         if expression.is_some() && idx == 0 =>
                     {
