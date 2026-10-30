@@ -705,6 +705,63 @@ the generated project is written somewhere other than the design directory.
 HTTP URLs and graph-computed paths are unchanged. Moving or using Save As on a
 project applies the same rebasing rule, including wildcard input paths.
 
+### XML output schema-location hint
+
+An XML document target whose `properties/@AddSchemaLocation` is absent or `"1"`
+writes a schema-location hint on its output root, as the reference application
+does; `"0"` writes none. The reference application writes an absolute
+`file:///` URI of the schema on the machine that runs it. Ferrule writes the
+schema reference the design stores instead, converted to a URI reference:
+Windows extended-length prefixes (`\\?\`) are removed, backslashes become
+`/`, characters that cannot appear in a URI reference are percent-encoded (a
+space becomes `%20`, as does a `%` that starts no escape), and a Windows drive
+or UNC path becomes a `file:` URI.
+
+A relative reference stays relative to the design, as stored; it is not rebased
+to the output document. XML readers resolve it against the output document,
+so it names the schema only when the output is written beside the design. With
+`outputinstance="out/result.xml"` and `schema="target.xsd"`, the hint
+`target.xsd` resolves to `out/target.xsd`, which does not exist. Absolute and
+`file:` references resolve the same from any output location.
+
+The hint is a target-only `xml_schema_hints` policy:
+
+- An unqualified root gets `xsi:noNamespaceSchemaLocation`.
+- A namespaced root gets one `xsi:schemaLocation` pair of the root namespace
+  and the same location, matching the reference application's namespaced
+  output.
+- The stored schema must declare the root's namespace as its own
+  `targetNamespace` (or none, for an unqualified root). A root declared in an
+  imported schema, or a schema that cannot be read, gets no hint, so no pair
+  maps the root namespace to the wrong file.
+- DTD-backed targets, documents without a schema reference, WSDL messages and
+  intermediate XML string serializers get no hint.
+- A target root that declares the same `xsi` attribute keeps its mapped value
+  and gets no automatic hint. So does a target whose mapping feeds the root's
+  attribute wildcard or the whole root, since either can write `xsi`
+  attributes at run time.
+- Pass-through components write the hint in their target role only; their
+  source role reads without schema hints.
+
+Any other `AddSchemaLocation` value imports with a warning and no hint. The
+hint combines with explicit XML scalar output, so cast suppression keeps its
+profile under an absent or `"1"` setting. Generated Rust and C# write the hint
+wherever their XML adapter writes the document. A generated library without an
+XML adapter, such as one fed by CSV or JSON, returns typed output and writes no
+XML document, so the host that serializes the document owns the hint.
+
+The imported hint records its provenance in the project file as
+`xml_schema_hints.derivation.schema_reference`, the stored schema reference it
+was derived from. Hints without a derivation, including those of project files
+written before provenance existed, are explicit. A derivation counts only while
+it still reproduces the hint exactly for the target root: editing a derived
+hint's location, namespace or recorded reference makes it explicit, and so
+does a target schema change that alters the derivation, such as a new root
+namespace or a declared root `xsi` attribute.
+
+Older Ferrule builds that read `xml_schema_hints` but predate the derivation
+refuse such a project file with an unknown-field error for `derivation`.
+
 ### XML root-view interoperability
 
 A bounded flat String-attribute profile supports one local XML source and one
@@ -716,9 +773,10 @@ must agree with the source schema, and every graph node must belong to these
 projections. Shared source fields can feed multiple target attributes.
 
 Import and export retain the type condition, required reads, physical namespace
-identities, and direct base-root selection. Other root-expression graphs,
-additional document boundaries, failure rules, user functions, and explicit
-schema hints remain outside this `.mfd` profile. Unsupported export fails before
+identities, and direct base-root selection. The target's default
+schema-location setting follows the general hint policy above. Other
+root-expression graphs, additional document boundaries, failure rules, user
+functions, and other explicit schema hints remain outside this `.mfd` profile. Unsupported export fails before
 publishing artifacts; unproved import shapes retain actionable diagnostics.
 
 ## Export
@@ -734,8 +792,15 @@ defaults.
 
 Physical XML document targets explicitly set `AddSchemaLocation="0"` so the
 reference application's automatic schema URI does not change Ferrule's normal
-no-hint output. This applies to primary and named targets; explicit XML schema
-hints remain outside MFD export. The finite
+no-hint output. This applies to primary and named targets. A target whose hint
+is still derived from the default setting exports with the setting absent, the
+reference application's saved form. Export writes the target schema as its own
+generated sibling (`<design>-target.xsd`), so re-importing the exported design
+derives a hint naming that sibling, not the originally imported schema
+reference. The location changes; the setting and hint form do not. A derived
+hint that no longer matches its target schema is refused with an error saying
+so; source hints and explicit XML schema hints remain outside MFD export. The
+finite
 [schema-reference observation](conformance/xml-schema-reference.md) covers real
 controls, full outputs and a native save/reopen of an actual Ferrule export.
 

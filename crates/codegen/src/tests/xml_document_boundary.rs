@@ -38,6 +38,7 @@ fn public_observed_xml_document_lowering_carries_literal_output_policy() {
                 namespace: "urn:literal".into(),
                 location: "https://literal.invalid/a.xsd".into(),
             }],
+            derivation: None,
         }),
         ..Default::default()
     };
@@ -59,7 +60,7 @@ fn public_observed_xml_document_lowering_carries_literal_output_policy() {
 }
 
 #[test]
-fn public_xml_document_lowering_keeps_ordinary_hint_guard_and_named_boundaries_closed() {
+fn public_xml_document_lowering_keeps_hints_without_an_adapter_and_named_boundaries_closed() {
     let mut ordinary = document_project();
     ordinary.source_options = Default::default();
     assert!(lower(&ordinary).unwrap().xml_boundary.is_none());
@@ -67,14 +68,10 @@ fn public_xml_document_lowering_keeps_ordinary_hint_guard_and_named_boundaries_c
     ordinary.target_options.xml_schema_hints = Some(ir::XmlSchemaHints {
         no_namespace_location: Some("literal.xsd".into()),
         locations: vec![],
+        derivation: None,
     });
-    assert!(
-        lower(&ordinary)
-            .unwrap_err()
-            .diagnostics()
-            .iter()
-            .any(|d| d.to_string().contains("XML schema hints"))
-    );
+    // No XML adapter exists to write the hint; it stays with the typed outputs.
+    assert!(lower(&ordinary).unwrap().xml_boundary.is_none());
     let mut named = document_project();
     named.graph.nodes.insert(
         0,
@@ -137,6 +134,7 @@ fn public_xml_document_profile_refuses_names_unsupported_by_the_actual_reader_or
     supplementary_output.target_options.xml_schema_hints = Some(ir::XmlSchemaHints {
         no_namespace_location: Some("literal.xsd".into()),
         locations: vec![],
+        derivation: None,
     });
     assert!(
         lower(&supplementary_output)

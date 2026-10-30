@@ -103,6 +103,8 @@ struct TargetExport<'a> {
     component_uid: u32,
     sibling_suffix: String,
     default_output: bool,
+    /// Keep the native default schema-location setting for a derived hint.
+    schema_hint: bool,
     document_path_port: Option<u32>,
 }
 
@@ -183,6 +185,7 @@ impl<'a> TargetExport<'a> {
                 format!("target-{}", index + 1)
             },
             default_output: index == 0,
+            schema_hint: false,
             document_path_port,
         })
     }
@@ -361,6 +364,27 @@ fn prepare_export_mode(
     path: &Path,
     filesystem: bool,
 ) -> Result<PreparedExport, MfdError> {
+    // Derived target schema-location hints export as the native default
+    // setting. Every other proof sees the unhinted project; only the target
+    // renderer receives the per-target setting.
+    preflight::validate_schema_hints(project)?;
+    let hinted = std::iter::once(&project.target_options)
+        .chain(project.extra_targets.iter().map(|target| &target.options))
+        .map(|options| options.xml_schema_hints.is_some())
+        .collect::<Vec<_>>();
+    let original = project;
+    let unhinted;
+    let project = if hinted.contains(&true) {
+        let mut stripped = project.clone();
+        stripped.target_options.xml_schema_hints = None;
+        for target in &mut stripped.extra_targets {
+            target.options.xml_schema_hints = None;
+        }
+        unhinted = stripped;
+        &unhinted
+    } else {
+        project
+    };
     project
         .validate_xml_scalar_output()
         .map_err(|error| MfdError::Unsupported(error.to_string()))?;
@@ -385,7 +409,7 @@ fn prepare_export_mode(
         });
     }
     let mut scoped_exception_branches = scoped_exception::Branches::build(project)?;
-    if let Some(prepared) = qualified_root_view::prepare_export(project, path)? {
+    if let Some(prepared) = qualified_root_view::prepare_export(original, path)? {
         return Ok(prepared);
     }
     let mut warnings = Vec::new();
@@ -423,6 +447,9 @@ fn prepare_export_mode(
             index + 1,
             &mut keys,
         )?);
+    }
+    for (target, hinted) in targets.iter_mut().zip(&hinted) {
+        target.schema_hint = *hinted;
     }
     let first_presence = first_presence::Plan::build(&project.graph, &sources, &targets);
     scoped_exception_branches.validate_ports(&sources, &targets[0].ports)?;
@@ -1011,6 +1038,7 @@ fn prepare_export_mode(
                 source.component_uid,
                 &source.sibling_suffix,
                 false,
+                false,
                 &used_ports,
                 source.document_path_port,
                 filesystem,
@@ -1086,6 +1114,7 @@ fn prepare_export_mode(
                 target.component_uid,
                 &target.sibling_suffix,
                 target.default_output,
+                target.schema_hint,
                 &used_ports,
                 target.document_path_port,
                 filesystem,

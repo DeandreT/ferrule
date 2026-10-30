@@ -127,9 +127,11 @@ Ferrule imports the disabled design with the document-wide suppression
 profile; its interpreter, generated Rust and generated C# produce the same
 article values. All three native runs saved and resaved byte-identical
 designs. The reference application also adds an absolute
-`xsi:noNamespaceSchemaLocation` when `AddSchemaLocation` is absent; Ferrule's
-XML import does not reproduce that automatic hint for any target;
-[#1138](https://github.com/DeandreT/ferrule/issues/1138) tracks it.
+`xsi:noNamespaceSchemaLocation` when `AddSchemaLocation` is absent. Ferrule
+imports that setting as a hint naming the stored schema reference, relative to
+the design rather than to the output; see
+[XML output schema-location hint](../mfd-interop.md#xml-output-schema-location-hint).
+The article values above compare element content, not that root attribute.
 
 These controls do not establish other numeric types, arbitrary schemas, general
 null semantics, or a way to select a winner among competing singular bindings.

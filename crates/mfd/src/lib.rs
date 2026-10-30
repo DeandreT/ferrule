@@ -58,6 +58,7 @@ mod json_parser_recipe;
 mod node_inputs;
 mod package;
 mod resource;
+mod schema_location;
 
 pub use package::{
     ExportedPackage, MAX_PACKAGE_BYTES, MAX_PACKAGE_ENTRIES, MAX_PACKAGE_FILE_BYTES,

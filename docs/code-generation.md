@@ -3103,9 +3103,13 @@ create illegal reserved namespace declarations is rejected.
 
 Project generation uses the native XML writer defaults: an XML declaration
 and indentation, with namespaces taken from the target schema. It retains the
-project's literal XML schema-hint settings. Schema locations are emitted as
-metadata; the generated host does not open them or resolve them against a
-filesystem path. The host owns publication of the returned document.
+project's literal XML schema-hint settings, including beside an explicit XML
+scalar output policy. Schema locations are emitted as metadata; the generated
+host does not open them or resolve them against a filesystem path. Hint
+provenance is not emitted. A project without an XML adapter, such as a CSV or
+JSON source feeding an XML target, still generates its typed and JSON APIs; it
+writes no XML document, so the host that serializes the typed output owns any
+schema hint. The host owns publication of the returned document.
 
 Each input and returned output document is limited to 64 MiB of UTF-8.
 Embedded XML schemas have an 8 MiB limit, and the runtime schema-hint descriptor

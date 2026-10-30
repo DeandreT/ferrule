@@ -614,8 +614,11 @@ fn static_constant_target(project: &Project, field: &str, ty: ScalarType) -> boo
         xml_document: true,
         ..FormatOptions::default()
     };
+    // The output schema-location hint annotates the written root only.
+    let mut target_options = project.target_options.clone();
+    target_options.xml_schema_hints = None;
     if project.source_options != ordinary_xml
-        || project.target_options != ordinary_xml
+        || target_options != ordinary_xml
         || !project.extra_sources.is_empty()
         || !project.extra_targets.is_empty()
         || !project.failure_rules.is_empty()

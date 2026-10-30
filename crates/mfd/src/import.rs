@@ -2634,7 +2634,7 @@ fn import_resolved(
             name: target_names[index].clone(),
             path: extra_path,
             schema: runtime_target_schema(extra, &edge_from),
-            options: extra.options.clone(),
+            options: target_format_options(extra, &edge_from),
             root: extra_root,
         });
     }
@@ -2794,7 +2794,7 @@ fn import_resolved(
         source_path,
         target_path,
         source_options,
-        target_options: target.options.clone(),
+        target_options: target_format_options(target, &edge_from),
         extra_sources,
         extra_targets,
         failure_rules,
@@ -2895,6 +2895,29 @@ fn import_resolved(
         },
         source_components,
     })
+}
+
+/// A component's format options in its target role, including the output
+/// schema-location hint its settings derive. A mapping that feeds the root's
+/// attribute wildcard, or the whole root, can write `xsi` attributes at run
+/// time; the mapped value then wins and no automatic hint is added.
+fn target_format_options(
+    component: &SchemaComponent,
+    edge_from: &BTreeMap<u32, u32>,
+) -> mapping::FormatOptions {
+    let mut options = component.options.clone();
+    let feeds_root_wildcard = component.schema.child(ir::XML_ATTRIBUTES_FIELD).is_some()
+        && component.input_keys.iter().any(|key| {
+            edge_from.contains_key(key)
+                && component.ports.get(key).is_some_and(|path| {
+                    path.first()
+                        .is_none_or(|segment| segment == ir::XML_ATTRIBUTES_FIELD)
+                })
+        });
+    if options.xml_schema_hints.is_none() && !feeds_root_wildcard {
+        options.xml_schema_hints = component.target_schema_hints.clone();
+    }
+    options
 }
 
 fn default_pass_through_output_path(component: &SchemaComponent) -> Option<String> {

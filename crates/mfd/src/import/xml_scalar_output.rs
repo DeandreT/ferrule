@@ -74,17 +74,6 @@ pub(super) fn read(
                 "suppressed target has unsupported component settings",
             ));
         }
-        if component
-            .children()
-            .find(|node| node.has_tag_name("properties"))
-            .and_then(|node| node.attribute("AddSchemaLocation"))
-            .is_some_and(|value| value != "0")
-        {
-            return Err((
-                Reason::UnsupportedOverride,
-                "schema-location output with suppressed casting is unsupported",
-            ));
-        }
         let (_, document) =
             super::target_float_cast::entry_root(component, &target.schema).ok_or((
                 Reason::UnsupportedShape,
@@ -187,17 +176,6 @@ fn document(
         return Err((
             Reason::UnsupportedOverride,
             "suppressed target has unsupported component settings",
-        ));
-    }
-    if component
-        .children()
-        .find(|node| node.has_tag_name("properties"))
-        .and_then(|node| node.attribute("AddSchemaLocation"))
-        .is_some_and(|value| value != "0")
-    {
-        return Err((
-            Reason::UnsupportedOverride,
-            "schema-location output with suppressed casting is unsupported",
         ));
     }
     let root = component

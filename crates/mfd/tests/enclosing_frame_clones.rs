@@ -131,6 +131,26 @@ fn target_schema(design: &str) -> SchemaNode {
     )
 }
 
+/// Import derives each XML target's output schema-location hint from its schema.
+fn with_schema_hint(design: &str, mut project: Project) -> Project {
+    if design == "edi" {
+        return project;
+    }
+    let location = match design {
+        "false-zero-empty" => "bool-target.xsd",
+        "nested" => "nested-target.xsd",
+        _ => "target.xsd",
+    };
+    project.target_options.xml_schema_hints = Some(ir::XmlSchemaHints {
+        no_namespace_location: Some(location.into()),
+        derivation: Some(ir::XmlSchemaHintDerivation {
+            schema_reference: location.into(),
+        }),
+        ..Default::default()
+    });
+    project
+}
+
 fn expected(design: &str) -> Project {
     if design == "false-zero-empty" {
         let mut project = expected("implicit");
@@ -378,7 +398,7 @@ fn declared_enclosing_frame_clones_preserve_complete_projects_and_values() {
         );
         assert_eq!(
             serde_json::to_value(&imported.project).unwrap(),
-            serde_json::to_value(expected(design)).unwrap(),
+            serde_json::to_value(with_schema_hint(design, expected(design))).unwrap(),
             "{design}"
         );
         assert!(engine::validate(&imported.project).is_empty(), "{design}");

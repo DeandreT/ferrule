@@ -76,7 +76,7 @@ fn non_xml_conflicting_and_invalid_metadata_refuse() {
         match mutation {
             0 => p.target_options.xml_document = false,
             1 => p.target_options.json_document = true,
-            2 => p.target_options.local_xml_file_set = true,
+            2 => p.target_options.xml_root_view_read_policy = true,
             3 => p.target_options.xml_allow_inactive_root_type_members = true,
             _ => {
                 p.target_options
@@ -88,4 +88,8 @@ fn non_xml_conflicting_and_invalid_metadata_refuse() {
         }
         assert!(!hint_issues(&p).is_empty());
     }
+    // An imported target's wildcard preview input is not output metadata.
+    let mut p = base;
+    p.target_options.local_xml_file_set = true;
+    assert!(hint_issues(&p).is_empty());
 }
