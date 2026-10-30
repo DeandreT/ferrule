@@ -452,7 +452,7 @@ fn repeating_join_inputs_are_source_driven_and_constructed_outputs_keep_default_
 }
 
 #[test]
-fn singleton_join_inputs_keep_scalar_connections_and_exact_tuple_execution() {
+fn singleton_join_inputs_are_source_driven_and_keep_exact_tuple_execution() {
     let mut project = two_way_project();
     let right = project.source.child("Right").unwrap().clone();
     project.source = SchemaNode::group(
@@ -493,7 +493,7 @@ fn singleton_join_inputs_keep_scalar_connections_and_exact_tuple_execution() {
     let dir = TempDir::new("scalar-feed");
     let path = dir.path("mapping.mfd");
     assert!(mfd::export(&project, &path).unwrap().is_empty());
-    assert_join_input_modes(&fs::read_to_string(&path).unwrap(), &[false, true]);
+    assert_join_input_modes(&fs::read_to_string(&path).unwrap(), &[true, true]);
     let imported = import_exported(&path);
     assert_eq!(engine::run(&imported.project, &source).unwrap(), expected);
 }
@@ -1271,8 +1271,8 @@ fn mapped_join_sequence_round_trips_named_and_singleton_sources() {
     let warnings = mfd::export(&project, &structural_output).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
     let xml = fs::read_to_string(&structural_output).unwrap();
-    assert_eq!(xml.matches("<dataconnection type=\"2\"/>").count(), 2);
-    assert_join_input_modes(&xml, &[false, true]);
+    assert_eq!(xml.matches("<dataconnection type=\"2\"/>").count(), 3);
+    assert_join_input_modes(&xml, &[true, true]);
     let structural = import_exported(&structural_output);
     assert_eq!(
         structural.project.root.children[0].iteration_output,

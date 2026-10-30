@@ -209,11 +209,22 @@ fn nested_scalar_join_correlates_and_roundtrips() -> Result<(), Box<dyn Error>> 
     let roundtrip = directory.0.join("roundtrip.mfd");
     let warnings = mfd::export(&imported.project, &roundtrip)?;
     assert!(warnings.is_empty(), "{warnings:?}");
+    assert_eq!(
+        singleton_edges::source_join_inputs_copy_all(&std::fs::read_to_string(&roundtrip)?)?,
+        [true, true]
+    );
     let reimported = mfd::import(&roundtrip)?;
     assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
     assert!(engine::validate(&reimported.project).is_empty());
     let roundtrip_output = run_fixture(&reimported.project)?;
     assert_eq!(roundtrip_output, output);
+
+    let second = directory.0.join("second.mfd");
+    assert!(mfd::export(&reimported.project, &second)?.is_empty());
+    assert_eq!(
+        singleton_edges::source_join_inputs_copy_all(&std::fs::read_to_string(&second)?)?,
+        [true, true]
+    );
     Ok(())
 }
 
@@ -1138,3 +1149,5 @@ fn nested_three_input_dynamic_source_is_a_hard_prepublication_refusal() -> Resul
 
 #[path = "correlated_scalar_join/four_plus.rs"]
 mod four_plus;
+#[path = "correlated_scalar_join/singleton_edges.rs"]
+mod singleton_edges;
