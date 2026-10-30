@@ -128,6 +128,7 @@ fn metadata_supported(schema: &SchemaNode) -> bool {
     schema.xml_name_alternatives.is_empty()
         && schema.xml_wildcard_namespace.is_none()
         && schema.xml_wildcard_process_contents == XmlWildcardProcessContents::Skip
+        && schema.xml_wildcard_excluded_names.is_none()
         && schema.recursive_ref.is_none()
         && !schema.nullable
         && !schema.container_nullable
@@ -203,6 +204,28 @@ mod tests {
         assert!(xml_structured_document_input_is_supported(&schema));
         schema.default = Some("default".into());
         assert!(!xml_structured_document_input_is_supported(&schema));
+    }
+
+    #[test]
+    fn wildcard_exclusions_are_refused_on_any_node() {
+        let names = crate::XmlWildcardExcludedNames::new([crate::XmlExpandedName::new(
+            XmlNamespace::Unqualified,
+            "blocked",
+        )
+        .unwrap()])
+        .unwrap();
+        let mut record = SchemaNode::group(
+            "Record",
+            vec![SchemaNode::scalar("Code", ScalarType::String)],
+        );
+        assert!(xml_structured_document_input_is_supported(&record));
+        record.xml_wildcard_excluded_names = Some(names.clone());
+        assert!(!xml_structured_document_input_is_supported(&record));
+        let mut code = SchemaNode::scalar("Code", ScalarType::String);
+        code.xml_wildcard_excluded_names = Some(names);
+        assert!(!xml_structured_document_input_is_supported(
+            &SchemaNode::group("Record", vec![code])
+        ));
     }
 
     #[test]
