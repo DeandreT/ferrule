@@ -408,8 +408,11 @@ fn lowers_left_deep_composite_named_join_and_tuple_expressions() {
     assert_eq!(stages.len(), 2);
     assert_eq!(stages[0].1.iter().count(), 2);
     assert_eq!(
-        stages[1].0.cardinality(),
-        crate::JoinSourceCardinality::Singleton
+        stages[1]
+            .0
+            .as_collection()
+            .map(crate::CollectionJoinSource::cardinality),
+        Some(crate::JoinSourceCardinality::Singleton)
     );
     assert_eq!(iteration.filter(), Some(5));
     assert_eq!(iteration.windows().len(), 1);
@@ -446,7 +449,7 @@ fn lowers_bounded_correlated_join_aggregates() {
             ..
         }) if join.id() == crate::JoinId::new(8)
             && join.plan().sources().count() == 2
-            && join.plan().sources().any(|source| {
+            && join.plan().collection_sources().any(|source| {
                 source.cardinality() == crate::JoinSourceCardinality::Singleton
                     && source.collection() == ["Sku"]
             })

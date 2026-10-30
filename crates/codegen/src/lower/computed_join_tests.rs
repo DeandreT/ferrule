@@ -1,6 +1,6 @@
-//! Generated Rust and C# share this lowering, which refuses computed join-key
-//! sources until generated joins execute them. The interpreter admits them,
-//! so the lowering's own diagnostics keep every generation route closed.
+//! Generated Rust and C# share this lowering. A computed join-key source
+//! lowers wherever a collection join does, carrying its key node, and every
+//! route that refuses legacy joins refuses it with the same diagnostic.
 
 use ir::{ScalarType, Value};
 use mapping::{
@@ -189,24 +189,170 @@ fn route_diagnostics(project: &Project) -> Vec<(String, Vec<Diagnostic>)> {
     routes
 }
 
-/// Engine validation admits computed keys, so each route refuses them with
-/// its own unsupported-scope or unsupported-node diagnostic.
+/// The same project keyed by the existing singleton form over a root
+/// `Code` field instead of the computed constant.
+fn singleton_equivalent(project: &Project) -> Project {
+    let mut project = project.clone();
+    project.source = SchemaNode::group(
+        "Source",
+        vec![
+            scalar("Code"),
+            SchemaNode::group("Customer", vec![scalar("Number"), scalar("Name")]).repeating(),
+        ],
+    );
+    let singleton = JoinPlan::new(
+        JoinSource::singleton(vec!["Code".into()]),
+        JoinSource::new(vec!["Customer".into()]),
+        JoinConditions::new(JoinKey::new(
+            vec!["Code".into()],
+            Vec::new(),
+            vec!["Number".into()],
+        )),
+    )
+    .unwrap();
+    if let Some(Node::JoinAggregate { plan, .. }) = project.graph.nodes.get_mut(&3) {
+        *plan = singleton;
+    } else if let ScopeIteration::InnerJoin { plan, .. } = &mut project.root.children[0].iteration {
+        *plan = singleton;
+    }
+    project
+}
+
+fn expected_plan(key_first: bool) -> crate::JoinPlan {
+    let customers = crate::JoinSource::new(vec!["Customer".into()]);
+    if key_first {
+        crate::JoinPlan::new(
+            crate::JoinSource::computed(KEY, 1),
+            customers,
+            crate::JoinConditions::new(crate::JoinKey::computed(KEY, vec!["Number".into()])),
+        )
+    } else {
+        crate::JoinPlan::new(
+            customers,
+            crate::JoinSource::computed(KEY, 1),
+            crate::JoinConditions::new(crate::JoinKey::new(
+                vec!["Customer".into()],
+                vec!["Number".into()],
+                Vec::new(),
+            )),
+        )
+    }
+    .unwrap()
+}
+
 #[test]
-fn every_generation_route_refuses_computed_join_sources() {
+fn computed_join_scopes_and_aggregates_lower_with_their_key() {
+    for key_first in [true, false] {
+        let program = lower(&scope_project(key_first)).expect("computed join scopes lower");
+        let iteration = program.root.children[0]
+            .iteration
+            .as_ref()
+            .expect("join iteration");
+        assert_eq!(
+            iteration.inner_join().map(InnerJoin::plan),
+            Some(&expected_plan(key_first))
+        );
+        assert!(iteration.roots().any(|root| root == 1));
+        assert!(program.expressions.iter().any(|node| node.id == 1));
+
+        let program = lower(&aggregate_project(key_first)).expect("computed aggregates lower");
+        assert!(matches!(
+            program.expressions.iter().find(|node| node.id == 3),
+            Some(ExpressionNode {
+                expression: Expression::JoinAggregate { join, .. },
+                ..
+            }) if join.plan() == &expected_plan(key_first)
+        ));
+        assert!(program.expressions.iter().any(|node| node.id == 1));
+    }
+}
+
+/// Generated joins admit computed keys exactly where they admit legacy
+/// joins: plain and document lowering lower both, and each owned preset
+/// refuses both with its own typed capability diagnostic.
+#[test]
+fn every_generation_route_admits_computed_keys_like_singleton_keys() {
+    for key_first in [true, false] {
+        for project in [scope_project(key_first), aggregate_project(key_first)] {
+            assert_eq!(engine::validate(&project), []);
+            let singleton = singleton_equivalent(&project);
+            assert_eq!(engine::validate(&singleton), []);
+            let routes = route_diagnostics(&project);
+            assert_eq!(routes, route_diagnostics(&singleton));
+            for (route, diagnostics) in &routes {
+                let owned = crate::OwnedPreset::ALL
+                    .into_iter()
+                    .any(|preset| format!("{preset:?}") == *route);
+                assert_eq!(diagnostics.is_empty(), !owned, "{route}: {diagnostics:?}");
+            }
+        }
+    }
+}
+
+/// `project` keyed by `tokenize("C2", " ")` instead of the constant `C2`.
+fn with_sequence_key(mut project: Project) -> Project {
+    project.graph.nodes.extend([
+        (
+            4,
+            Node::Const {
+                value: Value::String(" ".into()),
+            },
+        ),
+        (
+            5,
+            Node::SourceField {
+                path: Vec::new(),
+                frame: None,
+            },
+        ),
+    ]);
+    let tokens = mapping::ComputedJoinSource::sequence(
+        KEY,
+        mapping::SequenceExpr::Tokenize {
+            input: 1,
+            delimiter: 4,
+            item: 5,
+        },
+    );
+    let keyed = |plan: &JoinPlan| {
+        let mut sources = plan
+            .sources()
+            .map(|source| match source {
+                JoinSource::Computed(_) => JoinSource::Computed(tokens.clone()),
+                JoinSource::Collection(_) => source.clone(),
+            })
+            .collect::<Vec<_>>();
+        let second = sources.remove(1);
+        let first = sources.remove(0);
+        let (_, conditions) = plan.stages().next().expect("one stage");
+        JoinPlan::new(first, second, conditions.clone()).unwrap()
+    };
+    if let Some(Node::JoinAggregate { plan, .. }) = project.graph.nodes.get_mut(&3) {
+        *plan = keyed(plan);
+    } else if let ScopeIteration::InnerJoin { plan, .. } = &mut project.root.children[0].iteration {
+        *plan = keyed(plan);
+    }
+    project
+}
+
+/// The interpreter runs sequence-valued keys, but generated code does not:
+/// every route refuses them with its own scope or node diagnostic.
+#[test]
+fn every_generation_route_refuses_sequence_valued_keys() {
     for key_first in [true, false] {
         for (project, expected) in [
             (
-                scope_project(key_first),
+                with_sequence_key(scope_project(key_first)),
                 Diagnostic::UnsupportedScope {
                     target_path: vec!["Hit".into()],
-                    feature: ScopeFeature::ComputedJoinSource,
+                    feature: ScopeFeature::SequenceComputedJoinKey,
                 },
             ),
             (
-                aggregate_project(key_first),
+                with_sequence_key(aggregate_project(key_first)),
                 Diagnostic::UnsupportedNode {
                     node: 3,
-                    kind: UnsupportedNodeKind::ComputedJoinAggregate,
+                    kind: UnsupportedNodeKind::SequenceComputedJoinAggregate,
                 },
             ),
         ] {
@@ -219,40 +365,20 @@ fn every_generation_route_refuses_computed_join_sources() {
             }
         }
     }
-}
-
-#[test]
-fn computed_join_scopes_lower_to_an_unsupported_scope() {
-    for key_first in [true, false] {
-        let project = scope_project(key_first);
-        let error = lower_iteration(&project.root.children[0], &["Hit".into()])
-            .expect_err("computed join scopes do not lower");
-        assert_eq!(
-            error,
-            Diagnostic::UnsupportedScope {
-                target_path: vec!["Hit".into()],
-                feature: ScopeFeature::ComputedJoinSource,
-            }
-        );
-        assert_eq!(
-            error.to_string(),
-            "target scope `Hit`: code generation does not support an inner join with a computed key source"
-        );
-        assert!(crate::JoinPlan::from_mapping(&plan(key_first)).is_none());
-    }
-}
-
-#[test]
-fn computed_join_aggregates_lower_to_an_unsupported_node() {
-    for key_first in [true, false] {
-        let project = aggregate_project(key_first);
-        assert_eq!(
-            lower_expression(3, &project.graph.nodes[&3], &project.graph)
-                .expect_err("computed join aggregates do not lower"),
-            Diagnostic::UnsupportedNode {
-                node: 3,
-                kind: UnsupportedNodeKind::ComputedJoinAggregate,
-            }
-        );
-    }
+    assert_eq!(
+        Diagnostic::UnsupportedScope {
+            target_path: vec!["Hit".into()],
+            feature: ScopeFeature::SequenceComputedJoinKey,
+        }
+        .to_string(),
+        "target scope `Hit`: code generation does not support an inner join with a sequence-valued computed key"
+    );
+    assert_eq!(
+        Diagnostic::UnsupportedNode {
+            node: 3,
+            kind: UnsupportedNodeKind::SequenceComputedJoinAggregate,
+        }
+        .to_string(),
+        "graph node 3: code generation does not support a join aggregate with a sequence-valued computed key"
+    );
 }

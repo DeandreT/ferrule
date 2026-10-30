@@ -394,3 +394,88 @@ fn main() {
         String::from_utf8_lossy(&result.stderr)
     );
 }
+
+/// The join fixture with every plan keyed by a computed constant against
+/// `Catalog/B/Aid`, with the key first or second.
+fn computed_join_program(key_first: bool) -> Program {
+    let key = codegen::ComputedJoinSourceId::new(1);
+    let catalog = JoinSource::new(vec!["Catalog".into(), "B".into()]);
+    let plan = if key_first {
+        JoinPlan::new(
+            JoinSource::computed(key, 30),
+            catalog,
+            JoinConditions::new(JoinKey::computed(key, vec!["Aid".into()])),
+        )
+    } else {
+        JoinPlan::new(
+            catalog,
+            JoinSource::computed(key, 30),
+            JoinConditions::new(JoinKey::new(
+                vec!["Catalog".into(), "B".into()],
+                vec!["Aid".into()],
+                Vec::new(),
+            )),
+        )
+    }
+    .expect("valid computed join plan");
+    let mut program = join_program();
+    program
+        .expressions
+        .push(constant(30, Value::String("1".into())));
+    for node in &mut program.expressions {
+        if let Expression::JoinAggregate { join, .. } = &mut node.expression {
+            *join = InnerJoin::new(join.id(), plan.clone());
+        }
+        // Computed members have no collection, so tuple reads name the catalog.
+        if let Expression::JoinField {
+            collection, path, ..
+        } = &mut node.expression
+            && collection == &["A"]
+        {
+            *collection = vec!["Catalog".into(), "B".into()];
+            if let Some(field) = path.first_mut() {
+                *field = match field.as_str() {
+                    "Id" => "Rank".into(),
+                    "Label" => "Tag".into(),
+                    other => other.into(),
+                };
+            }
+        }
+    }
+    let row = &mut program.root.children[0];
+    let iteration = row.iteration.take().expect("join iteration");
+    row.iteration = Some(IterationPlan::new(
+        InnerJoin::new(JoinId::new(7), plan),
+        iteration.filter(),
+        iteration.sort().cloned(),
+        iteration.windows().to_vec(),
+        iteration.output(),
+    ));
+    program
+}
+
+#[test]
+fn emits_computed_keys_before_their_join() {
+    let options = Options {
+        package_name: "join-map".into(),
+        runtime_dependency: RuntimeDependency::Version("1".into()),
+    };
+    let first = "{ let join_key = expression_30(context)?; context.inner_join_with_computed_key(7, &join_key, codegen_runtime::InnerJoinSource::Computed, codegen_runtime::InnerJoinSourceStage { source: codegen_runtime::InnerJoinSource::Collection(&[\"Catalog\", \"B\"]), conditions: &[codegen_runtime::InnerJoinCondition { left: codegen_runtime::InnerJoinLeft::Computed, right_path: &[\"Aid\"] }] }, &[])? }";
+    let second = "{ let join_key = expression_30(context)?; context.inner_join_with_computed_key(7, &join_key, codegen_runtime::InnerJoinSource::Collection(&[\"Catalog\", \"B\"]), codegen_runtime::InnerJoinSourceStage { source: codegen_runtime::InnerJoinSource::Computed, conditions: &[codegen_runtime::InnerJoinCondition { left: codegen_runtime::InnerJoinLeft::Collection { collection: &[\"Catalog\", \"B\"], path: &[\"Aid\"] }, right_path: &[] }] }, &[])? }";
+    for (key_first, call) in [(true, first), (false, second)] {
+        let artifacts =
+            emit(&computed_join_program(key_first), &options).expect("computed join program emits");
+        let source = artifacts
+            .files()
+            .iter()
+            .find(|file| file.path.as_str() == "src/lib.rs")
+            .and_then(|file| std::str::from_utf8(&file.contents).ok())
+            .expect("generated source is UTF-8");
+        assert!(
+            source.contains(&format!("candidates = {call};")),
+            "{source}"
+        );
+        assert!(source.contains(&format!("let tuple_contexts = {call};")));
+        assert!(!source.contains("context.inner_join(7"));
+    }
+}

@@ -79,6 +79,111 @@ fn generated_inner_join_preserves_tuple_and_control_semantics() {
     );
 }
 
+/// The computed key is passed after the plan, so it is evaluated once in the
+/// receiving context before the runtime walks any source.
+#[test]
+fn computed_join_keys_follow_their_plan() {
+    for key_first in [true, false] {
+        let artifacts = codegen_csharp::emit(&computed_fixture(key_first))
+            .expect("computed join fixture emits");
+        let generated = artifacts
+            .files()
+            .iter()
+            .filter_map(|file| std::str::from_utf8(&file.contents).ok())
+            .find(|source| source.contains("tuple_contexts_18"))
+            .expect("generated mapping source");
+        assert_eq!(
+            generated
+                .matches("global::Ferrule.Runtime.FerruleJoinSource.Computed")
+                .count(),
+            2
+        );
+        assert_eq!(
+            generated
+                .matches("                }),\n            Node_20(context))")
+                .count(),
+            2
+        );
+        let condition = if key_first {
+            "global::Ferrule.Runtime.FerruleJoinKey.FromComputed(new string[] { \"Aid\" }),"
+        } else {
+            "new(new string[] { \"catalog\", \"B\" }, new string[] { \"Aid\" }, global::System.Array.Empty<string>()),"
+        };
+        assert_eq!(generated.matches(condition).count(), 2, "{generated}");
+    }
+}
+
+fn computed_fixture(key_first: bool) -> Program {
+    let key = codegen::ComputedJoinSourceId::new(1);
+    let catalog = JoinSource::new(strings(&["catalog", "B"]));
+    let plan = if key_first {
+        JoinPlan::new(
+            JoinSource::computed(key, 20),
+            catalog,
+            JoinConditions::new(JoinKey::computed(key, strings(&["Aid"]))),
+        )
+    } else {
+        JoinPlan::new(
+            catalog,
+            JoinSource::computed(key, 20),
+            JoinConditions::new(JoinKey::new(
+                strings(&["catalog", "B"]),
+                strings(&["Aid"]),
+                Vec::new(),
+            )),
+        )
+    }
+    .expect("valid computed join plan");
+    let b = SchemaNode::group("B", vec![string("Aid"), string("Tag")]).repeating();
+    Program {
+        xml_boundary: None,
+        source: SchemaNode::group("Source", vec![string("Separator")]),
+        extra_sources: vec![NamedSourceProgram {
+            name: "catalog".into(),
+            source: SchemaNode::group("Catalog", vec![b]),
+            dynamic: None,
+        }],
+        target: SchemaNode::group(
+            "Target",
+            vec![
+                int("Count"),
+                SchemaNode::group("Row", vec![string("BTag")]).repeating(),
+            ],
+        ),
+        expressions: vec![
+            join_field(1, &["catalog", "B"], &["Tag"]),
+            ExpressionNode {
+                id: 18,
+                expression: Expression::JoinAggregate {
+                    function: AggregateFunction::Count,
+                    join: InnerJoin::new(JOIN, plan.clone()),
+                    expression: None,
+                    arg: None,
+                },
+            },
+            constant(20, Value::String("1".into())),
+        ],
+        user_functions: Vec::new(),
+        failure_rules: Vec::new(),
+        root: TargetScope {
+            target_field: String::new(),
+            repeating: false,
+            iteration: None,
+            construction: Default::default(),
+            bindings: vec![binding("Count", 18, ScalarType::Int)],
+            children: vec![TargetScope {
+                target_field: "Row".into(),
+                repeating: true,
+                iteration: Some(IterationPlan::join(InnerJoin::new(JOIN, plan))),
+                construction: Default::default(),
+                bindings: vec![binding("BTag", 1, ScalarType::String)],
+                children: Vec::new(),
+            }],
+        },
+        extra_targets: Vec::new(),
+    }
+}
+
 fn fixture() -> Program {
     let plan = JoinPlan::new(
         JoinSource::new(vec!["A".into()]),

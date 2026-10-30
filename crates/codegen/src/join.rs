@@ -1,5 +1,8 @@
 use std::fmt;
 
+pub use mapping::ComputedJoinSourceId;
+use mapping::NodeId;
+
 /// Stable identity of one inner-join iteration in a generated program.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct JoinId(u64);
@@ -37,14 +40,14 @@ impl From<mapping::JoinSourceCardinality> for JoinSourceCardinality {
     }
 }
 
-/// One statically resolved source in an inner-join plan.
+/// One statically resolved collection source in an inner-join plan.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct JoinSource {
+pub struct CollectionJoinSource {
     collection: Vec<String>,
     cardinality: JoinSourceCardinality,
 }
 
-impl JoinSource {
+impl CollectionJoinSource {
     pub fn new(collection: Vec<String>) -> Self {
         Self {
             collection,
@@ -68,7 +71,7 @@ impl JoinSource {
     }
 }
 
-impl From<&mapping::CollectionJoinSource> for JoinSource {
+impl From<&mapping::CollectionJoinSource> for CollectionJoinSource {
     fn from(value: &mapping::CollectionJoinSource) -> Self {
         Self {
             collection: value.collection().to_vec(),
@@ -77,11 +80,103 @@ impl From<&mapping::CollectionJoinSource> for JoinSource {
     }
 }
 
-/// One equality key joining the new right source to an existing left source.
+/// A single-valued computed join source: one scalar expression evaluated
+/// once per join execution in the join's receiving context. Generated code
+/// has no sequence-valued form.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ComputedJoinSource {
+    id: ComputedJoinSourceId,
+    value: NodeId,
+}
+
+impl ComputedJoinSource {
+    pub const fn new(id: ComputedJoinSourceId, value: NodeId) -> Self {
+        Self { id, value }
+    }
+
+    pub const fn id(&self) -> ComputedJoinSourceId {
+        self.id
+    }
+
+    pub const fn value(&self) -> NodeId {
+        self.value
+    }
+}
+
+/// One source of an inner-join plan. A computed source's single member is
+/// its key value; it has no collection, so no join read names it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum JoinSource {
+    Collection(CollectionJoinSource),
+    Computed(ComputedJoinSource),
+}
+
+impl JoinSource {
+    pub fn new(collection: Vec<String>) -> Self {
+        Self::Collection(CollectionJoinSource::new(collection))
+    }
+
+    pub fn singleton(path: Vec<String>) -> Self {
+        Self::Collection(CollectionJoinSource::singleton(path))
+    }
+
+    pub const fn computed(id: ComputedJoinSourceId, value: NodeId) -> Self {
+        Self::Computed(ComputedJoinSource::new(id, value))
+    }
+
+    pub const fn as_collection(&self) -> Option<&CollectionJoinSource> {
+        match self {
+            Self::Collection(source) => Some(source),
+            Self::Computed(_) => None,
+        }
+    }
+
+    pub const fn as_computed(&self) -> Option<&ComputedJoinSource> {
+        match self {
+            Self::Computed(source) => Some(source),
+            Self::Collection(_) => None,
+        }
+    }
+}
+
+impl From<CollectionJoinSource> for JoinSource {
+    fn from(source: CollectionJoinSource) -> Self {
+        Self::Collection(source)
+    }
+}
+
+impl From<ComputedJoinSource> for JoinSource {
+    fn from(source: ComputedJoinSource) -> Self {
+        Self::Computed(source)
+    }
+}
+
+impl JoinSource {
+    /// `None` for a sequence-valued computed source.
+    fn from_mapping(value: &mapping::JoinSource) -> Option<Self> {
+        Some(match value {
+            mapping::JoinSource::Collection(source) => Self::Collection(source.into()),
+            mapping::JoinSource::Computed(source) => Self::computed(source.id(), source.scalar()?),
+        })
+    }
+}
+
+/// The left member of one join condition.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum JoinKeyLeft {
+    /// A collection already in the left tuple and the key path within it.
+    Collection {
+        collection: Vec<String>,
+        path: Vec<String>,
+    },
+    /// The computed source already in the left tuple; its key is its value.
+    Computed(ComputedJoinSourceId),
+}
+
+/// One equality key joining the new right source to an existing left member.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct JoinKey {
-    left_collection: Vec<String>,
-    left_path: Vec<String>,
+    left: JoinKeyLeft,
     right_path: Vec<String>,
 }
 
@@ -92,18 +187,41 @@ impl JoinKey {
         right_path: Vec<String>,
     ) -> Self {
         Self {
-            left_collection,
-            left_path,
+            left: JoinKeyLeft::Collection {
+                collection: left_collection,
+                path: left_path,
+            },
             right_path,
         }
     }
 
-    pub fn left_collection(&self) -> &[String] {
-        &self.left_collection
+    /// A key whose left member is the computed source `left`.
+    pub fn computed(left: ComputedJoinSourceId, right_path: Vec<String>) -> Self {
+        Self {
+            left: JoinKeyLeft::Computed(left),
+            right_path,
+        }
     }
 
+    pub const fn left(&self) -> &JoinKeyLeft {
+        &self.left
+    }
+
+    /// The left collection, or `None` when the left member is computed.
+    pub fn left_collection(&self) -> Option<&[String]> {
+        match &self.left {
+            JoinKeyLeft::Collection { collection, .. } => Some(collection),
+            JoinKeyLeft::Computed(_) => None,
+        }
+    }
+
+    /// The left key path; a computed left member is its own key, so its path
+    /// is always empty.
     pub fn left_path(&self) -> &[String] {
-        &self.left_path
+        match &self.left {
+            JoinKeyLeft::Collection { path, .. } => path,
+            JoinKeyLeft::Computed(_) => &[],
+        }
     }
 
     pub fn right_path(&self) -> &[String] {
@@ -111,14 +229,19 @@ impl JoinKey {
     }
 }
 
-impl JoinKey {
-    /// `None` for a key whose left member is a computed source.
-    fn from_mapping(value: &mapping::JoinKey) -> Option<Self> {
-        Some(Self::new(
-            value.left_collection()?.to_vec(),
-            value.left_path().to_vec(),
-            value.right_path().to_vec(),
-        ))
+impl From<&mapping::JoinKey> for JoinKey {
+    fn from(value: &mapping::JoinKey) -> Self {
+        let left = match value.left() {
+            mapping::JoinKeyLeft::Collection { collection, path } => JoinKeyLeft::Collection {
+                collection: collection.clone(),
+                path: path.clone(),
+            },
+            mapping::JoinKeyLeft::Computed(id) => JoinKeyLeft::Computed(*id),
+        };
+        Self {
+            left,
+            right_path: value.right_path().to_vec(),
+        }
     }
 }
 
@@ -145,16 +268,18 @@ impl JoinConditions {
     pub fn iter(&self) -> impl Iterator<Item = &JoinKey> {
         std::iter::once(&self.first).chain(&self.rest)
     }
+}
 
-    fn from_mapping(value: &mapping::JoinConditions) -> Option<Self> {
+impl From<&mapping::JoinConditions> for JoinConditions {
+    fn from(value: &mapping::JoinConditions) -> Self {
         let mut keys = value.iter();
         let Some(first) = keys.next() else {
             unreachable!("mapping join conditions are nonempty by construction");
         };
-        Some(Self {
-            first: JoinKey::from_mapping(first)?,
-            rest: keys.map(JoinKey::from_mapping).collect::<Option<_>>()?,
-        })
+        Self {
+            first: first.into(),
+            rest: keys.map(JoinKey::from).collect(),
+        }
     }
 }
 
@@ -165,6 +290,7 @@ struct JoinStage {
 }
 
 /// A left-deep join with at least two distinct sources and one key per stage.
+/// At most one source is computed, and at least one reads a collection.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct JoinPlan {
     first: JoinSource,
@@ -176,6 +302,18 @@ pub struct JoinPlan {
 pub enum JoinPlanError {
     DuplicateCollection(Vec<String>),
     UnknownLeftCollection(Vec<String>),
+    /// A plan already holds its one computed source.
+    MultipleComputedSources(ComputedJoinSourceId),
+    /// A condition references a computed source not yet joined.
+    UnknownLeftComputed(ComputedJoinSourceId),
+    /// A computed right source is its own key, so its conditions take an
+    /// empty right path.
+    ComputedRightPath {
+        source: ComputedJoinSourceId,
+        right_path: Vec<String>,
+    },
+    /// Every source of the plan is computed.
+    NoCollectionSource,
 }
 
 impl JoinPlan {
@@ -184,10 +322,7 @@ impl JoinPlan {
         second: JoinSource,
         conditions: JoinConditions,
     ) -> Result<Self, JoinPlanError> {
-        if first.collection == second.collection {
-            return Err(JoinPlanError::DuplicateCollection(second.collection));
-        }
-        validate_left_collections(&conditions, std::slice::from_ref(&first))?;
+        validate_stage(&[&first], &second, &conditions)?;
         Ok(Self {
             first,
             second: JoinStage {
@@ -203,13 +338,7 @@ impl JoinPlan {
         source: JoinSource,
         conditions: JoinConditions,
     ) -> Result<Self, JoinPlanError> {
-        if self
-            .sources()
-            .any(|existing| existing.collection == source.collection)
-        {
-            return Err(JoinPlanError::DuplicateCollection(source.collection));
-        }
-        validate_left_collections(&conditions, self.sources())?;
+        validate_stage(&self.sources().collect::<Vec<_>>(), &source, &conditions)?;
         self.rest.push(JoinStage { source, conditions });
         Ok(self)
     }
@@ -228,44 +357,105 @@ impl JoinPlan {
         )
     }
 
-    /// `None` when the plan holds a computed source, which generated code
-    /// does not execute; lowering reports it as unsupported.
+    /// The plan's collection sources in plan order, without its computed
+    /// source.
+    pub fn collection_sources(&self) -> impl Iterator<Item = &CollectionJoinSource> {
+        self.sources().filter_map(JoinSource::as_collection)
+    }
+
+    /// The plan's computed source, if it has one.
+    pub fn computed_source(&self) -> Option<&ComputedJoinSource> {
+        self.sources().find_map(JoinSource::as_computed)
+    }
+
+    /// Mirrors a plan that mapping construction already validated, or
+    /// `None` when it holds a sequence-valued computed source, which
+    /// generated code does not execute.
     pub(crate) fn from_mapping(value: &mapping::JoinPlan) -> Option<Self> {
-        let stage = |(source, conditions): (&mapping::JoinSource, &mapping::JoinConditions)| {
-            Some(JoinStage {
-                source: source.as_collection()?.into(),
-                conditions: JoinConditions::from_mapping(conditions)?,
-            })
-        };
         let mut sources = value.sources();
         let Some(first) = sources.next() else {
             unreachable!("mapping join plans contain a first source");
         };
-        let mut stages = value.stages();
+        let mut stages = value.stages().map(|(source, conditions)| {
+            Some(JoinStage {
+                source: JoinSource::from_mapping(source)?,
+                conditions: conditions.into(),
+            })
+        });
         let Some(second) = stages.next() else {
             unreachable!("mapping join plans contain a second source");
         };
         Some(Self {
-            first: first.as_collection()?.into(),
-            second: stage(second)?,
-            rest: stages.map(stage).collect::<Option<_>>()?,
+            first: JoinSource::from_mapping(first)?,
+            second: second?,
+            rest: stages.collect::<Option<_>>()?,
         })
     }
 }
 
-fn validate_left_collections<'a>(
+/// Checks one stage joining `source` to the already joined `prior` sources,
+/// with the same rules as mapping plan construction.
+fn validate_stage(
+    prior: &[&JoinSource],
+    source: &JoinSource,
     conditions: &JoinConditions,
-    sources: impl IntoIterator<Item = &'a JoinSource>,
 ) -> Result<(), JoinPlanError> {
-    let collections = sources
-        .into_iter()
-        .map(|source| source.collection.as_slice())
-        .collect::<Vec<_>>();
-    for key in conditions.iter() {
-        if !collections.contains(&key.left_collection.as_slice()) {
-            return Err(JoinPlanError::UnknownLeftCollection(
-                key.left_collection.clone(),
-            ));
+    match source {
+        JoinSource::Collection(source) => {
+            if prior
+                .iter()
+                .filter_map(|source| source.as_collection())
+                .any(|existing| existing.collection == source.collection)
+            {
+                return Err(JoinPlanError::DuplicateCollection(
+                    source.collection.clone(),
+                ));
+            }
+        }
+        JoinSource::Computed(computed) => {
+            if prior
+                .iter()
+                .all(|existing| existing.as_collection().is_none())
+            {
+                return Err(JoinPlanError::NoCollectionSource);
+            }
+            if prior
+                .iter()
+                .any(|existing| existing.as_computed().is_some())
+            {
+                return Err(JoinPlanError::MultipleComputedSources(computed.id()));
+            }
+            if let Some(condition) = conditions
+                .iter()
+                .find(|condition| !condition.right_path.is_empty())
+            {
+                return Err(JoinPlanError::ComputedRightPath {
+                    source: computed.id(),
+                    right_path: condition.right_path.clone(),
+                });
+            }
+        }
+    }
+    for condition in conditions.iter() {
+        match &condition.left {
+            JoinKeyLeft::Collection { collection, .. } => {
+                if !prior
+                    .iter()
+                    .filter_map(|source| source.as_collection())
+                    .any(|source| source.collection == *collection)
+                {
+                    return Err(JoinPlanError::UnknownLeftCollection(collection.clone()));
+                }
+            }
+            JoinKeyLeft::Computed(id) => {
+                if !prior
+                    .iter()
+                    .filter_map(|source| source.as_computed())
+                    .any(|source| source.id() == *id)
+                {
+                    return Err(JoinPlanError::UnknownLeftComputed(*id));
+                }
+            }
         }
     }
     Ok(())
@@ -284,6 +474,20 @@ impl fmt::Display for JoinPlanError {
                 "join condition references collection `{}` before it is joined",
                 collection.join("/")
             ),
+            Self::MultipleComputedSources(id) => write!(
+                formatter,
+                "computed join source {id} is a second computed source; a join holds at most one"
+            ),
+            Self::UnknownLeftComputed(id) => write!(
+                formatter,
+                "join condition references computed source {id} before it is joined"
+            ),
+            Self::ComputedRightPath { source, right_path } => write!(
+                formatter,
+                "join condition on computed source {source} has right path `{}`; a computed source is its own key",
+                right_path.join("/")
+            ),
+            Self::NoCollectionSource => formatter.write_str("join plan has no collection source"),
         }
     }
 }

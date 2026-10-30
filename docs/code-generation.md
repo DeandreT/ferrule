@@ -3254,6 +3254,13 @@ The current portable model includes:
   singleton scalars and repeating sources or sources owned by any exact
   lexically enclosing repeated runtime frame, with direct tuple counts, computed
   per-tuple values, and parent-context scalar arguments
+- single-valued computed join keys in those join scopes and aggregates: the
+  key is evaluated once per join execution in the receiving context, before
+  any source is walked, and anchors a per-item join; Null-like keys yield no
+  tuples, `""` is a value, and comparison, order and duplicates follow the
+  interpreter. A joined aggregate evaluates its key before its tuple
+  expression and argument. Sequence-valued computed keys remain
+  interpreter-only and refuse with their own scope or node diagnostic
 - collection aggregates over direct fields or computed per-item expressions
 - nested, repeating-group, repeating-scalar, scalar-union, and exact
   whole-current-group target construction with exact numeric target adaptation
