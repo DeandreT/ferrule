@@ -1828,7 +1828,10 @@ impl PortTree {
 }
 
 fn xml_entry_schema_is_exact(node: &SchemaNode) -> bool {
+    // Entry metadata has no form for exclusions, so a fallback tree would
+    // widen the wildcard.
     if node.json_array_wrapper
+        || node.has_xml_wildcard_exclusions()
         || node.xml_namespace.is_some()
         || node.recursive_ref.is_some()
         || node.nullable

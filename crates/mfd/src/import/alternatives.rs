@@ -131,6 +131,13 @@ fn merge_selected_roots(
                 ));
                 continue;
             };
+            if let Some(reason) = wildcard_exclusion_refusal(children, qname) {
+                warnings.push(format!(
+                    "selected XML element `{}` ({qname}) was refused: {reason}",
+                    display_child_path(path, &name)
+                ));
+                continue;
+            }
             let selected = xsd_path.import_root(Some(qname), resources);
             match selected {
                 Ok(mut selected_schema) => {
@@ -212,6 +219,45 @@ fn merge_selected_roots(
         );
         path.pop();
     }
+}
+
+/// A selection without an existing port adds a typed field beside the
+/// owner's generic `element()` group, and typed fields take their elements
+/// before the wildcard sees them. Selecting a name the wildcard excludes
+/// would therefore admit what the schema forbids. A selection that matches an
+/// existing port only refines that declared port and is left alone.
+fn wildcard_exclusion_refusal(siblings: &[SchemaNode], qname: &str) -> Option<String> {
+    let (namespace, local) = qname
+        .strip_prefix('{')
+        .and_then(|rest| rest.split_once('}'))
+        .unwrap_or(("", qname));
+    if siblings.iter().any(|sibling| sibling.name == local) {
+        return None;
+    }
+    let wildcard = siblings
+        .iter()
+        .find(|sibling| sibling.name == ir::XML_ELEMENTS_FIELD)
+        .filter(|wildcard| wildcard.has_xml_wildcard_exclusions())?;
+    let namespace = (!namespace.is_empty()).then_some(namespace);
+    if !wildcard
+        .xml_wildcard_namespace
+        .as_ref()
+        .is_some_and(|constraint| constraint.allows(namespace))
+    {
+        return Some(format!(
+            "the wildcard's namespace constraint, which carries XSD 1.1 exclusions, rejects namespace `{}`",
+            namespace.unwrap_or("##local")
+        ));
+    }
+    wildcard
+        .xml_wildcard_excluded_names
+        .as_ref()
+        .is_some_and(|names| {
+            names
+                .iter()
+                .any(|name| name.local() == local && name.namespace().matches(namespace))
+        })
+        .then(|| "the wildcard's XSD 1.1 notQName exclusions name it".to_string())
 }
 
 fn fallback_entry_shape_fits(fallback: &SchemaNode, selected: &SchemaNode) -> Result<(), String> {
