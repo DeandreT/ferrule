@@ -2,7 +2,8 @@ use ir::{ScalarType, Value};
 use mapping::{AggregateOp, Node, NodeId, RuntimeValue};
 
 use super::function::{
-    aggregate_op, map_component_name, parse_constant, value_map_input_mode_warning,
+    aggregate_op, is_lang_positive, map_component_name, parse_constant,
+    value_map_input_mode_warning,
 };
 use super::graph::GraphBuilder;
 use super::iteration::split_at_innermost_repeating;
@@ -163,6 +164,20 @@ impl GraphBuilder<'_> {
                 Node::Call {
                     function: "not".to_string(),
                     args: vec![exists],
+                }
+            }
+            _ if is_lang_positive(fc) => {
+                let input = input_or_null(self, 0);
+                let zero = self.alloc(Node::Const {
+                    value: Value::Int(0),
+                });
+                let number = self.alloc(Node::Call {
+                    function: "add".to_string(),
+                    args: vec![input, zero],
+                });
+                Node::Call {
+                    function: "greater_than".to_string(),
+                    args: vec![number, zero],
                 }
             }
             ("if-else", _) => self.if_else_node(&input_ids),
