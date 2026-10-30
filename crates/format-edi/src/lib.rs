@@ -84,6 +84,28 @@ pub enum EdiFormatError {
     SwiftFieldParse { tag: String },
     #[error("SWIFT input exceeds the {0} limit")]
     SwiftLimit(&'static str),
+    #[error(transparent)]
+    SwiftWrite(Box<swift::SwiftWriteError>),
+    #[error("SWIFT MT output is not configured: {0}")]
+    SwiftOutputConfiguration(&'static str),
+    #[error(
+        "SWIFT message {message} maps the {mapped} application header, but the target writes {configured} messages"
+    )]
+    SwiftDirection {
+        message: usize,
+        configured: &'static str,
+        mapped: &'static str,
+    },
+    #[error("SWIFT implied-decimal path `{path}` does not name a decimal capture of the layout")]
+    SwiftImpliedDecimalLayout { path: String },
+    #[error(
+        "SWIFT implied-decimal value `{value}` at `{path}` cannot be scaled by {places} places so that it re-reads exactly"
+    )]
+    SwiftImpliedDecimalValue {
+        path: String,
+        value: String,
+        places: u8,
+    },
     #[error("segment {index}: expected `{expected}`, found `{found}`")]
     UnexpectedSegment {
         index: usize,

@@ -9,10 +9,17 @@ use mapping::{SwiftCharset, SwiftFieldLayout, SwiftMessageLayout, SwiftMtLayout,
 
 use crate::{EdiFormatError, MAX_RUNTIME_INPUT_BYTES, read_bounded_input};
 
+mod configured;
+#[cfg(test)]
+mod configured_tests;
 mod output;
 #[cfg(test)]
 mod output_tests;
 
+pub use configured::{
+    header_refusals, to_bytes_with_options, validate_filled_fields, validate_output,
+    write_with_options,
+};
 pub use output::{SwiftWriteError, to_bytes, write};
 
 const MAX_MESSAGES: usize = 100_000;
@@ -821,5 +828,63 @@ mod tests {
             from_bytes(b"not SWIFT", &schema, &layout, false),
             Err(EdiFormatError::UnsupportedSchema(message)) if message.contains("tuple frame")
         ));
+    }
+
+    #[test]
+    fn swift_output_refuses_json_tuple_frames_before_writing() {
+        let (mut schema, layout) = fixture();
+        let frame = SchemaNode::group(
+            "point",
+            vec![
+                SchemaNode::scalar("item1", ScalarType::String),
+                SchemaNode::scalar("item2", ScalarType::Int),
+            ],
+        )
+        .with_json_tuple(ir::JsonTupleLayout {
+            length: ir::ItemCountRange::new(0, Some(2)),
+            tail: ir::JsonTupleTail::Closed,
+        })
+        .unwrap();
+        let SchemaKind::Group { children, .. } = &mut schema.kind else {
+            panic!("the SWIFT fixture root is a group");
+        };
+        children.push(frame);
+        let headers = SwiftHeaders::new("F01BANKBEBBAXXX0000000001")
+            .and_then(|headers| headers.with_input("BANKDEFFXXXXN"))
+            .unwrap();
+        // Refused before the instance is inspected, so even an empty one
+        // reports the frame rather than missing messages.
+        let empty = Instance::Group(Vec::new().into());
+        assert!(matches!(
+            to_bytes(&schema, &empty, &layout, &[headers]),
+            Err(SwiftWriteError::UnsupportedSchema(message)) if message.contains("tuple frame")
+        ));
+        let destination = std::env::temp_dir().join(format!(
+            "ferrule_swift_tuple_frame_{}.fin",
+            std::process::id()
+        ));
+        let options = mapping::FormatOptions {
+            swift_mt: Some(layout),
+            swift_mt_output: Some(
+                mapping::SwiftMtOutputOptions::new(
+                    mapping::SwiftMtDirection::Input,
+                    vec![mapping::SwiftMtMessageHeaders {
+                        basic_header: "F01BANKBEBBAXXX0000000001".into(),
+                        application_header: "BANKDEFFXXXXN".into(),
+                    }],
+                )
+                .unwrap(),
+            ),
+            ..mapping::FormatOptions::default()
+        };
+        let refused = |result: Result<(), EdiFormatError>| matches!(result, Err(EdiFormatError::UnsupportedSchema(message)) if message.contains("tuple frame"));
+        assert!(refused(validate_output(&schema, &options)));
+        assert!(refused(write_with_options(
+            &destination,
+            &schema,
+            &empty,
+            &options
+        )));
+        assert!(!destination.exists());
     }
 }

@@ -195,7 +195,7 @@ fn classify(
         return refuse("a WSDL message");
     }
     if options.swift_mt.is_some() || options.edi_kind == Some(crate::EdiBoundaryKind::SwiftMt) {
-        return refuse("input-only SWIFT MT");
+        return refuse("SWIFT MT");
     }
     if let Some(kind) = options.edi_kind {
         return Ok(PrimaryDocumentFormat::Edi(kind));
@@ -241,7 +241,7 @@ fn classify(
         )),
         Some("idoc") => Ok(PrimaryDocumentFormat::Edi(crate::EdiBoundaryKind::Idoc)),
         Some("edi") => refuse("ambiguous EDI without an explicit dialect"),
-        Some("fin" | "swift") => refuse("input-only SWIFT MT"),
+        Some("fin" | "swift") => refuse("SWIFT MT"),
         Some("xlsx") => refuse("XLSX"),
         Some("db" | "sqlite" | "sqlite3") => refuse("SQLite"),
         Some("pdf") => refuse("PDF"),

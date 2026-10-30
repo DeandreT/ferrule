@@ -300,15 +300,20 @@ record = "conformance/primary-edi-documents/README.md"
 [[format]]
 name = "SWIFT MT"
 source = "yes"
-target = "no"
-selection = "`swift_mt` layout"
-summary = "Input through embedded message and field grammars"
+target = "yes"
+selection = "`swift_mt` layout; targets also need `swift_mt_output` headers"
+summary = "Embedded message and field grammars; output takes one configured direction and one header set per message, and is re-read before it is returned"
 evidence = [
     "crates/format-edi/src/swift.rs",
+    "crates/format-edi/src/swift/configured.rs",
     "crates/cli/tests/swift.rs",
+    "crates/cli/tests/swift_output.rs",
 ]
 unsupported = [
-    "SWIFT MT output",
+    "User-header (3) and trailer (5) blocks in output",
+    "Output that interleaves occurrences of different repeating fields",
+    "Primary filename document runs",
+    "`.mfd` export of output headers",
 ]
 
 [[format]]

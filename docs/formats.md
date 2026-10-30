@@ -35,7 +35,7 @@ for a complete format standard or another product.
 | X12 / EDIFACT | Yes | Yes | `.edi`, `.x12`, or `.edifact` with a schema dialect, or `edi_kind` | Schema-guided interchange I/O, custom syntax separators, repetitions, qualifier loops, retained field lengths and code lists, optional lenient parsing, and bounded output validation that leaves the destination unchanged on failure |
 | HL7 v2 / TRADACOMS | Yes | Yes | `.hl7` or an EDI schema dialect | Bounded schema-guided message I/O, retained field lengths and code lists, HL7 escapes and subcomponents, and TRADACOMS release escaping |
 | SAP IDoc | Yes | Yes | `idoc` layout | Embedded fixed-record layouts with bounded byte-position parsing and deterministic output |
-| SWIFT MT | Yes | No | `swift_mt` layout | Input through embedded message and field grammars |
+| SWIFT MT | Yes | Yes | `swift_mt` layout; targets also need `swift_mt_output` headers | Embedded message and field grammars; output takes one configured direction and one header set per message, and is re-read before it is returned |
 | FlexText | Yes | Yes | `flextext` layout imported from `.mft` | Embedded recursive split, store, and switch layouts, including fixed-width and delimited records |
 | Protocol Buffers | Yes | Yes | `protobuf` schema and root message | Bounded proto2/proto3 binary I/O with self-contained local import graphs, public imports, nested messages, enums, repeated fields, and packed scalars |
 | XBRL | Yes | Yes | `xbrl` options | Typed instance facts, contexts, dimensions, units, and namespace-qualified concepts through table-shaped boundaries |
@@ -88,7 +88,10 @@ for a complete format standard or another product.
 | SQLite | SQL text, joins, views and declared queries on payload, stream, REST, pipeline, generated-code and MFD routes |
 | X12 / EDIFACT | X12 CR LF segment terminators, and whitespace or invisible X12 element, component, repetition or release separators |
 | SAP IDoc | `.idoc` input without an embedded layout |
-| SWIFT MT | SWIFT MT output |
+| SWIFT MT | User-header (3) and trailer (5) blocks in output |
+| SWIFT MT | Output that interleaves occurrences of different repeating fields |
+| SWIFT MT | Primary filename document runs |
+| SWIFT MT | `.mfd` export of output headers |
 | Protocol Buffers | Recursive messages, which the tree-shaped instance model cannot represent |
 | XBRL | Taxonomy formula, presentation, calculation, and linkbase execution |
 | PDF | PDF output |
