@@ -2924,11 +2924,13 @@ fn target_format_options(
 }
 
 /// A target without an output instance writes to its input instance, unless
-/// that names a file set, which no single output document can be.
+/// that names a file set, which no single output document can be, whatever
+/// the target's format.
 fn target_preview_path(component: &SchemaComponent) -> Option<String> {
-    component.input_instance.clone().filter(|path| {
-        component.format != ComponentFormat::Xml || !schema::is_local_file_set_pattern(path)
-    })
+    component
+        .input_instance
+        .clone()
+        .filter(|path| !schema::is_local_file_set_pattern(path))
 }
 
 fn default_pass_through_output_path(component: &SchemaComponent) -> Option<String> {
