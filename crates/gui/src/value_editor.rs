@@ -207,6 +207,7 @@ pub fn show_value_map_editor(
                         lucide_icons::Icon::Plus,
                         14.0,
                     )))
+                    .accessible_name("Add entry")
                     .on_hover_text("Add entry")
                     .clicked()
                 {
@@ -323,6 +324,7 @@ fn show_value_map_entry(
             lucide_icons::Icon::Trash2,
             14.0,
         )))
+        .accessible_name(format!("Remove entry {}", index + 1))
         .on_hover_text("Remove entry")
         .clicked()
     {

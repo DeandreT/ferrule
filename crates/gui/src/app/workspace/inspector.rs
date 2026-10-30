@@ -45,6 +45,7 @@ impl FerruleApp {
                             crate::theme::METRICS.icon_size,
                         )),
                     )
+                    .accessible_name("Add source")
                     .on_hover_text("Add source")
                     .clicked()
                 {
@@ -112,7 +113,7 @@ impl FerruleApp {
                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                 ui.menu_button("⋯", |ui| {
                                     if ui.add_enabled(editing_enabled, egui::Button::new("Remove source…")).clicked() { remove = Some(index); ui.close(); }
-                                }).response.on_hover_text("Source actions");
+                                }).response.accessible_name("Source actions").on_hover_text("Source actions");
                             });
                         });
                         show_schema_tree(
@@ -353,8 +354,9 @@ impl FerruleApp {
             } else {
                 let max_tree_height = (ui.available_height() * 0.4).max(64.0);
                 let tree_width = ui.available_width();
+                let tree_id = ui.make_persistent_id(("scope_tree_split", active_target));
                 egui::Resize::default()
-                    .id_salt(("scope_tree_split", active_target))
+                    .id(tree_id)
                     .default_width(tree_width)
                     .min_width(tree_width)
                     .max_width(tree_width)
@@ -376,6 +378,11 @@ impl FerruleApp {
                                     self.selected_scope = new_selection;
                                 }
                             });
+                    });
+                // The drag corner is a Tab stop that egui leaves unnamed.
+                ui.ctx()
+                    .accesskit_node_builder(tree_id.with("__resize_corner"), |node| {
+                        node.set_label("Resize scope tree");
                     });
             }
         });
