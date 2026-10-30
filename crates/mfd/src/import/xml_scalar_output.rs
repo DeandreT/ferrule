@@ -271,46 +271,60 @@ fn document(
 /// would silently drop (abstract, block, defaults, nil, substitution, mixed
 /// content) and external schema composition are refused.
 fn plain_document_schema(text: &str) -> bool {
-    const XSD: &str = "http://www.w3.org/2001/XMLSchema";
     let Ok(document) = roxmltree::Document::parse(text) else {
         return false;
     };
-    document
-        .descendants()
-        .filter(|node| node.is_element())
-        .all(|node| {
-            if node.tag_name().namespace() != Some(XSD) {
-                // Annotation content is documentation only.
-                return node
-                    .ancestors()
-                    .any(|ancestor| ancestor.has_tag_name((XSD, "annotation")));
-            }
-            let allowed: &[&str] = match node.tag_name().name() {
-                "schema" => &["elementFormDefault", "attributeFormDefault", "version"],
-                "element" => &["name", "type", "ref", "minOccurs", "maxOccurs"],
-                "complexType" | "simpleType" => &["name"],
-                "sequence" | "annotation" => &[],
-                "documentation" | "appinfo" => &["source"],
-                "restriction" => &["base"],
-                "pattern" | "enumeration" | "length" | "minLength" | "maxLength"
-                | "totalDigits" | "fractionDigits" | "minInclusive" | "maxInclusive"
-                | "minExclusive" | "maxExclusive" | "whiteSpace" => &["value"],
-                _ => return false,
-            };
-            // An explicit default value states nothing the model loses.
-            let default_valued = |name: &str, value: &str| match (node.tag_name().name(), name) {
-                ("element", "nillable" | "abstract") | ("complexType", "mixed" | "abstract") => {
-                    matches!(value, "false" | "0")
-                }
-                ("sequence", "minOccurs" | "maxOccurs") => value == "1",
-                _ => false,
-            };
-            node.attributes().all(|attribute| {
-                attribute.namespace().is_none()
-                    && (allowed.contains(&attribute.name())
-                        || default_valued(attribute.name(), attribute.value()))
-            })
-        })
+    // One walk carries whether an `xs:annotation` encloses each element, so
+    // deeply nested annotation content costs one step per element.
+    let mut pending = vec![(document.root_element(), false)];
+    while let Some((node, in_annotation)) = pending.pop() {
+        if !plain_schema_element(node, in_annotation) {
+            return false;
+        }
+        let in_annotation = in_annotation || node.has_tag_name((XSD, "annotation"));
+        pending.extend(
+            node.children()
+                .filter(|child| child.is_element())
+                .map(|child| (child, in_annotation)),
+        );
+    }
+    true
+}
+
+const XSD: &str = "http://www.w3.org/2001/XMLSchema";
+
+/// One element of [`plain_document_schema`]; `in_annotation` says whether an
+/// `xs:annotation` is a proper ancestor.
+fn plain_schema_element(node: Node<'_, '_>, in_annotation: bool) -> bool {
+    if node.tag_name().namespace() != Some(XSD) {
+        // Annotation content is documentation only.
+        return in_annotation;
+    }
+    let allowed: &[&str] = match node.tag_name().name() {
+        "schema" => &["elementFormDefault", "attributeFormDefault", "version"],
+        "element" => &["name", "type", "ref", "minOccurs", "maxOccurs"],
+        "complexType" | "simpleType" => &["name"],
+        "sequence" | "annotation" => &[],
+        "documentation" | "appinfo" => &["source"],
+        "restriction" => &["base"],
+        "pattern" | "enumeration" | "length" | "minLength" | "maxLength" | "totalDigits"
+        | "fractionDigits" | "minInclusive" | "maxInclusive" | "minExclusive" | "maxExclusive"
+        | "whiteSpace" => &["value"],
+        _ => return false,
+    };
+    // An explicit default value states nothing the model loses.
+    let default_valued = |name: &str, value: &str| match (node.tag_name().name(), name) {
+        ("element", "nillable" | "abstract") | ("complexType", "mixed" | "abstract") => {
+            matches!(value, "false" | "0")
+        }
+        ("sequence", "minOccurs" | "maxOccurs") => value == "1",
+        _ => false,
+    };
+    node.attributes().all(|attribute| {
+        attribute.namespace().is_none()
+            && (allowed.contains(&attribute.name())
+                || default_valued(attribute.name(), attribute.value()))
+    })
 }
 
 fn exact_occurrences(text: &str, schema: &ir::SchemaNode) -> bool {
@@ -393,5 +407,137 @@ fn exact_occurrences(text: &str, schema: &ir::SchemaNode) -> bool {
 pub(super) fn unresolved(reason: Reason, _detail: &'static str) -> XmlScalarOutputPolicy {
     XmlScalarOutputPolicy::Unresolved {
         request: XmlScalarOutputUnresolved::for_reason(reason),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The former check, which searched each foreign element's ancestors. It
+    /// is quadratic in annotation depth and kept only to pin the walk's results.
+    fn plain_document_schema_by_ancestor_search(text: &str) -> bool {
+        const XSD: &str = "http://www.w3.org/2001/XMLSchema";
+        let Ok(document) = roxmltree::Document::parse(text) else {
+            return false;
+        };
+        document
+            .descendants()
+            .filter(|node| node.is_element())
+            .all(|node| {
+                if node.tag_name().namespace() != Some(XSD) {
+                    return node
+                        .ancestors()
+                        .any(|ancestor| ancestor.has_tag_name((XSD, "annotation")));
+                }
+                let allowed: &[&str] = match node.tag_name().name() {
+                    "schema" => &["elementFormDefault", "attributeFormDefault", "version"],
+                    "element" => &["name", "type", "ref", "minOccurs", "maxOccurs"],
+                    "complexType" | "simpleType" => &["name"],
+                    "sequence" | "annotation" => &[],
+                    "documentation" | "appinfo" => &["source"],
+                    "restriction" => &["base"],
+                    "pattern" | "enumeration" | "length" | "minLength" | "maxLength"
+                    | "totalDigits" | "fractionDigits" | "minInclusive" | "maxInclusive"
+                    | "minExclusive" | "maxExclusive" | "whiteSpace" => &["value"],
+                    _ => return false,
+                };
+                let default_valued = |name: &str, value: &str| match (node.tag_name().name(), name)
+                {
+                    ("element", "nillable" | "abstract")
+                    | ("complexType", "mixed" | "abstract") => matches!(value, "false" | "0"),
+                    ("sequence", "minOccurs" | "maxOccurs") => value == "1",
+                    _ => false,
+                };
+                node.attributes().all(|attribute| {
+                    attribute.namespace().is_none()
+                        && (allowed.contains(&attribute.name())
+                            || default_valued(attribute.name(), attribute.value()))
+                })
+            })
+    }
+
+    /// Opening and closing tags; foreign and refused shapes appear inside and
+    /// outside annotations, including foreign elements around nested XSD ones.
+    const ELEMENTS: &[(&str, &str)] = &[
+        ("<xs:annotation>", "</xs:annotation>"),
+        ("<xs:appinfo source=\"notes\">", "</xs:appinfo>"),
+        ("<xs:appinfo other=\"x\">", "</xs:appinfo>"),
+        ("<xs:documentation>", "</xs:documentation>"),
+        ("<xs:element name=\"A\">", "</xs:element>"),
+        ("<xs:element name=\"A\" default=\"1\">", "</xs:element>"),
+        (
+            "<xs:element name=\"A\" nillable=\"false\">",
+            "</xs:element>",
+        ),
+        ("<xs:complexType>", "</xs:complexType>"),
+        ("<xs:complexType mixed=\"true\">", "</xs:complexType>"),
+        ("<xs:sequence minOccurs=\"1\">", "</xs:sequence>"),
+        ("<xs:any>", "</xs:any>"),
+        ("<n>", "</n>"),
+        ("<f:n xmlns:f=\"urn:f\" f:a=\"1\">", "</f:n>"),
+        ("<n xs:annotation=\"1\">", "</n>"),
+    ];
+
+    fn next(state: &mut u64, bound: usize) -> usize {
+        *state ^= *state << 13;
+        *state ^= *state >> 7;
+        *state ^= *state << 17;
+        (*state % bound as u64) as usize
+    }
+
+    fn generate(state: &mut u64, depth: usize, out: &mut String) {
+        let children = if depth == 0 { 0 } else { next(state, 4) };
+        for _ in 0..children {
+            let (open, close) = ELEMENTS[next(state, ELEMENTS.len())];
+            out.push_str(open);
+            if next(state, 3) == 0 {
+                out.push_str("text");
+            }
+            generate(state, depth - 1, out);
+            out.push_str(close);
+        }
+    }
+
+    #[test]
+    fn annotation_walk_matches_the_ancestor_search() {
+        let schema = |body: &str| {
+            format!(
+                "<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\" version=\"1\">{body}</xs:schema>"
+            )
+        };
+        let deep = format!(
+            "<xs:annotation><xs:appinfo>{}<xs:any/>{}</xs:appinfo></xs:annotation>",
+            "<n>".repeat(2_000),
+            "</n>".repeat(2_000)
+        );
+        let mut cases = vec![
+            String::new(),
+            "<xs:schema".into(),
+            "<n/>".into(),
+            "<xs:annotation xmlns:xs=\"http://www.w3.org/2001/XMLSchema\"><n/></xs:annotation>"
+                .into(),
+            schema(""),
+            schema("<n/>"),
+            schema("<xs:annotation><n><xs:element name=\"A\"/></n></xs:annotation>"),
+            schema("<xs:annotation><n><xs:any/></n></xs:annotation>"),
+            schema(&deep),
+            schema(&deep.replace("<xs:any/>", "")),
+        ];
+        let mut state = 0x9e37_79b9_7f4a_7c15;
+        for _ in 0..20_000 {
+            let mut body = String::new();
+            generate(&mut state, 5, &mut body);
+            cases.push(schema(&body));
+        }
+        let mut accepted = 0;
+        for case in &cases {
+            let expected = plain_document_schema_by_ancestor_search(case);
+            assert_eq!(plain_document_schema(case), expected, "{case}");
+            accepted += usize::from(expected);
+        }
+        // Both outcomes are well represented.
+        assert!(accepted > cases.len() / 10, "{accepted}");
+        assert!(accepted < cases.len() * 9 / 10, "{accepted}");
     }
 }

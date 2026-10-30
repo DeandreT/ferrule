@@ -2,6 +2,8 @@ use ir::{ScalarType, SchemaKind, XmlScalarOutputPolicy};
 use std::error::Error;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::mpsc;
+use std::time::{Duration, Instant};
 
 struct Package(PathBuf);
 impl Package {
@@ -523,5 +525,63 @@ fn document_profile_import_refuses_overrides_and_unretained_schema_settings()
         Some(XmlScalarOutputPolicy::SuppressCastInDocumentV1 {})
     );
     assert_eq!(nested_output(&project)?, NESTED_OUTPUT);
+    Ok(())
+}
+
+/// Foreign annotation content is outside the XSD depth limit, so the plain
+/// schema check must walk it once. The old per-element ancestor search was
+/// quadratic in its depth.
+#[test]
+fn deep_annotation_content_keeps_the_document_profile_promptly() -> Result<(), Box<dyn Error>> {
+    const LEVELS: usize = 60_000;
+    let package = Package::new()?;
+    let output = package.0.join("nested/mapping.mfd");
+    mfd::export_with_profile(&nested_project()?, &output, mfd::ExportProfile::NativeMfd)?;
+    let schema_path = package.0.join("nested/mapping-target.xsd");
+    let schema = std::fs::read_to_string(&schema_path)?;
+    let open = schema.find("<xs:schema").ok_or("no schema element")?;
+    let body = open + schema[open..].find('>').ok_or("unclosed schema element")? + 1;
+    let with = |content: &str| format!("{}{content}{}", &schema[..body], &schema[body..]);
+    // The same foreign content outside an annotation is refused.
+    std::fs::write(&schema_path, with("<n/>"))?;
+    assert!(matches!(
+        mfd::import(&output)?
+            .project
+            .target_options
+            .xml_scalar_output,
+        Some(XmlScalarOutputPolicy::Unresolved { .. })
+    ));
+    std::fs::write(
+        &schema_path,
+        with(&format!(
+            "<xs:annotation><xs:appinfo source=\"notes\">{}{}</xs:appinfo></xs:annotation>",
+            "<n>".repeat(LEVELS),
+            "</n>".repeat(LEVELS)
+        )),
+    )?;
+
+    let (sender, receiver) = mpsc::channel();
+    let started = Instant::now();
+    // Debug frames are large; a big stack keeps any per-level recursion
+    // elsewhere from masking the timing being tested.
+    std::thread::Builder::new()
+        .stack_size(256 << 20)
+        .spawn(move || {
+            let _ = sender.send(
+                mfd::import(&output)
+                    .map(|imported| imported.project.target_options.xml_scalar_output)
+                    .map_err(|error| error.to_string()),
+            );
+        })?;
+    let policy = match receiver.recv_timeout(Duration::from_secs(60)) {
+        Ok(policy) => policy?,
+        Err(mpsc::RecvTimeoutError::Timeout) => panic!("the import did not finish in time"),
+        Err(mpsc::RecvTimeoutError::Disconnected) => panic!("the import panicked"),
+    };
+    eprintln!("deep annotation import took {:?}", started.elapsed());
+    assert_eq!(
+        policy,
+        Some(XmlScalarOutputPolicy::SuppressCastInDocumentV1 {})
+    );
     Ok(())
 }
