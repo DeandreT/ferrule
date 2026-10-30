@@ -521,7 +521,7 @@ fn prepare_export_mode(
         edges: &mut edges,
         structural_edges: &mut structural_edges,
         warnings: &mut warnings,
-    });
+    })?;
     let mut blocked_nodes = dynamic_sources.owned_nodes().clone();
     blocked_nodes.extend(exception::absorbed_filter_nodes(project));
     blocked_nodes.extend(scoped_exception_branches.owned_nodes());
@@ -578,6 +578,7 @@ fn prepare_export_mode(
         user_functions: &user_functions,
     })?;
     json_parser::ensure_provenance_emitted(&project.graph, &json_parser_outputs)?;
+    joins.connect_computed_keys(&node_out_key, &mut edges, &mut structural_edges)?;
     if let Some(plan) = &native_group_fahrenheit {
         plan.seed_aliases(&mut node_out_key)?;
     }

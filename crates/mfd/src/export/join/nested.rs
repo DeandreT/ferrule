@@ -16,8 +16,12 @@ use super::schema_node_at;
 /// plan may instead pair one singleton with one primary repeating collection
 /// outside the iteration. A plan needs at least one repeating input, and
 /// needs no singleton.
+///
+/// With a computed key (`computed`), the one collection beside it must be
+/// that primary repeating collection outside the iteration, as observed.
 pub(super) fn resolved_nested_source_paths(
     join_sources: &[&CollectionJoinSource],
+    computed: bool,
     anchor: &[String],
     sources: &SourceExports<'_>,
 ) -> Result<Vec<Vec<String>>, String> {
@@ -52,6 +56,12 @@ pub(super) fn resolved_nested_source_paths(
         match input.kind {
             InputKind::AnchoredSingleton => frames.validate_anchored(input, false, sources)?,
             InputKind::AnchoredRepeating => {
+                if computed {
+                    return Err(format!(
+                        "nested repeating join input `{}` below the iteration beside a computed key was not observed",
+                        input.collection.join("/")
+                    ));
+                }
                 if frames.index != 0 {
                     return Err(format!(
                         "nested repeating join input `{}` below a named source iteration is not exported",
@@ -67,9 +77,14 @@ pub(super) fn resolved_nested_source_paths(
                 frames.validate_anchored(input, true, sources)?;
             }
             InputKind::OuterRepeating => {
-                if inputs.len() != 2 || singletons != 1 {
+                let (partner, admitted) = if computed {
+                    ("one computed key", inputs.len() == 1)
+                } else {
+                    ("one singleton", inputs.len() == 2 && singletons == 1)
+                };
+                if !admitted {
                     return Err(format!(
-                        "nested primary repeating join input `{}` outside the iteration is exported only beside one singleton in a two-input plan",
+                        "nested primary repeating join input `{}` outside the iteration is exported only beside {partner} in a two-input plan",
                         input.collection.join("/")
                     ));
                 }

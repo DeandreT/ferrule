@@ -320,6 +320,9 @@ own scope merges with the matching tests.
      output. Constants and calls use an input named `value` with an ordinary
      connection. A runtime parameter uses an input named after the parameter,
      with a copy-all connection.
+   - Write the call chain below the null guard that scope 4 adds, not the
+     guard itself. The native functions already give no key for an absent or
+     nil field, and re-import adds the same guard again.
    - Refuse atomically every plan that scope 4 would not import.
    - *Acceptance:* export and re-import of every scope 4 fixture without
      semantic drift, and atomic refusal of the rest.
