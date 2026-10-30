@@ -699,8 +699,8 @@ fn write_output(
                 return format_xlsx::write_hierarchical(path, schema, instance, layout)
                     .with_context(|| format!("writing output {}", path.display()));
             }
-            if options.xlsx_grid.is_some() {
-                bail!("grid XLSX output is not supported; `xlsx_grid` is input-only");
+            if options.has_xlsx_grid() {
+                bail!("grid XLSX output is not supported; XLSX grids are input-only");
             }
             if options.xlsx_worksheet_set.is_some() {
                 bail!(

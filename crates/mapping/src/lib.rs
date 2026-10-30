@@ -131,8 +131,9 @@ pub use model::{
     OwnedJoinAggregate, OwnedJoinField, OwnedJoinSourcePosition, OwnedLookup, OwnedPosition,
     OwnedRowDocumentPath, OwnedSourceDocumentPath, OwnedSourceField, Project, RuntimeValue, Scope,
     ScopeConstruction, SequenceExpr, SequenceWindow, SortFilterOrder, SortKey, UserFunction,
-    XlsxColumn, XlsxCompositeLayout, XlsxFixedCell, XlsxFixedRecord, XlsxGridLayout, XlsxRow,
-    XlsxTableRegion, XlsxWorksheetSetLayout, XmlMixedContentElement, XmlMixedContentReplacement,
+    XlsxColumn, XlsxCompositeLayout, XlsxFixedCell, XlsxFixedRecord, XlsxGridLayout,
+    XlsxGridRegion, XlsxRow, XlsxTableRegion, XlsxWorksheetSetLayout, XmlMixedContentElement,
+    XmlMixedContentReplacement,
 };
 pub use node_inputs::{NodeInput, NodeInputRole, NodeInputSlot};
 pub use owned_join::{

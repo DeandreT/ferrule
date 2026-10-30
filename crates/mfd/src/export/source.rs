@@ -259,6 +259,32 @@ impl<'a> SourceExports<'a> {
         unique.map_or(PortMatch::Missing, PortMatch::Unique)
     }
 
+    /// The sequence port of a relative `path` evaluated in the absolute
+    /// source `frame`, for paths whose suffix matches several entries.
+    pub(super) fn match_sequence_in(&self, frame: &[String], path: &[String]) -> PortMatch {
+        self.key_for_abs(&[frame, path].concat())
+            .map_or(PortMatch::Missing, PortMatch::Unique)
+    }
+
+    /// [`Self::lookup_ports`] for a relative collection evaluated in the
+    /// absolute source `frame`.
+    pub(super) fn lookup_ports_in(
+        &self,
+        frame: &[String],
+        collection: &[String],
+        key: &[String],
+        value: &[String],
+    ) -> PortPairMatch {
+        let collection = [frame, collection].concat();
+        match (
+            self.key_for_abs(&[collection.as_slice(), key].concat()),
+            self.key_for_abs(&[collection.as_slice(), value].concat()),
+        ) {
+            (Some(key), Some(value)) => PortPairMatch::Unique(key, value),
+            _ => PortPairMatch::Missing,
+        }
+    }
+
     pub(super) fn lookup_ports(
         &self,
         collection: &[String],

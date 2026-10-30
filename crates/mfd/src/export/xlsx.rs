@@ -5,15 +5,15 @@ use std::fmt::Write as _;
 
 use ir::{ScalarType, SchemaKind, SchemaNode};
 use mapping::{
-    FormatOptions, XlsxCellKind, XlsxCompositeLayout, XlsxFixedCell, XlsxGridLayout,
-    XlsxHierarchicalLayout, XlsxOutputColumn, XlsxOutputRange, XlsxRangeStart,
-    XlsxWorksheetSetLayout,
+    FormatOptions, XlsxCellKind, XlsxCompositeLayout, XlsxFixedCell, XlsxHierarchicalLayout,
+    XlsxOutputColumn, XlsxOutputRange, XlsxRangeStart, XlsxWorksheetSetLayout,
 };
 
 use crate::MfdError;
 
 use super::schema::{PortTree, xml_escape};
 
+mod grid;
 mod transposed;
 
 pub(super) use transposed::{connect_transposed_target, render_transposed_target};
@@ -41,7 +41,7 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<Option<String>, MfdError> {
         ));
     }
     if let Some(layout) = &args.options.xlsx_grid {
-        return render_grid(&args, layout).map(Some);
+        return grid::render_source(&args, layout).map(Some);
     }
     if let Some(layout) = &args.options.xlsx_worksheet_set {
         return render_worksheet_set(&args, layout).map(Some);
@@ -430,7 +430,16 @@ fn render_composite(
         worksheets.push_str(&body);
     }
 
-    for table_layout in std::iter::once(&layout.table).chain(&layout.additional_tables) {
+    for region in &layout.grids {
+        let grid_name = one_segment(&region.path, "composite XLSX grid path")?;
+        let sheet = required_matching_sheet(region.layout.sheet.as_deref(), grid_name)?;
+        if !names.insert(sheet) {
+            return Err(unsupported("composite XLSX worksheet names must be unique"));
+        }
+        worksheets.push_str(&grid::render_region(args, region)?);
+    }
+
+    for table_layout in layout.tables() {
         let table_name = one_segment(&table_layout.path, "composite XLSX table path")?;
         let table_sheet = required_matching_sheet(table_layout.sheet.as_deref(), table_name)?;
         if !names.insert(table_sheet) {
@@ -613,113 +622,6 @@ fn row_number_entry(
     ))
 }
 
-fn render_grid(args: &RenderArgs<'_>, layout: &XlsxGridLayout) -> Result<String, MfdError> {
-    validate_grid_names(layout)?;
-    let header = direct_child(args.schema, &layout.header_value_field)
-        .ok_or_else(|| unsupported("the XLSX grid header-value field is missing"))?;
-    let header_ty = scalar_type(header, "XLSX grid header-value field")?;
-    require_int_child(args.schema, &layout.header_position_field)?;
-    let rows_schema = direct_child(args.schema, &layout.rows_field)
-        .ok_or_else(|| unsupported("the XLSX grid row collection is missing"))?;
-    if !rows_schema.repeating {
-        return Err(unsupported(
-            "the XLSX grid row collection must be repeating",
-        ));
-    }
-    let cells_schema = direct_child(rows_schema, &layout.cells_field)
-        .ok_or_else(|| unsupported("the XLSX grid cell collection is missing"))?;
-    if !cells_schema.repeating {
-        return Err(unsupported(
-            "the XLSX grid cell collection must be repeating",
-        ));
-    }
-    let value = direct_child(cells_schema, &layout.cell_value_field)
-        .ok_or_else(|| unsupported("the XLSX grid cell-value field is missing"))?;
-    let value_ty = scalar_type(value, "XLSX grid cell-value field")?;
-    require_int_child(cells_schema, &layout.cell_position_field)?;
-
-    let header_key = args.ports.required_key_for_abs(
-        std::slice::from_ref(&layout.header_value_field),
-        "XLSX grid header value",
-    )?;
-    let header_position_key = args.ports.required_key_for_abs(
-        std::slice::from_ref(&layout.header_position_field),
-        "XLSX grid header position",
-    )?;
-    let rows_key = args
-        .ports
-        .required_key_for_abs(std::slice::from_ref(&layout.rows_field), "XLSX grid rows")?;
-    let value_path = vec![
-        layout.rows_field.clone(),
-        layout.cells_field.clone(),
-        layout.cell_value_field.clone(),
-    ];
-    let value_key = args
-        .ports
-        .required_key_for_abs(&value_path, "XLSX grid cell value")?;
-    let position_path = vec![
-        layout.rows_field.clone(),
-        layout.cells_field.clone(),
-        layout.cell_position_field.clone(),
-    ];
-    let position_key = args
-        .ports
-        .required_key_for_abs(&position_path, "XLSX grid cell position")?;
-
-    let mut ranges = format!(
-        "\t\t\t\t\t\t\t\t\t\t\t<range id=\"1\" start=\"{}\" count=\"1\"/>\n\
-         \t\t\t\t\t\t\t\t\t\t\t<range id=\"2\" start=\"{}\"/>\n",
-        layout.header_row.get(),
-        layout.data_start_row.get(),
-    );
-    let mut row_entries = format!(
-        "\t\t\t\t\t\t\t\t\t\t\t<entry name=\"Row\" expanded=\"1\">\n\
-         \t\t\t\t\t\t\t\t\t\t\t\t<condition><expression><function name=\"is-range-id\"><expression><constant value=\"1\" datatype=\"long\"/></expression></function></expression></condition>\n\
-         \t\t\t\t\t\t\t\t\t\t\t\t<entry name=\"Cell\" outkey=\"{header_key}\" annotation=\"{}\" datatype=\"{}\" expanded=\"1\">\n\
-         \t\t\t\t\t\t\t\t\t\t\t\t\t<entry name=\"n\" type=\"attribute\" outkey=\"{header_position_key}\"/>\n\
-         \t\t\t\t\t\t\t\t\t\t\t\t</entry>\n\
-         \t\t\t\t\t\t\t\t\t\t\t</entry>\n\
-         \t\t\t\t\t\t\t\t\t\t\t<entry name=\"Row\" outkey=\"{rows_key}\" expanded=\"1\">\n\
-         \t\t\t\t\t\t\t\t\t\t\t\t<condition><expression><function name=\"is-range-id\"><expression><constant value=\"2\" datatype=\"long\"/></expression></function></expression></condition>\n\
-         \t\t\t\t\t\t\t\t\t\t\t\t<entry name=\"Cell\" outkey=\"{value_key}\" datatype=\"{}\" expanded=\"1\">\n\
-         \t\t\t\t\t\t\t\t\t\t\t\t\t<entry name=\"n\" type=\"attribute\" outkey=\"{position_key}\"/>\n\
-         \t\t\t\t\t\t\t\t\t\t\t\t</entry>\n\
-         \t\t\t\t\t\t\t\t\t\t\t</entry>\n",
-        xml_escape(&layout.header_value_field),
-        type_name(header_ty),
-        type_name(value_ty),
-    );
-    for (index, cell) in layout.fixed_cells.iter().enumerate() {
-        let field_name = one_segment(&cell.path, "XLSX grid fixed-cell path")?;
-        let field = schema_at(args.schema, &cell.path)
-            .ok_or_else(|| unsupported("an XLSX grid fixed-cell field is missing"))?;
-        let ty = scalar_type(field, "XLSX grid fixed-cell field")?;
-        let key = args
-            .ports
-            .required_key_for_abs(&cell.path, "XLSX grid fixed cell")?;
-        render_fixed_cell(
-            index + 3,
-            cell,
-            field_name,
-            ty,
-            key,
-            &mut ranges,
-            &mut row_entries,
-        );
-    }
-    render_component(
-        args,
-        worksheet(
-            args.options
-                .xlsx_grid
-                .as_ref()
-                .and_then(|grid| grid.sheet.as_deref()),
-            &ranges,
-            &row_entries,
-        )?,
-    )
-}
-
 fn render_component(args: &RenderArgs<'_>, worksheets: String) -> Result<String, MfdError> {
     let root_key = args
         .ports
@@ -893,22 +795,6 @@ fn scalar_type(node: &SchemaNode, label: &str) -> Result<ScalarType, MfdError> {
     }
 }
 
-fn require_int_child(schema: &SchemaNode, name: &str) -> Result<(), MfdError> {
-    match direct_child(schema, name) {
-        Some(SchemaNode {
-            repeating: false,
-            attribute: false,
-            kind: SchemaKind::Scalar {
-                ty: ScalarType::Int,
-            },
-            ..
-        }) => Ok(()),
-        _ => Err(unsupported(
-            "XLSX grid physical-position fields must be non-repeating integers",
-        )),
-    }
-}
-
 fn one_segment<'a>(path: &'a [String], label: &str) -> Result<&'a str, MfdError> {
     match path {
         [name] if !name.is_empty() => Ok(name),
@@ -928,36 +814,6 @@ fn required_matching_sheet<'a>(
             "composite XLSX worksheet names must match their top-level schema fields",
         )),
     }
-}
-
-fn validate_grid_names(layout: &XlsxGridLayout) -> Result<(), MfdError> {
-    let names = [
-        layout.header_value_field.as_str(),
-        layout.header_position_field.as_str(),
-        layout.rows_field.as_str(),
-        layout.cells_field.as_str(),
-        layout.cell_value_field.as_str(),
-        layout.cell_position_field.as_str(),
-    ];
-    if names.iter().any(|name| name.is_empty()) {
-        return Err(unsupported("XLSX grid field names cannot be empty"));
-    }
-    if layout.header_position_field != "HeaderColumn"
-        || layout.rows_field != "Rows"
-        || layout.cells_field != "Cells"
-        || layout.cell_value_field != "value"
-        || layout.cell_position_field != "CellColumn"
-    {
-        return Err(unsupported(
-            "XLSX grid generated field names are not canonical .mfd names",
-        ));
-    }
-    if layout.data_start_row.get() <= layout.header_row.get() {
-        return Err(unsupported(
-            "the XLSX grid data start row must follow its header row",
-        ));
-    }
-    Ok(())
 }
 
 const fn type_name(ty: ScalarType) -> &'static str {
