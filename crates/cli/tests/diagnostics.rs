@@ -215,6 +215,62 @@ fn schemas_behind_a_long_include_chain_import() {
     assert_eq!(schema["kind"]["children"][0]["name"], "Sku", "{schema}");
 }
 
+/// A design whose entry tree nests far past the MFD entry depth limit is
+/// refused on the CLI's main thread instead of overflowing the stack.
+#[test]
+fn designs_past_the_entry_depth_limit_fail_with_a_diagnostic() {
+    let deep = temporary_path("diagnostics_deep_entries").with_extension("mfd");
+    let typed = r#"<entry name="n" ferrule-kind="group" ferrule-repeating="0">"#;
+    std::fs::write(
+        &deep,
+        format!(
+            r#"<mapping version="22"><component name="defaultmap" uid="1"><structure><children><component name="Input" library="xml" uid="2" kind="14"><data><root>{}<entry name="Value" outkey="2" ferrule-kind="scalar" ferrule-repeating="0" datatype="string"/>{}</root></data></component></children></structure></component></mapping>"#,
+            typed.repeat(200_000),
+            "</entry>".repeat(200_000)
+        ),
+    )
+    .unwrap();
+    let out = temporary_path("diagnostics_deep_entries_project");
+    let mut outputs = Vec::new();
+    for pipeline in [false, true] {
+        let mut args = vec![
+            "--diagnostics",
+            "json",
+            "import-mfd",
+            "--mfd",
+            deep.to_str().unwrap(),
+            "--out",
+            out.to_str().unwrap(),
+        ];
+        if pipeline {
+            args.push("--pipeline");
+        }
+        outputs.push(ferrule(&args));
+    }
+    std::fs::remove_file(&deep).unwrap();
+
+    for output in outputs {
+        // A stack overflow would end the process with a signal and no code.
+        assert!(
+            !output.status.success() && output.status.code().is_some(),
+            "{output:?}"
+        );
+        assert!(!out.exists());
+        let diagnostics = json_lines(&output.stderr);
+        assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+        assert_eq!(diagnostics[0]["command"], "import-mfd");
+        assert!(
+            diagnostics[0]["message"].as_str().is_some_and(|message| {
+                message.contains(&format!(
+                    "more than {} levels deep",
+                    mfd::MAX_MFD_ENTRY_DEPTH
+                ))
+            }),
+            "{diagnostics:?}"
+        );
+    }
+}
+
 #[test]
 fn invalid_usage_requested_as_json_is_one_diagnostic() {
     let output = ferrule(&["--diagnostics", "json", "validate"]);
