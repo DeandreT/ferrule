@@ -82,6 +82,27 @@ impl<'a> SourceExports<'a> {
         std::iter::once(&self.primary).chain(&self.extras)
     }
 
+    pub(super) fn repetition_owner_of_port(&self, port: u32) -> Option<u32> {
+        for source in self.iter() {
+            let Some(path) = source.ports.path_for_key(port) else {
+                continue;
+            };
+            let mut node = source.schema;
+            let mut owner = node
+                .repeating
+                .then(|| source.ports.key_for_abs(&[]))
+                .flatten();
+            for (index, segment) in path.iter().enumerate() {
+                node = node.child(segment)?;
+                if node.repeating {
+                    owner = source.ports.key_for_abs(&path[..=index]);
+                }
+            }
+            return owner;
+        }
+        None
+    }
+
     pub(super) fn xml_sequence_identity_for_port(
         &self,
         port: u32,
