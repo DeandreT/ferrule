@@ -1427,23 +1427,8 @@ fn write_single_node<W: std::io::Write>(
                     }
                 }
             }
-            if schema.xml_repeating_sequences.is_empty() {
-                for child_schema in children
-                    .iter()
-                    .filter(|child| !child.attribute && !child.text)
-                {
-                    write_group_child(
-                        writer,
-                        child_schema,
-                        children,
-                        root_schema,
-                        fields,
-                        recursion_depth,
-                        element_namespace,
-                    )?;
-                }
-            } else {
-                write_repeating_sequence_children(
+            match OrderedContentLayout::for_children(children) {
+                OrderedContentLayout::Indented => write_typed_element_children(
                     writer,
                     schema,
                     children,
@@ -1451,7 +1436,25 @@ fn write_single_node<W: std::io::Write>(
                     fields,
                     recursion_depth,
                     element_namespace,
-                )?;
+                )?,
+                OrderedContentLayout::Verbatim => {
+                    // The reader keeps every text node of a mixed parent, so
+                    // typed children get no added layout, as in its ordered
+                    // content stream.
+                    let output: &mut dyn Write = writer.get_mut();
+                    write_typed_element_children(
+                        &mut Writer::new(output),
+                        schema,
+                        children,
+                        root_schema,
+                        fields,
+                        recursion_depth,
+                        element_namespace,
+                    )?;
+                    // Keep the indentation layer from breaking the line
+                    // before the close tag.
+                    writer.write_event(Event::Text(BytesText::new("")))?;
+                }
             }
             writer.write_event(Event::End(BytesEnd::new(element_name)))?;
             Ok(())
@@ -1459,6 +1462,44 @@ fn write_single_node<W: std::io::Write>(
         (SchemaKind::Scalar { .. }, other) => Err(shape_error(schema, "a scalar", other)),
         (SchemaKind::Group { .. }, other) => Err(shape_error(schema, "an element group", other)),
     }
+}
+
+/// Writes the element children of a group from its typed fields.
+fn write_typed_element_children<W: std::io::Write>(
+    writer: &mut Writer<W>,
+    schema: &SchemaNode,
+    children: &[SchemaNode],
+    root_schema: &SchemaNode,
+    fields: &[(String, Instance)],
+    recursion_depth: usize,
+    inherited_namespace: Option<&str>,
+) -> Result<(), XmlFormatError> {
+    if !schema.xml_repeating_sequences.is_empty() {
+        return write_repeating_sequence_children(
+            writer,
+            schema,
+            children,
+            root_schema,
+            fields,
+            recursion_depth,
+            inherited_namespace,
+        );
+    }
+    for child_schema in children
+        .iter()
+        .filter(|child| !child.attribute && !child.text)
+    {
+        write_group_child(
+            writer,
+            child_schema,
+            children,
+            root_schema,
+            fields,
+            recursion_depth,
+            inherited_namespace,
+        )?;
+    }
+    Ok(())
 }
 
 fn write_group_child<W: std::io::Write>(
