@@ -533,7 +533,6 @@ dependencies = [
  "libfuzzer-sys",
  "mapping",
  "mfd",
- "roxmltree",
  "seccompiler",
  "serde_json",
 ]

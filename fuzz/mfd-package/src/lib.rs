@@ -13,9 +13,6 @@
 //!   supplied entries.
 //! - Import returns an imported project or an `MfdError`, makes no host
 //!   filesystem or network system call ([`sandbox`]), and is deterministic.
-//!
-//! [`known_limit_exemption`] skips the import of packages that reach a known
-//! unbounded recursion.
 
 use std::collections::BTreeSet;
 
@@ -35,28 +32,6 @@ pub use program::{Candidate, decode};
 /// run's per-input cost stays proportional to the program limits. The
 /// README's runs pass the same bound as `-max_len=65536`.
 pub const MAX_INPUT_BYTES: usize = 64 * 1024;
-
-/// Known limit ([#1167](https://github.com/DeandreT/ferrule/issues/1167)):
-/// these walk a design component's `<entry>` tree recursively, one call per
-/// nesting level, without a depth limit:
-///
-/// - `mfd::import::schema::typed_xml_entry_tree_schema` (entries carrying
-///   `ferrule-kind` metadata),
-/// - `mfd::import::schema::xml_ports::reconcile_children` (XML components),
-/// - `mfd::import::schema::collect_json_ports_with_declarations` (JSON
-///   components), and `mfd::import::target_node_default::collect`.
-///
-/// The shallowest overflow on the fuzz build's 8 MiB worker is 1,219 nested
-/// typed entries; the harness skips designs whose component entry trees nest
-/// deeper than this limit (README, Known limits).
-pub const MAX_EXEMPT_ENTRY_DEPTH: usize = 512;
-
-/// Why [`known_limit_exemption`] skipped an import.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum KnownLimit {
-    /// The design's component entry trees nest `depth` `<entry>` elements.
-    EntryTree { depth: usize },
-}
 
 /// Result of checking one input.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -80,8 +55,6 @@ pub enum Import {
         variant: String,
         message: String,
     },
-    /// Not imported: the package reaches a known unbounded recursion.
-    Exempt(KnownLimit),
 }
 
 impl Outcome {
@@ -97,9 +70,6 @@ impl Outcome {
             (Ok(_), Some(Import::Imported { .. })) => "imported with warnings".into(),
             (Ok(_), Some(Import::Refused(error))) => format!("package {error:?}"),
             (Ok(_), Some(Import::Failed { variant, .. })) => format!("error {variant}"),
-            (Ok(_), Some(Import::Exempt(KnownLimit::EntryTree { .. }))) => {
-                "exempt deep entry tree".into()
-            }
             (Ok(_), None) => "admitted".into(),
         }
     }
@@ -154,13 +124,6 @@ pub fn check_candidate(candidate: &Candidate) -> Outcome {
         entries_of(&reversed),
         "admitted entries depend on entry order"
     );
-
-    if let Some(exemption) = known_limit_exemption(&package) {
-        return Outcome {
-            admission: Ok(package.entries().len()),
-            import: Some(Import::Exempt(exemption)),
-        };
-    }
 
     let ((first, second), access) =
         sandbox::monitor(|| (import_package(&package), import_package(&reversed)));
@@ -244,48 +207,6 @@ pub fn documented_path(path: &str) -> bool {
                 && segment != ".."
                 && !segment.ends_with([' ', '.'])
         })
-}
-
-/// The known limit a package reaches, if any (see [`MAX_EXEMPT_ENTRY_DEPTH`]).
-///
-/// The design is decoded and parsed the way the importer reads it: as strict
-/// UTF-8, with default `roxmltree` options, which parse iteratively. A design
-/// it cannot read is not measured, since the import cannot descend into it
-/// either.
-pub fn known_limit_exemption(package: &MfdPackage) -> Option<KnownLimit> {
-    let design = package
-        .get(package.design_path())
-        .ok()
-        .and_then(|bytes| String::from_utf8(bytes.to_vec()).ok());
-    if let Some(design) = design
-        && let Ok(document) = roxmltree::Document::parse(&design)
-    {
-        let depth = component_entry_depth(document.root_element());
-        if depth > MAX_EXEMPT_ENTRY_DEPTH {
-            return Some(KnownLimit::EntryTree { depth });
-        }
-    }
-    None
-}
-
-/// The most `<entry>` elements on one path inside a `<component>`, counted
-/// without recursion. Entries elsewhere, such as under `<resources>`, are
-/// not walked by the entry-tree importers.
-fn component_entry_depth(root: roxmltree::Node<'_, '_>) -> usize {
-    let mut deepest = 0;
-    let mut stack = vec![(root, 0usize, false)];
-    while let Some((node, depth, in_component)) = stack.pop() {
-        let name = node.tag_name().name();
-        let in_component = in_component || name == "component";
-        let depth = depth + usize::from(in_component && name == "entry");
-        deepest = deepest.max(depth);
-        stack.extend(
-            node.children()
-                .filter(|child| child.is_element())
-                .map(|child| (child, depth, in_component)),
-        );
-    }
-    deepest
 }
 
 fn entries_of(package: &MfdPackage) -> Vec<(String, Vec<u8>)> {
