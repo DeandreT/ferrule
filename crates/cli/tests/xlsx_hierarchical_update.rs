@@ -245,16 +245,17 @@ fn update_existing_still_refuses_composite_grid_and_worksheet_set_targets() {
             "composite",
             mapping::FormatOptions {
                 xlsx_composite: Some(mapping::XlsxCompositeLayout {
-                    table: mapping::XlsxTableRegion {
+                    table: Some(mapping::XlsxTableRegion {
                         path: vec!["Rows".into()],
                         sheet: None,
                         start_row: row,
                         columns: Vec::new(),
                         has_header: true,
                         row_number_field: None,
-                    },
+                    }),
                     additional_tables: Vec::new(),
                     records: Vec::new(),
+                    grids: Vec::new(),
                 }),
                 ..Default::default()
             },

@@ -1645,6 +1645,9 @@ fn import_resolved(
     let mut exception_recipes = Vec::new();
     let mut pending_joins = join::PendingJoins::default();
     let mut skipped_libraries: Vec<String> = Vec::new();
+    // Components ferrule can import in general but refused in this design,
+    // with the reasons their readers gave.
+    let mut skipped_reasons: Vec<String> = Vec::new();
     let mut json5_string_dependencies = Vec::new();
     let inspect_unused_input = unused_xml_source::may_contain_unused_input(structure);
     let root_view_inventory = xml_root_view::Inventory::read(structure);
@@ -1855,10 +1858,17 @@ fn import_resolved(
                     }
                 }
                 "xlsx" if component.attribute("kind") == Some("26") => {
+                    let first_warning = warnings.len();
                     match read_xlsx_component(&component, &mut warnings) {
                         Some(sc) => schema_components.push(sc),
                         None => {
-                            note_skipped_library(&mut skipped_libraries, "xlsx");
+                            let reason = warnings[first_warning..].join("; ");
+                            if reason.is_empty() {
+                                note_skipped_library(&mut skipped_libraries, "xlsx");
+                            } else {
+                                skipped_reasons
+                                    .push(format!("skipped xlsx component `{name}`: {reason}"));
+                            }
                             warnings.push(format!("skipped xlsx component `{name}`"));
                         }
                     }
@@ -2310,7 +2320,12 @@ fn import_resolved(
 
     let target_inputs =
         external_udf::selected_target_inputs(&schema_components).ok_or_else(|| {
-            output_parameter::missing_error("target", &skipped_libraries, output_failed)
+            output_parameter::missing_error(
+                "target",
+                &skipped_libraries,
+                &skipped_reasons,
+                output_failed,
+            )
         })?;
     external_udf::install_fallback(
         &mut schema_components,
@@ -2338,8 +2353,9 @@ fn import_resolved(
         .collect();
     let intermediates: Vec<&SchemaComponent> =
         schema_components.iter().filter(|c| c.is_variable).collect();
-    let unsupported =
-        |side: &str| output_parameter::missing_error(side, &skipped_libraries, output_failed);
+    let unsupported = |side: &str| {
+        output_parameter::missing_error(side, &skipped_libraries, &skipped_reasons, output_failed)
+    };
     let default_target = targets
         .iter()
         .copied()

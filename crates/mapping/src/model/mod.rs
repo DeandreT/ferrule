@@ -5,7 +5,8 @@ mod scope;
 
 pub use format_options::{
     EdiConfigDependency, FormatOptions, XlsxColumn, XlsxCompositeLayout, XlsxFixedCell,
-    XlsxFixedRecord, XlsxGridLayout, XlsxRow, XlsxTableRegion, XlsxWorksheetSetLayout,
+    XlsxFixedRecord, XlsxGridLayout, XlsxGridRegion, XlsxRow, XlsxTableRegion,
+    XlsxWorksheetSetLayout,
 };
 pub use graph::{
     AggregateOp, Binding, DynamicBinding, DynamicChild, Graph, MAX_RUNTIME_PARAMETER_NAME_BYTES,

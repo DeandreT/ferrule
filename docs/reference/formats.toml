@@ -183,8 +183,9 @@ target = "yes"
 selection = "`.xlsx`"
 summary = """
 Typed worksheets, flat, transposed, composite, worksheet-set, and grid source
-shapes, flat, transposed, and hierarchical targets, and update-existing writes
-for flat and hierarchical targets
+shapes, with one grid per worksheet beside composite tables and records, flat,
+transposed, and hierarchical targets, and update-existing writes for flat and
+hierarchical targets
 """
 evidence = [
     "crates/format-xlsx/src/grid.rs",
@@ -195,6 +196,7 @@ evidence = [
 ]
 unsupported = [
     "Grid, worksheet-set, and composite output, which are input-only layouts",
+    "Several grids on one worksheet, and composite sources with grids in generated code",
     "Update-existing writes for grid, worksheet-set, composite, and transposed layouts",
     "Update-existing writes on payload, standard-stream, and pipeline-preview runs, in pipeline `.mfd` final targets, and in generated code",
     "Transposed output on standard-stream and bounded-document runs",

@@ -103,25 +103,16 @@ pub(super) fn read(
         return Some(with_workbook_root_ports(hierarchical, workbook));
     }
 
-    if let Some(grid) = grid::read(
-        *component,
-        excel,
-        workbook,
-        &name,
-        input_keys.clone(),
-        output_keys.clone(),
-        is_source,
-        warnings,
-    ) {
-        return Some(with_workbook_root_ports(grid, workbook));
-    }
+    let mut grids = grid::scan(workbook, &name, is_source, warnings).ok()?;
+    let grid_worksheets = grids.iter().map(|grid| grid.node).collect::<Vec<_>>();
 
     let mut tables = Vec::new();
     let mut records = Vec::new();
-    for worksheet in workbook
-        .children()
-        .filter(|node| node.has_tag_name("entry") && node.attribute("name") == Some("Worksheet"))
-    {
+    for worksheet in workbook.children().filter(|node| {
+        node.has_tag_name("entry")
+            && node.attribute("name") == Some("Worksheet")
+            && !grid_worksheets.contains(&node.id())
+    }) {
         inspect_worksheet(
             worksheet,
             &name,
@@ -142,25 +133,44 @@ pub(super) fn read(
         ));
     }
 
-    if let Some(worksheet_set) = worksheet_set::read(
-        &name,
-        excel,
-        &tables,
-        input_keys.clone(),
-        output_keys.clone(),
-        is_source,
-        is_default_output(component),
-        warnings,
-    ) {
+    if grids.len() == 1 && tables.is_empty() && records.is_empty() {
+        let grid = grids.pop()?;
+        return Some(with_workbook_root_ports(
+            grid::single_component(
+                *component,
+                excel,
+                &name,
+                grid,
+                input_keys,
+                output_keys,
+                warnings,
+            ),
+            workbook,
+        ));
+    }
+
+    if grids.is_empty()
+        && let Some(worksheet_set) = worksheet_set::read(
+            &name,
+            excel,
+            &tables,
+            input_keys.clone(),
+            output_keys.clone(),
+            is_source,
+            is_default_output(component),
+            warnings,
+        )
+    {
         return Some(with_workbook_root_ports(worksheet_set, workbook));
     }
 
-    if (!records.is_empty() || tables.len() > 1)
+    if (!grids.is_empty() || !records.is_empty() || tables.len() > 1)
         && let Some(composite) = read_composite(
             name.clone(),
             excel,
             tables.clone(),
             records,
+            grids,
             input_keys.clone(),
             output_keys.clone(),
             is_source,
@@ -325,15 +335,16 @@ fn read_composite(
     excel: roxmltree::Node<'_, '_>,
     mut tables: Vec<Table>,
     records: Vec<FixedRecord>,
+    grids: Vec<grid::GridWorksheet>,
     input_keys: BTreeSet<u32>,
     output_keys: BTreeSet<u32>,
     is_source: bool,
     is_default_output: bool,
     warnings: &mut Vec<String>,
 ) -> Option<SchemaComponent> {
-    if tables.is_empty() {
+    if tables.is_empty() && grids.is_empty() {
         warnings.push(format!(
-            "xlsx component `{name}` has fixed records but no supported open row table; composite XLSX sources require at least one table"
+            "xlsx component `{name}` has fixed records but no supported open row table or grid; composite XLSX sources require at least one table or grid"
         ));
         return None;
     }
@@ -341,7 +352,9 @@ fn read_composite(
         .iter()
         .any(|table| matches!(table.layout, TableLayout::Transposed { .. }))
     {
-        let reason = if !records.is_empty() && tables.len() == 1 {
+        let reason = if !grids.is_empty() {
+            "combines a grid with a transposed table"
+        } else if !records.is_empty() && tables.len() == 1 {
             "combines fixed records with a transposed table"
         } else {
             "combines multiple tables with a transposed table"
@@ -368,7 +381,9 @@ fn read_composite(
     }
     if records
         .iter()
-        .any(|record| !names.insert(record.name.as_str()))
+        .map(|record| record.name.as_str())
+        .chain(grids.iter().filter_map(grid::GridWorksheet::sheet))
+        .any(|sheet| !names.insert(sheet))
     {
         warnings.push(format!(
             "xlsx component `{name}` uses the same worksheet name for more than one composite region; component skipped"
@@ -404,6 +419,13 @@ fn read_composite(
             sheet: record.sheet,
             cells,
         });
+    }
+
+    let mut grid_layouts = Vec::with_capacity(grids.len());
+    for grid in grids {
+        let (group, region) = grid::composite_region(grid, &name, &mut ports, warnings)?;
+        fields.push(group);
+        grid_layouts.push(region);
     }
 
     let mut table_layouts = Vec::with_capacity(tables.len());
@@ -462,7 +484,7 @@ fn read_composite(
             row_number_field,
         });
     }
-    let table = table_layouts.remove(0);
+    let table = (!table_layouts.is_empty()).then(|| table_layouts.remove(0));
 
     if excel.attribute("updateexistingfile") == Some("1") {
         warnings.push(format!(
@@ -481,6 +503,7 @@ fn read_composite(
                 table,
                 additional_tables: table_layouts,
                 records: fixed_layouts,
+                grids: grid_layouts,
             }),
             ..FormatOptions::default()
         },

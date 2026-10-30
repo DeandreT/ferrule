@@ -32,7 +32,8 @@ pub fn from_bytes_composite(
         .first()
         .cloned()
         .ok_or(XlsxFormatError::NoWorksheets)?;
-    let table_sheets = tables(layout)
+    let table_sheets = layout
+        .tables()
         .map(|table| select_sheet(&sheet_names, &first_sheet, table.sheet.as_deref()))
         .collect::<Result<Vec<_>, _>>()?;
     let record_sheets = layout
@@ -40,10 +41,25 @@ pub fn from_bytes_composite(
         .iter()
         .map(|record| select_sheet(&sheet_names, &first_sheet, record.sheet.as_deref()))
         .collect::<Result<Vec<_>, _>>()?;
+    let grid_sheets = layout
+        .grids
+        .iter()
+        .map(|grid| select_sheet(&sheet_names, &first_sheet, grid.layout.sheet.as_deref()))
+        .collect::<Result<Vec<_>, _>>()?;
+    let mut used_grid_sheets = std::collections::BTreeSet::new();
+    for (grid, sheet) in layout.grids.iter().zip(&grid_sheets) {
+        if !used_grid_sheets.insert(sheet) {
+            return Err(composite_path_error(
+                &grid.path,
+                "several grids cannot share one worksheet",
+            ));
+        }
+    }
     let selected_sheets = table_sheets
         .iter()
+        .chain(&record_sheets)
+        .chain(&grid_sheets)
         .cloned()
-        .chain(record_sheets.iter().cloned())
         .collect::<std::collections::BTreeSet<_>>();
     let mut ranges = std::collections::BTreeMap::new();
     for sheet in selected_sheets {
@@ -58,7 +74,16 @@ pub fn from_bytes_composite(
         materialize_fixed_record(&mut instance, schema, record, range)?;
     }
 
-    for (table, sheet) in tables(layout).zip(&table_sheets) {
+    for (grid, sheet) in layout.grids.iter().zip(&grid_sheets) {
+        let record_schema = schema_node_at(schema, &grid.path)?;
+        let range = ranges
+            .get(sheet)
+            .ok_or_else(|| XlsxFormatError::MissingWorksheet(sheet.clone()))?;
+        let records = super::grid::read_grid_region(range, record_schema, &grid.layout)?;
+        replace_at_path(&mut instance, &grid.path, Instance::Repeated(records))?;
+    }
+
+    for (table, sheet) in layout.tables().zip(&table_sheets) {
         let table_schema = schema_node_at(schema, &table.path)?;
         let table_fields =
             flat_table_fields(table_schema, &table.path, table.row_number_field.as_deref())?;
@@ -77,10 +102,6 @@ pub fn from_bytes_composite(
         replace_at_path(&mut instance, &table.path, Instance::Repeated(rows))?;
     }
     Ok(instance)
-}
-
-fn tables(layout: &XlsxCompositeLayout) -> impl Iterator<Item = &XlsxTableRegion> {
-    std::iter::once(&layout.table).chain(&layout.additional_tables)
 }
 
 fn select_sheet(
@@ -105,9 +126,14 @@ pub(super) fn validate_composite_layout(
     if schema.contains_json_tuple() {
         return Err(XlsxFormatError::UnsupportedSchema);
     }
-    let mut table_paths = std::collections::BTreeSet::new();
-    for table in tables(layout) {
-        if !table_paths.insert(table.path.clone()) {
+    layout
+        .validate_regions()
+        .map_err(XlsxFormatError::CompositeLayout)?;
+    // Tables and grids own whole repeating groups, so no other region may
+    // claim their paths.
+    let mut owned_paths = std::collections::BTreeSet::new();
+    for table in layout.tables() {
+        if !owned_paths.insert(table.path.clone()) {
             return Err(XlsxFormatError::DuplicateCompositePath(display_path(
                 &table.path,
             )));
@@ -116,6 +142,22 @@ pub(super) fn validate_composite_layout(
         let table_fields =
             flat_table_fields(table_schema, &table.path, table.row_number_field.as_deref())?;
         composite_columns(table, table_fields.len())?;
+    }
+    let mut grid_sheets = std::collections::BTreeSet::new();
+    for grid in &layout.grids {
+        if !owned_paths.insert(grid.path.clone()) {
+            return Err(XlsxFormatError::DuplicateCompositePath(display_path(
+                &grid.path,
+            )));
+        }
+        if !grid_sheets.insert(grid.layout.sheet.as_deref()) {
+            return Err(composite_path_error(
+                &grid.path,
+                "several grids cannot share one worksheet",
+            ));
+        }
+        let record_schema = schema_node_at(schema, &grid.path)?;
+        super::grid::validate_grid_region(record_schema, &grid.layout)?;
     }
 
     let mut record_paths = std::collections::BTreeSet::new();
@@ -133,10 +175,10 @@ pub(super) fn validate_composite_layout(
                 "fixed record must resolve to a group",
             ));
         }
-        if table_paths.contains(&record.path) {
+        if owned_paths.contains(&record.path) {
             return Err(composite_path_error(
                 &record.path,
-                "fixed record and table cannot own the same group",
+                "fixed record and table or grid cannot own the same group",
             ));
         }
         for cell in &record.cells {
@@ -158,10 +200,10 @@ pub(super) fn validate_composite_layout(
                 ));
             }
             let absolute = joined_path(&record.path, &cell.path);
-            if table_paths.iter().any(|table| absolute.starts_with(table)) {
+            if owned_paths.iter().any(|owned| absolute.starts_with(owned)) {
                 return Err(composite_path_error(
                     &absolute,
-                    "fixed cells cannot be inside the table",
+                    "fixed cells cannot be inside a table or grid",
                 ));
             }
             if !cell_paths.insert(absolute.clone()) {
@@ -430,3 +472,7 @@ fn composite_path_error(path: &[String], reason: &'static str) -> XlsxFormatErro
         reason,
     }
 }
+
+#[cfg(test)]
+#[path = "composite_grid_tests.rs"]
+mod grid_tests;

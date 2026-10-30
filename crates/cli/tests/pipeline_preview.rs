@@ -874,16 +874,17 @@ fn dynamic_outputs_render_each_member_and_validate_options_before_execution() ->
     let mut unsupported = pipeline;
     unsupported.stages[0].project.target_options = FormatOptions {
         xlsx_composite: Some(mapping::XlsxCompositeLayout {
-            table: mapping::XlsxTableRegion {
+            table: Some(mapping::XlsxTableRegion {
                 path: vec!["Rows".into()],
                 sheet: None,
                 start_row: mapping::XlsxRow::new(1).unwrap(),
                 columns: Vec::new(),
                 has_header: true,
                 row_number_field: None,
-            },
+            }),
             additional_tables: Vec::new(),
             records: Vec::new(),
+            grids: Vec::new(),
         }),
         ..FormatOptions::default()
     };
