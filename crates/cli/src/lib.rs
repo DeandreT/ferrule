@@ -613,7 +613,10 @@ fn write_output(
         return Ok(1);
     }
     if let SelectedFormat::Swift(_) = selected {
-        bail!("SWIFT MT output is not supported; `swift_mt` is input-only");
+        let formatted = formatted_edi_output(instance, options)?;
+        format_edi::swift::write_with_options(path, schema, &formatted, options)
+            .with_context(|| format!("writing SWIFT MT output {}", path.display()))?;
+        return Ok(1);
     }
     if let SelectedFormat::Pdf(_) = selected {
         bail!("PDF output is not supported; `pdf` is input-only");
@@ -773,10 +776,9 @@ fn write_output(
         }
         SelectedFormat::MissingPdf => bail!("PDF output is not supported; PDF is input-only"),
         SelectedFormat::MissingIdoc => bail!("unsupported output file extension: .idoc"),
-        SelectedFormat::MissingSwift => bail!(
-            "unsupported output file extension: .{}",
-            extension_of(path)?
-        ),
+        SelectedFormat::MissingSwift => {
+            bail!("SWIFT MT output requires an embedded `swift_mt` layout and message headers")
+        }
         SelectedFormat::Unsupported(other) => bail!("unsupported output file extension: .{other}"),
         _ => unreachable!("explicit formats returned above"),
     }
@@ -1884,7 +1886,7 @@ fn write_edi_output(
             bail!("SAP IDoc output requires an embedded runtime layout")
         }
         EdiBoundaryKind::SwiftMt => {
-            bail!("SWIFT MT output is not supported; SWIFT MT is input-only")
+            bail!("SWIFT MT output requires an embedded `swift_mt` layout")
         }
     }
     .with_context(|| format!("writing EDI output {}", path.display()))?;

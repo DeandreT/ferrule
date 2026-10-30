@@ -240,7 +240,9 @@ the dialect. Strict sources must admit their selected family's opening segment.
 The native CLI and generated Rust use the shared EDI boundary; generated C# uses package-free
 schema-guided codecs. Input is capped at 64 MiB per document and 256 MiB per
 run; output is capped at 64 MiB. IDoc also caps each document at 100,000 records.
-SWIFT MT remains input-only and cannot provide a same-format output.
+SWIFT MT is not a primary document format: the shared EDI document boundary
+and the generated codecs do not implement it, so a SWIFT MT source or target is
+refused before any host call.
 
 EDIFACT syntax is selected by UNB's S001 version component. Versions 1–3 keep
 `*` as literal data; version 4 and later enable typed element repetitions,

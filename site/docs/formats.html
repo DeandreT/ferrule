@@ -50,7 +50,7 @@
             <tr><td>X12 / EDIFACT</td><td>Yes</td><td>Yes</td><td><code>.edi</code>, <code>.x12</code>, or <code>.edifact</code> with a schema dialect, or <code>edi_kind</code></td><td>Schema-guided interchange I/O, custom syntax separators, repetitions, qualifier loops, retained field lengths and code lists, optional lenient parsing, and bounded output validation that leaves the destination unchanged on failure</td></tr>
             <tr><td>HL7 v2 / TRADACOMS</td><td>Yes</td><td>Yes</td><td><code>.hl7</code> or an EDI schema dialect</td><td>Bounded schema-guided message I/O, retained field lengths and code lists, HL7 escapes and subcomponents, and TRADACOMS release escaping</td></tr>
             <tr><td>SAP IDoc</td><td>Yes</td><td>Yes</td><td><code>idoc</code> layout</td><td>Embedded fixed-record layouts with bounded byte-position parsing and deterministic output</td></tr>
-            <tr><td>SWIFT MT</td><td>Yes</td><td>No</td><td><code>swift_mt</code> layout</td><td>Input through embedded message and field grammars</td></tr>
+            <tr><td>SWIFT MT</td><td>Yes</td><td>Yes</td><td><code>swift_mt</code> layout; targets also need <code>swift_mt_output</code> headers</td><td>Embedded message and field grammars; output takes one configured direction and one header set per message, and is re-read before it is returned</td></tr>
             <tr><td>FlexText</td><td>Yes</td><td>Yes</td><td><code>flextext</code> layout imported from <code>.mft</code></td><td>Embedded recursive split, store, and switch layouts, including fixed-width and delimited records</td></tr>
             <tr><td>Protocol Buffers</td><td>Yes</td><td>Yes</td><td><code>protobuf</code> schema and root message</td><td>Bounded proto2/proto3 binary I/O with self-contained local import graphs, public imports, nested messages, enums, repeated fields, and packed scalars</td></tr>
             <tr><td>XBRL</td><td>Yes</td><td>Yes</td><td><code>xbrl</code> options</td><td>Typed instance facts, contexts, dimensions, units, and namespace-qualified concepts through table-shaped boundaries</td></tr>
@@ -107,7 +107,10 @@
             <tr><td>SQLite</td><td>SQL text, joins, views and declared queries on payload, stream, REST, pipeline, generated-code and MFD routes</td></tr>
             <tr><td>X12 / EDIFACT</td><td>X12 CR LF segment terminators, and whitespace or invisible X12 element, component, repetition or release separators</td></tr>
             <tr><td>SAP IDoc</td><td><code>.idoc</code> input without an embedded layout</td></tr>
-            <tr><td>SWIFT MT</td><td>SWIFT MT output</td></tr>
+            <tr><td>SWIFT MT</td><td>User-header (3) and trailer (5) blocks in output</td></tr>
+            <tr><td>SWIFT MT</td><td>Output that interleaves occurrences of different repeating fields</td></tr>
+            <tr><td>SWIFT MT</td><td>Primary filename document runs</td></tr>
+            <tr><td>SWIFT MT</td><td><code>.mfd</code> export of output headers</td></tr>
             <tr><td>Protocol Buffers</td><td>Recursive messages, which the tree-shaped instance model cannot represent</td></tr>
             <tr><td>XBRL</td><td>Taxonomy formula, presentation, calculation, and linkbase execution</td></tr>
             <tr><td>PDF</td><td>PDF output</td></tr>

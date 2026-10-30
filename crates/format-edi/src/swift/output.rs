@@ -5,7 +5,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use ir::{Instance, SchemaKind, SchemaNode, Value};
-use mapping::{SwiftCharset, SwiftFieldLayout, SwiftMtLayout, SwiftValueExpr};
+use mapping::{SwiftCharset, SwiftFieldLayout, SwiftMessageLayout, SwiftMtLayout, SwiftValueExpr};
 use thiserror::Error;
 
 use super::{
@@ -229,30 +229,7 @@ pub(super) fn to_bytes_with_limits(
     headers: &[SwiftHeaders],
     limits: OutputLimits,
 ) -> Result<Vec<u8>, SwiftWriteError> {
-    if let Some(name) = scalar_union_name(schema) {
-        return Err(SwiftWriteError::UnsupportedSchema(format!(
-            "field `{name}` cannot preserve a heterogeneous scalar union"
-        )));
-    }
-    let SchemaKind::Group {
-        children: root_children,
-        ..
-    } = &schema.kind
-    else {
-        return Err(SwiftWriteError::UnsupportedSchema(format!(
-            "root `{}` is not a group",
-            schema.name
-        )));
-    };
-    let message_schema = schema
-        .child("Message")
-        .filter(|message| message.repeating)
-        .ok_or_else(|| {
-            SwiftWriteError::UnsupportedSchema(format!(
-                "root `{}` has no repeating `Message` group",
-                schema.name
-            ))
-        })?;
+    let (root_children, message_schema) = output_schema(schema)?;
     let root_fields = group_fields(|| schema.name.clone(), instance, root_children)?;
     let messages = match root_fields.iter().find(|(name, _)| name == "Message") {
         Some((_, Instance::Repeated(items))) => items.as_slice(),
@@ -374,14 +351,7 @@ impl Writer {
         let message_layout = layout
             .message(message_type)
             .ok_or_else(|| SwiftWriteError::UnknownMessage(message_type.clone()))?;
-        let digits = message_type
-            .strip_prefix("MT")
-            .filter(|digits| digits.len() == 3 && digits.bytes().all(|byte| byte.is_ascii_digit()))
-            .ok_or_else(|| {
-                SwiftWriteError::UnsupportedLayout(format!(
-                    "message type `{message_type}` is not `MT` followed by three digits"
-                ))
-            })?;
+        let digits = message_type_digits(message_type)?;
         let selected_schema = message_schema
             .child(message_type)
             .filter(|schema| !schema.repeating && matches!(schema.kind, SchemaKind::Group { .. }))
@@ -416,7 +386,7 @@ impl Writer {
         }
 
         if !self.validated.contains(message_type.as_str()) {
-            validate_message_layout(message_layout.fields())?;
+            validate_message_fields(message_layout.fields())?;
             self.validated.insert(message_type.clone());
         }
         let mut collected = BTreeMap::new();
@@ -459,26 +429,8 @@ impl Writer {
             let Some(entry) = collected.get(field.path()) else {
                 continue;
             };
-            if field.tag().is_empty()
-                || !field
-                    .tag()
-                    .bytes()
-                    .all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit())
-            {
-                return Err(SwiftWriteError::UnsupportedLayout(format!(
-                    "field tag `{}` is not uppercase letters and digits",
-                    field.tag()
-                )));
-            }
-            if message_layout.fields()[..position]
-                .iter()
-                .any(|earlier| earlier.tag() == field.tag())
-            {
-                return Err(SwiftWriteError::ShadowedTag {
-                    tag: field.tag().to_string(),
-                    path: field.path().join("/"),
-                });
-            }
+            check_tag_syntax(field)?;
+            check_shadowed_tag(message_layout.fields(), position)?;
             for occurrence in &entry.occurrences {
                 field_count += 1;
                 if field_count > self.limits.fields_per_message {
@@ -513,8 +465,60 @@ impl Writer {
     }
 }
 
-/// Layout checks that do not depend on the instance.
-fn validate_message_layout(fields: &[SwiftFieldLayout]) -> Result<(), SwiftWriteError> {
+/// The root's fields and its repeating `Message` group, which every output
+/// needs.
+pub(super) fn output_schema(
+    schema: &SchemaNode,
+) -> Result<(&[SchemaNode], &SchemaNode), SwiftWriteError> {
+    // The shared refusal only reports an unsupported schema.
+    crate::refuse_json_tuple(schema).map_err(|error| match error {
+        EdiFormatError::UnsupportedSchema(message) => SwiftWriteError::UnsupportedSchema(message),
+        other => SwiftWriteError::UnsupportedSchema(other.to_string()),
+    })?;
+    if let Some(name) = scalar_union_name(schema) {
+        return Err(SwiftWriteError::UnsupportedSchema(format!(
+            "field `{name}` cannot preserve a heterogeneous scalar union"
+        )));
+    }
+    let SchemaKind::Group { children, .. } = &schema.kind else {
+        return Err(SwiftWriteError::UnsupportedSchema(format!(
+            "root `{}` is not a group",
+            schema.name
+        )));
+    };
+    let message_schema = schema
+        .child("Message")
+        .filter(|message| message.repeating)
+        .ok_or_else(|| {
+            SwiftWriteError::UnsupportedSchema(format!(
+                "root `{}` has no repeating `Message` group",
+                schema.name
+            ))
+        })?;
+    Ok((children, message_schema))
+}
+
+/// Layout checks that depend on neither the instance, the headers nor the
+/// mapping. Shadowed tags depend on which fields are written; see
+/// [`check_shadowed_tag`].
+pub(super) fn validate_message_layout(message: &SwiftMessageLayout) -> Result<(), SwiftWriteError> {
+    message_type_digits(message.message_type())?;
+    validate_message_fields(message.fields())?;
+    message.fields().iter().try_for_each(check_tag_syntax)
+}
+
+fn message_type_digits(message_type: &str) -> Result<&str, SwiftWriteError> {
+    message_type
+        .strip_prefix("MT")
+        .filter(|digits| digits.len() == 3 && digits.bytes().all(|byte| byte.is_ascii_digit()))
+        .ok_or_else(|| {
+            SwiftWriteError::UnsupportedLayout(format!(
+                "message type `{message_type}` is not `MT` followed by three digits"
+            ))
+        })
+}
+
+fn validate_message_fields(fields: &[SwiftFieldLayout]) -> Result<(), SwiftWriteError> {
     match fields
         .iter()
         .find(|field| !field.repeating() && !has_captures(field.value()))
@@ -525,6 +529,42 @@ fn validate_message_layout(fields: &[SwiftFieldLayout]) -> Result<(), SwiftWrite
         ))),
         None => Ok(()),
     }
+}
+
+/// The reader recognizes only uppercase-and-digit tags.
+fn check_tag_syntax(field: &SwiftFieldLayout) -> Result<(), SwiftWriteError> {
+    if field.tag().is_empty()
+        || !field
+            .tag()
+            .bytes()
+            .all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit())
+    {
+        return Err(SwiftWriteError::UnsupportedLayout(format!(
+            "field tag `{}` is not uppercase letters and digits",
+            field.tag()
+        )));
+    }
+    Ok(())
+}
+
+/// The reader reads only the first layout field with a given tag, so a
+/// written field whose tag an earlier layout field uses would re-read as
+/// that earlier field.
+pub(super) fn check_shadowed_tag(
+    fields: &[SwiftFieldLayout],
+    position: usize,
+) -> Result<(), SwiftWriteError> {
+    let field = &fields[position];
+    if fields[..position]
+        .iter()
+        .any(|earlier| earlier.tag() == field.tag())
+    {
+        return Err(SwiftWriteError::ShadowedTag {
+            tag: field.tag().to_string(),
+            path: field.path().join("/"),
+        });
+    }
+    Ok(())
 }
 
 fn direction(

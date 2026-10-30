@@ -264,6 +264,25 @@ impl FerruleApp {
             MappingDocument::Target(index) => Some(index),
             MappingDocument::Main | MappingDocument::Function(_) => None,
         };
+        if page == InspectorPage::Target {
+            // Keyed by name rather than position, so reordering targets
+            // never hands one target's draft to another.
+            let target = match active_target {
+                Some(index) => self
+                    .project
+                    .extra_targets
+                    .get_mut(index)
+                    .map(|target| (Some(target.name.as_str()), &mut target.options)),
+                None => Some((None, &mut self.project.target_options)),
+            };
+            if let Some((name, options)) = target.filter(|(_, options)| options.swift_mt.is_some())
+            {
+                ui.add_enabled_ui(editing_enabled, |ui| {
+                    crate::app::swift_output::show_fields(ui, options, name);
+                });
+                ui.separator();
+            }
+        }
         ui.add_enabled_ui(editing_enabled, |ui| {
             let (schema, root, path, options) = active_target
                 .and_then(|index| self.project.extra_targets.get(index))

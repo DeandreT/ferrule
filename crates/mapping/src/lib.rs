@@ -173,7 +173,8 @@ pub use sqlite_read::{
     validate_sqlite_read_profile,
 };
 pub use swift::{
-    SwiftCharset, SwiftFieldLayout, SwiftMessageLayout, SwiftMtLayout, SwiftMtLayoutError,
+    SwiftCharset, SwiftFieldLayout, SwiftMessageLayout, SwiftMtDirection, SwiftMtLayout,
+    SwiftMtLayoutError, SwiftMtMessageHeaders, SwiftMtOutputError, SwiftMtOutputOptions,
     SwiftValueExpr,
 };
 pub use tabular::TabularBoundaryKind;
@@ -199,6 +200,10 @@ pub(crate) fn is_false(value: &bool) -> bool {
 #[cfg(test)]
 #[path = "tests/model.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "tests/swift_output.rs"]
+mod swift_output_tests;
 
 #[cfg(test)]
 #[path = "tests/filter_map.rs"]

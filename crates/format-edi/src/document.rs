@@ -24,7 +24,9 @@ pub fn validate(
         ));
     }
     if kind == EdiBoundaryKind::SwiftMt {
-        return Err(invalid("SWIFT MT is input-only"));
+        return Err(invalid(
+            "SWIFT MT uses its own `swift` codec, not the shared EDI document boundary",
+        ));
     }
     if options.edi_config_reference.is_some() {
         return Err(invalid("unresolved EDI configuration"));

@@ -137,12 +137,6 @@ pub(super) fn validate_target_options(
             "local XML file sets are valid only for mapping sources",
         ));
     }
-    if options.swift_mt.is_some() {
-        issues.push(ValidationIssue::new(
-            location,
-            "SWIFT MT layouts are valid only for mapping sources",
-        ));
-    }
 }
 
 pub(super) fn validate_json5_options(
