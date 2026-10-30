@@ -218,16 +218,17 @@ fn workbook_fallback_follows_path_and_update_requires_flat_or_hierarchical_layou
     for refused in [
         FormatOptions {
             xlsx_composite: Some(mapping::XlsxCompositeLayout {
-                table: mapping::XlsxTableRegion {
+                table: Some(mapping::XlsxTableRegion {
                     path: vec!["Rows".into()],
                     sheet: None,
                     start_row: mapping::XlsxRow::new(1).unwrap(),
                     columns: Vec::new(),
                     has_header: true,
                     row_number_field: None,
-                },
+                }),
                 additional_tables: Vec::new(),
                 records: Vec::new(),
+                grids: Vec::new(),
             }),
             ..FormatOptions::default()
         },

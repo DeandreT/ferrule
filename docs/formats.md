@@ -30,7 +30,7 @@ for a complete format standard or another product.
 | JSON5 | Yes | Yes | `.json5` or `json5` | One schema-shaped document in JSON5 instance syntax with ordinary JSON schemas and the same typed mapping boundary; input accepts comments, trailing commas, and single-quoted strings, and is limited to 64 MiB and 128 nested containers; output omits property-name quotes where JSON5 allows; CLI and browser runtime |
 | CSV | Yes | Yes | `.csv` or `.txt` | Delimited flat rows with a configurable delimiter, printable or disabled quoting, headers, optional present-empty text, and optional UTF-8 BOM output |
 | Fixed-width | Yes | Yes | `fixed_width` layout | Validated Unicode-scalar column layouts, configurable fill, record separators, and empty-value handling |
-| XLSX | Yes | Yes | `.xlsx` | Typed worksheets, flat, transposed, composite, worksheet-set, and grid source shapes, flat, transposed, and hierarchical targets, and update-existing writes for flat and hierarchical targets |
+| XLSX | Yes | Yes | `.xlsx` | Typed worksheets, flat, transposed, composite, worksheet-set, and grid source shapes, with one grid per worksheet beside composite tables and records, flat, transposed, and hierarchical targets, and update-existing writes for flat and hierarchical targets |
 | SQLite | Yes | Yes | `.db`, `.sqlite`, or `.sqlite3` | Read-only table introspection, typed reads, imported relational query shapes, declared read-only single-table queries with typed named parameters, validated declared relations, structured XML text columns, and idempotent full-replace writes |
 | X12 / EDIFACT | Yes | Yes | `.edi`, `.x12`, or `.edifact` with a schema dialect, or `edi_kind` | Schema-guided interchange I/O, custom syntax separators, repetitions, qualifier loops, retained field lengths and code lists, optional lenient parsing, and bounded output validation that leaves the destination unchanged on failure |
 | HL7 v2 / TRADACOMS | Yes | Yes | `.hl7` or an EDI schema dialect | Bounded schema-guided message I/O, retained field lengths and code lists, HL7 escapes and subcomponents, and TRADACOMS release escaping |
@@ -83,6 +83,7 @@ for a complete format standard or another product.
 | CSV | Unquoted output of field text that requires escaping when quoting is disabled |
 | Fixed-width | Combining a fixed-width layout with CSV dialect options |
 | XLSX | Grid, worksheet-set, and composite output, which are input-only layouts |
+| XLSX | Several grids on one worksheet, and composite sources with grids in generated code |
 | XLSX | Update-existing writes for grid, worksheet-set, composite, and transposed layouts |
 | XLSX | Update-existing writes on payload, standard-stream, and pipeline-preview runs, in pipeline `.mfd` final targets, and in generated code |
 | XLSX | Transposed output on standard-stream and bounded-document runs |
@@ -586,6 +587,16 @@ for a complete format standard or another product.
   update-existing. Payload, standard-stream, and
   pipeline-preview runs refuse it because it needs the persistent workbook,
   and pipeline `.mfd` import and export refuse it on the final target.
+- A grid source reads one header row and the data rows below it on one
+  worksheet, producing one record per non-empty header cell, each with the
+  header value and column, fixed cells, and the complete row and cell matrix.
+  One grid uses `xlsx_grid`, and its records are the source root. Several
+  grids, or a grid beside tables or fixed records on other worksheets, use
+  `xlsx_composite` `grids`: each grid fills its own repeating group of the
+  composite root, and `table` may then be omitted. Each grid needs its own
+  worksheet. MFD import refuses a worksheet holding several grids, because
+  pairing their header and data ranges is not established. Grids are
+  input-only, and generated code refuses composite sources with grids.
 - Transposed XLSX targets (`xlsx_rows` on a target) write each record into one
   worksheet column and each data field into its selected row, in schema order.
   There is no header row, and `xlsx_start_row`, `xlsx_columns`, and

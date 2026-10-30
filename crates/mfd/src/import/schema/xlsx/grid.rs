@@ -1,7 +1,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use ir::{ScalarType, SchemaNode};
-use mapping::{FormatOptions, TabularBoundaryKind, XlsxFixedCell, XlsxGridLayout, XlsxRow};
+use mapping::{
+    FormatOptions, TabularBoundaryKind, XlsxFixedCell, XlsxGridLayout, XlsxGridRegion, XlsxRow,
+};
 
 use super::{
     ComponentFormat, FixedCell, SchemaComponent, duplicate_fixed_cell, is_default_output,
@@ -24,113 +26,68 @@ struct OpenCells {
     field_name: String,
 }
 
-#[allow(clippy::too_many_arguments)]
-pub(super) fn read(
-    component: roxmltree::Node<'_, '_>,
-    excel: roxmltree::Node<'_, '_>,
+/// One worksheet that holds a header-driven grid.
+pub(super) struct GridWorksheet {
+    pub(super) node: roxmltree::NodeId,
+    /// The Worksheet entry's own ports. A composite region iterates its
+    /// header records from them, as composite tables iterate their rows.
+    ports: Vec<u32>,
+    candidate: Candidate,
+}
+
+impl GridWorksheet {
+    pub(super) fn sheet(&self) -> Option<&str> {
+        self.candidate.sheet.as_deref()
+    }
+}
+
+/// Finds the grid on each source worksheet. Several grids on one worksheet
+/// refuse the whole component, because pairing their header and data ranges
+/// needs native observation that ferrule does not have.
+pub(super) fn scan(
     workbook: roxmltree::Node<'_, '_>,
     component_name: &str,
-    input_keys: BTreeSet<u32>,
-    output_keys: BTreeSet<u32>,
     is_source: bool,
     warnings: &mut Vec<String>,
-) -> Option<SchemaComponent> {
+) -> Result<Vec<GridWorksheet>, ()> {
     if !is_source {
-        return None;
+        return Ok(Vec::new());
     }
-
-    let mut candidates = Vec::new();
+    let mut grids = Vec::new();
     for worksheet in workbook
         .children()
         .filter(|node| node.has_tag_name("entry") && node.attribute("name") == Some("Worksheet"))
     {
-        if let Some(candidate) = inspect_worksheet(worksheet, component_name, warnings) {
-            candidates.push(candidate);
+        if let Some(candidate) = inspect_worksheet(worksheet, component_name, warnings)? {
+            grids.push(GridWorksheet {
+                node: worksheet.id(),
+                ports: port_keys(worksheet),
+                candidate,
+            });
         }
     }
-    let candidate = match candidates.len() {
-        1 => candidates.pop()?,
-        count => {
-            if count > 1 {
-                warnings.push(format!(
-                    "xlsx component `{component_name}` contains multiple nested worksheet grids; ferrule currently imports one grid per component"
-                ));
-            }
-            return None;
-        }
-    };
+    Ok(grids)
+}
 
+/// The single-grid source: the header records are the repeated root.
+pub(super) fn single_component(
+    component: roxmltree::Node<'_, '_>,
+    excel: roxmltree::Node<'_, '_>,
+    component_name: &str,
+    grid: GridWorksheet,
+    input_keys: BTreeSet<u32>,
+    output_keys: BTreeSet<u32>,
+    warnings: &mut Vec<String>,
+) -> SchemaComponent {
     let mut ports = BTreeMap::new();
-    for key in &candidate.header.value_ports {
-        ports.insert(*key, vec![candidate.header.field_name.clone()]);
-    }
-    for key in &candidate.header.position_ports {
-        ports.insert(*key, vec![HEADER_POSITION_FIELD.to_string()]);
-    }
-
-    let mut fields = vec![
-        SchemaNode::scalar(&candidate.header.field_name, candidate.header.value_type),
-        SchemaNode::scalar(HEADER_POSITION_FIELD, ScalarType::Int),
-    ];
-    let mut fixed_layout = Vec::with_capacity(candidate.fixed.len());
-    for cell in &candidate.fixed {
-        for key in &cell.ports {
-            ports.insert(*key, vec![cell.name.clone()]);
-        }
-        fields.push(SchemaNode::scalar(&cell.name, cell.ty));
-        fixed_layout.push(XlsxFixedCell {
-            path: vec![cell.name.clone()],
-            row: cell.row,
-            column: cell.column,
-        });
-    }
-
-    for key in &candidate.data.row_ports {
-        ports.insert(*key, vec![ROWS_FIELD.to_string()]);
-    }
-    for key in &candidate.data.value_ports {
-        ports.insert(
-            *key,
-            vec![
-                ROWS_FIELD.to_string(),
-                CELLS_FIELD.to_string(),
-                CELL_VALUE_FIELD.to_string(),
-            ],
-        );
-    }
-    for key in &candidate.data.position_ports {
-        ports.insert(
-            *key,
-            vec![
-                ROWS_FIELD.to_string(),
-                CELLS_FIELD.to_string(),
-                CELL_POSITION_FIELD.to_string(),
-            ],
-        );
-    }
-    fields.push(
-        SchemaNode::group(
-            ROWS_FIELD,
-            vec![
-                SchemaNode::group(
-                    CELLS_FIELD,
-                    vec![
-                        SchemaNode::scalar(CELL_VALUE_FIELD, candidate.data.value_type),
-                        SchemaNode::scalar(CELL_POSITION_FIELD, ScalarType::Int),
-                    ],
-                )
-                .repeating(),
-            ],
-        )
-        .repeating(),
-    );
+    let (fields, layout) = grid_fields(grid.candidate, &[], &mut ports);
 
     if excel.attribute("updateexistingfile") == Some("1") {
         warnings.push(format!(
             "xlsx component `{component_name}` updates an existing workbook; ferrule writes a new workbook, so content outside the selected table will not be preserved"
         ));
     }
-    Some(SchemaComponent {
+    SchemaComponent {
         name: component_name.to_string(),
         format: ComponentFormat::Xlsx,
         schema: SchemaNode::group(component_name, fields),
@@ -138,18 +95,7 @@ pub(super) fn read(
         output_instance: excel.attribute("outputinstance").map(str::to_string),
         options: FormatOptions {
             tabular_kind: Some(TabularBoundaryKind::Xlsx),
-            xlsx_grid: Some(XlsxGridLayout {
-                sheet: candidate.sheet,
-                header_row: candidate.header.row,
-                data_start_row: candidate.data.row,
-                header_value_field: candidate.header.field_name,
-                header_position_field: HEADER_POSITION_FIELD.to_string(),
-                rows_field: ROWS_FIELD.to_string(),
-                cells_field: CELLS_FIELD.to_string(),
-                cell_value_field: CELL_VALUE_FIELD.to_string(),
-                cell_position_field: CELL_POSITION_FIELD.to_string(),
-                fixed_cells: fixed_layout,
-            }),
+            xlsx_grid: Some(layout),
             ..FormatOptions::default()
         },
         is_source: true,
@@ -170,7 +116,115 @@ pub(super) fn read(
         db_xml_columns: BTreeMap::new(),
         dynamic_json: None,
         target_schema_hints: None,
-    })
+    }
+}
+
+/// A grid region of a composite source: a repeating group named after its
+/// static worksheet, holding one record per non-empty header cell.
+pub(super) fn composite_region(
+    grid: GridWorksheet,
+    component_name: &str,
+    ports: &mut BTreeMap<u32, Vec<String>>,
+    warnings: &mut Vec<String>,
+) -> Option<(SchemaNode, XlsxGridRegion)> {
+    let Some(sheet) = grid
+        .candidate
+        .sheet
+        .clone()
+        .filter(|sheet| !sheet.is_empty())
+    else {
+        warnings.push(format!(
+            "xlsx component `{component_name}` combines workbook regions with a default worksheet grid; every grid needs a static worksheet name"
+        ));
+        return None;
+    };
+    let path = vec![sheet.clone()];
+    for key in grid.ports {
+        ports.insert(key, path.clone());
+    }
+    let (fields, layout) = grid_fields(grid.candidate, &path, ports);
+    Some((
+        SchemaNode::group(&sheet, fields).repeating(),
+        XlsxGridRegion { path, layout },
+    ))
+}
+
+/// The fields of one header record and its layout. Ports are recorded below
+/// `prefix`, the record group's absolute path.
+fn grid_fields(
+    candidate: Candidate,
+    prefix: &[String],
+    ports: &mut BTreeMap<u32, Vec<String>>,
+) -> (Vec<SchemaNode>, XlsxGridLayout) {
+    let path = |segments: &[&str]| {
+        prefix
+            .iter()
+            .cloned()
+            .chain(segments.iter().map(|segment| (*segment).to_string()))
+            .collect::<Vec<_>>()
+    };
+    for key in &candidate.header.value_ports {
+        ports.insert(*key, path(&[&candidate.header.field_name]));
+    }
+    for key in &candidate.header.position_ports {
+        ports.insert(*key, path(&[HEADER_POSITION_FIELD]));
+    }
+
+    let mut fields = vec![
+        SchemaNode::scalar(&candidate.header.field_name, candidate.header.value_type),
+        SchemaNode::scalar(HEADER_POSITION_FIELD, ScalarType::Int),
+    ];
+    let mut fixed_layout = Vec::with_capacity(candidate.fixed.len());
+    for cell in &candidate.fixed {
+        for key in &cell.ports {
+            ports.insert(*key, path(&[&cell.name]));
+        }
+        fields.push(SchemaNode::scalar(&cell.name, cell.ty));
+        fixed_layout.push(XlsxFixedCell {
+            path: vec![cell.name.clone()],
+            row: cell.row,
+            column: cell.column,
+        });
+    }
+
+    for key in &candidate.data.row_ports {
+        ports.insert(*key, path(&[ROWS_FIELD]));
+    }
+    for key in &candidate.data.value_ports {
+        ports.insert(*key, path(&[ROWS_FIELD, CELLS_FIELD, CELL_VALUE_FIELD]));
+    }
+    for key in &candidate.data.position_ports {
+        ports.insert(*key, path(&[ROWS_FIELD, CELLS_FIELD, CELL_POSITION_FIELD]));
+    }
+    fields.push(
+        SchemaNode::group(
+            ROWS_FIELD,
+            vec![
+                SchemaNode::group(
+                    CELLS_FIELD,
+                    vec![
+                        SchemaNode::scalar(CELL_VALUE_FIELD, candidate.data.value_type),
+                        SchemaNode::scalar(CELL_POSITION_FIELD, ScalarType::Int),
+                    ],
+                )
+                .repeating(),
+            ],
+        )
+        .repeating(),
+    );
+    let layout = XlsxGridLayout {
+        sheet: candidate.sheet,
+        header_row: candidate.header.row,
+        data_start_row: candidate.data.row,
+        header_value_field: candidate.header.field_name,
+        header_position_field: HEADER_POSITION_FIELD.to_string(),
+        rows_field: ROWS_FIELD.to_string(),
+        cells_field: CELLS_FIELD.to_string(),
+        cell_value_field: CELL_VALUE_FIELD.to_string(),
+        cell_position_field: CELL_POSITION_FIELD.to_string(),
+        fixed_cells: fixed_layout,
+    };
+    (fields, layout)
 }
 
 struct Candidate {
@@ -184,7 +238,23 @@ fn inspect_worksheet(
     worksheet: roxmltree::Node<'_, '_>,
     component_name: &str,
     warnings: &mut Vec<String>,
-) -> Option<Candidate> {
+) -> Result<Option<Candidate>, ()> {
+    Ok(inspect_grid(worksheet, component_name, warnings)?
+        .and_then(|raw| validate_candidate(worksheet, raw, component_name, warnings)))
+}
+
+struct RawGrid {
+    headers: Vec<OpenCells>,
+    data_rows: Vec<OpenCells>,
+    fixed: Vec<FixedCell>,
+    local_warnings: Vec<String>,
+}
+
+fn inspect_grid(
+    worksheet: roxmltree::Node<'_, '_>,
+    component_name: &str,
+    warnings: &mut Vec<String>,
+) -> Result<Option<RawGrid>, ()> {
     let range_by_id: BTreeMap<&str, roxmltree::Node<'_, '_>> = worksheet
         .children()
         .find(|node| node.has_tag_name("ranges"))
@@ -230,8 +300,38 @@ fn inspect_worksheet(
     }
 
     if headers.is_empty() || data_rows.is_empty() {
-        return None;
+        return Ok(None);
     }
+    if headers.len() > 1 && data_rows.len() > 1 {
+        let sheet = match worksheet_name(worksheet) {
+            Ok(Some(sheet)) => format!(" `{sheet}`"),
+            Ok(None) | Err(()) => String::new(),
+        };
+        warnings.push(format!(
+            "xlsx component `{component_name}` has several nested grids on worksheet{sheet}; ferrule imports one grid per worksheet because pairing several header and data ranges on one worksheet is unsupported"
+        ));
+        return Err(());
+    }
+    Ok(Some(RawGrid {
+        headers,
+        data_rows,
+        fixed,
+        local_warnings,
+    }))
+}
+
+fn validate_candidate(
+    worksheet: roxmltree::Node<'_, '_>,
+    raw: RawGrid,
+    component_name: &str,
+    warnings: &mut Vec<String>,
+) -> Option<Candidate> {
+    let RawGrid {
+        mut headers,
+        mut data_rows,
+        fixed,
+        local_warnings,
+    } = raw;
     if headers.len() != 1 || data_rows.len() != 1 {
         warnings.push(format!(
             "xlsx component `{component_name}` has an ambiguous nested grid: expected one fixed header row and one open data row range"

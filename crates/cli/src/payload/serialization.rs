@@ -497,8 +497,8 @@ fn render_xlsx_payload(
             .context("rendering hierarchical XLSX output payload")?;
         return Ok((bytes, worksheets));
     }
-    if options.xlsx_grid.is_some() {
-        bail!("grid XLSX output is not supported; `xlsx_grid` is input-only");
+    if options.has_xlsx_grid() {
+        bail!("grid XLSX output is not supported; XLSX grids are input-only");
     }
     if options.xlsx_worksheet_set.is_some() {
         bail!("worksheet-set XLSX output is not supported; `xlsx_worksheet_set` is input-only");

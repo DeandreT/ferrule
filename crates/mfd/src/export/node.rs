@@ -15,6 +15,7 @@ use super::function::{
     value_text,
 };
 use super::join::JoinExports;
+use super::node_frames::NodeFrames;
 use super::position::render_component;
 use super::schema::{GeneratedSibling, KeyAlloc, PortMatch, PortPairMatch, PortTree, xml_escape};
 use super::sequence::{SequenceContextPins, collect_scope_sequences};
@@ -67,6 +68,7 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<RenderedNodes, MfdError> {
         user_functions,
     } = args;
 
+    let node_frames = NodeFrames::new(project);
     let mut sequence_inputs = Vec::new();
     let mut sequences = Vec::new();
     collect_scope_sequences(&project.root, &mut sequences);
@@ -432,8 +434,15 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<RenderedNodes, MfdError> {
                 matches: _,
                 value,
             } => {
-                let (key_output, value_output) = match sources.lookup_ports(collection, key, value)
+                let mut ports = sources.lookup_ports(collection, key, value);
+                if matches!(ports, PortPairMatch::Ambiguous)
+                    && let Some(frame) = node_frames.frame(id)
+                    && let found @ PortPairMatch::Unique(..) =
+                        sources.lookup_ports_in(frame, collection, key, value)
                 {
+                    ports = found;
+                }
+                let (key_output, value_output) = match ports {
                     PortPairMatch::Unique(key_output, value_output) => (key_output, value_output),
                     PortPairMatch::Missing => {
                         warnings.push(format!(
@@ -841,7 +850,12 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<RenderedNodes, MfdError> {
                 let mut dynamic_inputs = Vec::new();
                 let context_input = if expression.is_some() {
                     let input = keys.next();
-                    let collection_key = match sources.match_sequence(collection) {
+                    let collection_key = match match_framed_sequence(
+                        sources,
+                        &node_frames,
+                        id,
+                        collection,
+                    ) {
                         PortMatch::Unique(key) => key,
                         PortMatch::Missing => {
                             warnings.push(format!(
@@ -864,7 +878,12 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<RenderedNodes, MfdError> {
                 } else {
                     let mut sequence = collection.clone();
                     sequence.extend(value.iter().cloned());
-                    let sequence_key = match sources.match_sequence(&sequence) {
+                    let sequence_key = match match_framed_sequence(
+                        sources,
+                        &node_frames,
+                        id,
+                        &sequence,
+                    ) {
                         PortMatch::Unique(key) => key,
                         PortMatch::Missing => {
                             warnings.push(format!(
@@ -1396,5 +1415,23 @@ fn connect_inputs(
                 "sequence input references unexported node {node}; connection skipped"
             ));
         }
+    }
+}
+
+/// A relative sequence's port, using the node's evaluation frame when the
+/// path alone matches several source entries.
+fn match_framed_sequence(
+    sources: &SourceExports<'_>,
+    frames: &NodeFrames,
+    node: NodeId,
+    path: &[String],
+) -> PortMatch {
+    match sources.match_sequence(path) {
+        PortMatch::Ambiguous => frames
+            .frame(node)
+            .map(|frame| sources.match_sequence_in(frame, path))
+            .filter(|found| matches!(found, PortMatch::Unique(_)))
+            .unwrap_or(PortMatch::Ambiguous),
+        found => found,
     }
 }
