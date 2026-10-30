@@ -2443,7 +2443,16 @@ fn import_resolved(
         .collect();
     let source_names = runtime_names(&sources);
     let primary = sources[0];
-    let joins = pending_joins.resolve(&edge_from, &sources, &source_names, &mut warnings);
+    let joins = pending_joins.resolve(
+        &join::KeyContext {
+            edge_from: &edge_from,
+            sources: &sources,
+            source_names: &source_names,
+            fn_components: &fn_components,
+            copy_all_targets: &copy_all_targets,
+        },
+        &mut warnings,
+    );
 
     let xml_type_conditions = alternatives::conditioned_port_types(&structure);
     let xml_condition_ports = structure
