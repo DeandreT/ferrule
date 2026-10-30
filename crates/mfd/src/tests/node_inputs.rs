@@ -46,8 +46,17 @@ fn legacy_port_inputs(node: &Node) -> Vec<NodeId> {
             expression, arg, ..
         } => expression.iter().chain(arg).copied().collect(),
         Node::JoinAggregate {
-            expression, arg, ..
-        } => expression.iter().chain(arg).copied().collect(),
+            plan,
+            expression,
+            arg,
+            ..
+        } => plan
+            .computed_source()
+            .map(|computed| computed.value())
+            .into_iter()
+            .chain(*expression)
+            .chain(*arg)
+            .collect(),
         Node::SequenceExists { .. } => Vec::new(),
         Node::SequenceItemAt { index, .. } => vec![*index],
         Node::SequenceAggregate { arg, .. } => arg.iter().copied().collect(),
@@ -93,10 +102,17 @@ fn legacy_selector_inputs(node: &Node) -> SelectorInputs {
         } => private.extend([*predicate, *value]),
         Node::Aggregate {
             expression, arg, ..
-        }
-        | Node::JoinAggregate {
-            expression, arg, ..
         } => {
+            private.extend(*expression);
+            parent.extend(*arg);
+        }
+        Node::JoinAggregate {
+            plan,
+            expression,
+            arg,
+            ..
+        } => {
+            parent.extend(plan.computed_source().map(|computed| computed.value()));
             private.extend(*expression);
             parent.extend(*arg);
         }
