@@ -6296,7 +6296,7 @@ rust_json5   ok:c56fc6abcdb1ed5e
 csharp_json5 ok:3a24542750fbf213
 
 ## xml-requests/base/json-hints (project)
-lower        err:ec98a550e5aad7f3 mapping_cannot_be_lowered_for_code
+lower        err:c9fbabc0e2955109 mapping_cannot_be_lowered_for_code
 
 ## xml-requests/base/root-view (project)
 lower        err:1515168d3f70b978 mapping_cannot_be_lowered_for_code
