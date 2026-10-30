@@ -44,8 +44,11 @@ pub(super) fn validate_document(
         }
         return Ok(());
     }
-    // Generated root scopes can serialize flat rows against one row schema.
-    if let serde_json::Value::Array(items) = value {
+    // Generated root scopes can serialize flat rows against one row schema;
+    // a non-repeating tuple root is itself the array.
+    if let serde_json::Value::Array(items) = value
+        && schema.json_tuple.is_none()
+    {
         for item in items {
             validate_node(schema, item)?;
         }
@@ -78,6 +81,16 @@ fn validate_array(schema: &SchemaNode, items: &[serde_json::Value]) -> Result<()
 fn validate_node(schema: &SchemaNode, value: &serde_json::Value) -> Result<(), ValidationError> {
     if let Some(item) = schema.json_array_wrapper_item() {
         return validate_document(item, value);
+    }
+    if schema.json_tuple.is_some() {
+        if let serde_json::Value::Array(items) = value {
+            for (index, item) in items.iter().enumerate() {
+                if let Some(item_schema) = format_json::json_tuple::item_schema(schema, index) {
+                    validate_node(item_schema, item)?;
+                }
+            }
+        }
+        return Ok(());
     }
     let (
         SchemaKind::Group {

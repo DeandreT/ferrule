@@ -1817,9 +1817,10 @@ Schemas that contain a [JSON tuple frame](design/json-tuple-arrays.md) use
 embedded descriptor version 5, which older runtimes reject. C# generation
 refuses a primary or named boundary schema that contains a frame before any
 artifact exists, and the selected JSON5 companion profile rejects frames.
-Generated Rust JSON entry points share the native JSON codec, which refuses
-frames with a typed error. Generated CSV output in both languages refuses a
-target schema that contains a frame.
+Generated Rust JSON entry points share the native JSON codec's tuple-frame
+reading and writing, and their embedded allowed-value, `multipleOf` and
+`uniqueItems` checks reach every tuple position. Generated CSV output in both
+languages refuses a target schema that contains a frame.
 
 Rust:
 

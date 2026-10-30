@@ -1150,6 +1150,9 @@ mod iteration_output_tests;
 #[path = "tests/join.rs"]
 mod join_tests;
 #[cfg(test)]
+#[path = "tests/json_tuple_frames.rs"]
+mod json_tuple_frame_tests;
+#[cfg(test)]
 #[path = "tests/optional_presence.rs"]
 mod optional_presence_tests;
 #[cfg(test)]

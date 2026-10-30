@@ -7,9 +7,9 @@ use ir::{Instance, ScalarType, ScalarTypeSet, SchemaKind, SchemaNode, Value};
 
 use crate::{
     JsonFormatError, MAX_JSON5_DOCUMENT_BYTES, PatternPrograms, PatternRuntime, RecursiveSchemas,
-    exact_f64_from_json_number, json_type_name, json5_finite, json5_unique, null_layers,
-    reject_nullable_json_lines_container, runtime_constraints, validate_alternative_fields,
-    validate_required_fields,
+    exact_f64_from_json_number, json_tuple, json_type_name, json5_finite, json5_unique,
+    null_layers, reject_nullable_json_lines_container, runtime_constraints,
+    validate_alternative_fields, validate_required_fields,
 };
 
 /// Reads a JSON file into an [`Instance`] tree shaped by `schema`.
@@ -84,9 +84,11 @@ pub(crate) fn from_value_with(
     if schema.repeating {
         read_repeated(value, schema, recursive, 0, patterns)
     } else if let (SchemaKind::Group { .. }, serde_json::Value::Array(rows)) = (&schema.kind, value)
+        && schema.json_tuple.is_none()
     {
         // Flat-row sources retain a non-repeating row schema while presenting
-        // the root records as one repeated instance, like the JSON writer.
+        // the root records as one repeated instance, like the JSON writer. A
+        // non-repeating tuple root is itself the array.
         let mut parsed = Vec::with_capacity(rows.len());
         for row in rows {
             parsed.push(read_node_with_patterns(
@@ -273,6 +275,34 @@ pub(crate) fn read_node_with_patterns(
     if value.is_null() && null.single {
         return Ok(Instance::Scalar(Value::json_null()));
     }
+    if let Some(roles) = json_tuple::roles(schema) {
+        let (positions, tail) = json_tuple::read_items(schema, roles, value)?;
+        let mut read = Vec::with_capacity(positions.len());
+        for (index, (member, item)) in roles.members.iter().zip(positions).enumerate() {
+            read.push(json_tuple::at_position(
+                schema,
+                index + 1,
+                read_node_with_patterns(item, member, recursive, recursion_depth, patterns),
+            )?);
+        }
+        let mut rest = Vec::with_capacity(tail.len());
+        if let Some(rest_schema) = roles.rest {
+            for (index, item) in tail.iter().enumerate() {
+                rest.push(json_tuple::at_position(
+                    schema,
+                    positions.len() + index + 1,
+                    read_node_with_patterns(
+                        item,
+                        rest_schema,
+                        recursive,
+                        recursion_depth,
+                        patterns,
+                    ),
+                )?);
+            }
+        }
+        return Ok(json_tuple::instance(roles, read, rest));
+    }
     match &schema.kind {
         SchemaKind::Scalar { ty } => {
             let parsed = read_scalar(value, *ty, null.value, &schema.name)?;
@@ -418,8 +448,9 @@ pub(crate) fn read_node_with_patterns(
 }
 
 fn missing_instance(schema: &SchemaNode) -> Result<Instance, JsonFormatError> {
-    // A missing nullable object or array is absent, not an empty container.
-    if null_layers::instance_null(schema)?.whole {
+    // A missing nullable object or array, or a missing single tuple, is
+    // absent, not an empty container.
+    if null_layers::instance_null(schema)?.whole || json_tuple::is_single_frame(schema) {
         return Ok(Instance::Scalar(Value::Null));
     }
     Ok(if schema.repeating {
