@@ -682,9 +682,19 @@ fn write_output(
                 if options.xlsx_grid.is_some()
                     || options.xlsx_composite.is_some()
                     || options.xlsx_worksheet_set.is_some()
-                    || has_legacy_xlsx_layout(options)
+                    || has_flat_xlsx_layout(options)
                 {
                     bail!("`xlsx_hierarchical` cannot be combined with other XLSX layout options");
+                }
+                if options.xlsx_update_existing {
+                    return format_xlsx::update_hierarchical(
+                        path,
+                        schema,
+                        instance,
+                        layout,
+                        &format_xlsx::XlsxLimits::default(),
+                    )
+                    .with_context(|| format!("updating output {}", path.display()));
                 }
                 return format_xlsx::write_hierarchical(path, schema, instance, layout)
                     .with_context(|| format!("writing output {}", path.display()));
@@ -1966,11 +1976,16 @@ fn has_any_xlsx_layout(options: &FormatOptions) -> bool {
 }
 
 fn has_legacy_xlsx_layout(options: &FormatOptions) -> bool {
+    has_flat_xlsx_layout(options) || options.xlsx_update_existing
+}
+
+/// Flat and transposed table options. Update-existing is not among them
+/// because hierarchical targets accept it too.
+fn has_flat_xlsx_layout(options: &FormatOptions) -> bool {
     options.xlsx_sheet.is_some()
         || options.xlsx_start_row.is_some()
         || !options.xlsx_columns.is_empty()
         || !options.xlsx_headers.is_empty()
-        || options.xlsx_update_existing
         || !options.xlsx_rows.is_empty()
         || options.has_header_row.is_some()
 }

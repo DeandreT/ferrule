@@ -488,11 +488,11 @@ pub(super) fn validate_xlsx_options(
         ));
     }
     let retained_layout = retained_layouts > 0;
+    // Update-existing is checked against each layout below.
     let legacy_layout = options.xlsx_sheet.is_some()
         || options.xlsx_start_row.is_some()
         || !options.xlsx_columns.is_empty()
         || !options.xlsx_headers.is_empty()
-        || options.xlsx_update_existing
         || !options.xlsx_rows.is_empty()
         || options.has_header_row.is_some();
     if retained_layout && legacy_layout {
@@ -518,11 +518,26 @@ pub(super) fn validate_xlsx_options(
             "`xlsx_update_existing` is valid only for mapping targets",
         ));
     }
-    if options.xlsx_update_existing && non_flat_layout {
-        issues.push(ValidationIssue::new(
-            location,
-            "`xlsx_update_existing` can be used only with a flat XLSX table",
-        ));
+    if options.xlsx_update_existing {
+        let refused_layout = if !options.xlsx_rows.is_empty() {
+            Some("a transposed")
+        } else if options.xlsx_composite.is_some() {
+            Some("a composite")
+        } else if options.xlsx_grid.is_some() {
+            Some("a grid")
+        } else if options.xlsx_worksheet_set.is_some() {
+            Some("a worksheet-set")
+        } else {
+            None
+        };
+        if let Some(layout) = refused_layout {
+            issues.push(ValidationIssue::new(
+                location,
+                format!(
+                    "`xlsx_update_existing` cannot update {layout} XLSX layout; only flat tables and hierarchical layouts update existing workbooks"
+                ),
+            ));
+        }
     }
     if options.xlsx_worksheet_set.is_some() && !source_side {
         issues.push(ValidationIssue::new(

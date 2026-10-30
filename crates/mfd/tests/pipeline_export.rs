@@ -2224,7 +2224,7 @@ fn xlsx_final_chain_rejects_unsupported_boundaries_without_artifacts() {
     )
     .unwrap_err()
     .to_string();
-    assert!(error.contains("xlsx_update_existing"), "{error}");
+    assert!(error.contains("new-workbook XLSX"), "{error}");
     assert!(!destination.parent().unwrap().exists());
 
     let mut flat_update_existing = mfd::import_pipeline(&make_csv_final_chain(&directory.0))
