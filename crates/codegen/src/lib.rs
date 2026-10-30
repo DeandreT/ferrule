@@ -109,7 +109,8 @@ pub use interchange_source::{
     prepare_native_x12_source, validate_native_x12_nullable_scalars,
 };
 pub use interchange_writer::{
-    MapForceX12WriterError, prepare_mapforce_x12_document_writer, prepare_mapforce_x12_writer,
+    MapForceX12WriterError, prepare_mapforce_x12_document_writer,
+    prepare_mapforce_x12_parameter_document_writer, prepare_mapforce_x12_writer,
 };
 pub use model::{
     AggregateFunction, AggregateValue, Binding, DelimitedTextField, DelimitedTextFieldError,

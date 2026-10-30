@@ -680,7 +680,7 @@ fn to_string_with_syntax_inner(
     };
     if let Some(autocomplete) = autocomplete {
         let (segments, _) = tokenize_for_completion(&out, Some(separators), repeating_envelope)?;
-        let completed = if repeating_envelope {
+        let mut completed = if repeating_envelope {
             envelope::x12_repeating_envelope(
                 segments,
                 autocomplete.current_datetime,
@@ -695,6 +695,19 @@ fn to_string_with_syntax_inner(
                 autocomplete.transaction_set,
             )?
         };
+        if repeating_envelope {
+            for segment in &mut completed {
+                if matches!(segment.id.as_str(), "GS" | "SE" | "GE" | "IEA") {
+                    while segment.elements.last().is_some_and(|element| {
+                        element
+                            .iter()
+                            .all(|parts| parts.iter().all(String::is_empty))
+                    }) {
+                        segment.elements.pop();
+                    }
+                }
+            }
+        }
         out = serialize_segments_with_encoding(&completed, &options, Some(encode))?;
     }
     Ok(out)

@@ -88,18 +88,18 @@ pub fn emit_object_invoked_grouped_with_mapforce_x12_writer(
     target_options: &mapping::FormatOptions,
     minimums: &[mapping::MapForceEdiMinimum],
 ) -> Result<ArtifactSet, PrimaryJsonEmitError> {
-    let descriptor =
-        codegen::prepare_json_parameter_object_invocation(document, invocation, binding)
-            .map_err(PrimaryJsonEmitError::Parameter)?;
-    let base =
-        emit_grouped_with_mapforce_x12_writer(document, options, shape, target_options, minimums)?;
-    let base = append_parameter_invocation(base, descriptor, invocation)?;
-    append_parameter_object(
-        base,
+    let writer = codegen::prepare_mapforce_x12_parameter_document_writer(
+        document,
         invocation,
         binding,
-        document.json_grouping_preparation().is_some(),
+        target_options,
+        minimums,
     )
+    .map_err(PrimaryJsonEmitError::Writer)?;
+    let base = emit_object_invoked_with_primary_json_projection(
+        document, options, invocation, binding, shape,
+    )?;
+    append_writer(base, writer)
 }
 
 fn append_parameter_object(
