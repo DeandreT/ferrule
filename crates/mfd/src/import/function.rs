@@ -1140,7 +1140,18 @@ pub(super) fn produces_scalar(component: &FnComponent) -> bool {
             )
         || component.kind == 5 && component.library == "core" && component.name == "not-exists"
         || component.kind == 5 && aggregate_op(&component.name).is_some()
+        || is_lang_positive(component)
         || map_component_name(component).is_some()
+}
+
+/// `lang.positive` tests whether a decimal is greater than zero; native runs
+/// return false for zero, although the vendor reference describes it as
+/// "equal to or greater than zero". Import lowers it to
+/// `greater_than(add(value, 0), 0)`; the zero addend applies the same numeric
+/// conversion as that decimal input. The unary-plus `positive` that earlier
+/// Ferrule exports wrote as `core.positive` keeps its own meaning.
+pub(super) fn is_lang_positive(component: &FnComponent) -> bool {
+    component.kind == 5 && component.library == "lang" && component.name == "positive"
 }
 
 pub(super) fn map_component_name(component: &FnComponent) -> Option<&str> {
@@ -1150,6 +1161,9 @@ pub(super) fn map_component_name(component: &FnComponent) -> Option<&str> {
     }
     if component.name == "random" {
         return (component.kind == 5 && component.library == "lang").then_some("random");
+    }
+    if is_lang_positive(component) {
+        return None;
     }
     if component.library == "ferrule"
         && component.kind == 5
@@ -1505,6 +1519,26 @@ mod tests {
             let document = roxmltree::Document::parse(&text).expect("authored component XML");
             let component = read(&document.root_element());
             assert_eq!(map_component_name(&component), expected);
+        }
+    }
+
+    #[test]
+    fn only_lang_positive_is_the_greater_than_zero_test() {
+        for (library, kind, mapped) in [
+            ("lang", "5", None),
+            ("core", "5", Some("positive")),
+            ("lang", "6", Some("positive")),
+        ] {
+            let text = format!(r#"<component library="{library}" name="positive" kind="{kind}"/>"#);
+            let document = roxmltree::Document::parse(&text).expect("authored component XML");
+            let component = read(&document.root_element());
+            assert_eq!(map_component_name(&component), mapped, "{library}/{kind}");
+            assert_eq!(
+                super::is_lang_positive(&component),
+                mapped.is_none(),
+                "{library}/{kind}"
+            );
+            assert!(produces_scalar(&component), "{library}/{kind}");
         }
     }
 

@@ -8,8 +8,8 @@ use super::{
     ScalarParameter, ScalarSequenceExpr,
 };
 use crate::import::function::{
-    FnComponent, aggregate_op, is_db_scalar_function_component, is_xbrl_measure_component,
-    map_component_name, parse_constant, read as read_function,
+    FnComponent, aggregate_op, is_db_scalar_function_component, is_lang_positive,
+    is_xbrl_measure_component, map_component_name, parse_constant, read as read_function,
 };
 use crate::import::graph::read_edges;
 use crate::import::schema::parse_u32;
@@ -698,6 +698,20 @@ impl DefinitionContext<'_> {
                     self.function_input(function, 0, active, budget, sequence_items)?,
                 ],
             }),
+            _ if is_lang_positive(function) => {
+                let zero = || ScalarExpr::Const(Value::Int(0));
+                let value = self.function_input(function, 0, active, budget, sequence_items)?;
+                Ok(ScalarExpr::Call {
+                    function: "greater_than".to_string(),
+                    args: vec![
+                        ScalarExpr::Call {
+                            function: "add".to_string(),
+                            args: vec![value, zero()],
+                        },
+                        zero(),
+                    ],
+                })
+            }
             ("now", 5) if function.library == "lang" => {
                 Ok(ScalarExpr::RuntimeValue(RuntimeValue::CurrentDateTime))
             }
