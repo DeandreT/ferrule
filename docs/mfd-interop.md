@@ -1477,6 +1477,11 @@ an optional `maxItems`, so export/re-import and generated Rust/C# use the existi
 homogeneous-array path. Draft 2020-12 array-valued `items`, contradictory
 counts, and reachable heterogeneous members or tails produce the actionable
 schema-fallback diagnostic instead of being reinterpreted as `prefixItems`.
+MFD import refuses any referenced JSON Schema that imports with a
+[JSON tuple frame](design/json-tuple-arrays.md), so heterogeneous positional
+arrays keep that diagnostic and the entry tree until MFD entries can address
+tuple positions. The schema descriptors embedded in JSON string parser calls
+never carry tuple frames.
 Referenced JSON objects retain supported `propertyNames` schemas as well.
 Exact false, finite `const`/`enum` names and their finite `not` complements,
 Unicode-scalar length intervals, bounded portable pattern
