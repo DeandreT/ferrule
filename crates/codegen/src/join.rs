@@ -68,8 +68,8 @@ impl JoinSource {
     }
 }
 
-impl From<&mapping::JoinSource> for JoinSource {
-    fn from(value: &mapping::JoinSource) -> Self {
+impl From<&mapping::CollectionJoinSource> for JoinSource {
+    fn from(value: &mapping::CollectionJoinSource) -> Self {
         Self {
             collection: value.collection().to_vec(),
             cardinality: value.cardinality().into(),
@@ -111,13 +111,14 @@ impl JoinKey {
     }
 }
 
-impl From<&mapping::JoinKey> for JoinKey {
-    fn from(value: &mapping::JoinKey) -> Self {
-        Self::new(
-            value.left_collection().to_vec(),
+impl JoinKey {
+    /// `None` for a key whose left member is a computed source.
+    fn from_mapping(value: &mapping::JoinKey) -> Option<Self> {
+        Some(Self::new(
+            value.left_collection()?.to_vec(),
             value.left_path().to_vec(),
             value.right_path().to_vec(),
-        )
+        ))
     }
 }
 
@@ -145,15 +146,15 @@ impl JoinConditions {
         std::iter::once(&self.first).chain(&self.rest)
     }
 
-    fn from_mapping(value: &mapping::JoinConditions) -> Self {
+    fn from_mapping(value: &mapping::JoinConditions) -> Option<Self> {
         let mut keys = value.iter();
         let Some(first) = keys.next() else {
             unreachable!("mapping join conditions are nonempty by construction");
         };
-        Self {
-            first: first.into(),
-            rest: keys.map(JoinKey::from).collect(),
-        }
+        Some(Self {
+            first: JoinKey::from_mapping(first)?,
+            rest: keys.map(JoinKey::from_mapping).collect::<Option<_>>()?,
+        })
     }
 }
 
@@ -227,29 +228,28 @@ impl JoinPlan {
         )
     }
 
-    pub(crate) fn from_mapping(value: &mapping::JoinPlan) -> Self {
+    /// `None` when the plan holds a computed source, which generated code
+    /// does not execute; lowering reports it as unsupported.
+    pub(crate) fn from_mapping(value: &mapping::JoinPlan) -> Option<Self> {
+        let stage = |(source, conditions): (&mapping::JoinSource, &mapping::JoinConditions)| {
+            Some(JoinStage {
+                source: source.as_collection()?.into(),
+                conditions: JoinConditions::from_mapping(conditions)?,
+            })
+        };
         let mut sources = value.sources();
         let Some(first) = sources.next() else {
             unreachable!("mapping join plans contain a first source");
         };
         let mut stages = value.stages();
-        let Some((second, conditions)) = stages.next() else {
+        let Some(second) = stages.next() else {
             unreachable!("mapping join plans contain a second source");
         };
-        let mut plan = Self {
-            first: first.into(),
-            second: JoinStage {
-                source: second.into(),
-                conditions: JoinConditions::from_mapping(conditions),
-            },
-            rest: Vec::new(),
-        };
-        plan.rest
-            .extend(stages.map(|(source, conditions)| JoinStage {
-                source: source.into(),
-                conditions: JoinConditions::from_mapping(conditions),
-            }));
-        plan
+        Some(Self {
+            first: first.as_collection()?.into(),
+            second: stage(second)?,
+            rest: stages.map(stage).collect::<Option<_>>()?,
+        })
     }
 }
 

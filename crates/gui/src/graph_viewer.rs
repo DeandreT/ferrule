@@ -1524,10 +1524,18 @@ impl GraphViewer<'_> {
             }
             Node::Aggregate {
                 expression, arg, ..
-            }
-            | Node::JoinAggregate {
-                expression, arg, ..
             } => usize::from(expression.is_some()) + usize::from(arg.is_some()),
+            // A computed key is the first, read-only pin.
+            Node::JoinAggregate {
+                plan,
+                expression,
+                arg,
+                ..
+            } => {
+                usize::from(plan.computed_source().is_some())
+                    + usize::from(expression.is_some())
+                    + usize::from(arg.is_some())
+            }
         }
     }
 }
@@ -2379,10 +2387,27 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                             .to_string()
                         }
                     }
-                    Some(
-                        Node::Aggregate { expression, .. } | Node::JoinAggregate { expression, .. },
-                    ) if expression.is_some() && idx == 0 => "values".to_string(),
-                    Some(Node::Aggregate { .. } | Node::JoinAggregate { .. }) => "arg".to_string(),
+                    Some(Node::JoinAggregate {
+                        plan,
+                        expression,
+                        arg,
+                        ..
+                    }) => [
+                        plan.computed_source().map(|_| "key"),
+                        expression.as_ref().map(|_| "values"),
+                        arg.as_ref().map(|_| "arg"),
+                    ]
+                    .into_iter()
+                    .flatten()
+                    .nth(idx)
+                    .unwrap_or_default()
+                    .to_string(),
+                    Some(Node::Aggregate { expression, .. })
+                        if expression.is_some() && idx == 0 =>
+                    {
+                        "values".to_string()
+                    }
+                    Some(Node::Aggregate { .. }) => "arg".to_string(),
                     Some(Node::OwnedAggregate(aggregate))
                         if aggregate.expression().is_some() && idx == 0 =>
                     {

@@ -21,6 +21,7 @@ mod idoc;
 mod idoc_native_config;
 mod idoc_native_text;
 mod iteration;
+mod join_computed_keys;
 mod json_tuple_arrays;
 mod model;
 mod node_inputs;
@@ -54,6 +55,7 @@ mod xml_mixed_content_owned;
 mod xml_scalar_output;
 mod xml_serialize_owned;
 mod xml_wildcard_exclusions;
+pub use join_computed_keys::JOIN_COMPUTED_KEYS_V1_CAPABILITY;
 pub use json_tuple_arrays::JSON_TUPLE_ARRAYS_V1_CAPABILITY;
 pub use xml_scalar_output::{
     XML_TARGET_SCALAR_OUTPUT_V1_CAPABILITY, XmlScalarOutputAdmissionError,
@@ -112,7 +114,8 @@ pub use idoc_native_text::{
     IdocNativeValidationKind,
 };
 pub use iteration::{
-    JoinConditions, JoinId, JoinKey, JoinPlan, JoinPlanError, JoinSource, JoinSourceCardinality,
+    CollectionJoinSource, ComputedJoinSource, ComputedJoinSourceId, JoinConditions, JoinId,
+    JoinKey, JoinKeyLeft, JoinPlan, JoinPlanError, JoinSource, JoinSourceCardinality,
     ScopeIteration, ScopeSequence,
 };
 pub use json5_interchange::{

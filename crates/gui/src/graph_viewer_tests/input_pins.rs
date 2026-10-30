@@ -77,10 +77,21 @@ fn legacy_input_at(node: &Node, idx: usize) -> Option<NodeId> {
         }),
         Node::Aggregate {
             expression, arg, ..
-        }
-        | Node::JoinAggregate {
-            expression, arg, ..
         } => expression.iter().chain(arg).nth(idx).copied(),
+        // A computed key is the first, read-only pin.
+        Node::JoinAggregate {
+            plan,
+            expression,
+            arg,
+            ..
+        } => plan
+            .computed_source()
+            .map(|computed| computed.value())
+            .iter()
+            .chain(expression)
+            .chain(arg)
+            .nth(idx)
+            .copied(),
         Node::OwnedSourceField(_)
         | Node::OwnedPosition(_)
         | Node::OwnedRowDocumentPath(_)
@@ -109,6 +120,11 @@ const PROBE: NodeId = 1_000_000;
 fn check(fx: &mut Fixture, node: &Node, origin: &str) {
     fx.graph.nodes.insert(PROBE, node.clone());
     let viewer = fx.viewer();
+    // Every evaluated input has a pin; optional pins may show empty.
+    assert!(
+        GraphViewer::input_count(node) >= node.evaluated_inputs().len(),
+        "{origin}: pin count of {node:?}"
+    );
     for idx in 0..node.dependencies().len() + 2 {
         assert_eq!(
             viewer.input_at(PROBE, idx),

@@ -228,12 +228,62 @@ fn join_summary(id: mapping::JoinId, plan: &mapping::JoinPlan) -> String {
     )
 }
 
+fn join_source_label(source: &mapping::JoinSource) -> String {
+    match source {
+        mapping::JoinSource::Collection(source) if source.collection().is_empty() => {
+            "Current rows".to_string()
+        }
+        mapping::JoinSource::Collection(source) => source.collection().join("/"),
+        mapping::JoinSource::Computed(computed) => {
+            format!("computed key {} (node {})", computed.id(), computed.value())
+        }
+    }
+}
+
 fn join_condition_label(source: &mapping::JoinSource, key: &mapping::JoinKey) -> String {
-    let mut left = key.left_collection().to_vec();
-    left.extend(key.left_path().iter().cloned());
-    let mut right = source.collection().to_vec();
-    right.extend(key.right_path().iter().cloned());
-    format!("{} = {}", left.join("/"), right.join("/"))
+    let left = match key.left() {
+        mapping::JoinKeyLeft::Collection { collection, path } => collection
+            .iter()
+            .chain(path)
+            .cloned()
+            .collect::<Vec<_>>()
+            .join("/"),
+        mapping::JoinKeyLeft::Computed(id) => format!("computed key {id}"),
+    };
+    let right = match source {
+        mapping::JoinSource::Collection(source) => source
+            .collection()
+            .iter()
+            .chain(key.right_path())
+            .cloned()
+            .collect::<Vec<_>>()
+            .join("/"),
+        mapping::JoinSource::Computed(computed) => format!("computed key {}", computed.id()),
+    };
+    format!("{left} = {right}")
+}
+
+/// Lines describing a join plan with a computed key source, which the editor
+/// shows read-only until authoring supports computed keys.
+pub(crate) fn computed_join_lines(
+    id: mapping::JoinId,
+    plan: &mapping::JoinPlan,
+) -> Option<Vec<String>> {
+    plan.computed_source()?;
+    let mut lines = vec![join_summary(id, plan)];
+    lines.extend(
+        plan.sources()
+            .enumerate()
+            .map(|(index, source)| format!("input {}: {}", index + 1, join_source_label(source))),
+    );
+    for (source, conditions) in plan.stages() {
+        lines.extend(
+            conditions
+                .iter()
+                .map(|condition| join_condition_label(source, condition)),
+        );
+    }
+    Some(lines)
 }
 
 fn scope_iterates(scope: &Scope) -> bool {
@@ -711,6 +761,16 @@ pub(crate) fn show_scope_editor(
         ui.monospace(format!("presence condition node: {condition}"));
         return None;
     }
+    if let Some(lines) = scope
+        .join()
+        .and_then(|(id, plan)| computed_join_lines(id, plan))
+    {
+        ui.label("Computed join keys are not editable yet; this saved scope is read-only.");
+        for line in lines {
+            ui.monospace(line);
+        }
+        return None;
+    }
     if let Some((id, plan)) = scope.iteration.owned_join() {
         ui.label("Owned join iteration is unavailable; this saved scope is read-only.");
         ui.monospace(format!("join id: {}", id.get()));
@@ -759,11 +819,7 @@ pub(crate) fn show_scope_editor(
                 ui.label(join_summary(*id, plan));
             });
             for (index, source) in plan.sources().enumerate() {
-                let collection = if source.collection().is_empty() {
-                    "Current rows".to_string()
-                } else {
-                    source.collection().join("/")
-                };
+                let collection = join_source_label(source);
                 ui.horizontal(|ui| {
                     ui.label(format!("Input {}", index + 1));
                     ui.monospace(collection);

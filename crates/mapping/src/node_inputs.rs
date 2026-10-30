@@ -15,7 +15,7 @@ use crate::{Node, NodeId, OwnedXmlMixedContentContext, SequenceExpr};
 pub enum NodeInputRole {
     /// Once in the consumer's own context whenever the consumer is evaluated:
     /// call arguments, conditions, lookup needles, aggregate arguments,
-    /// sequence inputs and indexes.
+    /// sequence inputs and indexes, and a join's computed key.
     Parent,
     /// In the consumer's own context, only when the consumer selects it: an
     /// `If` branch, or a runtime parameter's default.
@@ -78,6 +78,9 @@ pub enum NodeInputSlot {
     SequenceReservedItem,
     /// The generated item identity returned by [`SequenceExpr::item`].
     SequenceItem,
+    /// The value of a join plan's computed source, evaluated once per join
+    /// execution in the consumer's own context.
+    ComputedJoinKey,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -245,8 +248,14 @@ impl Node {
                 }
             }
             Self::JoinAggregate {
-                expression, arg, ..
+                plan,
+                expression,
+                arg,
+                ..
             } => {
+                if let Some(computed) = plan.computed_source() {
+                    input(computed.value(), Slot::ComputedJoinKey, Parent);
+                }
                 if let Some(expression) = expression {
                     input(*expression, Slot::Expression, JoinTuple);
                 }

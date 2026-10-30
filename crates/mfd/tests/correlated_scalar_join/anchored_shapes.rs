@@ -119,7 +119,7 @@ fn column(field: &'static str, collection: &[&str], path: &str) -> Column {
 fn shape_project(plan: JoinPlan, outer: Outer, columns: Vec<Column>) -> Project {
     let join = JoinId::new(777);
     let mut used = plan
-        .sources()
+        .collection_sources()
         .filter_map(|source| source.collection().first().cloned())
         .collect::<Vec<_>>();
     if let Outer::Named { source, .. } = outer {

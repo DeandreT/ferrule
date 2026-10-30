@@ -97,6 +97,61 @@ mod tests {
     }
 
     #[test]
+    fn computed_join_sources_are_refused_on_load() {
+        let mut project = valid_project();
+        project.source = SchemaNode::group(
+            "source",
+            vec![
+                SchemaNode::group("row", vec![SchemaNode::scalar("value", ScalarType::String)])
+                    .repeating(),
+            ],
+        );
+        project.target =
+            SchemaNode::group("target", vec![SchemaNode::scalar("count", ScalarType::Int)]);
+        let key = mapping::ComputedJoinSourceId::new(1);
+        project.graph.nodes.insert(
+            1,
+            Node::Const {
+                value: Value::String("a".into()),
+            },
+        );
+        project.graph.nodes.insert(
+            2,
+            Node::JoinAggregate {
+                function: mapping::AggregateOp::Count,
+                join: mapping::JoinId::new(1),
+                plan: mapping::JoinPlan::new(
+                    mapping::JoinSource::computed(key, 1),
+                    mapping::JoinSource::new(vec!["row".into()]),
+                    mapping::JoinConditions::new(mapping::JoinKey::computed(
+                        key,
+                        vec!["value".into()],
+                    )),
+                )
+                .expect("valid computed plan"),
+                expression: None,
+                arg: None,
+            },
+        );
+        project.root.bindings.push(Binding {
+            target_field: "count".into(),
+            node: 2,
+        });
+
+        let json = to_json(&project).expect("computed plans serialize");
+        let error = parse_and_validate(&json).expect_err("computed plans are not executable");
+        let ProjectDocumentError::Validation(issues) = &error else {
+            panic!("expected validation issues, got {error}");
+        };
+        assert!(
+            issues.iter().any(|issue| issue
+                .message
+                .contains("computed join sources are not yet executable")),
+            "{issues:?}"
+        );
+    }
+
+    #[test]
     fn invalid_json_returns_a_parse_error() {
         let error = parse_and_validate(r#"{"source": }"#).expect_err("JSON should not parse");
 

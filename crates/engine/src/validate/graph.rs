@@ -823,7 +823,7 @@ fn node_dynamic_sources<'a>(project: &'a Project, node: &'a Node) -> impl Iterat
             }
         }
         Node::JoinAggregate { plan, .. } => {
-            for source in plan.sources() {
+            for source in plan.collection_sources() {
                 inspect(source.collection());
             }
         }
