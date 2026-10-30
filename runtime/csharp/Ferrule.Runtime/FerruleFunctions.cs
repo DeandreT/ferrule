@@ -36,6 +36,7 @@ public static partial class FerruleFunctions
             "substring" => Substring(arguments),
             "substring_before" => SplitString(function, arguments, before: true),
             "substring_after" => SplitString(function, arguments, before: false),
+            "translate" => Translate(arguments),
             "string" => StringValue(arguments),
             "is_numeric" => IsNumeric(arguments),
             "to_number" => ToNumber(arguments),

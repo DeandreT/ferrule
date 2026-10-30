@@ -605,6 +605,7 @@ fn scalar_call_whitelist_is_closed_and_name_addressable() {
         "length",
         "substring_before",
         "substring_after",
+        "translate",
         "string",
         "is_numeric",
         "to_number",
