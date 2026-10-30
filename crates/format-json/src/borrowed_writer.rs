@@ -11,7 +11,7 @@ use serde::ser::{SerializeMap, SerializeSeq};
 use serde::{Serialize, Serializer};
 
 use crate::{
-    JsonFormatError, PatternPrograms, PatternRuntime, RecursiveSchemas, null_layers,
+    JsonFormatError, PatternPrograms, PatternRuntime, RecursiveSchemas, json_tuple, null_layers,
     runtime_constraints,
 };
 
@@ -79,6 +79,7 @@ fn prepare<'a>(schema: &SchemaNode, instance: &'a Instance) -> Result<Output<'a>
     let mut patterns = programs.runtime();
     match instance {
         Instance::Repeated(items) if !schema.repeating => {
+            json_tuple::refuse_root_rows(schema)?;
             let mut values = Vec::with_capacity(items.len());
             for item in items {
                 values.push(single(schema, item, &recursive, 0, &mut patterns)?);
@@ -203,6 +204,18 @@ fn single<'a>(
         && null_layers::instance_null(schema)?.single
     {
         return Ok(Output::Value(serde_json::Value::Null));
+    }
+    if let Some(roles) = json_tuple::roles(schema) {
+        let items = json_tuple::plan(schema, roles, instance)?;
+        let mut values = Vec::with_capacity(items.len());
+        for (position, item_schema, item) in items {
+            values.push(json_tuple::at_position(
+                schema,
+                position,
+                single(item_schema, item, recursive, recursion_depth, patterns),
+            )?);
+        }
+        return Ok(Output::Array(values));
     }
     match (&schema.kind, instance) {
         (SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. }, Instance::Scalar(value)) => {

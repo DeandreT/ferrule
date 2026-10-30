@@ -41,12 +41,19 @@ pub(crate) fn scalar(context: &[&Instance], path: &[String]) -> Option<Value> {
     for item in context.iter().rev() {
         let mut current = *item;
         let mut found = true;
-        for segment in path {
+        for (index, segment) in path.iter().enumerate() {
             if let Instance::Repeated(items) = current {
                 match items.first() {
                     Some(first) => current = first,
                     None => return Some(Value::Null),
                 }
+            }
+            // An absent or null container on the path, such as an absent
+            // tuple frame, owns the rest of the path: its fields are absent,
+            // and an outer item must not supply them instead. A null context
+            // item itself still falls back outward.
+            if index > 0 && matches!(current, Instance::Scalar(Value::Null | Value::JsonNull(_))) {
+                return Some(Value::Null);
             }
             match current.field(segment) {
                 Some(next) => current = next,
