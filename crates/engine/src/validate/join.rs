@@ -3,7 +3,8 @@ use std::collections::BTreeSet;
 use ir::{SchemaNode, XML_TYPE_FIELD};
 use mapping::{
     ComputedJoinSource, Graph, JoinId, JoinPlan, JoinSourceCardinality, Node, NodeId,
-    NodeInputRole, OwnedJoinPlan, OwnedSourceRef, Project, Scope, describe_owned_collection,
+    NodeInputRole, OwnedJoinPlan, OwnedSourceRef, Project, Scope, SequenceExpr,
+    describe_owned_collection,
 };
 
 use super::ValidationIssue;
@@ -129,7 +130,8 @@ fn computed_key_nodes<'g>(
     computed: &ComputedJoinSource,
 ) -> Vec<(NodeId, &'g Node, bool)> {
     let mut nodes = Vec::new();
-    let mut pending = vec![computed.value()];
+    let mut pending = computed.key_inputs();
+    pending.reverse();
     let mut visited = BTreeSet::new();
     while let Some(id) = pending.pop() {
         if !visited.insert(id) {
@@ -190,7 +192,9 @@ fn computed_key_reads<'g>(
 
 /// Refuses key nodes outside the admitted set, and source reads that could
 /// cross repetition from any anchor: the engine reads the first item there,
-/// while the native key is the whole sequence.
+/// while the native key is the whole sequence. A sequence-valued key admits
+/// only `tokenize`, the one sequence whose native key was observed, and its
+/// inputs follow the same rules as a scalar key.
 fn validate_computed_key(
     project: &Project,
     join: JoinId,
@@ -198,6 +202,20 @@ fn validate_computed_key(
     location: &str,
     issues: &mut Vec<ValidationIssue>,
 ) {
+    if let Some(sequence) = computed.as_sequence()
+        && !matches!(sequence, SequenceExpr::Tokenize { .. })
+    {
+        issues.push(ValidationIssue::new(
+            location,
+            format!(
+                "join {} computed key {} is a `{}` sequence; a sequence-valued key admits only tokenize",
+                join.get(),
+                computed.id(),
+                sequence.kind_name()
+            ),
+        ));
+        return;
+    }
     for (id, _, admitted) in computed_key_nodes(&project.graph, computed) {
         if !admitted {
             issues.push(ValidationIssue::new(

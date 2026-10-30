@@ -89,18 +89,43 @@ impl fmt::Display for ComputedJoinSourceId {
     }
 }
 
-/// A join source whose single member is one scalar graph value evaluated in
-/// the join's receiving context. It has no collection, so no join read names
-/// it and it never correlates with an active frame.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+/// A join source whose members are computed in the join's receiving context
+/// rather than read from a collection. It has no collection, so no join read
+/// names it and it never correlates with an active frame.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ComputedJoinSource {
     id: ComputedJoinSourceId,
-    value: NodeId,
+    value: ComputedJoinValue,
+}
+
+/// What a computed join source evaluates to its members.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ComputedJoinValue {
+    /// One scalar graph value: one member unless it is Null-like.
+    Scalar(NodeId),
+    /// A generated sequence: one member per item, in sequence order, with
+    /// empty and duplicate items kept. Its item identity is private to the
+    /// source and is never read as an expression. Boxed so that join plans
+    /// keep their size.
+    Sequence(Box<SequenceExpr>),
 }
 
 impl ComputedJoinSource {
     pub const fn new(id: ComputedJoinSourceId, value: NodeId) -> Self {
+        Self {
+            id,
+            value: ComputedJoinValue::Scalar(value),
+        }
+    }
+
+    pub fn sequence(id: ComputedJoinSourceId, sequence: SequenceExpr) -> Self {
+        Self {
+            id,
+            value: ComputedJoinValue::Sequence(Box::new(sequence)),
+        }
+    }
+
+    pub const fn with_value(id: ComputedJoinSourceId, value: ComputedJoinValue) -> Self {
         Self { id, value }
     }
 
@@ -108,8 +133,80 @@ impl ComputedJoinSource {
         self.id
     }
 
-    pub const fn value(&self) -> NodeId {
-        self.value
+    pub const fn value(&self) -> &ComputedJoinValue {
+        &self.value
+    }
+
+    /// The scalar node of a single-valued source.
+    pub const fn scalar(&self) -> Option<NodeId> {
+        match self.value {
+            ComputedJoinValue::Scalar(node) => Some(node),
+            ComputedJoinValue::Sequence(_) => None,
+        }
+    }
+
+    /// The nodes this source evaluates in the receiving context: its scalar
+    /// value, or its sequence's inputs. A sequence's item is not among them.
+    pub fn key_inputs(&self) -> Vec<NodeId> {
+        match &self.value {
+            ComputedJoinValue::Scalar(node) => vec![*node],
+            ComputedJoinValue::Sequence(sequence) => sequence.inputs(),
+        }
+    }
+
+    /// The generated sequence of a sequence-valued source.
+    pub fn as_sequence(&self) -> Option<&SequenceExpr> {
+        match &self.value {
+            ComputedJoinValue::Sequence(sequence) => Some(sequence),
+            ComputedJoinValue::Scalar(_) => None,
+        }
+    }
+}
+
+/// Wire form `{"id": 1, "value": 12}` for a scalar source and
+/// `{"id": 1, "sequence": {...}}` for a sequence source. Older readers
+/// refuse the sequence form on its missing `value`.
+#[derive(Serialize)]
+struct ComputedJoinSourceRef<'a> {
+    id: ComputedJoinSourceId,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    value: Option<NodeId>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sequence: Option<&'a SequenceExpr>,
+}
+
+impl Serialize for ComputedJoinSource {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        ComputedJoinSourceRef {
+            id: self.id,
+            value: self.scalar(),
+            sequence: self.as_sequence(),
+        }
+        .serialize(serializer)
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ComputedJoinSourceWire {
+    id: ComputedJoinSourceId,
+    #[serde(default, deserialize_with = "present")]
+    value: Option<NodeId>,
+    #[serde(default, deserialize_with = "present")]
+    sequence: Option<SequenceExpr>,
+}
+
+impl<'de> Deserialize<'de> for ComputedJoinSource {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let wire = ComputedJoinSourceWire::deserialize(deserializer)?;
+        match (wire.value, wire.sequence) {
+            (Some(value), None) => Ok(Self::new(wire.id, value)),
+            (None, Some(sequence)) => Ok(Self::sequence(wire.id, sequence)),
+            (None, None) => Err(serde::de::Error::missing_field("value")),
+            (Some(_), Some(_)) => Err(serde::de::Error::custom(
+                "a computed join source has either a `value` or a `sequence`, not both",
+            )),
+        }
     }
 }
 
@@ -134,6 +231,10 @@ impl JoinSource {
 
     pub const fn computed(id: ComputedJoinSourceId, value: NodeId) -> Self {
         Self::Computed(ComputedJoinSource::new(id, value))
+    }
+
+    pub fn computed_sequence(id: ComputedJoinSourceId, sequence: SequenceExpr) -> Self {
+        Self::Computed(ComputedJoinSource::sequence(id, sequence))
     }
 
     pub const fn as_collection(&self) -> Option<&CollectionJoinSource> {

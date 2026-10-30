@@ -102,6 +102,9 @@ struct ComputedInput {
     value: NodeId,
     port: u32,
     copy_all: bool,
+    /// The input and delimiter pins of a sequence-valued key's `tokenize`
+    /// component, each with the node that feeds it.
+    tokenize: Option<[(NodeId, u32); 2]>,
 }
 
 impl JoinExports {
@@ -124,6 +127,15 @@ impl JoinExports {
             edges.push((from, input.port));
             if input.copy_all {
                 structural_edges.insert((from, input.port));
+            }
+            for (node, pin) in input.tokenize.into_iter().flatten() {
+                let from = node_out_key.get(&node).copied().ok_or_else(|| {
+                    MfdError::Unsupported(format!(
+                        "inner join {} computed key tokenize input node {node} has no exported output",
+                        join.get()
+                    ))
+                })?;
+                edges.push((from, pin));
             }
         }
         Ok(())
@@ -593,19 +605,43 @@ fn render_one(
     let mut input_ports = Vec::with_capacity(inputs.len());
     let mut input_edges = Vec::with_capacity(inputs.len());
     let mut structural_input_edges = Vec::with_capacity(inputs.len());
+    let mut sequence_components = String::new();
+    let mut node_outputs = Vec::new();
     for (index, input) in inputs.iter().enumerate() {
         let (source, resolved_path) = match input {
             RenderInput::Collection { source, path } => (source, path),
             RenderInput::Computed(key) => {
                 // The key's own node is written by the graph pass; its edge
-                // is connected once that node has an output port.
+                // is connected once that node has an output port. A
+                // sequence-valued key's `tokenize` component is written here,
+                // and its item takes that component's output.
                 let input_port = keys.next();
                 input_ports.push(input_port);
                 computed_index = Some(index);
+                let tokenize = key.tokenize.map(|tokenize| {
+                    let input_pin = keys.next();
+                    let delimiter_pin = keys.next();
+                    let output = keys.next();
+                    super::node::render_sequence_component(
+                        "tokenize",
+                        "core",
+                        &[input_pin, delimiter_pin],
+                        output,
+                        None,
+                        uid,
+                        &mut sequence_components,
+                    );
+                    node_outputs.push((key.value, output));
+                    [
+                        (tokenize.input, input_pin),
+                        (tokenize.delimiter, delimiter_pin),
+                    ]
+                });
                 computed_input = Some(ComputedInput {
                     value: key.value,
                     port: input_port,
                     copy_all: key.copy_all,
+                    tokenize,
                 });
                 continue;
             }
@@ -653,7 +689,6 @@ fn render_one(
         .map(|_| EntryTree::default())
         .collect::<Vec<_>>();
     let mut output_ports = BTreeMap::new();
-    let mut node_outputs = Vec::new();
     for (&node_id, node) in &graph.nodes {
         let Node::JoinField {
             join: owner,
@@ -798,7 +833,8 @@ fn render_one(
         .map(|key| format!(" outkey=\"{key}\""))
         .unwrap_or_default();
     let xml = format!(
-        "\t\t\t\t<component name=\"join\" library=\"core\" uid=\"{component_uid}\" kind=\"32\">\n\
+        "{sequence_components}\
+         \t\t\t\t<component name=\"join\" library=\"core\" uid=\"{component_uid}\" kind=\"32\">\n\
          \t\t\t\t\t<view ltx=\"360\" lty=\"20\" rbx=\"560\" rby=\"300\"/>\n\
          \t\t\t\t\t<data>\n\
          \t\t\t\t\t\t<root><header><namespaces><namespace/><namespace uid=\"http://www.altova.com/mapforce\"/></namespaces></header><entry name=\"document\" ns=\"1\"><entry name=\"tuple\" ns=\"1\" outkey=\"{tuple_output}\">\n\

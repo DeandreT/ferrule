@@ -2,8 +2,9 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use ir::SchemaKind;
 use mapping::{
-    ComputedJoinSourceId, IterationOutput, JoinConditions as MappingJoinConditions, JoinId,
-    JoinKey as MappingJoinKey, JoinPlan, JoinSource, Node as MappingNode, NodeId,
+    ComputedJoinSource, ComputedJoinSourceId, ComputedJoinValue, IterationOutput,
+    JoinConditions as MappingJoinConditions, JoinId, JoinKey as MappingJoinKey, JoinPlan,
+    JoinSource, Node as MappingNode, NodeId,
 };
 use roxmltree::Node as XmlNode;
 
@@ -371,7 +372,7 @@ impl Registry {
         id: JoinId,
         target_path: &[String],
         anchor: &[String],
-        computed_key: Option<NodeId>,
+        computed_key: Option<ComputedJoinValue>,
         sources: &[&SchemaComponent],
         source_names: &[String],
     ) -> Result<PreparedIteration, String> {
@@ -395,8 +396,13 @@ impl Registry {
                 let input = match input {
                     ResolvedInput::Source(input) => input,
                     ResolvedInput::Computed(_) => {
-                        let value = computed_key.ok_or("the computed join key was not lowered")?;
-                        return Ok(JoinSource::computed(COMPUTED_KEY, value));
+                        let value = computed_key
+                            .clone()
+                            .ok_or("the computed join key was not lowered")?;
+                        return Ok(JoinSource::Computed(ComputedJoinSource::with_value(
+                            COMPUTED_KEY,
+                            value,
+                        )));
                     }
                 };
                 let mut absolute = if input.source == 0 {

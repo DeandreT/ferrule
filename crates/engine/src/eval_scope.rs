@@ -7,7 +7,10 @@
 use std::collections::{BTreeMap, HashSet};
 
 use ir::{DocumentMember, Instance, Value};
-use mapping::{IterationOutput, NamedSource, NodeId, Scope, ScopeConstruction, SortFilterOrder};
+use mapping::{
+    ComputedJoinValue, IterationOutput, NamedSource, NodeId, Scope, ScopeConstruction,
+    SortFilterOrder,
+};
 
 use crate::aggregate::sort_value_ordering;
 use crate::eval_expr::{EvalProgram, eval_expr};
@@ -201,9 +204,22 @@ pub(crate) fn eval_scope_with_scalar_output(
     let join_rows = scope
         .join()
         .map(|(join, plan)| {
-            execute_join(context, positions, join, plan, program.budget, |key| {
-                eval_expr(program, key, context, positions, &mut HashSet::new())
-            })
+            execute_join(
+                context,
+                positions,
+                join,
+                plan,
+                program.budget,
+                |key| match key {
+                    ComputedJoinValue::Scalar(node) => {
+                        eval_expr(program, *node, context, positions, &mut HashSet::new())
+                            .map(|value| vec![value])
+                    }
+                    ComputedJoinValue::Sequence(sequence) => {
+                        eval_sequence(program, sequence, context, positions)
+                    }
+                },
+            )
         })
         .transpose()?;
     let dynamic_source = scope

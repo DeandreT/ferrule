@@ -263,9 +263,9 @@ fn decimal_keys_stay_a_typed_comparison_failure() {
     }
 }
 
-const AGGREGATE: NodeId = 30;
+pub(super) const AGGREGATE: NodeId = 30;
 const SEPARATOR: NodeId = 31;
-const COUNT: NodeId = 32;
+pub(super) const COUNT: NodeId = 32;
 
 /// A count and a name list of the computed-key tuples per order, or at the
 /// root, each reduced by a joined aggregate.
@@ -424,7 +424,7 @@ fn joined_aggregate_inputs_are_indexed_after_the_key() {
             Node::JoinAggregate { plan, .. } => plan.computed_source(),
             _ => None,
         })
-        .map(|computed| computed.value())
+        .and_then(|computed| computed.scalar())
         .expect("a computed key");
     run_with_context(&project, &input(INPUT), &execution).expect("joined aggregates run");
     let mut inputs = collector

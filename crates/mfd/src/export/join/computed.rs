@@ -9,13 +9,17 @@
 //! guard, so export writes only the call chain below it, and import adds the
 //! same guard again on re-import. Every other key is refused, so the whole
 //! export fails before anything is written.
+//!
+//! A sequence-valued key is written as the `tokenize` component import
+//! admits, its input guarded and written the same way, its delimiter a
+//! non-empty string constant.
 
 use std::collections::BTreeSet;
 
 use ir::{ScalarType, SchemaKind, Value};
 use mapping::{
-    CollectionJoinSource, Graph, JoinPlan, JoinSourceCardinality, Node, NodeId, Project, Scope,
-    ScopeRoot, ScopeRootSlot,
+    CollectionJoinSource, ComputedJoinValue, Graph, JoinPlan, JoinSourceCardinality, Node, NodeId,
+    Project, Scope, ScopeRoot, ScopeRootSlot, SequenceExpr,
 };
 
 use super::super::schema::PortMatch;
@@ -29,8 +33,11 @@ const MAX_KEY_COMPONENTS: usize = 64;
 /// How one admitted computed key is written.
 pub(super) struct ComputedKey {
     /// The node whose output feeds the join input: the key without its
-    /// null guard.
+    /// null guard, or the item of a sequence-valued key, whose output is the
+    /// written `tokenize` component's.
     pub(super) value: NodeId,
+    /// The `tokenize` component a sequence-valued key writes.
+    pub(super) tokenize: Option<TokenizeKey>,
     /// The guard's own nodes, which are never written.
     pub(super) guard: BTreeSet<NodeId>,
     /// The input entry name: the parameter's name for a parameter, as
@@ -39,6 +46,14 @@ pub(super) struct ComputedKey {
     /// A parameter feeds the input through a copy-all connection; a function
     /// or constant through an ordinary one, as the native validation requires.
     pub(super) copy_all: bool,
+}
+
+/// The nodes feeding a sequence-valued key's `tokenize` component.
+#[derive(Clone, Copy)]
+pub(super) struct TokenizeKey {
+    /// The string input, without its null guard.
+    pub(super) input: NodeId,
+    pub(super) delimiter: NodeId,
 }
 
 /// Refuses every computed join key outside an ordinary target iteration of
@@ -117,9 +132,20 @@ pub(super) fn admit(
         );
     };
     admit_collection(collection, sources)?;
+    match computed.value() {
+        ComputedJoinValue::Scalar(key) => admit_scalar(project, *key, anchor, sources),
+        ComputedJoinValue::Sequence(sequence) => admit_sequence(project, sequence, anchor, sources),
+    }
+}
 
+fn admit_scalar(
+    project: &Project,
+    key: NodeId,
+    anchor: &[String],
+    sources: &SourceExports<'_>,
+) -> Result<ComputedKey, String> {
     let graph = &project.graph;
-    let (value, guarded, guard) = peel_guard(graph, computed.value());
+    let (value, guarded, guard) = peel_guard(graph, key);
     let mut walk = Walk {
         graph,
         anchor,
@@ -141,7 +167,7 @@ pub(super) fn admit(
             describe(&walk.reads)
         ));
     }
-    ensure_guard_is_private(project, &guard, computed.value())?;
+    ensure_guard_is_private(project, &guard, key)?;
 
     let (input_name, copy_all) = match key_node {
         Node::RuntimeParameter { name, .. } => (name.clone(), true),
@@ -149,9 +175,73 @@ pub(super) fn admit(
     };
     Ok(ComputedKey {
         value,
+        tokenize: None,
         guard,
         input_name,
         copy_all,
+    })
+}
+
+/// Admits a sequence-valued key as import admits a `tokenize` feed: a
+/// string input that a scalar key could read, guarded the same way, and a
+/// non-empty string constant delimiter. Other sequences were not observed.
+fn admit_sequence(
+    project: &Project,
+    sequence: &SequenceExpr,
+    anchor: &[String],
+    sources: &SourceExports<'_>,
+) -> Result<ComputedKey, String> {
+    let SequenceExpr::Tokenize {
+        input,
+        delimiter,
+        item,
+    } = sequence
+    else {
+        return Err(format!(
+            "a sequence-valued key is exported only as tokenize, not `{}`",
+            sequence.kind_name()
+        ));
+    };
+    let graph = &project.graph;
+    match node(graph, *delimiter)? {
+        Node::Const {
+            value: Value::String(text),
+        } if !text.is_empty() => {}
+        _ => {
+            return Err(
+                "the key's tokenize delimiter must be a non-empty string constant".to_string(),
+            );
+        }
+    }
+    let (value, guarded, guard) = peel_guard(graph, *input);
+    let mut walk = Walk {
+        graph,
+        anchor,
+        sources,
+        visited: 0,
+        reads: Vec::new(),
+    };
+    let ty = walk.expression(value)?;
+    if ty != ScalarType::String {
+        return Err("the key's tokenize input is not a string".to_string());
+    }
+    if guarded != walk.reads {
+        return Err(format!(
+            "the key's null guard covers {} but the key reads {}; import guards exactly the fields a key reads",
+            describe(&guarded),
+            describe(&walk.reads)
+        ));
+    }
+    ensure_guard_is_private(project, &guard, *input)?;
+    Ok(ComputedKey {
+        value: *item,
+        tokenize: Some(TokenizeKey {
+            input: value,
+            delimiter: *delimiter,
+        }),
+        guard,
+        input_name: "value".to_string(),
+        copy_all: false,
     })
 }
 

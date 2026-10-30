@@ -1233,17 +1233,20 @@ Import also admits a computed join key: in a two-input join beside one
 repeating source collection, either input may be fed by a constant, a runtime
 input parameter, or a call chain of `uppercase`, `lowercase`, `concat` and
 `add` over those and over non-repeating primary-source fields. The key is
-evaluated in the receiving context of the iteration the join drives, and it
-is `Null`, giving no tuples, whenever a field it reads is absent or nil, as
-the reference application yields nothing there. Calls that could raise stay
-refused: `uppercase` or `lowercase` over a non-string, `add` over a string,
-boolean or integers alone, and `concat` over a decimal. Two computed inputs,
-computed inputs in larger joins, keys read from the tuple, keys feeding a
-joined aggregate, keys over named or dynamic sources, keys that read across
-an inactive repetition, sequence-valued keys such as `tokenize`, other
-functions, and a function or constant over a copy-all connection keep the
-join and its driven scopes out with a warning naming the reason. See
-[computed join keys](design/join-computed-keys.md).
+evaluated in the receiving context of the iteration the join drives, and it is
+`Null`, giving no tuples, whenever a field it reads is absent or nil, as the
+reference application yields nothing there. A `tokenize` of such a string by a
+non-empty string constant may feed the join input directly; each token then
+contributes its own tuples in order, with empty and duplicate tokens kept, and
+an absent or nil input gives no tokens. Calls that could raise stay refused:
+`uppercase` or `lowercase` over a non-string, `add` over a string, boolean or
+integers alone, and `concat` over a decimal. Two computed inputs, computed
+inputs in larger joins, keys read from the tuple, keys feeding a joined
+aggregate, keys over named or dynamic sources, keys that read across an
+inactive repetition, other sequences, sequences inside a key's computation,
+other functions, and a function or constant over a copy-all connection keep the
+join and its driven scopes out with a warning naming the reason. See [computed
+join keys](design/join-computed-keys.md).
 
 Export writes core kind-32 joins whose inputs all come from source ports, each
 fed by a copy-all connection; the reference application refuses an ordinary
@@ -1268,20 +1271,22 @@ iteration path.
 Export writes a computed join key in exactly the form import admits, so the
 design re-imports to the same plan. The key's constant, runtime parameter or
 `uppercase`, `lowercase`, `concat` and `add` call chain is written as ordinary
-components whose output feeds the join input. A function or constant feeds an
-input named `value` through an ordinary connection; a runtime parameter feeds
-an input named after the parameter through a copy-all connection, as the
-reference application requires. The null guard import adds around a key that
-reads source fields is not written: the native functions already yield no key
-for an absent or nil field, and import adds the same guard again. The other
-input is a primary repeating collection: at the root, or, for a join nested in
-a source iteration, outside that iteration. Export refuses, before writing any
-file, every other computed key: keys import would refuse or read back
-differently (a bare source field, a guard that does not cover exactly the
-fields the key reads, or a guard other expressions share), keys beside a
-singleton, a named collection or a collection below the iteration, keys feeding
-a joined aggregate, and keys in additional targets, concatenated segments or
-dynamic child scopes.
+components whose output feeds the join input; a `tokenize` key is written as
+its `tokenize` component with its input and constant delimiter. A function or
+constant feeds an input named `value` through an ordinary connection; a runtime
+parameter feeds an input named after the parameter through a copy-all
+connection, as the reference application requires. The null guard import adds
+around a key that reads source fields is not written: the native functions
+already yield no key for an absent or nil field, and import adds the same guard
+again. The other input is a primary repeating collection: at the root, or, for
+a join nested in a source iteration, outside that iteration. Export refuses,
+before writing any file, every other computed key: keys import would refuse or
+read back differently (a bare source field, a guard that does not cover exactly
+the fields the key reads, a guard other expressions share, a sequence other
+than `tokenize`, or a delimiter that is not a non-empty string constant), keys
+beside a singleton, a named collection or a collection below the iteration,
+keys feeding a joined aggregate, and keys in additional targets, concatenated
+segments or dynamic child scopes.
 
 JSON5 component settings and `.json5` instance paths are retained as a typed
 repair dependency, not executable native JSON5 mode. Legacy filename attributes

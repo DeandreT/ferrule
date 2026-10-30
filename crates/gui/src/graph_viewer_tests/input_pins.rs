@@ -78,7 +78,7 @@ fn legacy_input_at(node: &Node, idx: usize) -> Option<NodeId> {
         Node::Aggregate {
             expression, arg, ..
         } => expression.iter().chain(arg).nth(idx).copied(),
-        // A computed key is the first, read-only pin.
+        // A computed key's inputs are the first, read-only pins.
         Node::JoinAggregate {
             plan,
             expression,
@@ -86,12 +86,12 @@ fn legacy_input_at(node: &Node, idx: usize) -> Option<NodeId> {
             ..
         } => plan
             .computed_source()
-            .map(|computed| computed.value())
-            .iter()
-            .chain(expression)
-            .chain(arg)
-            .nth(idx)
-            .copied(),
+            .map(|computed| computed.key_inputs())
+            .unwrap_or_default()
+            .into_iter()
+            .chain(*expression)
+            .chain(*arg)
+            .nth(idx),
         Node::OwnedSourceField(_)
         | Node::OwnedPosition(_)
         | Node::OwnedRowDocumentPath(_)

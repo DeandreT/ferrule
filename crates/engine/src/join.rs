@@ -2,8 +2,8 @@ use std::collections::HashSet;
 
 use ir::{Instance, Value};
 use mapping::{
-    AggregateOp, CollectionJoinSource, JoinConditions, JoinId, JoinKeyLeft, JoinPlan, JoinSource,
-    NodeId,
+    AggregateOp, CollectionJoinSource, ComputedJoinValue, JoinConditions, JoinId, JoinKeyLeft,
+    JoinPlan, JoinSource, NodeId,
 };
 
 use super::EngineError;
@@ -12,6 +12,7 @@ use super::eval_expr::{EvalProgram, eval_node_input};
 use super::frame_view::{FrameKind, FrameOrigin, FrameView};
 use super::policy::BudgetMeter;
 use super::resolve::field_scalar;
+use super::sequence::eval_sequence_in_progress;
 use super::source_iteration::{PositionFrame, WalkExtension, walk};
 
 pub(super) struct JoinedRow<'a> {
@@ -21,6 +22,9 @@ pub(super) struct JoinedRow<'a> {
     /// A walk can end at an unpositioned value or synthesize a position with
     /// no instance; such rows keep the legacy index pairing.
     exact: bool,
+    /// The computed member this row holds, as an index into the members of
+    /// the plan's computed source. It adds no instance or frame.
+    computed: Option<usize>,
 }
 
 struct RowFrame {
@@ -57,24 +61,28 @@ pub(super) struct AggregateInput<'a> {
 }
 
 /// Executes `plan` in the receiving context. `key` evaluates the plan's
-/// computed source node there, once, before any source is selected or
-/// compared; it is not called for a plan without a computed source.
+/// computed source there to the values of its members, once, before any
+/// source is selected or compared; it is not called for a plan without a
+/// computed source.
 pub(super) fn execute<'a>(
     context: &[&'a Instance],
     positions: &[PositionFrame],
     join: JoinId,
     plan: &JoinPlan,
     budget: Option<&BudgetMeter>,
-    key: impl FnOnce(NodeId) -> Result<Value, EngineError>,
+    key: impl FnOnce(&ComputedJoinValue) -> Result<Vec<Value>, EngineError>,
 ) -> Result<Vec<JoinedRow<'a>>, EngineError> {
-    // The computed member lives for this execution only: it adds no instance
-    // or frame to a row, and no read names it once the tuples are built.
-    let computed = plan
+    // Computed members live for this execution only: they add no instance or
+    // frame to a row, and no read names them once the tuples are built.
+    // Null-like values give no member; every other value, duplicates and
+    // empty strings included, gives one member in evaluation order.
+    let mut computed = plan
         .computed_source()
         .map(|computed| key(computed.value()))
         .transpose()?
-        .filter(|value| !is_null_like(value));
-    let computed = computed.as_ref();
+        .unwrap_or_default();
+    computed.retain(|value| !is_null_like(value));
+    let computed = computed.as_slice();
     let mut sources = plan.sources();
     let Some(first) = sources.next() else {
         return Ok(Vec::new());
@@ -93,9 +101,12 @@ pub(super) fn execute<'a>(
                 }
                 let right_member = match right_source {
                     JoinSource::Collection(_) => RightMember::Row(right),
-                    JoinSource::Computed(_) => RightMember::Computed,
+                    JoinSource::Computed(_) => {
+                        RightMember::Computed(computed_value(computed, right))
+                    }
                 };
-                if conditions_match(&left_frames, right_member, computed, conditions)? {
+                let left_computed = computed_value(computed, &left);
+                if conditions_match(&left_frames, left_computed, right_member, conditions)? {
                     let mut instances = left.instances.clone();
                     instances.extend(right.instances.iter().copied());
                     let frames = left
@@ -111,6 +122,7 @@ pub(super) fn execute<'a>(
                         instances,
                         frames,
                         exact: left.exact && right.exact,
+                        computed: left.computed.or(right.computed),
                     });
                 }
             }
@@ -125,34 +137,39 @@ pub(super) fn execute<'a>(
     Ok(rows)
 }
 
-/// Rows of one plan member. A computed member is one row without instances
-/// or frames when its value is present, and no row when it is Null-like.
+/// Rows of one plan member. A computed source gives one row without
+/// instances or frames per present member value, in order.
 fn member_rows<'a>(
     context: &[&'a Instance],
     receiving: &FrameView<'_, 'a>,
     join: JoinId,
     source: &JoinSource,
-    computed: Option<&Value>,
+    computed: &[Value],
 ) -> Vec<JoinedRow<'a>> {
     match source {
         JoinSource::Collection(source) => source_rows(context, receiving, join, source),
-        JoinSource::Computed(_) => computed
-            .map(|_| JoinedRow {
+        JoinSource::Computed(_) => (0..computed.len())
+            .map(|member| JoinedRow {
                 instances: Vec::new(),
                 frames: Vec::new(),
                 exact: true,
+                computed: Some(member),
             })
-            .into_iter()
             .collect(),
     }
 }
 
+/// The value of the computed member `row` holds, if it holds one.
+fn computed_value<'v>(computed: &'v [Value], row: &JoinedRow<'_>) -> Option<&'v Value> {
+    row.computed.and_then(|member| computed.get(member))
+}
+
 /// The right member of one examined pairing.
 #[derive(Clone, Copy)]
-enum RightMember<'r, 'a> {
+enum RightMember<'r, 'a, 'v> {
     Row(&'r JoinedRow<'a>),
-    /// The computed source, whose key is its value.
-    Computed,
+    /// A computed member, whose key is its value.
+    Computed(Option<&'v Value>),
 }
 
 pub(super) fn extensions<'a>(rows: &[JoinedRow<'a>]) -> Vec<WalkExtension<'a>> {
@@ -171,25 +188,40 @@ pub(super) fn eval_aggregate(
     positions: &[PositionFrame],
     in_progress: &mut HashSet<NodeId>,
 ) -> Result<Value, EngineError> {
-    // Inputs are indexed in visit order: the computed key, the per-tuple
-    // expression, then the argument.
-    let key_inputs = usize::from(input.plan.computed_source().is_some());
+    // Inputs are indexed in visit order: the computed key or its sequence's
+    // inputs, the per-tuple expression, then the argument.
+    let key_inputs = input
+        .plan
+        .computed_source()
+        .map_or(0, |computed| match computed.value() {
+            ComputedJoinValue::Scalar(_) => 1,
+            ComputedJoinValue::Sequence(sequence) => sequence.inputs().len(),
+        });
     let rows = execute(
         context,
         positions,
         input.join,
         input.plan,
         program.budget,
-        |key| {
-            eval_node_input(
+        |key| match key {
+            ComputedJoinValue::Scalar(node) => eval_node_input(
                 program,
                 input.consumer,
-                key,
+                *node,
                 0,
                 context,
                 positions,
                 in_progress,
             )
+            .map(|value| vec![value]),
+            ComputedJoinValue::Sequence(sequence) => eval_sequence_in_progress(
+                program,
+                sequence,
+                Some(input.consumer),
+                context,
+                positions,
+                in_progress,
+            ),
         },
     )?;
     let extensions = extensions(&rows);
@@ -260,6 +292,7 @@ fn source_rows<'a>(
                 origin: FrameOrigin::Correlated,
             }],
             exact: true,
+            computed: None,
         }];
     }
     context
@@ -295,6 +328,7 @@ fn source_rows<'a>(
                         FrameOrigin::Walked
                     };
                     JoinedRow {
+                        computed: None,
                         exact: extension.instances.len() == positions.len(),
                         instances: extension.instances,
                         frames: positions
@@ -307,18 +341,18 @@ fn source_rows<'a>(
         })
 }
 
-/// `computed` is the plan's present computed value, if any; a member that
-/// is absent there contributed no row, so no pairing reads it.
+/// `left_computed` is the value of the computed member the left row holds,
+/// if it holds one.
 fn conditions_match(
     left: &FrameView<'_, '_>,
-    right: RightMember<'_, '_>,
-    computed: Option<&Value>,
+    left_computed: Option<&Value>,
+    right: RightMember<'_, '_, '_>,
     conditions: &JoinConditions,
 ) -> Result<bool, EngineError> {
     for condition in conditions.iter() {
         let left_value = match condition.left() {
             JoinKeyLeft::Collection { collection, path } => row_value(left, collection, path),
-            JoinKeyLeft::Computed(_) => computed,
+            JoinKeyLeft::Computed(_) => left_computed,
         };
         let Some(left_value) = left_value else {
             return Ok(false);
@@ -328,7 +362,7 @@ fn conditions_match(
                 .instances
                 .last()
                 .and_then(|item| field_scalar(item, condition.right_path())),
-            RightMember::Computed => computed,
+            RightMember::Computed(value) => value,
         };
         let Some(right_value) = right_value else {
             return Ok(false);
