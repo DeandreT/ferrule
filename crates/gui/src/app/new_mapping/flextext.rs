@@ -70,7 +70,7 @@ pub(super) fn show_options(ui: &mut egui::Ui, draft: &mut FlexTextBoundaryDraft,
     });
     ui.weak("The project keeps this layout. You can choose a data file when running.");
     if let Err(error) = draft.validate() {
-        ui.colored_label(ui.visuals().error_fg_color, error.to_string());
+        ui.colored_label(ui.visuals().error_fg_color, format!("{error:#}"));
     }
 }
 
