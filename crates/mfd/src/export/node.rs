@@ -975,7 +975,7 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<RenderedNodes, MfdError> {
                 let (name, library) = match value {
                     RuntimeValue::MappingFilePath => ("mfd-filepath", "core"),
                     RuntimeValue::MainMappingFilePath => ("main-mfd-filepath", "core"),
-                    RuntimeValue::CurrentDateTime => ("current-dateTime", "xpath2"),
+                    RuntimeValue::CurrentDateTime => ("now", "lang"),
                 };
                 let _ = write!(
                     components,
