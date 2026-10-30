@@ -48,6 +48,7 @@ mod restriction;
 mod substitution;
 mod substitution_expansion;
 mod type_alternative_profiles;
+mod wildcard_ports;
 
 use resources::SchemaReader;
 pub use resources::XmlSchemaByteReader;
@@ -104,7 +105,19 @@ enum ComplexTypeResolution {
 #[derive(Clone)]
 struct CachedComplexType {
     group: ParsedComplexType,
+    /// The content before projected wildcard ports were resolved, for
+    /// derivations that resolve them against their own elements.
+    content: ParsedComplexType,
     anchor: String,
+}
+
+/// How a named complex type is used.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ComplexTypeUse {
+    /// As complete content, with projected wildcard ports resolved.
+    Complete,
+    /// As an extension base, with projected wildcard ports still marked.
+    Base,
 }
 
 #[derive(Clone, Default)]
@@ -532,6 +545,7 @@ fn import_type_with_reader(
                     local,
                     &mut state,
                     Some(local),
+                    ComplexTypeUse::Complete,
                 )
             })
         }
@@ -981,6 +995,7 @@ fn attach_type_alternatives(
             &derived.local,
             state,
             None,
+            ComplexTypeUse::Complete,
         ) else {
             return;
         };
@@ -1408,6 +1423,24 @@ fn resolve_complex_type(
     state: &mut ParseState,
     occurrence_anchor: Option<&str>,
 ) -> Option<ComplexTypeResolution> {
+    resolve_complex_type_use(
+        qname,
+        schema_el,
+        schema_path,
+        state,
+        occurrence_anchor,
+        ComplexTypeUse::Complete,
+    )
+}
+
+fn resolve_complex_type_use(
+    qname: &str,
+    schema_el: &Node,
+    schema_path: &Path,
+    state: &mut ParseState,
+    occurrence_anchor: Option<&str>,
+    type_use: ComplexTypeUse,
+) -> Option<ComplexTypeResolution> {
     let local = local_name(qname);
     if is_local_qname(schema_el, qname)
         && let Some(declaration) = top_level(schema_el, "complexType", local)
@@ -1419,6 +1452,7 @@ fn resolve_complex_type(
             local,
             state,
             occurrence_anchor,
+            type_use,
         );
     }
 
@@ -1434,6 +1468,7 @@ fn resolve_complex_type(
         local,
         state,
         occurrence_anchor,
+        type_use,
     )
 }
 
@@ -1444,11 +1479,15 @@ fn parse_complex_type_declaration(
     name: &str,
     state: &mut ParseState,
     occurrence_anchor: Option<&str>,
+    type_use: ComplexTypeUse,
 ) -> Option<ComplexTypeResolution> {
     let identity = state.declaration(schema_path, "complexType", name);
     if let Some(cached) = state.complex_types.get(&identity).cloned() {
         let anchor = occurrence_anchor.unwrap_or(&cached.anchor);
-        let mut group = cached.group;
+        let mut group = match type_use {
+            ComplexTypeUse::Complete => cached.group,
+            ComplexTypeUse::Base => cached.content,
+        };
         rebase_recursive_anchor(&mut group.children, &cached.anchor, anchor);
         return state
             .reserve_elements(group.children.iter().map(schema_node_count).sum())
@@ -1466,17 +1505,23 @@ fn parse_complex_type_declaration(
         .or_else(|| state.complex_type_anchors.last().cloned())
         .unwrap_or_else(|| name.to_string());
     state.complex_type_anchors.push(anchor.clone());
-    let group = parse_complex_type(declaration, schema_el, schema_path, state);
+    let content = parse_complex_type_content(declaration, schema_el, schema_path, state);
+    let mut group = content.clone();
+    wildcard_ports::resolve(&mut group, state);
     state.complex_type_anchors.pop();
     state.leave();
     state.complex_types.insert(
         identity,
         CachedComplexType {
             group: group.clone(),
+            content: content.clone(),
             anchor,
         },
     );
-    Some(ComplexTypeResolution::Group(group))
+    Some(ComplexTypeResolution::Group(match type_use {
+        ComplexTypeUse::Complete => group,
+        ComplexTypeUse::Base => content,
+    }))
 }
 
 fn rebase_recursive_anchor(children: &mut [SchemaNode], from: &str, to: &str) {
@@ -1672,6 +1717,19 @@ fn parse_complex_type(
     schema_path: &Path,
     state: &mut ParseState,
 ) -> ParsedComplexType {
+    let mut parsed = parse_complex_type_content(complex_type, schema_el, schema_path, state);
+    wildcard_ports::resolve(&mut parsed, state);
+    parsed
+}
+
+/// Parses a complex type's content, leaving projected wildcard ports marked
+/// so that an enclosing derivation can resolve them against its base.
+fn parse_complex_type_content(
+    complex_type: &Node,
+    schema_el: &Node,
+    schema_path: &Path,
+    state: &mut ParseState,
+) -> ParsedComplexType {
     let mut parsed = ParsedComplexType::default();
     if let Some(reason) = open_content_refusal(complex_type, schema_el) {
         state.reject_wildcard(XmlFormatError::UnsupportedXmlOpenContent { reason });
@@ -1753,7 +1811,14 @@ fn parse_complex_type(
                 {
                     if let Some(base) = ext.attribute("base")
                         && let Some(ComplexTypeResolution::Group(base_group)) =
-                            resolve_complex_type(base, schema_el, schema_path, state, None)
+                            resolve_complex_type_use(
+                                base,
+                                schema_el,
+                                schema_path,
+                                state,
+                                None,
+                                ComplexTypeUse::Base,
+                            )
                     {
                         parsed.extend(base_group);
                     }
@@ -1766,7 +1831,12 @@ fn parse_complex_type(
                             .children
                             .push(SchemaNode::scalar(XML_TEXT_FIELD, ScalarType::String).text());
                     }
-                    parsed.extend(parse_complex_type(&ext, schema_el, schema_path, state));
+                    parsed.extend(parse_complex_type_content(
+                        &ext,
+                        schema_el,
+                        schema_path,
+                        state,
+                    ));
                 } else if let Some(restriction) = child
                     .children()
                     .find(|n| n.is_element() && n.tag_name().name() == "restriction")
@@ -1827,7 +1897,12 @@ fn parse_complex_type(
                             .children
                             .push(SchemaNode::scalar(XML_TEXT_FIELD, ScalarType::String).text());
                     }
-                    parsed.extend(parse_complex_type(&content, schema_el, schema_path, state));
+                    parsed.extend(parse_complex_type_content(
+                        &content,
+                        schema_el,
+                        schema_path,
+                        state,
+                    ));
                 }
             }
             "anyAttribute" => match parse_attribute_wildcard(&child, schema_el, schema_path, state)
@@ -2102,6 +2177,10 @@ fn collapse_compatible_xml_names(nodes: &mut Vec<SchemaNode>) {
         alternatives.extend(nodes[index].xml_name_alternatives.iter().cloned());
         nodes[previous].xml_name_alternatives.extend(alternatives);
         if nodes[previous].xml_name_alternatives_are_valid() {
+            // The merged port is declared when either name was declared.
+            if wildcard_ports::is_declared_element(&nodes[index]) {
+                wildcard_ports::unmark(&mut nodes[previous]);
+            }
             nodes.remove(index);
         } else {
             nodes[previous].xml_name_alternatives.truncate(original_len);
@@ -2312,6 +2391,7 @@ fn collect_sequence_contents(
     out: &mut Vec<SchemaNode>,
     repeating_choices: &mut Vec<XmlRepeatingChoice>,
 ) {
+    let start = out.len();
     for child in sequence.children().filter(|n| n.is_element()) {
         if is_disabled_particle(&child) {
             continue;
@@ -2348,11 +2428,38 @@ fn collect_sequence_contents(
                             choice.repeating = true;
                         }
                     }
-                    push_projected_wildcard_children(out, children);
-                    if sequence.tag_name().name() != "choice"
-                        && let Some(choice) = choice
+                    let process = if children
+                        .iter()
+                        .any(|child| child.name == XML_ELEMENTS_FIELD)
                     {
-                        repeating_choices.push(choice);
+                        XmlWildcardProcessContents::Lax
+                    } else {
+                        XmlWildcardProcessContents::Strict
+                    };
+                    let in_choice = sequence.tag_name().name() == "choice";
+                    let absorbed = push_projected_wildcard_children(out, children, process);
+                    // A single-occurrence declared sibling before the wildcard
+                    // leaves its extra occurrences to it; see `wildcard_ports`.
+                    if !in_choice
+                        && process == XmlWildcardProcessContents::Strict
+                        && absorbed.iter().any(|port| !port.repeating)
+                    {
+                        state.reject_wildcard(unsupported_wildcard(
+                            wildcard_ports::STRICT_SIBLING_REASON,
+                        ));
+                    }
+                    if !in_choice && let Some(mut choice) = choice {
+                        // A single-occurrence choice does not own the declared
+                        // sibling; a repeating one keeps its occurrence order.
+                        if !choice.repeating {
+                            choice
+                                .members
+                                .retain(|member| !absorbed.iter().any(|port| &port.name == member));
+                        }
+                        if choice.members.len() > 1 {
+                            wildcard_ports::mark_choice(&mut choice);
+                            repeating_choices.push(choice);
+                        }
                     }
                 }
                 Err(error) => state.reject_wildcard(error),
@@ -2410,19 +2517,40 @@ fn collect_sequence_contents(
             _ => {}
         }
     }
+    if sequence.tag_name().name() == "choice" {
+        wildcard_ports::drop_choice_alternatives(out, start);
+    }
 }
 
-fn push_projected_wildcard_children(out: &mut Vec<SchemaNode>, children: Vec<SchemaNode>) {
-    for child in children {
-        if out.iter().any(|existing| existing == &child) {
+/// Pushes marked projected ports and returns the declared elements that
+/// took the place of equal ones.
+fn push_projected_wildcard_children(
+    out: &mut Vec<SchemaNode>,
+    children: Vec<SchemaNode>,
+    process: XmlWildcardProcessContents,
+) -> Vec<wildcard_ports::AbsorbedPort> {
+    let mut absorbed = Vec::new();
+    for mut child in children {
+        if let Some(existing) = out
+            .iter()
+            .find(|existing| wildcard_ports::same_port(existing, &child))
+        {
             // A declaration already projected explicitly, or by an earlier
             // open extension position, owns one mapping port. The retained
             // ordered-content stream preserves parsed occurrence positions;
             // newly constructed generic values use the first open position.
+            if wildcard_ports::is_declared_element(existing) {
+                absorbed.push(wildcard_ports::AbsorbedPort {
+                    name: child.name,
+                    repeating: existing.repeating,
+                });
+            }
             continue;
         }
+        wildcard_ports::mark(&mut child, process);
         out.push(child);
     }
+    absorbed
 }
 
 fn wildcard_choice_projection(
@@ -2664,6 +2792,8 @@ fn same_xml_element_shape(left: &SchemaNode, right: &SchemaNode) -> bool {
     right.xml_namespace = None;
     left.xml_name_alternatives.clear();
     right.xml_name_alternatives.clear();
+    wildcard_ports::unmark(&mut left);
+    wildcard_ports::unmark(&mut right);
     left == right
 }
 
