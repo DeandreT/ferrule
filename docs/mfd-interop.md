@@ -1229,6 +1229,22 @@ An X12 variable cannot introduce parser-error ports absent from its selected
 configuration; configured fields whose names begin with `ParserErrors_` remain
 ordinary data.
 
+Import also admits a computed join key: in a two-input join beside one
+repeating source collection, either input may be fed by a constant, a runtime
+input parameter, or a call chain of `uppercase`, `lowercase`, `concat` and
+`add` over those and over non-repeating primary-source fields. The key is
+evaluated in the receiving context of the iteration the join drives, and it
+is `Null`, giving no tuples, whenever a field it reads is absent or nil, as
+the reference application yields nothing there. Calls that could raise stay
+refused: `uppercase` or `lowercase` over a non-string, `add` over a string,
+boolean or integers alone, and `concat` over a decimal. Two computed inputs,
+computed inputs in larger joins, keys read from the tuple, keys feeding a
+joined aggregate, keys over named or dynamic sources, keys that read across
+an inactive repetition, sequence-valued keys such as `tokenize`, other
+functions, and a function or constant over a copy-all connection keep the
+join and its driven scopes out with a warning naming the reason. See
+[computed join keys](design/join-computed-keys.md).
+
 Export writes core kind-32 joins whose inputs all come from source ports, each
 fed by a copy-all connection; the reference application refuses an ordinary
 connection on any such input. Root-context joins take their collections from
