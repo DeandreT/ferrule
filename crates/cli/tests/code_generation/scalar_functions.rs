@@ -307,6 +307,34 @@ fn scalar_function_project() -> Project {
         ],
     );
 
+    let replace_literal =
+        |graph: &mut GraphBuilder, value: Value, search: &str, replacement: &str| {
+            graph.call_values(
+                "replace_literal",
+                vec![
+                    value,
+                    Value::String(search.into()),
+                    Value::String(replacement.into()),
+                ],
+            )
+        };
+    let replace_metacharacters =
+        replace_literal(&mut graph, Value::String("1*2(3)$4\\5".into()), "(", "[");
+    let replace_dollar = replace_literal(&mut graph, Value::String("abc".into()), "b", "$0$1\\");
+    let replace_overlap = replace_literal(&mut graph, Value::String("aaa".into()), "aa", "b");
+    let replace_null = replace_literal(&mut graph, Value::Null, "a", "b");
+    add_group(
+        &mut target,
+        &mut scopes,
+        "ReplaceLiteral",
+        vec![
+            ("Metacharacters", ScalarType::String, replace_metacharacters),
+            ("Dollar", ScalarType::String, replace_dollar),
+            ("Overlap", ScalarType::String, replace_overlap),
+            ("Null", ScalarType::String, replace_null),
+        ],
+    );
+
     let string_null = graph.call_values("string", vec![Value::Null]);
     let string_nil = graph.call_values("string", vec![Value::xml_nil()]);
     let string_bool = graph.call_values("string", vec![Value::Bool(false)]);
@@ -672,6 +700,15 @@ fn expected() -> Instance {
                     ("Duplicate", Value::String("xycxyc".into())),
                     ("Unicode", Value::String("aé\u{10348}".into())),
                     ("Empty", Value::String(String::new())),
+                    ("Null", Value::String(String::new())),
+                ]),
+            ),
+            (
+                "ReplaceLiteral".into(),
+                values(vec![
+                    ("Metacharacters", Value::String("1*2[3)$4\\5".into())),
+                    ("Dollar", Value::String("a$0$1\\c".into())),
+                    ("Overlap", Value::String("ba".into())),
                     ("Null", Value::String(String::new())),
                 ]),
             ),

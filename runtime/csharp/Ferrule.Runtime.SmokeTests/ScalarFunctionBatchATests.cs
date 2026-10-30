@@ -66,6 +66,22 @@ internal static partial class Program
         CallEquals(Text("abc"), "translate", Text("abc"), FerruleValue.Null, FerruleValue.Null);
         CallEquals(Text("91"), "translate", Text("a1"), Text("a"), FerruleValue.FromInt64(9));
 
+        CallEquals(Text("a-c abc"), "replace_literal", Text("a.c abc"), Text("."), Text("-"));
+        CallEquals(Text("1x2(3)$4\\5"), "replace_literal", Text("1*2(3)$4\\5"), Text("*"), Text("x"));
+        CallEquals(Text("1*2[3)$4\\5"), "replace_literal", Text("1*2(3)$4\\5"), Text("("), Text("["));
+        CallEquals(Text("1*2(3)D4\\5"), "replace_literal", Text("1*2(3)$4\\5"), Text("$"), Text("D"));
+        CallEquals(Text("1*2(3)$4/5"), "replace_literal", Text("1*2(3)$4\\5"), Text("\\"), Text("/"));
+        CallEquals(Text("a$0$1\\c"), "replace_literal", Text("abc"), Text("b"), Text("$0$1\\"));
+        CallEquals(Text("ba"), "replace_literal", Text("aaa"), Text("aa"), Text("b"));
+        CallEquals(Text("ab"), "replace_literal", Text("a.b"), Text("."), Text(string.Empty));
+        CallEquals(Text("ABC"), "replace_literal", Text("ABC"), Text("b"), Text("x"));
+        CallEquals(Text("a..b..c"), "replace_literal", Text("a.b.c"), Text("."), Text(".."));
+        CallEquals(Text("aébé"), "replace_literal", Text("a\U0001F642b\U0001F642"), Text("\U0001F642"), Text("é"));
+        CallEquals(Text(string.Empty), "replace_literal", FerruleValue.Null, Text("a"), Text("b"));
+        CallEquals(Text("123"), "replace_literal", FerruleValue.FromInt64(1203), Text("0"), Text(string.Empty));
+        CallEquals(Text("ac"), "replace_literal", Text("abc"), Text("b"), FerruleValue.Null);
+        CallEquals(Text("91"), "replace_literal", Text("a1"), Text("a"), FerruleValue.FromInt64(9));
+
         CallEquals(Text(string.Empty), "string", FerruleValue.Null);
         CallEquals(Text(string.Empty), "string", FerruleValue.XmlNil);
         CallEquals(Text("false"), "string", Bool(false));
@@ -137,6 +153,9 @@ internal static partial class Program
         AssertFunctionType("left_trim", FerruleValue.FromInt64(1));
         AssertFunctionType("substring_after", Text("value"), FerruleValue.FromInt64(1));
         AssertFunctionArity("translate", 3, Text("a"), Text("b"));
+        AssertFunctionArity("replace_literal", 3, Text("a"), Text("b"));
+        AssertInvalidArgument("replace_literal", "search text is empty", Text("abc"), Text(string.Empty), Text("-"));
+        AssertInvalidArgument("replace_literal", "search text is empty", Text(string.Empty), FerruleValue.Null, Text("-"));
         AssertFunctionArity("string", 1, Text("one"), Text("two"));
         AssertFunctionArity("substitute_missing", 2, FerruleValue.Null);
         AssertFunctionArity("substitute_missing_with_xml_nil", 1, Array.Empty<FerruleValue>());

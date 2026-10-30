@@ -148,6 +148,13 @@ fn emits_exact_scalar_function_names_through_the_shared_runtime() {
                 args: vec![100, 106, 108],
             },
         },
+        ExpressionNode {
+            id: 120,
+            expression: Expression::Call {
+                function: ScalarFunction::ReplaceLiteral,
+                args: vec![100, 106, 108],
+            },
+        },
     ]);
     for (expression, name) in [
         (102, "trim"),
@@ -162,6 +169,7 @@ fn emits_exact_scalar_function_names_through_the_shared_runtime() {
         (117, "duration_from_parts"),
         (118, "sqlite_multiply"),
         (119, "translate"),
+        (120, "replace_literal"),
     ] {
         let selected = program
             .root
