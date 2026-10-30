@@ -1,5 +1,8 @@
 use super::*;
-use crate::{InnerJoinKey, InnerJoinStage, SourcePathError, field, group, repeated, scalar};
+use crate::{
+    InnerJoinCondition, InnerJoinKey, InnerJoinLeft, InnerJoinSource, InnerJoinSourceStage,
+    InnerJoinStage, SourcePathError, field, group, repeated, scalar,
+};
 
 fn row(fields: impl IntoIterator<Item = (&'static str, Value)>) -> Instance {
     group(
@@ -303,4 +306,208 @@ fn active_item_singletons_correlate_with_named_repeating_sources() {
             .expect("XML-nil join succeeds")
             .is_empty()
     );
+}
+
+fn customers() -> Instance {
+    group([field(
+        "Customers",
+        repeated([
+            row([("Number", text("C1")), ("Name", text("Ada"))]),
+            row([("Number", text("C2")), ("Name", text("Grace"))]),
+            row([("Number", text("C2")), ("Name", text("Hopper"))]),
+            row([("Number", text("")), ("Name", text("Blank"))]),
+            row([("Number", Value::Int(7)), ("Name", text("Seven"))]),
+        ]),
+    )])
+}
+
+/// Names of a computed-key join over `Customers`, with the key first or
+/// second, and each tuple's flattened position.
+fn computed_names(key: &Value, key_first: bool) -> Result<Vec<(Value, usize)>, RuntimeError> {
+    let source = customers();
+    let context = ScopeContext::new(&source);
+    let tuples = if key_first {
+        context.inner_join_with_computed_key(
+            3,
+            key,
+            InnerJoinSource::Computed,
+            InnerJoinSourceStage {
+                source: InnerJoinSource::Collection(&["Customers"]),
+                conditions: &[InnerJoinCondition {
+                    left: InnerJoinLeft::Computed,
+                    right_path: &["Number"],
+                }],
+            },
+            &[],
+        )?
+    } else {
+        context.inner_join_with_computed_key(
+            3,
+            key,
+            InnerJoinSource::Collection(&["Customers"]),
+            InnerJoinSourceStage {
+                source: InnerJoinSource::Computed,
+                conditions: &[InnerJoinCondition {
+                    left: InnerJoinLeft::Collection {
+                        collection: &["Customers"],
+                        path: &["Number"],
+                    },
+                    right_path: &[],
+                }],
+            },
+            &[],
+        )?
+    };
+    Ok(tuples
+        .iter()
+        .map(|tuple| {
+            (
+                tuple
+                    .resolve_join_scalar(3, &["Customers"], &["Name"])
+                    .expect("joined name"),
+                tuple.join_position(3).expect("joined position"),
+            )
+        })
+        .collect())
+}
+
+#[test]
+fn computed_keys_join_as_one_member_from_either_side() {
+    for key_first in [true, false] {
+        assert_eq!(
+            computed_names(&text("C2"), key_first).expect("computed join"),
+            [(text("Grace"), 1), (text("Hopper"), 2)]
+        );
+        // An empty string is a value and matches an empty right key.
+        assert_eq!(
+            computed_names(&text(""), key_first).expect("computed join"),
+            [(text("Blank"), 1)]
+        );
+        // Comparison uses `equal`: a string key matches an integer by text.
+        assert_eq!(
+            computed_names(&text("7"), key_first).expect("computed join"),
+            [(text("Seven"), 1)]
+        );
+        for key in [Value::Null, Value::json_null(), Value::xml_nil()] {
+            assert_eq!(
+                computed_names(&key, key_first).expect("computed join"),
+                [],
+                "{key:?}"
+            );
+        }
+        let decimal = Value::decimal(crate::Decimal96::parse_exact("7").expect("decimal"));
+        assert!(computed_names(&decimal, key_first).is_err());
+    }
+}
+
+#[test]
+fn computed_members_take_their_place_in_longer_plans() {
+    let source = group([
+        field(
+            "Customers",
+            repeated([
+                row([("Number", text("C1")), ("Name", text("Ada"))]),
+                row([("Number", text("C2")), ("Name", text("Grace"))]),
+            ]),
+        ),
+        field(
+            "Orders",
+            repeated([
+                row([("Id", text("O1")), ("Customer", text("C2"))]),
+                row([("Id", text("O2")), ("Customer", text("C1"))]),
+                row([("Id", text("O3")), ("Customer", text("C2"))]),
+            ]),
+        ),
+    ]);
+    let context = ScopeContext::new(&source);
+    let by_customer = [InnerJoinCondition {
+        left: InnerJoinLeft::Collection {
+            collection: &["Customers"],
+            path: &["Number"],
+        },
+        right_path: &["Customer"],
+    }];
+    let ids = |tuples: Vec<ScopeContext<'_>>| {
+        tuples
+            .iter()
+            .map(|tuple| {
+                tuple
+                    .resolve_join_scalar(4, &["Orders"], &["Id"])
+                    .expect("order id")
+            })
+            .collect::<Vec<_>>()
+    };
+    // The key as a middle stage's right source filters the left customers.
+    let middle = context
+        .inner_join_with_computed_key(
+            4,
+            &text("C2"),
+            InnerJoinSource::Collection(&["Customers"]),
+            InnerJoinSourceStage {
+                source: InnerJoinSource::Computed,
+                conditions: &[InnerJoinCondition {
+                    left: InnerJoinLeft::Collection {
+                        collection: &["Customers"],
+                        path: &["Number"],
+                    },
+                    right_path: &[],
+                }],
+            },
+            &[InnerJoinSourceStage {
+                source: InnerJoinSource::Collection(&["Orders"]),
+                conditions: &by_customer,
+            }],
+        )
+        .expect("middle computed join");
+    assert_eq!(ids(middle), [text("O1"), text("O3")]);
+    // The key as the first source, read again by a later stage.
+    let first = context
+        .inner_join_with_computed_key(
+            4,
+            &text("C1"),
+            InnerJoinSource::Computed,
+            InnerJoinSourceStage {
+                source: InnerJoinSource::Collection(&["Customers"]),
+                conditions: &[InnerJoinCondition {
+                    left: InnerJoinLeft::Computed,
+                    right_path: &["Number"],
+                }],
+            },
+            &[InnerJoinSourceStage {
+                source: InnerJoinSource::Collection(&["Orders"]),
+                conditions: &[InnerJoinCondition {
+                    left: InnerJoinLeft::Computed,
+                    right_path: &["Customer"],
+                }],
+            }],
+        )
+        .expect("first computed join");
+    assert_eq!(ids(first), [text("O2")]);
+}
+
+#[test]
+fn json_null_collection_keys_never_match() {
+    let source = group([
+        field("Key", scalar(Value::json_null())),
+        field(
+            "Rows",
+            repeated([row([("Key", Value::json_null()), ("Name", text("null"))])]),
+        ),
+    ]);
+    let tuples = ScopeContext::new(&source)
+        .inner_join(
+            6,
+            &["Key"],
+            InnerJoinStage {
+                collection: &["Rows"],
+                keys: &[InnerJoinKey {
+                    left_collection: &["Key"],
+                    left_path: &[],
+                    right_path: &["Key"],
+                }],
+            },
+            &[],
+        )
+        .expect("JSON null keys compare without failing");
+    assert!(tuples.is_empty());
 }

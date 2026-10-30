@@ -600,6 +600,20 @@ fn validate_scope(
                         join,
                     )?;
                 }
+                // The computed key is evaluated in the parent context.
+                joins::validate_computed_key(join, expressions, schemas.sources, root_context)?;
+                if let Some(computed) = join.plan().computed_source() {
+                    validate_expression_context(
+                        computed.value(),
+                        expressions,
+                        schemas,
+                        sequence_items,
+                        active_sequence_items,
+                        active_joins,
+                        root_context,
+                        &sequence_owner,
+                    )?;
+                }
                 scope_source = None;
                 active_source = None;
                 scope_joins.push(joins::ActiveJoin::new(join));
