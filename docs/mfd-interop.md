@@ -1223,16 +1223,24 @@ configuration; configured fields whose names begin with `ParserErrors_` remain
 ordinary data.
 
 Export writes core kind-32 joins whose inputs all come from source ports, each
-fed by a copy-all connection. Root-context joins take their collections from
-the primary source. A join nested inside one ordinary primary source iteration
+fed by a copy-all connection; the reference application refuses an ordinary
+connection on any such input. Root-context joins take their collections from
+the primary source. A join nested inside one ordinary iteration over the primary
+source or a static named source is evaluated again for every iterated item. It
 takes singletons from the active item or from a static named source, at any
-input position and in any number. Its repeating inputs come from static named
-sources, each from its own component; a two-input plan may instead join one
-primary repeating collection outside the iteration. Export refuses, atomically
-under the native profile, nested plans without a singleton, a two-input plan
-without exactly one singleton and one repeating input, primary repeating inputs
-below the iteration, named inputs that a primary frame could shadow, and named
-paths that would change when reimport strips the enclosing iteration path.
+input position and in any number, and needs no singleton. Its repeating inputs
+come from static named sources, each from its own component, and, inside a
+primary iteration, from at most one collection below the active item, such as
+`Line` inside an `Order` loop, which yields only that item's rows. A two-input
+plan may instead pair one singleton with one primary repeating collection
+outside the iteration. Export refuses, atomically under the native profile,
+nested plans of singletons only, more than one repeating input below the
+iteration, repeating inputs below a named-source iteration, primary repeating
+inputs outside the iteration in any other plan, repeating paths that more than
+one enclosing source frame declares, an iteration path that names both a
+primary child and a named source, named inputs that an enclosing frame could
+shadow, and named paths that would change when reimport strips the enclosing
+iteration path.
 
 JSON5 component settings and `.json5` instance paths are retained as a typed
 repair dependency, not executable native JSON5 mode. Legacy filename attributes
