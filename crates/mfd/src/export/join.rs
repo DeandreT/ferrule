@@ -367,12 +367,6 @@ pub(super) fn render(args: RenderJoinArgs<'_>) -> JoinExports {
         };
         match result {
             Ok(rendered) => {
-                if owner.nested
-                    && owner.plan.sources().count() >= 3
-                    && let Some(edge) = rendered.input_edges.first()
-                {
-                    structural_edges.insert(*edge);
-                }
                 components.push_str(&rendered.xml);
                 edges.extend(rendered.input_edges);
                 structural_edges.extend(rendered.structural_input_edges);
@@ -571,9 +565,10 @@ fn render_one(
         let input_port = keys.next();
         input_ports.push(input_port);
         input_edges.push((source_port, input_port));
-        if source.cardinality() == JoinSourceCardinality::Repeating {
-            structural_input_edges.push((source_port, input_port));
-        }
+        // The reference application accepts a join input fed directly by a source
+        // port only through a copy-all connection, for a singleton scalar as well
+        // as a repeating group.
+        structural_input_edges.push((source_port, input_port));
     }
 
     let mut output_trees = (0..sources.len())
