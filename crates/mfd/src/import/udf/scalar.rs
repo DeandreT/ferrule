@@ -733,7 +733,10 @@ impl DefinitionContext<'_> {
                 let mut args = (0..arity)
                     .map(|pos| self.function_input(function, pos, active, budget, sequence_items))
                     .collect::<Result<Vec<_>, _>>()?;
-                if matches!(mapped, "add" | "subtract" | "multiply" | "divide" | "round") {
+                if matches!(
+                    mapped,
+                    "add" | "subtract" | "multiply" | "divide" | "round_half_ceiling"
+                ) {
                     args = args
                         .into_iter()
                         .map(|arg| ScalarExpr::Call {

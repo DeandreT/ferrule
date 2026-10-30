@@ -318,7 +318,7 @@ fn native_protobuf_numeric_aliases(
         return None;
     }
     let nodes = &function.body.nodes;
-    let [rounded, precision] = call_args(nodes, function.output, "round")? else {
+    let [rounded, precision] = call_args(nodes, function.output, "round_half_ceiling")? else {
         return None;
     };
     let (rounded, precision) = (*rounded, *precision);

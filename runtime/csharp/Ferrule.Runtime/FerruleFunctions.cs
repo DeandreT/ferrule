@@ -52,6 +52,7 @@ public static partial class FerruleFunctions
             "json_serialize_object" => JsonSerializeObject(arguments),
             "format_number" => FormatNumber(arguments),
             "round" => Round(arguments),
+            "round_half_ceiling" => RoundHalfCeiling(arguments),
             "delay_passthrough" => DelayPassthrough(arguments),
             "date_from_datetime" => UnaryString(
                 function,

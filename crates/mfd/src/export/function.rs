@@ -148,15 +148,25 @@ pub(super) fn native_function(
         "format_time" if arity > 2 => {
             Some("the built-in `format-time` takes only value and format inputs")
         }
+        "round" => Some(
+            "`round` rounds exact halves away from zero on binary floating-point values, \
+             while the built-in `round` and `round-precision` round them toward positive \
+             infinity on decimals; use `round_half_ceiling` for the built-in rounding",
+        ),
         _ => None,
     };
     if let Some(reason) = refusal {
         return Err(reason);
     }
     // The built-in `round` has one input; rounding to decimals is
-    // `round-precision`, which import reads back as two-argument `round`.
-    if function == "round" && arity == 2 {
-        return Ok(("round-precision".to_string(), "core"));
+    // `round-precision`. Import reads both back as `round_half_ceiling`.
+    if function == "round_half_ceiling" {
+        let name = if arity == 2 {
+            "round-precision"
+        } else {
+            "round"
+        };
+        return Ok((name.to_string(), "core"));
     }
     Ok((unmap_function_name(function), function_library(function)))
 }
@@ -264,8 +274,10 @@ mod tests {
     #[test]
     fn calls_export_under_their_native_arity_or_are_refused() {
         for (function, arity, expected) in [
-            ("round", 1, Some(("round", "core"))),
-            ("round", 2, Some(("round-precision", "core"))),
+            ("round_half_ceiling", 1, Some(("round", "core"))),
+            ("round_half_ceiling", 2, Some(("round-precision", "core"))),
+            ("round", 1, None),
+            ("round", 2, None),
             ("format_date", 3, Some(("format-date", "core"))),
             ("format_datetime", 3, Some(("format-dateTime", "core"))),
             ("format_time", 2, Some(("format-time", "core"))),
