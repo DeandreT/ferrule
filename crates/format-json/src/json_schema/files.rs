@@ -319,8 +319,13 @@ impl Loader {
                 limit: MAX_TOTAL_BYTES,
             });
         }
+        let text =
+            std::str::from_utf8(&bytes).map_err(|error| JsonFormatError::SchemaEncoding {
+                resource: path.to_path_buf(),
+                error,
+            })?;
         let numeric_lexemes::ParsedDocument { mut value, lexemes } =
-            numeric_lexemes::parse(&bytes)?;
+            numeric_lexemes::parse(text.as_bytes())?;
         let dialect = validation_dialect_for_document(&value);
         let ignore_ref_siblings = matches!(
             dialect,

@@ -253,12 +253,15 @@ fn unresolved_or_cyclic_modern_ref_annotations_reject_but_legacy_ignores_them() 
     let legacy = import_str(
         r##"{
   "$schema":"http://json-schema.org/draft-04/schema#",
-  "$ref":"#/definitions/Loop",
-  "format":42,
+  "type":"object",
+  "properties":{"Value":{"$ref":"#/definitions/Loop","format":42}},
   "definitions":{"Loop":{"$ref":"#/definitions/Loop","format":false}}
 }"##,
     );
-    assert!(annotations(&legacy).is_empty());
+    let Some(value) = legacy.child("Value") else {
+        panic!("legacy cyclic property should degrade to a string");
+    };
+    assert!(annotations(value).is_empty());
 }
 
 #[test]
