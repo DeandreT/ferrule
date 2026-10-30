@@ -50,9 +50,9 @@ are preserved.
 ## Current Baseline
 
 - Formats, both directions: XML, JSON, CSV/fixed-width/FlexText, SQLite, XLSX,
-  XBRL instances, X12, EDIFACT, HL7 v2, TRADACOMS, embedded IDoc layouts,
-  and proto2/proto3 Protocol Buffers. SWIFT MT and visual PDF extraction are
-  source-only.
+  XBRL instances, X12, EDIFACT, HL7 v2, TRADACOMS, embedded IDoc and SWIFT
+  MT layouts, and proto2/proto3 Protocol Buffers. SWIFT MT output needs
+  configured per-message headers. Visual PDF extraction is source-only.
 - Mapping semantics: nested iteration and broadcast, filters, grouping,
   stable distinct-value iteration, literal/length/regex tokenizer and integer-range sequences,
   bounded existential reduction, 1-based scalar selection, and

@@ -385,7 +385,9 @@ fn validates_idoc_output_and_structured_edi_format_exclusivity() {
     );
     assert!(validate(&swift_target).iter().any(|issue| {
         issue.location == "target format options"
-            && issue.message.contains("only for mapping sources")
+            && issue
+                .message
+                .contains("no `swift_mt_output` message headers")
     }));
 }
 

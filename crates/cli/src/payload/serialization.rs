@@ -6,9 +6,7 @@ use mapping::{EdiAutocomplete, EdiBoundaryKind, FormatOptions};
 
 use super::super as cli;
 use super::super::format_selection::{self, Direction, JsonMode, Origin, SelectedFormat};
-use super::super::{
-    extension_of, formatted_edi_output, has_legacy_xlsx_layout, protobuf_layout, x12_separators,
-};
+use super::super::{formatted_edi_output, has_legacy_xlsx_layout, protobuf_layout, x12_separators};
 use super::profile::{self, BoundaryProfile};
 use super::{
     MAX_PAYLOAD_DOCUMENT_BYTES, MAX_PAYLOAD_RUN_BYTES, PayloadArtifact, PayloadDestination,
@@ -218,7 +216,10 @@ fn render_payload_with_limit(
         return Ok(PayloadBytes::Ready(bytes, 1));
     }
     if let SelectedFormat::Swift(_) = selected {
-        bail!("SWIFT MT output is not supported; `swift_mt` is input-only");
+        let formatted = formatted_edi_output(instance, options)?;
+        let bytes = format_edi::swift::to_bytes_with_options(schema, &formatted, options)
+            .context("rendering SWIFT MT output payload")?;
+        return Ok(PayloadBytes::Ready(bytes, 1));
     }
     if let SelectedFormat::Pdf(_) = selected {
         bail!("PDF output is not supported; `pdf` is input-only");
@@ -414,10 +415,9 @@ fn render_payload_with_limit(
         }
         SelectedFormat::MissingPdf => bail!("PDF output is not supported; PDF is input-only"),
         SelectedFormat::MissingIdoc => bail!("unsupported output payload extension: .idoc"),
-        SelectedFormat::MissingSwift => bail!(
-            "unsupported output payload extension: .{}",
-            extension_of(path)?
-        ),
+        SelectedFormat::MissingSwift => {
+            bail!("SWIFT MT output requires an embedded `swift_mt` layout and message headers")
+        }
         SelectedFormat::Unsupported(other) => {
             bail!("unsupported output payload extension: .{other}")
         }
@@ -578,7 +578,7 @@ fn render_edi_payload(
             bail!("SAP IDoc output requires an embedded runtime layout")
         }
         EdiBoundaryKind::SwiftMt => {
-            bail!("SWIFT MT output is not supported; SWIFT MT is input-only")
+            bail!("SWIFT MT output requires an embedded `swift_mt` layout")
         }
     }
     .context("rendering EDI output payload")

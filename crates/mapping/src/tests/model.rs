@@ -188,6 +188,7 @@ fn json_lines_format_option_defaults_off_and_roundtrips_when_enabled() {
     assert!(defaults.idoc_native_config.is_none());
     assert!(defaults.idoc_native_text_settings.is_none());
     assert!(defaults.swift_mt.is_none());
+    assert!(defaults.swift_mt_output.is_none());
     assert!(defaults.pdf.is_none());
     assert!(defaults.http_get.is_none());
     assert!(defaults.external_source.is_none());

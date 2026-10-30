@@ -63,6 +63,7 @@ mod failure_rules;
 mod file_run_teardown;
 mod graph_commands;
 mod history;
+mod swift_output;
 pub(crate) use file_run_teardown::{SavedFileRunTeardownPort, SavedFileRunTeardownService};
 mod filter_map_authoring;
 #[path = "../workspace/functions.rs"]

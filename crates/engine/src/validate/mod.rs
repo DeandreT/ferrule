@@ -20,6 +20,7 @@ mod scope;
 mod sequence_contexts;
 mod sequences;
 mod sqlite_read;
+mod swift_options;
 mod user_function;
 
 use graph::{validate_cycles, validate_graph};
@@ -31,6 +32,7 @@ use options::{
 };
 use schema::validate_schema;
 use scope::{ScopeSchemas, validate_scope};
+use swift_options::{SwiftSide, validate_swift_options};
 use user_function::validate_user_functions;
 
 pub use owner::{
@@ -273,6 +275,13 @@ fn validate_in_document_context(project: &Project, document_set: bool) -> Vec<Va
         &project.source,
         &mut issues,
     );
+    validate_swift_options(
+        "source format options",
+        &project.source_options,
+        &project.source,
+        SwiftSide::Source,
+        &mut issues,
+    );
     validate_xlsx_options(
         "source format options",
         &project.source_options,
@@ -313,6 +322,13 @@ fn validate_in_document_context(project: &Project, document_set: bool) -> Vec<Va
         "target format options",
         &project.target_options,
         &project.target,
+        &mut issues,
+    );
+    validate_swift_options(
+        "target format options",
+        &project.target_options,
+        &project.target,
+        SwiftSide::Target(&project.root),
         &mut issues,
     );
     validate_xlsx_options(
@@ -398,6 +414,13 @@ fn validate_in_document_context(project: &Project, document_set: bool) -> Vec<Va
             &format!("extra target `{name}` format options"),
             &target.options,
             &target.schema,
+            &mut issues,
+        );
+        validate_swift_options(
+            &format!("extra target `{name}` format options"),
+            &target.options,
+            &target.schema,
+            SwiftSide::Target(&target.root),
             &mut issues,
         );
         validate_xlsx_options(
@@ -495,6 +518,13 @@ fn validate_in_document_context(project: &Project, document_set: bool) -> Vec<Va
             &source.schema,
             &mut issues,
         );
+        validate_swift_options(
+            &format!("{location} format options"),
+            &source.options,
+            &source.schema,
+            SwiftSide::Source,
+            &mut issues,
+        );
         validate_xlsx_options(
             &format!("{location} format options"),
             &source.options,
@@ -582,6 +612,9 @@ fn validate_in_document_context(project: &Project, document_set: bool) -> Vec<Va
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod swift_tests;
 
 #[cfg(test)]
 mod owner_tests;
