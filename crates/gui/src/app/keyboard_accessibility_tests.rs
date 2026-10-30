@@ -17,7 +17,7 @@ use egui_kittest::{
 use ir::{ScalarType, SchemaNode};
 use mapping::Binding;
 
-const PREVIEW_BUTTON: &str = "Preview the current target from in-memory input";
+const PREVIEW_BUTTON: &str = "Preview the current target from in-memory input (Ctrl+Shift+P)";
 const EDIT_CONST: &str = "Edit Const: Keyboard · F2";
 const UNSAVED_DIALOG_BUTTONS: [&str; 4] = ["Close", "Discard changes", "Save", "Cancel"];
 /// More than two complete Tab cycles of the fixture editor.
@@ -516,13 +516,7 @@ fn keyboard_accessibility_previews_the_unsaved_mapping() {
     press(&mut harness, egui::Key::Tab);
     assert_eq!(focused_name(&harness).as_deref(), Some("Primary input"));
     type_text(&mut harness, r#"{"Name":"Ada","Note":"ignored"}"#);
-    // Tab inserts a tab character here (gap); Escape releases the field and
-    // Shift+Tab wraps to the dialog footer.
-    press(&mut harness, egui::Key::Escape);
-    for _ in 0..3 {
-        press_with(&mut harness, egui::Modifiers::SHIFT, egui::Key::Tab);
-    }
-    assert_eq!(focused_name(&harness).as_deref(), Some("Preview"));
+    assert!(tab_to(&mut harness, "Preview"));
     press(&mut harness, egui::Key::Enter);
     for _ in 0..500 {
         harness.step();
@@ -612,7 +606,6 @@ fn keyboard_accessibility_gap_shift_tab_leaves_the_canvas() {
 }
 
 #[test]
-#[ignore = "keyboard gap: a Tab stop has no on-screen bounds (see docs/qualification/keyboard-only-editor.md)"]
 fn keyboard_accessibility_gap_every_tab_stop_is_visible() {
     let (_scratch, path) = saved_project();
     let mut harness = editor(&path);
@@ -712,67 +705,119 @@ fn keyboard_accessibility_gap_dialog_footer_tab_order_is_visual() {
     assert_eq!(order, ["Close", "Discard changes", "Cancel", "Save"]);
 }
 
-#[test]
-#[ignore = "keyboard gap: Preview input traps Tab (see docs/qualification/keyboard-only-editor.md)"]
-fn keyboard_accessibility_gap_tab_leaves_the_preview_input() {
-    let (_scratch, path) = saved_project();
-    let mut harness = editor(&path);
-    assert!(tab_to(&mut harness, PREVIEW_BUTTON));
-    press(&mut harness, egui::Key::Enter);
-    assert!(tab_to(&mut harness, "Primary input"));
-    type_text(&mut harness, "{}");
-    press(&mut harness, egui::Key::Tab);
-    let input = harness
+fn open_preview_input(harness: &mut Harness<'_, FerruleApp>) {
+    assert!(tab_to(harness, PREVIEW_BUTTON));
+    press(harness, egui::Key::Enter);
+    assert!(tab_to(harness, "Primary input"));
+}
+
+fn preview_input(harness: &Harness<'_, FerruleApp>) -> Option<String> {
+    harness
         .state()
         .preview_draft
         .as_ref()
-        .map(|draft| draft.input_text.clone());
+        .map(|draft| draft.input_text.clone())
+}
+
+#[test]
+fn keyboard_accessibility_gap_tab_leaves_the_preview_input() {
+    let (_scratch, path) = saved_project();
+    let mut harness = editor(&path);
+    open_preview_input(&mut harness);
+    type_text(&mut harness, "{}");
+    press(&mut harness, egui::Key::Tab);
+    let input = preview_input(&harness);
     assert_eq!(input.as_deref(), Some("{}"), "Tab edited the input");
     assert_ne!(focused_name(&harness).as_deref(), Some("Primary input"));
 }
 
 #[test]
-#[ignore = "keyboard gap: Tab stops without readable names (see docs/qualification/keyboard-only-editor.md)"]
-fn keyboard_accessibility_gap_tab_stops_have_readable_names() {
+fn keyboard_accessibility_ctrl_tab_types_a_tab_in_the_preview_input() {
     let (_scratch, path) = saved_project();
     let mut harness = editor(&path);
+    open_preview_input(&mut harness);
+    type_text(&mut harness, "Name");
+    press_with(&mut harness, egui::Modifiers::CTRL, egui::Key::Tab);
+    type_text(&mut harness, "Note");
+    assert_eq!(preview_input(&harness).as_deref(), Some("Name\tNote"));
+    assert_eq!(focused_name(&harness).as_deref(), Some("Primary input"));
+}
+
+/// Collects named Tab stops forward to the canvas, then backward from the
+/// end of the Tab order.
+fn tab_stops(path: &Path) -> Vec<Stop> {
+    let mut harness = editor(path);
     let mut stops = stops_before_canvas(&mut harness)
         .into_iter()
         .flatten()
         .collect::<Vec<_>>();
-    let mut harness = editor(&path);
+    let mut harness = editor(path);
     for _ in 0..30 {
         press_with(&mut harness, egui::Modifiers::SHIFT, egui::Key::Tab);
         stops.extend(focus(&harness));
     }
-    // Icon glyphs from the private use area are not readable names.
+    stops
+}
+
+/// Stops without a readable name; icon glyphs from the private use area are
+/// not readable names.
+fn unnamed(stops: impl IntoIterator<Item = Stop>) -> Vec<String> {
     let readable = |name: &str| {
         name.chars()
             .any(|c| c.is_alphanumeric() && !('\u{e000}'..='\u{f8ff}').contains(&c))
     };
     let mut unnamed = stops
-        .iter()
+        .into_iter()
         .filter(|stop| !readable(&stop.name))
         .map(|stop| format!("{} {:?} at {:?}", stop.role, stop.name, stop.bounds))
         .collect::<Vec<_>>();
     unnamed.sort();
     unnamed.dedup();
+    unnamed
+}
+
+#[test]
+fn keyboard_accessibility_gap_tab_stops_have_readable_names() {
+    let (_scratch, path) = saved_project();
+    let unnamed = unnamed(
+        tab_stops(&path)
+            .into_iter()
+            .filter(|stop| !stop.on_canvas()),
+    );
     assert!(unnamed.is_empty(), "unnamed Tab stops: {unnamed:#?}");
 }
 
 #[test]
-#[ignore = "keyboard gap: Add binding drops keyboard focus (see docs/qualification/keyboard-only-editor.md)"]
+#[ignore = "keyboard gap: canvas Tab stops without readable names, #1163 (see docs/qualification/keyboard-only-editor.md)"]
+fn keyboard_accessibility_gap_canvas_tab_stops_have_readable_names() {
+    let (_scratch, path) = saved_project();
+    let unnamed = unnamed(tab_stops(&path).into_iter().filter(Stop::on_canvas));
+    assert!(unnamed.is_empty(), "unnamed canvas Tab stops: {unnamed:#?}");
+}
+
+#[test]
 fn keyboard_accessibility_gap_add_binding_keeps_focus() {
     let (_scratch, path) = saved_project();
     let mut harness = editor(&path);
     assert!(tab_to(&mut harness, "Add binding"));
     press(&mut harness, egui::Key::Enter);
-    assert_eq!(harness.state().project.root.bindings.len(), 2);
-    assert_eq!(focused_name(&harness).as_deref(), Some("Add binding"));
+    assert_eq!(
+        bindings(&harness),
+        [("Note".to_owned(), 0), ("Name".to_owned(), 0)]
+    );
+    // Focus moves to the new binding's target field, the next control to
+    // set. The new binding takes the last unbound field, which disables Add
+    // binding, and a disabled control cannot hold focus.
+    assert_eq!(focused_name(&harness).as_deref(), Some("Name"));
+    press(&mut harness, egui::Key::Tab);
+    assert_eq!(
+        focused_name(&harness).as_deref(),
+        Some(r#"Text · "Keyboard" · #0"#),
+        "Tab continues to the new binding's expression"
+    );
 }
 
 #[test]
-#[ignore = "keyboard gap: Preview has no shortcut (see docs/qualification/keyboard-only-editor.md)"]
 fn keyboard_accessibility_gap_preview_has_a_shortcut() {
     let (_scratch, path) = saved_project();
     let mut harness = editor(&path);
@@ -782,4 +827,16 @@ fn keyboard_accessibility_gap_preview_has_a_shortcut() {
         .expect("Run menu lists Preview");
     // Menu items append their shortcut, as in "Run Ctrl+R".
     assert_ne!(item, "Preview…", "Preview advertises no shortcut");
+}
+
+#[test]
+fn keyboard_accessibility_preview_shortcut_opens_the_preview() {
+    let (_scratch, path) = saved_project();
+    let mut harness = editor(&path);
+    press_with(
+        &mut harness,
+        command() | egui::Modifiers::SHIFT,
+        egui::Key::P,
+    );
+    assert!(harness.state().preview_draft.is_some());
 }

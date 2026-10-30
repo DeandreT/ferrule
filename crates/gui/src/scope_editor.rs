@@ -913,6 +913,11 @@ pub(crate) fn show_scope_editor(
         if scope.bindings.is_empty() {
             crate::ui_kit::help(ui, "Connect a target field to a graph expression.");
         }
+        // A binding added by the keyboard takes focus on its first frame:
+        // its fields are the next thing to set, and Add binding is disabled
+        // once every target field is bound.
+        let focus_new_binding = ui.scope_id().with("focus_new_binding");
+        let focus_binding = ui.data_mut(|data| data.remove_temp::<usize>(focus_new_binding));
         let mut remove_idx = None;
         for (i, binding) in scope.bindings.iter_mut().enumerate() {
             ui.push_id(("binding", i), |ui| {
@@ -934,7 +939,7 @@ pub(crate) fn show_scope_editor(
                     });
                     crate::ui_kit::form_grid(ui, "binding_fields", |form| {
                         form.row("Target field", |ui| {
-                            egui::ComboBox::from_id_salt(("binding_target", i))
+                            let target = egui::ComboBox::from_id_salt(("binding_target", i))
                                 .selected_text(if binding.target_field.is_empty() {
                                     "Choose field…"
                                 } else {
@@ -951,6 +956,9 @@ pub(crate) fn show_scope_editor(
                                         );
                                     }
                                 });
+                            if focus_binding == Some(i) {
+                                target.response.request_focus();
+                            }
                         });
                         form.row("Expression", |ui| {
                             binding_node_picker(
@@ -978,7 +986,7 @@ pub(crate) fn show_scope_editor(
                         .any(|binding| binding.target_field.as_str() == field.as_str())
             })
             .cloned();
-        if ui
+        let add = ui
             .add_enabled(
                 first_binding_node.is_some() && next_target.is_some(),
                 egui::Button::new("Add binding"),
@@ -987,10 +995,15 @@ pub(crate) fn show_scope_editor(
                 "Add a graph expression available to this target before creating a binding"
             } else {
                 "Every scalar target field already has a binding"
-            })
-            .clicked()
+            });
+        if add.clicked()
             && let (Some(node), Some(target_field)) = (first_binding_node, next_target)
         {
+            if add.has_focus() {
+                let index = scope.bindings.len();
+                ui.data_mut(|data| data.insert_temp(focus_new_binding, index));
+                ui.ctx().request_repaint();
+            }
             scope.bindings.push(Binding { target_field, node });
         }
     });
