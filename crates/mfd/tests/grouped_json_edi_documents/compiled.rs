@@ -29,12 +29,40 @@ fn invoked_parameter_public_consumers_keep_order_and_host_failures() {
 }
 
 fn compile_public_consumers(fixture: Fixture, rust_template: &str, csharp_template: &str) {
-    let imported = mfd::import_invoked_grouped_json_edi_document_with_options(
-        &fixture.0.join("mapping.mfd"),
-        &mfd::ImportOptions::default().with_package_root(&fixture.0),
-    )
-    .unwrap();
-    let lowered = codegen::lower_document(&imported.document).unwrap();
+    compile_consumers(fixture, rust_template, csharp_template, false);
+}
+
+fn compile_consumers(fixture: Fixture, rust_template: &str, csharp_template: &str, object: bool) {
+    let options = mfd::ImportOptions::default().with_package_root(&fixture.0);
+    let (document, source, invocation, object_binding) = if object {
+        let imported = mfd::import_object_invoked_json_edi_document_with_options(
+            &fixture.0.join("mapping.mfd"),
+            &options,
+        )
+        .unwrap();
+        (
+            imported.document,
+            imported.source,
+            imported.invocation,
+            Some(codegen::JsonParameterObjectBinding {
+                source_name: imported.parameter_source_name,
+                filename_member: imported.filename_member,
+            }),
+        )
+    } else {
+        let imported = mfd::import_invoked_grouped_json_edi_document_with_options(
+            &fixture.0.join("mapping.mfd"),
+            &options,
+        )
+        .unwrap();
+        (
+            imported.document,
+            imported.source,
+            imported.invocation,
+            None,
+        )
+    };
+    let lowered = codegen::lower_document(&document).unwrap();
     let folder = fixture.0.join("generated");
     std::fs::create_dir(&folder).unwrap();
     let output = Output(folder);
@@ -45,20 +73,36 @@ fn compile_public_consumers(fixture: Fixture, rust_template: &str, csharp_templa
         .unwrap();
     save(
         &rust,
-        codegen_rust::emit_invoked_with_primary_json_projection(
-            &lowered,
-            &codegen_rust::Options {
-                package_name: "invoked_parameter_consumer".into(),
-                runtime_dependency: codegen_rust::RuntimeDependency::Path(
-                    runtime.to_str().unwrap().into(),
-                ),
-            },
-            &imported.invocation,
-            &imported.source.shape,
-        )
-        .unwrap(),
+        if let Some(binding) = &object_binding {
+            codegen_rust::emit_object_invoked_with_primary_json_projection(
+                &lowered,
+                &codegen_rust::Options {
+                    package_name: "invoked_parameter_consumer".into(),
+                    runtime_dependency: codegen_rust::RuntimeDependency::Path(
+                        runtime.to_str().unwrap().into(),
+                    ),
+                },
+                &invocation,
+                binding,
+                &source.shape,
+            )
+            .unwrap()
+        } else {
+            codegen_rust::emit_invoked_with_primary_json_projection(
+                &lowered,
+                &codegen_rust::Options {
+                    package_name: "invoked_parameter_consumer".into(),
+                    runtime_dependency: codegen_rust::RuntimeDependency::Path(
+                        runtime.to_str().unwrap().into(),
+                    ),
+                },
+                &invocation,
+                &source.shape,
+            )
+            .unwrap()
+        },
     );
-    let key = serde_json::to_string(&imported.invocation.key_parameter).unwrap();
+    let key = serde_json::to_string(&invocation.key_parameter).unwrap();
     let rust_source = rust_template.replace("KEY_NAME", &key);
     std::fs::write(rust.join("src/main.rs"), rust_source).unwrap();
     let repository = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
@@ -77,12 +121,22 @@ fn compile_public_consumers(fixture: Fixture, rust_template: &str, csharp_templa
     let csharp = output.0.join("csharp");
     save(
         &csharp,
-        codegen_csharp::emit_invoked_with_primary_json_projection(
-            &lowered,
-            &imported.invocation,
-            &imported.source.shape,
-        )
-        .unwrap(),
+        if let Some(binding) = &object_binding {
+            codegen_csharp::emit_object_invoked_with_primary_json_projection(
+                &lowered,
+                &invocation,
+                binding,
+                &source.shape,
+            )
+            .unwrap()
+        } else {
+            codegen_csharp::emit_invoked_with_primary_json_projection(
+                &lowered,
+                &invocation,
+                &source.shape,
+            )
+            .unwrap()
+        },
     );
     let project = csharp.join("Ferrule.Generated.csproj");
     assert!(project.is_file());
@@ -281,6 +335,76 @@ fn fixed_date_prefix_parses_in_generated_rust_and_csharp() {
         r#"{"rows":[{"name":"a","qty":"20261028235959"}]}"#,
         &["2026-10-28"],
     );
+}
+
+#[test]
+#[ignore = "compiles generated Rust and C# consumers; requires Cargo, .NET 10 and a coordinated host target"]
+fn object_invocations_preserve_requests_and_parameter_body_in_both_backends() {
+    let rust = r###"
+use codegen_runtime::{Instance, Value, RuntimeParameters, ExecutionContext, NamedInput};
+use invoked_parameter_consumer as generated;
+fn main() {
+    let text = r#"{"projectCode":"P","projectCode":"P","fileName":"a","fileName":42,"fileName":"a","control":"100"}"#;
+    let prepared = generated::prepare_parameter_invocations(&Value::String(text.into()),Default::default(),Default::default()).unwrap();
+    assert_eq!(prepared.len(),2);
+    let mut loads = 0;
+    for item in prepared.invocations() {
+        assert_eq!(generated::parameter_filename_members(item).collect::<Vec<_>>(),["a","a"]);
+        let parameter = generated::project_parameter_source(item,Default::default()).unwrap().unwrap();
+        let documents = generated::acquire_parameter_json(item,
+            |name| Ok::<_,String>(vec![Ok(name.into())].into_iter()),
+            |name| { loads+=1; generated::parse_primary_json_source(name,br#"{"rows":[{"name":"a","qty":2}]}"#).map_err(|e|e.to_string()) },
+            Default::default(),10).unwrap().collect::<Result<Vec<_>,_>>().unwrap();
+        assert_eq!(documents.len(),2);
+        let source=Instance::Group(vec![("Documents".into(),Instance::Repeated(documents))].into());
+        let mut params=RuntimeParameters::new(); let (key,value)=item.key_binding();params.insert(key,value).unwrap();
+        let execution=ExecutionContext::new(std::path::Path::new("test.mfd")).with_parameters(&params);
+        let result=generated::execute_with_sources_and_context(&source,&[NamedInput{name:generated::parameter_source_name(),instance:&parameter}],&execution).unwrap();
+        let Instance::DocumentSet(documents)=result else{panic!("documents")};
+        assert_eq!(documents.len(),1);assert_eq!(documents[0].path(),"PKout.edia");
+    }
+    assert_eq!(loads,4);
+    let bad=generated::prepare_parameter_invocations(&Value::String(r#"{"projectCode":"P","fileName":"a","control":"100","control":"bad"}"#.into()),Default::default(),Default::default()).unwrap();
+    let item=bad.invocations().next().unwrap();
+    let parameter=generated::project_parameter_source(item,Default::default()).unwrap().unwrap();
+    let docs=generated::acquire_parameter_json(item,|name|Ok::<_,String>(vec![Ok(name.into())].into_iter()),|name|generated::parse_primary_json_source(name,br#"{"rows":[{"name":"a","qty":2}]}"#).map_err(|e|e.to_string()),Default::default(),10).unwrap().collect::<Result<Vec<_>,_>>().unwrap();
+    let source=Instance::Group(vec![("Documents".into(),Instance::Repeated(docs))].into());
+    let mut params=RuntimeParameters::new();let (key,value)=item.key_binding();params.insert(key,value).unwrap();
+    let execution=ExecutionContext::new(std::path::Path::new("test.mfd")).with_parameters(&params);
+    assert!(generated::execute_with_sources_and_context(&source,&[NamedInput{name:generated::parameter_source_name(),instance:&parameter}],&execution).is_err());
+}
+"###;
+    let csharp = r###"
+using Ferrule.Runtime;
+using Ferrule.Generated;
+var prepared=GeneratedMapping.PrepareParameterInvocations(FerruleValue.FromString("{\"projectCode\":\"P\",\"projectCode\":\"P\",\"fileName\":\"a\",\"fileName\":42,\"fileName\":\"a\",\"control\":\"100\"}"));
+if(prepared.Count!=2)throw new Exception("occurrence count");
+int loads=0;
+prepared.Visit(item=>{
+    if(!GeneratedMapping.ParameterFilenameMembers(item).SequenceEqual(new[]{"a","a"}))throw new Exception("request order");
+    var parameter=GeneratedMapping.ProjectParameterSource(item)!;
+    var documents=GeneratedMapping.AcquireParameterJson(item,name=>new[]{name},name=>{loads++;return GeneratedMapping.ParsePrimaryJsonSource(name,"{\"rows\":[{\"name\":\"a\",\"qty\":2}]}"u8.ToArray());},new(),10).ToArray();
+    if(documents.Length!=2)throw new Exception("duplicate files");
+    var source=new FerruleGroup(new[]{new FerruleField("Documents",new FerruleRepeated(documents))});
+    var parameters=new FerruleRuntimeParameters(new[]{item.KeyBinding});
+    var execution=new FerruleExecutionContext("test.mfd","test.mfd",runtimeParameters:parameters);
+    var result=(FerruleDocumentSet)GeneratedMapping.ExecuteWithSources(source,new[]{new NamedInput(GeneratedMapping.ParameterSourceName,parameter)},execution);
+    if(result.Documents.Count!=1||result.Documents[0].Path!="PKout.edia")throw new Exception("body");
+});
+if(loads!=4)throw new Exception("per-invocation acquisition");
+var bad=GeneratedMapping.PrepareParameterInvocations(FerruleValue.FromString("{\"projectCode\":\"P\",\"fileName\":\"a\",\"control\":\"100\",\"control\":\"bad\"}"));
+bool failed=false;
+try{bad.Visit(item=>{
+    var parameter=GeneratedMapping.ProjectParameterSource(item)!;
+    var documents=GeneratedMapping.AcquireParameterJson(item,name=>new[]{name},name=>GeneratedMapping.ParsePrimaryJsonSource(name,"{\"rows\":[{\"name\":\"a\",\"qty\":2}]}"u8.ToArray()),new(),10).ToArray();
+    var source=new FerruleGroup(new[]{new FerruleField("Documents",new FerruleRepeated(documents))});
+    var parameters=new FerruleRuntimeParameters(new[]{item.KeyBinding});
+    var execution=new FerruleExecutionContext("test.mfd","test.mfd",runtimeParameters:parameters);
+    GeneratedMapping.ExecuteWithSources(source,new[]{new NamedInput(GeneratedMapping.ParameterSourceName,parameter)},execution);
+});}catch(FerruleRuntimeException){failed=true;}
+if(!failed)throw new Exception("later conversion must fail");
+"###;
+    compile_consumers(object_invoked_fixture(), rust, csharp, true);
 }
 
 const RUST: &str = r###"

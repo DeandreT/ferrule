@@ -16,6 +16,8 @@ use std::{
     path::Path,
 };
 
+mod object_parameter;
+
 pub struct ImportedJsonEdiDocument {
     pub document: DocumentProject,
     /// Source-free filename program. Evaluate before acquisition, not after the body.
@@ -40,6 +42,18 @@ pub struct ImportedInvokedGroupedJsonEdiDocument {
     pub source: ImportedJsonSourceProjection,
     pub parameter_source: ImportedJsonParameterProjection,
     pub invocation: mapping::JsonParameterInvocationPlan,
+    pub writer_minimums: Vec<mapping::MapForceEdiMinimum>,
+}
+
+/// An occurrence-driven invocation with a retained, separately owned parameter
+/// object. Acquisition consumes filename-member occurrences before body visits.
+pub struct ImportedObjectInvokedJsonEdiDocument {
+    pub document: DocumentProject,
+    pub source: ImportedJsonSourceProjection,
+    pub parameter_source: ImportedJsonParameterProjection,
+    pub invocation: mapping::JsonParameterInvocationPlan,
+    pub filename_member: String,
+    pub parameter_source_name: String,
     pub writer_minimums: Vec<mapping::MapForceEdiMinimum>,
 }
 
@@ -95,6 +109,8 @@ struct Builder {
     cache: BTreeMap<(u32, Option<u32>, Vec<String>, bool), NodeId>,
     active: BTreeSet<(u32, Option<u32>, Vec<String>, bool)>,
     parameter_key: Option<(u32, NodeId)>,
+    parameter_object: Option<object_parameter::ParameterObject>,
+    parameter_constants: BTreeMap<u32, NodeId>,
     parameter_dependent_feeds: BTreeSet<u32>,
     filename_phase: bool,
 }
@@ -134,7 +150,8 @@ pub fn import_invoked_grouped_json_edi_document_with_options(
     let source = super::json_source_projection::import_physical_json_after_parameter(
         path, options, &parameter,
     )?;
-    let imported = import_document_from_source(path, options, true, source, Some(&parameter))?;
+    let imported =
+        import_document_from_source(path, options, true, source, Some(&parameter), false)?;
     Ok(ImportedInvokedGroupedJsonEdiDocument {
         document: imported.document,
         source: imported.source,
@@ -146,13 +163,39 @@ pub fn import_invoked_grouped_json_edi_document_with_options(
     })
 }
 
+pub fn import_object_invoked_json_edi_document_with_options(
+    path: &Path,
+    options: &ImportOptions,
+) -> Result<ImportedObjectInvokedJsonEdiDocument, MfdError> {
+    let sources = super::import_parameter_file_json_sources_with_options(path, options)?;
+    let imported = import_document_from_source(
+        path,
+        options,
+        true,
+        sources.physical,
+        Some(&sources.parameter),
+        true,
+    )?;
+    Ok(ImportedObjectInvokedJsonEdiDocument {
+        document: imported.document,
+        source: imported.source,
+        parameter_source_name: object_parameter::source_name(&sources.parameter),
+        parameter_source: sources.parameter,
+        invocation: imported
+            .invocation
+            .ok_or_else(|| refuse("missing occurrence invocation"))?,
+        filename_member: sources.filename_member,
+        writer_minimums: imported.writer_minimums,
+    })
+}
+
 fn import_document(
     path: &Path,
     options: &ImportOptions,
     grouped: bool,
 ) -> Result<ImportedParts, MfdError> {
     let source = super::import_json_source_projection_with_options(path, options)?;
-    import_document_from_source(path, options, grouped, source, None)
+    import_document_from_source(path, options, grouped, source, None, false)
 }
 
 fn import_document_from_source(
@@ -161,6 +204,7 @@ fn import_document_from_source(
     grouped: bool,
     source: ImportedJsonSourceProjection,
     parameter: Option<&ImportedJsonParameterProjection>,
+    object_parameter: bool,
 ) -> Result<ImportedParts, MfdError> {
     let resources = super::resolved_resources(path, options)?;
     let result = (|| {
@@ -314,14 +358,17 @@ fn import_document_from_source(
                 }) {
                     continue;
                 }
-                let outputs = definitions
-                    .string_call_outputs(&component)
-                    .map_err(|reason| {
-                        refuse(format!(
-                            "embedded function {}: {reason}",
-                            component.attribute("name").unwrap_or_default()
-                        ))
-                    })?;
+                let outputs = if object_parameter {
+                    definitions.defaulted_string_call_outputs(&component)
+                } else {
+                    definitions.string_call_outputs(&component)
+                }
+                .map_err(|reason| {
+                    refuse(format!(
+                        "embedded function {}: {reason}",
+                        component.attribute("name").unwrap_or_default()
+                    ))
+                })?;
                 for (port, output) in outputs {
                     if source.ports.contains_key(&port)
                         || parameter.is_some_and(|parameter| parameter.ports.contains_key(&port))
@@ -433,6 +480,8 @@ fn import_document_from_source(
             cache: BTreeMap::new(),
             active: BTreeSet::new(),
             parameter_key: None,
+            parameter_object: None,
+            parameter_constants: BTreeMap::new(),
             parameter_dependent_feeds: BTreeSet::new(),
             filename_phase: true,
         };
@@ -443,7 +492,13 @@ fn import_document_from_source(
         })?;
         let output_feed = builder.feed(filename_input)?;
         let invocation = parameter
-            .map(|parameter| builder.bind_parameter_group(output_feed, parameter))
+            .map(|parameter| {
+                if object_parameter {
+                    builder.bind_parameter_object(output_feed, parameter)
+                } else {
+                    builder.bind_parameter_group(output_feed, parameter)
+                }
+            })
             .transpose()?;
         if grouped {
             builder.bind_grouped_source(output_feed, &source.shape)?;
@@ -496,6 +551,10 @@ fn import_document_from_source(
             body.filter = Some(builder.call("exists", vec![key])?);
         }
         let preparation = builder.grouping_preparation.clone();
+        let parameter_source = builder
+            .parameter_object
+            .as_ref()
+            .map(|parameter| parameter.source.clone());
         let mut project = empty_project(
             builder.source_schema.clone(),
             target_schema.schema,
@@ -503,6 +562,9 @@ fn import_document_from_source(
             body,
         );
         project.target_options = target_schema.options;
+        if let Some(parameter_source) = parameter_source {
+            project.extra_sources.push(parameter_source);
+        }
         let document = DocumentProject::new(
             project,
             PrimarySourcePlan {
@@ -1139,30 +1201,7 @@ impl Builder {
             preview: None,
         })?;
         self.parameter_key = Some((output, node));
-        self.parameter_dependent_feeds.insert(output);
-        let mut users = BTreeMap::<_, Vec<_>>::new();
-        for (output, function) in &self.functions {
-            for input in function.inputs.iter().flatten() {
-                if let Some(feed) = self.feeds.get(input) {
-                    users.entry(*feed).or_default().push(*output);
-                }
-            }
-        }
-        for (output, call) in &self.udf_outputs {
-            for input in call.inputs.values() {
-                if let Some(feed) = self.feeds.get(input) {
-                    users.entry(*feed).or_default().push(*output);
-                }
-            }
-        }
-        let mut pending = vec![output];
-        while let Some(feed) = pending.pop() {
-            for user in users.get(&feed).into_iter().flatten() {
-                if self.parameter_dependent_feeds.insert(*user) {
-                    pending.push(*user);
-                }
-            }
-        }
+        self.propagate_parameter_dependencies([output]);
         Ok(plan)
     }
 
@@ -1274,6 +1313,7 @@ impl Builder {
                 || builder
                     .parameter_key
                     .is_some_and(|(output, _)| output == feed)
+                || builder.parameter_constants.contains_key(&feed)
             {
                 return Ok(());
             }
@@ -1494,6 +1534,9 @@ impl Builder {
             .ok_or_else(|| refuse("missing input feed"))
     }
     fn dependencies(&self, feed: u32, seen: &mut BTreeSet<u32>) -> Result<BTreeSet<u32>, MfdError> {
+        if self.parameter_constants.contains_key(&feed) {
+            return Ok(BTreeSet::new());
+        }
         if self.parameter_key.is_some_and(|(output, _)| output == feed) {
             return Ok(BTreeSet::new());
         }
@@ -1504,7 +1547,13 @@ impl Builder {
         {
             return Ok(BTreeSet::new());
         }
-        if self.ports.contains_key(&feed) || self.filename_port == Some(feed) {
+        if self.ports.contains_key(&feed)
+            || self.filename_port == Some(feed)
+            || self
+                .parameter_object
+                .as_ref()
+                .is_some_and(|parameter| parameter.members.contains_key(&feed))
+        {
             return Ok(BTreeSet::from([feed]));
         }
         if !seen.insert(feed) {
@@ -1576,6 +1625,9 @@ impl Builder {
         leaf: Option<u32>,
         anchor: &[String],
     ) -> Result<NodeId, MfdError> {
+        if let Some(node) = self.parameter_constants.get(&feed) {
+            return Ok(*node);
+        }
         if let Some((output, node)) = self.parameter_key
             && output == feed
         {
@@ -1607,6 +1659,9 @@ impl Builder {
                 expression: Some(value),
                 arg: Some(first),
             });
+        }
+        if let Some(node) = self.parameter_field(feed)? {
+            return Ok(node);
         }
         if let Some(path) = self.ports.get(&feed).cloned() {
             if leaf != Some(feed) || !matches!(self.port_kinds[&feed].as_str(), "string" | "number")
@@ -1888,6 +1943,17 @@ impl Builder {
             return self.reduced_value(self.input(&branch, 1)?, None, anchor, retain_empty);
         }
         let dependencies = self.dependencies(feed, &mut BTreeSet::new())?;
+        if dependencies.len() == 1 {
+            let leaf = *dependencies.first().unwrap();
+            if self
+                .parameter_object
+                .as_ref()
+                .is_some_and(|parameter| parameter.members.contains_key(&leaf))
+            {
+                let value = self.compile(feed, Some(leaf), anchor)?;
+                return self.reduce_parameter_field(leaf, value, retain_empty);
+            }
+        }
         if dependencies.len() > 1 {
             if let Some(node) = self.sibling_udf_value(feed, active_leaf, anchor)? {
                 return Ok(node);
@@ -1943,6 +2009,18 @@ impl Builder {
         anchor: &[String],
         options: &mapping::FormatOptions,
     ) -> Result<NodeId, MfdError> {
+        if matches!(
+            target.kind,
+            SchemaKind::Scalar {
+                ty: ScalarType::Float
+            }
+        ) && self
+            .parameter_object
+            .as_ref()
+            .is_some_and(|parameter| parameter.members.contains_key(&feed))
+        {
+            return self.parameter_decimal_binding(feed);
+        }
         let mut node = self.reduced_value(feed, active_leaf, anchor, false)?;
         if self.functions.get(&feed).is_some_and(|function| {
             function.parsed.kind == 6 && function.parsed.input_type == Some(ScalarType::String)
@@ -2319,6 +2397,8 @@ mod grouped_owner_tests {
             cache: BTreeMap::new(),
             active: BTreeSet::new(),
             parameter_key: None,
+            parameter_object: None,
+            parameter_constants: BTreeMap::new(),
             parameter_dependent_feeds: BTreeSet::new(),
             filename_phase: false,
         }

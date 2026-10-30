@@ -79,6 +79,122 @@ pub fn emit_invoked_grouped_with_mapforce_x12_writer(
     append_parameter_invocation(base, descriptor, invocation)
 }
 
+pub fn emit_object_invoked_grouped_with_mapforce_x12_writer(
+    document: &DocumentProgram,
+    options: &Options,
+    invocation: &mapping::JsonParameterInvocationPlan,
+    binding: &codegen::JsonParameterObjectBinding,
+    shape: &JsonSourceShape,
+    target_options: &mapping::FormatOptions,
+    minimums: &[mapping::MapForceEdiMinimum],
+) -> Result<ArtifactSet, PrimaryJsonEmitError> {
+    let descriptor =
+        codegen::prepare_json_parameter_object_invocation(document, invocation, binding)
+            .map_err(PrimaryJsonEmitError::Parameter)?;
+    let base =
+        emit_grouped_with_mapforce_x12_writer(document, options, shape, target_options, minimums)?;
+    let base = append_parameter_invocation(base, descriptor, invocation)?;
+    append_parameter_object(
+        base,
+        invocation,
+        binding,
+        document.json_grouping_preparation().is_some(),
+    )
+}
+
+fn append_parameter_object(
+    base: ArtifactSet,
+    invocation: &mapping::JsonParameterInvocationPlan,
+    binding: &codegen::JsonParameterObjectBinding,
+    grouped: bool,
+) -> Result<ArtifactSet, PrimaryJsonEmitError> {
+    let shape = serde_json::to_string(&invocation.projection)
+        .map_err(JsonProjectionBoundaryError::Descriptor)
+        .map_err(PrimaryJsonEmitError::Boundary)?;
+    let preparation = if grouped {
+        ".and_then(|source| source.with_grouping_preparation(primary_json_grouping()))"
+    } else {
+        ""
+    };
+    let source = format!(
+        r#"
+pub fn parameter_source_name() -> &'static str {{ {name} }}
+
+pub fn project_parameter_source(
+    invocation: codegen_runtime::JsonParameterInvocation<'_>,
+    limits: codegen_runtime::JsonProjectionLimits,
+) -> Result<Option<Instance>, codegen_runtime::JsonProjectionError> {{
+    static SHAPE: std::sync::OnceLock<codegen_runtime::JsonSourceShape> = std::sync::OnceLock::new();
+    let shape = SHAPE.get_or_init(|| codegen_runtime::parse_json_projection_shape({shape}).expect("generation-validated parameter projection"));
+    codegen_runtime::project_json_source_value(shape, invocation.parameter_object(), limits)
+}}
+
+pub fn parameter_filename_members<'a>(invocation: codegen_runtime::JsonParameterInvocation<'a>) -> impl Iterator<Item = &'a str> {{
+    invocation.parameter_object().members_named({member}).filter_map(|value| value.as_str())
+}}
+
+pub fn acquire_parameter_json<'a, E: 'a, I: Iterator<Item = Result<String, E>> + 'a>(
+    invocation: codegen_runtime::JsonParameterInvocation<'a>,
+    mut select: impl FnMut(&str) -> Result<I, E> + 'a,
+    load: impl FnMut(&str) -> Result<codegen_runtime::JsonSourceDocument, E> + 'a,
+    limits: codegen_runtime::JsonProjectionLimits,
+    maximum: usize,
+) -> Result<codegen_runtime::JsonSourceAcquisition<'a, std::convert::Infallible, E>, codegen_runtime::JsonAcquisitionError<std::convert::Infallible, E>> {{
+    let requests = parameter_filename_members(invocation).flat_map(move |name| {{
+        let values: Box<dyn Iterator<Item = Result<String, E>> + 'a> = match select(name) {{
+            Ok(values) => Box::new(values),
+            Err(error) => Box::new(std::iter::once(Err(error))),
+        }};
+        values
+    }});
+    codegen_runtime::JsonSourceAcquisition::from_requests(requests, load, primary_json_projection(), limits, maximum){preparation}
+}}
+"#,
+        name = rust_string(&binding.source_name),
+        shape = rust_string(&shape),
+        member = rust_string(&binding.filename_member),
+    );
+    let mut files = base.into_files();
+    files
+        .iter_mut()
+        .find(|file| file.path.as_str() == "src/lib.rs")
+        .expect("Rust library artifact")
+        .contents
+        .extend_from_slice(source.as_bytes());
+    ArtifactSet::new(files)
+        .map_err(EmitError::from)
+        .map_err(PrimaryJsonEmitError::Emit)
+}
+
+pub fn emit_object_invoked_with_primary_json_projection(
+    document: &DocumentProgram,
+    options: &Options,
+    invocation: &mapping::JsonParameterInvocationPlan,
+    binding: &codegen::JsonParameterObjectBinding,
+    shape: &JsonSourceShape,
+) -> Result<ArtifactSet, PrimaryJsonEmitError> {
+    let descriptor =
+        codegen::prepare_json_parameter_object_invocation(document, invocation, binding)
+            .map_err(PrimaryJsonEmitError::Parameter)?;
+    let projection = codegen::prepare_json_source_projection(document, shape)
+        .map_err(PrimaryJsonEmitError::Boundary)?;
+    let base = crate::document_visitor::emit_with_static_error_document_clocks(
+        document.program(),
+        options,
+    )
+    .map_err(PrimaryJsonEmitError::Visitor)?;
+    let base =
+        crate::primary_filename::append(base, document).map_err(PrimaryJsonEmitError::Emit)?;
+    let base = append_projection(base, projection, document.json_grouping_preparation())?;
+    let base = append_parameter_invocation(base, descriptor, invocation)?;
+    append_parameter_object(
+        base,
+        invocation,
+        binding,
+        document.json_grouping_preparation().is_some(),
+    )
+}
+
 pub fn emit_invoked_with_primary_json_projection(
     document: &DocumentProgram,
     options: &Options,

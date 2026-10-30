@@ -69,7 +69,9 @@ pub use primary_filename::emit_with_primary_filename;
 pub use primary_json::{
     PrimaryJsonEmitError, emit_grouped_with_mapforce_x12_writer,
     emit_invoked_grouped_with_mapforce_x12_writer, emit_invoked_with_primary_json_projection,
-    emit_with_mapforce_x12_writer, emit_with_primary_json_projection,
+    emit_object_invoked_grouped_with_mapforce_x12_writer,
+    emit_object_invoked_with_primary_json_projection, emit_with_mapforce_x12_writer,
+    emit_with_primary_json_projection,
 };
 pub use static_documents::StaticDocumentEmitError;
 pub use x12_output::X12EmitError;

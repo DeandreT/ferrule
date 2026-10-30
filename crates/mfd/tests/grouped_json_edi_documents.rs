@@ -82,6 +82,145 @@ fn invoked_fixture() -> Fixture {
     fixture
 }
 
+fn object_invoked_fixture() -> Fixture {
+    let fixture = invoked_fixture();
+    std::fs::write(fixture.0.join("variables.json"), r#"{"type":"object","properties":{"projectCode":{"type":"string"},"fileName":{"type":"string"},"control":{"type":"string"}}}"#).unwrap();
+    fixture.change(r#"<entry name="projectCode" type="json-property"><entry name="string" outkey="143"/></entry>"#,
+        r#"<entry name="projectCode" type="json-property"><entry name="string" outkey="143"/></entry><entry name="fileName" type="json-property"><entry name="string" outkey="151"/></entry><entry name="control" type="json-property"><entry name="string" outkey="152"/></entry>"#);
+    fixture.change("</children>", r#"<component name="constant" library="core" uid="44" kind="2"><targets><datapoint pos="0" key="153"/></targets><data><constant value="K" datatype="string"/></data></component><component name="concat" library="core" uid="45" kind="5"><sources><datapoint pos="0" key="154"/><datapoint pos="1" key="155"/></sources><targets><datapoint pos="0" key="156"/></targets></component></children>"#);
+    fixture.change(r#"<vertex vertexkey="143"><edges><edge vertexkey="145"/></edges></vertex>"#,
+        r#"<vertex vertexkey="153"><edges><edge vertexkey="145"/></edges></vertex><vertex vertexkey="143"><edges><edge vertexkey="154"/></edges></vertex>"#);
+    fixture.change(r#"<vertex vertexkey="149"><edges><edge vertexkey="80"/><edge vertexkey="81"/><edge vertexkey="82"/></edges></vertex>"#,
+        r#"<vertex vertexkey="149"><edges><edge vertexkey="155"/></edges></vertex><vertex vertexkey="156"><edges><edge vertexkey="80"/><edge vertexkey="81"/><edge vertexkey="82"/></edges></vertex>"#);
+    fixture.change(
+        r#"<vertex vertexkey="1"><edges><edge vertexkey="10"/></edges></vertex>"#,
+        r#"<vertex vertexkey="151"><edges><edge vertexkey="10"/></edges></vertex>"#,
+    );
+    fixture.change(
+        r#"<vertex vertexkey="22"><edges><edge vertexkey="86"/></edges></vertex>"#,
+        r#"<vertex vertexkey="152"><edges><edge vertexkey="86"/></edges></vertex>"#,
+    );
+    fixture
+}
+
+#[test]
+fn object_invocation_preserves_named_parameter_ownership_and_late_conversions() {
+    let fixture = object_invoked_fixture();
+    let imported = mfd::import_object_invoked_json_edi_document_with_options(
+        &fixture.0.join("mapping.mfd"),
+        &mfd::ImportOptions::default().with_package_root(&fixture.0),
+    )
+    .unwrap();
+    assert_eq!(
+        imported.invocation.iteration,
+        mapping::JsonParameterIteration::RootStringOccurrences
+    );
+    assert_eq!(imported.filename_member, "fileName");
+    let lowered = codegen::lower_document(&imported.document).unwrap();
+    let object_binding = codegen::JsonParameterObjectBinding {
+        source_name: imported.parameter_source_name.clone(),
+        filename_member: imported.filename_member.clone(),
+    };
+    assert!(codegen::prepare_json_parameter_invocation(&lowered, &imported.invocation).is_err());
+    assert!(
+        codegen::prepare_json_parameter_object_invocation(
+            &lowered,
+            &imported.invocation,
+            &object_binding
+        )
+        .is_ok()
+    );
+    let wrong_member = codegen::JsonParameterObjectBinding {
+        filename_member: "missing".into(),
+        ..object_binding.clone()
+    };
+    assert!(
+        codegen::prepare_json_parameter_object_invocation(
+            &lowered,
+            &imported.invocation,
+            &wrong_member
+        )
+        .is_err()
+    );
+    let wrong_owner = codegen::JsonParameterObjectBinding {
+        source_name: "Other".into(),
+        ..object_binding.clone()
+    };
+    assert!(
+        codegen::prepare_json_parameter_object_invocation(
+            &lowered,
+            &imported.invocation,
+            &wrong_owner
+        )
+        .is_err()
+    );
+    let mut wrong_iteration = imported.invocation.clone();
+    wrong_iteration.iteration = mapping::JsonParameterIteration::DistinctRootStringKeys;
+    assert!(
+        codegen::prepare_json_parameter_object_invocation(
+            &lowered,
+            &wrong_iteration,
+            &object_binding
+        )
+        .is_err()
+    );
+    let name = imported.parameter_source_name;
+    let plan = imported.invocation;
+    let grouped = mfd::ImportedGroupedJsonEdiDocument {
+        document: imported.document,
+        source: imported.source,
+        writer_minimums: imported.writer_minimums,
+    };
+    let physical = input(&grouped, &[r#"{"rows":[{"name":"a","qty":2}]}"#]);
+    for (text, fails) in [
+        (
+            r#"{"projectCode":"P","projectCode":"P","fileName":"one.json","control":"100"}"#,
+            false,
+        ),
+        (
+            r#"{"projectCode":"P","fileName":"one.json","control":"100","control":"bad"}"#,
+            true,
+        ),
+    ] {
+        let prepared = codegen_runtime::PreparedJsonParameterInvocations::prepare(
+            &plan,
+            &Value::String(text.into()),
+            Default::default(),
+            Default::default(),
+        )
+        .unwrap();
+        let mut count = 0;
+        for invocation in prepared.invocations() {
+            count += 1;
+            let parameter = codegen_runtime::project_json_source_value(
+                &plan.projection,
+                invocation.parameter_object(),
+                Default::default(),
+            )
+            .unwrap()
+            .unwrap();
+            let mut parameters = engine::RuntimeParameters::new();
+            let (key, value) = invocation.key_binding();
+            parameters.insert(key, value).unwrap();
+            let context = engine::ExecutionContext::new(&fixture.0).with_parameters(&parameters);
+            let result = engine::run_with_sources_and_context(
+                grouped.document.project(),
+                &physical,
+                vec![(name.clone(), parameter)],
+                &context,
+            );
+            assert_eq!(result.is_err(), fails, "{result:?}");
+            if !fails {
+                let Instance::DocumentSet(documents) = result.unwrap() else {
+                    panic!("documents");
+                };
+                assert_eq!(documents[0].path(), "PKout.edia");
+            }
+        }
+        assert_eq!(count, if fails { 1 } else { 2 });
+    }
+}
+
 #[test]
 fn explicit_invoked_import_keeps_parameter_and_physical_groups_separate() {
     let fixture = invoked_fixture();
