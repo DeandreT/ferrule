@@ -165,6 +165,25 @@ public sealed partial class ScopeContext
             _filterMapRunState, _filterMapBoundary, _filterMapCallDepth, _invocationCounters, _documentFilenameClock, new[] { NativeFrameOrigin.PhysicalPrimary });
     }
 
+    /// <summary>Replace a physical root while retaining the same named inputs
+    /// and invocation state. Traversed and synthetic contexts are refused; no
+    /// input is rebound. NextPrimarySource keeps its existing named-input gate.</summary>
+    public ScopeContext? NextPrimarySourceWithSameInputs(FerruleInstance source)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        if (_collections.Count != 0) return null;
+        if (_frames.Count == 1 && NativeOriginAt(0) == NativeFrameOrigin.PhysicalPrimary
+            && ReferenceEquals(_frames[0], _primarySource))
+            return NextPrimarySource(source);
+        if (_frames.Count != 2 || NativeOriginAt(0) != NativeFrameOrigin.Named
+            || NativeOriginAt(1) != NativeFrameOrigin.PhysicalPrimary
+            || !ReferenceEquals(_frames[1], _primarySource)) return null;
+        return new ScopeContext(source, new ReadOnlyCollection<FerruleInstance>(new[] { _frames[0], source }),
+            Array.Empty<CollectionIdentity>(), _executionContext, _dynamicSourceLoader,
+            _filterMapRunState, _filterMapBoundary, _filterMapCallDepth, _invocationCounters,
+            _documentFilenameClock, new[] { NativeFrameOrigin.Named, NativeFrameOrigin.PhysicalPrimary });
+    }
+
     /// <summary>
     /// Creates a root context with one outer group of named inputs followed by
     /// the primary source. Inner scope items and the primary source therefore
