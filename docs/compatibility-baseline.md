@@ -483,8 +483,9 @@ existing object alternatives, and a closed object must already declare the
 trigger. Canonical export writes `required` and, when `then` retains a
 dependency, `dependentRequired` or `dependentSchemas` as appropriate.
 Value-sensitive, multi-trigger, general-`if`, and other nontrivial `else`
-schemas, unevaluated keywords, and tuple shapes outside the exact tuple frame
-remain explicit rejections rather than approximations.
+schemas, `unevaluatedProperties`, `unevaluatedItems` outside its direct array
+form, and tuple shapes outside the exact tuple frame remain explicit
+rejections rather than approximations.
 
 Tuple arrays import from `prefixItems` in Draft 2020-12 and schemas without
 `$schema`, and from array-valued `items` with `additionalItems` in Draft 4, 6,
@@ -501,7 +502,11 @@ JSON5 and generated Rust boundaries execute. JSON Schema export writes a frame
 as `prefixItems` without `$schema` and re-imports it unchanged. Tuple
 alternatives, two positional `allOf` branches, `contains` or `uniqueItems` on a
 tuple, nested or recursive tuples, a tuple as a runtime-named property value or
-inside a predicate, and active `unevaluatedItems` remain explicit rejections.
+inside a predicate, and active `unevaluatedItems` beside composition,
+conditionals, `contains`, `dependentSchemas` or a reference remain explicit
+rejections. On a direct concrete array schema, `unevaluatedItems` has no effect
+after schema-valued `items` or after `additionalItems`, and otherwise acts as
+the tail after the positional members.
 
 Object `propertyNames` assertions validate every actual key, including declared,
 runtime-named, and empty-string properties. Exact `false`, finite

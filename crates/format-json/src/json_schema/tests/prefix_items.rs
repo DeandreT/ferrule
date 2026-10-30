@@ -275,8 +275,8 @@ fn active_composition_unevaluated_items_and_ref_siblings_reject() {
             "direct concrete array",
         ),
         (
-            r#"{"type":"array","prefixItems":[{"type":"string"}],"items":false,"unevaluatedItems":false}"#,
-            "unevaluatedItems",
+            r#"{"type":"array","prefixItems":[{"type":"string"}],"items":false,"contains":{"type":"string"},"unevaluatedItems":false}"#,
+            "`unevaluatedItems` beside `contains`",
         ),
         (
             r##"{

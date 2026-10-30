@@ -61,6 +61,7 @@ mod ref_required;
 mod render;
 mod string_lengths;
 mod tuple_frames;
+mod unevaluated_items;
 pub mod unique_items;
 
 use all_of::parse_all_of;
@@ -248,6 +249,7 @@ fn parse(
                 }
                 return parse_non_ref(name, &current, doc, active_refs);
             };
+            unevaluated_items::validate_direct(name, &current)?;
             reject_unsupported_dynamic_references(name, &current)?;
             let apply_siblings = files::ref_siblings_apply(&current);
             if apply_siblings {
@@ -325,6 +327,7 @@ fn parse_non_ref(
             ContentlessSchemaReason::NotASchema { found },
         ));
     }
+    unevaluated_items::validate_direct(name, schema)?;
     reject_unsupported_dynamic_references(name, schema)?;
     reject_unsupported_object_keywords(name, schema)?;
     contains::validate_ignored(name, schema, doc, active_refs)?;
@@ -699,7 +702,10 @@ fn parse_array_schema(
     active_refs: &mut Vec<String>,
     nullable: bool,
 ) -> Result<SchemaNode, JsonFormatError> {
-    if let Some(mut node) = positional_items::normalize(name, schema, doc, active_refs)? {
+    let unevaluated = unevaluated_items::tail(name, schema, doc, active_refs)?;
+    if let Some(mut node) =
+        positional_items::normalize(name, schema, unevaluated, doc, active_refs)?
+    {
         tuple_frames::set_array_nullability(&mut node, nullable)?;
         ranges::validate_ignored(name, schema)?;
         multiples::validate_ignored(name, schema)?;
@@ -715,7 +721,8 @@ fn parse_array_schema(
         formats::validate(name, schema)?;
         return Ok(node);
     }
-    let Some(items) = schema.get("items") else {
+    // Without positional members, `unevaluatedItems` acts as `items`.
+    let Some(items) = schema.get("items").or(unevaluated) else {
         let mut node = arbitrary_json_schema(name)?.repeating();
         node.container_nullable = nullable;
         ranges::validate_ignored(name, schema)?;
@@ -873,6 +880,7 @@ fn finite_array_items(
     }
     for keyword in [
         "items",
+        "unevaluatedItems",
         "additionalProperties",
         "contains",
         "propertyNames",
@@ -1201,12 +1209,6 @@ fn reject_unsupported_object_keywords(
         return Err(unsupported_union(
             name,
             "`prefixItems` normalization requires a direct concrete array schema",
-        ));
-    }
-    if dialect.supports_unevaluated_items() && object.contains_key("unevaluatedItems") {
-        return Err(unsupported_union(
-            name,
-            "`unevaluatedItems` annotation-dependent validation is not supported",
         ));
     }
     if object.get("items").is_some_and(serde_json::Value::is_array) {

@@ -71,7 +71,7 @@ for a complete format standard or another product.
 | XML | External DTD subsets and external entities, which are never loaded |
 | XML | Output to a local XML file set or an HTTP URL (`local_xml_file_set` and HTTP sources are input-only) |
 | JSON | General heterogeneous array composition, heterogeneous or correlated numeric-range scalar unions, and mixed structural unions |
-| JSON | Tuple alternatives, per-position `allOf` intersection, `contains` or `uniqueItems` on tuples, nested or recursive tuples, and active `unevaluatedItems` |
+| JSON | Tuple alternatives, per-position `allOf` intersection, `contains` or `uniqueItems` on tuples, nested or recursive tuples, and `unevaluatedItems` beside composition, conditionals, `contains`, `dependentSchemas` or a reference |
 | JSON | Required-only schemas without an object shape |
 | JSON | External references from in-memory schema import (`json_schema::import_str`) |
 | JSON | Enforcement of other shape-neutral validation keywords, which are accepted only for schema recovery |
@@ -338,8 +338,9 @@ for a complete format standard or another product.
   Canonical export writes `required` and, when `then` retains a dependency,
   `dependentRequired` or `dependentSchemas` as appropriate. Value-sensitive,
   multi-trigger, general-`if`, and other nontrivial `else` schemas remain unsupported.
-  `unevaluatedProperties`, `unevaluatedItems`, and heterogeneous positional
-  arrays likewise reject instead of being approximated. A lone
+  `unevaluatedProperties`, `unevaluatedItems` outside its direct array form,
+  and heterogeneous positional arrays likewise reject instead of being
+  approximated. A lone
   validation-neutral conditional keyword is ignored.
   Declared Draft 4/6/7 resources accept schema-valued legacy `dependencies`
   and ignore modern `dependentSchemas`/`dependentRequired`; Draft 4 requires
@@ -483,8 +484,14 @@ for a complete format standard or another product.
   composition or under `not`, conditionals, `contains` or `dependentSchemas`, a
   tuple as an `additionalProperties` or `patternProperties` value, a `false`
   member, a member or tail that is itself an array or tuple, a reference cycle
-  through a position, `prefixItems` beside `additionalItems` without `$schema`
-  when the result is a frame, and active `unevaluatedItems`. Export writes a
+  through a position, and `prefixItems` beside `additionalItems` without
+  `$schema` when the result is a frame. Active `unevaluatedItems` is supported
+  only on a direct concrete array schema without composition, `not`,
+  conditionals, `dependentSchemas`, `contains` or a reference sibling. After
+  schema-valued `items`, or `additionalItems` after tuple-form `items`, it is
+  validated and has no effect; otherwise it is the tail after the positional
+  members, or the item schema when there are none. Every other active form is
+  refused. Export writes a
   frame without `$schema` as `prefixItems`, with `items: false` for a closed
   tail, the tail schema for an open tail and no `items` for an arbitrary tail;
   `minItems` appears when it is above zero and `maxItems` only on an open frame.
