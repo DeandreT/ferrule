@@ -114,6 +114,11 @@ output scopes. A runtime-connected primary input filename or a target filename
 without a supported document driver produces a diagnostic rather than silently
 qualifying a mapping that uses only its saved preview path.
 
+The reference application reads an XML component's input instance only in a
+source role; on a target it is a design-time preview. A filename wildcard there
+does not make the target a file set and never becomes its output path.
+Pass-through components keep the wildcard as a file set in their source role.
+
 One bounded filtered filename form is supported: a primary XML root contains
 repeating outer records, each record supplies a string filename expression,
 and `exists` on one direct nested collection filters that filename. The filter

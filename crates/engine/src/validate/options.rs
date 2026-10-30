@@ -131,6 +131,12 @@ pub(super) fn validate_target_options(
             "PDF extraction is valid only for mapping sources",
         ));
     }
+    if options.local_xml_file_set {
+        issues.push(ValidationIssue::new(
+            location,
+            "local XML file sets are valid only for mapping sources",
+        ));
+    }
     if options.swift_mt.is_some() {
         issues.push(ValidationIssue::new(
             location,

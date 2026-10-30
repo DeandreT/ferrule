@@ -291,7 +291,7 @@ fn pass_through_components_carry_the_hint_only_in_their_target_role() {
 }
 
 #[test]
-fn wildcard_preview_input_on_a_target_keeps_its_import_outcome() {
+fn wildcard_preview_input_on_a_target_keeps_its_hint() {
     let directory = Directory::new();
     directory.write("source.xsd", SCHEMA);
     directory.write("target.xsd", SCHEMA);
@@ -304,7 +304,7 @@ fn wildcard_preview_input_on_a_target_keeps_its_import_outcome() {
         ),
     );
     let project = executable(&path);
-    assert!(project.target_options.local_xml_file_set);
+    assert!(!project.target_options.local_xml_file_set);
     assert_eq!(project.target_options.xml_schema_hints, hint("target.xsd"));
 }
 
