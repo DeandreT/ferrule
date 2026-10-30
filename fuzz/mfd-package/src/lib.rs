@@ -15,7 +15,7 @@
 //!   filesystem or network system call ([`sandbox`]), and is deterministic.
 //!
 //! [`known_limit_exemption`] skips the import of packages that reach a known
-//! unbounded recursion or quadratic walk.
+//! unbounded recursion.
 
 use std::collections::BTreeSet;
 
@@ -100,32 +100,6 @@ pub const XSD_COMPONENTS: &[&str] = &[
     "union",
 ];
 
-/// Known limit ([#1185](https://github.com/DeandreT/ferrule/issues/1185)):
-/// `mfd::import::xml_root_view::Inventory::read` searches the ancestors of
-/// every element below the design's `<structure>` for the nearest
-/// `structure` and `component`, so each element costs about its depth below
-/// that structure, and the pass costs their sum, which grows quadratically
-/// along a deep chain. It runs once per imported stage (once for an ordinary
-/// design, once per bounded pipeline stage) over the top structure; a nested
-/// `<structure>` is not a separate pass and only shortens its own
-/// descendants' walks, so summing each element's depth below the nearest
-/// structure is a safe per-stage bound.
-///
-/// Only deep chains are slow: a wide, shallow design imports quickly even
-/// with hundreds of thousands of elements, so the sum ignores the first
-/// [`ANCESTOR_FLOOR`] levels of each element's depth and counts only the
-/// deep tail. On the fuzz build a single chain of 16,000 plain elements
-/// inside a component takes 24.7 s and one of 4,000 takes 1.6 s, both
-/// quadratic; the harness skips a design whose tail sum crosses this bound,
-/// chosen so a design it still imports stays well under libFuzzer's 10 s
-/// timeout.
-pub const MAX_EXEMPT_ANCESTOR_STEPS: usize = 2_000_000;
-
-/// Depth below the nearest `<structure>` that an element reaches before it
-/// adds to [`MAX_EXEMPT_ANCESTOR_STEPS`]. Shallower elements, however many,
-/// are cheap for `Inventory::read`, so a wide, shallow design is not skipped.
-pub const ANCESTOR_FLOOR: usize = 64;
-
 const XSD_NAMESPACE: &str = "http://www.w3.org/2001/XMLSchema";
 
 /// Why [`known_limit_exemption`] skipped an import.
@@ -133,9 +107,6 @@ const XSD_NAMESPACE: &str = "http://www.w3.org/2001/XMLSchema";
 pub enum KnownLimit {
     /// The design's component entry trees nest `depth` `<entry>` elements.
     EntryTree { depth: usize },
-    /// The design's elements below `<structure>` sum to `steps` of deep-tail
-    /// depth (see [`MAX_EXEMPT_ANCESTOR_STEPS`]).
-    AncestorWalk { steps: usize },
     /// The package's XSD documents hold `elements` schema components.
     Schemas { elements: usize },
 }
@@ -181,9 +152,6 @@ impl Outcome {
             (Ok(_), Some(Import::Failed { variant, .. })) => format!("error {variant}"),
             (Ok(_), Some(Import::Exempt(KnownLimit::EntryTree { .. }))) => {
                 "exempt deep entry tree".into()
-            }
-            (Ok(_), Some(Import::Exempt(KnownLimit::AncestorWalk { .. }))) => {
-                "exempt deep structure".into()
             }
             (Ok(_), Some(Import::Exempt(KnownLimit::Schemas { .. }))) => "exempt large XSD".into(),
             (Ok(_), None) => "admitted".into(),
@@ -332,8 +300,8 @@ pub fn documented_path(path: &str) -> bool {
         })
 }
 
-/// The known limit a package reaches, if any (see [`MAX_EXEMPT_ENTRY_DEPTH`],
-/// [`MAX_EXEMPT_ANCESTOR_STEPS`] and [`MAX_EXEMPT_XSD_ELEMENTS`]).
+/// The known limit a package reaches, if any (see [`MAX_EXEMPT_ENTRY_DEPTH`]
+/// and [`MAX_EXEMPT_XSD_ELEMENTS`]).
 ///
 /// Entries are decoded and parsed the way the importer reads them: the
 /// design as strict UTF-8, schemas with format_xml's schema decoder, both
@@ -351,10 +319,6 @@ pub fn known_limit_exemption(package: &MfdPackage) -> Option<KnownLimit> {
         let depth = component_entry_depth(document.root_element());
         if depth > MAX_EXEMPT_ENTRY_DEPTH {
             return Some(KnownLimit::EntryTree { depth });
-        }
-        let steps = structure_walk_steps(document.root_element());
-        if steps > MAX_EXEMPT_ANCESTOR_STEPS {
-            return Some(KnownLimit::AncestorWalk { steps });
         }
     }
     let mut elements = 0;
@@ -392,34 +356,6 @@ fn component_entry_depth(root: roxmltree::Node<'_, '_>) -> usize {
         );
     }
     deepest
-}
-
-/// An upper bound on the ancestor steps `Inventory::read` takes: for every
-/// element below a `<structure>`, its depth below the nearest such structure
-/// past [`ANCESTOR_FLOOR`], summed without recursion. A `<structure>` resets
-/// the depth for its own subtree, matching the nearest-structure ancestor
-/// search, and its shallow elements contribute nothing.
-fn structure_walk_steps(root: roxmltree::Node<'_, '_>) -> usize {
-    let mut steps = 0usize;
-    // `depth` is the node's depth below the nearest enclosing `<structure>`;
-    // `None` until one is entered.
-    let mut stack = vec![(root, None::<usize>)];
-    while let Some((node, depth)) = stack.pop() {
-        if let Some(depth) = depth {
-            steps = steps.saturating_add(depth.saturating_sub(ANCESTOR_FLOOR));
-        }
-        let child_depth = if node.tag_name().name() == "structure" {
-            Some(1)
-        } else {
-            depth.map(|depth| depth + 1)
-        };
-        stack.extend(
-            node.children()
-                .filter(|child| child.is_element())
-                .map(|child| (child, child_depth)),
-        );
-    }
-    steps
 }
 
 /// Elements below `root` named in [`XSD_COMPONENTS`], in any namespace,
