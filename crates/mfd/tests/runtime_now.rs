@@ -105,8 +105,8 @@ fn native_runtime_datetime_export_round_trips_both_import_spellings() {
         let [runtime] = runtime_components.as_slice() else {
             panic!("{name}: expected one native date-time component");
         };
-        assert_eq!(runtime.attribute("name"), Some("current-dateTime"));
-        assert_eq!(runtime.attribute("library"), Some("xpath2"));
+        assert_eq!(runtime.attribute("name"), Some("now"));
+        assert_eq!(runtime.attribute("library"), Some("lang"));
         assert_eq!(runtime.attribute("kind"), Some("5"));
         assert_eq!(
             runtime
