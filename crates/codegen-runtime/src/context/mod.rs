@@ -335,6 +335,33 @@ impl<'a> ScopeContext<'a> {
         Some(next)
     }
 
+    /// Replace a physical root while retaining the same invocation's named
+    /// inputs, counters and host values. This does not rebind or evaluate an
+    /// input. Traversed, grouped and synthetic contexts cannot become roots.
+    /// The ordinary `next_primary_source` still refuses named inputs.
+    pub fn next_primary_source_with_same_inputs<'b>(
+        &self,
+        source: &'b Instance,
+    ) -> Option<ScopeContext<'b>>
+    where
+        'a: 'b,
+    {
+        if self.frames.len() != 1
+            || self.frames[0].collection.is_some()
+            || self.frames[0].origin != FrameOrigin::PhysicalPrimary
+            || !std::ptr::eq(self.frames[0].instance, self.primary_source)
+        {
+            return None;
+        }
+        let mut next = ScopeContext::with_named_inputs(source, self.named_inputs);
+        next.execution = self.execution;
+        next.invocation_counters = self.invocation_counters.clone();
+        next.document_filename_clock = self.document_filename_clock;
+        next.dynamic_source_loader = self.dynamic_source_loader;
+        next.filter_map = self.filter_map.clone();
+        Some(next)
+    }
+
     /// Creates a root context with secondary inputs and host values.
     pub fn with_named_inputs_and_execution_context(
         source: &'a Instance,
