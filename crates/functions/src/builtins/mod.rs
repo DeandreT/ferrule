@@ -89,6 +89,9 @@ pub(super) fn call_builtin(
         BuiltinId::ToNumber => to_number(args),
         BuiltinId::DecimalFromNullableText => crate::decimal_value::from_nullable_text(args),
         BuiltinId::DecimalTruncate => crate::decimal_value::truncate(args),
+        BuiltinId::MapforceIntegerQuotientFloor => {
+            crate::decimal_value::mapforce_integer_quotient_floor(args)
+        }
         BuiltinId::Boolean => effective_boolean(args),
         BuiltinId::Positive => positive(args),
         BuiltinId::Floor => floor(args),

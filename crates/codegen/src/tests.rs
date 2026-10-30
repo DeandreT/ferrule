@@ -611,6 +611,7 @@ fn scalar_call_whitelist_is_closed_and_name_addressable() {
         "to_number",
         "decimal_from_nullable_text",
         "decimal_truncate",
+        "mapforce_integer_quotient_floor",
         "boolean",
         "positive",
         "floor",

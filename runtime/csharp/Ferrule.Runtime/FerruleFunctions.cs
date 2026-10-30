@@ -11,6 +11,7 @@ public static partial class FerruleFunctions
         {
             "decimal_from_nullable_text" => DecimalFromNullableText(arguments),
             "decimal_truncate" => DecimalTruncate(arguments),
+            "mapforce_integer_quotient_floor" => MapforceIntegerQuotientFloor(arguments),
             "concat" => Concat(arguments),
             "upper" => UnaryString(function, arguments, FerruleUnicodeCasing.ToUpper),
             "lower" => UnaryString(function, arguments, FerruleUnicodeCasing.ToLower),
