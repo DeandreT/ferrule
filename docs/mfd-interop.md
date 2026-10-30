@@ -366,6 +366,14 @@ when a named one-parameter template returns a direct count, sum, average,
 minimum, or maximum over a descendant path; ferrule lowers that template to a
 native aggregate rather than retaining an XSLT runtime dependency.
 
+Collection `item-at` exports use the native two-input form: nodes at position
+0 and the requested index at position 1, without a parent-context input.
+Computed primary-source values must retain the selected collection's repetition
+on every possible branch. Constant or broadcast-only values, nested reductions,
+different repetition owners, computed named-source values and other unproved
+expressions are refused before publication. Other aggregates retain their
+parent-context input.
+
 Nested cloned target groups retain their declared ancestor entry ownership.
 Child branches attach to that exact owner in declaration order, including
 unequal branch counts; source anchors and branch conditions remain relative to

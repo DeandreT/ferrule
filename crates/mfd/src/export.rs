@@ -12,6 +12,7 @@ use mapping::{
 
 use crate::MfdError;
 
+mod aggregate_cardinality;
 mod artifact;
 mod auto_number;
 mod compatibility;

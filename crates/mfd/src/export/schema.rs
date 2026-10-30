@@ -1396,6 +1396,12 @@ impl PortTree {
         self.by_abs.get(abs).copied()
     }
 
+    pub(super) fn path_for_key(&self, port: u32) -> Option<&[String]> {
+        self.by_abs
+            .iter()
+            .find_map(|(path, key)| (*key == port).then_some(path.as_slice()))
+    }
+
     pub(super) fn key_for_alternative(&self, abs: &[String], name: &str) -> Option<u32> {
         self.by_alternative
             .get(&(abs.to_vec(), name.to_string()))

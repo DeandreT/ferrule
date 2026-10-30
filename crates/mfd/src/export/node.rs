@@ -3,10 +3,11 @@ use std::fmt::Write as _;
 use std::path::Path;
 
 use ir::{Value, XML_TEXT_FIELD};
-use mapping::{Graph, Node, NodeId, Project, RuntimeValue, SequenceExpr};
+use mapping::{AggregateOp, Graph, Node, NodeId, Project, RuntimeValue, SequenceExpr};
 
 use crate::MfdError;
 
+use super::aggregate_cardinality::expression_reads_collection;
 use super::auto_number::{self, AutoNumbers};
 use super::database_xml::DirectColumns;
 use super::decimal_input::{self, DecimalInputs};
@@ -407,11 +408,17 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<RenderedNodes, MfdError> {
                 } else {
                     continue;
                 }
-                let mut pins = format!("<datapoint/><datapoint pos=\"1\" key=\"{in_sequence}\"/>");
+                let is_item_at = *function == AggregateOp::ItemAt;
+                let mut pins = if is_item_at {
+                    format!("<datapoint pos=\"0\" key=\"{in_sequence}\"/>")
+                } else {
+                    format!("<datapoint/><datapoint pos=\"1\" key=\"{in_sequence}\"/>")
+                };
                 if arg.is_some() {
                     let in_arg = keys.next();
                     dynamic_inputs.push(in_arg);
-                    let _ = write!(pins, "<datapoint pos=\"2\" key=\"{in_arg}\"/>");
+                    let position = if is_item_at { 1 } else { 2 };
+                    let _ = write!(pins, "<datapoint pos=\"{position}\" key=\"{in_arg}\"/>");
                 }
                 if !dynamic_inputs.is_empty() {
                     fn_inputs.insert(id, dynamic_inputs);
@@ -848,8 +855,8 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<RenderedNodes, MfdError> {
                 let in_sequence = keys.next();
                 let out = keys.next();
                 let mut dynamic_inputs = Vec::new();
-                let context_input = if expression.is_some() {
-                    let input = keys.next();
+                let is_item_at = *function == AggregateOp::ItemAt;
+                let context_input = if let Some(expression) = expression {
                     let collection_key = match match_framed_sequence(
                         sources,
                         &node_frames,
@@ -872,9 +879,29 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<RenderedNodes, MfdError> {
                             continue;
                         }
                     };
-                    edges.push((collection_key, input));
+                    if is_item_at
+                        && !expression_reads_collection(
+                            &project.graph,
+                            *expression,
+                            sources,
+                            collection_key,
+                        )
+                    {
+                        return Err(MfdError::Unsupported(format!(
+                            "item-at node {id} has an unproved expression/collection pairing; \
+                             native two-input export cannot preserve the collection's cardinality"
+                        )));
+                    }
                     dynamic_inputs.push(in_sequence);
-                    Some(input)
+                    if is_item_at {
+                        // Native item-at has only nodes and position inputs.
+                        // Its expression feed carries the collection context.
+                        None
+                    } else {
+                        let input = keys.next();
+                        edges.push((collection_key, input));
+                        Some(input)
+                    }
                 } else {
                     let mut sequence = collection.clone();
                     sequence.extend(value.iter().cloned());
@@ -906,18 +933,23 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<RenderedNodes, MfdError> {
                     None
                 };
                 node_out_key.insert(id, out);
-                let mut pins = context_input.map_or_else(
-                    || format!("<datapoint/><datapoint pos=\"1\" key=\"{in_sequence}\"/>"),
-                    |context| {
-                        format!(
-                            "<datapoint pos=\"0\" key=\"{context}\"/><datapoint pos=\"1\" key=\"{in_sequence}\"/>"
-                        )
-                    },
-                );
+                let mut pins = if is_item_at {
+                    format!("<datapoint pos=\"0\" key=\"{in_sequence}\"/>")
+                } else {
+                    context_input.map_or_else(
+                        || format!("<datapoint/><datapoint pos=\"1\" key=\"{in_sequence}\"/>"),
+                        |context| {
+                            format!(
+                                "<datapoint pos=\"0\" key=\"{context}\"/><datapoint pos=\"1\" key=\"{in_sequence}\"/>"
+                            )
+                        },
+                    )
+                };
                 if arg.is_some() {
                     let in_arg = keys.next();
                     dynamic_inputs.push(in_arg);
-                    let _ = write!(pins, "<datapoint pos=\"2\" key=\"{in_arg}\"/>");
+                    let position = if is_item_at { 1 } else { 2 };
+                    let _ = write!(pins, "<datapoint pos=\"{position}\" key=\"{in_arg}\"/>");
                 }
                 if !dynamic_inputs.is_empty() {
                     fn_inputs.insert(id, dynamic_inputs);
