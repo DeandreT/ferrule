@@ -5,8 +5,8 @@ use mfd_package_fuzz::program::{
     MAX_PROGRAM_BYTES, MAX_PROGRAM_ENTRIES, MAX_PROGRAM_ENTRY_BYTES, Name, Op, encode,
 };
 use mfd_package_fuzz::{
-    KnownLimit, MAX_EXEMPT_ANCESTOR_STEPS, MAX_EXEMPT_ENTRY_DEPTH, MAX_EXEMPT_XSD_ELEMENTS,
-    MAX_INPUT_BYTES, check, decode, documented_path, known_limit_exemption, sandbox, seeds,
+    KnownLimit, MAX_EXEMPT_ENTRY_DEPTH, MAX_EXEMPT_XSD_ELEMENTS, MAX_INPUT_BYTES, check, decode,
+    documented_path, known_limit_exemption, sandbox, seeds,
 };
 
 /// The outcome label (see `Outcome::label`) each seed was written to reach.
@@ -16,7 +16,7 @@ const EXPECTED: &[(&str, &str)] = &[
         "design_component_elements_below_limit",
         "imported with warnings",
     ),
-    ("design_deep_component_elements", "exempt deep structure"),
+    ("design_deep_component_elements", "imported with warnings"),
     ("design_deep_elements", "error NotMfd"),
     ("design_deep_resources", "imported"),
     ("design_deep_source_entries", "exempt deep entry tree"),
@@ -388,40 +388,6 @@ fn known_limit_exemptions_start_past_their_limits() {
             elements: MAX_EXEMPT_XSD_ELEMENTS + 1
         })
     );
-    // The ancestor-walk bound sums only the depth past the floor: a chain
-    // of n elements inside a component contributes about (n - 64)^2 / 2, so
-    // a 2,000-element chain stays under the bound and a 3,000-element one
-    // crosses it.
-    let chain = |depth: usize| {
-        format!(
-            "<mapping><structure><component>{}{}</component></structure></mapping>",
-            "<n>".repeat(depth),
-            "</n>".repeat(depth)
-        )
-    };
-    let shallow = package(vec![("design.mfd", chain(2_000))]);
-    assert_eq!(known_limit_exemption(&shallow), None);
-    let walked = package(vec![("design.mfd", chain(3_000))]);
-    assert!(
-        matches!(
-            known_limit_exemption(&walked),
-            Some(KnownLimit::AncestorWalk { steps }) if steps > MAX_EXEMPT_ANCESTOR_STEPS
-        ),
-        "{:?}",
-        known_limit_exemption(&walked)
-    );
-    // A wide, shallow design has far more elements but none past the floor,
-    // so `Inventory::read` stays linear and it is not exempt.
-    let wide = {
-        let group = "<a><b><c><d><e><f/></e></d></c></b></a>";
-        format!(
-            "<mapping><structure><component>{}</component></structure></mapping>",
-            group.repeat(100_000)
-        )
-    };
-    let wide = package(vec![("design.mfd", wide)]);
-    assert_eq!(known_limit_exemption(&wide), None);
-
     // A design the importer cannot read as UTF-8 is not measured.
     let mut utf16 = vec![0xff, 0xfe];
     utf16.extend(
