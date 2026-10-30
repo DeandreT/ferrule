@@ -897,3 +897,40 @@ fn writes_xbrli_named_row_wrappers_and_prunes_fact_empty_rows()
     );
     Ok(())
 }
+
+#[test]
+fn every_xbrl_reader_and_writer_refuses_json_tuple_frames() -> Result<(), Box<dyn std::error::Error>>
+{
+    let frame = SchemaNode::group(
+        "point",
+        vec![
+            SchemaNode::scalar("item1", ScalarType::String),
+            SchemaNode::scalar("item2", ScalarType::Int),
+        ],
+    )
+    .with_json_tuple(ir::JsonTupleLayout {
+        length: ir::ItemCountRange::new(0, Some(2)),
+        tail: ir::JsonTupleTail::Closed,
+    })
+    .ok_or("the test frame is canonical")?;
+    let schema = SchemaNode::group("xbrl", vec![table_schema(), frame]);
+    let xml = r#"<xbrli:xbrl xmlns:xbrli="http://www.xbrl.org/2003/instance"/>"#;
+    let options = XbrlBoundaryOptions::external_target("taxonomy.xsd", None)?;
+    let limits = XbrlLimits::default();
+    let instance = Instance::Group(Vec::new().into());
+    let refused = |error: XbrlFormatError| matches!(error, XbrlFormatError::UnsupportedJsonTupleFrame { schema } if schema == "xbrl");
+    assert!(refused(from_str(xml, &schema).unwrap_err()));
+    assert!(refused(
+        from_str_with_options(xml, &schema, &options).unwrap_err()
+    ));
+    assert!(refused(
+        from_bytes_bounded(xml.as_bytes(), &schema, &options, &limits).unwrap_err()
+    ));
+    assert!(refused(
+        to_string(&schema, &instance, &options).unwrap_err()
+    ));
+    assert!(refused(
+        to_bytes_bounded(&schema, &instance, &options, &limits).unwrap_err()
+    ));
+    Ok(())
+}

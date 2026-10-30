@@ -222,6 +222,9 @@ fn unsupported_schema_feature(schema: &SchemaNode) -> Option<&'static str> {
     if schema.json_array_wrapper {
         return Some("JSON array wrapper");
     }
+    if schema.json_tuple.is_some() {
+        return Some("JSON tuple frame");
+    }
     if !schema.xml_name_alternatives.is_empty() {
         return Some("ambiguous expanded XML element names");
     }

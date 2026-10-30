@@ -141,6 +141,9 @@ pub struct ForeignKeyColumns {
 }
 
 fn columns_of(schema: &SchemaNode) -> Result<Vec<(&str, ScalarType)>, DbFormatError> {
+    if schema.contains_json_tuple() {
+        return Err(DbFormatError::UnsupportedSchema);
+    }
     match &schema.kind {
         SchemaKind::Group { children, .. } => children
             .iter()
@@ -1346,6 +1349,44 @@ mod tests {
                 ]).into())],
             ),
             Err(DbFormatError::UnexpectedField { row: 0, column }) if column == "extra"
+        ));
+        assert!(!path.exists());
+    }
+
+    fn tuple_frame(name: &str) -> SchemaNode {
+        SchemaNode::group(
+            name,
+            vec![
+                SchemaNode::scalar("item1", ScalarType::String),
+                SchemaNode::scalar("item2", ScalarType::Int),
+            ],
+        )
+        .with_json_tuple(ir::JsonTupleLayout {
+            length: ir::ItemCountRange::new(0, Some(2)),
+            tail: ir::JsonTupleTail::Closed,
+        })
+        .unwrap()
+    }
+
+    #[test]
+    fn json_tuple_frames_are_not_database_tables() {
+        let mut table = tuple_frame("people");
+        table.repeating = true;
+        table.json_object_item_nullable = Some(false);
+        assert!(table.json_tuple_frame_is_valid());
+        assert!(matches!(
+            columns_of(&table),
+            Err(DbFormatError::UnsupportedSchema)
+        ));
+        let database = SchemaNode::group("db", vec![table]);
+        let path = std::env::temp_dir().join("ferrule-format-db-tuple-frame-never-opened.sqlite");
+        assert!(matches!(
+            read_instance(&path, &database),
+            Err(DbFormatError::UnsupportedSchema)
+        ));
+        assert!(matches!(
+            write_instance(&path, &database, &Instance::Group(Vec::new().into())),
+            Err(DbFormatError::UnsupportedSchema)
         ));
         assert!(!path.exists());
     }

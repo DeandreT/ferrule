@@ -133,6 +133,7 @@ fn metadata_supported(schema: &SchemaNode) -> bool {
         && !schema.nullable
         && !schema.container_nullable
         && schema.json_object_item_nullable.is_none()
+        && schema.json_tuple.is_none()
         && !schema.json_any
         && schema.fixed.is_none()
         && schema.default.is_none()

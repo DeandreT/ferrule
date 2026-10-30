@@ -1153,3 +1153,6 @@ mod primary_root_named;
 
 #[path = "tests/json_array_wrappers.rs"]
 mod json_array_wrappers;
+
+#[path = "tests/json_tuple_frames.rs"]
+mod json_tuple_frames;

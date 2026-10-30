@@ -889,3 +889,80 @@ fn custom_csv_quote_applies_to_file_and_payload_inputs_and_outputs() -> anyhow::
     assert_eq!(outcome.artifacts[0].bytes, csv);
     Ok(())
 }
+
+fn tuple_frame_project(source: SchemaNode, target: SchemaNode) -> Project {
+    let mut project = dynamic_source_project();
+    project.extra_sources.clear();
+    project.root = Scope::default();
+    project.graph.nodes.clear();
+    project.source = source;
+    project.target = target;
+    project
+}
+
+fn tuple_frame() -> SchemaNode {
+    SchemaNode::group(
+        "Point",
+        vec![
+            SchemaNode::scalar("item1", ScalarType::String),
+            SchemaNode::scalar("item2", ScalarType::Int),
+        ],
+    )
+    .with_json_tuple(ir::JsonTupleLayout {
+        length: ir::ItemCountRange::new(0, Some(2)),
+        tail: ir::JsonTupleTail::Closed,
+    })
+    .expect("the test frame is canonical")
+}
+
+#[test]
+fn payload_runs_refuse_json_tuple_frames_at_native_json_boundaries() -> anyhow::Result<()> {
+    let plain = || SchemaNode::group("Plain", Vec::new());
+    for (side, project, input) in [
+        (
+            "source",
+            tuple_frame_project(SchemaNode::group("Input", vec![tuple_frame()]), plain()),
+            br#"{"Point":["x",1]}"#.as_slice(),
+        ),
+        (
+            "target",
+            tuple_frame_project(plain(), SchemaNode::group("Output", vec![tuple_frame()])),
+            br#"{}"#.as_slice(),
+        ),
+    ] {
+        // Frames are valid model metadata; only the native codec refuses them.
+        assert!(cli::validate(&project).is_empty(), "{side}");
+        let source = cli::PayloadDocument::new(Path::new("input.json"), input)?;
+        let error = cli::run_project_value_payloads(
+            &project,
+            Path::new("/virtual/project.json"),
+            &cli::PayloadRunOptions::new(source),
+        )
+        .expect_err("native JSON must refuse tuple frames");
+        let message = format!("{error:#}");
+        assert!(
+            message.contains(
+                "JSON tuple frames are not supported by native JSON reading or writing until #1225"
+            ),
+            "{side}: {message}"
+        );
+    }
+
+    let mut ordinary = tuple_frame();
+    ordinary.json_tuple = None;
+    let project = tuple_frame_project(
+        SchemaNode::group("Input", vec![ordinary]),
+        SchemaNode::group("Output", Vec::new()),
+    );
+    let source = cli::PayloadDocument::new(
+        Path::new("input.json"),
+        br#"{"Point":{"item1":"x","item2":1}}"#,
+    )?;
+    let outcome = cli::run_project_value_payloads(
+        &project,
+        Path::new("/virtual/project.json"),
+        &cli::PayloadRunOptions::new(source),
+    )?;
+    assert_eq!(outcome.artifacts.len(), 1);
+    Ok(())
+}

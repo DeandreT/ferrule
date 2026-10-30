@@ -86,6 +86,9 @@ fn validate_grid_layout<'a>(
     if schema.repeating || !matches!(schema.kind, SchemaKind::Group { .. }) {
         return Err(XlsxFormatError::GridRootSchema);
     }
+    if schema.contains_json_tuple() {
+        return Err(XlsxFormatError::UnsupportedSchema);
+    }
     if layout.data_start_row.get() <= layout.header_row.get() {
         return Err(XlsxFormatError::GridLayout(
             "data_start_row must be after header_row",

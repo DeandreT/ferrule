@@ -93,7 +93,7 @@ pub fn validate(
             crate::segments::scalar_or_fixed(node, None)?;
         }
     }
-    if schema.contains_json_array_wrapper() {
+    if schema.contains_json_array_wrapper() || schema.contains_json_tuple() {
         return Err(invalid("JSON array metadata is not an EDI schema"));
     }
     if let Some(separators) = options.x12_separators {
