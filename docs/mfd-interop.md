@@ -1222,6 +1222,18 @@ An X12 variable cannot introduce parser-error ports absent from its selected
 configuration; configured fields whose names begin with `ParserErrors_` remain
 ordinary data.
 
+Export writes core kind-32 joins whose inputs all come from source ports, each
+fed by a copy-all connection. Root-context joins take their collections from
+the primary source. A join nested inside one ordinary primary source iteration
+takes singletons from the active item or from a static named source, at any
+input position and in any number. Its repeating inputs come from static named
+sources, each from its own component; a two-input plan may instead join one
+primary repeating collection outside the iteration. Export refuses, atomically
+under the native profile, nested plans without a singleton, a two-input plan
+without exactly one singleton and one repeating input, primary repeating inputs
+below the iteration, named inputs that a primary frame could shadow, and named
+paths that would change when reimport strips the enclosing iteration path.
+
 JSON5 component settings and `.json5` instance paths are retained as a typed
 repair dependency, not executable native JSON5 mode. Legacy filename attributes
 take precedence over nested input/output file roles. Strict import, runtime and
