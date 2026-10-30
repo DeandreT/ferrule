@@ -689,6 +689,33 @@ fn all_known_unsupported_formats_reject_before_any_stage_callback() -> anyhow::R
     Ok(())
 }
 
+#[test]
+fn hierarchical_update_existing_target_is_refused_as_stateful() -> anyhow::Result<()> {
+    let mut project = copy_project();
+    project.target_path = Some("sentinel.xlsx".into());
+    project.target_options = FormatOptions {
+        xlsx_update_existing: true,
+        xlsx_hierarchical: Some(mapping::XlsxHierarchicalLayout {
+            worksheets_path: vec!["Sheets".into()],
+            worksheet_name_path: vec!["Name".into()],
+            ranges: Vec::new(),
+        }),
+        ..FormatOptions::default()
+    };
+    let hosts = [host("input", Path::new("input.json"), b"invalid JSON")?];
+    let error = preview_pipeline_value_payloads(
+        &single(project),
+        Path::new("absent/pipeline.json"),
+        &PipelinePreviewOptions::new(&hosts),
+    )
+    .unwrap_err();
+    assert!(
+        format!("{error:#}").contains("pipeline preview does not support update-existing XLSX"),
+        "{error:#}"
+    );
+    Ok(())
+}
+
 fn dynamic_project() -> Project {
     let mut project = copy_project();
     project.source = SchemaNode::group(

@@ -161,6 +161,104 @@ fn validates_flat_xlsx_header_and_update_options_before_execution() {
 }
 
 #[test]
+fn update_existing_accepts_hierarchical_targets_and_refuses_other_retained_layouts() {
+    let row = XlsxRow::new(1).unwrap();
+    let mut project = valid_project();
+    project.target_options.xlsx_update_existing = true;
+    project.target_options.xlsx_hierarchical = Some(mapping::XlsxHierarchicalLayout {
+        worksheets_path: vec!["Sheets".into()],
+        worksheet_name_path: vec!["Name".into()],
+        ranges: Vec::new(),
+    });
+    assert!(validate(&project).is_empty(), "{:?}", validate(&project));
+
+    let table = mapping::XlsxTableRegion {
+        path: vec!["Rows".into()],
+        sheet: None,
+        start_row: row,
+        columns: Vec::new(),
+        has_header: true,
+        row_number_field: None,
+    };
+    let refused = [
+        (
+            "a transposed",
+            mapping::FormatOptions {
+                xlsx_rows: vec![1],
+                ..Default::default()
+            },
+        ),
+        (
+            "a composite",
+            mapping::FormatOptions {
+                xlsx_composite: Some(mapping::XlsxCompositeLayout {
+                    table,
+                    additional_tables: Vec::new(),
+                    records: Vec::new(),
+                }),
+                ..Default::default()
+            },
+        ),
+        (
+            "a grid",
+            mapping::FormatOptions {
+                xlsx_grid: Some(mapping::XlsxGridLayout {
+                    sheet: None,
+                    header_row: row,
+                    data_start_row: XlsxRow::new(2).unwrap(),
+                    header_value_field: "Header".into(),
+                    header_position_field: "Column".into(),
+                    rows_field: "Rows".into(),
+                    cells_field: "Cells".into(),
+                    cell_value_field: "Value".into(),
+                    cell_position_field: "Position".into(),
+                    fixed_cells: Vec::new(),
+                }),
+                ..Default::default()
+            },
+        ),
+        (
+            "a worksheet-set",
+            mapping::FormatOptions {
+                xlsx_worksheet_set: Some(XlsxWorksheetSetLayout {
+                    worksheets_path: vec!["Sheets".into()],
+                    worksheet_name_path: vec!["Name".into()],
+                    rows_path: vec!["Rows".into()],
+                    row_number_path: None,
+                    start_row: row,
+                    columns: Vec::new(),
+                    has_header: false,
+                }),
+                ..Default::default()
+            },
+        ),
+    ];
+    for (layout, options) in refused {
+        let mut project = valid_project();
+        project.target_options = mapping::FormatOptions {
+            xlsx_update_existing: true,
+            ..options
+        };
+        let expected = format!(
+            "`xlsx_update_existing` cannot update {layout} XLSX layout; only flat tables and hierarchical layouts update existing workbooks"
+        );
+        let issues = validate(&project);
+        assert!(
+            issues.iter().any(|issue| {
+                issue.location == "target format options" && issue.message == expected
+            }),
+            "{layout}: {issues:?}"
+        );
+        assert!(
+            !issues
+                .iter()
+                .any(|issue| issue.message.contains("cannot be combined with flat")),
+            "{layout}: {issues:?}"
+        );
+    }
+}
+
+#[test]
 fn validates_worksheet_set_direction_and_layout_exclusivity() {
     let mut project = valid_project();
     project.target_options.xlsx_sheet = Some("Legacy".into());

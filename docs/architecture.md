@@ -220,8 +220,8 @@ named static and dynamic secondary documents and returns bounded serialized
 `PayloadArtifact` values in the same target order without touching output
 paths. It supports the same explicit target selection, including applying a
 logical output-path override to the selected named target. SQLite and
-update-existing XLSX stay on the filesystem runner because their behavior
-depends on persistent prior state.
+update-existing XLSX, flat or hierarchical, stay on the filesystem runner
+because their behavior depends on persistent prior state.
 
 `PayloadRunOptions::with_bounded_tabular()` explicitly opts into bounded native
 CSV (including tab-delimited CSV) and fixed-width admission: 8 MiB per input,

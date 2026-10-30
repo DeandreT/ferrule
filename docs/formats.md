@@ -30,7 +30,7 @@ for a complete format standard or another product.
 | JSON5 | Yes | Yes | `.json5` or `json5` | One schema-shaped document in JSON5 instance syntax with ordinary JSON schemas and the same typed mapping boundary; input accepts comments, trailing commas, and single-quoted strings, and is limited to 64 MiB and 128 nested containers; output omits property-name quotes where JSON5 allows; CLI and browser runtime |
 | CSV | Yes | Yes | `.csv` or `.txt` | Delimited flat rows with a configurable delimiter, printable or disabled quoting, headers, optional present-empty text, and optional UTF-8 BOM output |
 | Fixed-width | Yes | Yes | `fixed_width` layout | Validated Unicode-scalar column layouts, configurable fill, record separators, and empty-value handling |
-| XLSX | Yes | Yes | `.xlsx` | Typed worksheets, flat, transposed, composite, worksheet-set, and grid source shapes, flat and hierarchical targets, and update-existing flat writes |
+| XLSX | Yes | Yes | `.xlsx` | Typed worksheets, flat, transposed, composite, worksheet-set, and grid source shapes, flat and hierarchical targets, and update-existing writes for flat and hierarchical targets |
 | SQLite | Yes | Yes | `.db`, `.sqlite`, or `.sqlite3` | Read-only table introspection, typed reads, imported relational query shapes, declared read-only single-table queries with typed named parameters, validated declared relations, structured XML text columns, and idempotent full-replace writes |
 | X12 / EDIFACT | Yes | Yes | `.edi`, `.x12`, or `.edifact` with a schema dialect, or `edi_kind` | Schema-guided interchange I/O, custom syntax separators, repetitions, qualifier loops, retained field lengths and code lists, optional lenient parsing, and bounded output validation that leaves the destination unchanged on failure |
 | HL7 v2 / TRADACOMS | Yes | Yes | `.hl7` or an EDI schema dialect | Bounded schema-guided message I/O, retained field lengths and code lists, HL7 escapes and subcomponents, and TRADACOMS release escaping |
@@ -83,7 +83,8 @@ for a complete format standard or another product.
 | CSV | Unquoted output of field text that requires escaping when quoting is disabled |
 | Fixed-width | Combining a fixed-width layout with CSV dialect options |
 | XLSX | Grid, worksheet-set, composite, and transposed output, which are input-only layouts |
-| XLSX | Update-existing writes for hierarchical output |
+| XLSX | Update-existing writes for grid, worksheet-set, composite, and transposed layouts |
+| XLSX | Update-existing writes on payload, standard-stream, and pipeline-preview runs, in pipeline `.mfd` final targets, and in generated code |
 | SQLite | Other database engines, general SQL mutation, and multi-database connections |
 | SQLite | SQL text, joins, views and declared queries on payload, stream, REST, pipeline, generated-code and MFD routes |
 | X12 / EDIFACT | X12 CR LF segment terminators, and whitespace or invisible X12 element, component, repetition or release separators |
@@ -547,6 +548,26 @@ for a complete format standard or another product.
   mutation or multi-database connector model.
 - Complex XLSX, PDF, EDI, and FlexText layouts depend on an embedded validated
   configuration; unsupported imported commands remain explicit warnings.
+- XLSX update-existing targets (`xlsx_update_existing`, MFD
+  `updateexistingfile="1"`) write into the workbook already at the output path
+  and keep its other worksheets and the cells outside the layout. A flat table
+  replaces its selected table. A hierarchical layout needs every worksheet it
+  names to exist already. It clears the cells its bands occupied before the
+  update, so shorter output leaves no stale rows, and it inserts or shifts
+  nothing. Rewritten cells keep their style, and new data cells take the style
+  of their band's first data row. The update refuses, and leaves the workbook
+  unchanged, when a written or cleared cell holds a formula or belongs to a
+  merged range, when a newly addressed cell outside the previous layout holds
+  content, when an open band would write an empty row, or when two bands
+  address one cell. It also checks charts, drawings, comments, and every
+  package relationship, and refuses content the workbook library would drop or
+  rewrite, such as absolute drawing anchors or unmodeled chart types. Worksheet
+  features the library does not model are dropped, for example `extLst`
+  sparklines, x14 conditional formats, `ignoredErrors`, protected ranges, and
+  custom sheet views. Grid, worksheet-set, composite, and transposed layouts
+  are input-only and refuse update-existing. Payload, standard-stream, and
+  pipeline-preview runs refuse it because it needs the persistent workbook,
+  and pipeline `.mfd` import and export refuse it on the final target.
 - EDI output validates every present configured field after wire lexical
   formatting. The bounded report includes all length and code-list violations
   it finds, and validation failures do not replace the destination.
@@ -747,7 +768,8 @@ Named input and output editors preserve embedded layouts and explicit XML/JSON
 formats when filenames change. Opening the format editor leaves saved CSV
 defaults intact; choosing another format clears the previous format's settings.
 Tabular fallback identities defer to recognized filename extensions, and
-update-existing workbook controls are available only for flat XLSX output.
+update-existing workbook controls are available for flat and hierarchical XLSX
+output.
 Replacing a Protocol Buffers boundary schema requires its exact embedded root
 projection, or an explicit format change first.
 

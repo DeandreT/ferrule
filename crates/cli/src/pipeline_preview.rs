@@ -773,7 +773,7 @@ fn preflight_output_options(options: &FormatOptions) -> anyhow::Result<()> {
     {
         bail!("pipeline preview target uses an input-only XLSX layout");
     }
-    if options.xlsx_hierarchical.is_some() && super::has_legacy_xlsx_layout(options) {
+    if options.xlsx_hierarchical.is_some() && super::has_flat_xlsx_layout(options) {
         bail!("hierarchical XLSX output conflicts with legacy XLSX layout options");
     }
     Ok(())
