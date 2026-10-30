@@ -2186,7 +2186,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
         // egui-snarl's node frame already participates in transformed, clipped
         // widget hit-testing. Area-only rectangle checks miss its child layer.
         // Reuse its response without adding a click/drag target or an auto ID.
-        let frame_id = ui.layer_id().id.with(("snarl-node", node)).with("frame");
+        let frame_id = focus::frame_id(ui.layer_id().id, node);
         let canvas_node = snarl[node];
         if let Some(frame) = ui.ctx().read_response(frame_id) {
             if frame.contains_pointer() {
@@ -2221,6 +2221,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
         };
         if let Some((total, natural_width, accent)) = endpoint {
             self.endpoint_scroll.finish_geometry(canvas_node, rect);
+            let title = self.title(&canvas_node);
             let scrolled = crate::canvas_endpoints::show_scrollbar(
                 ui,
                 canvas_node,
@@ -2228,6 +2229,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                 total,
                 self.endpoint_scroll,
                 accent,
+                &title,
             );
             let resized = crate::canvas_endpoints::show_resize_handles(
                 ui,
@@ -2236,6 +2238,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                 total,
                 natural_width,
                 self.endpoint_scroll,
+                &title,
             );
             if scrolled || resized {
                 ui.ctx().request_repaint();

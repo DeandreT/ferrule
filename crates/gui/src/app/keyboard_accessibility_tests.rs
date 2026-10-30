@@ -896,3 +896,5 @@ fn keyboard_accessibility_escape_cancels_a_canvas_connection() {
     assert_eq!(focused_name(&harness).as_deref(), Some(TARGET_NAME_PIN));
     assert!(!harness.state().observed_dirty());
 }
+
+mod canvas_navigation;

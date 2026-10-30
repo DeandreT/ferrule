@@ -7,12 +7,24 @@ use std::collections::BTreeMap;
 use std::ops::Range;
 
 use crate::canvas::CanvasNode;
+use crate::canvas_keyboard::focus;
 
 pub const VISIBLE_PIN_LIMIT: usize = 12;
 const MIN_VISIBLE_PINS: usize = 4;
 const PIN_ROW_HEIGHT: f32 = 20.0;
 const MIN_WIDTH: f32 = 110.0;
 const MAX_WIDTH: f32 = 480.0;
+/// How far one arrow key moves the width handle.
+const KEYBOARD_WIDTH_STEP: f32 = 10.0;
+/// Keys a focused endpoint scrollbar takes.
+const SCROLL_KEYS: [egui::Key; 6] = [
+    egui::Key::ArrowUp,
+    egui::Key::ArrowDown,
+    egui::Key::PageUp,
+    egui::Key::PageDown,
+    egui::Key::Home,
+    egui::Key::End,
+];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum EndpointDisplayPin {
@@ -414,18 +426,7 @@ impl EndpointScrollState {
             let pitch = f64::from(row_height);
             let steps = (accumulated / pitch).trunc() as isize;
             *remainder = (accumulated % pitch) as f32;
-            if steps != 0 {
-                let old = self.visible_limit(node, total);
-                let minimum = MIN_VISIBLE_PINS.min(eligible);
-                let rows = old.saturating_add_signed(steps).clamp(minimum, eligible);
-                // A short filtered list cannot be resized vertically. Do not
-                // replace the saved All-fields capacity with its clipped size.
-                if rows != old {
-                    self.visible_rows.insert(node, rows);
-                    self.clamp_offset(node, total);
-                    changed = true;
-                }
-            }
+            changed |= self.step_visible_rows(node, total, steps);
         } else if eligible == 0 {
             self.resize_remainders.remove(&node);
         }
@@ -433,6 +434,38 @@ impl EndpointScrollState {
             self.field_rects.remove(&node);
         }
         changed
+    }
+
+    /// Shows `rows` more (or fewer) fields, as the height handle does from
+    /// the keyboard. Any partial row from a pointer drag is dropped.
+    pub fn resize_rows(&mut self, node: CanvasNode, total: usize, rows: isize) -> bool {
+        if rows == 0 {
+            return false;
+        }
+        self.resize_remainders.remove(&node);
+        let changed = self.step_visible_rows(node, total, rows);
+        if changed {
+            self.field_rects.remove(&node);
+        }
+        changed
+    }
+
+    fn step_visible_rows(&mut self, node: CanvasNode, total: usize, steps: isize) -> bool {
+        let eligible = self.eligible_len(node, total);
+        if steps == 0 || eligible == 0 {
+            return false;
+        }
+        let old = self.visible_limit(node, total);
+        let minimum = MIN_VISIBLE_PINS.min(eligible);
+        let rows = old.saturating_add_signed(steps).clamp(minimum, eligible);
+        // A short filtered list cannot be resized vertically. Do not replace
+        // the saved All-fields capacity with its clipped size.
+        if rows == old {
+            return false;
+        }
+        self.visible_rows.insert(node, rows);
+        self.clamp_offset(node, total);
+        true
     }
 
     fn set_offset(&mut self, node: CanvasNode, total: usize, offset: usize) -> bool {
@@ -524,6 +557,7 @@ pub fn show_scrollbar(
     total: usize,
     state: &mut EndpointScrollState,
     accent: egui::Color32,
+    title: &str,
 ) -> bool {
     let Some(field_rect) = state.field_rect(node) else {
         // Never guess header/footer bounds: wait for measured node geometry.
@@ -562,6 +596,29 @@ pub fn show_scrollbar(
         && let Some(offset) = geometry.offset_at(pointer, eligible - visible)
     {
         changed |= state.set_offset(node, total, offset);
+    }
+    focus::name_as(
+        &response,
+        egui::Role::ScrollBar,
+        &format!("Scroll fields · {title}"),
+    );
+    if response.has_focus() {
+        let page = isize::try_from(visible).unwrap_or(isize::MAX);
+        let offset = state.offset(node, total);
+        let maximum = state.max_offset(node, total);
+        let target = match focus::take_key(ui.ctx(), response.id, &SCROLL_KEYS) {
+            Some(egui::Key::ArrowUp) => Some(offset.saturating_sub(1)),
+            Some(egui::Key::ArrowDown) => Some(offset.saturating_add(1)),
+            Some(egui::Key::PageUp) => Some(offset.saturating_add_signed(-page)),
+            Some(egui::Key::PageDown) => Some(offset.saturating_add_signed(page)),
+            Some(egui::Key::Home) => Some(0),
+            Some(egui::Key::End) => Some(maximum),
+            _ => None,
+        };
+        if let Some(target) = target {
+            changed |= state.set_offset(node, total, target);
+        }
+        focus::paint_focus(ui, geometry.hit_rect, 2.0);
     }
     let range = state.visible_range(node, total);
     let hint = if state.connected_only(node) {
@@ -669,6 +726,7 @@ pub fn show_resize_handles(
     total: usize,
     natural_width: f32,
     state: &mut EndpointScrollState,
+    title: &str,
 ) -> bool {
     let Some(field_rect) = state.field_rect(node) else {
         return false;
@@ -693,12 +751,65 @@ pub fn show_resize_handles(
         )
         .on_hover_cursor(egui::CursorIcon::ResizeVertical)
         .on_hover_text("Resize visible fields");
+    let width_direction = if matches!(node, CanvasNode::SourceBlock(_)) {
+        -1.0
+    } else {
+        1.0
+    };
+    // Arrow keys move a focused handle as a drag would, the width handle by a
+    // fixed step and the height handle by whole rows.
+    let mut changed = false;
+    focus::name_as(
+        &width_response,
+        egui::Role::Splitter,
+        &format!("Resize width · {title}"),
+    );
+    if width_response.has_focus() {
+        let edge = match focus::take_key(
+            ui.ctx(),
+            width_response.id,
+            &[egui::Key::ArrowLeft, egui::Key::ArrowRight],
+        ) {
+            Some(egui::Key::ArrowLeft) => -KEYBOARD_WIDTH_STEP,
+            Some(egui::Key::ArrowRight) => KEYBOARD_WIDTH_STEP,
+            _ => 0.0,
+        };
+        if edge != 0.0 {
+            changed |= state.resize(
+                node,
+                total,
+                natural_width,
+                egui::vec2(edge * width_direction, 0.0),
+            );
+        }
+        focus::paint_focus(ui, geometry.width_rect, 2.0);
+    }
+    focus::name_as(
+        &height_response,
+        egui::Role::Splitter,
+        &format!("Resize visible fields · {title}"),
+    );
+    if height_response.has_focus() {
+        let rows = match focus::take_key(
+            ui.ctx(),
+            height_response.id,
+            &[egui::Key::ArrowUp, egui::Key::ArrowDown],
+        ) {
+            Some(egui::Key::ArrowUp) => -1,
+            Some(egui::Key::ArrowDown) => 1,
+            _ => 0,
+        };
+        changed |= state.resize_rows(node, total, rows);
+        focus::paint_focus(ui, geometry.height_rect, 2.0);
+    }
     let corner_delta = if let Some(corner_rect) = geometry.corner_rect {
+        // The corner combines the two handles above, which already cover it
+        // from the keyboard, so it is not a Tab stop.
         let response = ui
             .interact(
                 corner_rect,
                 ui.scope_id().with(("endpoint_resize_corner", node)),
-                egui::Sense::drag(),
+                egui::Sense::DRAG,
             )
             .on_hover_cursor(egui::CursorIcon::ResizeNwSe)
             .on_hover_text("Resize endpoint");
@@ -721,11 +832,6 @@ pub fn show_resize_handles(
         egui::Vec2::ZERO
     };
 
-    let width_direction = if matches!(node, CanvasNode::SourceBlock(_)) {
-        -1.0
-    } else {
-        1.0
-    };
     let width_delta = width_response.drag_delta().x * width_direction + corner_delta.x;
     let height_delta = height_response.drag_delta().y + corner_delta.y;
     state.resize(
@@ -733,7 +839,7 @@ pub fn show_resize_handles(
         total,
         natural_width,
         egui::vec2(width_delta, height_delta),
-    )
+    ) || changed
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -897,6 +1003,23 @@ mod tests {
         assert_eq!(scroll_rows(f32::NAN), 0);
         assert_eq!(scroll_rows(f32::INFINITY), 0);
         assert_eq!(scroll_rows(f32::NEG_INFINITY), 0);
+    }
+
+    #[test]
+    fn keyboard_row_resizes_take_whole_rows_and_drop_partial_drags() {
+        let node = CanvasNode::TargetBlock(0);
+        let mut state = EndpointScrollState::default();
+        // A partial upward drag leaves a negative remainder behind.
+        assert!(!state.resize(node, 30, 200.0, egui::vec2(0.0, -15.0)));
+        assert!(state.resize_rows(node, 30, 1));
+        assert_eq!(state.visible_limit(node, 30), 13);
+        assert!(!state.resize(node, 30, 200.0, egui::vec2(0.0, 6.0)));
+        assert!(state.resize_rows(node, 30, -10));
+        assert_eq!(state.visible_limit(node, 30), MIN_VISIBLE_PINS);
+        assert!(!state.resize_rows(node, 30, -1));
+        assert!(!state.resize_rows(node, 30, 0));
+        assert!(state.resize_rows(node, 30, 100));
+        assert_eq!(state.visible_limit(node, 30), 30);
     }
 
     #[test]
@@ -1306,7 +1429,8 @@ mod tests {
                 node_rect,
                 30,
                 &mut state,
-                egui::Color32::WHITE
+                egui::Color32::WHITE,
+                "Source"
             ));
             state.set_field_rect(node, fields);
             assert!(!show_scrollbar(
@@ -1315,10 +1439,11 @@ mod tests {
                 node_rect,
                 30,
                 &mut state,
-                egui::Color32::WHITE
+                egui::Color32::WHITE,
+                "Source"
             ));
             assert!(!show_resize_handles(
-                ui, node, node_rect, 30, 200.0, &mut state
+                ui, node, node_rect, 30, 200.0, &mut state, "Source"
             ));
         });
     }
