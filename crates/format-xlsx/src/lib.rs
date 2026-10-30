@@ -110,6 +110,8 @@ pub enum XlsxFormatError {
     CompositePath { path: String, reason: &'static str },
     #[error("composite XLSX schema path `{0}` is mapped more than once")]
     DuplicateCompositePath(String),
+    #[error("invalid composite XLSX layout: {0}")]
+    CompositeLayout(&'static str),
     #[error("grid XLSX root schema must be a non-repeating group")]
     GridRootSchema,
     #[error("invalid grid XLSX layout: {0}")]
@@ -1044,14 +1046,14 @@ mod tests {
 
     fn composite_layout() -> XlsxCompositeLayout {
         XlsxCompositeLayout {
-            table: XlsxTableRegion {
+            table: Some(XlsxTableRegion {
                 path: vec!["Staff".into()],
                 sheet: Some("Staff".into()),
                 start_row: xlsx_row(1),
                 columns: vec![xlsx_column(1), xlsx_column(3), xlsx_column(5)],
                 has_header: true,
                 row_number_field: None,
-            },
+            }),
             additional_tables: Vec::new(),
             records: vec![
                 XlsxFixedRecord {
@@ -1069,6 +1071,7 @@ mod tests {
                     ],
                 },
             ],
+            grids: Vec::new(),
         }
     }
 
@@ -1179,7 +1182,7 @@ mod tests {
     fn composite_layout_rejects_invalid_paths_kinds_and_collisions() {
         let schema = composite_schema();
         let mut layout = composite_layout();
-        layout.table.path = vec!["Company".into()];
+        layout.table.as_mut().unwrap().path = vec!["Company".into()];
         assert!(matches!(
             validate_composite_layout(&schema, &layout),
             Err(XlsxFormatError::CompositePath { .. })
@@ -1200,7 +1203,7 @@ mod tests {
         ));
 
         let mut layout = composite_layout();
-        layout.table.columns[1] = xlsx_column(1);
+        layout.table.as_mut().unwrap().columns[1] = xlsx_column(1);
         assert!(matches!(
             validate_composite_layout(&schema, &layout),
             Err(XlsxFormatError::InvalidCoordinate)

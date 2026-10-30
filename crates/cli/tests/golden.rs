@@ -6,14 +6,14 @@ fn composite_xlsx_layout() -> mapping::XlsxCompositeLayout {
     };
 
     XlsxCompositeLayout {
-        table: XlsxTableRegion {
+        table: Some(XlsxTableRegion {
             path: vec!["Staff".into()],
             sheet: Some("Staff".into()),
             start_row: XlsxRow::new(1).unwrap(),
             columns: vec![XlsxColumn::new(1).unwrap(), XlsxColumn::new(2).unwrap()],
             has_header: true,
             row_number_field: None,
-        },
+        }),
         additional_tables: Vec::new(),
         records: vec![XlsxFixedRecord {
             path: vec!["Office".into()],
@@ -24,6 +24,7 @@ fn composite_xlsx_layout() -> mapping::XlsxCompositeLayout {
                 column: XlsxColumn::new(2).unwrap(),
             }],
         }],
+        grids: Vec::new(),
     }
 }
 

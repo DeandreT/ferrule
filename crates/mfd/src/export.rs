@@ -44,6 +44,7 @@ mod native_path_hierarchy;
 mod native_recursive_collect;
 mod native_recursive_filter;
 mod node;
+mod node_frames;
 mod order_decimal_output;
 mod pdf;
 mod pipeline;

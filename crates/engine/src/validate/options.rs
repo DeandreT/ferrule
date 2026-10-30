@@ -518,13 +518,14 @@ pub(super) fn validate_xlsx_options(
             "`xlsx_update_existing` is valid only for mapping targets",
         ));
     }
+    let has_grid = options.has_xlsx_grid();
     if options.xlsx_update_existing {
         let refused_layout = if !options.xlsx_rows.is_empty() {
             Some("a transposed")
+        } else if has_grid {
+            Some("a grid")
         } else if options.xlsx_composite.is_some() {
             Some("a composite")
-        } else if options.xlsx_grid.is_some() {
-            Some("a grid")
         } else if options.xlsx_worksheet_set.is_some() {
             Some("a worksheet-set")
         } else {
@@ -543,6 +544,28 @@ pub(super) fn validate_xlsx_options(
         issues.push(ValidationIssue::new(
             location,
             "`xlsx_worksheet_set` is valid only for mapping sources",
+        ));
+    }
+    if let Some(composite) = &options.xlsx_composite {
+        if let Err(message) = composite.validate_regions() {
+            issues.push(ValidationIssue::new(location, message));
+        }
+        let mut grid_sheets = std::collections::BTreeSet::new();
+        if composite
+            .grids
+            .iter()
+            .any(|grid| !grid_sheets.insert(grid.layout.sheet.as_deref()))
+        {
+            issues.push(ValidationIssue::new(
+                location,
+                "several XLSX grids cannot share one worksheet; each grid needs its own worksheet",
+            ));
+        }
+    }
+    if has_grid && !source_side {
+        issues.push(ValidationIssue::new(
+            location,
+            "grid XLSX output is not supported; XLSX grids are valid only for mapping sources",
         ));
     }
     if !options.xlsx_rows.is_empty() && !source_side {

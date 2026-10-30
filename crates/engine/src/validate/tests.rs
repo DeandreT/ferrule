@@ -192,9 +192,10 @@ fn update_existing_accepts_hierarchical_targets_and_refuses_other_retained_layou
             "a composite",
             mapping::FormatOptions {
                 xlsx_composite: Some(mapping::XlsxCompositeLayout {
-                    table,
+                    table: Some(table),
                     additional_tables: Vec::new(),
                     records: Vec::new(),
+                    grids: Vec::new(),
                 }),
                 ..Default::default()
             },

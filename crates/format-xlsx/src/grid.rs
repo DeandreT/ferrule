@@ -32,6 +32,39 @@ pub fn from_bytes_grid(
 ) -> Result<Vec<Instance>, XlsxFormatError> {
     let grid = validate_grid_layout(schema, layout)?;
     let range = worksheet_range(bytes, layout.sheet.as_deref())?;
+    grid_records(&range, schema, layout, &grid)
+}
+
+/// Checks a grid region's repeating header-record group inside a composite
+/// source.
+pub(super) fn validate_grid_region(
+    record: &SchemaNode,
+    layout: &XlsxGridLayout,
+) -> Result<(), XlsxFormatError> {
+    if !record.repeating || record.attribute || !matches!(record.kind, SchemaKind::Group { .. }) {
+        return Err(XlsxFormatError::GridLayout(
+            "a composite grid path must select a repeating group",
+        ));
+    }
+    validate_grid_record(record, layout).map(drop)
+}
+
+/// Reads one composite grid region from its already-selected worksheet.
+pub(super) fn read_grid_region(
+    range: &Range<Data>,
+    record: &SchemaNode,
+    layout: &XlsxGridLayout,
+) -> Result<Vec<Instance>, XlsxFormatError> {
+    let grid = validate_grid_record(record, layout)?;
+    grid_records(range, record, layout, &grid)
+}
+
+fn grid_records(
+    range: &Range<Data>,
+    schema: &SchemaNode,
+    layout: &XlsxGridLayout,
+    grid: &GridSchema<'_>,
+) -> Result<Vec<Instance>, XlsxFormatError> {
     let Some((last_row, last_column)) = range.end() else {
         return Ok(Vec::new());
     };
@@ -41,8 +74,8 @@ pub fn from_bytes_grid(
     }
 
     let mut root_template = empty_group_instance(schema)?;
-    materialize_fixed_cells(&mut root_template, schema, layout, &range)?;
-    let rows = materialize_rows(&range, layout, &grid, last_row, last_column)?;
+    materialize_fixed_cells(&mut root_template, schema, layout, range)?;
+    let rows = materialize_rows(range, layout, grid, last_row, last_column)?;
 
     let mut records = Vec::new();
     for column in 0..=last_column {
@@ -89,6 +122,15 @@ fn validate_grid_layout<'a>(
     if schema.contains_json_tuple() {
         return Err(XlsxFormatError::UnsupportedSchema);
     }
+    validate_grid_record(schema, layout)
+}
+
+/// Validates the fields of one header record, which is the root of a single
+/// grid source or the repeating group of a composite grid region.
+fn validate_grid_record<'a>(
+    schema: &'a SchemaNode,
+    layout: &XlsxGridLayout,
+) -> Result<GridSchema<'a>, XlsxFormatError> {
     if layout.data_start_row.get() <= layout.header_row.get() {
         return Err(XlsxFormatError::GridLayout(
             "data_start_row must be after header_row",
