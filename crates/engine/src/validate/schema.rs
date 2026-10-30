@@ -579,6 +579,55 @@ pub(super) fn source_path_matches_direct(
         })
 }
 
+/// Whether `path` reaches a repeating node, its terminal included, from any
+/// group it fully resolves from, or from a named source it names. An unframed
+/// read resolves from whichever context item holds its first segment and reads
+/// the first item where it crosses repetition, so a path that is direct from
+/// one anchor can still cross from the anchor the engine uses.
+pub(super) fn source_path_crosses_repetition(project: &Project, path: &[String]) -> bool {
+    fn crosses_from(root: &SchemaNode, schema: &SchemaNode, path: &[String]) -> bool {
+        let mut current = schema;
+        let mut crossed = false;
+        for segment in path {
+            if let Some(anchor) = &current.recursive_ref {
+                let Some(group) = find_concrete_schema_group(root, anchor) else {
+                    return false;
+                };
+                current = group;
+            }
+            let Some(child) = current.child(segment) else {
+                return false;
+            };
+            current = child;
+            crossed |= current.repeating;
+        }
+        crossed
+    }
+    fn any_anchor(root: &SchemaNode, schema: &SchemaNode, path: &[String]) -> bool {
+        crosses_from(root, schema, path)
+            || match &schema.kind {
+                SchemaKind::Group { children, .. } => {
+                    children.iter().any(|child| any_anchor(root, child, path))
+                }
+                SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => false,
+            }
+    }
+    if let Some((name, rest)) = path.split_first()
+        && let Some(extra) = project
+            .extra_sources
+            .iter()
+            .find(|source| source.name == *name)
+        && crosses_from(&extra.schema, &extra.schema, rest)
+    {
+        return true;
+    }
+    any_anchor(&project.source, &project.source, path)
+        || project
+            .extra_sources
+            .iter()
+            .any(|source| any_anchor(&source.schema, &source.schema, path))
+}
+
 /// Resolves a root-context path without crossing repetition. The primary root
 /// owns paths whose first field it declares, matching runtime frame selection;
 /// other paths need an explicit named-source prefix.

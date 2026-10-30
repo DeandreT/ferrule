@@ -20,6 +20,11 @@ fn text(value: &str) -> Instance {
     Instance::Scalar(Value::String(value.into()))
 }
 
+/// The key evaluator for plans without a computed source, which never call it.
+fn unkeyed(node: mapping::NodeId) -> Result<Value, EngineError> {
+    unreachable!("collection-only plans evaluate no key node {node}")
+}
+
 fn key(left: &[&str], left_path: &[&str], right_path: &[&str]) -> JoinConditions {
     JoinConditions::new(JoinKey::new(path(left), path(left_path), path(right_path)))
 }
@@ -321,7 +326,7 @@ fn joined_rows_keep_owner_collection_origin_and_positions() {
     })
     .expect("distinct collections with joined left keys");
 
-    let rows = crate::join::execute(&context, &positions, join, &plan, None)
+    let rows = crate::join::execute(&context, &positions, join, &plan, None, unkeyed)
         .expect("unbudgeted join executes");
 
     assert_eq!(rows.len(), 2);
@@ -409,7 +414,7 @@ fn an_unpositioned_member_shifts_later_frames_to_legacy_index_pairing() {
     })
     .expect("distinct collections with joined left keys");
 
-    let rows = crate::join::execute(&[&root], &[], JoinId::new(1), &plan, None)
+    let rows = crate::join::execute(&[&root], &[], JoinId::new(1), &plan, None, unkeyed)
         .expect("unbudgeted join executes");
 
     let [row] = rows.as_slice() else {

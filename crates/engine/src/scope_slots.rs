@@ -196,7 +196,7 @@ pub(crate) fn admitted(slot: Slot) -> Option<AdmittedRoot> {
             Some(AdmittedRoot::Construction)
         }
         Slot::DynamicChildKey(_) => Some(AdmittedRoot::DynamicChildKey),
-        // Computed join keys are not executable, so no owned read is admitted there.
+        // A computed join key admits no owned read: join validation refuses one.
         Slot::SequenceInput
         | Slot::SequenceItem
         | Slot::SequenceReservedItem
