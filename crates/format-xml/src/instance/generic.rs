@@ -10,9 +10,10 @@ use quick_xml::events::{BytesEnd, BytesStart, Event};
 
 use super::{
     NodeWriteContext, OrderedContentLayout, XmlFormatError, attribute_value,
-    element_matches_schema, format_schema_scalar, instance_occurs, parse_input_schema_scalar,
-    parse_schema_scalar, push_attribute, push_element_namespace, push_schema_attribute, read_node,
-    shape_error, validate_group_fields, write_node, write_ordered_mixed_content, xml_text,
+    declared_namespace_matches, element_matches_schema, format_schema_scalar, instance_occurs,
+    parse_input_schema_scalar, parse_schema_scalar, push_attribute, push_element_namespace,
+    push_schema_attribute, read_node, shape_error, validate_group_fields, write_node,
+    write_ordered_mixed_content, xml_text,
 };
 
 pub(super) fn read_generic_element(
@@ -445,9 +446,14 @@ pub(super) fn surplus_wildcard<'a>(
     written: &[&str],
     value: Option<&Instance>,
 ) -> Result<Option<&'a SchemaNode>, XmlFormatError> {
+    // A generic element value cannot fill a scalar declaration, so it goes to
+    // the wildcard, which refuses an item that would read back as the typed
+    // field.
+    let generic_scalar_item = matches!(declared.kind, SchemaKind::Scalar { .. })
+        && matches!(value, Some(Instance::Group(_)));
     if !is_declared_element(declared)
         || declared.repeating
-        || !written.contains(&declared.name.as_str())
+        || !(written.contains(&declared.name.as_str()) || generic_scalar_item)
     {
         return Ok(None);
     }
@@ -654,11 +660,10 @@ pub(super) fn write_generic_element<W: std::io::Write>(
     }
     if schema.xml_wildcard_process_contents != XmlWildcardProcessContents::Skip
         && let Some(known) = siblings.elements.iter().find(|known| {
-            // Match as `element_matches_schema` does on read, where a
-            // declaration without namespace identity matches by name.
+            // Match as `element_matches_schema` does on read.
             is_declared_element(known)
                 && known.name == name
-                && (known.xml_namespace.is_none() || known.xml_namespace_matches(runtime_namespace))
+                && declared_namespace_matches(known, runtime_namespace)
         })
     {
         // An item reads back as an extra occurrence only after the declared
