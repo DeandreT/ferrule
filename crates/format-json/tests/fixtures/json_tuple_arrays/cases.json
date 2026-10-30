@@ -3421,7 +3421,19 @@
         }
       ],
       "write_only": [],
-      "import_refused_until": "#1229"
+      "export": {
+        "title": "U",
+        "type": "array",
+        "prefixItems": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "integer"
+          }
+        ],
+        "items": false
+      }
     },
     {
       "id": "unevaluated-items-after-schema-items",
@@ -3526,7 +3538,21 @@
       ],
       "rejected": [],
       "write_only": [],
-      "import_refused_until": "#1229"
+      "export": {
+        "title": "U",
+        "type": "array",
+        "prefixItems": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "integer"
+          }
+        ],
+        "items": {
+          "type": "boolean"
+        }
+      }
     },
     {
       "id": "unevaluated-items-homogeneous-items",
@@ -3574,7 +3600,13 @@
       ],
       "rejected": [],
       "write_only": [],
-      "import_refused_until": "#1229"
+      "export": {
+        "title": "U",
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      }
     },
     {
       "id": "unevaluated-items-as-items",
@@ -3614,7 +3646,13 @@
       ],
       "rejected": [],
       "write_only": [],
-      "import_refused_until": "#1229"
+      "export": {
+        "title": "U",
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      }
     },
     {
       "id": "unevaluated-items-draft-2019-09-tail",
@@ -3727,7 +3765,21 @@
         }
       ],
       "write_only": [],
-      "import_refused_until": "#1229"
+      "export": {
+        "title": "U",
+        "type": "array",
+        "prefixItems": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "integer"
+          }
+        ],
+        "items": {
+          "type": "boolean"
+        }
+      }
     },
     {
       "id": "unevaluated-items-ignored-by-draft-07",
@@ -5762,7 +5814,7 @@
         "unevaluatedItems": false
       },
       "reason": "contains contributes evaluated items",
-      "message": "unevaluatedItems"
+      "message": "`unevaluatedItems` beside `contains`"
     },
     {
       "id": "unevaluated-items-beside-allof",
@@ -5784,7 +5836,7 @@
         "unevaluatedItems": false
       },
       "reason": "depends on annotations",
-      "message": "unevaluatedItems"
+      "message": "`unevaluatedItems` beside `allOf`"
     },
     {
       "id": "closed-positional-alternatives",
@@ -6474,24 +6526,6 @@
       "message": "not valid in Draft 4"
     },
     {
-      "id": "unevaluated-items-on-tuple",
-      "schema": {
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "type": "array",
-        "prefixItems": [
-          {
-            "type": "string"
-          },
-          {
-            "type": "integer"
-          }
-        ],
-        "unevaluatedItems": false
-      },
-      "reason": "unevaluatedItems is lane 5 (#1229)",
-      "message": "unevaluatedItems"
-    },
-    {
       "id": "legacy-items-in-draft-2020-12",
       "schema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -6508,6 +6542,228 @@
       },
       "reason": "array-valued items stays refused in Draft 2020-12",
       "message": "Draft 2020-12"
+    },
+    {
+      "id": "unevaluated-items-beside-anyof",
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "array",
+        "prefixItems": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "integer"
+          }
+        ],
+        "anyOf": [
+          {
+            "minItems": 1
+          }
+        ],
+        "unevaluatedItems": false
+      },
+      "reason": "depends on annotations",
+      "message": "`unevaluatedItems` beside `anyOf`"
+    },
+    {
+      "id": "unevaluated-items-beside-oneof",
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "array",
+        "prefixItems": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "integer"
+          }
+        ],
+        "oneOf": [
+          {
+            "minItems": 1
+          }
+        ],
+        "unevaluatedItems": false
+      },
+      "reason": "depends on annotations",
+      "message": "`unevaluatedItems` beside `oneOf`"
+    },
+    {
+      "id": "unevaluated-items-beside-not",
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "array",
+        "prefixItems": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "integer"
+          }
+        ],
+        "not": {
+          "minItems": 3
+        },
+        "unevaluatedItems": false
+      },
+      "reason": "depends on annotations",
+      "message": "`unevaluatedItems` beside `not`"
+    },
+    {
+      "id": "unevaluated-items-beside-conditional",
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "array",
+        "prefixItems": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "integer"
+          }
+        ],
+        "if": {
+          "minItems": 2
+        },
+        "then": {
+          "maxItems": 2
+        },
+        "unevaluatedItems": false
+      },
+      "reason": "depends on annotations",
+      "message": "`unevaluatedItems` beside `if`"
+    },
+    {
+      "id": "unevaluated-items-beside-dependent-schemas",
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "array",
+        "prefixItems": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "integer"
+          }
+        ],
+        "dependentSchemas": {
+          "a": {
+            "minItems": 1
+          }
+        },
+        "unevaluatedItems": false
+      },
+      "reason": "depends on annotations",
+      "message": "`unevaluatedItems` beside `dependentSchemas`"
+    },
+    {
+      "id": "unevaluated-items-beside-ref",
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$defs": {
+          "t": {
+            "type": "array",
+            "prefixItems": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ]
+          }
+        },
+        "$ref": "#/$defs/t",
+        "unevaluatedItems": false
+      },
+      "reason": "a $ref sibling depends on the referenced schema's annotations",
+      "message": "`unevaluatedItems` beside `$ref`"
+    },
+    {
+      "id": "unevaluated-items-beside-dynamic-ref",
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$defs": {
+          "t": {
+            "$dynamicAnchor": "t",
+            "type": "array",
+            "prefixItems": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ]
+          }
+        },
+        "type": "array",
+        "$dynamicRef": "#t",
+        "unevaluatedItems": false
+      },
+      "reason": "a $dynamicRef sibling depends on dynamic-scope annotations",
+      "message": "`unevaluatedItems` beside `$dynamicRef`"
+    },
+    {
+      "id": "unevaluated-items-beside-recursive-ref",
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2019-09/schema",
+        "$recursiveAnchor": true,
+        "type": "array",
+        "items": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "integer"
+          }
+        ],
+        "$recursiveRef": "#",
+        "unevaluatedItems": false
+      },
+      "reason": "a $recursiveRef sibling depends on dynamic-scope annotations",
+      "message": "`unevaluatedItems` beside `$recursiveRef`"
+    },
+    {
+      "id": "unevaluated-items-without-array-type",
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "prefixItems": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "integer"
+          }
+        ],
+        "unevaluatedItems": false
+      },
+      "reason": "not a direct concrete array schema",
+      "message": "`unevaluatedItems` requires a direct concrete array schema"
+    },
+    {
+      "id": "unevaluated-items-array-tail",
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "array",
+        "prefixItems": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "integer"
+          }
+        ],
+        "unevaluatedItems": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "reason": "violates the member rule",
+      "message": "`unevaluatedItems` tail cannot contain a nested array wrapper"
     }
   ]
 }

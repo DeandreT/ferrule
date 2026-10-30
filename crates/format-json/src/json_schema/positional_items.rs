@@ -31,9 +31,12 @@ pub(super) fn is_direct_array_schema(schema: &serde_json::Value) -> bool {
     }
 }
 
+/// `unevaluated` is the direct `unevaluatedItems` schema when it acts as the
+/// tail, which it does only when no active tail keyword is present.
 pub(super) fn normalize(
     name: &str,
     schema: &serde_json::Value,
+    unevaluated: Option<&serde_json::Value>,
     doc: &super::files::LoadedSchema,
     active_refs: &mut Vec<String>,
 ) -> Result<Option<SchemaNode>, JsonFormatError> {
@@ -51,7 +54,7 @@ pub(super) fn normalize(
         ));
     }
     if let Some(prefix) = prefix {
-        return normalize_prefix(name, schema, prefix, doc, active_refs).map(Some);
+        return normalize_prefix(name, schema, prefix, unevaluated, doc, active_refs).map(Some);
     }
     if let Some(tuple) = tuple {
         if !dialect.supports_legacy_tuple_items() {
@@ -60,7 +63,8 @@ pub(super) fn normalize(
                 "tuple-form array `items` is not valid in Draft 2020-12",
             ));
         }
-        return normalize_tuple(name, schema, tuple, dialect, doc, active_refs).map(Some);
+        return normalize_tuple(name, schema, tuple, unevaluated, dialect, doc, active_refs)
+            .map(Some);
     }
     Ok(None)
 }
@@ -69,6 +73,7 @@ fn normalize_prefix(
     name: &str,
     schema: &serde_json::Value,
     prefix: &serde_json::Value,
+    unevaluated: Option<&serde_json::Value>,
     doc: &super::files::LoadedSchema,
     active_refs: &mut Vec<String>,
 ) -> Result<SchemaNode, JsonFormatError> {
@@ -79,9 +84,8 @@ fn normalize_prefix(
         )
     })?;
     let tail = match schema.get("items") {
-        None | Some(serde_json::Value::Bool(true)) => Tail::Open,
-        Some(serde_json::Value::Bool(false)) => Tail::Closed,
-        Some(schema) => Tail::Schema(schema, "`items` tail"),
+        Some(items) => Tail::new(items, "`items` tail"),
+        None => Tail::unevaluated(unevaluated),
     };
     let dialect = files::validation_dialect(schema);
     let node = lower(
@@ -113,14 +117,14 @@ fn normalize_tuple(
     name: &str,
     schema: &serde_json::Value,
     members: &[serde_json::Value],
+    unevaluated: Option<&serde_json::Value>,
     dialect: files::ValidationDialect,
     doc: &super::files::LoadedSchema,
     active_refs: &mut Vec<String>,
 ) -> Result<SchemaNode, JsonFormatError> {
     let tail = match schema.get("additionalItems") {
-        None | Some(serde_json::Value::Bool(true)) => Tail::Open,
-        Some(serde_json::Value::Bool(false)) => Tail::Closed,
-        Some(schema) => Tail::Schema(schema, "`additionalItems` tail"),
+        Some(additional) => Tail::new(additional, "`additionalItems` tail"),
+        None => Tail::unevaluated(unevaluated),
     };
     lower(
         name,
@@ -259,6 +263,22 @@ enum Tail<'a> {
     Open,
     Closed,
     Schema(&'a serde_json::Value, &'static str),
+}
+
+impl<'a> Tail<'a> {
+    fn new(schema: &'a serde_json::Value, role: &'static str) -> Self {
+        match schema {
+            serde_json::Value::Bool(true) => Self::Open,
+            serde_json::Value::Bool(false) => Self::Closed,
+            schema => Self::Schema(schema, role),
+        }
+    }
+
+    fn unevaluated(schema: Option<&'a serde_json::Value>) -> Self {
+        schema.map_or(Self::Open, |schema| {
+            Self::new(schema, "`unevaluatedItems` tail")
+        })
+    }
 }
 
 fn unsupported(name: &str, reason: &str) -> JsonFormatError {

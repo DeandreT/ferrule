@@ -323,8 +323,8 @@ fn unsupported_dialect_ambiguity_composition_and_active_keywords_reject() {
             "direct concrete array",
         ),
         (
-            r#"{"type":"array","items":[{"type":"string"}],"maxItems":1,"unevaluatedItems":false}"#,
-            "unevaluatedItems",
+            r#"{"type":"array","items":[{"type":"string"}],"maxItems":1,"if":{"minItems":1},"unevaluatedItems":false}"#,
+            "`unevaluatedItems` beside `if`",
         ),
         (
             r##"{
