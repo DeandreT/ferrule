@@ -196,6 +196,8 @@ pub enum XmlFormatError {
     UnsupportedXmlOpenContent { reason: &'static str },
     #[error("xs:any wildcard does not allow element `{name}` in namespace `{namespace}`")]
     XmlWildcardNamespaceMismatch { name: String, namespace: String },
+    #[error("xs:any wildcard excludes element `{name}` in namespace `{namespace}`")]
+    XmlWildcardExcludedName { name: String, namespace: String },
     #[error(
         "strict xs:any wildcard has no resolved declaration for element `{name}` in namespace `{namespace}`"
     )]
@@ -220,6 +222,8 @@ pub enum XmlFormatError {
         "xs:anyAttribute wildcard does not allow attribute `{name}` in namespace `{namespace}`"
     )]
     XmlAttributeWildcardNamespaceMismatch { name: String, namespace: String },
+    #[error("xs:anyAttribute wildcard excludes attribute `{name}` in namespace `{namespace}`")]
+    XmlAttributeWildcardExcludedName { name: String, namespace: String },
     #[error(
         "strict xs:anyAttribute wildcard has no resolved declaration for attribute `{name}` in namespace `{namespace}`"
     )]

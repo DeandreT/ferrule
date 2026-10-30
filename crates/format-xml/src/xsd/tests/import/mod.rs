@@ -3775,8 +3775,8 @@ fn rejects_attribute_wildcard_profiles_that_cannot_be_projected()
     let cases = [
         (
             "exclusion",
-            "<xs:anyAttribute namespace=\"##local\" processContents=\"skip\" notQName=\"blocked\"/>",
-            "exclusions",
+            "<xs:anyAttribute namespace=\"##local\" processContents=\"skip\" notQName=\"##definedSibling\"/>",
+            "##definedSibling",
         ),
         (
             "invalid-process",

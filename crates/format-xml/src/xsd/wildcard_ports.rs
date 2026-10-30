@@ -65,6 +65,30 @@ pub(super) fn is_declared_element(node: &SchemaNode) -> bool {
     is_typed_element(node) && marked_process(node).is_none()
 }
 
+/// Whether a typed field is a still-marked projected port.
+pub(super) fn is_projected(node: &SchemaNode) -> bool {
+    marked_process(node).is_some()
+}
+
+/// Removes the members of removed ports from the type's choices. The
+/// wildcard's own choice names only its ports; another choice keeps a member
+/// a remaining child of the same name still fills, and needs two members to
+/// stay. [`resolve`] applies that rule to the wildcard's own choice.
+pub(super) fn remove_choice_members(
+    choices: &mut Vec<XmlRepeatingChoice>,
+    removed: &[String],
+    children: &[SchemaNode],
+) {
+    choices.retain_mut(|choice| {
+        let projection = choice.members.iter().any(|member| member == CHOICE_MARK);
+        choice.members.retain(|member| {
+            !removed.contains(member)
+                || (!projection && children.iter().any(|child| &child.name == member))
+        });
+        projection || choice.members.len() > 1
+    });
+}
+
 /// Whether an existing node equals a new, unmarked projected port.
 pub(super) fn same_port(existing: &SchemaNode, port: &SchemaNode) -> bool {
     if existing.name != port.name {

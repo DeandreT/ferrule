@@ -396,11 +396,21 @@ fn validate_export_node(
             reason: "non-skip wildcard processing requires a namespace-aware generic element() or attribute() group",
         });
     }
-    if node.has_xml_wildcard_exclusions() {
-        return Err(wildcard_exclusion_export_error(
+    if !node.xml_wildcard_excluded_names_are_valid() {
+        return Err(wildcard_export_error(
             node,
-            "XSD 1.1 wildcard exclusions (notNamespace/notQName) cannot be exported",
+            "excluded wildcard names require a generic element() or attribute() group whose namespace constraint allows each name",
         ));
+    }
+    // Import refuses exclusions on strict element wildcards, which keep no
+    // generic group, so export does not write them either.
+    if node.name == XML_ELEMENTS_FIELD
+        && node.xml_wildcard_process_contents == XmlWildcardProcessContents::Strict
+        && node.has_xml_wildcard_exclusions()
+    {
+        return Err(XmlFormatError::UnsupportedXmlWildcard {
+            reason: "a strict element wildcard cannot refuse excluded names",
+        });
     }
     if node.attribute && node.text {
         return Err(XmlFormatError::ConflictingSchemaRoles {
@@ -459,6 +469,7 @@ fn validate_export_node(
                 generic_attribute_wildcard_schema_with(
                     namespace.clone(),
                     node.xml_wildcard_process_contents,
+                    node.xml_wildcard_excluded_names.clone(),
                 )
             },
         );
@@ -550,7 +561,7 @@ fn write_element_required(
     let optional = occurrence == ElementOccurrence::Optional
         || (occurrence == ElementOccurrence::Schema && declared.optional);
     if node.name == XML_ELEMENTS_FIELD {
-        let namespace = wildcard_namespace_attribute(node, alternatives)?;
+        let constraint = wildcard_constraint_attributes(node, alternatives)?;
         let occurs = if declared.repeated {
             " minOccurs=\"0\" maxOccurs=\"unbounded\""
         } else if optional {
@@ -559,7 +570,7 @@ fn write_element_required(
             ""
         };
         out.push_str(&format!(
-            "{pad}<xs:any namespace=\"{namespace}\" processContents=\"{}\"{occurs}/>\n",
+            "{pad}<xs:any{constraint} processContents=\"{}\"{occurs}/>\n",
             wildcard_process_contents(node)
         ));
         return Ok(());
@@ -676,50 +687,95 @@ fn write_element_required(
     Ok(())
 }
 
-fn wildcard_namespace_attribute(
+/// The namespace constraint and excluded names of a wildcard, as attributes
+/// with a leading space. A negated set exports as `notNamespace` alone.
+/// Excluded names export as explicit QNames whose prefixes the wildcard
+/// declares itself; `xmlns=""` keeps unprefixed names unqualified. Either
+/// attribute requires an XSD 1.1 processor.
+fn wildcard_constraint_attributes(
     node: &SchemaNode,
     alternatives: &AlternativeExportPlan<'_>,
 ) -> Result<String, XmlFormatError> {
-    let Some(constraint) = &node.xml_wildcard_namespace else {
-        return Ok("##local".to_string());
+    let namespace_tokens = |namespaces: &ir::XmlWildcardNamespaceList| {
+        namespaces
+            .iter()
+            .map(|namespace| match namespace {
+                XmlNamespace::Unqualified => "##local".to_string(),
+                XmlNamespace::Qualified(namespace)
+                    if Some(namespace.as_str()) == alternatives.export_namespace() =>
+                {
+                    "##targetNamespace".to_string()
+                }
+                XmlNamespace::Qualified(namespace) => alternatives::xml_escape(namespace.as_str()),
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
     };
-    match constraint {
-        ir::XmlWildcardNamespaceConstraint::Any => Ok("##any".to_string()),
-        ir::XmlWildcardNamespaceConstraint::Other { target_namespace } => {
+    let mut attributes = match &node.xml_wildcard_namespace {
+        None => " namespace=\"##local\"".to_string(),
+        Some(ir::XmlWildcardNamespaceConstraint::Any) => " namespace=\"##any\"".to_string(),
+        Some(ir::XmlWildcardNamespaceConstraint::Other { target_namespace }) => {
             let target = target_namespace.as_ref().map(ir::XmlNamespaceUri::as_str);
-            if target == alternatives.export_namespace() {
-                Ok("##other".to_string())
-            } else {
-                Err(XmlFormatError::UnsupportedXmlWildcard {
+            if target != alternatives.export_namespace() {
+                return Err(XmlFormatError::UnsupportedXmlWildcard {
                     reason: "##other cannot be exported under a different target namespace",
-                })
+                });
+            }
+            " namespace=\"##other\"".to_string()
+        }
+        Some(ir::XmlWildcardNamespaceConstraint::List { namespaces }) => {
+            format!(" namespace=\"{}\"", namespace_tokens(namespaces))
+        }
+        Some(ir::XmlWildcardNamespaceConstraint::Not { namespaces }) => {
+            format!(" notNamespace=\"{}\"", namespace_tokens(namespaces))
+        }
+    };
+    let Some(names) = &node.xml_wildcard_excluded_names else {
+        return Ok(attributes);
+    };
+    let mut prefixes = Vec::<&str>::new();
+    let mut tokens = Vec::new();
+    for name in names.iter() {
+        match name.namespace().uri() {
+            None => tokens.push(name.local().to_string()),
+            // The xml prefix is predeclared, and no other prefix may bind it.
+            Some(XML_NAMESPACE_URI) => tokens.push(format!("xml:{}", name.local())),
+            Some(XMLNS_NAMESPACE_URI) => {
+                return Err(wildcard_export_error(
+                    node,
+                    "excluded names in the xmlns namespace cannot be written as QNames",
+                ));
+            }
+            Some(uri) => {
+                let index = prefixes
+                    .iter()
+                    .position(|candidate| *candidate == uri)
+                    .unwrap_or_else(|| {
+                        prefixes.push(uri);
+                        prefixes.len() - 1
+                    });
+                tokens.push(format!("fwx{}:{}", index + 1, name.local()));
             }
         }
-        ir::XmlWildcardNamespaceConstraint::List { namespaces } => {
-            let tokens = namespaces
-                .iter()
-                .map(|namespace| match namespace {
-                    XmlNamespace::Unqualified => "##local".to_string(),
-                    XmlNamespace::Qualified(namespace)
-                        if Some(namespace.as_str()) == alternatives.export_namespace() =>
-                    {
-                        "##targetNamespace".to_string()
-                    }
-                    XmlNamespace::Qualified(namespace) => {
-                        alternatives::xml_escape(namespace.as_str())
-                    }
-                })
-                .collect::<Vec<_>>();
-            Ok(tokens.join(" "))
-        }
-        ir::XmlWildcardNamespaceConstraint::Not { .. } => Err(wildcard_exclusion_export_error(
-            node,
-            "XSD 1.1 notNamespace constraints cannot be exported",
-        )),
     }
+    for (index, uri) in prefixes.iter().enumerate() {
+        attributes.push_str(&format!(
+            " xmlns:fwx{}=\"{}\"",
+            index + 1,
+            alternatives::xml_escape(uri)
+        ));
+    }
+    if names.iter().any(|name| name.namespace().uri().is_none()) {
+        attributes.push_str(" xmlns=\"\"");
+    }
+    attributes.push_str(&format!(" notQName=\"{}\"", tokens.join(" ")));
+    Ok(attributes)
 }
 
-fn wildcard_exclusion_export_error(node: &SchemaNode, reason: &'static str) -> XmlFormatError {
+const XML_NAMESPACE_URI: &str = "http://www.w3.org/XML/1998/namespace";
+const XMLNS_NAMESPACE_URI: &str = "http://www.w3.org/2000/xmlns/";
+
+fn wildcard_export_error(node: &SchemaNode, reason: &'static str) -> XmlFormatError {
     if node.name == XML_ATTRIBUTES_FIELD {
         XmlFormatError::UnsupportedXmlAttributeWildcard { reason }
     } else {
@@ -860,9 +916,9 @@ fn write_attribute_wildcard(
     out: &mut String,
 ) -> Result<(), XmlFormatError> {
     let pad = "  ".repeat(depth);
-    let namespace = wildcard_namespace_attribute(wildcard, alternatives)?;
+    let constraint = wildcard_constraint_attributes(wildcard, alternatives)?;
     out.push_str(&format!(
-        "{pad}<xs:anyAttribute namespace=\"{namespace}\" processContents=\"{}\"/>\n",
+        "{pad}<xs:anyAttribute{constraint} processContents=\"{}\"/>\n",
         wildcard_process_contents(wildcard)
     ));
     Ok(())
