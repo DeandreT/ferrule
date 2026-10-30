@@ -1372,6 +1372,7 @@ pub(super) fn map_name(name: &str) -> Option<&'static str> {
         "substring" => "substring",
         "substring-before" => "substring_before",
         "substring-after" => "substring_after",
+        "translate" => "translate",
         "normalize-space" => "normalize_space",
         "empty" => "is_empty",
         "get-folder" => "get_folder",
@@ -1448,6 +1449,7 @@ mod tests {
         assert_eq!(map_name("ends-with"), Some("ends_with"));
         assert_eq!(map_name("matches"), Some("matches"));
         assert_eq!(map_name("replace"), Some("replace"));
+        assert_eq!(map_name("translate"), Some("translate"));
         assert_eq!(map_name("left"), Some("left"));
         assert_eq!(map_name("right"), Some("right"));
         assert_eq!(map_name("empty"), Some("is_empty"));

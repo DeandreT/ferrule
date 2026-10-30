@@ -205,6 +205,7 @@ mod tests {
             ("format_date", "format-date", "core"),
             ("format_datetime", "format-dateTime", "core"),
             ("format_time", "format-time", "core"),
+            ("translate", "translate", "core"),
         ] {
             assert_eq!(unmap_function_name(function), name, "{function}");
             assert_eq!(function_library(function), library, "{function}");

@@ -652,6 +652,13 @@ and other scalar kinds; it does not enforce UUID version or variant bits.
 Arity errors precede type and lexical errors in native and generated calls.
 Import/export retain the standard function spelling and `lang` library;
 unrelated namespaces do not acquire this function by name alone.
+The `translate` component maps to the `translate` scalar operation with XPath
+`fn:translate` semantics over Unicode scalar values. Each character of the
+value found in the second input becomes the character at the same position in
+the third input. Characters without a counterpart are removed, and the first
+occurrence of a repeated search character wins. All three inputs use lexical
+text, so absent values read as empty strings. Export writes the `core`
+library, which offers the function in every execution language.
 The exact decimal divide/one-place round UDF pattern fed only by implicit
 Protobuf `float` fields exports with native arithmetic wires. Its internal
 numeric conversions are identities for the finite float32 values accepted by

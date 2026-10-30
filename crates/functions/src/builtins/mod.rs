@@ -11,6 +11,7 @@ mod float_text;
 mod guid;
 mod isbn;
 mod regex_match;
+mod translate;
 
 const MAX_GENERATED_PADDING_CHARS: i64 = 1_000_000;
 // Match the bundled SQLite LIKE pattern cap, measured before NUL truncation.
@@ -70,6 +71,7 @@ pub(super) fn call_builtin(
         BuiltinId::Substring => substring(args),
         BuiltinId::SubstringBefore => split_string(args, "substring_before", true),
         BuiltinId::SubstringAfter => split_string(args, "substring_after", false),
+        BuiltinId::Translate => translate::translate(args),
         BuiltinId::String => string(args),
         BuiltinId::IsNumeric => is_numeric(args),
         BuiltinId::ToNumber => to_number(args),
