@@ -807,6 +807,9 @@ fn resolve_recursive_schema(
         .xml_wildcard_namespace
         .clone_from(&occurrence.xml_wildcard_namespace);
     resolved.xml_wildcard_process_contents = occurrence.xml_wildcard_process_contents;
+    resolved
+        .xml_wildcard_excluded_names
+        .clone_from(&occurrence.xml_wildcard_excluded_names);
     resolved.repeating = occurrence.repeating;
     resolved.xml_optional = occurrence.xml_optional;
     resolved.nillable = occurrence.nillable;

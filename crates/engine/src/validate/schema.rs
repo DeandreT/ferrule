@@ -193,6 +193,14 @@ pub(super) fn validate_schema(
             ),
         ));
     }
+    if !schema.xml_wildcard_excluded_names_are_valid() {
+        issues.push(ValidationIssue::new(
+            root,
+            format!(
+                "XML wildcard excluded names{suffix} require one namespace-aware generic element or attribute group whose namespace constraint allows every name"
+            ),
+        ));
+    }
     if !schema.xml_repeating_sequences_are_valid() {
         issues.push(ValidationIssue::new(
             root,

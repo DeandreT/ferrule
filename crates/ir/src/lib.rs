@@ -29,6 +29,7 @@ pub use xml_scalar_output::{
 };
 mod xml_structured_input;
 mod xml_type_origin;
+mod xml_wildcard_exclusions;
 pub use xml_schema_hints::{
     MAX_XML_SCHEMA_HINT_PAIRS, MAX_XML_SCHEMA_HINT_TOKEN_BYTES, XmlSchemaHintDerivation,
     XmlSchemaHints, XmlSchemaHintsError, XmlSchemaLocation,
@@ -57,6 +58,10 @@ pub use xml_structured_input::{
     MAX_STRUCTURED_XML_SCHEMA_NODES, xml_structured_document_input_is_supported,
 };
 pub use xml_type_origin::{XmlTypeOrigin, XmlTypeOriginError};
+pub use xml_wildcard_exclusions::{
+    MAX_XML_WILDCARD_EXCLUDED_NAMES, XmlExpandedName, XmlWildcardExcludedNames,
+    XmlWildcardExcludedNamesError,
+};
 
 pub use scalar_lexical::parse_exact_decimal_i64;
 pub use source_origin::{
@@ -323,6 +328,11 @@ pub enum XmlWildcardNamespaceConstraint {
     List {
         namespaces: XmlWildcardNamespaceList,
     },
+    /// An XSD 1.1 `notNamespace` set. It stays distinct from `Other`, which
+    /// models `##other`, even when both reject the same namespaces.
+    Not {
+        namespaces: XmlWildcardNamespaceList,
+    },
 }
 
 impl XmlWildcardNamespaceConstraint {
@@ -342,6 +352,9 @@ impl XmlWildcardNamespaceConstraint {
                         .is_none_or(|target| namespace != target.as_str())
             }),
             Self::List { namespaces } => namespaces
+                .iter()
+                .any(|candidate| candidate.matches(namespace)),
+            Self::Not { namespaces } => !namespaces
                 .iter()
                 .any(|candidate| candidate.matches(namespace)),
         }
@@ -551,6 +564,9 @@ pub struct SchemaNode {
     /// Validation policy for one generic XML wildcard group.
     #[serde(default, skip_serializing_if = "XmlWildcardProcessContents::is_skip")]
     pub xml_wildcard_process_contents: XmlWildcardProcessContents,
+    /// XSD 1.1 expanded names this generic wildcard group never matches.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub xml_wildcard_excluded_names: Option<XmlWildcardExcludedNames>,
     #[serde(default)]
     pub repeating: bool,
     /// Reuses the shape of the nearest concrete group with this name.
@@ -807,6 +823,8 @@ impl<'de> Deserialize<'de> for SchemaNode {
             #[serde(default)]
             xml_wildcard_process_contents: XmlWildcardProcessContents,
             #[serde(default)]
+            xml_wildcard_excluded_names: Option<XmlWildcardExcludedNames>,
+            #[serde(default)]
             repeating: bool,
             #[serde(default)]
             recursive_ref: Option<String>,
@@ -894,6 +912,7 @@ impl<'de> Deserialize<'de> for SchemaNode {
             xml_name_alternatives: repr.xml_name_alternatives,
             xml_wildcard_namespace: repr.xml_wildcard_namespace,
             xml_wildcard_process_contents: repr.xml_wildcard_process_contents,
+            xml_wildcard_excluded_names: repr.xml_wildcard_excluded_names,
             repeating: repr.repeating,
             recursive_ref: repr.recursive_ref,
             attribute: repr.attribute,
@@ -953,7 +972,7 @@ impl<'de> Deserialize<'de> for SchemaNode {
                 || !node.json_pattern_budget_is_valid())
         {
             return Err(serde::de::Error::custom(
-                "schema metadata contains invalid nested alternatives, required fields, recursion, fixed or JSON allowed values, numeric range, JSON multipleOf constraints, item-count, contains, property-count, property-dependency, pattern-property selector, property-name, or unique-items constraints, string-length range, JSON pattern constraints or format annotations, value generation, default value, alternative mode, XML alternative kind, XML name alternatives, XML repeating sequences or choices, XML wildcard namespace or process policy, database relation, or JSON nullability, or exceeds its schema-wide JSON pattern program or match-work budget",
+                "schema metadata contains invalid nested alternatives, required fields, recursion, fixed or JSON allowed values, numeric range, JSON multipleOf constraints, item-count, contains, property-count, property-dependency, pattern-property selector, property-name, or unique-items constraints, string-length range, JSON pattern constraints or format annotations, value generation, default value, alternative mode, XML alternative kind, XML name alternatives, XML repeating sequences or choices, XML wildcard namespace, process policy or excluded names, database relation, or JSON nullability, or exceeds its schema-wide JSON pattern program or match-work budget",
             ));
         }
         Ok(node)
@@ -1211,6 +1230,7 @@ impl SchemaNode {
             && self.json_undeclared_properties_are_valid()
             && self.xml_wildcard_namespace_is_valid()
             && self.xml_wildcard_process_contents_is_valid()
+            && self.xml_wildcard_excluded_names_are_valid()
     }
 
     fn metadata_without_pattern_evaluation_is_valid(&self) -> bool {
@@ -1253,6 +1273,7 @@ impl SchemaNode {
             && self.json_undeclared_properties_are_valid()
             && self.xml_wildcard_namespace_is_valid()
             && self.xml_wildcard_process_contents_is_valid()
+            && self.xml_wildcard_excluded_names_are_valid()
     }
 
     pub fn scalar(name: impl Into<String>, ty: ScalarType) -> Self {
@@ -1262,6 +1283,7 @@ impl SchemaNode {
             xml_name_alternatives: Vec::new(),
             xml_wildcard_namespace: None,
             xml_wildcard_process_contents: XmlWildcardProcessContents::Skip,
+            xml_wildcard_excluded_names: None,
             repeating: false,
             recursive_ref: None,
             attribute: false,
@@ -1316,6 +1338,7 @@ impl SchemaNode {
             xml_name_alternatives: Vec::new(),
             xml_wildcard_namespace: None,
             xml_wildcard_process_contents: XmlWildcardProcessContents::Skip,
+            xml_wildcard_excluded_names: None,
             repeating: false,
             recursive_ref: None,
             attribute: false,
@@ -1402,6 +1425,7 @@ impl SchemaNode {
             xml_name_alternatives: Vec::new(),
             xml_wildcard_namespace: None,
             xml_wildcard_process_contents: XmlWildcardProcessContents::Skip,
+            xml_wildcard_excluded_names: None,
             repeating: false,
             recursive_ref: None,
             attribute: false,
