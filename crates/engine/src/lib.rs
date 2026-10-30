@@ -1086,6 +1086,9 @@ mod adjacency_tree_tests;
 #[path = "tests/aggregate.rs"]
 mod aggregate_tests;
 #[cfg(test)]
+#[path = "tests/anchored_join.rs"]
+mod anchored_join_tests;
+#[cfg(test)]
 #[path = "tests/collection.rs"]
 mod collection_tests;
 #[cfg(test)]

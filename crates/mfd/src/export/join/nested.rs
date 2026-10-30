@@ -3,51 +3,36 @@ use std::collections::BTreeSet;
 use ir::{SchemaKind, SchemaNode};
 use mapping::{JoinSource, JoinSourceCardinality};
 
-use super::super::source::SourceExports;
+use super::super::source::{SourceExport, SourceExports};
 use super::schema_node_at;
 
-/// Resolves the source paths of a join nested inside one ordinary primary
-/// source iteration whose item path is `anchor`.
+/// Resolves the source paths of a join nested inside one ordinary source
+/// iteration whose item path is `anchor`.
 ///
-/// Singletons may sit at any input position and come from the active primary
-/// item (anchor-relative) or from a static named source. Repeating inputs
-/// come from static named sources; a two-input plan also keeps its primary
-/// repeating lookup. Plans without a singleton are refused.
+/// The iteration runs over the primary source or a static named source.
+/// Singletons come from the active item (anchor-relative) or from a static
+/// named source. Repeating inputs come from static named sources, or below
+/// the active item of a primary iteration (anchor-relative); a two-input
+/// plan may instead pair one singleton with one primary repeating collection
+/// outside the iteration. A plan needs at least one repeating input, and
+/// needs no singleton.
 pub(super) fn resolved_nested_source_paths(
     join_sources: &[&JoinSource],
     anchor: &[String],
     sources: &SourceExports<'_>,
 ) -> Result<Vec<Vec<String>>, String> {
-    let singletons = join_sources
+    if join_sources
         .iter()
-        .filter(|source| source.cardinality() == JoinSourceCardinality::Singleton)
-        .count();
-    if join_sources.len() == 2 && singletons != 1 {
-        return Err(
-            "nested join must contain exactly one correlated singleton and one repeating source"
-                .to_string(),
-        );
-    }
-    if singletons == 0 {
-        let reason = if join_sources.len() == 3 {
-            "nested three-input join requires a primary singleton followed by two static named repeating sources"
-        } else {
-            "nested multi-input join requires a primary singleton followed by static named repeating sources"
-        };
-        return Err(reason.to_string());
-    }
-    if singletons == join_sources.len() {
+        .all(|source| source.cardinality() == JoinSourceCardinality::Singleton)
+    {
         return Err("nested join requires at least one repeating source".to_string());
     }
-
-    let inputs = join_sources
-        .iter()
-        .map(|source| NestedInput::classify(source, sources))
-        .collect::<Vec<_>>();
     // Reimport strips the enclosing anchor from every absolute input path, so a
     // source-relative path starting with the anchor would not survive it.
-    for input in &inputs {
-        if input.kind != InputKind::PrimarySingleton && input.collection.starts_with(anchor) {
+    for source in join_sources {
+        if sources.is_named_extra_path(source.collection())
+            && source.collection().starts_with(anchor)
+        {
             return Err(
                 "nested named join collection would change when its enclosing anchor is removed"
                     .to_string(),
@@ -55,91 +40,196 @@ pub(super) fn resolved_nested_source_paths(
         }
     }
 
-    let primary_singletons = inputs
+    let frames = AnchorFrames::resolve(anchor, sources)?;
+    let inputs = join_sources
         .iter()
-        .filter(|input| input.kind == InputKind::PrimarySingleton)
-        .map(|input| {
-            if input.collection.is_empty() {
-                return Err(
-                    "nested join singleton must be a field of the active primary source item"
-                        .to_string(),
-                );
-            }
-            let mut path = anchor.to_vec();
-            path.extend(input.collection.iter().cloned());
-            Ok(path)
-        })
+        .map(|source| NestedInput::classify(source, &frames, sources))
         .collect::<Result<Vec<_>, String>>()?;
-    let (anchor_owner, primary, _) = sources.owner_with_index(anchor);
-    if anchor_owner != 0
-        || primary_singletons
-            .iter()
-            .any(|path| sources.owner_with_index(path).0 != 0)
-    {
-        return Err(
-            "nested join singleton and anchor must belong to the primary source component".into(),
-        );
-    }
-    for path in &primary_singletons {
-        let field = sources
-            .join_collection(path)
-            .ok_or("nested join singleton has no exact primary source schema and port")?;
-        if field.schema.repeating
-            || !field.schema.is_scalar()
-            || primary.ports.key_for_abs(path) != Some(field.port)
-        {
-            return Err(
-                "nested join singleton must resolve to one primary scalar source port".into(),
-            );
-        }
-    }
-    let active = schema_node_at(primary.schema, anchor)
-        .ok_or("nested join anchor has no primary source schema")?;
-    if !matches!(active.kind, SchemaKind::Group { .. }) {
-        return Err("nested join anchor must select a primary source group".into());
-    }
-
+    let singletons = inputs.iter().filter(|input| input.kind.singleton()).count();
+    let mut anchored_repeating = 0;
     let mut repeating_components = RepeatingComponents::default();
     for input in &inputs {
         match input.kind {
-            InputKind::PrimarySingleton => {}
-            InputKind::PrimaryRepeating if join_sources.len() == 2 => {}
-            InputKind::PrimaryRepeating => {
-                return Err(
-                    "nested repeating join inputs must belong to static named source components"
-                        .into(),
-                );
+            InputKind::AnchoredSingleton => frames.validate_anchored(input, false, sources)?,
+            InputKind::AnchoredRepeating => {
+                if frames.index != 0 {
+                    return Err(format!(
+                        "nested repeating join input `{}` below a named source iteration is not exported",
+                        input.collection.join("/")
+                    ));
+                }
+                anchored_repeating += 1;
+                if anchored_repeating > 1 {
+                    return Err(
+                        "nested join takes at most one repeating input below the iteration".into(),
+                    );
+                }
+                frames.validate_anchored(input, true, sources)?;
+            }
+            InputKind::OuterRepeating => {
+                if inputs.len() != 2 || singletons != 1 {
+                    return Err(format!(
+                        "nested primary repeating join input `{}` outside the iteration is exported only beside one singleton in a two-input plan",
+                        input.collection.join("/")
+                    ));
+                }
+                if input.collection.starts_with(anchor) {
+                    return Err(
+                        "nested primary join collection would change when its enclosing anchor is removed"
+                            .to_string(),
+                    );
+                }
             }
             InputKind::NamedSingleton | InputKind::NamedRepeating => {
-                validate_named_input(
-                    input,
-                    anchor,
-                    primary.schema,
-                    sources,
-                    &mut repeating_components,
-                )?;
+                validate_named_input(input, &frames, sources, &mut repeating_components)?;
             }
         }
     }
 
-    let mut primary_singletons = primary_singletons.into_iter();
-    inputs
+    Ok(inputs
         .iter()
         .map(|input| match input.kind {
-            InputKind::PrimarySingleton => primary_singletons
-                .next()
-                .ok_or_else(|| "nested join singleton resolution is incomplete".to_string()),
-            _ => Ok(input.collection.to_vec()),
+            InputKind::AnchoredSingleton | InputKind::AnchoredRepeating => {
+                let mut path = anchor.to_vec();
+                path.extend(input.collection.iter().cloned());
+                path
+            }
+            InputKind::OuterRepeating | InputKind::NamedSingleton | InputKind::NamedRepeating => {
+                input.collection.to_vec()
+            }
         })
-        .collect()
+        .collect())
+}
+
+/// The component owning the enclosing iteration, and the schema frames the
+/// runtime searches for an unprefixed input path, innermost first. The first
+/// frame is the active item; the primary root is always the last.
+struct AnchorFrames<'s, 'a> {
+    anchor: &'s [String],
+    index: usize,
+    component: &'s SourceExport<'a>,
+    local: &'s [String],
+    frames: Vec<&'a SchemaNode>,
+}
+
+impl<'s, 'a> AnchorFrames<'s, 'a> {
+    fn resolve(anchor: &'s [String], sources: &'s SourceExports<'a>) -> Result<Self, String> {
+        let (index, component, local) = sources.owner_with_index(anchor);
+        let (_, primary, _) = sources.owner_with_index(&[]);
+        if index != 0 {
+            let name = anchor.first().map(String::as_str).unwrap_or_default();
+            if primary.schema.child(name).is_some() || primary.schema.dynamic_fields().is_some() {
+                return Err(format!(
+                    "nested join anchor `{name}` names both a primary source child and a named source"
+                ));
+            }
+            if component.dynamic_path_node.is_some()
+                || component.component_uid == sources.primary_component_uid()
+            {
+                return Err(
+                    "nested join anchor must belong to the primary source or a static named source component"
+                        .into(),
+                );
+            }
+        }
+        let mut frames = (0..=local.len())
+            .rev()
+            .map(|length| {
+                schema_node_at(component.schema, &local[..length])
+                    .ok_or("nested join anchor has an unresolved source frame")
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        if !matches!(frames[0].kind, SchemaKind::Group { .. }) {
+            return Err("nested join anchor must select a source group".into());
+        }
+        if index != 0 {
+            frames.push(primary.schema);
+        }
+        Ok(Self {
+            anchor,
+            index,
+            component,
+            local,
+            frames,
+        })
+    }
+
+    /// Frames that declare `name`, or might through open content.
+    fn declaring(&self, name: &str) -> Result<Vec<usize>, ()> {
+        if self
+            .frames
+            .iter()
+            .any(|frame| frame.dynamic_fields().is_some())
+        {
+            return Err(());
+        }
+        Ok(self
+            .frames
+            .iter()
+            .enumerate()
+            .filter(|(_, frame)| frame.child(name).is_some())
+            .map(|(position, _)| position)
+            .collect())
+    }
+
+    /// Which source owns the frame at `position`.
+    fn owner_label(&self, position: usize) -> &'static str {
+        if self.index == 0 || position + 1 == self.frames.len() {
+            "primary"
+        } else {
+            "named"
+        }
+    }
+
+    /// Checks an anchor-relative input against one exact port of the
+    /// iteration's component.
+    fn validate_anchored(
+        &self,
+        input: &NestedInput<'_>,
+        repeating: bool,
+        sources: &SourceExports<'_>,
+    ) -> Result<(), String> {
+        if input.collection.is_empty() {
+            return Err("nested join singleton must be a field of the active source item".into());
+        }
+        let mut path = self.anchor.to_vec();
+        path.extend(input.collection.iter().cloned());
+        let mut local = self.local.to_vec();
+        local.extend(input.collection.iter().cloned());
+        let resolved = sources.join_collection(&path);
+        let valid = resolved.is_some_and(|field| {
+            let shape = if repeating {
+                field.schema.repeating && matches!(field.schema.kind, SchemaKind::Group { .. })
+            } else {
+                !field.schema.repeating && field.schema.is_scalar()
+            };
+            shape
+                && sources.owner_with_index(&path).0 == self.index
+                && self.component.ports.key_for_abs(&local) == Some(field.port)
+        });
+        if valid {
+            Ok(())
+        } else if repeating {
+            Err("nested join input below the iteration must resolve to one repeating group port of the active item".into())
+        } else {
+            Err("nested join singleton must resolve to one scalar port of the active item".into())
+        }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum InputKind {
-    PrimarySingleton,
-    PrimaryRepeating,
+    AnchoredSingleton,
+    AnchoredRepeating,
+    OuterRepeating,
     NamedSingleton,
     NamedRepeating,
+}
+
+impl InputKind {
+    const fn singleton(self) -> bool {
+        matches!(self, Self::AnchoredSingleton | Self::NamedSingleton)
+    }
 }
 
 struct NestedInput<'a> {
@@ -148,16 +238,48 @@ struct NestedInput<'a> {
 }
 
 impl<'a> NestedInput<'a> {
-    fn classify(source: &'a JoinSource, sources: &SourceExports<'_>) -> Self {
+    /// Classifies an input the way the runtime resolves it: named paths by
+    /// source name, singletons on the active item, and other repeating paths
+    /// on the innermost frame declaring their first segment.
+    fn classify(
+        source: &'a JoinSource,
+        frames: &AnchorFrames<'_, '_>,
+        sources: &SourceExports<'_>,
+    ) -> Result<Self, String> {
         let collection = source.collection();
-        let named = sources.is_named_extra_path(collection);
-        let kind = match (source.cardinality(), named) {
-            (JoinSourceCardinality::Singleton, false) => InputKind::PrimarySingleton,
-            (JoinSourceCardinality::Singleton, true) => InputKind::NamedSingleton,
-            (JoinSourceCardinality::Repeating, false) => InputKind::PrimaryRepeating,
-            (JoinSourceCardinality::Repeating, true) => InputKind::NamedRepeating,
+        let singleton = source.cardinality() == JoinSourceCardinality::Singleton;
+        let kind = if sources.is_named_extra_path(collection) {
+            if singleton {
+                InputKind::NamedSingleton
+            } else {
+                InputKind::NamedRepeating
+            }
+        } else if singleton {
+            InputKind::AnchoredSingleton
+        } else {
+            let display = collection.join("/");
+            let first = collection
+                .first()
+                .ok_or("nested repeating join collection is empty")?;
+            let declaring = frames.declaring(first).map_err(|()| {
+                format!("nested repeating join input `{display}` may be shadowed by an open source frame")
+            })?;
+            match declaring.as_slice() {
+                [0] => InputKind::AnchoredRepeating,
+                [position] if *position + 1 == frames.frames.len() => InputKind::OuterRepeating,
+                [] => {
+                    return Err(format!(
+                        "nested repeating join input `{display}` is neither below the iteration nor in the primary source"
+                    ));
+                }
+                _ => {
+                    return Err(format!(
+                        "nested repeating join input `{display}` is declared by more than one enclosing source frame"
+                    ));
+                }
+            }
         };
-        Self { collection, kind }
+        Ok(Self { collection, kind })
     }
 }
 
@@ -170,8 +292,7 @@ struct RepeatingComponents {
 
 fn validate_named_input(
     input: &NestedInput<'_>,
-    anchor: &[String],
-    primary_schema: &SchemaNode,
+    frames: &AnchorFrames<'_, '_>,
     sources: &SourceExports<'_>,
     repeating_components: &mut RepeatingComponents,
 ) -> Result<(), String> {
@@ -217,21 +338,18 @@ fn validate_named_input(
         .collection
         .first()
         .ok_or("nested named join collection is empty")?;
-    // Every possible primary frame on the anchor is checked conservatively.
+    // Every possible source frame enclosing the join is checked conservatively.
     // Runtime lookup chooses the innermost frame owning this first segment.
-    for length in 0..=anchor.len() {
-        let frame = schema_node_at(primary_schema, &anchor[..length])
-            .ok_or("nested join anchor has an unresolved primary source frame")?;
-        if frame.dynamic_fields().is_some() {
-            return Err(format!(
-                "nested named join source `{name}` may be shadowed by an open primary source frame"
-            ));
-        }
-        if frame.child(name).is_some() {
-            return Err(format!(
-                "nested named join source `{name}` is shadowed by a primary source frame"
-            ));
-        }
+    match frames.declaring(name) {
+        Err(()) => Err(format!(
+            "nested named join source `{name}` may be shadowed by an open source frame"
+        )),
+        Ok(declaring) => match declaring.first() {
+            None => Ok(()),
+            Some(&position) => Err(format!(
+                "nested named join source `{name}` is shadowed by a {} source frame",
+                frames.owner_label(position)
+            )),
+        },
     }
-    Ok(())
 }

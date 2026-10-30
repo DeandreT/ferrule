@@ -575,10 +575,13 @@ plan. Nested non-repeating target projections reuse the owning tuple, while reje
 join shapes suppress redundant downstream warnings. Canonical export round-trips
 root-context joins whose collections all belong to the primary source, including raw
 tuple counts and computed joined aggregate values with parent-context scalar arguments.
-Joins nested in one primary source iteration export with singletons from the active
-item or a static named source, at any input position and in any number, joined to
-static named repeating sources. Nested plans without a singleton and primary repeating
-inputs below the iteration are refused atomically.
+Joins nested in one iteration over the primary source or a static named source
+export with singletons from the active item or a static named source, at any input
+position and in any number, or with no singleton at all. Their repeating inputs come
+from static named sources or, inside a primary iteration, from one collection below
+the active item, which correlates to that item. A two-input plan may also pair one
+singleton with a primary repeating collection outside the iteration. Other nested
+shapes are refused atomically.
 Named static XML, JSON, flat-file, and database sources now retain separate component ownership
 during export; per-item dynamic XML sources and captured HTTP POST response
 boundaries also round-trip with their typed contracts.

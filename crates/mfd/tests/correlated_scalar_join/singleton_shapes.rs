@@ -443,106 +443,27 @@ fn without_projections(project: &mut Project) {
 }
 
 #[test]
-fn nested_two_input_join_without_exactly_one_singleton_keeps_its_refusal()
--> Result<(), Box<dyn Error>> {
-    let reason =
-        "nested join must contain exactly one correlated singleton and one repeating source";
-    let repeating_only = JoinPlan::new(
-        customers(),
-        JoinSource::new(p(&["Offers", "Offer"])),
-        key(&["Customers", "Customer"], &["Number"], &["Number"]),
-    )?;
-    let two_singletons = JoinPlan::new(
-        customer_number(),
-        region(),
-        key(&["CustomerNumber"], &[], &[]),
-    )?;
-    for (plan, offers) in [(repeating_only, true), (two_singletons, false)] {
-        let mut project = shape_project(plan, offers)?;
-        without_projections(&mut project);
-        assert_refused(&project, reason, 0)?;
-        let directory = TempDir::new()?;
-        let warnings = mfd::export(&project, &directory.0.join("mapping.mfd"))?;
-        assert!(
-            warnings.contains(&format!(
-                "inner join 777 is not exported: {reason}; its iteration and node connections are skipped"
-            )),
-            "{warnings:?}"
-        );
-    }
-    Ok(())
-}
-
-#[test]
-fn nested_repeating_only_and_below_anchor_joins_keep_their_refusals() -> Result<(), Box<dyn Error>>
-{
-    let mut repeating_only = three_project()?;
-    repeating_only.extra_sources.push(NamedSource {
-        name: "Flags".into(),
-        path: "flags.xml".into(),
-        schema: SchemaNode::group(
-            "Flags",
-            vec![string_fields("Flag", &["Promo", "Tag"]).repeating()],
-        ),
-        options: Default::default(),
-        dynamic_path: None,
-    });
-    let plan = JoinPlan::new(
-        customers(),
-        JoinSource::new(p(&["Offers", "Offer"])),
-        key(&["Customers", "Customer"], &["Number"], &["Number"]),
-    )?
-    .then(
-        JoinSource::new(p(&["Flags", "Flag"])),
-        key(&["Offers", "Offer"], &["Promo"], &["Promo"]),
-    )?;
-    replace_plan(&mut repeating_only, plan);
-    without_projections(&mut repeating_only);
-    assert_refused(
-        &repeating_only,
-        "nested three-input join requires a primary singleton followed by two static named repeating sources",
-        0,
-    )?;
-
-    let below_anchor = |plan: JoinPlan| -> Result<Project, Box<dyn Error>> {
-        let mut project = three_project()?;
-        let SchemaKind::Group { children, .. } = &mut project.source.kind else {
-            panic!("fixture group required")
-        };
-        let order = children
-            .iter_mut()
-            .find(|field| field.name == "Order")
-            .ok_or("missing driver schema")?;
-        append_schema_field(order, string_fields("Line", &["Number"]).repeating());
-        replace_plan(&mut project, plan);
-        without_projections(&mut project);
-        Ok(project)
-    };
-    let line = || JoinSource::new(p(&["Line"]));
-    assert_refused(
-        &below_anchor(JoinPlan::new(
+fn nested_two_input_join_of_two_singletons_keeps_its_refusal() -> Result<(), Box<dyn Error>> {
+    let reason = "nested join requires at least one repeating source";
+    let mut project = shape_project(
+        JoinPlan::new(
             customer_number(),
-            line(),
-            key(&["CustomerNumber"], &[], &["Number"]),
-        )?)?,
-        "input 1 collection `Line` is not in an exported source schema",
-        0,
-    )?;
-    assert_refused(
-        &below_anchor(
-            JoinPlan::new(
-                customer_number(),
-                customers(),
-                key(&["CustomerNumber"], &[], &["Number"]),
-            )?
-            .then(
-                line(),
-                key(&["Customers", "Customer"], &["Number"], &["Number"]),
-            )?,
+            region(),
+            key(&["CustomerNumber"], &[], &[]),
         )?,
-        "nested repeating join inputs must belong to static named source components",
-        0,
-    )
+        false,
+    )?;
+    without_projections(&mut project);
+    assert_refused(&project, reason, 0)?;
+    let directory = TempDir::new()?;
+    let warnings = mfd::export(&project, &directory.0.join("mapping.mfd"))?;
+    assert!(
+        warnings.contains(&format!(
+            "inner join 777 is not exported: {reason}; its iteration and node connections are skipped"
+        )),
+        "{warnings:?}"
+    );
+    Ok(())
 }
 
 #[test]
@@ -558,7 +479,7 @@ fn nested_named_and_repositioned_singletons_keep_owner_shadow_and_anchor_guards(
     });
     assert_refused(
         &owner_collision,
-        "singleton and anchor must belong to the primary source component",
+        "anchor `Order` names both a primary source child and a named source",
         0,
     )?;
     for active in [false, true] {
