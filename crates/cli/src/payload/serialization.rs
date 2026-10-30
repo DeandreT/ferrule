@@ -6,7 +6,10 @@ use mapping::{EdiAutocomplete, EdiBoundaryKind, FormatOptions};
 
 use super::super as cli;
 use super::super::format_selection::{self, Direction, JsonMode, Origin, SelectedFormat};
-use super::super::{formatted_edi_output, has_flat_xlsx_layout, protobuf_layout, x12_separators};
+use super::super::{
+    formatted_edi_output, has_flat_xlsx_layout, protobuf_layout, transposed_xlsx_records,
+    x12_separators,
+};
 use super::profile::{self, BoundaryProfile};
 use super::{
     MAX_PAYLOAD_DOCUMENT_BYTES, MAX_PAYLOAD_RUN_BYTES, PayloadArtifact, PayloadDestination,
@@ -504,7 +507,15 @@ fn render_xlsx_payload(
         bail!("composite XLSX output is not supported; `xlsx_composite` is input-only");
     }
     if !options.xlsx_rows.is_empty() {
-        bail!("transposed XLSX output is not supported; `xlsx_rows` is input-only");
+        let records = transposed_xlsx_records(instance, options)?;
+        let bytes = format_xlsx::to_bytes_transposed(
+            schema,
+            records,
+            options.xlsx_sheet.as_deref(),
+            &options.xlsx_rows,
+        )
+        .context("rendering transposed XLSX output payload")?;
+        return Ok((bytes, records.len()));
     }
     let rows = instance
         .as_repeated()

@@ -769,7 +769,6 @@ fn preflight_output_options(options: &FormatOptions) -> anyhow::Result<()> {
     if options.xlsx_grid.is_some()
         || options.xlsx_worksheet_set.is_some()
         || options.xlsx_composite.is_some()
-        || !options.xlsx_rows.is_empty()
     {
         bail!("pipeline preview target uses an input-only XLSX layout");
     }
