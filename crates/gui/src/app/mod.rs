@@ -1223,7 +1223,7 @@ impl FerruleApp {
                     plan.map(|plan| primary_document::PrimaryDocumentSession::new(plan, path));
                 let (layout, layout_warning) = match read_layout(path) {
                     Ok(layout) => (layout, None),
-                    Err(error) => (None, Some(error.to_string())),
+                    Err(error) => (None, Some(format!("{error:#}"))),
                 };
                 self.main_canvas = CanvasDocumentState::with_snarl(build_snarl_with_layout(
                     &project,
@@ -1263,7 +1263,7 @@ impl FerruleApp {
             }
             Err(error) => {
                 self.status = format!("failed to load {}", crate::ui_kit::file_label(path));
-                self.diagnostics.error("Open failed", error.to_string());
+                self.diagnostics.error("Open failed", format!("{error:#}"));
             }
         }
     }
@@ -1306,7 +1306,7 @@ impl FerruleApp {
                     self.library_generation_save_failed(&error);
                 }
                 self.status = format!("failed to save {}", path.display());
-                self.diagnostics.error("Save failed", error.to_string());
+                self.diagnostics.error("Save failed", format!("{error:#}"));
             }
         }
     }
@@ -1416,7 +1416,7 @@ impl FerruleApp {
                             self.library_generation_save_failed(&error);
                         }
                         self.status = format!("failed to save {}", path.display());
-                        self.diagnostics.error("Save failed", error.to_string());
+                        self.diagnostics.error("Save failed", format!("{error:#}"));
                     }
                 }
             }

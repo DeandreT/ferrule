@@ -243,7 +243,7 @@ pub(super) fn show_options(ui: &mut egui::Ui, draft: &mut XlsxBoundaryDraft, tar
         });
     }
     if let Err(error) = draft.validate_for(target) {
-        ui.colored_label(ui.visuals().error_fg_color, error.to_string());
+        ui.colored_label(ui.visuals().error_fg_color, format!("{error:#}"));
     }
     ui.button("Abandon workbook setup").clicked()
 }
