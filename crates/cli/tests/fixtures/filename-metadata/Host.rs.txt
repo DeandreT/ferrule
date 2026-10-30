@@ -1,0 +1,56 @@
+use codegen_runtime::{CsvSourceData, ExecutionContext, PrimaryAcquisitionError, PrimaryEdiDocumentError, PrimaryFileSelection, PrimarySourceHost, RuntimeError, RuntimeParameters, Value};
+use ferrule_generated_mapping::{evaluate_output_filename, execute_primary_edi_document_bytes};
+use std::{cell::RefCell, path::Path};
+
+#[derive(Default)]
+struct Host { calls: RefCell<Vec<String>>, count: Option<usize> }
+impl PrimarySourceHost for Host {
+    type Error = std::io::Error;
+    fn select(&self, name: &str, selection: PrimaryFileSelection) -> Result<Vec<String>, Self::Error> {
+        assert_eq!(selection, PrimaryFileSelection::Direct);
+        self.calls.borrow_mut().push(format!("select:{name}"));
+        Ok((0..self.count.unwrap_or(1)).map(|_| name.to_string()).collect())
+    }
+    fn load(&self, name: &str) -> Result<CsvSourceData, Self::Error> {
+        self.calls.borrow_mut().push(format!("load:{name}"));
+        Ok(CsvSourceData { bytes: "MSH|^~\\&|\rZRD|café 雪|007\r".as_bytes().to_vec(), resolved_path: None })
+    }
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    for (source, target, success) in [
+        (Some(" ./source.hl7 "), Some(" ./report.json "), true),
+        (None, Some("report.json"), false),
+        (Some("source.hl7"), None, false),
+        (Some("*.hl7"), Some("report.json"), false),
+        (Some("source.hl7"), Some("*.json"), false),
+    ] {
+        let mut parameters = RuntimeParameters::new();
+        for (name, value) in [("SourcePath", source), ("TargetPath", target)] {
+            if let Some(value) = value { parameters.insert(name, Value::String(value.into()))?; }
+        }
+        let context = ExecutionContext::new(Path::new("mapping.json")).with_parameters(&parameters);
+        let host = Host::default();
+        let outcome = execute_primary_edi_document_bytes(&context, &host, 1);
+        if success {
+            assert_eq!(outcome?, "{\n  \"reading\": \"café 雪\",\n  \"count\": \"007\"\n}\n".as_bytes());
+            assert_eq!(evaluate_output_filename(&context)?, target.unwrap());
+            assert_eq!(*host.calls.borrow(), [format!("select:{}", source.unwrap()), format!("load:{}", source.unwrap())]);
+            for count in [0, 2] {
+                let host = Host { count: Some(count), ..Default::default() };
+                assert!(execute_primary_edi_document_bytes(&context, &host, 3).is_err());
+                assert_eq!(*host.calls.borrow(), [format!("select:{}", source.unwrap())]);
+            }
+        } else {
+            let PrimaryEdiDocumentError::Acquisition(PrimaryAcquisitionError::Filename(error)) = outcome.unwrap_err() else { panic!("wrong filename failure stage") };
+            match (source, target, error) {
+                (None, _, RuntimeError::MissingRuntimeParameter { name, .. }) => assert_eq!(name, "SourcePath"),
+                (_, None, RuntimeError::MissingRuntimeParameter { name, .. }) => assert_eq!(name, "TargetPath"),
+                (Some(_), Some(_), RuntimeError::InvalidFilenameEndpoint { .. }) => {},
+                other => panic!("wrong filename failure: {other:?}"),
+            }
+            assert!(host.calls.borrow().is_empty());
+        }
+    }
+    println!("filename metadata Rust Release host passed");
+    Ok(())
+}

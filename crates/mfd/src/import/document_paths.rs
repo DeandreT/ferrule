@@ -69,6 +69,73 @@ fn unsupported(reason: &str) -> MfdError {
     MfdError::UnsupportedImport(format!("filename endpoints: {reason}"))
 }
 
+fn empty_filename_sources(component: roxmltree::Node<'_, '_>) -> bool {
+    let sources = component
+        .children()
+        .filter(|node| node.has_tag_name("sources"))
+        .collect::<Vec<_>>();
+    let [sources] = sources.as_slice() else {
+        return sources.is_empty();
+    };
+    if sources.attributes().len() != 0
+        || sources
+            .children()
+            .any(|node| node.is_text() && !node.text().unwrap_or_default().trim().is_empty())
+    {
+        return false;
+    }
+    let points = sources
+        .children()
+        .filter(roxmltree::Node::is_element)
+        .collect::<Vec<_>>();
+    match points.as_slice() {
+        [] => true,
+        // This exact keyless default slot cannot name an edge. A keyed slot,
+        // including an unconnected one, needs its own declaration/edge proof.
+        [point] if component.attribute("kind") == Some("6") => {
+            point.has_tag_name("datapoint")
+                && point.tag_name().namespace().is_none()
+                && matches!(point.attribute("pos"), None | Some("0"))
+                && point
+                    .attributes()
+                    .all(|attribute| attribute.namespace().is_none() && attribute.name() == "pos")
+                && !point.children().any(|node| {
+                    node.is_element()
+                        || node.is_text() && !node.text().unwrap_or_default().trim().is_empty()
+                })
+        }
+        _ => false,
+    }
+}
+
+fn endpoint_properties(component: roxmltree::Node<'_, '_>, is_edi: bool) -> bool {
+    let properties = component
+        .children()
+        .filter(|node| node.has_tag_name("properties"))
+        .collect::<Vec<_>>();
+    properties.len() <= 1
+        && properties.iter().all(|properties| {
+            !properties.children().any(|node| {
+                node.is_element()
+                    || node.is_text() && !node.text().unwrap_or_default().trim().is_empty()
+            }) && properties.attributes().all(|attribute| {
+                attribute.namespace().is_none()
+                    && match attribute.name() {
+                        "XSLTDefaultOutput" => matches!(attribute.value(), "0" | "1"),
+                        // Both endpoints already require a connected, singular
+                        // filename root. This marker selects those values,
+                        // rather than turning a preview path into a fallback.
+                        "DynamicFilenames" => attribute.value() == "1",
+                        // JSON publication uses complete UTF-8 bytes. Other
+                        // encodings and source-side writer properties are not
+                        // represented by this route.
+                        "XSLTTargetEncoding" if !is_edi => attribute.value() == "UTF-8",
+                        _ => false,
+                    }
+            })
+        })
+}
+
 // Inspect the raw declaration before graph lowering can erase a filter, default
 // or transparent function. Filename admission must not infer omitted controls.
 fn filename_declaration(structure: roxmltree::Node<'_, '_>, feed: u32) -> Result<(), MfdError> {
@@ -98,9 +165,9 @@ fn filename_declaration(structure: roxmltree::Node<'_, '_>, feed: u32) -> Result
                 || !matches!(attribute.name(), "name" | "library" | "kind" | "uid")
         })
         || point.attribute("pos") != Some("0")
-        || point
-            .attributes()
-            .any(|attribute| !matches!(attribute.name(), "pos" | "key"))
+        || point.attributes().any(|attribute| {
+            attribute.namespace().is_some() || !matches!(attribute.name(), "pos" | "key")
+        })
         || point.children().any(|node| node.is_element())
         || targets
             .children()
@@ -112,16 +179,23 @@ fn filename_declaration(structure: roxmltree::Node<'_, '_>, feed: u32) -> Result
             .filter(|node| node.has_tag_name("targets"))
             .count()
             != 1
+        || !empty_filename_sources(component)
+        || component
+            .children()
+            .filter(|node| node.has_tag_name("properties"))
+            .count()
+            > 1
         || component.children().any(|node| {
             node.is_element()
-                && match node.tag_name().name() {
-                    "data" | "targets" | "view" => false,
-                    "sources" | "properties" => {
-                        node.attributes().len() != 0
-                            || node.children().any(|child| child.is_element())
-                    }
-                    _ => true,
-                }
+                && (node.tag_name().namespace().is_some()
+                    || match node.tag_name().name() {
+                        "data" | "targets" | "view" | "sources" => false,
+                        "properties" => {
+                            node.attributes().len() != 0
+                                || node.children().any(|child| child.is_element())
+                        }
+                        _ => true,
+                    })
         })
     {
         return Err(unsupported(
@@ -152,19 +226,23 @@ fn filename_declaration(structure: roxmltree::Node<'_, '_>, feed: u32) -> Result
             constant.has_tag_name("constant")
                 && constant.attribute("datatype") == Some("string")
                 && constant.attribute("value").is_some()
-                && constant
-                    .attributes()
-                    .all(|attribute| matches!(attribute.name(), "datatype" | "value"))
+                && constant.attributes().all(|attribute| {
+                    attribute.namespace().is_none()
+                        && matches!(attribute.name(), "datatype" | "value")
+                })
                 && !constant.children().any(|node| node.is_element())
         }
         (Some("6"), [input, parameter]) => {
             input.has_tag_name("input")
                 && input.attribute("datatype") == Some("string")
-                && input.attributes().all(|attribute| match attribute.name() {
-                    "datatype" | "previewvalue" => true,
-                    "required" => attribute.value() == "1",
-                    "usepreviewvalue" => matches!(attribute.value(), "0" | "1"),
-                    _ => false,
+                && input.attributes().all(|attribute| {
+                    attribute.namespace().is_none()
+                        && match attribute.name() {
+                            "datatype" | "previewvalue" => true,
+                            "required" => attribute.value() == "1",
+                            "usepreviewvalue" => matches!(attribute.value(), "0" | "1"),
+                            _ => false,
+                        }
                 })
                 && !input.children().any(|node| node.is_element())
                 && parameter.has_tag_name("parameter")
@@ -173,8 +251,9 @@ fn filename_declaration(structure: roxmltree::Node<'_, '_>, feed: u32) -> Result
                     .attribute("name")
                     .is_some_and(|name| !name.is_empty())
                 && parameter.attributes().all(|attribute| {
-                    matches!(attribute.name(), "usageKind" | "name")
-                        || attribute.name() == "optional" && attribute.value() == "0"
+                    attribute.namespace().is_none()
+                        && (matches!(attribute.name(), "usageKind" | "name")
+                            || attribute.name() == "optional" && attribute.value() == "0")
                 })
                 && !parameter.children().any(|node| node.is_element())
         }
@@ -243,22 +322,20 @@ impl Endpoints {
             if component.attribute("kind") != Some(if is_edi { "16" } else { "31" }) {
                 return Err(unsupported("unsupported endpoint component kind"));
             }
-            if component.attributes().any(|attribute| {
-                attribute.namespace().is_some()
-                    || !matches!(attribute.name(), "name" | "library" | "kind" | "uid")
-            }) || component.children().any(|node| {
-                node.is_element()
-                    && match node.tag_name().name() {
-                        "data" | "view" => false,
-                        "properties" => {
-                            node.attributes().any(|attribute| {
-                                attribute.name() != "XSLTDefaultOutput"
-                                    || !matches!(attribute.value(), "0" | "1")
-                            }) || node.children().any(|child| child.is_element())
-                        }
-                        _ => true,
-                    }
-            }) {
+            if !endpoint_properties(component, is_edi)
+                || component.attributes().any(|attribute| {
+                    attribute.namespace().is_some()
+                        || !matches!(attribute.name(), "name" | "library" | "kind" | "uid")
+                })
+                || component.children().any(|node| {
+                    node.is_element()
+                        && (node.tag_name().namespace().is_some()
+                            || match node.tag_name().name() {
+                                "data" | "view" | "properties" => false,
+                                _ => true,
+                            })
+                })
+            {
                 return Err(unsupported("unsupported endpoint component controls"));
             }
             if data.attributes().len() != 0 {
