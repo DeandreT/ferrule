@@ -352,6 +352,7 @@ pub fn from_str_with_separators(
     lenient: bool,
     separators: Option<Separators>,
 ) -> Result<Instance, EdiFormatError> {
+    crate::refuse_json_tuple(schema)?;
     let tokenized = tokenizer::tokenize(text, separators)?;
     read_x12_segments(
         schema,
@@ -497,6 +498,7 @@ fn to_string_with_syntax_inner(
     autocomplete: Option<Autocomplete<'_>>,
     document_root: bool,
 ) -> Result<String, EdiFormatError> {
+    crate::refuse_json_tuple(schema)?;
     validate_instance_shape(schema, instance)?;
     let mut options = separators.write_options()?;
     options.interchange_version = interchange_version

@@ -134,6 +134,7 @@ pub fn from_str(
     schema: &SchemaNode,
     lenient: bool,
 ) -> Result<Instance, EdiFormatError> {
+    crate::refuse_json_tuple(schema)?;
     let segments = tokenize(text)?;
     read_segments(schema, &segments, ':', None, lenient)
 }

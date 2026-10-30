@@ -182,6 +182,7 @@ pub fn from_bytes(
     layout: &SwiftMtLayout,
     lenient: bool,
 ) -> Result<Instance, EdiFormatError> {
+    crate::refuse_json_tuple(schema)?;
     if let Some(name) = scalar_union_name(schema) {
         return Err(EdiFormatError::UnsupportedSchema(format!(
             "SWIFT field `{name}` cannot preserve a heterogeneous scalar union"
@@ -795,5 +796,30 @@ mod tests {
                 "{tail}"
             );
         }
+    }
+
+    #[test]
+    fn swift_input_refuses_json_tuple_frames_before_parsing() {
+        let (mut schema, layout) = fixture();
+        let frame = SchemaNode::group(
+            "point",
+            vec![
+                SchemaNode::scalar("item1", ScalarType::String),
+                SchemaNode::scalar("item2", ScalarType::Int),
+            ],
+        )
+        .with_json_tuple(ir::JsonTupleLayout {
+            length: ir::ItemCountRange::new(0, Some(2)),
+            tail: ir::JsonTupleTail::Closed,
+        })
+        .unwrap();
+        let SchemaKind::Group { children, .. } = &mut schema.kind else {
+            panic!("the SWIFT fixture root is a group");
+        };
+        children.push(frame);
+        assert!(matches!(
+            from_bytes(b"not SWIFT", &schema, &layout, false),
+            Err(EdiFormatError::UnsupportedSchema(message)) if message.contains("tuple frame")
+        ));
     }
 }

@@ -349,6 +349,9 @@ pub(crate) fn validate_layout(
             "target schema must be a non-repeating group",
         ));
     }
+    if schema.contains_json_tuple() {
+        return Err(XlsxFormatError::UnsupportedSchema);
+    }
     let worksheet = schema_at(schema, &layout.worksheets_path)?;
     if !worksheet.repeating || !matches!(worksheet.kind, SchemaKind::Group { .. }) {
         return Err(XlsxFormatError::HierarchicalPath {

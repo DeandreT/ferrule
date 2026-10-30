@@ -4,11 +4,20 @@ use codegen::{ArtifactPathError, ArtifactSetError, ProgramValidationError};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EmitError {
-    UnsupportedDecimalValue { node: mapping::NodeId },
-    UnsupportedFilterMapV1 { item: mapping::NodeId },
+    UnsupportedDecimalValue {
+        node: mapping::NodeId,
+    },
+    UnsupportedFilterMapV1 {
+        item: mapping::NodeId,
+    },
     ProgramValidation(ProgramValidationError),
     CsvOutput(codegen::CsvOutputError),
     SchemaSerialization(String),
+    /// The named boundary schema contains a JSON tuple frame, which the
+    /// generated C# runtime cannot read or write yet.
+    JsonTupleFrame {
+        schema: String,
+    },
     EmbeddedSchema(codegen::EmbeddedSchemaError),
     ArtifactPath(ArtifactPathError),
     ArtifactSet(ArtifactSetError),
@@ -31,6 +40,10 @@ impl fmt::Display for EmitError {
             Self::SchemaSerialization(message) => {
                 write!(formatter, "cannot serialize embedded schema: {message}")
             }
+            Self::JsonTupleFrame { schema } => write!(
+                formatter,
+                "schema {schema:?} contains a JSON tuple frame, which generated C# does not support"
+            ),
             Self::EmbeddedSchema(error) => error.fmt(formatter),
             Self::ArtifactPath(error) => error.fmt(formatter),
             Self::ArtifactSet(error) => error.fmt(formatter),
@@ -46,7 +59,8 @@ impl std::error::Error for EmitError {
             Self::CsvOutput(error) => Some(error),
             Self::UnsupportedDecimalValue { .. }
             | Self::UnsupportedFilterMapV1 { .. }
-            | Self::SchemaSerialization(_) => None,
+            | Self::SchemaSerialization(_)
+            | Self::JsonTupleFrame { .. } => None,
             Self::EmbeddedSchema(error) => Some(error),
             Self::ArtifactPath(error) => Some(error),
             Self::ArtifactSet(error) => Some(error),

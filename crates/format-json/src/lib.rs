@@ -208,6 +208,14 @@ pub enum JsonFormatError {
     InvalidXmlAttributeRequired { node: String },
     #[error("JSON array-wrapper metadata on `{name}` is invalid")]
     InvalidArrayWrapperMetadata { name: String },
+    #[error(
+        "schema `{schema}` contains a JSON tuple frame; JSON tuple frames are not supported by native JSON reading or writing until #1225"
+    )]
+    UnsupportedJsonTupleFrame { schema: String },
+    #[error(
+        "schema `{schema}` contains a JSON tuple frame; JSON Schema export does not support JSON tuple frames until #1227"
+    )]
+    UnsupportedJsonTupleFrameExport { schema: String },
     #[error("JSON object-item nullability metadata on `{name}` is invalid")]
     InvalidObjectItemNullabilityMetadata { name: String },
     #[error("JSON nullability metadata on `{name}` is invalid: {reason}")]
@@ -242,7 +250,16 @@ struct RecursiveSchemas<'a> {
 }
 
 impl<'a> RecursiveSchemas<'a> {
+    /// The schema preflight shared by every native reader and writer,
+    /// including prepared schemas, JSON Lines, JSON5 and the borrowed writer.
     fn new(root: &'a SchemaNode) -> Result<Self, JsonFormatError> {
+        // Without frame handling the codec would read and write a tuple as an
+        // object, so it refuses frames anywhere in the schema instead.
+        if root.contains_json_tuple() {
+            return Err(JsonFormatError::UnsupportedJsonTupleFrame {
+                schema: root.name.clone(),
+            });
+        }
         let mut anchors = BTreeMap::new();
         let mut duplicates = BTreeSet::new();
         let mut references = Vec::new();

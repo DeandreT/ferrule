@@ -356,6 +356,7 @@ impl DocumentProject {
                     };
                     if schema.repeating
                         || schema.contains_json_array_wrapper()
+                        || schema.contains_json_tuple()
                         || children.iter().any(|child| {
                             child.repeating || !matches!(child.kind, ir::SchemaKind::Scalar { .. })
                         })

@@ -14,7 +14,7 @@ pub(super) fn bind<'p>(
     bindings: &[(String, Value)],
 ) -> Result<BoundSqliteRead<'p>, QueryReadError> {
     let error = |kind| QueryReadError::new(path, QueryPhase::Bind, kind);
-    if !schema_matches(schema, plan) {
+    if schema.contains_json_tuple() || !schema_matches(schema, plan) {
         return Err(error(QueryReadErrorKind::PlanSchemaMismatch));
     }
     for (index, (name, _)) in bindings.iter().enumerate() {

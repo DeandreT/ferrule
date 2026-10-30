@@ -7,6 +7,8 @@ use super::{
 
 /// Leading text of the issue reported for a malformed nested-array wrapper frame.
 pub(super) const WRAPPER_FRAME_ISSUE: &str = "JSON nested-array wrapper metadata";
+/// Leading text of the issue reported for a malformed or misplaced tuple frame.
+pub(super) const TUPLE_FRAME_ISSUE: &str = "JSON tuple frame metadata";
 
 pub(super) fn validate_schema(
     root: &str,
@@ -251,6 +253,17 @@ pub(super) fn validate_schema(
             format!(
                 "{WRAPPER_FRAME_ISSUE}{suffix} requires a repeating group frame whose only child is a repeating `{}` array: {error}",
                 ir::JSON_ARRAY_ITEM_FIELD
+            ),
+        ));
+    }
+    if let Err(error) = schema.check_json_tuple_frame() {
+        issues.push(ValidationIssue::new(
+            root,
+            format!(
+                "{TUPLE_FRAME_ISSUE}{suffix} requires a canonical group of `{}1`..`{}N` members and an optional repeating `{}` tail, none of them a JSON array: {error}",
+                ir::JSON_TUPLE_MEMBER_PREFIX,
+                ir::JSON_TUPLE_MEMBER_PREFIX,
+                ir::JSON_TUPLE_REST_FIELD
             ),
         ));
     }
