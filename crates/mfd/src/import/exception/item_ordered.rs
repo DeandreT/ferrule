@@ -10,6 +10,7 @@ use mapping::{
 use super::super::function::{is_filter, read as read_function};
 use super::super::graph::GraphBuilder;
 use super::super::schema::{ComponentFormat, SchemaComponent, schema_node_at};
+use super::super::target_preview_path;
 use super::{Recipe, unsupported_control};
 
 mod scope_variable;
@@ -226,7 +227,9 @@ fn plan(
         || !local_options(&target.options)
         || !local_hint(source.input_instance.as_deref())
         || !local_hint(target.output_instance.as_deref())
-        || !local_hint(target.input_instance.as_deref())
+        // A target's wildcard preview input never names its output document,
+        // so it never refuses the target.
+        || !local_hint(target_preview_path(target).as_deref())
     {
         return Err("requires local plain primary XML source and target boundaries");
     }
