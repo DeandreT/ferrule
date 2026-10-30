@@ -54,7 +54,7 @@ error ordering, and additional schema/format limits.
 | CLI payload artifacts and identities | 4,096 output artifacts; 4,096 UTF-8 bytes per logical path; 256 bytes per source name |
 | Generated schema-shaped JSON | 64 MiB per document; 1 MiB embedded JSON schema; generated dynamic JSON loaders also share a 256 MiB execution byte budget |
 | Generated raw XML codecs and serialized XML output | 64 MiB per serialized document; 8 MiB embedded XML schema; input/output-set APIs have separate aggregate and artifact-count checks |
-| XSD import | 64 MiB per schema document; 4,096 materialized elements; 256 nesting and reference levels open at once ([formats](formats.md)), refused with a typed error before stack exhaustion |
+| XSD import | 64 MiB per schema document; 4,096 materialized elements; 256 nesting and reference levels open at once ([formats](formats.md)), refused with a typed error before stack exhaustion; include and import chains of any length followed without recursion; byte-reader imports read at most 64 documents in 4,096 reads |
 | Generated flat CSV output | 64 MiB encoded UTF-8 output, including headers, quoting, line endings, and optional BOM |
 | Path-bearing CSV document output | 4,096 documents; 4,096 UTF-8 bytes per path; 64 MiB per document and 256 MiB across the output list, before return or filesystem publication |
 | Ordinary filesystem CSV | No general 64 MiB input/output cap; parsed rows and complete serialized output remain materialized |
