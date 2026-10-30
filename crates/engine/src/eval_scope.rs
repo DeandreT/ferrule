@@ -200,7 +200,11 @@ pub(crate) fn eval_scope_with_scalar_output(
         });
     let join_rows = scope
         .join()
-        .map(|(join, plan)| execute_join(context, positions, join, plan, program.budget))
+        .map(|(join, plan)| {
+            execute_join(context, positions, join, plan, program.budget, |key| {
+                eval_expr(program, key, context, positions, &mut HashSet::new())
+            })
+        })
         .transpose()?;
     let dynamic_source = scope
         .source()

@@ -1,7 +1,6 @@
 //! Generated Rust and C# share this lowering, which refuses computed join-key
-//! sources until generated joins execute them. Engine validation refuses
-//! them first today; the lowering's own diagnostics keep the route closed
-//! once the interpreter admits them.
+//! sources until generated joins execute them. The interpreter admits them,
+//! so the lowering's own diagnostics keep every generation route closed.
 
 use ir::{ScalarType, Value};
 use mapping::{
@@ -128,23 +127,97 @@ fn aggregate_project(key_first: bool) -> Project {
     )
 }
 
+/// The project's diagnostics from every generation route: plain lowering,
+/// each owned preset, and the primary-document routes (direct, XML and
+/// JSON).
+fn route_diagnostics(project: &Project) -> Vec<(String, Vec<Diagnostic>)> {
+    let refused = |route: String, result: Result<Program, LowerError>| {
+        let diagnostics = result
+            .map(|_| Vec::new())
+            .unwrap_or_else(LowerError::into_diagnostics);
+        (route, diagnostics)
+    };
+    let mut routes = vec![refused("lower".into(), lower(project))];
+    routes.extend(crate::OwnedPreset::ALL.into_iter().map(|preset| {
+        refused(
+            format!("{preset:?}"),
+            crate::lower_with_owned_capabilities(project, preset.capabilities()),
+        )
+    }));
+    for (format, xml, json) in [
+        ("direct", false, false),
+        ("xml", true, false),
+        ("json", false, true),
+    ] {
+        let mut project = project.clone();
+        for options in [&mut project.source_options, &mut project.target_options] {
+            options.xml_document = xml;
+            options.json_document = json;
+        }
+        let filename = 99;
+        project.graph.nodes.insert(
+            filename,
+            Node::Const {
+                value: Value::String("input".into()),
+            },
+        );
+        let document = mapping::DocumentProject::new(
+            project.clone(),
+            mapping::PrimarySourcePlan::new(filename),
+        );
+        routes.push(refused(
+            format!("document {format}"),
+            crate::lower_document(&document)
+                .map(|document| document.program().clone())
+                .map_err(|error| match error {
+                    crate::DocumentLowerError::Mapping(error) => error,
+                    crate::DocumentLowerError::Filename(error) => panic!("{format}: {error}"),
+                }),
+        ));
+        match format {
+            "xml" => routes.push(refused(
+                "primary xml documents".into(),
+                lower_primary_xml_documents(&project),
+            )),
+            "json" => routes.push(refused(
+                "primary json documents".into(),
+                lower_primary_json_documents(&document),
+            )),
+            _ => {}
+        }
+    }
+    routes
+}
+
+/// Engine validation admits computed keys, so each route refuses them with
+/// its own unsupported-scope or unsupported-node diagnostic.
 #[test]
 fn every_generation_route_refuses_computed_join_sources() {
-    for project in [true, false]
-        .into_iter()
-        .flat_map(|key_first| [scope_project(key_first), aggregate_project(key_first)])
-    {
-        let diagnostics = lower(&project)
-            .expect_err("computed join sources stay interpreter-only")
-            .into_diagnostics();
-        assert!(
-            diagnostics.iter().any(|diagnostic| matches!(
-                diagnostic,
-                Diagnostic::Validation { message, .. }
-                    if message.contains("computed join sources are not yet executable")
-            )),
-            "{diagnostics:?}"
-        );
+    for key_first in [true, false] {
+        for (project, expected) in [
+            (
+                scope_project(key_first),
+                Diagnostic::UnsupportedScope {
+                    target_path: vec!["Hit".into()],
+                    feature: ScopeFeature::ComputedJoinSource,
+                },
+            ),
+            (
+                aggregate_project(key_first),
+                Diagnostic::UnsupportedNode {
+                    node: 3,
+                    kind: UnsupportedNodeKind::ComputedJoinAggregate,
+                },
+            ),
+        ] {
+            assert_eq!(engine::validate(&project), []);
+            for (route, diagnostics) in route_diagnostics(&project) {
+                assert!(
+                    diagnostics.contains(&expected),
+                    "{route}: expected {expected:?} in {diagnostics:?}"
+                );
+            }
+        }
     }
 }
 

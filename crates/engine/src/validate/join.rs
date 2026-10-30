@@ -1,9 +1,9 @@
 use std::collections::BTreeSet;
 
-use ir::SchemaNode;
+use ir::{SchemaNode, XML_TYPE_FIELD};
 use mapping::{
-    Graph, JoinId, JoinPlan, JoinSourceCardinality, Node, NodeId, NodeInputRole, OwnedJoinPlan,
-    OwnedSourceRef, Project, Scope, describe_owned_collection,
+    ComputedJoinSource, Graph, JoinId, JoinPlan, JoinSourceCardinality, Node, NodeId,
+    NodeInputRole, OwnedJoinPlan, OwnedSourceRef, Project, Scope, describe_owned_collection,
 };
 
 use super::ValidationIssue;
@@ -43,7 +43,8 @@ pub(super) fn active_owned_join(join: JoinId, plan: &OwnedJoinPlan) -> ActiveJoi
 }
 use super::schema::{
     display_path, follow_schema, follow_schema_resolved, owned_source_root,
-    root_source_path_direct, source_path_matches, source_path_matches_direct,
+    root_source_path_direct, source_path_crosses_repetition, source_path_matches,
+    source_path_matches_direct,
 };
 
 pub(super) fn validate_plan(
@@ -54,15 +55,7 @@ pub(super) fn validate_plan(
     issues: &mut Vec<ValidationIssue>,
 ) {
     if let Some(computed) = plan.computed_source() {
-        issues.push(ValidationIssue::new(
-            location,
-            format!(
-                "join {} computed source {} (node {}): computed join sources are not yet executable",
-                join.get(),
-                computed.id(),
-                computed.value()
-            ),
-        ));
+        validate_computed_key(project, join, computed, location, issues);
     }
     for source in plan.collection_sources() {
         let collection = source.collection();
@@ -102,7 +95,7 @@ pub(super) fn validate_plan(
             ));
         }
     }
-    // A computed member is its own key; its refusal above covers it.
+    // A computed member is its own key, with no key path to resolve.
     for (right, conditions) in plan.stages() {
         for key in conditions.iter() {
             if let Some(left) = key.left_collection() {
@@ -125,6 +118,109 @@ pub(super) fn validate_plan(
                     issues,
                 );
             }
+        }
+    }
+}
+
+/// The nodes a computed key evaluates, in visit order, stopping below the
+/// first node a key does not admit.
+fn computed_key_nodes<'g>(
+    graph: &'g Graph,
+    computed: &ComputedJoinSource,
+) -> Vec<(NodeId, &'g Node, bool)> {
+    let mut nodes = Vec::new();
+    let mut pending = vec![computed.value()];
+    let mut visited = BTreeSet::new();
+    while let Some(id) = pending.pop() {
+        if !visited.insert(id) {
+            continue;
+        }
+        // A missing input is reported by node-input validation.
+        let Some(node) = graph.nodes.get(&id) else {
+            continue;
+        };
+        let admitted = admitted_in_key(node);
+        if admitted {
+            pending.extend(node.dependencies().into_iter().rev());
+        }
+        nodes.push((id, node, admitted));
+    }
+    nodes
+}
+
+/// A computed key is one scalar per join execution, so it admits only node
+/// kinds that give one value in the receiving context. Aggregates, lookups,
+/// sequences, user functions, joined aggregates, positions and every join
+/// read are refused. A frame-pinned read names a repetition frame whose
+/// activity at the key is not checked here, so it is refused too.
+fn admitted_in_key(node: &Node) -> bool {
+    matches!(
+        node,
+        Node::SourceField { frame: None, .. }
+            | Node::Const { .. }
+            | Node::RuntimeValue { .. }
+            | Node::RuntimeParameter { .. }
+            | Node::RuntimeParameterDefault { .. }
+            | Node::Call { .. }
+            | Node::If { .. }
+            | Node::ValueMap { .. }
+    )
+}
+
+/// The unframed source paths a computed key reads, with the schema path
+/// each read resolves: an XML type-marker read resolves its owner group.
+fn computed_key_reads<'g>(
+    project: &'g Project,
+    computed: &ComputedJoinSource,
+) -> impl Iterator<Item = (NodeId, &'g [String], &'g [String])> {
+    computed_key_nodes(&project.graph, computed)
+        .into_iter()
+        .filter_map(move |(id, node, _)| match node {
+            Node::SourceField { path, frame: None } => {
+                let owner = path
+                    .strip_suffix(&[XML_TYPE_FIELD.to_string()])
+                    .filter(|owner| {
+                        source_path_matches(project, owner, |node| !node.alternatives().is_empty())
+                    });
+                Some((id, path.as_slice(), owner.unwrap_or(path)))
+            }
+            _ => None,
+        })
+}
+
+/// Refuses key nodes outside the admitted set, and source reads that could
+/// cross repetition from any anchor: the engine reads the first item there,
+/// while the native key is the whole sequence.
+fn validate_computed_key(
+    project: &Project,
+    join: JoinId,
+    computed: &ComputedJoinSource,
+    location: &str,
+    issues: &mut Vec<ValidationIssue>,
+) {
+    for (id, _, admitted) in computed_key_nodes(&project.graph, computed) {
+        if !admitted {
+            issues.push(ValidationIssue::new(
+                location,
+                format!(
+                    "join {} computed key {} reads node {id}, which a computed key does not admit; use source fields, constants, calls, conditionals, value maps, runtime values or runtime parameters",
+                    join.get(),
+                    computed.id()
+                ),
+            ));
+        }
+    }
+    for (id, path, resolved) in computed_key_reads(project, computed) {
+        if source_path_crosses_repetition(project, resolved) {
+            issues.push(ValidationIssue::new(
+                location,
+                format!(
+                    "join {} computed key {} source field node {id} `{}` crosses or ends at a repeating source level; a computed key reads one value",
+                    join.get(),
+                    computed.id(),
+                    display_path(path)
+                ),
+            ));
         }
     }
 }
@@ -247,6 +343,27 @@ pub(super) fn validate_root_singletons(
                     "join {} singleton collection `{}` does not resolve from the root source context; use a path from the source root or a named source",
                     join.get(),
                     display_path(collection)
+                ),
+            ));
+        }
+    }
+    // A computed key's reads follow the same rule; missing and crossing
+    // reads already have their own issue.
+    let Some(computed) = plan.computed_source() else {
+        return;
+    };
+    for (id, path, resolved) in computed_key_reads(project, computed) {
+        if source_path_matches(project, resolved, |_| true)
+            && !source_path_crosses_repetition(project, resolved)
+            && root_source_path_direct(project, resolved).is_none()
+        {
+            issues.push(ValidationIssue::new(
+                location,
+                format!(
+                    "join {} computed key {} source field node {id} `{}` does not resolve from the root source context; use a path from the source root or a named source",
+                    join.get(),
+                    computed.id(),
+                    display_path(path)
                 ),
             ));
         }
