@@ -166,6 +166,52 @@ fn lang_positive_tests_for_numbers_above_zero_and_round_trips() -> TestResult {
 }
 
 #[test]
+fn lang_replace_substitutes_literal_text_and_round_trips() -> TestResult {
+    // Results observed natively for the same inputs.
+    let cases = [
+        ("a.c abc", ".", "-", "a-c abc"),
+        ("1*2(3)$4\\5", "*", "x", "1x2(3)$4\\5"),
+        ("1*2(3)$4\\5", "(", "[", "1*2[3)$4\\5"),
+        ("1*2(3)$4\\5", "$", "D", "1*2(3)D4\\5"),
+        ("1*2(3)$4\\5", "\\", "/", "1*2(3)$4/5"),
+        ("abc", "b", "$0$1\\", "a$0$1\\c"),
+        ("aaa", "aa", "b", "ba"),
+        ("a.b", ".", "", "ab"),
+        ("ABC", "b", "x", "ABC"),
+        ("a.b.c", ".", "..", "a..b..c"),
+    ];
+    for context in CONTEXTS {
+        for (index, (value, search, replacement, expected)) in cases.into_iter().enumerate() {
+            let (result, functions) = round_trip(
+                &format!("lang_replace_{index}"),
+                "replace",
+                "lang",
+                vec![
+                    Literal::string(value),
+                    Literal::string(search),
+                    Literal::string(replacement),
+                ],
+                "string",
+                context,
+            )?;
+            assert_eq!(
+                result,
+                Some(Value::String(expected.into())),
+                "{value} {search} {replacement} {context:?}"
+            );
+            assert!(
+                functions.contains(&("replace".into(), "lang".into(), 3))
+                    && functions
+                        .iter()
+                        .all(|(name, library, _)| name != "replace" || library == "lang"),
+                "{context:?}: {functions:?}"
+            );
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn two_argument_round_exports_as_round_precision() -> TestResult {
     for context in CONTEXTS {
         let (value, functions) = round_trip(

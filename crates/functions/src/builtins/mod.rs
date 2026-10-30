@@ -10,6 +10,7 @@ use super::{
 mod float_text;
 mod guid;
 mod isbn;
+mod literal_replace;
 mod regex_match;
 mod translate;
 
@@ -44,6 +45,7 @@ pub(super) fn call_builtin(
         BuiltinId::Contains => binary_scalar_string(args, "contains", |a, b| a.contains(b)),
         BuiltinId::Matches => regex_match::matches(args),
         BuiltinId::Replace => regex_match::replace(args),
+        BuiltinId::ReplaceLiteral => literal_replace::replace_literal(args),
         BuiltinId::SqlLike => binary_string(args, "sql_like", sql_like),
         BuiltinId::PadStringLeft => pad_string(args, "pad_string_left", true),
         BuiltinId::PadStringRight => pad_string(args, "pad_string_right", false),

@@ -1337,10 +1337,10 @@ meaning; otherwise export fails before writing anything and names the function:
   `core/matches`, `core/replace` and `core/positive` as functions it cannot find
   for the built-in language. The built-in `lang/left-trim`, `lang/right-trim`
   and `core/normalize-space` keep non-breaking and other non-ASCII spaces that
-  `trim` removes. `lang/replace` substitutes literal text, not
-  regular-expression matches. `lang/match-pattern` succeeds only when the
-  pattern matches the whole text, whereas `matches` succeeds on a match
-  anywhere.
+  `trim` removes. The built-in `lang/replace` substitutes literal text, so the
+  regular-expression `replace` has no counterpart. `lang/match-pattern` succeeds
+  only when the pattern matches the whole text, whereas `matches` succeeds on a
+  match anywhere.
 
 Native `lang/positive` returns true only for numbers greater than zero; `0` and
 `-0` give false, unlike its vendor description ("equal to or greater than
@@ -1348,6 +1348,17 @@ zero"). Import reads it as `greater_than(add(value, 0), 0)`: adding
 zero converts numeric text the way its decimal input does, and both functions
 export natively. Non-numeric text fails in both. The `core/positive` spelling
 written by earlier Ferrule exports still imports as unary plus.
+
+Native `lang/replace` replaces every occurrence of its search text, left to
+right and without overlap, with its replacement text. Neither input has pattern
+or escape syntax: `.`, `*`, `(`, `$` and `\` in the search text match
+themselves, and `$0` or `\` in the replacement is inserted as written. Matching
+is case-sensitive, whether the inputs are constants or connected. An empty search
+text, connected or constant, fails execution ("The search string passed to the
+replace function is empty."). Import reads it as `replace_literal`, which keeps
+these semantics and fails on an empty search text, and export writes it back as
+`lang/replace`. The `core/replace` and `xpath2/replace` spellings still import as
+regular-expression `replace`.
 
 Native `core/round` and `core/round-precision` round exact halves toward
 positive infinity (`-2.5` becomes `-2`) and work on decimal values, so `1.005`
