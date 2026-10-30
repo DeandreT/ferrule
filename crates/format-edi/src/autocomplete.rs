@@ -295,7 +295,11 @@ fn x12_with_policy(
                 ensure_value(&mut segment, 4, &timestamp.time_hh_mm_ss);
                 normalize_x12_date(&mut segment, 3, false)?;
                 normalize_x12_time(&mut segment, 4, false)?;
-                let generated = group_ordinal.to_string();
+                let generated = if permissive_widths {
+                    String::new()
+                } else {
+                    group_ordinal.to_string()
+                };
                 let reference = ensure_value(&mut segment, 5, &generated);
                 group = Some(Group {
                     reference,
@@ -953,6 +957,41 @@ mod tests {
         assert_eq!(values(&completed[4]), ["3", "12345"]);
         assert_eq!(values(&completed[5]), ["1", "9"]);
         assert_eq!(values(&completed[6]), ["1", "000000777"]);
+    }
+
+    #[test]
+    fn native_completion_does_not_invent_a_missing_group_reference() {
+        let input = vec![
+            segment(
+                "ISA",
+                &[
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "^",
+                    "00501",
+                    "000000000",
+                    "0",
+                    "T",
+                    ":",
+                ],
+            ),
+            segment("GS", &["RE", "S", "R", "20261030", "123456", ""]),
+            segment("ST", &["944", "0001"]),
+        ];
+        let native = x12_mapforce(input.clone(), "2026-10-30T12:34:56", false, None).unwrap();
+        assert_eq!(values(&native[1])[5], "");
+        assert_eq!(values(&native[4]), ["1", ""]);
+        let strict = x12(input, "2026-10-30T12:34:56", false, None).unwrap();
+        assert_eq!(values(&strict[1])[5], "1");
+        assert_eq!(values(&strict[4]), ["1", "1"]);
     }
 
     #[test]

@@ -4,6 +4,7 @@ use mapping::{FormatOptions, MapForceEdiMinimum};
 #[derive(Debug)]
 pub enum MapForceX12WriterError {
     Boundary(crate::X12BoundaryPolicyError),
+    Parameter(crate::JsonParameterBoundaryError),
     Minimum,
     Serialization(serde_json::Error),
 }
@@ -11,6 +12,7 @@ impl std::fmt::Display for MapForceX12WriterError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Boundary(e) => e.fmt(f),
+            Self::Parameter(e) => e.fmt(f),
             Self::Minimum => f.write_str("invalid MapForce X12 occurrence minimums"),
             Self::Serialization(e) => e.fmt(f),
         }
@@ -23,7 +25,7 @@ pub fn prepare_mapforce_x12_writer(
     options: &FormatOptions,
     minimums: &[MapForceEdiMinimum],
 ) -> Result<String, MapForceX12WriterError> {
-    prepare_writer(program, options, minimums, None)
+    prepare_writer(program, options, minimums, None, false)
 }
 
 /// A writer for each member of an explicitly lowered dynamic document set.
@@ -33,7 +35,21 @@ pub fn prepare_mapforce_x12_document_writer(
     options: &FormatOptions,
     minimums: &[MapForceEdiMinimum],
 ) -> Result<String, MapForceX12WriterError> {
-    prepare_writer(document.program(), options, minimums, Some(document))
+    prepare_writer(document.program(), options, minimums, Some(document), false)
+}
+
+/// A document writer with exactly the validated, host-projected parameter input.
+/// Ordinary X12 writer admission does not accept additional input sources.
+pub fn prepare_mapforce_x12_parameter_document_writer(
+    document: &crate::DocumentProgram,
+    invocation: &mapping::JsonParameterInvocationPlan,
+    binding: &crate::JsonParameterObjectBinding,
+    options: &FormatOptions,
+    minimums: &[MapForceEdiMinimum],
+) -> Result<String, MapForceX12WriterError> {
+    crate::prepare_json_parameter_object_invocation(document, invocation, binding)
+        .map_err(MapForceX12WriterError::Parameter)?;
+    prepare_writer(document.program(), options, minimums, Some(document), true)
 }
 
 fn prepare_writer(
@@ -41,6 +57,7 @@ fn prepare_writer(
     options: &FormatOptions,
     minimums: &[MapForceEdiMinimum],
     document: Option<&crate::DocumentProgram>,
+    parameter_object: bool,
 ) -> Result<String, MapForceX12WriterError> {
     if minimums.len() > 10000 {
         return Err(MapForceX12WriterError::Minimum);
@@ -63,7 +80,9 @@ fn prepare_writer(
         .map_err(MapForceX12WriterError::Boundary)?;
     target.envelope_profile = X12EnvelopeProfile::MapForceInterchanges;
     let profile = match document {
-        Some(document) => crate::x12_boundary::prepare_x12_document_target(document, target),
+        Some(document) => {
+            crate::x12_boundary::prepare_x12_document_target(document, target, parameter_object)
+        }
         None => crate::prepare_x12_boundary(
             program,
             &X12BoundaryPolicy {

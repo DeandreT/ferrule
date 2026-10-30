@@ -91,6 +91,84 @@ fn document_member_writer_preserves_the_validated_dynamic_root() {
         minimum: 1,
     };
     assert!(crate::prepare_mapforce_x12_document_writer(&program, &options, &[invalid]).is_err());
+
+    let mut object_project = document.project().clone();
+    let invocation = mapping::JsonParameterInvocationPlan {
+        parameter: "Variables".into(),
+        key_member: "folder".into(),
+        key_parameter: "key".into(),
+        iteration: mapping::JsonParameterIteration::RootStringOccurrences,
+        projection: mapping::JsonSourceShape::Object {
+            properties: ["folder", "filename"]
+                .into_iter()
+                .map(|name| mapping::JsonSourceProperty {
+                    name: name.into(),
+                    shape: mapping::JsonSourceShape::String,
+                })
+                .collect(),
+        },
+    };
+    let binding = crate::JsonParameterObjectBinding {
+        source_name: "Parameters".into(),
+        filename_member: "filename".into(),
+    };
+    object_project.extra_sources.push(mapping::NamedSource {
+        name: binding.source_name.clone(),
+        path: String::new(),
+        schema: invocation
+            .projection
+            .value_schema(&binding.source_name)
+            .unwrap(),
+        options: Default::default(),
+        dynamic_path: None,
+    });
+    object_project.graph.nodes.insert(
+        2,
+        mapping::Node::RuntimeParameter {
+            name: invocation.key_parameter.clone(),
+            ty: ScalarType::String,
+            preview: None,
+        },
+    );
+    object_project.graph.nodes.insert(
+        3,
+        mapping::Node::Call {
+            function: "concat".into(),
+            args: vec![2, 1],
+        },
+    );
+    object_project.root.iteration = mapping::ScopeIteration::DynamicDocuments {
+        source: vec!["Rows".into()],
+        output_path: 3,
+    };
+    let object =
+        mapping::DocumentProject::new(object_project, mapping::PrimarySourcePlan { filename: 0 });
+    let program = crate::lower_document(&object).unwrap();
+    assert!(crate::prepare_mapforce_x12_document_writer(&program, &options, &[]).is_err());
+    assert!(
+        crate::prepare_mapforce_x12_parameter_document_writer(
+            &program,
+            &invocation,
+            &binding,
+            &options,
+            &[]
+        )
+        .is_ok()
+    );
+    let wrong_binding = crate::JsonParameterObjectBinding {
+        source_name: "Other".into(),
+        ..binding.clone()
+    };
+    assert!(
+        crate::prepare_mapforce_x12_parameter_document_writer(
+            &program,
+            &invocation,
+            &wrong_binding,
+            &options,
+            &[]
+        )
+        .is_err()
+    );
 }
 
 fn mapforce(version: &str) -> X12BoundaryOptions {

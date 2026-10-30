@@ -202,6 +202,39 @@ fn explicit_mapforce_completion_does_not_inherit_strict_control_width_rejections
     }
 }
 
+#[test]
+fn native_empty_group_control_does_not_leave_a_trailing_separator() {
+    let (schema, mut value) = example();
+    change(&mut value, "GS", "05", "103000");
+    change(&mut value, "GS", "06", "");
+    change(&mut value, "GE", "02", "");
+    let completion = Some(Autocomplete {
+        current_datetime: "2026-10-09T10:30:00",
+        request_acknowledgement: false,
+        transaction_set: Some("940"),
+    });
+    let native = to_mapforce_document_string_with_syntax(
+        &schema,
+        &value,
+        Separators::default(),
+        Some("00401"),
+        completion,
+    )
+    .unwrap();
+    assert!(native.contains("*103000**X*004010~"), "{native}");
+    assert!(native.contains("GE*1~"), "{native}");
+    assert!(!native.contains("GE*1*~"), "{native}");
+    let strict = to_document_string_with_syntax(
+        &schema,
+        &value,
+        Separators::default(),
+        Some("00401"),
+        completion,
+    )
+    .unwrap();
+    assert!(strict.contains("GE*1*1~"), "{strict}");
+}
+
 fn evidence_root() -> std::path::PathBuf {
     std::env::var_os("FERRULE_X12_ISA_EVIDENCE_DIR")
         .map(std::path::PathBuf::from)

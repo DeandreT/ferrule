@@ -16,6 +16,7 @@ use std::{
     path::Path,
 };
 
+mod conditional_quantity;
 mod object_parameter;
 
 pub struct ImportedJsonEdiDocument {
@@ -77,7 +78,16 @@ struct GroupedSource {
 #[derive(Clone, Copy)]
 enum SiblingStringSelection {
     Direct(u32),
-    EmptyFallback { source: u32, fallback: u32 },
+    EmptyFallback {
+        source: u32,
+        fallback: u32,
+    },
+    LiteralBranch {
+        condition: u32,
+        value: u32,
+        fallback: u32,
+    },
+    GuardEmptyFallback(u32),
 }
 
 fn refuse(reason: impl AsRef<str>) -> MfdError {
@@ -733,6 +743,30 @@ impl Builder {
         }
         let condition_feed = self.input(branch, 0).ok()?;
         let condition = self.functions.get(&condition_feed)?;
+        if condition.parsed.library == "lang"
+            && condition.parsed.name == "empty"
+            && condition.parsed.kind == 5
+            && condition.metadata_valid
+            && condition.parsed.raw_single_output_valid
+            && condition.inputs.len() == 1
+        {
+            let guard = self.input(condition, 0).ok()?;
+            let fallback = self.input(branch, 1).ok()?;
+            if self.input(branch, 2).ok()? != guard
+                || fallback == guard
+                || self.port_kinds.get(&guard).map(String::as_str) != Some("string")
+                || self.port_kinds.get(&fallback).map(String::as_str) != Some("string")
+                || self.ports.get(&guard)?.split_last()?.1
+                    != self.ports.get(&fallback)?.split_last()?.1
+            {
+                return None;
+            }
+            return Some((
+                guard,
+                None,
+                SiblingStringSelection::GuardEmptyFallback(fallback),
+            ));
+        }
         if condition.parsed.library != "core"
             || condition.parsed.name != "equal"
             || condition.parsed.kind != 5
@@ -776,6 +810,22 @@ impl Builder {
                     .and_then(|path| path.split_last())
                     .is_some_and(|(_, owner)| !owner.is_empty() && owner == guard_owner)
         };
+        if is_literal(value)
+            && branch.inputs[2].is_some()
+            && let Ok(fallback) = self.input(branch, 2)
+            && fallback != guard
+            && sibling(fallback)
+        {
+            return Some((
+                guard,
+                None,
+                SiblingStringSelection::LiteralBranch {
+                    condition: condition_feed,
+                    value,
+                    fallback,
+                },
+            ));
+        }
         let selection = if value != guard && sibling(value) {
             SiblingStringSelection::Direct(value)
         } else {
@@ -876,6 +926,30 @@ impl Builder {
             None => self.constant(Value::Bool(true))?,
         };
         let selected = match value {
+            SiblingStringSelection::GuardEmptyFallback(fallback) => {
+                let value = self.compile(guard, Some(guard), &evaluation_anchor)?;
+                let condition = self.call("is_empty", vec![value])?;
+                let then = self.last_sibling_string(fallback, &evaluation_anchor)?;
+                self.alloc(Node::If {
+                    condition,
+                    then,
+                    else_: value,
+                })?
+            }
+            SiblingStringSelection::LiteralBranch {
+                condition,
+                value,
+                fallback,
+            } => {
+                let condition = self.compile(condition, Some(guard), &evaluation_anchor)?;
+                let then = self.compile(value, None, &evaluation_anchor)?;
+                let else_ = self.last_sibling_string(fallback, &evaluation_anchor)?;
+                self.alloc(Node::If {
+                    condition,
+                    then,
+                    else_,
+                })?
+            }
             SiblingStringSelection::Direct(source) => {
                 self.last_sibling_string(source, &evaluation_anchor)?
             }
@@ -1007,6 +1081,58 @@ impl Builder {
             value,
         })
         .map(Some)
+    }
+
+    // A qualifier guarded by sequence-level nullness controls one optional
+    // group. Its value input's occurrences are fields, not group repetitions.
+    fn single_presence_group_source(&self, feed: u32) -> Option<u32> {
+        use super::udf::ScalarExpr;
+        self.parameter_key?;
+        let call = self.udf_outputs.get(&feed)?;
+        let ScalarExpr::If {
+            condition,
+            then,
+            else_,
+        } = &call.expression
+        else {
+            return None;
+        };
+        let ScalarExpr::Call { function, args } = &**condition else {
+            return None;
+        };
+        if function != "not" || !matches!(&**then, ScalarExpr::Const(Value::Null)) {
+            return None;
+        }
+        let [ScalarExpr::Call { function, args }] = args.as_slice() else {
+            return None;
+        };
+        if function != "exists" {
+            return None;
+        }
+        let [ScalarExpr::Parameter(value)] = args.as_slice() else {
+            return None;
+        };
+        let ScalarExpr::Parameter(qualifier) = &**else_ else {
+            return None;
+        };
+        let source = self.feed(*call.inputs.get(value)?).ok()?;
+        if self.port_kinds.get(&source).map(String::as_str) != Some("string") {
+            return None;
+        }
+        let literal = self
+            .functions
+            .get(&self.feed(*call.inputs.get(qualifier)?).ok()?)?;
+        (literal.parsed.library == "core"
+            && literal.parsed.kind == 2
+            && literal.literal_valid
+            && literal.metadata_valid
+            && literal.inputs.is_empty()
+            && literal
+                .parsed
+                .constant
+                .as_ref()
+                .is_some_and(|(_, ty)| ty == "string"))
+        .then_some(source)
     }
 
     fn ancestor_empty_group(&self, feed: u32, anchor: &[String]) -> Option<(u32, u32)> {
@@ -1886,10 +2012,17 @@ impl Builder {
             ScalarExpr::Const(value) => self.constant(value.clone()),
             ScalarExpr::RuntimeValue(value) => self.alloc(Node::RuntimeValue { value: *value }),
             ScalarExpr::Call { function, args } => {
-                let args = args
+                let date_prefix = function == "parse_datetime"
+                    && matches!(args.as_slice(), [_, ScalarExpr::Const(Value::String(picture))]
+                        if picture == "[Y,4-4][M,2-2][D,2-2]");
+                let mut args = args
                     .iter()
                     .map(|arg| self.compile_udf(arg, inputs, leaf, anchor, depth + 1))
-                    .collect::<Result<_, _>>()?;
+                    .collect::<Result<Vec<_>, _>>()?;
+                if date_prefix {
+                    let width = self.constant(Value::Int(8))?;
+                    args[0] = self.call("left_utf16_lossy", vec![args[0], width])?;
+                }
                 self.call(function, args)
             }
             ScalarExpr::If {
@@ -1930,6 +2063,9 @@ impl Builder {
         anchor: &[String],
         retain_empty: bool,
     ) -> Result<NodeId, MfdError> {
+        if let Some(quantity) = self.conditional_quantity_value(feed, active_leaf, anchor)? {
+            return Ok(quantity);
+        }
         if let Some(sum) = self.context_sum_value(feed, anchor)? {
             return Ok(sum);
         }
@@ -2156,7 +2292,22 @@ impl Builder {
                 }
             } else {
                 let dependencies = self.dependencies(feed, &mut BTreeSet::new())?;
-                if let Some((guard, value)) = self.ancestor_empty_group(feed, anchor) {
+                if let Some(source) = self
+                    .single_presence_group_source(feed)
+                    .filter(|_| schema.repeating)
+                {
+                    let count = self.alloc(Node::Aggregate {
+                        function: AggregateOp::Count,
+                        collection: self.relative_source(&self.ports[&source], anchor)?,
+                        value: vec![],
+                        expression: None,
+                        arg: None,
+                    })?;
+                    let zero = self.constant(Value::Int(0))?;
+                    scope.iteration = ScopeIteration::OptionalPresence {
+                        condition: self.call("greater_than", vec![count, zero])?,
+                    };
+                } else if let Some((guard, value)) = self.ancestor_empty_group(feed, anchor) {
                     if !schema.repeating {
                         return Err(refuse(
                             "ancestor-controlled group requires a repeating target",
@@ -2425,6 +2576,53 @@ mod grouped_owner_tests {
             self::builder(true)
                 .relative_source(&path(&["Rows", "header"]), &owner)
                 .is_err()
+        );
+    }
+
+    #[test]
+    fn embedded_native_fixed_date_preserves_the_eight_character_prefix_contract() {
+        use super::super::udf::ScalarExpr;
+        fn eval(builder: &Builder, id: NodeId) -> Value {
+            match &builder.graph.nodes[&id] {
+                Node::Const { value } => value.clone(),
+                Node::Call { function, args } => functions::call(
+                    function,
+                    &args.iter().map(|id| eval(builder, *id)).collect::<Vec<_>>(),
+                )
+                .unwrap(),
+                _ => panic!("unexpected node"),
+            }
+        }
+        let picture = "[Y,4-4][M,2-2][D,2-2]";
+        let mut builder = builder(false);
+        for text in ["20261231", "202612311730", "20261231suffix"] {
+            let expression = ScalarExpr::Call {
+                function: "format_datetime_milliseconds".into(),
+                args: vec![
+                    ScalarExpr::Call {
+                        function: "parse_datetime".into(),
+                        args: vec![
+                            ScalarExpr::Const(Value::String(text.into())),
+                            ScalarExpr::Const(Value::String(picture.into())),
+                        ],
+                    },
+                    ScalarExpr::Const(Value::String(picture.into())),
+                ],
+            };
+            let value = builder
+                .compile_udf(&expression, &BTreeMap::new(), None, &[], 0)
+                .unwrap();
+            assert_eq!(eval(&builder, value), Value::String("20261231".into()));
+        }
+        assert!(
+            functions::call(
+                "parse_datetime",
+                &[
+                    Value::String("202612311730".into()),
+                    Value::String(picture.into())
+                ]
+            )
+            .is_err()
         );
     }
 }

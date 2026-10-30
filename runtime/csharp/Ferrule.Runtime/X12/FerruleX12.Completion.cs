@@ -405,7 +405,7 @@ public static partial class FerruleX12
     };
 
     // Port of native X12 wire completion over the written MapForce segments:
-    // ISA defaults and nine-digit ISA13, document-global GS06/ST02 ordinals,
+    // ISA defaults and nine-digit ISA13, absent GS06 preservation and ST02 ordinals,
     // per-owner SE01/GE01/IEA01 counts and creation of absent trailers.
     // Nonempty supplied text is retained for final envelope validation.
     private static List<Segment> CompleteMapForceSegments(Profile profile, List<Segment> segments,
@@ -416,7 +416,7 @@ public static partial class FerruleX12
         var output = new List<Segment>(segments.Count + 8);
         bool interchangeOpen = false, groupOpen = false, transactionOpen = false;
         string interchangeReference = "", groupReference = "", transactionReference = "";
-        int interchangeGroups = 0, groupMessages = 0, transactionStart = 0, groupOrdinal = 0, transactionOrdinal = 0;
+        int interchangeGroups = 0, groupMessages = 0, transactionStart = 0, transactionOrdinal = 0;
         for (int index = 0; index < segments.Count; index++)
         {
             Segment segment = segments[index];
@@ -442,12 +442,11 @@ public static partial class FerruleX12
                     FinishTransaction(null, index);
                     FinishGroup(null, index);
                     if (!interchangeOpen) throw OutsideOwner(index);
-                    groupOrdinal++;
                     Ensure(segment, 3, timestamp.Date8);
                     Ensure(segment, 4, timestamp.Time6);
                     segment.Elements[3] = CompletionDate(segment.Elements[3], shortDate: false);
                     segment.Elements[4] = CompletionTime(segment.Elements[4], shortTime: false);
-                    groupReference = Ensure(segment, 5, groupOrdinal.ToString(CultureInfo.InvariantCulture));
+                    groupReference = Ensure(segment, 5, "");
                     groupOpen = true;
                     groupMessages = 0;
                     Push(segment);

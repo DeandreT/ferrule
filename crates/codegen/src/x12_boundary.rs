@@ -277,12 +277,13 @@ pub fn prepare_x12_boundary(
     program: &Program,
     policy: &X12BoundaryPolicy,
 ) -> Result<X12BoundaryProfile, X12BoundaryPolicyError> {
-    prepare_boundary(program, policy, false)
+    prepare_boundary(program, policy, false, false)
 }
 
 pub(crate) fn prepare_x12_document_target(
     document: &crate::DocumentProgram,
     target: X12BoundaryOptions,
+    parameter_object: bool,
 ) -> Result<X12BoundaryProfile, X12BoundaryPolicyError> {
     let program = document.program();
     if !program.root.iteration.as_ref().is_some_and(|iteration| {
@@ -302,6 +303,7 @@ pub(crate) fn prepare_x12_document_target(
             target: Some(target),
         },
         true,
+        parameter_object,
     )
 }
 
@@ -309,6 +311,7 @@ fn prepare_boundary(
     program: &Program,
     policy: &X12BoundaryPolicy,
     document_members: bool,
+    parameter_object: bool,
 ) -> Result<X12BoundaryProfile, X12BoundaryPolicyError> {
     if policy.source.is_none() && policy.target.is_none() {
         return Err(X12BoundaryPolicyError::NoX12Side);
@@ -318,7 +321,7 @@ fn prepare_boundary(
             field: "xml_boundary",
         });
     }
-    if !program.extra_sources.is_empty() {
+    if !program.extra_sources.is_empty() && !parameter_object {
         return Err(X12BoundaryPolicyError::ProgramField {
             field: "extra_sources",
         });
