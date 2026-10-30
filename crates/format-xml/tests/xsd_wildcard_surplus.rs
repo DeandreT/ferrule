@@ -571,14 +571,10 @@ fn complex_extra_occurrences_round_trip_through_the_generic_tree() -> Result<(),
         ),
         "Root",
     )?;
-    // Generic elements with child elements gain the writer's indentation as
-    // text, so compare from the written form onwards.
-    let read = from_str(
-        r#"<Root><Head id="1"><Part>a</Part></Head><Head id="2" extra="x"><Part>b</Part><Part>c</Part></Head></Root>"#,
+    let instance = round_trip(
         &schema,
+        r#"<Root><Head id="1"><Part>a</Part></Head><Head id="2" extra="x"><Part>b</Part><Part>c</Part></Head></Root>"#,
     )?;
-    let output = to_string(&schema, &read)?;
-    let instance = round_trip(&schema, &output)?;
     assert_eq!(
         instance.field("Head").and_then(|head| head.field("id")),
         Some(&text("1"))
