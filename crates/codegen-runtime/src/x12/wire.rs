@@ -62,10 +62,12 @@ impl Syntax {
         ];
         let mut seen = BTreeSet::new();
         for character in characters.into_iter().flatten() {
-            if !character.is_ascii_punctuation() || !seen.insert(character) {
+            // The native writer emits an LF terminator without a second line break.
+            let terminator = character == self.segment && character == '\n';
+            if !(character.is_ascii_punctuation() || terminator) || !seen.insert(character) {
                 return Err(X12BoundaryError::Syntax {
                     segment: 0,
-                    reason: "distinct ASCII punctuation separators required; LF is unsupported by the native writer",
+                    reason: "distinct ASCII punctuation separators required; only the segment terminator may be LF",
                 });
             }
         }
