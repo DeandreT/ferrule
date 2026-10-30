@@ -597,6 +597,15 @@ pub enum EngineError {
     MissingJoinContext { join: JoinId },
     #[error("inner-join iteration cannot be combined with grouping controls")]
     JoinGroupingUnsupported,
+    #[error(
+        "join {} computed source {}: computed join sources are not yet executable",
+        .join.get(),
+        .computed
+    )]
+    ComputedJoinSource {
+        join: JoinId,
+        computed: mapping::ComputedJoinSourceId,
+    },
     /// A user-authored failure rule selected at least one item. Rule numbers
     /// are one-based and follow declaration order.
     #[error(
@@ -1101,6 +1110,9 @@ mod debug_tests;
 #[path = "tests/dynamic_document_output.rs"]
 mod dynamic_document_output_tests;
 
+#[cfg(test)]
+#[path = "tests/computed_join.rs"]
+mod computed_join_tests;
 #[cfg(test)]
 #[path = "tests/document_collections.rs"]
 mod document_collection_tests;

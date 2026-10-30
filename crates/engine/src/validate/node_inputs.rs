@@ -97,6 +97,7 @@ fn label(node: &Node, slot: Slot) -> String {
         Slot::Expression => "value expression".into(),
         Slot::AggregateArgument => "argument".into(),
         Slot::Index => "index".into(),
+        Slot::ComputedJoinKey => "computed join key".into(),
         Slot::Replacement(index) => {
             let element = match node {
                 Node::XmlMixedContent { replacements, .. } => replacements

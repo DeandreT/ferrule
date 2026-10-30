@@ -5,8 +5,8 @@ use std::fmt::Write as _;
 
 use ir::{SchemaKind, SchemaNode};
 use mapping::{
-    AggregateOp, Graph, IterationOutput, JoinId, JoinPlan, JoinSource, JoinSourceCardinality, Node,
-    NodeId, Project, Scope, ScopeConstruction, ScopeIteration,
+    AggregateOp, CollectionJoinSource, Graph, IterationOutput, JoinId, JoinPlan,
+    JoinSourceCardinality, Node, NodeId, Project, Scope, ScopeConstruction, ScopeIteration,
 };
 
 use super::schema::{KeyAlloc, PortMatch, PortTree, xml_escape};
@@ -15,6 +15,10 @@ use super::source::SourceExports;
 use crate::MfdError;
 
 use nested::resolved_nested_source_paths;
+
+/// Kind-32 export writes source-fed inputs only.
+pub(super) const COMPUTED_SOURCE_REFUSAL: &str =
+    "a join with a computed key source cannot be exported to .mfd";
 
 pub(super) fn validate(project: &Project) -> Result<(), MfdError> {
     let dynamic_sources = project
@@ -65,7 +69,7 @@ fn validate_plan_dynamic_sources(
     plan: &JoinPlan,
     dynamic_sources: &BTreeSet<&str>,
 ) -> Result<(), MfdError> {
-    let Some(source) = plan.sources().find_map(|source| {
+    let Some(source) = plan.collection_sources().find_map(|source| {
         source
             .collection()
             .first()
@@ -455,7 +459,7 @@ fn resolved_source_paths(
     owner: &JoinOwner,
     sources: &SourceExports<'_>,
 ) -> Result<Vec<Vec<String>>, String> {
-    let join_sources = owner.plan.sources().collect::<Vec<_>>();
+    let join_sources = owner.plan.collection_sources().collect::<Vec<_>>();
     if !owner.nested {
         return Ok(join_sources
             .iter()
@@ -481,7 +485,10 @@ fn render_one(
     keys: &mut KeyAlloc,
     uid: &mut u32,
 ) -> Result<RenderedJoin, String> {
-    let sources = plan.sources().cloned().collect::<Vec<_>>();
+    if plan.computed_source().is_some() {
+        return Err(COMPUTED_SOURCE_REFUSAL.to_string());
+    }
+    let sources = plan.collection_sources().cloned().collect::<Vec<_>>();
     if sources.len() < 2 {
         return Err("a join must contain at least two sources".to_string());
     }
@@ -580,6 +587,9 @@ fn render_one(
     let mut keypaths = BTreeMap::<Vec<String>, (u32, bool)>::new();
     let mut keypairs = Vec::new();
     for (right, conditions) in plan.stages() {
+        let Some(right) = right.as_collection() else {
+            return Err(COMPUTED_SOURCE_REFUSAL.to_string());
+        };
         let right_collection = right.collection();
         let Some(&right_index) = source_indices.get(right_collection) else {
             return Err(format!(
@@ -588,10 +598,13 @@ fn render_one(
             ));
         };
         for condition in conditions.iter() {
-            let Some(&left_index) = source_indices.get(condition.left_collection()) else {
+            let Some(left_collection) = condition.left_collection() else {
+                return Err(COMPUTED_SOURCE_REFUSAL.to_string());
+            };
+            let Some(&left_index) = source_indices.get(left_collection) else {
                 return Err(format!(
                     "join condition uses unknown left collection `{}`",
-                    condition.left_collection().join("/")
+                    left_collection.join("/")
                 ));
             };
             let left_source = &sources[left_index];
@@ -708,7 +721,7 @@ fn render_one(
 
 fn validate_key_path(
     sources: &SourceExports<'_>,
-    source: &JoinSource,
+    source: &CollectionJoinSource,
     source_path: &[String],
     path: &[String],
     side: &str,
@@ -738,7 +751,7 @@ fn validate_key_path(
 }
 
 fn matching_structural_source(
-    sources: &[JoinSource],
+    sources: &[CollectionJoinSource],
     source_paths: &[Vec<String>],
     source_exports: &SourceExports<'_>,
     target: &SchemaNode,
@@ -1002,7 +1015,7 @@ fn validate_join_expression(
             ..
         } if *owner == join
             && plan
-                .sources()
+                .collection_sources()
                 .any(|source| source.collection() == collection) =>
         {
             true

@@ -1,7 +1,10 @@
 use std::collections::HashSet;
 
 use ir::{Instance, Value};
-use mapping::{AggregateOp, JoinConditions, JoinId, JoinPlan, JoinSource, NodeId};
+use mapping::{
+    AggregateOp, CollectionJoinSource, JoinConditions, JoinId, JoinKeyLeft, JoinPlan, JoinSource,
+    NodeId,
+};
 
 use super::EngineError;
 use super::aggregate::aggregate;
@@ -60,13 +63,16 @@ pub(super) fn execute<'a>(
     plan: &JoinPlan,
     budget: Option<&BudgetMeter>,
 ) -> Result<Vec<JoinedRow<'a>>, EngineError> {
-    let mut sources = plan.sources();
-    let Some(first) = sources.next() else {
+    let sources = plan
+        .sources()
+        .map(|source| collection_source(join, source))
+        .collect::<Result<Vec<_>, _>>()?;
+    let Some((first, rights)) = sources.split_first() else {
         return Ok(Vec::new());
     };
     let receiving = FrameView::receiving(context, positions);
     let mut rows = source_rows(context, &receiving, join, first);
-    for (right_source, conditions) in plan.stages() {
+    for (right_source, (_, conditions)) in rights.iter().zip(plan.stages()) {
         let right_rows = source_rows(context, &receiving, join, right_source);
         let mut joined = Vec::new();
         for left in rows {
@@ -76,7 +82,7 @@ pub(super) fn execute<'a>(
                 if let Some(budget) = budget {
                     budget.charge_join_row()?;
                 }
-                if conditions_match(&left_frames, right, conditions)? {
+                if conditions_match(join, &left_frames, right, conditions)? {
                     let mut instances = left.instances.clone();
                     instances.extend(right.instances.iter().copied());
                     let frames = left
@@ -104,6 +110,20 @@ pub(super) fn execute<'a>(
         }
     }
     Ok(rows)
+}
+
+/// Computed sources are refused until the engine executes them.
+fn collection_source(
+    join: JoinId,
+    source: &JoinSource,
+) -> Result<&CollectionJoinSource, EngineError> {
+    match source {
+        JoinSource::Collection(source) => Ok(source),
+        JoinSource::Computed(computed) => Err(EngineError::ComputedJoinSource {
+            join,
+            computed: computed.id(),
+        }),
+    }
 }
 
 pub(super) fn extensions<'a>(rows: &[JoinedRow<'a>]) -> Vec<WalkExtension<'a>> {
@@ -172,7 +192,7 @@ fn source_rows<'a>(
     context: &[&'a Instance],
     receiving: &FrameView<'_, 'a>,
     join: JoinId,
-    source: &JoinSource,
+    source: &CollectionJoinSource,
 ) -> Vec<JoinedRow<'a>> {
     let collection = source.collection();
     if let Some(frame) = receiving.latest(|frame| {
@@ -239,13 +259,22 @@ fn source_rows<'a>(
 }
 
 fn conditions_match(
+    join: JoinId,
     left: &FrameView<'_, '_>,
     right: &JoinedRow<'_>,
     conditions: &JoinConditions,
 ) -> Result<bool, EngineError> {
     for condition in conditions.iter() {
-        let Some(left_value) = row_value(left, condition.left_collection(), condition.left_path())
-        else {
+        let left_collection = match condition.left() {
+            JoinKeyLeft::Collection { collection, .. } => collection,
+            JoinKeyLeft::Computed(computed) => {
+                return Err(EngineError::ComputedJoinSource {
+                    join,
+                    computed: *computed,
+                });
+            }
+        };
+        let Some(left_value) = row_value(left, left_collection, condition.left_path()) else {
             return Ok(false);
         };
         let Some(right_value) = right

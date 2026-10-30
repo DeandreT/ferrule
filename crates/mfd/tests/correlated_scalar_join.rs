@@ -196,7 +196,8 @@ fn nested_scalar_join_correlates_and_roundtrips() -> Result<(), Box<dyn Error>> 
     let ScopeIteration::InnerJoin { plan, .. } = &matches.iteration else {
         return Err("Match does not use an inner join".into());
     };
-    let sources = plan.sources().collect::<Vec<_>>();
+    assert_eq!(plan.computed_source(), None);
+    let sources = plan.collection_sources().collect::<Vec<_>>();
     assert_eq!(sources.len(), 2);
     assert_eq!(sources[0].cardinality(), JoinSourceCardinality::Singleton);
     assert_eq!(sources[0].collection(), ["CustomerNumber"]);
