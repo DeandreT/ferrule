@@ -107,44 +107,44 @@ pub(super) fn show_options(ui: &mut egui::Ui, draft: &mut XlsxBoundaryDraft, tar
     } else {
         "Leave the sheet name empty to read the first sheet."
     });
-    if !target {
-        let eligible = draft.supports_transposed();
-        ui.vertical(|ui| {
-            let label = ui.label("Read layout");
-            egui::ComboBox::from_id_salt("new_mapping_workbook_source_layout")
-                .selected_text(if draft.transposed {
-                    "Columns as records (transposed)"
-                } else {
-                    "Rows as records"
-                })
-                .show_ui(ui, |ui| {
-                    ui.selectable_value(&mut draft.transposed, false, "Rows as records");
-                    ui.add_enabled_ui(eligible, |ui| {
-                        ui.selectable_value(
-                            &mut draft.transposed,
-                            true,
-                            "Columns as records (transposed)",
-                        );
-                    });
-                })
-                .response
-                .labelled_by(label.id);
+    let eligible = draft.supports_transposed();
+    ui.vertical(|ui| {
+        let label = ui.label(if target {
+            "Write layout"
+        } else {
+            "Read layout"
         });
-        if !eligible {
-            ui.weak("Transposed columns need a data field; `n`, if present, must be an integer.");
-        }
+        egui::ComboBox::from_id_salt(if target {
+            "new_mapping_workbook_target_layout"
+        } else {
+            "new_mapping_workbook_source_layout"
+        })
+        .selected_text(layout_label(target, draft.transposed))
+        .show_ui(ui, |ui| {
+            ui.selectable_value(&mut draft.transposed, false, layout_label(target, false));
+            ui.add_enabled_ui(eligible, |ui| {
+                ui.selectable_value(&mut draft.transposed, true, layout_label(target, true));
+            });
+        })
+        .response
+        .labelled_by(label.id);
+    });
+    if !eligible {
+        ui.weak("Transposed columns need a data field; `n`, if present, must be an integer.");
     }
-    if draft.transposed && !target {
-        ui.weak(
-            "Selected rows become fields in schema order. The first selected row drives records.",
-        );
+    if draft.transposed {
+        ui.weak(if target {
+            "Fields go to the selected rows in schema order. Each record fills one column from A, or column `n`; the first selected row needs a value."
+        } else {
+            "Selected rows become fields in schema order. The first selected row drives records."
+        });
         crate::ui_kit::list_area(
-            "new_mapping_transposed_fields",
+            ("new_mapping_transposed_fields", target),
             crate::ui_kit::ListHeight::Medium,
         )
         .show(ui, |ui| {
             if let Ok(fields) = crate::extra_targets::flat_scalar_fields(&draft.schema) {
-                egui::Grid::new("new_mapping_transposed_rows")
+                egui::Grid::new(("new_mapping_transposed_rows", target))
                     .spacing([12.0, 4.0])
                     .show(ui, |ui| {
                         ui.strong("Field");
@@ -162,7 +162,7 @@ pub(super) fn show_options(ui: &mut egui::Ui, draft: &mut XlsxBoundaryDraft, tar
                                             &mut *row,
                                             crate::ui_kit::FieldWidth::Small,
                                         )
-                                        .id_salt(("new_mapping_transposed_row", index))
+                                        .id_salt(("new_mapping_transposed_row", target, index))
                                         .char_limit(7),
                                     )
                                     .labelled_by(label.id);
@@ -171,7 +171,11 @@ pub(super) fn show_options(ui: &mut egui::Ui, draft: &mut XlsxBoundaryDraft, tar
                                     ..egui::WidgetInfo::labeled(
                                         egui::Role::TextInput,
                                         ui.is_enabled(),
-                                        format!("Worksheet row for {}", field.name),
+                                        if target {
+                                            format!("Target worksheet row for {}", field.name)
+                                        } else {
+                                            format!("Worksheet row for {}", field.name)
+                                        },
                                     )
                                 });
                             }
@@ -180,7 +184,11 @@ pub(super) fn show_options(ui: &mut egui::Ui, draft: &mut XlsxBoundaryDraft, tar
                     });
             }
         });
-        ui.weak("Rows are numbered from 1. No header row is skipped in this layout.");
+        ui.weak(if target {
+            "Rows are numbered from 1. This layout writes no header row."
+        } else {
+            "Rows are numbered from 1. No header row is skipped in this layout."
+        });
     } else {
         ui.checkbox(
             &mut draft.has_header_row,
@@ -242,10 +250,21 @@ pub(super) fn show_options(ui: &mut egui::Ui, draft: &mut XlsxBoundaryDraft, tar
             }
         });
     }
-    if let Err(error) = draft.validate_for(target) {
+    if let Err(error) = draft.validate() {
         ui.colored_label(ui.visuals().error_fg_color, format!("{error:#}"));
     }
     ui.button("Abandon workbook setup").clicked()
+}
+
+/// Target choices have their own captions, so each panel's layout control is
+/// unambiguous when both workbook setups are open.
+fn layout_label(target: bool, transposed: bool) -> &'static str {
+    match (target, transposed) {
+        (false, false) => "Rows as records",
+        (false, true) => "Columns as records (transposed)",
+        (true, false) => "Records in rows",
+        (true, true) => "Records in columns (transposed)",
+    }
 }
 
 #[cfg(test)]

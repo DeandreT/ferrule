@@ -255,3 +255,84 @@ fn flat_target_retains_duplicate_headers_behind_unique_field_names() {
     assert_eq!(children[0].name, "Phone");
     assert_eq!(children[1].name, "Phone_5");
 }
+
+fn transposed_target(extra_row: &str) -> String {
+    format!(
+        r#"
+        <component name="Pivot"><data><root><entry name="Workbook">
+          <entry name="Worksheet">
+            <condition><function name="equal-ignorecase" library="xlsx"><attribute name="Name"/><constant value="Pivot"/></function></condition>
+            <ranges><range id="1" start="2" count="1"/><range id="2" start="4" count="1"/><range id="3" start="6"/></ranges>
+            <entry name="Row">
+              <condition><function name="is-range-id"><constant value="1"/></function></condition>
+              <entry name="Cell" inpkey="1" annotation="Label" datatype="string"><entry name="n" type="attribute" inpkey="3"/></entry>
+            </entry>
+            <entry name="Row">
+              <condition><function name="is-range-id"><constant value="2"/></function></condition>
+              <entry name="Cell" inpkey="2" datatype="integer"><entry name="n" type="attribute" inpkey="4"/></entry>
+            </entry>
+            {extra_row}
+          </entry>
+        </entry></root><excel outputinstance="pivot.xlsx"/></data></component>
+        "#
+    )
+}
+
+#[test]
+fn transposed_target_maps_cells_and_driver_and_row_positions() {
+    let text = transposed_target("");
+    let document = roxmltree::Document::parse(&text).unwrap();
+    let mut warnings = Vec::new();
+    let component = read(&document.root_element(), &mut warnings).unwrap();
+
+    assert!(warnings.is_empty(), "{warnings:?}");
+    assert!(!component.is_source);
+    assert_eq!(component.options.xlsx_rows, [2, 4]);
+    assert_eq!(component.options.xlsx_sheet.as_deref(), Some("Pivot"));
+    assert_eq!(component.output_instance.as_deref(), Some("pivot.xlsx"));
+    assert_eq!(
+        component.schema,
+        SchemaNode::group(
+            "Pivot",
+            vec![
+                SchemaNode::scalar("Label", ScalarType::String),
+                SchemaNode::scalar("Range2", ScalarType::Int),
+                SchemaNode::scalar("n", ScalarType::Int),
+            ],
+        )
+    );
+    let path = |segments: &[&str]| segments.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+    assert_eq!(component.ports[&1], path(&["Label"]));
+    assert_eq!(component.ports[&2], path(&["Range2"]));
+    assert_eq!(component.ports[&3], path(&["n"]));
+    assert_eq!(component.ports[&4], path(&[TRANSPOSED_ROW_INDEX_PORT, "2"]));
+}
+
+#[test]
+fn target_keeps_its_row_table_beside_transposed_rows() {
+    let text = transposed_target(
+        r#"<entry name="Row" inpkey="10">
+              <condition><function name="is-range-id"><constant value="3"/></function></condition>
+              <entry name="Cell" inpkey="11" annotation="Item" datatype="string"><condition><function name="equal"><attribute name="n"/><constant value="1"/></function></condition></entry>
+            </entry>"#,
+    );
+    let document = roxmltree::Document::parse(&text).unwrap();
+    let mut warnings = Vec::new();
+    let component = read(&document.root_element(), &mut warnings).unwrap();
+
+    assert_eq!(
+        warnings,
+        [
+            "xlsx component `Pivot` combines transposed target rows with another table; the transposed rows were skipped"
+        ]
+    );
+    assert!(component.options.xlsx_rows.is_empty());
+    assert_eq!(component.options.xlsx_start_row, Some(6));
+    assert_eq!(
+        component.schema,
+        SchemaNode::group(
+            "Pivot",
+            vec![SchemaNode::scalar("Item", ScalarType::String)]
+        )
+    );
+}
