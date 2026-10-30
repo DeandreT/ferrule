@@ -2624,11 +2624,7 @@ fn import_resolved(
         let extra_path = if extra_root.produces_documents() {
             None
         } else {
-            extra
-                .output_instance
-                .clone()
-                .or_else(|| target_preview_path(extra))
-                .or_else(|| default_pass_through_output_path(extra))
+            target_instance_path(extra).or_else(|| default_pass_through_output_path(extra))
         };
         extra_targets.push(NamedTarget {
             name: target_names[index].clone(),
@@ -2715,10 +2711,7 @@ fn import_resolved(
             .clone()
             .or_else(|| builder.static_target_document_path(target))
     } else {
-        target
-            .output_instance
-            .clone()
-            .or_else(|| target_preview_path(target))
+        target_instance_path(target)
             .or_else(|| builder.static_target_document_path(target))
             .or_else(|| default_pass_through_output_path(target))
     };
@@ -2921,6 +2914,15 @@ fn target_format_options(
         options.xml_schema_hints = component.target_schema_hints.clone();
     }
     options
+}
+
+/// The output document a target's own instance paths name. Its input instance
+/// is only a preview, so it counts only when there is no output instance.
+fn target_instance_path(component: &SchemaComponent) -> Option<String> {
+    component
+        .output_instance
+        .clone()
+        .or_else(|| target_preview_path(component))
 }
 
 /// A target without an output instance writes to its input instance, unless

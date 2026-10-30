@@ -116,8 +116,10 @@ qualifying a mapping that uses only its saved preview path.
 
 The reference application reads a component's input instance only in a source
 role; on a target it is a design-time preview. A filename wildcard there does
-not make the target a file set, never becomes its output path in any target
-format, and does not refuse item-ordered exception import.
+not make the target a file set and never becomes its output path in any target
+format. Beside an output instance, any input instance, including a URL or a
+wildcard folder, is ignored, and it does not refuse item-ordered exception
+import.
 Pass-through components keep the wildcard as a file set in their source role.
 
 One bounded filtered filename form is supported: a primary XML root contains
