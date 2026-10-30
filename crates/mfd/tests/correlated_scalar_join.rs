@@ -944,7 +944,7 @@ fn nested_three_input_export_refuses_physical_owner_and_same_component_aliases()
     });
     assert_refused(
         &owner_collision,
-        "singleton and anchor must belong to the primary source component",
+        "anchor `Order` names both a primary source child and a named source",
         0,
     )?;
     let mut same_component = three_project()?;
@@ -1094,6 +1094,8 @@ fn nested_three_input_dynamic_source_is_a_hard_prepublication_refusal() -> Resul
     Ok(())
 }
 
+#[path = "correlated_scalar_join/anchored_shapes.rs"]
+mod anchored_shapes;
 #[path = "correlated_scalar_join/four_plus.rs"]
 mod four_plus;
 #[path = "correlated_scalar_join/singleton_edges.rs"]
