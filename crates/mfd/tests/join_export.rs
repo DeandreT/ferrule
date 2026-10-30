@@ -653,7 +653,7 @@ fn computed_join_sources_reject_before_replacing_artifacts() {
         assert!(
             matches!(
                 &error,
-                mfd::MfdError::Unsupported(message) if message.contains("computed key source")
+                mfd::MfdError::Unsupported(message) if message.contains("with a computed key")
             ),
             "{error}"
         );
@@ -1334,3 +1334,6 @@ fn mapped_join_sequence_round_trips_named_and_singleton_sources() {
         IterationOutput::MappedSequence
     );
 }
+
+#[path = "join_export/computed_keys.rs"]
+mod computed_keys;
