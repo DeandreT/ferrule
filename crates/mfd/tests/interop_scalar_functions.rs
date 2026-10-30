@@ -114,10 +114,10 @@ fn interoperable_scalar_components_import_execute_and_roundtrip_warning_free()
     assert!(mfd::export(&imported.project, &exported_path)?.is_empty());
     let exported = std::fs::read_to_string(&exported_path)?;
     for (name, library) in [
-        ("format-dateTime", "xpath2"),
-        ("boolean", "xpath2"),
+        ("format-dateTime", "core"),
+        ("boolean", "core"),
         ("positive", "core"),
-        ("floor", "xpath2"),
+        ("floor", "core"),
     ] {
         assert!(exported.contains(&format!("name=\"{name}\" library=\"{library}\"")));
     }
