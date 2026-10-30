@@ -226,6 +226,8 @@ pub enum XmlFormatError {
     UndeclaredStrictXmlWildcardAttribute { name: String, namespace: String },
     #[error("XSD expansion exceeds the {limit}-element materialization limit")]
     SchemaMaterializationLimit { limit: usize },
+    #[error("XSD import exceeds the {limit}-level nesting and reference depth limit")]
+    SchemaDepthLimit { limit: usize },
     #[error("named xs:{kind} `{name}` contains a reference cycle")]
     SchemaGroupCycle { kind: &'static str, name: String },
     #[error("named xs:{kind} `{name}` cannot be represented: {reason}")]

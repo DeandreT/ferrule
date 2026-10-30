@@ -92,7 +92,7 @@ fn parse_model_group(
             name: name.to_string(),
         });
     }
-    let result = (|| {
+    let result = state.nested(depth_limit, |state| {
         let particles = declaration
             .children()
             .filter(|node| {
@@ -134,7 +134,7 @@ fn parse_model_group(
             &mut parsed.repeating_choices,
         );
         Ok(parsed)
-    })();
+    });
     state.leave();
     result
 }
@@ -152,7 +152,7 @@ fn parse_attribute_group(
             name: name.to_string(),
         });
     }
-    let result = (|| {
+    let result = state.nested(depth_limit, |state| {
         let mut attributes = Vec::new();
         for child in declaration.children().filter(|node| node.is_element()) {
             match child.tag_name().name() {
@@ -191,7 +191,7 @@ fn parse_attribute_group(
             }
         }
         Ok(attributes)
-    })();
+    });
     state.leave();
     result
 }
@@ -258,8 +258,18 @@ fn apply_model_group_occurrence(
     Ok(())
 }
 
+// Compositors can nest deeper than the import depth limit, which this walk
+// runs ahead of, so it keeps its own stack.
 fn unsupported_sequence_member(sequence: &Node<'_, '_>) -> Option<&'static str> {
-    for child in sequence.children().filter(|node| node.is_element()) {
+    let mut pending = vec![sequence.children()];
+    while let Some(children) = pending.last_mut() {
+        let Some(child) = children.next() else {
+            pending.pop();
+            continue;
+        };
+        if !child.is_element() {
+            continue;
+        }
         match child.tag_name().name() {
             "choice" | "all" => {
                 return Some("nested xs:choice and xs:all compositors are not supported");
@@ -270,9 +280,7 @@ fn unsupported_sequence_member(sequence: &Node<'_, '_>) -> Option<&'static str> 
                         "repeating nested sequences require tuple metadata and are not supported",
                     );
                 }
-                if let Some(reason) = unsupported_sequence_member(&child) {
-                    return Some(reason);
-                }
+                pending.push(child.children());
             }
             // Element-local complex types own a separate particle tree.
             "element" | "group" | "any" | "annotation" => {}
@@ -284,6 +292,10 @@ fn unsupported_sequence_member(sequence: &Node<'_, '_>) -> Option<&'static str> 
         }
     }
     None
+}
+
+fn depth_limit<T>() -> Result<T, XmlFormatError> {
+    Err(super::depth_limit_error())
 }
 
 fn unsupported(kind: &'static str, name: &str, reason: &'static str) -> XmlFormatError {

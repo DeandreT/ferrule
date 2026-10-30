@@ -528,7 +528,6 @@ dependencies = [
 name = "mfd-package-fuzz"
 version = "0.0.0"
 dependencies = [
- "format-xml",
  "ir",
  "libc",
  "libfuzzer-sys",

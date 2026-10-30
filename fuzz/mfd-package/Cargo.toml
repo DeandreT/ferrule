@@ -16,7 +16,6 @@ cargo-fuzz = true
 path = "src/lib.rs"
 
 [dependencies]
-format-xml = { path = "../../crates/format-xml" }
 ir = { path = "../../crates/ir" }
 mapping = { path = "../../crates/mapping" }
 mfd = { path = "../../crates/mfd" }
