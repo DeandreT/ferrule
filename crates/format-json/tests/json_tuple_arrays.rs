@@ -1,8 +1,8 @@
 //! Native, prepared, JSON5 and JSON Lines reads and writes of the shared
 //! JSON Schema tuple-array corpus (`docs/design/json-tuple-arrays.md`).
 //!
-//! Each case is read through its expected model; JSON Schema import of the
-//! corpus schemas belongs to the importer.
+//! Each case is read through its expected model; `json_tuple_schema.rs`
+//! imports and exports the corpus schemas.
 
 use std::path::PathBuf;
 
@@ -438,13 +438,4 @@ fn tuple_items_reach_unique_items_inside_members() {
         );
     }
     assert!(format_json::from_str(r#"["a",{"codes":[1,2]}]"#, &frame).is_ok());
-}
-
-#[test]
-fn json_schema_export_still_refuses_tuple_frames() {
-    let (schema, _, _) = case("closed-draft-2020-12");
-    assert!(matches!(
-        format_json::json_schema::export(&schema),
-        Err(JsonFormatError::UnsupportedJsonTupleFrameExport { .. })
-    ));
 }

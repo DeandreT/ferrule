@@ -69,7 +69,8 @@ object-property-count, and Unicode string-length intervals, structural
 `uniqueItems`, bounded portable `pattern` assertions, closed homogeneous
 `patternProperties`, property dependencies, dependent-schema predicates,
 single-property-presence conditionals, `propertyNames`, open or closed object
-contracts, heterogeneous scalar type arrays, exact scalar `anyOf`,
+contracts, exact tuple arrays from `prefixItems` or tuple-form `items`,
+heterogeneous scalar type arrays, exact scalar `anyOf`,
 pairwise-disjoint scalar `oneOf`, selected object alternatives, nullable
 scalar/object/array shapes, and typed or unconstrained dynamic properties
 """
@@ -77,11 +78,13 @@ evidence = [
     "crates/format-json/src/json_schema.rs",
     "crates/format-json/src/json_schema/tests/resources.rs",
     "crates/format-json/src/json_schema/tests/patterns.rs",
+    "crates/format-json/src/json_schema/tuple_frames.rs",
+    "crates/format-json/tests/json_tuple_schema.rs",
     "crates/json-pattern/src/lib.rs",
 ]
 unsupported = [
     "General heterogeneous array composition, heterogeneous or correlated numeric-range scalar unions, and mixed structural unions",
-    "Heterogeneous `prefixItems` or legacy tuple members and active `unevaluatedItems`",
+    "Tuple alternatives, per-position `allOf` intersection, `contains` or `uniqueItems` on tuples, nested or recursive tuples, and active `unevaluatedItems`",
     "Required-only schemas without an object shape",
     "External references from in-memory schema import (`json_schema::import_str`)",
     "Enforcement of other shape-neutral validation keywords, which are accepted only for schema recovery",

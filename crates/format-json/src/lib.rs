@@ -239,8 +239,10 @@ pub enum JsonFormatError {
     UndeclaredTupleField { name: String, field: String },
     #[error("non-repeating tuple frame root `{name}` cannot hold root rows or JSON Lines records")]
     TupleRootRows { name: String },
+    /// `.mfd` export refuses frames until design entries can address tuple
+    /// positions; JSON Schema export itself writes them.
     #[error(
-        "schema `{schema}` contains a JSON tuple frame; JSON Schema export does not support JSON tuple frames until #1227"
+        "schema `{schema}` contains a JSON tuple frame; `.mfd` export cannot address tuple positions yet"
     )]
     UnsupportedJsonTupleFrameExport { schema: String },
     #[error("JSON object-item nullability metadata on `{name}` is invalid")]

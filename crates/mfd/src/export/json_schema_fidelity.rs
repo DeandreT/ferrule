@@ -12,6 +12,16 @@ use serde_json::Value;
 use crate::MfdError;
 
 pub(super) fn render(schema: &SchemaNode, owner: &str) -> Result<String, MfdError> {
+    // Design entries cannot address tuple positions yet, so a frame never
+    // reaches a generated sibling.
+    if schema.contains_json_tuple() {
+        return Err(
+            format_json::JsonFormatError::UnsupportedJsonTupleFrameExport {
+                schema: schema.name.clone(),
+            }
+            .into(),
+        );
+    }
     let rendered = format_json::json_schema::export(schema)?;
     let imported = format_json::json_schema::import_str(&rendered).map_err(|error| {
         MfdError::SchemaFidelity(format!(
