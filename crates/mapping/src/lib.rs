@@ -51,9 +51,11 @@ mod xlsx_output;
 mod xml_mixed_content_owned;
 mod xml_scalar_output;
 mod xml_serialize_owned;
+mod xml_wildcard_exclusions;
 pub use xml_scalar_output::{
     XML_TARGET_SCALAR_OUTPUT_V1_CAPABILITY, XmlScalarOutputAdmissionError,
 };
+pub use xml_wildcard_exclusions::XML_WILDCARD_EXCLUSIONS_V1_CAPABILITY;
 
 pub use adjacency::AdjacencyTreePlan;
 pub use adjacency_owned::OwnedAdjacencyTreePlan;

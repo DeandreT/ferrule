@@ -43,16 +43,25 @@ turning them into null. Failed encoding occurs before file publication.
 
 ### File capabilities
 
-Some options must never be silently ignored by a reader that predates them.
-A project or pipeline that uses one is always saved in a version-3 envelope
-whose header also lists the sorted `capabilities` the document requires.
-Readers without the envelope miss the project's required members, and
-version-2 readers refuse the version, so neither falls back to older behavior.
-Current readers require the declared set to match the features the document
-uses exactly: such an option in unmarked or version-2 JSON is refused, as are
-unknown or stale capabilities. The only capability is `sqlite_read_v1`, carried
-by a [declared SQLite query](formats.md#declared-sqlite-queries) anywhere in
-the project's format options.
+Some options or schema metadata must never be silently ignored by a reader
+that predates them. A project or pipeline that uses one is always saved in a
+version-3 envelope whose header also lists the sorted `capabilities` the
+document requires. Readers without the envelope miss the project's required
+members, and version-2 readers refuse the version, so neither falls back to
+older behavior. Current readers require the declared set to match the features
+the document uses exactly: such an option or schema metadata in unmarked or
+version-2 JSON is refused, as are unknown or stale capabilities. The
+capabilities are:
+
+- `sqlite_read_v1`, carried by a
+  [declared SQLite query](formats.md#declared-sqlite-queries) anywhere in the
+  project's format options;
+- `xml-target-scalar-output-v1`, carried by an
+  [XML scalar output policy](design/xml-cast-suppression.md) in any format
+  options;
+- `xml-wildcard-exclusions-v1`, carried by a negated namespace set or excluded
+  names on an XML wildcard in any stored schema
+  ([XSD 1.1 wildcard exclusions](design/xml-wildcard-exclusions.md)).
 
 
 ## Primary XML root reads

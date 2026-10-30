@@ -177,6 +177,7 @@ fn canonical_metadata(node: &SchemaNode) -> bool {
         xml_name_alternatives,
         xml_wildcard_namespace,
         xml_wildcard_process_contents,
+        xml_wildcard_excluded_names,
         recursive_ref,
         attribute,
         text,
@@ -218,6 +219,7 @@ fn canonical_metadata(node: &SchemaNode) -> bool {
         && xml_name_alternatives.is_empty()
         && xml_wildcard_namespace.is_none()
         && *xml_wildcard_process_contents == XmlWildcardProcessContents::Skip
+        && xml_wildcard_excluded_names.is_none()
         && recursive_ref.is_none()
         && !attribute
         && !text

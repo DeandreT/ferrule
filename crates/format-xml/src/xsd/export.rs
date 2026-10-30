@@ -309,6 +309,7 @@ fn same_recursive_anchor_definition(left: &SchemaNode, right: &SchemaNode) -> bo
         && left.xml_name_alternatives == right.xml_name_alternatives
         && left.xml_wildcard_namespace == right.xml_wildcard_namespace
         && left.xml_wildcard_process_contents == right.xml_wildcard_process_contents
+        && left.xml_wildcard_excluded_names == right.xml_wildcard_excluded_names
         && left.recursive_ref == right.recursive_ref
         && left.attribute == right.attribute
         && left.xml_attribute_required == right.xml_attribute_required
@@ -394,6 +395,12 @@ fn validate_export_node(
         return Err(XmlFormatError::UnsupportedXmlWildcard {
             reason: "non-skip wildcard processing requires a namespace-aware generic element() or attribute() group",
         });
+    }
+    if node.has_xml_wildcard_exclusions() {
+        return Err(wildcard_exclusion_export_error(
+            node,
+            "XSD 1.1 wildcard exclusions (notNamespace/notQName) cannot be exported",
+        ));
     }
     if node.attribute && node.text {
         return Err(XmlFormatError::ConflictingSchemaRoles {
@@ -705,6 +712,18 @@ fn wildcard_namespace_attribute(
                 .collect::<Vec<_>>();
             Ok(tokens.join(" "))
         }
+        ir::XmlWildcardNamespaceConstraint::Not { .. } => Err(wildcard_exclusion_export_error(
+            node,
+            "XSD 1.1 notNamespace constraints cannot be exported",
+        )),
+    }
+}
+
+fn wildcard_exclusion_export_error(node: &SchemaNode, reason: &'static str) -> XmlFormatError {
+    if node.name == XML_ATTRIBUTES_FIELD {
+        XmlFormatError::UnsupportedXmlAttributeWildcard { reason }
+    } else {
+        XmlFormatError::UnsupportedXmlWildcard { reason }
     }
 }
 
