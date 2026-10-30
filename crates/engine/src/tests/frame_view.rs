@@ -21,8 +21,8 @@ fn text(value: &str) -> Instance {
 }
 
 /// The key evaluator for plans without a computed source, which never call it.
-fn unkeyed(node: mapping::NodeId) -> Result<Value, EngineError> {
-    unreachable!("collection-only plans evaluate no key node {node}")
+fn unkeyed(key: &mapping::ComputedJoinValue) -> Result<Vec<Value>, EngineError> {
+    unreachable!("collection-only plans evaluate no key {key:?}")
 }
 
 fn key(left: &[&str], left_path: &[&str], right_path: &[&str]) -> JoinConditions {

@@ -52,7 +52,7 @@ fn legacy_port_inputs(node: &Node) -> Vec<NodeId> {
             ..
         } => plan
             .computed_source()
-            .map(|computed| computed.value())
+            .and_then(|computed| computed.scalar())
             .into_iter()
             .chain(*expression)
             .chain(*arg)
@@ -112,7 +112,10 @@ fn legacy_selector_inputs(node: &Node) -> SelectorInputs {
             arg,
             ..
         } => {
-            parent.extend(plan.computed_source().map(|computed| computed.value()));
+            parent.extend(
+                plan.computed_source()
+                    .and_then(|computed| computed.scalar()),
+            );
             private.extend(*expression);
             parent.extend(*arg);
         }
