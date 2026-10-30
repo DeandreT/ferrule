@@ -53,6 +53,9 @@ the document uses exactly: such an option or schema metadata in unmarked or
 version-2 JSON is refused, as are unknown or stale capabilities. The
 capabilities are:
 
+- `join-computed-keys-v1`, carried by a join plan with a
+  [computed key source](design/join-computed-keys.md) in any target scope,
+  graph or function body;
 - `sqlite_read_v1`, carried by a
   [declared SQLite query](formats.md#declared-sqlite-queries) anywhere in the
   project's format options;

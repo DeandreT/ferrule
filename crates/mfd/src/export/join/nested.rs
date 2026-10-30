@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 
 use ir::{SchemaKind, SchemaNode};
-use mapping::{JoinSource, JoinSourceCardinality};
+use mapping::{CollectionJoinSource, JoinSourceCardinality};
 
 use super::super::source::{SourceExport, SourceExports};
 use super::schema_node_at;
@@ -17,7 +17,7 @@ use super::schema_node_at;
 /// outside the iteration. A plan needs at least one repeating input, and
 /// needs no singleton.
 pub(super) fn resolved_nested_source_paths(
-    join_sources: &[&JoinSource],
+    join_sources: &[&CollectionJoinSource],
     anchor: &[String],
     sources: &SourceExports<'_>,
 ) -> Result<Vec<Vec<String>>, String> {
@@ -242,7 +242,7 @@ impl<'a> NestedInput<'a> {
     /// source name, singletons on the active item, and other repeating paths
     /// on the innermost frame declaring their first segment.
     fn classify(
-        source: &'a JoinSource,
+        source: &'a CollectionJoinSource,
         frames: &AnchorFrames<'_, '_>,
         sources: &SourceExports<'_>,
     ) -> Result<Self, String> {

@@ -49,7 +49,7 @@ fn without_offers(project: &mut Project) {
 fn shape_project(plan: JoinPlan, offers: bool) -> Result<Project, Box<dyn Error>> {
     let mut project = three_project()?;
     if plan
-        .sources()
+        .collection_sources()
         .any(|source| source.collection().first().map(String::as_str) == Some("Settings"))
     {
         project.extra_sources.push(settings_source());

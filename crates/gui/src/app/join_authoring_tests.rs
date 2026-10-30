@@ -3,7 +3,8 @@ use crate::test_ui::ContextExt as _;
 use super::*;
 use ir::{Instance, ScalarType, Value};
 use mapping::{
-    FailureIteration, FailureRule, FailureSelection, NamedSource, NamedTarget, SequenceExpr,
+    FailureIteration, FailureRule, FailureSelection, JoinSource, NamedSource, NamedTarget,
+    SequenceExpr,
 };
 
 fn row_schema(name: &str, value: &str) -> SchemaNode {
@@ -2763,6 +2764,9 @@ fn join_key_edit_unsaved_preview_uses_applied_three_keys_and_publishes_no_files(
 
 #[path = "join_authoring_tests/nary.rs"]
 mod nary;
+
+#[path = "join_authoring_tests/computed.rs"]
+mod computed;
 
 #[path = "join_authoring_tests/typed_history.rs"]
 mod typed_history;

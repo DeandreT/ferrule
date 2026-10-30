@@ -148,7 +148,7 @@ pub(in crate::export) fn selector_context_warnings(
                 }
                 Node::JoinAggregate { plan, .. } => {
                     private_xml = true;
-                    for source in plan.sources() {
+                    for source in plan.collection_sources() {
                         self.source_frames(source.collection(), anchor, &mut owned);
                     }
                 }
@@ -259,7 +259,7 @@ pub(in crate::export) fn selector_context_warnings(
                 frames.push(Vec::new());
             }
             if let Some((_, plan)) = scope.join() {
-                for source in plan.sources() {
+                for source in plan.collection_sources() {
                     self.source_frames(source.collection(), anchor, &mut frames);
                 }
             }
