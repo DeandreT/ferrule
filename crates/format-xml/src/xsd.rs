@@ -45,6 +45,7 @@ mod export;
 mod groups;
 mod resources;
 mod restriction;
+mod schema_links;
 mod substitution;
 mod substitution_expansion;
 mod type_alternative_profiles;
@@ -52,6 +53,7 @@ mod wildcard_ports;
 
 use resources::SchemaReader;
 pub use resources::XmlSchemaByteReader;
+use schema_links::{Follow, LinkedSchema};
 use substitution_expansion::attach_substitution_alternatives;
 use type_alternative_profiles::{incompatible_attribute_use, incompatible_optional_occurrence};
 
@@ -991,14 +993,7 @@ fn attach_type_alternatives(
     };
     let base_is_abstract = complex_type_is_abstract(schema_el, schema_path, base_qname, state);
     let mut index = DerivedTypeIndex::default();
-    collect_derived_type_declarations(
-        schema_el,
-        schema_path,
-        schema_el.attribute("targetNamespace"),
-        &mut BTreeSet::new(),
-        &mut index,
-        &state.reader,
-    );
+    collect_derived_type_declarations(schema_el, schema_path, &mut index, &state.reader);
     if index.limit_reached {
         state.materialization_limit_reached = true;
         return;
@@ -1268,20 +1263,64 @@ fn complex_type_abstractness(
 fn collect_derived_type_declarations(
     schema_el: &Node,
     schema_path: &Path,
+    index: &mut DerivedTypeIndex,
+    reader: &SchemaReader,
+) {
+    let mut visited = BTreeSet::new();
+    let Some(root) = index_derived_type_declarations(
+        schema_el,
+        schema_path,
+        schema_el.attribute("targetNamespace"),
+        &mut visited,
+        index,
+        reader,
+    ) else {
+        return;
+    };
+    schema_links::walk::<()>(root, |schema, link| {
+        let Some(location) = &link.location else {
+            return Follow::Skip;
+        };
+        let Some(dependency) = reader.dependency(&schema.path, location) else {
+            return Follow::Skip;
+        };
+        let Ok(text) = reader.read(&dependency) else {
+            return Follow::Skip;
+        };
+        let Ok(document) = roxmltree::Document::parse(&text) else {
+            return Follow::Skip;
+        };
+        index_derived_type_declarations(
+            &document.root_element(),
+            &dependency,
+            schema.inherited_namespace(link),
+            &mut visited,
+            index,
+            reader,
+        )
+        .map_or(Follow::Skip, Follow::Descend)
+    });
+}
+
+/// Indexes one schema document's derived types, returning the document for
+/// its links unless it was already visited or the index is full.
+fn index_derived_type_declarations(
+    schema_el: &Node,
+    schema_path: &Path,
     inherited_namespace: Option<&str>,
     visited: &mut BTreeSet<(PathBuf, Option<String>)>,
     index: &mut DerivedTypeIndex,
     reader: &SchemaReader,
-) {
+) -> Option<LinkedSchema> {
     if index.limit_reached {
-        return;
+        return None;
     }
     let path = reader.identity(schema_path);
     let effective_namespace = schema_el
         .attribute("targetNamespace")
         .or(inherited_namespace);
     if !visited.insert((path.clone(), effective_namespace.map(str::to_string))) {
-        return;
+        return None;
     }
     for declaration in schema_el
         .children()
@@ -1311,39 +1350,10 @@ fn collect_derived_type_declarations(
             restriction,
         });
         if index.limit_reached {
-            return;
+            return None;
         }
     }
-
-    for link in schema_el
-        .children()
-        .filter(|node| node.is_element() && matches!(node.tag_name().name(), "include" | "import"))
-    {
-        let Some(location) = link.attribute("schemaLocation") else {
-            continue;
-        };
-        let Some(dependency) = reader.dependency(&path, location) else {
-            continue;
-        };
-        let Ok(text) = reader.read(&dependency) else {
-            continue;
-        };
-        let Ok(document) = roxmltree::Document::parse(&text) else {
-            continue;
-        };
-        let dependency_schema = document.root_element();
-        let dependency_inherited = (link.tag_name().name() == "include")
-            .then_some(effective_namespace)
-            .flatten();
-        collect_derived_type_declarations(
-            &dependency_schema,
-            &dependency,
-            dependency_inherited,
-            visited,
-            index,
-            reader,
-        );
-    }
+    Some(LinkedSchema::new(schema_el, path, effective_namespace))
 }
 
 fn expanded_qname_identity(
@@ -1693,79 +1703,51 @@ fn search_dependencies(
     reader: &SchemaReader,
 ) -> Option<PathBuf> {
     let (wanted_namespace, effective_namespace) = namespaces;
-    for link in schema_el
-        .children()
-        .filter(|node| node.is_element() && matches!(node.tag_name().name(), "include" | "import"))
-    {
-        let is_import = link.tag_name().name() == "import";
-        if is_import {
+    let root = LinkedSchema::new(schema_el, schema_path.to_path_buf(), effective_namespace);
+    schema_links::walk(root, |schema, link| {
+        if !link.include {
             let Some(wanted) = wanted_namespace else {
-                continue;
+                return Follow::Skip;
             };
             if link
-                .attribute("namespace")
+                .namespace
+                .as_deref()
                 .is_some_and(|namespace| namespace != wanted)
             {
-                continue;
+                return Follow::Skip;
             }
         }
-
-        let Some(location) = link.attribute("schemaLocation") else {
-            continue;
+        let Some(location) = &link.location else {
+            return Follow::Skip;
         };
-        let Some(path) = reader.dependency(schema_path, location) else {
-            continue;
+        let Some(dependency) = reader.dependency(&schema.path, location) else {
+            return Follow::Skip;
         };
-        let inherited_namespace = (!is_import).then_some(effective_namespace).flatten();
-        if let Some(found) = search_schema_file(
-            &path,
-            tag,
-            name,
-            wanted_namespace,
-            inherited_namespace,
-            visited,
-            reader,
-        ) {
-            return Some(found);
+        let path = reader.identity(&dependency);
+        if !visited.insert(path.clone()) {
+            return Follow::Skip;
         }
-    }
-    None
-}
-
-fn search_schema_file(
-    schema_path: &Path,
-    tag: &str,
-    name: &str,
-    wanted_namespace: Option<&str>,
-    inherited_namespace: Option<&str>,
-    visited: &mut BTreeSet<PathBuf>,
-    reader: &SchemaReader,
-) -> Option<PathBuf> {
-    let path = reader.identity(schema_path);
-    if !visited.insert(path.clone()) {
-        return None;
-    }
-    let text = reader.read(&path).ok()?;
-    let doc = roxmltree::Document::parse(&text).ok()?;
-    let schema_el = doc.root_element();
-    let declared_namespace = schema_el.attribute("targetNamespace");
-    let effective_namespace = declared_namespace.or(inherited_namespace);
-
-    if wanted_namespace.is_none_or(|wanted| effective_namespace == Some(wanted))
-        && top_level(&schema_el, tag, name).is_some()
-    {
-        return Some(path);
-    }
-
-    search_dependencies(
-        &schema_el,
-        &path,
-        tag,
-        name,
-        (wanted_namespace, effective_namespace),
-        visited,
-        reader,
-    )
+        let Ok(text) = reader.read(&path) else {
+            return Follow::Skip;
+        };
+        let Ok(doc) = roxmltree::Document::parse(&text) else {
+            return Follow::Skip;
+        };
+        let dependency_schema = doc.root_element();
+        let effective_namespace = dependency_schema
+            .attribute("targetNamespace")
+            .or(schema.inherited_namespace(link));
+        if wanted_namespace.is_none_or(|wanted| effective_namespace == Some(wanted))
+            && top_level(&dependency_schema, tag, name).is_some()
+        {
+            return Follow::Found(path);
+        }
+        Follow::Descend(LinkedSchema::new(
+            &dependency_schema,
+            path,
+            effective_namespace,
+        ))
+    })
 }
 
 fn normalized_path(path: &Path) -> PathBuf {

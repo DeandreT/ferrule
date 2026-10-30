@@ -170,6 +170,51 @@ fn schemas_past_the_xsd_depth_limit_fail_with_a_diagnostic() {
     );
 }
 
+/// The CLI imports on its main thread; a schema reached through a long chain
+/// of include files imports there instead of overflowing the stack.
+#[test]
+fn schemas_behind_a_long_include_chain_import() {
+    const FILES: usize = 10_000;
+    let directory = temporary_path("diagnostics_include_chain").with_extension("");
+    let _ = std::fs::remove_dir_all(&directory);
+    std::fs::create_dir_all(&directory).unwrap();
+    let xs = r#"xmlns:xs="http://www.w3.org/2001/XMLSchema""#;
+    for index in 1..FILES {
+        let body = if index + 1 < FILES {
+            format!(r#"<xs:include schemaLocation="s{}.xsd"/>"#, index + 1)
+        } else {
+            r#"<xs:complexType name="Line"><xs:sequence><xs:element name="Sku" type="xs:string"/></xs:sequence></xs:complexType>"#
+                .to_string()
+        };
+        std::fs::write(
+            directory.join(format!("s{index}.xsd")),
+            format!("<xs:schema {xs}>{body}</xs:schema>"),
+        )
+        .unwrap();
+    }
+    let root = directory.join("s0.xsd");
+    std::fs::write(
+        &root,
+        format!(
+            r#"<xs:schema {xs}><xs:include schemaLocation="s1.xsd"/><xs:element name="Input" type="Line"/></xs:schema>"#
+        ),
+    )
+    .unwrap();
+    let output = ferrule(&[
+        "--diagnostics",
+        "json",
+        "import-xsd",
+        "--xsd",
+        root.to_str().unwrap(),
+    ]);
+    std::fs::remove_dir_all(&directory).unwrap();
+
+    assert!(output.status.success(), "{output:?}");
+    let schema: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(schema["name"], "Input");
+    assert_eq!(schema["kind"]["children"][0]["name"], "Sku", "{schema}");
+}
+
 #[test]
 fn invalid_usage_requested_as_json_is_one_diagnostic() {
     let output = ferrule(&["--diagnostics", "json", "validate"]);
