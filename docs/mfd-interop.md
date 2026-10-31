@@ -751,6 +751,12 @@ Static source, target, named-source, and named-target paths are rebased when
 the generated project is written somewhere other than the design directory.
 HTTP URLs and graph-computed paths are unchanged. Moving or using Save As on a
 project applies the same rebasing rule, including wildcard input paths.
+Existing directory links are resolved before `..` so Save As preserves resource
+identity across linked directories. Document and output directories remain
+literal names; source glob suffixes remain patterns. The final resource entry
+is not dereferenced, and nonexistent output paths remain valid. Retained editor
+history uses the same basis. Offline bundle paths remain purely lexical within
+their separately confined virtual root.
 
 ### XML output schema-location hint
 
