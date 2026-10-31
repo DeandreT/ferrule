@@ -1,16 +1,10 @@
-//! Prepared correspondence between borrowed source instances and legacy
-//! position frames.
+//! Prepared correspondence between borrowed source instances and positions.
 //!
-//! Legacy evaluation keeps instances and position frames in parallel lists
-//! whose correspondence is implicit: a receiving context pairs a position
-//! with an instance by counting back from the context's end past synthetic
-//! group wrappers, and a joined row pairs its two lists by index. A frame view
-//! makes that pairing explicit once, so a lookup selects one frame by its
-//! exact collection and reads the frame's instance, kind and origin together.
-//!
-//! The view is read-only and additive. Both lists stay authoritative, and the
-//! view reproduces their legacy pairing exactly; each frame's endpoint names
-//! which pairing rule produced its instance, including the legacy fallbacks.
+//! Runtime producers record the instance slot at the point of insertion, so
+//! singleton descents cannot move a repeating frame's owner. Explicit missing
+//! or invalid bindings never borrow another frame. Unspecified bindings retain
+//! the historical end-relative receiving / index-relative row pairing for
+//! hand-built contexts and malformed, unvalidated joins only.
 //!
 //! Owned source frames pair with their legacy positions the other way round:
 //! each frame records the slot of its position. [`latest_owned`]
@@ -20,22 +14,20 @@ use ir::Instance;
 use mapping::JoinId;
 
 use crate::owned_context::SourceFrame;
-use crate::source_iteration::PositionFrame;
+use crate::source_iteration::{InstanceBinding, PositionFrame};
 
 /// Which instance, if any, corresponds to a frame.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum FrameEndpoint {
     /// The receiving context instance at this depth, outermost first.
     Context(usize),
-    /// The joined row's own instance at this index. Every source of the row
-    /// contributed exactly one instance per position.
+    /// The joined row's own instance at this slot.
     Row(usize),
     /// Legacy index pairing in a row whose sources did not all contribute one
     /// instance per position. The instance at this index may belong to
     /// another source, or may not exist.
     LegacyRow(usize),
-    /// The receiving context is shorter than its positions and wrappers, so
-    /// legacy lookup finds no instance for any of its positions.
+    /// An explicit missing/out-of-range slot, or an undersized legacy context.
     Unbound,
 }
 
@@ -98,9 +90,8 @@ pub(crate) struct FrameView<'v, 'a> {
 }
 
 impl<'v, 'a> FrameView<'v, 'a> {
-    /// Pairs each receiving position with its context instance, as legacy
-    /// position lookup does: positions and group wrappers occupy the end of
-    /// the context, and a grouped position's instance follows its wrapper.
+    /// Resolves explicit slots, retaining end-relative pairing only for legacy
+    /// positions. Group wrappers never change an explicit slot.
     pub(crate) fn receiving(context: &'v [&'a Instance], positions: &'v [PositionFrame]) -> Self {
         let offset = receiving_offset(context, positions);
         let mut preceding_wrappers = 0;
@@ -109,7 +100,7 @@ impl<'v, 'a> FrameView<'v, 'a> {
             .enumerate()
             .map(|(index, position)| {
                 preceding_wrappers += usize::from(position.grouped);
-                receiving_frame(offset, index, preceding_wrappers, position)
+                receiving_frame(context.len(), offset, index, preceding_wrappers, position)
             })
             .collect();
         Self {
@@ -131,7 +122,7 @@ impl<'v, 'a> FrameView<'v, 'a> {
         // Wrappers at or before each position, counted down from the end.
         let mut preceding_wrappers = positions.iter().filter(|position| position.grouped).count();
         for (index, position) in positions.iter().enumerate().rev() {
-            let frame = receiving_frame(offset, index, preceding_wrappers, position);
+            let frame = receiving_frame(context.len(), offset, index, preceding_wrappers, position);
             preceding_wrappers -= usize::from(position.grouped);
             if select(&frame) {
                 let instance = instance_at(context, frame.endpoint);
@@ -164,9 +155,8 @@ impl<'v, 'a> FrameView<'v, 'a> {
         receiving_offset(context, positions)
     }
 
-    /// Pairs a joined row's positions with its instances by index. `exact`
-    /// records whether every source contributed one instance per position;
-    /// otherwise the endpoints name the legacy index pairing.
+    /// Resolves row-local explicit slots. For unspecified positions, `exact`
+    /// distinguishes ordinary index pairing from malformed legacy row pairing.
     pub(crate) fn row(
         instances: &'v [&'a Instance],
         positions: impl IntoIterator<Item = (&'v PositionFrame, FrameOrigin)>,
@@ -176,10 +166,15 @@ impl<'v, 'a> FrameView<'v, 'a> {
             .into_iter()
             .enumerate()
             .map(|(index, (position, origin))| Frame {
-                endpoint: if exact {
-                    FrameEndpoint::Row(index)
-                } else {
-                    FrameEndpoint::LegacyRow(index)
+                endpoint: match position.binding {
+                    InstanceBinding::ContextSlot(slot) if slot < instances.len() => {
+                        FrameEndpoint::Row(slot)
+                    }
+                    InstanceBinding::ContextSlot(_) | InstanceBinding::ExplicitUnbound => {
+                        FrameEndpoint::Unbound
+                    }
+                    InstanceBinding::LegacyUnspecified if exact => FrameEndpoint::Row(index),
+                    InstanceBinding::LegacyUnspecified => FrameEndpoint::LegacyRow(index),
                 },
                 collection: &position.collection,
                 position,
@@ -229,15 +224,24 @@ fn receiving_offset(context: &[&Instance], positions: &[PositionFrame]) -> Optio
 /// The receiving frame at `index`, after `preceding_wrappers` group wrappers
 /// at or before it.
 fn receiving_frame(
+    context_len: usize,
     offset: Option<usize>,
     index: usize,
     preceding_wrappers: usize,
     position: &PositionFrame,
 ) -> Frame<'_> {
     Frame {
-        endpoint: offset.map_or(FrameEndpoint::Unbound, |offset| {
-            FrameEndpoint::Context(offset + index + preceding_wrappers)
-        }),
+        endpoint: match position.binding {
+            InstanceBinding::ContextSlot(slot) if slot < context_len => {
+                FrameEndpoint::Context(slot)
+            }
+            InstanceBinding::ContextSlot(_) | InstanceBinding::ExplicitUnbound => {
+                FrameEndpoint::Unbound
+            }
+            InstanceBinding::LegacyUnspecified => offset.map_or(FrameEndpoint::Unbound, |offset| {
+                FrameEndpoint::Context(offset + index + preceding_wrappers)
+            }),
+        },
         collection: &position.collection,
         position,
         origin: position

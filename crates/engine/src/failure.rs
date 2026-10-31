@@ -65,8 +65,9 @@ pub(super) fn evaluate(
         };
         for extension in extensions {
             let mut item_context = context.to_vec();
-            item_context.extend(extension.instances);
-            if !is_selected(program, rule.selection, &item_context, &extension.positions)? {
+            let mut item_positions = Vec::new();
+            extension.append_to(&mut item_context, &mut item_positions);
+            if !is_selected(program, rule.selection, &item_context, &item_positions)? {
                 continue;
             }
             let message = rule
@@ -77,7 +78,7 @@ pub(super) fn evaluate(
                         program,
                         message,
                         &item_context,
-                        &extension.positions,
+                        &item_positions,
                         &mut in_progress,
                     )
                     .map(scalar_text)
@@ -253,7 +254,8 @@ fn visit_observed_rows<'a>(
         work.charge(bytes).map_err(access)?;
         let mut item_context = Vec::with_capacity(count);
         item_context.extend(context.iter().copied());
-        item_context.extend(extension.instances.iter().copied());
+        let mut item_positions = Vec::new();
+        extension.append_to(&mut item_context, &mut item_positions);
         let owned = OwnedContext {
             roots: state.roots,
             frames,
@@ -261,12 +263,7 @@ fn visit_observed_rows<'a>(
             owned_ancestry: state.owned_ancestry,
         };
         let row_program = program.with_owned_context(&owned);
-        if !is_selected(
-            row_program,
-            rule.selection,
-            &item_context,
-            &extension.positions,
-        )? {
+        if !is_selected(row_program, rule.selection, &item_context, &item_positions)? {
             continue;
         }
         let message = rule
@@ -277,7 +274,7 @@ fn visit_observed_rows<'a>(
                     row_program,
                     message,
                     &item_context,
-                    &extension.positions,
+                    &item_positions,
                     &mut in_progress,
                 )
                 .map(scalar_text)

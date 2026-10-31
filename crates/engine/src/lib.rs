@@ -1155,6 +1155,7 @@ mod json_tuple_frame_tests;
 #[cfg(test)]
 #[path = "tests/optional_presence.rs"]
 mod optional_presence_tests;
+
 #[cfg(test)]
 #[path = "tests/owned_adjacency_tree.rs"]
 mod owned_adjacency_tree_tests;
@@ -1215,6 +1216,9 @@ mod sequence_item_at_tests;
 #[cfg(test)]
 #[path = "tests/sequence_windows.rs"]
 mod sequence_windows_tests;
+#[cfg(test)]
+#[path = "tests/singleton_frames.rs"]
+mod singleton_frames_tests;
 #[cfg(test)]
 #[path = "tests/singleton_join.rs"]
 mod singleton_join_tests;
