@@ -68,7 +68,9 @@ struct State {
     message: String,
 }
 
-fn active(ctx: &egui::Context) -> Option<egui::Id> {
+/// Identity of the canvas instance currently drawing its widgets. Rebuilt
+/// canvases get a new identity even when their graph and node IDs are unchanged.
+pub(crate) fn active(ctx: &egui::Context) -> Option<egui::Id> {
     ctx.data(|data| data.get_temp::<egui::Id>(egui::Id::unique("active_canvas_tools")))
 }
 
