@@ -374,6 +374,12 @@ different repetition owners, computed named-source values and other unproved
 expressions are refused before publication. Other aggregates retain their
 parent-context input.
 
+Direct generated-sequence `SequenceItemAt` uses the supported two-input form.
+The `SequenceAggregate(ItemAt)` representation is refused before publication,
+including plain, transformed and filtered variants: its private item and
+parent-context ownership are not preserved by the current MFD importer.
+Ferrule's interpreter behavior is unchanged.
+
 Nested cloned target groups retain their declared ancestor entry ownership.
 Child branches attach to that exact owner in declaration order, including
 unequal branch counts; source anchors and branch conditions remain relative to
