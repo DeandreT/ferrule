@@ -387,7 +387,10 @@ fn transposed_row_validation_matches_typed_reader_refusals_without_replacing_ope
     let beyond = format_xlsx::from_bytes_transposed(&bytes, &schema, Some("Matrix"), &[1048576, 2]);
     directory.record("valid-row-beyond-used-extent.txt", format!("{beyond:#?}"))?;
     assert_eq!(beyond?, Vec::<Instance>::new());
+    // The same row selection is valid for a transposed target.
     staged(&mut app, SchemaSide::Target).transposed = true;
+    assert!(app.new_mapping_setup.as_ref().unwrap().can_create());
+    staged(&mut app, SchemaSide::Target).rows = vec!["2".into(), "2".into()];
     assert!(!app.new_mapping_setup.as_ref().unwrap().can_create());
     app.finish_new_mapping();
     assert_eq!(
@@ -395,6 +398,104 @@ fn transposed_row_validation_matches_typed_reader_refusals_without_replacing_ope
         original
     );
     assert_eq!(app.document, original_document);
+    directory.completed = true;
+    Ok(())
+}
+
+fn target_row_labels(output: &egui::FullOutput) -> Vec<String> {
+    let update = output
+        .platform_output
+        .accesskit_update
+        .as_ref()
+        .expect("actual widget tree");
+    let mut labels = update
+        .nodes
+        .iter()
+        .filter(|(_, node)| node.role() == egui::accesskit::Role::TextInput)
+        .filter_map(|(_, node)| node.label())
+        .filter(|label| label.starts_with("Target worksheet row for "))
+        .map(str::to_owned)
+        .collect::<Vec<_>>();
+    labels.sort();
+    labels
+}
+
+#[test]
+fn transposed_target_layout_is_offered_and_creates_a_writable_target() -> anyhow::Result<()> {
+    let mut directory = TestDirectory::new()?;
+    let mut app = FerruleApp::default();
+    setup(&mut app, &directory)?;
+    configure(&mut app);
+    let context = egui::Context::default();
+    context.enable_accesskit();
+    crate::icons::install(&context);
+    desktop_wizard_click(
+        &mut app,
+        &context,
+        &directory,
+        800.0,
+        "Records in rows",
+        150.0,
+    )?;
+    desktop_wizard_click(
+        &mut app,
+        &context,
+        &directory,
+        800.0,
+        "Records in columns (transposed)",
+        150.0,
+    )?;
+    assert!(staged(&mut app, SchemaSide::Target).transposed);
+    assert!(!staged(&mut app, SchemaSide::Source).transposed);
+    let output = frame(&mut app, &context, &directory, 800.0, Vec::new())?;
+    assert_eq!(
+        target_row_labels(&output),
+        [
+            "Target worksheet row for Count",
+            "Target worksheet row for Name"
+        ]
+    );
+
+    let target = staged(&mut app, SchemaSide::Target);
+    target.sheet = "Columns".into();
+    target.rows = vec!["4".into(), "2".into()];
+    let expected = mapping::FormatOptions {
+        tabular_kind: Some(TabularBoundaryKind::Xlsx),
+        xlsx_sheet: Some("Columns".into()),
+        xlsx_rows: vec![4, 2],
+        ..Default::default()
+    };
+    assert_eq!(target.options(true)?, expected);
+    desktop_wizard_click(
+        &mut app,
+        &context,
+        &directory,
+        800.0,
+        "Create mapping",
+        -150.0,
+    )?;
+    assert!(app.new_mapping_setup.is_none());
+    assert_eq!(app.project.target_options, expected);
+
+    bind(&mut app.project);
+    assert!(
+        engine::validate(&app.project).is_empty(),
+        "{:?}",
+        engine::validate(&app.project)
+    );
+    let records = vec![row("Ada", 3), row("Lin", 7)];
+    let output = engine::run(&app.project, &Instance::Repeated(records.clone()))?;
+    let bytes = format_xlsx::to_bytes_transposed(
+        &app.project.target,
+        output.as_repeated().expect("transposed target records"),
+        Some("Columns"),
+        &[4, 2],
+    )?;
+    directory.record("transposed-target.xlsx", &bytes)?;
+    assert_eq!(
+        format_xlsx::from_bytes_transposed(&bytes, &app.project.target, Some("Columns"), &[4, 2])?,
+        records
+    );
     directory.completed = true;
     Ok(())
 }

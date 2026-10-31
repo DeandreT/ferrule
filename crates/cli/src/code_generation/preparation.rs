@@ -262,6 +262,7 @@ fn prepare_document(
     profile: GenerateProfile,
 ) -> anyhow::Result<PreparedDesign> {
     let raw = profile == GenerateProfile::PrimaryRawDelimitedDocument;
+    refuse_xlsx_grid_regions(document.project())?;
     let route = document.primary_route()?;
     let policy = match route.format {
         mapping::PrimaryDocumentFormat::Csv => {
@@ -283,10 +284,38 @@ fn prepare_document(
     })
 }
 
+/// Generated code does not support composite XLSX sources with grid
+/// regions; they run only through the mapping runtime.
+fn refuse_xlsx_grid_regions(project: &mapping::Project) -> anyhow::Result<()> {
+    let sources = std::iter::once((None, &project.source_options)).chain(
+        project
+            .extra_sources
+            .iter()
+            .map(|source| (Some(source.name.as_str()), &source.options)),
+    );
+    for (name, options) in sources {
+        if options
+            .xlsx_composite
+            .as_ref()
+            .is_some_and(|composite| !composite.grids.is_empty())
+        {
+            let source = name.map_or_else(
+                || "the primary source".to_string(),
+                |name| format!("source `{name}`"),
+            );
+            bail!(
+                "generated code does not support XLSX grid regions in a composite workbook source ({source}); run the mapping with `ferrule run` instead"
+            );
+        }
+    }
+    Ok(())
+}
+
 fn prepare_design(
     project: &mapping::Project,
     profile: GenerateProfile,
 ) -> anyhow::Result<PreparedDesign> {
+    refuse_xlsx_grid_regions(project)?;
     let policy = admit_profile(project, profile)?;
     let program = lower(project)?;
     Ok(PreparedDesign {

@@ -651,6 +651,38 @@ fn compiles_and_embeds_selected_swift_configuration() {
         imported.project.source_options.swift_mt
     );
     assert_source_boundary_roundtrip(&imported.project, directory.path());
+
+    // SWIFT MT output headers have no `.mfd` representation.
+    let mut with_headers = imported.project.clone();
+    with_headers.source_options.swift_mt_output = Some(
+        mapping::SwiftMtOutputOptions::new(
+            mapping::SwiftMtDirection::Input,
+            vec![mapping::SwiftMtMessageHeaders {
+                basic_header: "F01BANKBEBBAXXX0000000001".into(),
+                application_header: "BANKDEFFXXXXN".into(),
+            }],
+        )
+        .unwrap(),
+    );
+    let refused = directory.path().join("headers.mfd");
+    let error = mfd::export(&with_headers, &refused).unwrap_err();
+    assert!(
+        error.to_string().contains("output message headers"),
+        "{error}"
+    );
+    assert!(!refused.exists());
+
+    // The same refusal applies on the target side, where the headers belong.
+    let mut target_headers = imported.project.clone();
+    target_headers.target_options.swift_mt_output =
+        with_headers.source_options.swift_mt_output.clone();
+    let error = mfd::export(&target_headers, &refused).unwrap_err();
+    assert!(
+        error.to_string().contains("target")
+            && error.to_string().contains("output message headers"),
+        "{error}"
+    );
+    assert!(!refused.exists());
 }
 
 #[test]

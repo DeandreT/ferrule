@@ -720,3 +720,114 @@ fn an_owned_search_resolves_singletons_from_its_candidate() {
         Some(&string("O2"))
     );
 }
+
+/// Orders each own a `Match` join scope over `plan`, whose `Nr` binding reads
+/// `singleton`, with the active order's `Id` beside it.
+fn order_matches(singleton: &[String], plan: JoinPlan, with_items: bool) -> Project {
+    let order_target = SchemaNode::group(
+        "Order",
+        vec![
+            SchemaNode::scalar("Id", ScalarType::String),
+            row_target("Match"),
+        ],
+    )
+    .repeating();
+    let mut project = project(
+        SchemaNode::group("Target", vec![order_target]),
+        join_nodes(singleton),
+        Scope {
+            children: vec![Scope {
+                target_field: "Order".into(),
+                iteration: ScopeIteration::Source(path(&["Orders"])),
+                bindings: vec![Binding {
+                    target_field: "Id".into(),
+                    node: 3,
+                }],
+                children: vec![row_scope("Match", plan, with_items)],
+                ..Scope::default()
+            }],
+            ..Scope::default()
+        },
+    );
+    project.extra_sources.push(mapping::NamedSource {
+        name: "Settings".into(),
+        path: "settings.xml".into(),
+        schema: SchemaNode::group(
+            "Settings",
+            vec![
+                SchemaNode::scalar("CustomerNr", ScalarType::String),
+                SchemaNode::scalar("Sku", ScalarType::String),
+            ],
+        ),
+        options: Default::default(),
+        dynamic_path: None,
+    });
+    project
+}
+
+type MatchSummary = Vec<(Option<Value>, Vec<Vec<Option<Value>>>)>;
+
+fn run_order_matches(project: &Project, orders: &[(&str, &str)]) -> MatchSummary {
+    let settings = record(&[("CustomerNr", "C1"), ("Sku", "S3")]);
+    let output = run_with_sources(
+        project,
+        &source(orders),
+        vec![("Settings".into(), settings)],
+    )
+    .unwrap();
+    output
+        .field("Order")
+        .and_then(Instance::as_repeated)
+        .unwrap()
+        .iter()
+        .map(|order| {
+            (
+                order.field("Id").and_then(Instance::as_scalar).cloned(),
+                rows(order, "Match")
+                    .into_iter()
+                    .map(|row| row.into_iter().map(|value| value.cloned()).collect())
+                    .collect(),
+            )
+        })
+        .collect()
+}
+
+#[test]
+fn nested_named_and_repositioned_singletons_join_inside_each_order() {
+    let orders = [("O1", "C2"), ("O2", "C1")];
+
+    // A named singleton reads the same static value inside every order.
+    let named = path(&["Settings", "CustomerNr"]);
+    let project = order_matches(&named, plan(&named, true, false), false);
+    assert!(validate(&project).is_empty(), "{:?}", validate(&project));
+    let ada = vec![vec![Some(string("C1")), Some(string("Ada")), None]];
+    assert_eq!(
+        run_order_matches(&project, &orders),
+        vec![(Some(string("O1")), ada.clone()), (Some(string("O2")), ada),]
+    );
+
+    // The active order's singleton second and a named singleton last.
+    let active = path(&["CustomerNr"]);
+    let plan = plan(&active, false, true)
+        .then(
+            JoinSource::singleton(path(&["Settings", "Sku"])),
+            JoinConditions::new(JoinKey::new(path(&["Item"]), path(&["Sku"]), Vec::new())),
+        )
+        .unwrap();
+    let project = order_matches(&active, plan, true);
+    assert!(validate(&project).is_empty(), "{:?}", validate(&project));
+    assert_eq!(
+        run_order_matches(&project, &orders),
+        vec![
+            (
+                Some(string("O1")),
+                vec![vec![
+                    Some(string("C2")),
+                    Some(string("Grace")),
+                    Some(string("S3"))
+                ]],
+            ),
+            (Some(string("O2")), vec![]),
+        ]
+    );
+}

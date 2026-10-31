@@ -2,7 +2,8 @@ use std::error::Error;
 
 use ir::{
     GroupAlternative, GroupAlternativeMode, JsonFormatAnnotations, ScalarType, ScalarTypeSet,
-    SchemaKind, SchemaNode, ValueGeneration, XmlAlternativeKind, XmlWildcardProcessContents,
+    SchemaKind, SchemaNode, ValueGeneration, XmlAlternativeKind, XmlExpandedName, XmlNamespace,
+    XmlWildcardExcludedNames, XmlWildcardProcessContents,
 };
 use serde_json::json;
 
@@ -177,6 +178,7 @@ fn all_nondefault_descriptor_metadata_families_and_nested_defaults_are_explicit(
         ("xml_name_alternatives", json!(["urn:test"])),
         ("xml_wildcard_namespace", json!({})),
         ("xml_wildcard_process_contents", json!("strict")),
+        ("xml_wildcard_excluded_names", json!([])),
         ("repeating", json!(true)),
         ("recursive_ref", json!("S")),
         ("attribute", json!(true)),
@@ -211,7 +213,7 @@ fn all_nondefault_descriptor_metadata_families_and_nested_defaults_are_explicit(
         ("xml_repeating_choices", json!([{}])),
         ("database_relation", json!({})),
     ];
-    assert_eq!(rejected.len(), 37);
+    assert_eq!(rejected.len(), 38);
     for (field, value) in rejected {
         for nested in [false, true] {
             let mut raw = base.clone();
@@ -248,6 +250,14 @@ fn all_nondefault_descriptor_metadata_families_and_nested_defaults_are_explicit(
     let mut schema = object();
     schema.xml_wildcard_process_contents = XmlWildcardProcessContents::Strict;
     unsupported(&schema, "xml_wildcard_process_contents");
+    let mut schema = object();
+    schema.xml_wildcard_excluded_names = Some(
+        XmlWildcardExcludedNames::new([
+            XmlExpandedName::new(XmlNamespace::Unqualified, "blocked").unwrap()
+        ])
+        .unwrap(),
+    );
+    unsupported(&schema, "xml_wildcard_excluded_names");
     let mut raw = base;
     raw["fixed"] = json!(null);
     raw["json_formats"] = json!([]);

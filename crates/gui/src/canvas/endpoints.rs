@@ -7,12 +7,24 @@ use std::collections::BTreeMap;
 use std::ops::Range;
 
 use crate::canvas::CanvasNode;
+use crate::canvas_keyboard::focus;
 
 pub const VISIBLE_PIN_LIMIT: usize = 12;
 const MIN_VISIBLE_PINS: usize = 4;
 const PIN_ROW_HEIGHT: f32 = 20.0;
 const MIN_WIDTH: f32 = 110.0;
 const MAX_WIDTH: f32 = 480.0;
+/// How far one arrow key moves the width handle.
+const KEYBOARD_WIDTH_STEP: f32 = 10.0;
+/// Keys a focused endpoint scrollbar takes.
+const SCROLL_KEYS: [egui::Key; 6] = [
+    egui::Key::ArrowUp,
+    egui::Key::ArrowDown,
+    egui::Key::PageUp,
+    egui::Key::PageDown,
+    egui::Key::Home,
+    egui::Key::End,
+];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum EndpointDisplayPin {
@@ -414,18 +426,7 @@ impl EndpointScrollState {
             let pitch = f64::from(row_height);
             let steps = (accumulated / pitch).trunc() as isize;
             *remainder = (accumulated % pitch) as f32;
-            if steps != 0 {
-                let old = self.visible_limit(node, total);
-                let minimum = MIN_VISIBLE_PINS.min(eligible);
-                let rows = old.saturating_add_signed(steps).clamp(minimum, eligible);
-                // A short filtered list cannot be resized vertically. Do not
-                // replace the saved All-fields capacity with its clipped size.
-                if rows != old {
-                    self.visible_rows.insert(node, rows);
-                    self.clamp_offset(node, total);
-                    changed = true;
-                }
-            }
+            changed |= self.step_visible_rows(node, total, steps);
         } else if eligible == 0 {
             self.resize_remainders.remove(&node);
         }
@@ -433,6 +434,38 @@ impl EndpointScrollState {
             self.field_rects.remove(&node);
         }
         changed
+    }
+
+    /// Shows `rows` more (or fewer) fields, as the height handle does from
+    /// the keyboard. Any partial row from a pointer drag is dropped.
+    pub fn resize_rows(&mut self, node: CanvasNode, total: usize, rows: isize) -> bool {
+        if rows == 0 {
+            return false;
+        }
+        self.resize_remainders.remove(&node);
+        let changed = self.step_visible_rows(node, total, rows);
+        if changed {
+            self.field_rects.remove(&node);
+        }
+        changed
+    }
+
+    fn step_visible_rows(&mut self, node: CanvasNode, total: usize, steps: isize) -> bool {
+        let eligible = self.eligible_len(node, total);
+        if steps == 0 || eligible == 0 {
+            return false;
+        }
+        let old = self.visible_limit(node, total);
+        let minimum = MIN_VISIBLE_PINS.min(eligible);
+        let rows = old.saturating_add_signed(steps).clamp(minimum, eligible);
+        // A short filtered list cannot be resized vertically. Do not replace
+        // the saved All-fields capacity with its clipped size.
+        if rows == old {
+            return false;
+        }
+        self.visible_rows.insert(node, rows);
+        self.clamp_offset(node, total);
+        true
     }
 
     fn set_offset(&mut self, node: CanvasNode, total: usize, offset: usize) -> bool {
@@ -524,6 +557,7 @@ pub fn show_scrollbar(
     total: usize,
     state: &mut EndpointScrollState,
     accent: egui::Color32,
+    title: &str,
 ) -> bool {
     let Some(field_rect) = state.field_rect(node) else {
         // Never guess header/footer bounds: wait for measured node geometry.
@@ -562,6 +596,29 @@ pub fn show_scrollbar(
         && let Some(offset) = geometry.offset_at(pointer, eligible - visible)
     {
         changed |= state.set_offset(node, total, offset);
+    }
+    focus::name_as(
+        &response,
+        egui::Role::ScrollBar,
+        &format!("Scroll fields · {title}"),
+    );
+    if response.has_focus() {
+        let page = isize::try_from(visible).unwrap_or(isize::MAX);
+        let offset = state.offset(node, total);
+        let maximum = state.max_offset(node, total);
+        let target = match focus::take_key(ui.ctx(), response.id, &SCROLL_KEYS) {
+            Some(egui::Key::ArrowUp) => Some(offset.saturating_sub(1)),
+            Some(egui::Key::ArrowDown) => Some(offset.saturating_add(1)),
+            Some(egui::Key::PageUp) => Some(offset.saturating_add_signed(-page)),
+            Some(egui::Key::PageDown) => Some(offset.saturating_add_signed(page)),
+            Some(egui::Key::Home) => Some(0),
+            Some(egui::Key::End) => Some(maximum),
+            _ => None,
+        };
+        if let Some(target) = target {
+            changed |= state.set_offset(node, total, target);
+        }
+        focus::paint_focus(ui, geometry.hit_rect, 2.0);
     }
     let range = state.visible_range(node, total);
     let hint = if state.connected_only(node) {
@@ -669,6 +726,7 @@ pub fn show_resize_handles(
     total: usize,
     natural_width: f32,
     state: &mut EndpointScrollState,
+    title: &str,
 ) -> bool {
     let Some(field_rect) = state.field_rect(node) else {
         return false;
@@ -693,12 +751,65 @@ pub fn show_resize_handles(
         )
         .on_hover_cursor(egui::CursorIcon::ResizeVertical)
         .on_hover_text("Resize visible fields");
+    let width_direction = if matches!(node, CanvasNode::SourceBlock(_)) {
+        -1.0
+    } else {
+        1.0
+    };
+    // Arrow keys move a focused handle as a drag would, the width handle by a
+    // fixed step and the height handle by whole rows.
+    let mut changed = false;
+    focus::name_as(
+        &width_response,
+        egui::Role::Splitter,
+        &format!("Resize width · {title}"),
+    );
+    if width_response.has_focus() {
+        let edge = match focus::take_key(
+            ui.ctx(),
+            width_response.id,
+            &[egui::Key::ArrowLeft, egui::Key::ArrowRight],
+        ) {
+            Some(egui::Key::ArrowLeft) => -KEYBOARD_WIDTH_STEP,
+            Some(egui::Key::ArrowRight) => KEYBOARD_WIDTH_STEP,
+            _ => 0.0,
+        };
+        if edge != 0.0 {
+            changed |= state.resize(
+                node,
+                total,
+                natural_width,
+                egui::vec2(edge * width_direction, 0.0),
+            );
+        }
+        focus::paint_focus(ui, geometry.width_rect, 2.0);
+    }
+    focus::name_as(
+        &height_response,
+        egui::Role::Splitter,
+        &format!("Resize visible fields · {title}"),
+    );
+    if height_response.has_focus() {
+        let rows = match focus::take_key(
+            ui.ctx(),
+            height_response.id,
+            &[egui::Key::ArrowUp, egui::Key::ArrowDown],
+        ) {
+            Some(egui::Key::ArrowUp) => -1,
+            Some(egui::Key::ArrowDown) => 1,
+            _ => 0,
+        };
+        changed |= state.resize_rows(node, total, rows);
+        focus::paint_focus(ui, geometry.height_rect, 2.0);
+    }
     let corner_delta = if let Some(corner_rect) = geometry.corner_rect {
+        // The corner combines the two handles above, which already cover it
+        // from the keyboard, so it is not a Tab stop.
         let response = ui
             .interact(
                 corner_rect,
                 ui.scope_id().with(("endpoint_resize_corner", node)),
-                egui::Sense::drag(),
+                egui::Sense::DRAG,
             )
             .on_hover_cursor(egui::CursorIcon::ResizeNwSe)
             .on_hover_text("Resize endpoint");
@@ -721,11 +832,6 @@ pub fn show_resize_handles(
         egui::Vec2::ZERO
     };
 
-    let width_direction = if matches!(node, CanvasNode::SourceBlock(_)) {
-        -1.0
-    } else {
-        1.0
-    };
     let width_delta = width_response.drag_delta().x * width_direction + corner_delta.x;
     let height_delta = height_response.drag_delta().y + corner_delta.y;
     state.resize(
@@ -733,7 +839,7 @@ pub fn show_resize_handles(
         total,
         natural_width,
         egui::vec2(width_delta, height_delta),
-    )
+    ) || changed
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -807,545 +913,5 @@ fn finite_positive_rect(rect: egui::Rect) -> bool {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn visible_pins_keep_semantic_identity_while_scrolling() {
-        let node = CanvasNode::SourceBlock(2);
-        let mut state = EndpointScrollState::default();
-
-        assert_eq!(state.visible_range(node, 30), 0..12);
-        assert!(state.scroll_rows(node, 30, 7));
-        assert_eq!(state.visible_range(node, 30), 7..19);
-        assert_eq!(state.semantic_pin(node, 3, 30), Some(9));
-        assert_eq!(state.visual_pin_for_semantic(node, 10, 30), Some(4));
-        assert_eq!(state.visual_pin_for_semantic(node, 2, 30), Some(0));
-    }
-
-    #[test]
-    fn displayed_endpoint_pins_include_hidden_edge_proxies() {
-        let node = CanvasNode::SourceBlock(2);
-        let mut state = EndpointScrollState::default();
-
-        assert_eq!(state.display_pin_count(node, 30), 13);
-        assert_eq!(
-            state.display_pin(node, 0, 30),
-            Some(EndpointDisplayPin::Visible(0))
-        );
-        assert_eq!(
-            state.display_pin(node, 12, 30),
-            Some(EndpointDisplayPin::HiddenAfter)
-        );
-        assert_eq!(state.visual_pin_for_semantic(node, 18, 30), Some(12));
-
-        assert!(state.scroll_rows(node, 30, 7));
-        assert_eq!(state.display_pin_count(node, 30), 14);
-        assert_eq!(
-            state.display_pin(node, 0, 30),
-            Some(EndpointDisplayPin::HiddenBefore)
-        );
-        assert_eq!(
-            state.display_pin(node, 1, 30),
-            Some(EndpointDisplayPin::Visible(7))
-        );
-        assert_eq!(
-            state.display_pin(node, 13, 30),
-            Some(EndpointDisplayPin::HiddenAfter)
-        );
-        assert_eq!(state.visual_pin_for_semantic(node, 2, 30), Some(0));
-        assert_eq!(state.visual_pin_for_semantic(node, 10, 30), Some(4));
-        assert_eq!(state.visual_pin_for_semantic(node, 25, 30), Some(13));
-        assert_eq!(state.semantic_pin(node, 0, 30), None);
-        assert_eq!(state.semantic_pin(node, 4, 30), Some(10));
-    }
-
-    #[test]
-    fn reveal_centers_a_distant_match_and_clamps_at_the_end() {
-        let node = CanvasNode::TargetBlock(0);
-        let mut state = EndpointScrollState::default();
-
-        assert!(state.reveal(node, 30, 20));
-        assert_eq!(state.visible_range(node, 30), 14..26);
-        assert!(state.reveal(node, 30, 29));
-        assert_eq!(state.visible_range(node, 30), 18..30);
-        assert!(!state.reveal(node, 30, 29));
-    }
-
-    #[test]
-    fn resize_changes_width_and_visible_rows_with_bounded_accumulation() {
-        let node = CanvasNode::SourceBlock(0);
-        let mut state = EndpointScrollState::default();
-
-        assert!(state.resize(node, 30, 200.0, egui::vec2(35.0, 10.0)));
-        assert_eq!(state.width(node, 200.0), 235.0);
-        assert_eq!(state.visible_limit(node, 30), 12);
-        assert!(state.resize(node, 30, 200.0, egui::vec2(0.0, 11.0)));
-        assert_eq!(state.visible_limit(node, 30), 13);
-        assert!(state.resize(node, 30, 200.0, egui::vec2(0.0, -400.0)));
-        assert_eq!(state.visible_limit(node, 30), MIN_VISIBLE_PINS);
-    }
-
-    #[test]
-    fn endpoint_wheel_delta_maps_to_bounded_field_rows() {
-        assert_eq!(scroll_rows(-18.0), 1);
-        assert_eq!(scroll_rows(36.0), -2);
-        assert_eq!(scroll_rows(-500.0), 5);
-        assert_eq!(scroll_rows(0.5), -1);
-        assert_eq!(scroll_rows(0.0), 0);
-        assert_eq!(scroll_rows(-0.0), 0);
-        assert_eq!(scroll_rows(f32::NAN), 0);
-        assert_eq!(scroll_rows(f32::INFINITY), 0);
-        assert_eq!(scroll_rows(f32::NEG_INFINITY), 0);
-    }
-
-    #[test]
-    fn connected_fields_keep_non_contiguous_semantic_indices_in_schema_order() {
-        let node = CanvasNode::SourceBlock(0);
-        let mut state = EndpointScrollState::default();
-        assert!(state.set_connected(node, 15, [12, 8, 2, 8, 999]));
-        assert_eq!(state.connected_count(node, 15), 3);
-        assert_eq!(state.eligible_len(node, 15), 15);
-        assert_eq!(state.visible_indices(node, 15), (0..12).collect::<Vec<_>>());
-
-        assert!(state.set_connected_only(node, true));
-        assert!(state.connected_only(node));
-        assert_eq!(state.eligible_indices(node, 15), vec![2, 8, 12]);
-        assert_eq!(state.visible_range(node, 15), 0..3);
-        assert_eq!(state.visible_indices(node, 15), vec![2, 8, 12]);
-        assert_eq!(state.display_pin_count(node, 15), 3);
-        for (visual, semantic) in [2, 8, 12].into_iter().enumerate() {
-            assert_eq!(state.semantic_pin(node, visual, 15), Some(semantic));
-            assert_eq!(
-                state.visual_pin_for_semantic(node, semantic, 15),
-                Some(visual)
-            );
-        }
-        assert_eq!(state.semantic_pin(node, 3, 15), None);
-        assert_eq!(state.visual_pin_for_semantic(node, 3, 15), None);
-        assert_eq!(state.visual_pin_for_semantic(node, 15, 15), None);
-        assert_eq!(state.hidden_before(node, 15), 0);
-        assert_eq!(state.hidden_after(node, 15), 0);
-        assert!(!state.set_connected(node, 15, [8, 12, 2]));
-        assert!(!state.set_connected_only(node, true));
-    }
-
-    #[test]
-    fn connected_field_proxies_count_eligible_rows_not_schema_gaps() {
-        let node = CanvasNode::TargetBlock(0);
-        let mut state = EndpointScrollState::default();
-        state.set_connected(node, 50, (0..20).map(|row| row * 2 + 1));
-        state.set_connected_only(node, true);
-        assert_eq!(state.max_offset(node, 50), 8);
-        assert!(state.scroll_rows(node, 50, 5));
-        assert_eq!(state.visible_range(node, 50), 5..17);
-        assert_eq!(
-            state.visible_indices(node, 50),
-            (5..17).map(|row| row * 2 + 1).collect::<Vec<_>>()
-        );
-        assert_eq!(state.hidden_before(node, 50), 5);
-        assert_eq!(state.hidden_after(node, 50), 3);
-        assert_eq!(state.display_pin_count(node, 50), 14);
-        assert_eq!(
-            state.display_pin(node, 0, 50),
-            Some(EndpointDisplayPin::HiddenBefore)
-        );
-        assert_eq!(
-            state.display_pin(node, 1, 50),
-            Some(EndpointDisplayPin::Visible(11))
-        );
-        assert_eq!(
-            state.display_pin(node, 13, 50),
-            Some(EndpointDisplayPin::HiddenAfter)
-        );
-        assert_eq!(state.semantic_pin(node, 0, 50), None);
-        assert_eq!(state.semantic_pin(node, 13, 50), None);
-        assert_eq!(state.visual_pin_for_semantic(node, 3, 50), Some(0));
-        assert_eq!(state.visual_pin_for_semantic(node, 29, 50), Some(10));
-        assert_eq!(state.visual_pin_for_semantic(node, 39, 50), Some(13));
-        // An unconnected row is not a hidden-wire proxy just because its
-        // semantic index is numerically between two connected fields.
-        assert_eq!(state.visual_pin_for_semantic(node, 2, 50), None);
-    }
-
-    #[test]
-    fn search_reveals_one_unconnected_field_without_reordering_or_changing_connections() {
-        let node = CanvasNode::TargetBlock(0);
-        let mut state = EndpointScrollState::default();
-        state.set_connected(node, 15, [12, 2, 8]);
-        state.set_connected_only(node, true);
-
-        assert!(state.reveal(node, 15, 0));
-        assert_eq!(state.eligible_indices(node, 15), vec![0, 2, 8, 12]);
-        assert_eq!(state.connected_count(node, 15), 3);
-        assert!(state.reveal(node, 15, 9));
-        assert_eq!(state.eligible_indices(node, 15), vec![2, 8, 9, 12]);
-        assert_eq!(state.semantic_pin(node, 2, 15), Some(9));
-        assert!(!state.reveal(node, 15, 9));
-        assert!(!state.reveal(node, 15, 15));
-        assert_eq!(state.eligible_indices(node, 15), vec![2, 8, 9, 12]);
-        assert!(state.reveal(node, 15, 8));
-        assert_eq!(state.eligible_indices(node, 15), vec![2, 8, 12]);
-
-        state.reveal(node, 15, 14);
-        assert!(state.clear_reveal(node, 15));
-        assert!(!state.clear_reveal(node, 15));
-        assert_eq!(state.eligible_indices(node, 15), vec![2, 8, 12]);
-        assert!(state.set_connected_only(node, false));
-        assert_eq!(
-            state.eligible_indices(node, 15),
-            (0..15).collect::<Vec<_>>()
-        );
-        assert_eq!(state.connected_count(node, 15), 3);
-    }
-
-    #[test]
-    fn connecting_a_revealed_field_keeps_it_visible_as_a_real_connection() {
-        let node = CanvasNode::SourceBlock(0);
-        let mut state = EndpointScrollState::default();
-        state.set_connected(node, 15, [2, 8, 12]);
-        state.set_connected_only(node, true);
-        state.reveal(node, 15, 9);
-        assert!(state.set_connected(node, 15, [12, 9, 8, 2]));
-        assert_eq!(state.eligible_indices(node, 15), vec![2, 8, 9, 12]);
-        assert_eq!(state.connected_count(node, 15), 4);
-        assert!(!state.clear_reveal(node, 15));
-        assert_eq!(state.visual_pin_for_semantic(node, 9, 15), Some(2));
-    }
-
-    #[test]
-    fn reveal_in_filtered_scrolled_rows_uses_eligible_position_not_schema_index() {
-        let node = CanvasNode::SourceBlock(0);
-        let mut state = EndpointScrollState::default();
-        state.set_connected(node, 50, (0..20).map(|row| row * 2 + 1));
-        state.set_connected_only(node, true);
-        state.scroll_rows(node, 50, 5);
-        assert!(state.reveal(node, 50, 48));
-        assert_eq!(state.eligible_len(node, 50), 21);
-        assert_eq!(state.visible_range(node, 50), 9..21);
-        assert_eq!(state.semantic_pin(node, 12, 50), Some(48));
-        assert!(!state.reveal(node, 50, 48));
-        assert!(state.clear_reveal(node, 50));
-        assert_eq!(state.visible_range(node, 50), 8..20);
-        assert_eq!(state.visual_pin_for_semantic(node, 48, 50), None);
-    }
-
-    #[test]
-    fn empty_connected_view_remains_revealable_and_switches_back_to_all_fields() {
-        let node = CanvasNode::TargetBlock(0);
-        let mut state = EndpointScrollState::default();
-        state.set_connected(node, 15, []);
-        state.set_connected_only(node, true);
-        assert_eq!(state.eligible_len(node, 15), 0);
-        assert_eq!(state.visible_limit(node, 15), 0);
-        assert_eq!(state.visible_range(node, 15), 0..0);
-        assert_eq!(state.display_pin_count(node, 15), 0);
-        assert_eq!(state.display_pin(node, 0, 15), None);
-        assert!(!state.scroll_rows(node, 15, isize::MAX));
-        assert!(!state.resize(node, 15, 200.0, egui::vec2(0.0, 100.0)));
-        assert!(state.resize(node, 15, 200.0, egui::vec2(10.0, 100.0)));
-        assert_eq!(state.width(node, 200.0), 210.0);
-
-        assert!(state.reveal(node, 15, 7));
-        assert_eq!(state.visible_indices(node, 15), vec![7]);
-        assert!(state.clear_reveal(node, 15));
-        assert_eq!(state.visible_indices(node, 15), Vec::<usize>::new());
-        assert!(state.set_connected(node, 15, [2]));
-        assert_eq!(state.visible_indices(node, 15), vec![2]);
-        assert!(state.set_connected(node, 15, []));
-        assert_eq!(state.visible_indices(node, 15), Vec::<usize>::new());
-        assert!(state.set_connected_only(node, false));
-        assert_eq!(state.visible_range(node, 15), 0..12);
-    }
-
-    #[test]
-    fn changing_connected_membership_clamps_scrolling_and_preserves_manual_capacity() {
-        let node = CanvasNode::SourceBlock(0);
-        let mut state = EndpointScrollState::default();
-        state.resize(node, 50, 200.0, egui::vec2(0.0, -400.0));
-        state.set_connected(node, 50, (0..25).map(|row| row * 2));
-        state.set_connected_only(node, true);
-        assert_eq!(state.visible_limit(node, 50), 4);
-        assert!(state.scroll_rows(node, 50, isize::MAX));
-        assert_eq!(state.offset(node, 50), 21);
-        state.set_connected(node, 50, [2, 8, 12]);
-        assert_eq!(state.offset(node, 50), 0);
-        assert_eq!(state.visible_indices(node, 50), vec![2, 8, 12]);
-        state.set_connected_only(node, false);
-        assert_eq!(state.visible_limit(node, 50), 4);
-        assert_eq!(state.visible_range(node, 50), 0..4);
-    }
-
-    #[test]
-    fn resizing_a_short_filtered_list_preserves_the_all_fields_row_capacity() {
-        let node = CanvasNode::SourceBlock(0);
-        for height_delta in [0.0, -120.0] {
-            let mut state = EndpointScrollState::default();
-            state.resize(node, 30, 200.0, egui::vec2(0.0, height_delta));
-            let capacity = state.visible_limit(node, 30);
-            state.set_connected(node, 30, [2, 8, 12]);
-            state.set_connected_only(node, true);
-            assert_eq!(state.visible_limit(node, 30), 3);
-            assert!(!state.resize(node, 30, 200.0, egui::vec2(0.0, 100.0)));
-            assert!(!state.resize(node, 30, 200.0, egui::vec2(0.0, -100.0)));
-            state.set_connected_only(node, false);
-            assert_eq!(state.visible_limit(node, 30), capacity);
-        }
-    }
-
-    #[test]
-    fn changing_full_schema_length_clamps_stored_offsets_even_with_no_connections() {
-        let node = CanvasNode::TargetBlock(0);
-        let mut state = EndpointScrollState::default();
-        assert!(state.set_connected(node, 30, []));
-        assert!(state.scroll_rows(node, 30, isize::MAX));
-        assert_eq!(state.offset(node, 30), 18);
-        let fields = egui::Rect::from_min_size(egui::pos2(10.0, 50.0), egui::vec2(100.0, 80.0));
-        state.set_field_rect(node, fields);
-        assert!(state.set_connected(node, 5, []));
-        assert_eq!(state.offset(node, 5), 0);
-        assert_eq!(state.field_rect(node), None);
-        assert!(state.set_connected(node, 30, []));
-        assert_eq!(state.visible_range(node, 30), 0..12);
-        assert!(!state.set_connected(node, 30, []));
-    }
-
-    #[test]
-    fn extreme_finite_resize_inputs_leave_only_a_finite_partial_row_remainder() {
-        let node = CanvasNode::SourceBlock(0);
-        for pitch in [f32::from_bits(1), 20.0, f32::MAX] {
-            let mut state = EndpointScrollState::default();
-            state.set_row_height(node, pitch);
-            for delta in [f32::MAX, f32::MAX, -f32::MAX] {
-                state.resize(node, 30, 200.0, egui::vec2(0.0, delta));
-                let remainder = state.resize_remainders[&node];
-                assert!(remainder.is_finite());
-                assert!(remainder.abs() <= pitch);
-                assert!((MIN_VISIBLE_PINS..=30).contains(&state.visible_limit(node, 30)));
-            }
-        }
-    }
-
-    #[test]
-    fn resizing_uses_measured_row_height_and_ignores_invalid_inputs() {
-        let node = CanvasNode::SourceBlock(0);
-        let mut state = EndpointScrollState::default();
-        state.set_row_height(node, 10.0);
-        assert!(!state.resize(node, 30, 200.0, egui::vec2(0.0, 9.0)));
-        assert!(state.resize(node, 30, 200.0, egui::vec2(0.0, 2.0)));
-        assert_eq!(state.visible_limit(node, 30), 13);
-        state.set_row_height(node, 12.0);
-        assert!(!state.resize(node, 30, 200.0, egui::vec2(0.0, 11.0)));
-        assert!(state.resize(node, 30, 200.0, egui::vec2(0.0, 1.0)));
-        assert_eq!(state.visible_limit(node, 30), 14);
-        for invalid in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
-            assert!(!state.resize(node, 30, 200.0, egui::vec2(invalid, invalid)));
-            assert_eq!(state.visible_limit(node, 30), 14);
-            assert!(state.width(node, invalid).is_finite());
-            state.set_row_height(node, invalid);
-        }
-        assert!(!state.resize(node, 30, 200.0, egui::vec2(0.0, 19.0)));
-        assert!(state.resize(node, 30, 200.0, egui::vec2(0.0, 1.0)));
-        assert_eq!(state.visible_limit(node, 30), 15);
-    }
-
-    #[test]
-    fn short_track_bounds_its_preferred_eighteen_unit_thumb_without_panicking() {
-        let node = CanvasNode::SourceBlock(0);
-        let node_rect = egui::Rect::from_min_max(egui::pos2(10.0, 10.0), egui::pos2(200.0, 180.0));
-        let fields = egui::Rect::from_min_max(egui::pos2(20.0, 100.0), egui::pos2(190.0, 102.0));
-        for offset in [0, 9, 18, usize::MAX] {
-            let geometry = scrollbar_geometry(node, fields, node_rect, 30, 12, offset).unwrap();
-            assert_eq!(geometry.track.height(), 2.0);
-            assert_eq!(geometry.thumb.height(), 2.0);
-            assert!(fields.contains_rect(geometry.track));
-            assert!(fields.contains_rect(geometry.thumb));
-            assert!(fields.contains_rect(geometry.hit_rect));
-            assert_eq!(geometry.hit_rect.top(), fields.top());
-            assert_eq!(geometry.hit_rect.bottom(), fields.bottom());
-            assert_eq!(geometry.offset_at(egui::pos2(25.0, 101.0), 18), None);
-        }
-    }
-
-    #[test]
-    fn scrollbar_geometry_rejects_empty_invalid_and_non_finite_rectangles() {
-        let node = CanvasNode::TargetBlock(0);
-        let valid = egui::Rect::from_min_size(egui::pos2(10.0, 10.0), egui::vec2(100.0, 80.0));
-        let invalid = [
-            egui::Rect::from_min_size(egui::pos2(10.0, 10.0), egui::vec2(100.0, 0.0)),
-            egui::Rect::from_min_max(egui::pos2(10.0, 12.0), egui::pos2(20.0, 10.0)),
-            egui::Rect::from_min_max(egui::pos2(f32::NAN, 10.0), egui::pos2(20.0, 30.0)),
-            egui::Rect::from_min_max(egui::pos2(10.0, 10.0), egui::pos2(20.0, f32::INFINITY)),
-            egui::Rect::from_min_max(egui::pos2(10.0, f32::NEG_INFINITY), egui::pos2(20.0, 30.0)),
-            // Finite endpoints can still produce an infinite width.
-            egui::Rect::from_min_max(egui::pos2(-f32::MAX, 10.0), egui::pos2(f32::MAX, 30.0)),
-        ];
-        for rect in invalid {
-            assert!(scrollbar_geometry(node, rect, valid, 30, 12, 0).is_none());
-            assert!(scrollbar_geometry(node, valid, rect, 30, 12, 0).is_none());
-            assert!(resize_geometry(node, rect, valid).is_none());
-            assert!(resize_geometry(node, valid, rect).is_none());
-        }
-        assert!(scrollbar_geometry(node, valid, valid, 0, 0, 0).is_none());
-        assert!(scrollbar_geometry(node, valid, valid, 30, 0, 0).is_none());
-        assert!(scrollbar_geometry(node, valid, valid, 12, 12, 0).is_none());
-        assert!(scrollbar_geometry(node, valid, valid, 10, 12, 0).is_none());
-    }
-
-    #[test]
-    fn scrollbar_paint_and_hit_bounds_follow_measured_headers_at_different_scales() {
-        for scale in [0.25, 1.0, 4.0] {
-            let node_rect = egui::Rect::from_min_max(
-                egui::pos2(10.0 * scale, 20.0 * scale),
-                egui::pos2(230.0 * scale, 250.0 * scale),
-            );
-            for header_height in [23.0, 47.0, 81.0] {
-                let fields = egui::Rect::from_min_max(
-                    egui::pos2(18.0 * scale, (20.0 + header_height) * scale),
-                    egui::pos2(222.0 * scale, 230.0 * scale),
-                );
-                for node in [CanvasNode::SourceBlock(0), CanvasNode::TargetBlock(0)] {
-                    for offset in [0, 9, 18] {
-                        let geometry =
-                            scrollbar_geometry(node, fields, node_rect, 30, 12, offset).unwrap();
-                        assert_eq!(geometry.track.top(), fields.top());
-                        assert_eq!(geometry.track.bottom(), fields.bottom());
-                        for rect in [geometry.track, geometry.thumb, geometry.hit_rect] {
-                            assert!(finite_positive_rect(rect));
-                            assert!(fields.contains_rect(rect));
-                            assert!(node_rect.contains_rect(rect));
-                        }
-                        let resize = resize_geometry(node, fields, node_rect).unwrap();
-                        assert_eq!(resize.width_rect.top(), fields.top());
-                        assert_eq!(resize.width_rect.bottom(), fields.bottom());
-                        assert!(resize.height_rect.top() >= fields.bottom());
-                        if let Some(corner) = resize.corner_rect {
-                            assert!(corner.top() >= fields.bottom());
-                        }
-                        if matches!(node, CanvasNode::SourceBlock(_)) {
-                            assert!(resize.width_rect.right() <= geometry.hit_rect.left());
-                        } else {
-                            assert!(resize.width_rect.left() >= geometry.hit_rect.right());
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn tiny_and_narrow_tracks_keep_finite_contained_thumbs() {
-        let node_rect = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(200.0, 200.0));
-        for height in [0.001, 2.0, 17.0, 18.0, 19.0, 100.0] {
-            for width in [0.001, 2.0, 5.0, 40.0] {
-                let fields =
-                    egui::Rect::from_min_size(egui::pos2(30.0, 40.0), egui::vec2(width, height));
-                for node in [CanvasNode::SourceBlock(0), CanvasNode::TargetBlock(0)] {
-                    for offset in [0, usize::MAX] {
-                        let geometry =
-                            scrollbar_geometry(node, fields, node_rect, 30, 12, offset).unwrap();
-                        assert!(fields.contains_rect(geometry.track));
-                        assert!(fields.contains_rect(geometry.thumb));
-                        assert!(fields.contains_rect(geometry.hit_rect));
-                        assert!(geometry.thumb.height() <= geometry.track.height());
-                    }
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn scrollbar_drag_offsets_are_bounded_and_invalid_pointer_positions_are_ignored() {
-        let node = CanvasNode::TargetBlock(0);
-        let fields = egui::Rect::from_min_max(egui::pos2(10.0, 30.0), egui::pos2(190.0, 150.0));
-        let geometry = scrollbar_geometry(node, fields, fields, 30, 12, 0).unwrap();
-        assert_eq!(geometry.offset_at(fields.left_top(), 18), Some(0));
-        assert_eq!(geometry.offset_at(fields.right_bottom(), 18), Some(18));
-        for pointer in [egui::pos2(f32::NAN, 50.0), egui::pos2(50.0, f32::INFINITY)] {
-            assert_eq!(geometry.offset_at(pointer, 18), None);
-        }
-    }
-
-    #[test]
-    fn field_geometry_is_measured_and_invalidated_instead_of_guessing_header_offsets() {
-        let node = CanvasNode::SourceBlock(0);
-        let mut state = EndpointScrollState::default();
-        assert_eq!(state.field_rect(node), None);
-        let fields = egui::Rect::from_min_max(egui::pos2(10.0, 47.0), egui::pos2(180.0, 170.0));
-        state.set_field_rect(node, fields);
-        assert_eq!(state.field_rect(node), Some(fields));
-        state.set_field_rect(node, egui::Rect::NOTHING);
-        assert_eq!(state.field_rect(node), None);
-        state.set_field_rect(node, fields);
-        assert!(state.scroll_rows(node, 30, 1));
-        assert_eq!(state.field_rect(node), None);
-        state.set_field_rect(node, fields);
-        assert!(state.set_connected_only(node, true));
-        assert_eq!(state.field_rect(node), None);
-        state.set_field_rect(node, fields);
-        assert!(state.set_connected(node, 30, [2, 8, 12]));
-        assert_eq!(state.field_rect(node), None);
-        state.set_field_rect(node, fields);
-        assert!(!state.set_connected(node, 30, [8, 12, 2]));
-        assert_eq!(state.field_rect(node), Some(fields));
-        assert!(state.resize(node, 30, 200.0, egui::vec2(10.0, 0.0)));
-        assert_eq!(state.field_rect(node), None);
-    }
-
-    #[test]
-    fn scrollbar_ui_accepts_a_two_unit_measured_field_list() {
-        let ctx = egui::Context::default();
-        let mut state = EndpointScrollState::default();
-        let node = CanvasNode::SourceBlock(0);
-        let fields = egui::Rect::from_min_max(egui::pos2(20.0, 100.0), egui::pos2(190.0, 102.0));
-        let node_rect = egui::Rect::from_min_max(egui::pos2(10.0, 10.0), egui::pos2(200.0, 180.0));
-        let _ = ctx.run_test_ui(egui::RawInput::default(), |ui| {
-            assert!(!show_scrollbar(
-                ui,
-                node,
-                node_rect,
-                30,
-                &mut state,
-                egui::Color32::WHITE
-            ));
-            state.set_field_rect(node, fields);
-            assert!(!show_scrollbar(
-                ui,
-                node,
-                node_rect,
-                30,
-                &mut state,
-                egui::Color32::WHITE
-            ));
-            assert!(!show_resize_handles(
-                ui, node, node_rect, 30, 200.0, &mut state
-            ));
-        });
-    }
-
-    #[test]
-    fn rendered_field_geometry_excludes_the_complete_header_footer_and_proxy_rows() {
-        let node = CanvasNode::SourceBlock(0);
-        let mut state = EndpointScrollState::default();
-        let rect = |top, bottom| {
-            egui::Rect::from_min_max(egui::pos2(10.0, top), egui::pos2(210.0, bottom))
-        };
-        state.begin_geometry_frame();
-        // Hidden-before and hidden-after proxy rows are deliberately not added.
-        state.record_field_row(node, rect(80.0, 100.0));
-        state.record_field_row(node, rect(102.0, 122.0));
-        state.record_header_rect(node, rect(10.0, 85.0));
-        state.record_footer_rect(node, rect(115.0, 140.0));
-        state.finish_geometry(node, rect(0.0, 150.0));
-        assert_eq!(state.field_rect(node), Some(rect(85.0, 115.0)));
-        state.begin_geometry_frame();
-        state.record_header_rect(node, rect(10.0, 75.0));
-        state.finish_geometry(node, rect(0.0, 150.0));
-        assert_eq!(state.field_rect(node), None);
-        state.begin_geometry_frame();
-        state.record_field_row(node, rect(80.0, 100.0));
-        // Missing header measurement must never fall back to a magic offset.
-        state.finish_geometry(node, rect(0.0, 150.0));
-        assert_eq!(state.field_rect(node), None);
-    }
-}
+#[path = "endpoints_tests.rs"]
+mod tests;

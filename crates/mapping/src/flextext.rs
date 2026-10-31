@@ -5,6 +5,11 @@ use ir::{ScalarType, SchemaNode};
 use serde::{Deserialize, Serialize};
 
 pub const MAX_FLEXTEXT_LAYOUT_DEPTH: usize = 64;
+/// JSON nesting of a serialized layout, counting the layout object itself.
+/// Project and pipeline files embed a layout about ten levels deep and their
+/// codec refuses documents deeper than 127, so every valid layout must stay
+/// well below that to reload from a saved file.
+pub const MAX_FLEXTEXT_LAYOUT_JSON_DEPTH: usize = 96;
 pub const MAX_FLEXTEXT_LAYOUT_NODES: usize = 4_096;
 pub const MAX_FLEXTEXT_LAYOUT_STRING_BYTES: usize = 1_048_576;
 pub const MAX_FLEXTEXT_REGEX_PATTERN_BYTES: usize = 64 * 1_024;
@@ -59,12 +64,20 @@ impl FlexTextLayout {
         if command.schema_node().is_none() {
             return Err(FlexTextLayoutError::NoOutput);
         }
-        Ok(Self {
+        let layout = Self {
             root_name,
             command,
             output_line_ending,
             write_bom,
-        })
+        };
+        // Switch arms cost three JSON levels per command level, so command
+        // depth alone doesn't bound the saved form. Measure the real one.
+        let encoded = serde_json::to_value(&layout)
+            .map_err(|_| FlexTextLayoutError::SerializedLayoutTooDeep)?;
+        if json_depth(&encoded) > MAX_FLEXTEXT_LAYOUT_JSON_DEPTH {
+            return Err(FlexTextLayoutError::SerializedLayoutTooDeep);
+        }
+        Ok(layout)
     }
 
     pub fn root_name(&self) -> &str {
@@ -587,6 +600,7 @@ pub enum FlexTextLayoutError {
     EmptyName(&'static str),
     EmptyString(&'static str),
     StringTooLong(&'static str),
+    RegexPatternTooLong,
     TooManyStringBytes,
     DuplicateName(String),
     DuplicateSwitchPrefix(String),
@@ -598,6 +612,7 @@ pub enum FlexTextLayoutError {
     InvalidDelimitedDialect,
     InvalidFixedWidthFill,
     LayoutTooDeep,
+    SerializedLayoutTooDeep,
     TooManyNodes,
     TooManySwitchRegexes,
     RecordWidthOverflow,
@@ -611,6 +626,10 @@ impl std::fmt::Display for FlexTextLayoutError {
             Self::StringTooLong(kind) => write!(
                 formatter,
                 "{kind} exceeds the {MAX_FLEXTEXT_LAYOUT_STRING_BYTES}-byte limit"
+            ),
+            Self::RegexPatternTooLong => write!(
+                formatter,
+                "switch regular expression exceeds the {MAX_FLEXTEXT_REGEX_PATTERN_BYTES}-byte pattern limit"
             ),
             Self::TooManyStringBytes => write!(
                 formatter,
@@ -641,6 +660,10 @@ impl std::fmt::Display for FlexTextLayoutError {
                 formatter,
                 "command nesting exceeds the limit of {MAX_FLEXTEXT_LAYOUT_DEPTH}"
             ),
+            Self::SerializedLayoutTooDeep => write!(
+                formatter,
+                "layout JSON nesting exceeds the limit of {MAX_FLEXTEXT_LAYOUT_JSON_DEPTH}"
+            ),
             Self::TooManyNodes => write!(
                 formatter,
                 "command tree exceeds the limit of {MAX_FLEXTEXT_LAYOUT_NODES} nodes"
@@ -657,6 +680,22 @@ impl std::fmt::Display for FlexTextLayoutError {
 }
 
 impl std::error::Error for FlexTextLayoutError {}
+
+/// Nesting depth of a JSON value; scalars count as zero.
+fn json_depth(value: &serde_json::Value) -> usize {
+    let mut deepest = 0;
+    let mut pending = vec![(value, 0)];
+    while let Some((value, depth)) = pending.pop() {
+        let children: Box<dyn Iterator<Item = &serde_json::Value>> = match value {
+            serde_json::Value::Array(values) => Box::new(values.iter()),
+            serde_json::Value::Object(values) => Box::new(values.values()),
+            _ => continue,
+        };
+        deepest = deepest.max(depth + 1);
+        pending.extend(children.map(|child| (child, depth + 1)));
+    }
+    deepest
+}
 
 #[derive(Default)]
 struct LayoutValidation {
@@ -798,9 +837,7 @@ fn validate_command(
 
 fn validate_switch_regex(pattern: &str) -> Result<(), FlexTextLayoutError> {
     if pattern.len() > MAX_FLEXTEXT_REGEX_PATTERN_BYTES {
-        return Err(FlexTextLayoutError::StringTooLong(
-            "switch regular expression",
-        ));
+        return Err(FlexTextLayoutError::RegexPatternTooLong);
     }
     regex::RegexBuilder::new(pattern)
         .size_limit(MAX_FLEXTEXT_REGEX_COMPILED_BYTES)
@@ -1028,6 +1065,92 @@ mod tests {
             FlexTextLayout::new("root", command, FlexLineEnding::Lf, false),
             Err(FlexTextLayoutError::LayoutTooDeep)
         ));
+    }
+
+    #[test]
+    fn layouts_too_deep_to_reload_are_refused_and_the_rest_reload_in_a_project() {
+        let chain = |levels: usize| {
+            let mut command = FlexCommand::store("leaf", ScalarType::String, None);
+            for index in 0..levels {
+                command = FlexCommand::Switch {
+                    name: format!("level{index}"),
+                    mode: SwitchMode::FirstMatch,
+                    arms: vec![SwitchArm::new("x", command).unwrap()],
+                    default: None,
+                };
+            }
+            FlexTextLayout::new("root", command, FlexLineEnding::Lf, false)
+        };
+        // Command depth stays far below its own limit in both cases.
+        let deepest = (1..MAX_FLEXTEXT_LAYOUT_DEPTH)
+            .take_while(|levels| chain(*levels).is_ok())
+            .last()
+            .unwrap();
+        assert!(deepest < MAX_FLEXTEXT_LAYOUT_DEPTH);
+        assert_eq!(
+            chain(deepest + 1),
+            Err(FlexTextLayoutError::SerializedLayoutTooDeep)
+        );
+
+        let layout = chain(deepest).unwrap();
+        let encoded = serde_json::to_string(&layout).unwrap();
+        assert_eq!(
+            serde_json::from_str::<FlexTextLayout>(&encoded).unwrap(),
+            layout
+        );
+        let mut project: crate::Project = serde_json::from_value(serde_json::json!({
+            "source": {"name": "root", "kind": {"kind": "group", "children": []}},
+            "target": {"name": "Out", "kind": {"kind": "group", "children": []}},
+            "graph": {"nodes": {}},
+            "root": {"target_field": ""}
+        }))
+        .unwrap();
+        project.source = layout.schema();
+        project.source_options.flextext = Some(layout.clone());
+        let file = crate::project_file::encode_pretty(&project).unwrap();
+        assert!(crate::project_file::decode_str(&file).is_ok());
+
+        // A named target inside a pipeline stage is the deepest embedding.
+        project.extra_targets.push(crate::NamedTarget {
+            name: "text".into(),
+            path: Some("out.txt".into()),
+            schema: layout.schema(),
+            options: crate::FormatOptions {
+                flextext: Some(layout),
+                ..Default::default()
+            },
+            root: crate::Scope::default(),
+        });
+        let pipeline = crate::Pipeline {
+            main_mapping_path: None,
+            stages: vec![crate::PipelineStage {
+                id: "one".into(),
+                mapping_path: None,
+                project,
+                source: crate::PipelineInput::Host {
+                    name: "source".into(),
+                },
+                extra_sources: vec![],
+            }],
+        };
+        let file = crate::pipeline_file::encode_pretty(&pipeline).unwrap();
+        assert!(crate::pipeline_file::decode_str(&file).is_ok());
+    }
+
+    #[test]
+    fn overlong_switch_regex_names_the_pattern_limit() {
+        let error = SwitchArm::new_contains_regex(
+            "a".repeat(MAX_FLEXTEXT_REGEX_PATTERN_BYTES + 1),
+            FlexCommand::store("value", ScalarType::String, None),
+        )
+        .unwrap_err();
+        assert_eq!(error, FlexTextLayoutError::RegexPatternTooLong);
+        assert_eq!(
+            error.to_string(),
+            format!(
+                "switch regular expression exceeds the {MAX_FLEXTEXT_REGEX_PATTERN_BYTES}-byte pattern limit"
+            )
+        );
     }
 
     #[test]

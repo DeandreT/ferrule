@@ -25,17 +25,17 @@ for a complete format standard or another product.
 
 | Format | Source | Target | Selected by | Implemented capability |
 | --- | :---: | :---: | --- | --- |
-| XML | Yes | Yes | `.xml` or `xml_document` | Hierarchical instance I/O with namespace-aware element and attribute names; XSD-lite with local import graphs, compatible `complexContent` and scalar-text/attribute-only `simpleContent` derivations, and named model and attribute groups; `xs:any` and `xs:anyAttribute` wildcards with `##any`, `##other`, `##local`, `##targetNamespace`, or listed-namespace constraints under `skip`, declaration-aware `lax`, or closed `strict` processing; bounded DTD import with internal content-model parameter entities; `xsi:nil`, generic elements, and ordered mixed content |
-| JSON | Yes | Yes | `.json`; `.jsonl`, `.ndjson`, or `json_lines` for JSON Lines | Hierarchical instance I/O and JSON Lines; JSON Schema import with traversal-confined local-file and document-local references, compatible structural `allOf` intersections, bounded exact scalar `const`/`enum` domains, numeric ranges and decimal `multipleOf`, array-count, `contains`, object-property-count, and Unicode string-length intervals, structural `uniqueItems`, bounded portable `pattern` assertions, closed homogeneous `patternProperties`, property dependencies, dependent-schema predicates, single-property-presence conditionals, `propertyNames`, open or closed object contracts, heterogeneous scalar type arrays, exact scalar `anyOf`, pairwise-disjoint scalar `oneOf`, selected object alternatives, nullable scalar/object/array shapes, and typed or unconstrained dynamic properties |
+| XML | Yes | Yes | `.xml` or `xml_document` | Hierarchical instance I/O with namespace-aware element and attribute names; XSD-lite with local import graphs, compatible `complexContent` and scalar-text/attribute-only `simpleContent` derivations, and named model and attribute groups; `xs:any` and `xs:anyAttribute` wildcards with `##any`, `##other`, `##local`, `##targetNamespace`, or listed-namespace constraints under `skip`, declaration-aware `lax`, or closed `strict` processing, plus XSD 1.1 `notNamespace` and `notQName` exclusions on `skip` and `lax` element wildcards and on attribute wildcards; bounded DTD import with internal content-model parameter entities; `xsi:nil`, generic elements, and ordered mixed content |
+| JSON | Yes | Yes | `.json`; `.jsonl`, `.ndjson`, or `json_lines` for JSON Lines | Hierarchical instance I/O and JSON Lines; JSON Schema import with traversal-confined local-file and document-local references, compatible structural `allOf` intersections, bounded exact scalar `const`/`enum` domains, numeric ranges and decimal `multipleOf`, array-count, `contains`, object-property-count, and Unicode string-length intervals, structural `uniqueItems`, bounded portable `pattern` assertions, closed homogeneous `patternProperties`, property dependencies, dependent-schema predicates, single-property-presence conditionals, `propertyNames`, open or closed object contracts, exact tuple arrays from `prefixItems` or tuple-form `items`, heterogeneous scalar type arrays, exact scalar `anyOf`, pairwise-disjoint scalar `oneOf`, selected object alternatives, nullable scalar/object/array shapes, and typed or unconstrained dynamic properties |
 | JSON5 | Yes | Yes | `.json5` or `json5` | One schema-shaped document in JSON5 instance syntax with ordinary JSON schemas and the same typed mapping boundary; input accepts comments, trailing commas, and single-quoted strings, and is limited to 64 MiB and 128 nested containers; output omits property-name quotes where JSON5 allows; CLI and browser runtime |
 | CSV | Yes | Yes | `.csv` or `.txt` | Delimited flat rows with a configurable delimiter, printable or disabled quoting, headers, optional present-empty text, and optional UTF-8 BOM output |
 | Fixed-width | Yes | Yes | `fixed_width` layout | Validated Unicode-scalar column layouts, configurable fill, record separators, and empty-value handling |
-| XLSX | Yes | Yes | `.xlsx` | Typed worksheets, flat, transposed, composite, worksheet-set, and grid source shapes, flat and hierarchical targets, and update-existing flat writes |
+| XLSX | Yes | Yes | `.xlsx` | Typed worksheets, flat, transposed, composite, worksheet-set, and grid source shapes, with one grid per worksheet beside composite tables and records, flat, transposed, and hierarchical targets, and update-existing writes for flat and hierarchical targets |
 | SQLite | Yes | Yes | `.db`, `.sqlite`, or `.sqlite3` | Read-only table introspection, typed reads, imported relational query shapes, declared read-only single-table queries with typed named parameters, validated declared relations, structured XML text columns, and idempotent full-replace writes |
 | X12 / EDIFACT | Yes | Yes | `.edi`, `.x12`, or `.edifact` with a schema dialect, or `edi_kind` | Schema-guided interchange I/O, custom syntax separators, repetitions, qualifier loops, retained field lengths and code lists, optional lenient parsing, and bounded output validation that leaves the destination unchanged on failure |
 | HL7 v2 / TRADACOMS | Yes | Yes | `.hl7` or an EDI schema dialect | Bounded schema-guided message I/O, retained field lengths and code lists, HL7 escapes and subcomponents, and TRADACOMS release escaping |
 | SAP IDoc | Yes | Yes | `idoc` layout | Embedded fixed-record layouts with bounded byte-position parsing and deterministic output |
-| SWIFT MT | Yes | No | `swift_mt` layout | Input through embedded message and field grammars |
+| SWIFT MT | Yes | Yes | `swift_mt` layout; targets also need `swift_mt_output` headers | Embedded message and field grammars; output takes one configured direction and one header set per message, and is re-read before it is returned |
 | FlexText | Yes | Yes | `flextext` layout imported from `.mft` | Embedded recursive split, store, and switch layouts, including fixed-width and delimited records |
 | Protocol Buffers | Yes | Yes | `protobuf` schema and root message | Bounded proto2/proto3 binary I/O with self-contained local import graphs, public imports, nested messages, enums, repeated fields, and packed scalars |
 | XBRL | Yes | Yes | `xbrl` options | Typed instance facts, contexts, dimensions, units, and namespace-qualified concepts through table-shaped boundaries |
@@ -63,14 +63,15 @@ for a complete format standard or another product.
 
 | Format | Profile |
 | --- | --- |
-| XML | XSD 1.1 wildcard exclusions (`notNamespace`, `notQName`) and `xs:any` inside `xs:all` |
-| XML | Strict wildcards whose matching declaration set is not closed, and same-local-name strict declarations with incompatible typed shapes |
+| XML | XSD 1.1 wildcard exclusions on strict element wildcards; exclusions beyond 64 `notNamespace` members, 1,024 `notQName` tokens or 256 resolved names; `##defined` when an unresolved include or import, `xs:redefine` or `xs:override` keeps the declaration set from being closed; `##targetNamespace`, namespace-less QNames or `##definedSibling` elements in a chameleon document included from several target namespaces; exclusions on a wildcard that has a `vc:` conditional-inclusion attribute or sits inside an element that has one; and an element whose `xsi:type` alternatives resolve one wildcard to different excluded names |
+| XML | `xs:any` inside `xs:all` |
+| XML | Strict wildcards whose matching declaration set is not closed, same-local-name strict declarations with incompatible typed shapes, strict wildcards that follow a single-occurrence declaration of a name they match, and strict wildcards outside a choice whose port shares a local name with a declaration covering only some of its namespaces |
 | XML | Element wildcard occurrences other than `1..1`, `0..1`, or `0..unbounded`, and optional single-occurrence `skip` wildcards |
 | XML | Sibling elements or attributes that differ only by namespace, because mapping paths use local field names |
 | XML | External DTD subsets and external entities, which are never loaded |
 | XML | Output to a local XML file set or an HTTP URL (`local_xml_file_set` and HTTP sources are input-only) |
 | JSON | General heterogeneous array composition, heterogeneous or correlated numeric-range scalar unions, and mixed structural unions |
-| JSON | Heterogeneous `prefixItems` or legacy tuple members and active `unevaluatedItems` |
+| JSON | Tuple alternatives, per-position `allOf` intersection, `contains` or `uniqueItems` on tuples, nested or recursive tuples, and `unevaluatedItems` beside composition, conditionals, `contains`, `dependentSchemas` or a reference |
 | JSON | Required-only schemas without an object shape |
 | JSON | External references from in-memory schema import (`json_schema::import_str`) |
 | JSON | Enforcement of other shape-neutral validation keywords, which are accepted only for schema recovery |
@@ -81,13 +82,19 @@ for a complete format standard or another product.
 | JSON5 | Native `.mfd` export of JSON5 boundaries |
 | CSV | Unquoted output of field text that requires escaping when quoting is disabled |
 | Fixed-width | Combining a fixed-width layout with CSV dialect options |
-| XLSX | Grid, worksheet-set, composite, and transposed output, which are input-only layouts |
-| XLSX | Update-existing writes for hierarchical output |
+| XLSX | Grid, worksheet-set, and composite output, which are input-only layouts |
+| XLSX | Several grids on one worksheet, and composite sources with grids in generated code |
+| XLSX | Update-existing writes for grid, worksheet-set, composite, and transposed layouts |
+| XLSX | Update-existing writes on payload, standard-stream, and pipeline-preview runs, in pipeline `.mfd` final targets, and in generated code |
+| XLSX | Transposed output on standard-stream and bounded-document runs |
 | SQLite | Other database engines, general SQL mutation, and multi-database connections |
 | SQLite | SQL text, joins, views and declared queries on payload, stream, REST, pipeline, generated-code and MFD routes |
-| X12 / EDIFACT | Invisible or whitespace explicit X12 output separators, including LF |
+| X12 / EDIFACT | X12 CR LF segment terminators, and whitespace or invisible X12 element, component, repetition or release separators |
 | SAP IDoc | `.idoc` input without an embedded layout |
-| SWIFT MT | SWIFT MT output |
+| SWIFT MT | User-header (3) and trailer (5) blocks in output |
+| SWIFT MT | Output that interleaves occurrences of different repeating fields |
+| SWIFT MT | Primary filename document runs |
+| SWIFT MT | `.mfd` export of output headers |
 | Protocol Buffers | Recursive messages, which the tree-shaped instance model cannot represent |
 | XBRL | Taxonomy formula, presentation, calculation, and linkbase execution |
 | PDF | PDF output |
@@ -123,6 +130,22 @@ for a complete format standard or another product.
    retains observed JSON5 metadata separately and refuses execution/export: the
    vendor setting, filename selection and numeric behavior differ from these
    codecs. See the [interchange observation](conformance/json5-interchange.md).
+- Native JSON, JSON Lines and JSON5 codecs, including prepared schemas, read
+  and write [JSON tuple frames](design/json-tuple-arrays.md). Generated Rust
+  and C# JSON and JSON Lines boundaries share these semantics; the generated
+  JSON5 companion profile still refuses frames. Array position *k* is the
+  frame's `item`*k* field, and an open frame's later items are its repeating
+  `rest` field. A missing frame property and a position beyond the end of the
+  array read as absent (`Null`); writing omits an absent frame, and writes
+  `null` only for an explicit JSON null that the frame or member admits. The
+  array length is checked against the frame's bounds before any position is
+  read, and an error inside a position names its one-based position. Writing
+  never pads with `null`: an absent position before a present position or a
+  non-empty `rest` is a typed gap error. Root rows and JSON Lines refuse a
+  non-repeating frame root, while a repeating frame root writes one tuple per
+  line. A recursive reference that would nest a frame inside one of its own
+  positions, or that expands a frame, is refused rather than expanded. `.mfd`
+  export refuses schemas that contain a frame before writing anything.
 - PDF targets are not supported.
 - XBRL taxonomy formula, presentation, calculation, and linkbase execution are
   outside the current runtime.
@@ -130,6 +153,16 @@ for a complete format standard or another product.
   Scalar, simple-content, and retained mixed-content text preserve carriage
   returns through XML character references; attributes and generated XSD
   fixed/default values also preserve tabs and line breaks.
+  Generic elements matched by a wildcard keep every text node between their
+  child elements, including whitespace, and the writer adds no indentation
+  inside them. In a generic element without child elements, whitespace-only
+  text containing a line break reads as empty text.
+  Declared mixed content (XSD `mixed`, DTD mixed `#PCDATA`, and DTD `ANY`)
+  likewise keeps its text exactly, and the writer adds no indentation inside a
+  mixed element, including inside its element-only children, so the output
+  reads back unchanged. This holds whether a mixed element is written from its
+  ordered content or from typed fields alone. Element-only content outside
+  mixed elements stays indented.
   MFD export partitions foreign declarations into deterministic local XSD
   siblings and publishes the complete graph atomically. Bounded local-graph
   substitution groups, compatible element-only or mixed `complexContent`
@@ -142,14 +175,55 @@ for a complete format standard or another product.
   resolved to exact singular or repeating typed choices, and namespace-aware
   attribute wildcards are supported. Lax processing gives resolved declarations
   typed mapping fields and reserves the generic fallback for undeclared names.
-  Strict attribute processing rejects undeclared runtime names. XSD 1.1
-  exclusions, unordered wildcard compositors, and unresolved strict declaration
-  sets remain outside the subset.
+  An extra occurrence of a single-occurrence declared element is a generic
+  item after the typed field takes the first one; reads refuse extras the
+  wildcard cannot keep, such as names outside its namespace constraint. A
+  wildcard's typed port for a declaration the type already declares yields to
+  that declaration for the namespaces it covers. A strict wildcard after a
+  single-occurrence declaration of the same name is refused, because it has
+  no generic fallback for that declaration's extra occurrences.
+  Strict attribute processing rejects undeclared runtime names.
+  XSD 1.1 `notNamespace` and `notQName` exclusions apply to `skip` and `lax`
+  element wildcards and to attribute wildcards. Import resolves them to exact
+  expanded names: `##defined` takes the matching global declarations, and
+  `##definedSibling` takes the element declarations of the complete governing
+  type, including a derived type's own elements and substitution members. A
+  lax wildcard projects no typed field for an excluded name, and reads and
+  writes refuse excluded names right after the namespace check. With
+  exclusions, an attribute wildcard leaves declared attributes to their typed
+  fields in every mode. XSD export writes the names as explicit QNames, which
+  need an XSD 1.1 processor. The `vc:` refusal applies only to wildcards with
+  exclusions: a schema without them still imports with `vc:minVersion` on
+  `xs:schema`. Strict element wildcards with exclusions, unordered wildcard
+  compositors, and unresolved strict declaration sets remain outside the
+  subset. MFD XML components import exclusions with their schemas and export
+  them in their generated XSD siblings ([MFD interop](mfd-interop.md)).
+  XSD import keeps at most 256 nesting and reference levels open at once.
+  Each element declaration or reference, named complex type reference
+  (including a derivation base), complex type content, compositor, and model
+  or attribute group reference takes one level, so about 64 nested elements of
+  named types, 85 of anonymous types, or 128 derivation or group hops fit.
+  Deeper schemas return a typed depth-limit error before stack exhaustion; MFD
+  import then falls back to the component's entry tree with a warning.
+  Following `xs:include` and `xs:import` links from one schema file to the
+  next takes no level and no stack: the documents are visited depth first in
+  document order from a heap worklist, and a document already visited is not
+  expanded again, so cycles end. A filesystem import may therefore follow a
+  chain of any length, and each file in it costs only its bounded read.
+  Imports through an `XmlSchemaByteReader`, including MFD packages, read at
+  most 64 distinct documents and make at most 4,096 reads.
   Because mapping paths use local field names, strict wildcard declarations
   with the same local name collapse onto one port only when their complete
   typed shapes match. The port retains every exact expanded name and ordered
   runtime occurrences retain the selected namespace. Incompatible same-local
   declarations reject explicitly.
+  Beside a `lax` or `strict` element wildcard, element declarations of a
+  schema without a target namespace match only unqualified elements, so a
+  qualified element with the same local name is a wildcard item.
+  `form="unqualified"` locals match only unqualified elements everywhere.
+  Closed content of a schema without a target namespace, DTD schemas, and
+  entry-tree schemas carry no namespace identity and still match elements by
+  local name.
 - JSON Schema supports compatible structural `allOf` intersections across objects,
   scalar domains, and matching arrays, selected object alternatives, exact nullable
   scalar/object/array wrappers and flat compatible multi-branch nullable
@@ -174,6 +248,13 @@ for a complete format standard or another product.
   consume materialization depth. In-memory
   `format_json::json_schema::import_str` resolves document-local references
   without opening files and rejects external resources.
+  A cyclic or unresolved reference inside a schema degrades to a string field.
+  A root whose whole `$ref` chain is cyclic or unresolved, and a schema
+  position holding a JSON value other than an object or boolean, instead return
+  a typed `ContentlessSchema` error; non-UTF-8 schema files return a typed
+  `SchemaEncoding` error naming the file. MFD import then falls back to the
+  component's entry tree with a warning. The `true` and `{}` schemas still
+  import as an arbitrary JSON value.
   Object-shaped `required` declarations preserve property presence independently
   from value nullability, including declared names on closed objects and named
   runtime properties on open objects. Required-only schemas without an object
@@ -260,8 +341,9 @@ for a complete format standard or another product.
   Canonical export writes `required` and, when `then` retains a dependency,
   `dependentRequired` or `dependentSchemas` as appropriate. Value-sensitive,
   multi-trigger, general-`if`, and other nontrivial `else` schemas remain unsupported.
-  `unevaluatedProperties`, `unevaluatedItems`, and heterogeneous positional
-  arrays likewise reject instead of being approximated. A lone
+  `unevaluatedProperties`, `unevaluatedItems` outside its direct array form,
+  and heterogeneous positional arrays likewise reject instead of being
+  approximated. A lone
   validation-neutral conditional keyword is ignored.
   Declared Draft 4/6/7 resources accept schema-valued legacy `dependencies`
   and ignore modern `dependentSchemas`/`dependentRequired`; Draft 4 requires
@@ -384,34 +466,40 @@ for a complete format standard or another product.
   schemas without `$schema` apply Ferrule's supported numeric, `multipleOf`,
   item-count, string-length, and annotation metadata. Concrete string-capable scalar
   domains retain exact non-negative `minLength` and `maxLength` intervals.
-  Ferrule supports an exact bounded homogeneous `prefixItems` subset for Draft
-  2020-12 and schemas without `$schema`.
-  Every entry in the bounded finite prefix must normalize to one identical,
-  non-repeating item shape. The tail must use that same shape, be `false`
-  (which derives an exact `maxItems` at the prefix length), or be provably
-  unreachable under an existing maximum; an unconstrained tail is also exact
-  when the common prefix shape accepts arbitrary JSON. Conflicting item-count
-  bounds, heterogeneous entries or tails, concrete nested-array entries, and
-  active `unevaluatedItems` reject rather than widen. Canonical export writes
-  the equivalent ordinary `items` schema plus
-  `maxItems` when the tail is closed, so no tuple-specific runtime or mapping
-  IR is required. Draft 4 through Draft 2019-09 treat
-  `prefixItems` as an unknown keyword according to their dialects.
-  The complementary bounded homogeneous legacy tuple profile accepts
-  array-valued `items` in Draft 4, 6, 7, and 2019-09 resources and in schemas
-  without `$schema`. Each tuple must contain 1 to 4,096 positional members,
-  all of which normalize to one identical, non-repeating item shape. The
-  `additionalItems` tail must use that same shape, be `false` so the tuple
-  length becomes `maxItems`, or be provably unreachable under an existing
-  maximum. An absent or `true` tail is exact
-  only when the common item shape accepts arbitrary JSON or the explicit
-  maximum makes the tail unreachable. Explicit `minItems`/`maxItems` and the
-  derived closed-tail maximum are intersected, so contradictory bounds reject.
-  Canonical export writes ordinary schema-valued `items` plus `maxItems` when
-  closed; no positional-array runtime or mapping IR is retained. Draft 2020-12
-  requires schema-valued `items`, so array-valued `items` are rejected there
-  rather than being interpreted as `prefixItems`. Heterogeneous members, reachable
-  heterogeneous tails, and concrete nested-array members remain unsupported.
+  Tuple arrays use `prefixItems` in Draft 2020-12 and schemas without
+  `$schema`, and array-valued `items` with `additionalItems` in Draft 4, 6, 7,
+  2019-09 and schemas without `$schema`; Draft 2020-12 rejects array-valued
+  `items`, and earlier drafts ignore `prefixItems`. Every member and tail is
+  validated first, even a tail that `maxItems` makes unreachable. The tuple's
+  own `minItems`/`maxItems`, modern `$ref` sibling counts and count-only
+  `allOf` branches are then intersected, and only the result is put into
+  canonical form: positions beyond the maximum are dropped, and a maximum at
+  or below the member count closes the tuple. Identical members whose tail is
+  closed, identical, or open over an arbitrary-JSON member lower to an ordinary
+  homogeneous array; every other tuple of 1 to 4,096 members imports as a
+  [JSON tuple frame](design/json-tuple-arrays.md) and is never widened.
+  Members and the tail may be scalars, scalar unions, objects or arbitrary JSON,
+  through any supported reference or composition, and the frame takes the usual
+  nullable wrappers, including arrays of tuples. Refused shapes include tuple
+  `anyOf`/`oneOf` alternatives, two positional `allOf` branches, a branch
+  beside a tuple that contributes more than `type: array` and item counts,
+  `contains` or `uniqueItems: true` on a tuple, a tuple beside its own
+  composition or under `not`, conditionals, `contains` or `dependentSchemas`, a
+  tuple as an `additionalProperties` or `patternProperties` value, a `false`
+  member, a member or tail that is itself an array or tuple, a reference cycle
+  through a position, and `prefixItems` beside `additionalItems` without
+  `$schema` when the result is a frame. Active `unevaluatedItems` is supported
+  only on a direct concrete array schema without composition, `not`,
+  conditionals, `dependentSchemas`, `contains` or a reference sibling. After
+  schema-valued `items`, or `additionalItems` after tuple-form `items`, it is
+  validated and has no effect; otherwise it is the tail after the positional
+  members, or the item schema when there are none. Every other active form is
+  refused. Export writes a
+  frame without `$schema` as `prefixItems`, with `items: false` for a closed
+  tail, the tail schema for an open tail and no `items` for an arbitrary tail;
+  `minItems` appears when it is above zero and `maxItems` only on an open frame.
+  Homogeneous tuples keep their ordinary `items` export, and re-import
+  reproduces the same schema.
   Concrete array wrappers also retain `uniqueItems: true` through supported
   references and compatible composition. Native and generated Rust/C#
   boundaries compare complete raw input values and normalized output values:
@@ -479,6 +567,62 @@ for a complete format standard or another product.
   mutation or multi-database connector model.
 - Complex XLSX, PDF, EDI, and FlexText layouts depend on an embedded validated
   configuration; unsupported imported commands remain explicit warnings.
+- XLSX update-existing targets (`xlsx_update_existing`, MFD
+  `updateexistingfile="1"`) write into the workbook already at the output path
+  and keep its other worksheets and the cells outside the layout. A flat table
+  replaces its selected table. A hierarchical layout needs every worksheet it
+  names to exist already. It clears the cells its bands occupied before the
+  update, so shorter output leaves no stale rows, and it inserts or shifts
+  nothing. Rewritten cells keep their style, and new data cells take the style
+  of their band's first data row. The update refuses, and leaves the workbook
+  unchanged, when a written or cleared cell holds a formula or belongs to a
+  merged range, when a newly addressed cell outside the previous layout holds
+  content, when an open band would write an empty row, or when two bands
+  address one cell. It also checks charts, drawings, comments, and every
+  package relationship, and refuses content the workbook library would drop or
+  rewrite, such as absolute drawing anchors or unmodeled chart types. Worksheet
+  features the library does not model are dropped, for example `extLst`
+  sparklines, x14 conditional formats, `ignoredErrors`, protected ranges, and
+  custom sheet views. Transposed targets always write a new workbook, and grid,
+  worksheet-set, and composite layouts are input-only; all four refuse
+  update-existing. Payload, standard-stream, and
+  pipeline-preview runs refuse it because it needs the persistent workbook,
+  and pipeline `.mfd` import and export refuse it on the final target.
+- A grid source reads one header row and the data rows below it on one
+  worksheet, producing one record per non-empty header cell, each with the
+  header value and column, fixed cells, and the complete row and cell matrix.
+  One grid uses `xlsx_grid`, and its records are the source root. Several
+  grids, or a grid beside tables or fixed records on other worksheets, use
+  `xlsx_composite` `grids`: each grid fills its own repeating group of the
+  composite root, and `table` may then be omitted. Each grid needs its own
+  worksheet. MFD import refuses a worksheet holding several grids, because
+  pairing their header and data ranges is not established. Grids are
+  input-only, and generated code refuses composite sources with grids.
+- Transposed XLSX targets (`xlsx_rows` on a target) write each record into one
+  worksheet column and each data field into its selected row, in schema order.
+  There is no header row, and `xlsx_start_row`, `xlsx_columns`, and
+  `xlsx_headers` are refused. Records fill columns from A in order. An integer
+  field named `n` places a record at that column instead (1 to 16,384, each
+  column once), and a missing value then leaves its cell empty. Without `n`,
+  every record needs a value in every row, and at most 16,384 records fit. The
+  first selected row is the driver: a record whose driver value is missing or
+  an empty string is refused, because reading the workbook back would skip
+  that column. Every record is checked before the file is written. The file,
+  payload, and pipeline-preview routes write transposed targets;
+  standard-stream and bounded-document runs refuse them. Generated code
+  returns the target's records as schema-shaped values, as for other XLSX
+  targets, and writes no workbook.
+- In the reference application each transposed target row is an independent
+  run of cells: a missing value adds no cell, so later values in that row move
+  left unless the row's `n` input is connected, and an empty string still adds
+  an empty cell. When `n` repeats, the first value wins and later ones are
+  dropped. Ferrule keeps records aligned instead, so a design without `n`
+  fails on a missing value rather than shifting it, and a repeated `n` is
+  refused. MFD import maps a target's rows to one record per item of the first
+  row's feed, and warns when another row or an `n` input follows a different
+  feed. `n` must be connected to every row from the same value; the reference
+  application positions only the rows whose `n` is connected. Export writes
+  every row's `n` input from the record's `n` binding.
 - EDI output validates every present configured field after wire lexical
   formatting. The bounded report includes all length and code-list violations
   it finds, and validation failures do not replace the destination.
@@ -560,9 +704,30 @@ control values retain their supplied spelling. Incomplete ISA schemas retain
 positional serialization. Invalid complete ISA data returns its typed boundary
 error before the public file writer replaces its destination.
 
-Native input can discover LF segment terminators from ISA. Explicit native
-output separators require visible, non-whitespace characters, so selecting LF
-for output returns an invalid-separator error.
+### Native X12 segment terminators
+
+Native input discovers each interchange's segment terminator from the
+character after ISA16, so LF and CR terminators read like any other. Whitespace
+between segments is ignored, so CR LF input reads as a CR terminator.
+
+Explicit output separators may select LF or CR as the segment terminator. A
+visible terminator is followed by a line feed, giving one segment per line; an
+LF or CR terminator is written alone. An interchange read with LF or CR
+terminators therefore writes back byte for byte with the same terminator
+selected. A two-character CR LF terminator cannot be selected, and a
+CR-terminated boundary writes CR alone. Element, component, repetition and
+release separators must remain visible, non-alphanumeric characters.
+
+Data containing the selected terminator follows the same rule as the other
+separators: without a release character the writer refuses it before the
+destination is replaced. The fixed-width ISA always refuses it because every
+ISA field requires printable ASCII.
+
+In `.mfd` designs, an LF or CR terminator is stored as `%0A` or `%0D` with
+`terminatewithlinefeed="false"`. Import refuses a line-break terminator with
+`terminatewithlinefeed="true"`, because that requests CR LF or a blank line
+after every segment, and keeps the standard separators with a warning.
+Generated Rust and C# X12 profiles accept LF but not CR.
 
 ### CSV empty text
 
@@ -658,7 +823,8 @@ Named input and output editors preserve embedded layouts and explicit XML/JSON
 formats when filenames change. Opening the format editor leaves saved CSV
 defaults intact; choosing another format clears the previous format's settings.
 Tabular fallback identities defer to recognized filename extensions, and
-update-existing workbook controls are available only for flat XLSX output.
+update-existing workbook controls are available for flat and hierarchical XLSX
+output.
 Replacing a Protocol Buffers boundary schema requires its exact embedded root
 projection, or an explicit format change first.
 

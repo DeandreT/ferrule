@@ -480,6 +480,7 @@ mod strict_finalization_tests {
         let hints = ir::XmlSchemaHints {
             no_namespace_location: Some("literal.xsd".into()),
             locations: Vec::new(),
+            derivation: None,
         };
         let hints_json = serde_json::to_string(&hints).unwrap();
         let hinted = XmlWriteOptions {

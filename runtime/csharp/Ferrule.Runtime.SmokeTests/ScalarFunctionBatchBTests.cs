@@ -12,6 +12,7 @@ internal static partial class Program
         PaddingFunctions();
         IsbnFunction();
         RoundFunction();
+        RoundHalfCeilingFunction();
         DateFromDateTimeFunction();
         DateTimeExtractorFunctions();
         DateTimeCompositionFunctions();
@@ -296,6 +297,119 @@ internal static partial class Program
             FerruleValueKind.Bool,
             FerruleValue.FromDouble(2.5),
             Bool(false));
+    }
+
+    private static void RoundHalfCeilingFunction()
+    {
+        const string function = "round_half_ceiling";
+        FerruleValue Number(double value) => FerruleValue.FromDouble(value);
+        FerruleValue Integer(long value) => FerruleValue.FromInt64(value);
+
+        // The reference application's results for exact halves and decimal text.
+        CallEquals(Number(-0.12), function, Number(-0.125), Integer(2));
+        CallEquals(Number(-10.0), function, Number(-10.5));
+        CallEquals(Number(1.01), function, Text("1.005"), Integer(2));
+        CallEquals(Number(1.01), function, Number(1.005), Integer(2));
+        CallEquals(Number(3.0), function, Number(2.5));
+        CallEquals(Number(-2.0), function, Number(-2.5));
+        CallEquals(Number(2.68), function, Number(2.675), Integer(2));
+        CallEquals(Number(-1.0), function, Text("-1.005"), Integer(2));
+        CallEquals(Number(-1.01), function, Text("-1.0051"), Integer(2));
+        CallEquals(Number(10.0), function, Number(9.995), Integer(2));
+        CallEquals(Number(-9.99), function, Number(-9.995), Integer(2));
+        CallEquals(Number(1.0), function, Text("1.00499999999999999999"), Integer(2));
+
+        // Large magnitudes and the binary64 range.
+        CallEquals(Number(1e300), function, Number(1e300));
+        CallEquals(Number(4_503_599_627_370_496.0), function, Number(4_503_599_627_370_495.5));
+        CallEquals(Number(-4_503_599_627_370_495.0), function, Number(-4_503_599_627_370_495.5));
+        CallEquals(Number(1.2345678901234568e29), function, Text("123456789012345678901234567890.5"));
+        CallEquals(Number(1.23457e-300), function, Number(1.2345678901234567e-300), Integer(305));
+        CallEquals(Number(double.PositiveInfinity), function, Number(double.MaxValue), Integer(-308));
+        CallEquals(Integer(long.MaxValue), function, Integer(long.MaxValue));
+        CallEquals(Integer(long.MinValue), function, Integer(long.MinValue), Integer(2));
+        CallEquals(Integer(0), function, Integer(4_000_000_000_000_000_000), Integer(-19));
+        CallEquals(Integer(0), function, Integer(-5_000_000_000_000_000_000), Integer(-19));
+        foreach (var (value, precision) in new[]
+        {
+            (long.MaxValue, -1L),
+            (long.MinValue, -1L),
+            (long.MaxValue, -19L),
+        })
+        {
+            var overflow = Error(
+                FerruleRuntimeError.IntegerOverflow,
+                () => FerruleFunctions.Call(function, new[] { Integer(value), Integer(precision) }));
+            Equal(function, overflow.Function);
+        }
+
+        // Precision zero, negative and saturated precision, and its conversions.
+        CallEquals(Number(3.0), function, Number(2.5), Integer(0));
+        CallEquals(Integer(130), function, Integer(125), Integer(-1));
+        CallEquals(Integer(-120), function, Integer(-125), Integer(-1));
+        CallEquals(Integer(-130), function, Integer(-135), Integer(-1));
+        CallEquals(Integer(-140), function, Integer(-136), Integer(-1));
+        CallEquals(Integer(-100), function, Text("-150"), Integer(-2));
+        CallEquals(Number(1300.0), function, Number(1250.0), Integer(-2));
+        CallEquals(Number(-1200.0), function, Number(-1250.0), Integer(-2));
+        CallEquals(Number(150.0), function, Number(149.0), Integer(-1));
+        CallEquals(Number(1.005), function, Number(1.005), Integer(400));
+        CallEquals(Number(1.005), function, Number(1.005), Integer(long.MaxValue));
+        CallEquals(Number(0.0), function, Number(9.5), Integer(long.MinValue));
+        CallEquals(Integer(0), function, Integer(7), Integer(long.MinValue));
+        CallEquals(Number(1.23), function, Number(1.23456), Number(1.5));
+        CallEquals(Number(1.0), function, Number(1.23456), Number(double.NaN));
+        CallEquals(Number(3.0), function, Text("2.5"), Text(" 0 "));
+        CallEquals(Number(0.13), function, Number(0.125), Text("2.0"));
+
+        // Integer and decimal text.
+        CallEquals(Integer(7), function, Integer(7));
+        CallEquals(Integer(-7), function, Integer(-7), Integer(2));
+        CallEquals(Integer(42), function, Text(" 42 "));
+        CallEquals(Integer(5), function, Text("+5"));
+        CallEquals(Number(0.0), function, Text("1e-3"), Integer(2));
+        CallEquals(Number(25.0), function, Text("2.5e1"));
+        CallEquals(Number(1.0), function, Text(".5"));
+        CallEquals(Number(1.0), function, Text("1."));
+        CallEquals(Number(-0.1), function, Text("-1.5E-1"), Number(0.6));
+
+        // Decimal results have no negative zero.
+        foreach (var argument in new[] { Number(-0.4), Number(-0.5), Number(-0.0), Text("-0.0"), Text("1E-400") })
+        {
+            var zero = FerruleFunctions.Call(function, new[] { argument });
+            Equal(0L, BitConverter.DoubleToInt64Bits(zero.DoubleValue));
+        }
+
+        // Non-finite floats pass through as they do for `round`.
+        Equal(true, double.IsNaN(FerruleFunctions.Call(
+            function,
+            new[] { Number(double.NaN), Integer(2) }).DoubleValue));
+        CallEquals(Number(double.PositiveInfinity), function, Number(double.PositiveInfinity));
+        CallEquals(Number(double.NegativeInfinity), function, Number(double.NegativeInfinity), Integer(-2));
+
+        foreach (var arguments in new[]
+        {
+            new[] { Text("abc") },
+            new[] { Text(string.Empty) },
+            new[] { Text("NaN") },
+            new[] { Text("inf") },
+            new[] { Text("1e400") },
+            new[] { Text("1_000") },
+            new[] { Number(1.5), Text("x") },
+        })
+        {
+            AssertInvalidArgument(function, "requires a finite numeric value", arguments);
+        }
+        AssertFunctionTypeKind(function, FerruleValueKind.Bool, Bool(true));
+        AssertFunctionTypeKind(function, FerruleValueKind.Null, FerruleValue.Null);
+        AssertFunctionTypeKind(
+            function,
+            FerruleValueKind.Decimal,
+            FerruleValue.FromDecimal(FerruleDecimal96.Zero));
+        AssertFunctionTypeKind(function, FerruleValueKind.Bool, Number(1.5), Bool(false));
+        AssertFunctionTypeKind(function, FerruleValueKind.Bool, Text("abc"), Bool(true));
+        AssertFunctionArity(function, 1, Array.Empty<FerruleValue>());
+        AssertFunctionArity(function, 1, Integer(1), Integer(2), Integer(3));
     }
 
     private static void DateFromDateTimeFunction()

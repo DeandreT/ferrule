@@ -32,6 +32,7 @@ pub fn from_bytes(
     layout: &IdocLayout,
     lenient: bool,
 ) -> Result<Instance, EdiFormatError> {
+    crate::refuse_json_tuple(schema)?;
     if bytes.len() > MAX_RUNTIME_INPUT_BYTES {
         return Err(EdiFormatError::IdocLimit("input size"));
     }
@@ -134,6 +135,7 @@ pub fn to_bytes(
     instance: &Instance,
     layout: &IdocLayout,
 ) -> Result<Vec<u8>, EdiFormatError> {
+    crate::refuse_json_tuple(schema)?;
     validate_instance_shape(schema, instance)?;
     let mut records = Vec::new();
     let mut output_size = 0usize;
@@ -594,6 +596,43 @@ mod tests {
         assert!(matches!(
             to_bytes(&schema, &instance("DIFFER!"), &overlap),
             Err(EdiFormatError::IdocFieldOverlap { .. })
+        ));
+    }
+
+    #[test]
+    fn idoc_input_and_output_refuse_json_tuple_frames() {
+        let layout = IdocLayout::new(vec![
+            IdocSegmentLayout::new("HEADER0001", vec![field("number", 12, 16)]).unwrap(),
+        ])
+        .unwrap();
+        let frame = SchemaNode::group(
+            "point",
+            vec![
+                SchemaNode::scalar("item1", ScalarType::String),
+                SchemaNode::scalar("item2", ScalarType::Int),
+            ],
+        )
+        .with_json_tuple(ir::JsonTupleLayout {
+            length: ir::ItemCountRange::new(0, Some(2)),
+            tail: ir::JsonTupleTail::Closed,
+        })
+        .unwrap();
+        let schema = SchemaNode::group(
+            "IDOC",
+            vec![
+                SchemaNode::group(
+                    "HEADER0001",
+                    vec![SchemaNode::scalar("number", ScalarType::String)],
+                ),
+                frame,
+            ],
+        );
+        let refused = |result: Result<_, EdiFormatError>| matches!(result, Err(EdiFormatError::UnsupportedSchema(message)) if message.contains("tuple frame"));
+        assert!(refused(
+            from_bytes(b"HEADER0001 12345", &schema, &layout, false).map(|_| ())
+        ));
+        assert!(refused(
+            to_bytes(&schema, &Instance::Group(Vec::new().into()), &layout).map(|_| ())
         ));
     }
 }

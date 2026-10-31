@@ -12,7 +12,8 @@ use crate::{
 /// Which XML document adapter, if any, a Project's format options request.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum XmlRequest {
-    /// No adapter. Literal schema hints are refused.
+    /// No adapter. Literal schema hints stay with the typed outputs; no
+    /// generated XML document writer exists to emit them.
     None,
     /// An ordinary structured primary input whose named boundaries keep the
     /// adapter from forming. Literal hints remain admitted.
@@ -40,8 +41,8 @@ pub(super) enum RootViewRoute {
 
 impl XmlRequest {
     /// Classifies the request, refusing incompatible reader and output
-    /// policies and unsupported literal hints with their diagnostics in
-    /// declaration order.
+    /// policies with their diagnostics in declaration order. Literal hints
+    /// accompany every route; each generated XML writer emits its own.
     pub(super) fn classify(project: &Project) -> Result<Self, LowerError> {
         if project.uses_xml_scalar_output() {
             project.validate_xml_scalar_output().map_err(|error| {
@@ -149,41 +150,7 @@ impl XmlRequest {
         } else {
             Self::None
         };
-        let mut hint_diagnostics = Vec::new();
-        for (primary, location, options) in std::iter::once((
-            true,
-            "target format options".to_string(),
-            &project.target_options,
-        ))
-        .chain(project.extra_targets.iter().map(|target| {
-            (
-                false,
-                format!("extra target `{}` format options", target.name),
-                &target.options,
-            )
-        })) {
-            if options.xml_schema_hints.is_some() && !request.admits_hints(primary) {
-                hint_diagnostics.push(Diagnostic::Validation {
-                    location,
-                    message: "code generation does not support XML schema hints".into(),
-                });
-            }
-        }
-        if !hint_diagnostics.is_empty() {
-            return Err(LowerError::new(hint_diagnostics));
-        }
         Ok(request)
-    }
-
-    /// Whether literal schema hints may accompany the primary or a named output.
-    fn admits_hints(self, primary: bool) -> bool {
-        match self {
-            Self::None => false,
-            Self::OrdinaryInput | Self::Ordinary => true,
-            Self::RequiredScalarOutput => false,
-            Self::RootView(RootViewRoute::StaticOutputs | RootViewRoute::StaticCombined) => true,
-            Self::RootView(RootViewRoute::Primary | RootViewRoute::StaticInputs) => primary,
-        }
     }
 
     /// Whether lowering drops the adapter when the Program cannot prove it.
@@ -221,7 +188,12 @@ impl XmlRequest {
                 .collect(),
             output: XmlOutputPolicy {
                 scalar_output: project.target_options.xml_scalar_output.clone(),
-                schema_hints: project.target_options.xml_schema_hints.clone(),
+                // Generated writers emit document metadata only, never provenance.
+                schema_hints: project
+                    .target_options
+                    .xml_schema_hints
+                    .as_ref()
+                    .map(ir::XmlSchemaHints::without_derivation),
                 ..Default::default()
             },
             extra_outputs: project
@@ -230,7 +202,11 @@ impl XmlRequest {
                 .map(|target| NamedXmlOutputPolicy {
                     name: target.name.clone(),
                     output: XmlOutputPolicy {
-                        schema_hints: target.options.xml_schema_hints.clone(),
+                        schema_hints: target
+                            .options
+                            .xml_schema_hints
+                            .as_ref()
+                            .map(ir::XmlSchemaHints::without_derivation),
                         ..Default::default()
                     },
                 })

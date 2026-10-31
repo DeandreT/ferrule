@@ -56,6 +56,7 @@ fn target_parts(
     options: &mapping::XbrlBoundaryOptions,
     limits: Option<&XbrlLimitOptions>,
 ) -> Result<(Vec<TargetRow>, TargetDefaults, Prefixes), XbrlFormatError> {
+    refuse_json_tuple(schema)?;
     reject_decimal_values(schema, instance, &mut Vec::new(), 0)?;
     let namespaces = namespace_map(options);
     let fact_types = options
@@ -824,12 +825,24 @@ fn from_str_with_namespaces(
     project_document(&document, schema, namespaces, None)
 }
 
+/// Tuple frames are JSON arrays with no XBRL fact or table encoding. Every
+/// reader and writer reaches this check, including the bounded profiles.
+fn refuse_json_tuple(schema: &SchemaNode) -> Result<(), XbrlFormatError> {
+    if schema.contains_json_tuple() {
+        return Err(XbrlFormatError::UnsupportedJsonTupleFrame {
+            schema: schema.name.clone(),
+        });
+    }
+    Ok(())
+}
+
 fn project_document(
     document: &roxmltree::Document<'_>,
     schema: &SchemaNode,
     namespaces: Option<&BTreeMap<Vec<String>, String>>,
     mut budget: Option<&mut bounded::ModelBudget<'_>>,
 ) -> Result<Instance, XbrlFormatError> {
+    refuse_json_tuple(schema)?;
     let root = document.root_element();
     if root.tag_name().name() != "xbrl" || root.tag_name().namespace() != Some(XBRLI) {
         let found = root.tag_name().namespace().map_or_else(

@@ -188,6 +188,7 @@ fn xml_request_corpus(fixtures: &Corpus) -> Corpus {
     let hints = || ir::XmlSchemaHints {
         no_namespace_location: Some("plan.xsd".into()),
         locations: Vec::new(),
+        derivation: None,
     };
     let mut corpus: Vec<(String, Project)> = Vec::new();
     let base = project();

@@ -55,6 +55,7 @@ ureq = { workspace = true }
 rustix = { workspace = true }
 
 [dev-dependencies]
+calamine = { workspace = true }
 flate2 = "1.1"
 roxmltree = { workspace = true }
 rusqlite = { workspace = true }

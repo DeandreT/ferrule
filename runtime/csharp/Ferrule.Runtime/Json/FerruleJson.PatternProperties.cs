@@ -208,7 +208,10 @@ public static partial class FerruleJson
         OptionalSchemaNodesEqual(left.Dynamic, right.Dynamic) &&
         left.Required.SequenceEqual(right.Required, StringComparer.Ordinal) &&
         AlternativesEqual(left.Alternatives, right.Alternatives) &&
-        left.InclusiveAlternatives == right.InclusiveAlternatives;
+        left.InclusiveAlternatives == right.InclusiveAlternatives &&
+        left.XmlTypeAlternatives == right.XmlTypeAlternatives &&
+        string.Equals(left.RecursiveReference, right.RecursiveReference, StringComparison.Ordinal) &&
+        Equals(left.JsonTuple, right.JsonTuple);
 
     private static bool AllowedValuesEqual(
         JsonAllowedValues? left,

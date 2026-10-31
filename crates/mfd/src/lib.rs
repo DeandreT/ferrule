@@ -58,6 +58,7 @@ mod json_parser_recipe;
 mod node_inputs;
 mod package;
 mod resource;
+mod schema_location;
 
 pub use package::{
     ExportedPackage, MAX_PACKAGE_BYTES, MAX_PACKAGE_ENTRIES, MAX_PACKAGE_FILE_BYTES,
@@ -72,8 +73,9 @@ pub use export::{
 pub use import::{
     ImportIssue, ImportIssueKind, ImportOptions, ImportOutcome, ImportProfile, ImportReport,
     Imported, ImportedDocument, ImportedPipeline, MAX_FLEXTEXT_CONFIGURATION_BYTES, assess_import,
-    import, import_csv_document, import_csv_document_with_options, import_flextext_configuration,
-    import_pipeline, import_pipeline_with_options, import_with_options, import_with_profile,
+    import, import_csv_document, import_csv_document_with_options, import_filename_document,
+    import_filename_document_with_options, import_flextext_configuration, import_pipeline,
+    import_pipeline_with_options, import_with_options, import_with_profile,
 };
 pub use resource::PackageManifest;
 pub use resource::{
@@ -87,6 +89,18 @@ use thiserror::Error;
 /// including embedded metadata and XML escaping. Schema siblings have their
 /// own format-specific limits.
 pub const MAX_MFD_DESIGN_BYTES: usize = 64 * 1024 * 1024;
+
+/// Deepest `<entry>` nesting an imported `.mfd` design may contain, counting
+/// every `<entry>` ancestor of an element. Import refuses a deeper design
+/// before reading any component, so every entry-tree walker may recurse once
+/// per level.
+///
+/// Real designs nest about 20 levels. In unoptimized AddressSanitizer
+/// builds the deepest recursive entry walker uses about 4.4 KiB of stack per
+/// level, and engine validation of the imported scopes, which executable
+/// import runs, about 33 KiB, so a design at the limit stays within about
+/// half of a default 8 MiB main thread.
+pub const MAX_MFD_ENTRY_DEPTH: usize = 128;
 
 #[derive(Debug, Error)]
 pub enum MfdError {

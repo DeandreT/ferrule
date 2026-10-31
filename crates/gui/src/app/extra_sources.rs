@@ -158,7 +158,7 @@ impl FerruleApp {
             Err(error) => {
                 self.status = "failed to load extra source SQLite table".to_owned();
                 self.diagnostics
-                    .error("SQLite table import failed", error.to_string());
+                    .error("SQLite table import failed", format!("{error:#}"));
             }
         }
     }

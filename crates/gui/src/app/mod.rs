@@ -63,6 +63,7 @@ mod failure_rules;
 mod file_run_teardown;
 mod graph_commands;
 mod history;
+mod swift_output;
 pub(crate) use file_run_teardown::{SavedFileRunTeardownPort, SavedFileRunTeardownService};
 mod filter_map_authoring;
 #[path = "../workspace/functions.rs"]
@@ -1206,6 +1207,9 @@ impl FerruleApp {
                 Ok(project) => Ok((project, None)),
                 // A document project keeps its filename plan beside the project.
                 Err(error) => match mapping::document_project_file::decode_bytes(&bytes) {
+                    Ok(document) if document.output_filename().is_some() => anyhow::bail!(
+                        "connected output filename plans require run-document or a generated host; the editor cannot retain this transport yet"
+                    ),
                     Ok(document) => Ok((
                         document.project().clone(),
                         Some(document.primary_source().clone()),
@@ -1220,7 +1224,7 @@ impl FerruleApp {
                     plan.map(|plan| primary_document::PrimaryDocumentSession::new(plan, path));
                 let (layout, layout_warning) = match read_layout(path) {
                     Ok(layout) => (layout, None),
-                    Err(error) => (None, Some(error.to_string())),
+                    Err(error) => (None, Some(format!("{error:#}"))),
                 };
                 self.main_canvas = CanvasDocumentState::with_snarl(build_snarl_with_layout(
                     &project,
@@ -1260,7 +1264,7 @@ impl FerruleApp {
             }
             Err(error) => {
                 self.status = format!("failed to load {}", crate::ui_kit::file_label(path));
-                self.diagnostics.error("Open failed", error.to_string());
+                self.diagnostics.error("Open failed", format!("{error:#}"));
             }
         }
     }
@@ -1303,7 +1307,7 @@ impl FerruleApp {
                     self.library_generation_save_failed(&error);
                 }
                 self.status = format!("failed to save {}", path.display());
-                self.diagnostics.error("Save failed", error.to_string());
+                self.diagnostics.error("Save failed", format!("{error:#}"));
             }
         }
     }
@@ -1413,7 +1417,7 @@ impl FerruleApp {
                             self.library_generation_save_failed(&error);
                         }
                         self.status = format!("failed to save {}", path.display());
-                        self.diagnostics.error("Save failed", error.to_string());
+                        self.diagnostics.error("Save failed", format!("{error:#}"));
                     }
                 }
             }
@@ -1755,6 +1759,9 @@ mod sort_controls_tests;
 mod window_controls_tests;
 
 #[cfg(test)]
+mod presence_tests;
+
+#[cfg(test)]
 mod copy_scope_tests;
 
 #[cfg(test)]
@@ -1807,3 +1814,9 @@ mod project_commands_tests;
 
 #[cfg(test)]
 mod primary_document_tests;
+
+#[cfg(test)]
+mod keyboard_accessibility_tests;
+
+#[cfg(test)]
+mod exact_decimal_authoring_tests;

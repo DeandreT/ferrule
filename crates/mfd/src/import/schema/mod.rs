@@ -269,6 +269,10 @@ pub(super) struct SchemaComponent {
     pub(super) db_queries: Vec<super::db_query::DbQuery>,
     pub(super) db_xml_columns: BTreeMap<u32, database_xml::Column>,
     pub(super) dynamic_json: Option<super::dynamic_json::DynamicJsonTarget>,
+    /// Output schema-location hint derived from an XML document component's
+    /// settings. It applies only where the component is assembled as a
+    /// target; source and variable roles never write it.
+    pub(super) target_schema_hints: Option<ir::XmlSchemaHints>,
 }
 
 impl SchemaComponent {
@@ -329,6 +333,10 @@ const JSON_DYNAMIC_STRING_PORT: &str = "\u{1f}ferrule-json-dynamic-string";
 pub(super) const SOURCE_DOCUMENT_PATH_PORT: &str = "\u{1f}ferrule-source-document-path";
 pub(super) const SOURCE_INPUT_DOCUMENT_PATH_PORT: &str = "\u{1f}ferrule-source-input-document-path";
 pub(super) const TARGET_DOCUMENT_PATH_PORT: &str = "\u{1f}ferrule-target-document-path";
+/// The `n` input of a transposed XLSX target row after the driver row. Its
+/// second path segment is the row's one-based position among the data rows.
+/// It must carry the same feed as the driver row's `n`, which owns the field.
+pub(super) const TRANSPOSED_ROW_INDEX_PORT: &str = "\u{1f}ferrule-xlsx-transposed-row-index";
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum JsonDynamicPort {
@@ -643,13 +651,20 @@ fn read_schema_component_resolved(
     reconcile_explicit_text_entries(&entry, &mut schema);
     normalize_xml_text_ports(&schema, &mut ports);
 
+    let is_pass_through = component
+        .children()
+        .any(|node| node.has_tag_name("properties") && node.attribute("PassThrough") == Some("1"));
     let input_instance = document
         .and_then(|document| document.attribute("inputinstance"))
         .map(str::to_string)
         .or_else(|| nested_file_instance(&root_el, "inputinstance"));
-    let local_xml_file_set = input_instance
-        .as_deref()
-        .is_some_and(is_local_file_set_pattern);
+    // The input instance is read only in a source role; a target's is a
+    // design-time preview. Pass-through components keep it for their source
+    // role and drop it in their target role.
+    let local_xml_file_set = (is_source || is_pass_through)
+        && input_instance
+            .as_deref()
+            .is_some_and(is_local_file_set_pattern);
     if local_xml_file_set
         && is_source
         && let Some(key) = root_el
@@ -687,9 +702,33 @@ fn read_schema_component_resolved(
     {
         ports.insert(key, vec![TARGET_DOCUMENT_PATH_PORT.to_string()]);
     }
-    let is_pass_through = component
+    let schema_setting = component
         .children()
-        .any(|node| node.has_tag_name("properties") && node.attribute("PassThrough") == Some("1"));
+        .filter(|node| node.has_tag_name("properties"))
+        .find_map(|node| node.attribute(crate::schema_location::PROPERTY));
+    // The hint names the stored schema, so its own namespace must be known.
+    let schema_namespace = authoritative_schema_namespace(
+        authoritative_schema_path.as_deref(),
+        authoritative_schema_bytes.as_deref(),
+    );
+    let target_schema_hints = match crate::schema_location::derived_hints(
+        schema_setting,
+        schema_namespace
+            .as_ref()
+            .and(document.and_then(|document| document.attribute("schema"))),
+        schema_namespace.clone().flatten().as_deref(),
+        &schema,
+    ) {
+        Ok(hints) => hints,
+        Err(error) => {
+            if !is_source || is_pass_through {
+                warnings.push(format!(
+                    "component `{name}`: {error}; its output schema-location hint is not imported"
+                ));
+            }
+            None
+        }
+    };
     Some(XmlSchemaComponentRead {
         component: SchemaComponent {
             name,
@@ -729,6 +768,7 @@ fn read_schema_component_resolved(
             db_queries: Vec::new(),
             db_xml_columns: BTreeMap::new(),
             dynamic_json: None,
+            target_schema_hints,
         },
         entry_tree_fallback: schema_from_entry_tree,
         schema_file_authoritative,
@@ -738,7 +778,28 @@ fn read_schema_component_resolved(
     })
 }
 
-fn is_local_file_set_pattern(path: &str) -> bool {
+/// The authoritative schema document's own `targetNamespace`, or `None` when
+/// it cannot be read as an XML Schema within the metadata bound.
+fn authoritative_schema_namespace(
+    path: Option<&Path>,
+    bytes: Option<&[u8]>,
+) -> Option<Option<String>> {
+    const MAX_BYTES: u64 = 8 * 1024 * 1024;
+    let text = match (bytes, path) {
+        (Some(bytes), _) => format_xml::xsd::decode_schema_bytes(bytes, MAX_BYTES).ok()?,
+        (None, Some(path)) => {
+            let file = std::fs::File::open(path).ok()?;
+            let mut bytes = Vec::new();
+            std::io::Read::read_to_end(&mut std::io::Read::take(file, MAX_BYTES + 1), &mut bytes)
+                .ok()?;
+            format_xml::xsd::decode_schema_bytes(&bytes, MAX_BYTES).ok()?
+        }
+        (None, None) => return None,
+    };
+    crate::schema_location::schema_target_namespace(&text)
+}
+
+pub(super) fn is_local_file_set_pattern(path: &str) -> bool {
     !path.contains("://")
         && Path::new(path.replace('\\', "/").as_str())
             .file_name()
@@ -1085,6 +1146,7 @@ fn read_json_component_resolved(
         db_queries: Vec::new(),
         db_xml_columns: BTreeMap::new(),
         dynamic_json,
+        target_schema_hints: None,
     })
 }
 
@@ -1618,6 +1680,7 @@ pub(super) fn read_csv_component(
         db_queries: Vec::new(),
         db_xml_columns: BTreeMap::new(),
         dynamic_json: None,
+        target_schema_hints: None,
     })
 }
 
@@ -1892,16 +1955,64 @@ fn take_branch_marker(input_keys: &BTreeSet<u32>, next_branch: &mut u32) -> u32 
 /// Fallback schema straight from the entry tree: groups where there are
 /// children, string scalars at the leaves (attribute entries flagged as
 /// such), no repeating flags.
+///
+/// Built with an explicit stack: the recursive form took about 9 KiB of
+/// debug-build stack per entry level.
 pub(super) fn entry_tree_schema(entry: &roxmltree::Node) -> SchemaNode {
+    let mut current = match plain_xml_entry(entry) {
+        PlainXmlEntry::Complete(schema) => return *schema,
+        PlainXmlEntry::Group(group) => group,
+    };
+    let mut ancestors = Vec::new();
+    loop {
+        match current.pending.next() {
+            Some(child) => match plain_xml_entry(&child) {
+                PlainXmlEntry::Complete(schema) => current.children.push(*schema),
+                PlainXmlEntry::Group(group) => {
+                    ancestors.push(std::mem::replace(&mut current, group));
+                }
+            },
+            None => {
+                let mut children = current.children;
+                if current.simple_content {
+                    children.push(SchemaNode::scalar(XML_TEXT_FIELD, ScalarType::String).text());
+                }
+                let schema = SchemaNode::group(current.name, children);
+                let Some(parent) = ancestors.pop() else {
+                    return schema;
+                };
+                current = parent;
+                current.children.push(schema);
+            }
+        }
+    }
+}
+
+/// One level of [`entry_tree_schema`].
+enum PlainXmlEntry<'a, 'input> {
+    /// A typed, generic, attribute or leaf entry.
+    Complete(Box<SchemaNode>),
+    Group(PlainXmlGroup<'a, 'input>),
+}
+
+/// A plain entry whose `<entry>` children are still being read.
+struct PlainXmlGroup<'a, 'input> {
+    name: &'a str,
+    simple_content: bool,
+    pending: std::vec::IntoIter<roxmltree::Node<'a, 'input>>,
+    children: Vec<SchemaNode>,
+}
+
+fn plain_xml_entry<'a, 'input>(entry: &roxmltree::Node<'a, 'input>) -> PlainXmlEntry<'a, 'input> {
     if entry.attribute("ferrule-kind").is_some()
         && let Some(schema) = typed_xml_entry_tree_schema(entry)
     {
-        return schema;
+        return PlainXmlEntry::Complete(Box::new(schema));
     }
     let raw_name = entry.attribute("name").unwrap_or("root");
     let (name, legacy_attribute) = normalize_xml_entry_name(raw_name);
     if name == XML_ELEMENTS_FIELD {
-        return generic_entry_schema(entry);
+        return PlainXmlEntry::Complete(Box::new(generic_entry_schema(entry)));
     }
     if legacy_attribute || entry.attribute("type") == Some("attribute") {
         let mut schema = SchemaNode::scalar(name, ir::ScalarType::String).attribute();
@@ -1910,35 +2021,78 @@ pub(super) fn entry_tree_schema(entry: &roxmltree::Node) -> SchemaNode {
             .ok()
             .flatten()
             .unwrap_or(false);
-        return schema;
+        return PlainXmlEntry::Complete(Box::new(schema));
     }
     let entry_children = entry
         .children()
         .filter(|n| n.is_element() && n.tag_name().name() == "entry")
         .collect::<Vec<_>>();
+    if entry_children.is_empty() {
+        return PlainXmlEntry::Complete(Box::new(SchemaNode::scalar(name, ir::ScalarType::String)));
+    }
     let simple_content = (entry.attribute("inpkey").is_some()
         || entry.attribute("outkey").is_some())
-        && !entry_children.is_empty()
         && entry_children.iter().all(|child| {
             let (_, legacy_attribute) =
                 normalize_xml_entry_name(child.attribute("name").unwrap_or_default());
             legacy_attribute || child.attribute("type") == Some("attribute")
         });
-    let mut children = entry_children
-        .iter()
-        .map(|child| entry_tree_schema(child))
-        .collect::<Vec<_>>();
-    if simple_content {
-        children.push(SchemaNode::scalar(XML_TEXT_FIELD, ScalarType::String).text());
-    }
-    if children.is_empty() {
-        SchemaNode::scalar(name, ir::ScalarType::String)
-    } else {
-        SchemaNode::group(name, children)
+    PlainXmlEntry::Group(PlainXmlGroup {
+        name,
+        simple_content,
+        pending: entry_children.into_iter(),
+        children: Vec::new(),
+    })
+}
+
+/// Builds the schema with an explicit stack: the recursive form took about
+/// 18 KiB of debug-build stack per entry level, the most of any entry walker.
+fn typed_xml_entry_tree_schema(entry: &roxmltree::Node<'_, '_>) -> Option<SchemaNode> {
+    let mut current = match typed_xml_entry(entry)? {
+        TypedXmlEntry::Complete(schema) => return Some(schema),
+        TypedXmlEntry::Group(group) => group,
+    };
+    let mut ancestors = Vec::new();
+    loop {
+        match current.pending.next() {
+            Some(child) => match typed_xml_entry(&child)? {
+                TypedXmlEntry::Complete(schema) => current.children.push(schema),
+                TypedXmlEntry::Group(group) => {
+                    ancestors.push(std::mem::replace(&mut current, group));
+                }
+            },
+            None => {
+                let mut schema = current.schema;
+                if let SchemaKind::Group { children, .. } = &mut schema.kind {
+                    *children = current.children;
+                }
+                let Some(parent) = ancestors.pop() else {
+                    return Some(schema);
+                };
+                current = parent;
+                current.children.push(schema);
+            }
+        }
     }
 }
 
-fn typed_xml_entry_tree_schema(entry: &roxmltree::Node<'_, '_>) -> Option<SchemaNode> {
+/// One level of [`typed_xml_entry_tree_schema`].
+enum TypedXmlEntry<'a, 'input> {
+    Complete(SchemaNode),
+    Group(TypedXmlGroup<'a, 'input>),
+}
+
+/// A typed group, its other metadata already applied, whose `<entry>`
+/// children are still being read.
+struct TypedXmlGroup<'a, 'input> {
+    schema: SchemaNode,
+    pending: std::vec::IntoIter<roxmltree::Node<'a, 'input>>,
+    children: Vec<SchemaNode>,
+}
+
+fn typed_xml_entry<'a, 'input>(
+    entry: &roxmltree::Node<'a, 'input>,
+) -> Option<TypedXmlEntry<'a, 'input>> {
     let raw_name = entry.attribute("name")?;
     let (name, legacy_attribute) = normalize_xml_entry_name(raw_name);
     if name.is_empty() {
@@ -1974,31 +2128,28 @@ fn typed_xml_entry_tree_schema(entry: &roxmltree::Node<'_, '_>) -> Option<Schema
             }
             children.insert(index, text);
         }
-        return Some(schema);
+        return Some(TypedXmlEntry::Complete(schema));
     }
     let children = entry
         .children()
         .filter(|node| node.has_tag_name("entry"))
         .collect::<Vec<_>>();
-    let mut schema = match entry.attribute("ferrule-kind")? {
-        "group" if entry.attribute("datatype").is_none() => SchemaNode::group(
-            name,
-            children
-                .iter()
-                .map(typed_xml_entry_tree_schema)
-                .collect::<Option<Vec<_>>>()?,
-        ),
-        "scalar" if children.is_empty() => {
-            let scalar_type = match entry.attribute("datatype")? {
-                "string" => ScalarType::String,
-                "integer" => ScalarType::Int,
-                "decimal" => ScalarType::Float,
-                "boolean" => ScalarType::Bool,
-                _ => return None,
-            };
-            SchemaNode::scalar(name, scalar_type)
-        }
+    let group = match entry.attribute("ferrule-kind")? {
+        "group" if entry.attribute("datatype").is_none() => true,
+        "scalar" if children.is_empty() => false,
         _ => return None,
+    };
+    let mut schema = if group {
+        SchemaNode::group(name, Vec::new())
+    } else {
+        let scalar_type = match entry.attribute("datatype")? {
+            "string" => ScalarType::String,
+            "integer" => ScalarType::Int,
+            "decimal" => ScalarType::Float,
+            "boolean" => ScalarType::Bool,
+            _ => return None,
+        };
+        SchemaNode::scalar(name, scalar_type)
     };
     schema.repeating = repeating;
     schema.xml_optional = optional;
@@ -2008,7 +2159,15 @@ fn typed_xml_entry_tree_schema(entry: &roxmltree::Node<'_, '_>) -> Option<Schema
     schema.nillable = entry.attribute("ferrule-nillable") == Some("1");
     schema.fixed = entry.attribute("ferrule-fixed").map(str::to_string);
     schema.default = entry.attribute("ferrule-default").map(str::to_string);
-    Some(schema)
+    Some(if group {
+        TypedXmlEntry::Group(TypedXmlGroup {
+            schema,
+            pending: children.into_iter(),
+            children: Vec::new(),
+        })
+    } else {
+        TypedXmlEntry::Complete(schema)
+    })
 }
 
 /// Older `.mfd` entry trees prefix XML names with a decimal namespace-slot
@@ -2322,6 +2481,7 @@ fn read_db_component_resolved(
         db_queries: Vec::new(),
         db_xml_columns,
         dynamic_json: None,
+        target_schema_hints: None,
     })
 }
 

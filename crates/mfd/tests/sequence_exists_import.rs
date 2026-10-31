@@ -290,12 +290,12 @@ fn non_core_exists_is_not_lowered_as_a_sequence_reducer() {
             .any(|node| matches!(node, Node::SequenceExists { .. }))
     );
     assert!(
-        imported
-            .project
-            .graph
-            .nodes
-            .values()
-            .any(|node| matches!(node, Node::Call { function, .. } if function == "exists"))
+        imported.warnings.iter().any(|warning| {
+            warning.contains("filter `matching-token`")
+                && warning.contains("affected binding skipped")
+        }),
+        "{:?}",
+        imported.warnings
     );
     assert!(imported.warnings.iter().any(|warning| warning.contains(
         "sequence function `tokenize-by-length` is not connected to a repeating target"

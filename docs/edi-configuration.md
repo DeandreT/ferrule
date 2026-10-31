@@ -2,7 +2,7 @@
 
 `format-edi-config` is the design-time compiler for supported external EDI
 configurations. `format-edi` contains the runtime codecs and validation for
-X12, EDIFACT, HL7 v2, TRADACOMS, IDoc, and input-only SWIFT MT. Dialects stay
+X12, EDIFACT, HL7 v2, TRADACOMS, IDoc, and SWIFT MT. Dialects stay
 together rather than becoming separate packages.
 
 ## Ownership and dependencies
@@ -60,3 +60,61 @@ MFD imports compile configurations before saving the embedded runtime model.
 Removing a source configuration after compilation does not authorize or require
 any runtime lookup. See [resource bindings](resource-bindings.md) for host trust
 and digest policy.
+
+## SWIFT MT output
+
+SWIFT MT targets keep the compiled `swift_mt` layout and add
+`swift_mt_output`, which the configuration does not supply:
+
+```json
+"swift_mt_output": {
+  "direction": "input",
+  "messages": [
+    { "basic_header": "F01BANKBEBBAXXX0000000001", "application_header": "BANKDEFFXXXXN" }
+  ]
+}
+```
+
+- `basic_header` is the complete block 1 content. `application_header` is
+  the block 2 content after the direction letter and message type: the
+  receiver address and optional priority, monitoring and obsolescence for
+  `input`, or the input time, message input reference, output date and time
+  and optional priority for `output`. Both are checked against their FIN
+  character positions when the project is validated.
+- The list holds one header set per written message, in order, up to 10,000.
+  A FIN stream never repeats a basic header or an output message input
+  reference, so validation refuses repeats, and the mapped output must
+  produce exactly as many messages as there are header sets; any other count
+  is refused when the output is written.
+- The headers are fixed project settings. Running a project again writes the
+  same session and sequence numbers again; update them before producing a
+  new stream. For the same reason a target whose mapping produces separately
+  named documents cannot use `swift_mt_output`, because every document would
+  repeat the same headers.
+- `direction` selects the `Input` or `Output` application-header group for
+  every message. A message may leave that group unmapped, or map both empty
+  groups; the configured direction is written. A mapping that constructs
+  only the other direction's group is refused when the project is
+  validated.
+- `edi_implied_decimals` must name decimal captures of the layout. Output
+  moves the decimal point back without rounding and refuses a value whose
+  scaled wire text would not re-read to exactly the mapped number.
+
+Validation also applies the writer's layout checks to every message of the
+layout, including message types a run never writes: each message type is `MT`
+followed by three digits, every field tag is uppercase letters and digits,
+every non-repeating field captures a value, and the schema's `Message` group
+repeats. The reader reads only the first field with a given tag, so a field
+the target mapping binds or constructs is refused when an earlier layout
+field uses its tag. A layout that reuses a tag, such as `:86:` at line and
+statement level, stays valid while the mapping fills only the first one.
+Fields filled through copies or computed names are checked when the output
+is written.
+
+The writer's own limits still apply: user-header and trailer blocks are not
+written, occurrences of different repeating fields cannot be interleaved, and
+values outside a field's grammar or character set are refused. Nothing is
+written unless the whole output re-reads to the expected instance. Primary
+filename document runs refuse SWIFT MT, and `.mfd` export refuses a boundary
+with output headers. Generated mappings exchange JSON instances, so their hosts
+write SWIFT MT themselves.

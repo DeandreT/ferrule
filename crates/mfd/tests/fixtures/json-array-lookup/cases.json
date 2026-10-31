@@ -1,0 +1,21 @@
+[
+  {"name":"ordered duplicates and repeated primary keys","primary":{"Items":[{"Code":"B","Ordinal":7},{"Code":"A","Ordinal":2},{"Code":"B","Ordinal":9},{"Code":"a","Ordinal":1},{"Code":" A ","Ordinal":4},{"Code":"007","Ordinal":6}]},"lookup":"{\"Rows\":[{\"Code\":\"A\",\"Value\":\"alpha-first\"},{\"Code\":\"B\",\"Value\":\"beta-first\"},{\"Code\":\"A\",\"Value\":\"alpha-second\"},{\"Code\":\"B\",\"Value\":\"beta-second\"},{\"Code\":\"007\",\"Value\":\"exact\"}]}","expected":{"Results":[{"Code":"B","Ordinal":7,"Found":"beta-first"},{"Code":"A","Ordinal":2,"Found":"alpha-first"},{"Code":"B","Ordinal":9,"Found":"beta-first"},{"Code":"a","Ordinal":1},{"Code":" A ","Ordinal":4},{"Code":"007","Ordinal":6,"Found":"exact"}]}},
+  {"name":"no matches","primary":{"Items":[{"Code":"Z","Ordinal":1}]},"lookup":"{\"Rows\":[{\"Code\":\"A\",\"Value\":\"x\"}]}","expected":{"Results":[{"Code":"Z","Ordinal":1}]}},
+  {"name":"missing first matching value never falls through","primary":{"Items":[{"Code":"A","Ordinal":1},{"Code":"B","Ordinal":2}]},"lookup":"{\"Rows\":[{\"Code\":\"A\"},{\"Code\":\"A\",\"Value\":\"later\"},{\"Code\":\"B\",\"Value\":null},{\"Code\":\"B\",\"Value\":\"later\"}]}","expected":{"Results":[{"Code":"A","Ordinal":1},{"Code":"B","Ordinal":2,"Found":null}]}},
+  {"name":"empty value is present","primary":{"Items":[{"Code":"A","Ordinal":1}]},"lookup":"{\"Rows\":[{\"Code\":\"A\",\"Value\":\"\"},{\"Code\":\"A\",\"Value\":\"later\"}]}","expected":{"Results":[{"Code":"A","Ordinal":1,"Found":""}]}},
+  {"name":"empty lookup","primary":{"Items":[{"Code":"A","Ordinal":1}]},"lookup":"{\"Rows\":[]}","expected":{"Results":[{"Code":"A","Ordinal":1}]}},
+  {"name":"absent optional array","primary":{"Items":[{"Code":"A","Ordinal":1}]},"lookup":"{}","expected":{"Results":[{"Code":"A","Ordinal":1}]}},
+  {"name":"invalid JSON","primary":{"Items":[{"Code":"A","Ordinal":1}]},"lookup":"{","error":"input does not match the JSON schema"},
+  {"name":"array cannot be null","primary":{"Items":[{"Code":"A","Ordinal":1}]},"lookup":"{\"Rows\":null}","error":"input does not match the JSON schema"},
+  {"name":"malformed later duplicate still validates","primary":{"Items":[{"Code":"A","Ordinal":1}]},"lookup":"{\"Rows\":[{\"Code\":\"A\",\"Value\":\"ok\"},{\"Code\":\"A\",\"Value\":7}]}","error":"input does not match the JSON schema"},
+  {"name":"malformed nonmatching record still validates","primary":{"Items":[{"Code":"Z","Ordinal":1}]},"lookup":"{\"Rows\":[{\"Code\":7,\"Value\":\"x\"}]}","error":"input does not match the JSON schema"},
+  {"name":"unconnected declared port still validates","primary":{"Items":[{"Code":"A","Ordinal":1}]},"lookup":"{\"Rows\":[{\"Code\":\"A\",\"Value\":\"ok\",\"Unused\":\"wrong\"}]}","error":"input does not match the JSON schema"},
+  {"name":"unselected sibling still validates","primary":{"Items":[{"Code":"A","Ordinal":1}]},"lookup":"{\"Rows\":[],\"Unselected\":\"wrong\"}","error":"input does not match the JSON schema"},
+  {"name":"unknown property rejected","primary":{"Items":[{"Code":"A","Ordinal":1}]},"lookup":"{\"Rows\":[{\"Code\":\"A\",\"Extra\":1}]}","error":"input does not match the JSON schema"},
+  {"name":"required unselected field still validates","primary":{"Items":[{"Code":"A","Ordinal":1}]},"lookup":"{\"Rows\":[],\"Guard\":{}}","error":"input does not match the JSON schema"},
+  {"name":"missing and null keys do not match","primary":{"Items":[{"Ordinal":1},{"Code":null,"Ordinal":2},{"Code":"A","Ordinal":3}]},"lookup":"{\"Rows\":[{\"Value\":\"missing\"},{\"Code\":null,\"Value\":\"null\"},{\"Code\":\"A\",\"Value\":\"match\"}]}","expected":{"Results":[{"Ordinal":1},{"Code":null,"Ordinal":2},{"Code":"A","Ordinal":3,"Found":"match"}]}},
+  {"name":"empty primary leaves parser undemanded","primary":{"Items":[]},"lookup":"invalid but undemanded","expected":{"Results":[]}},
+  {"name":"required parameter absent","primary":{"Items":[{"Code":"A","Ordinal":1}]},"parameter_failure":"missing"},
+  {"name":"null parameter retains the typed parser input failure","primary":{"Items":[{"Code":"A","Ordinal":1}]},"parameter_failure":"null"},
+  {"name":"integer parameter retains existing String coercion then fails the object schema","primary":{"Items":[{"Code":"A","Ordinal":1}]},"parameter_failure":"int"}
+]

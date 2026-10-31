@@ -1,0 +1,50 @@
+#![allow(dead_code)]
+mod codec;
+
+use codegen_runtime::{ExecutionContext, Instance, RuntimeError, RuntimeParameters, Value};
+use serde_json::Value as Json;
+use std::path::Path;
+
+fn execute(
+    model: u64,
+    source: &Instance,
+    context: &ExecutionContext<'_>,
+) -> Result<Instance, RuntimeError> {
+    match model {
+@DISPATCH@        _ => panic!("unknown model {model}"),
+    }
+}
+
+/// Runs every case of every model and compares its whole output recipe, or
+/// its function error text, with the engine's outcome.
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let path = std::env::args().nth(1).ok_or("cases path")?;
+    let cases: Json = serde_json::from_slice(&std::fs::read(path)?)?;
+    let cases = cases.as_array().ok_or("cases")?;
+    let mut parameters = RuntimeParameters::new();
+    parameters.insert("Key", Value::String("C2".into()))?;
+    let context = ExecutionContext::new(Path::new("mapping.json")).with_parameters(&parameters);
+    let mut failures = Vec::new();
+    for case in cases {
+        let source = codec::decode(&case["source"]);
+        let model = case["model"].as_u64().ok_or("model")?;
+        let actual = execute(model, &source, &context);
+        let expected = &case["expected"];
+        let matched = match &actual {
+            Ok(output) => expected.get("Ok") == Some(&codec::encode(output)),
+            Err(RuntimeError::Function(error)) => {
+                expected["Err"]["display"].as_str() == Some(error.to_string().as_str())
+            }
+            Err(_) => false,
+        };
+        if !matched {
+            let actual = actual.map(|output| codec::encode(&output));
+            failures.push(format!("{}: {actual:?}", case["label"]));
+        }
+    }
+    if !failures.is_empty() {
+        return Err(failures.join("\n").into());
+    }
+    println!("verified {} computed join cases", cases.len());
+    Ok(())
+}

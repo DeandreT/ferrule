@@ -13,6 +13,8 @@ pub(crate) fn is_internal(name: &str) -> bool {
             | "json_serialize_object"
             | "json_parse_field"
             | "json_parse_object_exists"
+            | "json_parse_array_length"
+            | "json_parse_array_field"
             | "flextext_parse_field"
             | "coerce_datetime"
             | "coerce_float"
@@ -29,6 +31,8 @@ mod tests {
         assert!(is_internal("sqlite_multiply"));
         assert!(is_internal("coerce_datetime"));
         assert!(is_internal("coerce_float"));
+        assert!(is_internal("json_parse_array_length"));
+        assert!(is_internal("json_parse_array_field"));
         assert!(!is_internal("to-number"));
         assert!(!is_internal("convertToISBN13"));
     }

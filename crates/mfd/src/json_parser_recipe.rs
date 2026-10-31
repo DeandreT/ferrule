@@ -17,10 +17,19 @@ struct RecipeMetadata {
     unresolved_schema_reference: String,
 }
 
+/// Graph-level JSON functions take plain `SchemaNode` text without a file
+/// capability or descriptor version, so an older reader would silently drop
+/// tuple frame metadata; frames therefore never enter these strings.
 pub(crate) fn encode_schema(
     schema: &SchemaNode,
     unresolved_schema_reference: Option<&str>,
 ) -> Result<String, serde_json::Error> {
+    if schema.contains_json_tuple() {
+        return Err(serde::ser::Error::custom(format!(
+            "schema `{}` contains a JSON tuple frame; JSON string parser schemas do not support JSON tuple frames",
+            schema.name
+        )));
+    }
     let Some(reference) = unresolved_schema_reference else {
         return serde_json::to_string(schema);
     };
@@ -78,4 +87,48 @@ pub(crate) fn validate_reference(reference: &str) -> Result<(), String> {
         );
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use ir::{ItemCountRange, JsonTupleLayout, JsonTupleTail, ScalarType, SchemaNode};
+
+    use super::{decode_schema, encode_schema};
+
+    fn document(framed: bool) -> SchemaNode {
+        let mut point = SchemaNode::group(
+            "Point",
+            vec![
+                SchemaNode::scalar("item1", ScalarType::String),
+                SchemaNode::scalar("item2", ScalarType::Int),
+            ],
+        );
+        if framed {
+            point = point
+                .with_json_tuple(JsonTupleLayout {
+                    length: ItemCountRange::new(0, Some(2)),
+                    tail: JsonTupleTail::Closed,
+                })
+                .unwrap();
+        }
+        SchemaNode::group(
+            "Document",
+            vec![SchemaNode::scalar("Head", ScalarType::String), point],
+        )
+    }
+
+    #[test]
+    fn tuple_frames_never_enter_parser_schema_strings() {
+        for reference in [None, Some("source.schema.json")] {
+            let error = encode_schema(&document(true), reference).unwrap_err();
+            assert!(error.to_string().contains("JSON tuple frame"), "{error}");
+
+            let ordinary = document(false);
+            let encoded = encode_schema(&ordinary, reference).unwrap();
+            assert_eq!(
+                decode_schema(&encoded).unwrap(),
+                (ordinary, reference.map(str::to_string))
+            );
+        }
+    }
 }

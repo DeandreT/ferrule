@@ -26471,7 +26471,7 @@
           66097
         ],
         "physical_pdf_page": 1555,
-        "source_classification": "enum_type_container_values_unprocessed",
+        "source_classification": "enum_type_container_values_decomposed",
         "research_page_ids": [
           "enterprise2026r2.doc.enum_icactivexintegrationlevel"
         ],
@@ -26500,7 +26500,7 @@
           66117
         ],
         "physical_pdf_page": 1555,
-        "source_classification": "enum_type_container_values_unprocessed",
+        "source_classification": "enum_type_container_values_decomposed",
         "research_page_ids": [
           "enterprise2026r2.doc.enumplaceholderwindmf"
         ],

@@ -213,10 +213,9 @@ fn complete_isa_lf_input_and_custom_5010_preserve_selected_syntax() {
     assert!(input.is_ok());
     let result = to_string_with_separators(&schema, &instance, lf);
     retain("lf-4010", &schema, &instance, &result);
-    assert!(matches!(
-        result,
-        Err(EdiFormatError::InvalidX12Separators(_))
-    ));
+    let output = result.unwrap();
+    assert_eq!(output.as_bytes(), EXPECTED_LF.as_bytes());
+    assert_physical_isa(&output, b'*', b'>', b'\n');
     change(&mut instance, "ISA", "11", "^");
     change(&mut instance, "ISA", "12", "00501");
     change(&mut instance, "GS", "08", "005010");
@@ -697,5 +696,218 @@ fn autocomplete_preserves_valid_gregorian_dates_and_stable_datetime_defaults() {
             .replace("*261009*1030*", "*300615*0945*")
             .replace("*20261009*103000*", "*20300615*094512*");
         assert_eq!(output, expected, "{datetime}");
+    }
+}
+
+fn line_break(segment: char) -> Separators {
+    Separators {
+        component: '>',
+        segment,
+        repetition: None,
+        ..Separators::default()
+    }
+}
+
+#[test]
+fn lf_and_cr_terminated_interchanges_write_back_byte_identical() {
+    let _evidence = EvidenceUse::acquire();
+    let (schema, _) = example();
+    for (name, terminator) in [("lf-round-trip", '\n'), ("cr-round-trip", '\r')] {
+        let wire = EXPECTED_LF.replace('\n', &terminator.to_string());
+        let separators = line_break(terminator);
+        let instance = from_str_with_separators(&wire, &schema, false, Some(separators)).unwrap();
+        assert_eq!(instance, from_str(&wire, &schema, false).unwrap(), "{name}");
+        let result = to_string_with_separators(&schema, &instance, separators);
+        retain(name, &schema, &instance, &result);
+        let output = result.unwrap();
+        assert_eq!(output.as_bytes(), wire.as_bytes(), "{name}");
+        assert_physical_isa(&output, b'*', b'>', terminator as u8);
+
+        let destination = evidence_root().join(format!("{name}.x12"));
+        write_with_separators(&destination, &schema, &instance, separators).unwrap();
+        assert_eq!(std::fs::read(&destination).unwrap(), wire.as_bytes());
+    }
+}
+
+#[test]
+fn a_cr_boundary_reads_cr_lf_and_writes_the_single_cr_terminator() {
+    let (schema, _) = example();
+    let crlf = EXPECTED_LF.replace('\n', "\r\n");
+    let error =
+        from_str_with_separators(&crlf, &schema, false, Some(line_break('\n'))).unwrap_err();
+    assert!(matches!(
+        error,
+        EdiFormatError::X12SeparatorMismatch {
+            kind: "segment",
+            expected: '\n',
+            found: '\r',
+        }
+    ));
+    assert_eq!(
+        error.to_string(),
+        "configured X12 segment separator `\\n` does not match interchange separator `\\r`"
+    );
+    let instance = from_str_with_separators(&crlf, &schema, false, Some(line_break('\r'))).unwrap();
+    assert_eq!(
+        to_string_with_separators(&schema, &instance, line_break('\r')).unwrap(),
+        EXPECTED_LF.replace('\n', "\r")
+    );
+}
+
+#[test]
+fn line_break_terminators_complete_envelopes_without_blank_lines() {
+    let (schema, mut instance) = example();
+    change(&mut instance, "ISA", "16", ">");
+    change(&mut instance, "GS", "05", "10:30:00");
+    let output = to_string_with_syntax_and_autocomplete(
+        &schema,
+        &instance,
+        line_break('\n'),
+        Some("00401"),
+        completion(),
+    )
+    .unwrap();
+    assert_eq!(
+        output,
+        EXPECTED_AUTOCOMPLETE
+            .replace("*P*:~", "*P*>~")
+            .replace("~\n", "\n")
+    );
+}
+
+#[test]
+fn line_break_terminators_refuse_reserved_data_before_writing() {
+    let _evidence = EvidenceUse::acquire();
+    for (name, terminator) in [("lf-reserved", '\n'), ("cr-reserved", '\r')] {
+        let separators = line_break(terminator);
+        let destination = evidence_root().join(format!("{name}-destination.x12"));
+        std::fs::create_dir_all(evidence_root()).unwrap();
+        std::fs::write(&destination, b"existing destination").unwrap();
+
+        let (schema, mut instance) = example();
+        change(&mut instance, "ISA", "16", ">");
+        change(
+            &mut instance,
+            "W05",
+            "02",
+            &format!("DEMO{terminator}ORDER"),
+        );
+        let error =
+            write_with_separators(&destination, &schema, &instance, separators).unwrap_err();
+        assert!(
+            matches!(
+                error,
+                EdiFormatError::UnescapableDelimiter {
+                    ref element,
+                    delimiter,
+                } if element == "02" && delimiter == terminator
+            ),
+            "{name}: {error:?}"
+        );
+        assert!(!error.to_string().contains(terminator), "{name}: {error}");
+
+        // A configured release character escapes the terminator exactly as
+        // it escapes the other separators, except in the fixed-width ISA.
+        let released = Separators {
+            release: Some('?'),
+            ..separators
+        };
+        let (schema, mut instance) = example();
+        change(&mut instance, "ISA", "16", ">");
+        change(&mut instance, "ISA", "06", &format!("SENDER{terminator}"));
+        let result = write_with_separators(&destination, &schema, &instance, released);
+        assert!(
+            matches!(result, Err(EdiFormatError::InvalidEnvelopeElement { .. })),
+            "{name}: {result:?}"
+        );
+        assert_eq!(
+            std::fs::read(&destination).unwrap(),
+            b"existing destination"
+        );
+
+        let (schema, mut instance) = example();
+        change(&mut instance, "ISA", "16", ">");
+        change(
+            &mut instance,
+            "W05",
+            "02",
+            &format!("DEMO{terminator}ORDER"),
+        );
+        let output = to_string_with_separators(&schema, &instance, released).unwrap();
+        assert!(output.contains(&format!("DEMO?{terminator}ORDER{terminator}")));
+        let read = from_str_with_separators(&output, &schema, false, Some(released)).unwrap();
+        assert_eq!(
+            read.field("W05").and_then(|segment| segment.field("02")),
+            instance
+                .field("W05")
+                .and_then(|segment| segment.field("02"))
+        );
+    }
+}
+
+#[test]
+fn only_the_segment_terminator_may_be_a_line_break() {
+    let (schema, instance) = example();
+    let standard = Separators::default();
+    for separators in [
+        Separators {
+            element: '\n',
+            ..standard
+        },
+        Separators {
+            component: '\r',
+            ..standard
+        },
+        Separators {
+            repetition: Some('\n'),
+            ..standard
+        },
+        Separators {
+            release: Some('\r'),
+            ..standard
+        },
+        Separators {
+            element: ' ',
+            ..standard
+        },
+        Separators {
+            component: '\t',
+            ..standard
+        },
+        Separators {
+            segment: ' ',
+            ..standard
+        },
+        Separators {
+            segment: '\t',
+            ..standard
+        },
+        Separators {
+            segment: '\u{b}',
+            ..standard
+        },
+        Separators {
+            segment: '\u{2028}',
+            ..standard
+        },
+        Separators {
+            element: '\n',
+            ..line_break('\n')
+        },
+    ] {
+        assert!(
+            matches!(
+                to_string_with_separators(&schema, &instance, separators),
+                Err(EdiFormatError::InvalidX12Separators(_))
+            ),
+            "{separators:?}"
+        );
+        assert!(
+            matches!(
+                from_str_with_separators(EXPECTED_DEFAULT, &schema, false, Some(separators)),
+                Err(EdiFormatError::InvalidX12Separators(_))
+            ),
+            "{separators:?}"
+        );
     }
 }

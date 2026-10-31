@@ -17,6 +17,12 @@ pub(super) struct GraphBuilder<'a> {
     pub(super) parser_input_nodes: BTreeMap<u32, NodeId>,
     pub(super) next_id: NodeId,
     pub(super) fn_nodes: BTreeMap<usize, NodeId>,
+    /// Filters have complementary outputs and may project a variable descendant.
+    pub(super) filter_nodes: BTreeMap<(u32, Vec<String>), Option<NodeId>>,
+    pub(super) refused_value_feeds: BTreeSet<u32>,
+    pub(super) refused_filter_projections: BTreeSet<(u32, Vec<String>)>,
+    /// Controlled structural feeds already enforced by a successfully built scope.
+    pub(super) scope_projection_feeds: BTreeSet<(u32, Vec<String>, Vec<String>)>,
     pub(super) sequence_items: BTreeMap<usize, NodeId>,
     pub(super) sequence_scope_components: BTreeSet<usize>,
     pub(super) sequence_predicate_components: BTreeSet<usize>,

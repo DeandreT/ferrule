@@ -11,6 +11,7 @@ mod json_pattern_property_names;
 mod json_property_dependencies;
 mod json_property_name_constraints;
 mod json_schema_predicate;
+mod json_tuple;
 mod json_undeclared_property;
 mod numeric_range;
 mod property_count_range;
@@ -31,6 +32,10 @@ pub use json_contains_constraints::{
     JsonContainsConstraint, JsonContainsConstraints, MAX_JSON_CONTAINS_CONSTRAINTS,
 };
 pub use json_schema_predicate::JsonSchemaPredicate;
+pub use json_tuple::{
+    JSON_TUPLE_MEMBER_PREFIX, JSON_TUPLE_REST_FIELD, JsonTupleFrame, JsonTupleFrameError,
+    JsonTupleLayout, JsonTupleTail, MAX_JSON_TUPLE_MEMBERS, json_tuple_member_name,
+};
 pub use json_undeclared_property::JsonUndeclaredPropertyError;
 /// Compatibility alias for the original `contains`-specific public name.
 pub type JsonContainsPredicate = JsonSchemaPredicate;

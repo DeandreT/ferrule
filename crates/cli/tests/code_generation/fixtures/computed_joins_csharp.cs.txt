@@ -1,0 +1,139 @@
+using System.Globalization;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+// Runs this model's cases and compares each whole output recipe, or the kind
+// and function of each function error, with the engine's outcome.
+var cases = JsonNode.Parse(File.ReadAllText(args[0]))!.AsArray();
+var model = int.Parse(args[1], CultureInfo.InvariantCulture);
+var parameters = new FerruleRuntimeParameters(new[]
+{
+    KeyValuePair.Create("Key", FerruleValue.FromString("C2")),
+});
+var context = new FerruleExecutionContext("mapping.json", "mapping.json", null, parameters);
+var failures = new List<string>();
+var verified = 0;
+foreach (var item in cases)
+{
+    if (item!["model"]!.GetValue<int>() != model)
+    {
+        continue;
+    }
+    verified++;
+    var label = item["label"]!.GetValue<string>();
+    var source = Recipe.Decode(item["source"]!);
+    var expected = item["expected"]!;
+    if (expected["Ok"] is { } output)
+    {
+        try
+        {
+            var actual = Recipe.Encode(GeneratedMapping.Execute(source, context));
+            if (!JsonNode.DeepEquals(actual, output))
+            {
+                failures.Add($"{label}: {actual.ToJsonString()}");
+            }
+        }
+        catch (FerruleRuntimeException error)
+        {
+            failures.Add($"{label}: {error.Error} {error.Message}");
+        }
+        continue;
+    }
+    var failure = expected["Err"]!;
+    try
+    {
+        GeneratedMapping.Execute(source, context);
+        failures.Add($"{label}: expected {failure.ToJsonString()}");
+    }
+    catch (FerruleRuntimeException error) when (
+        error.Error.ToString() == failure["kind"]!.GetValue<string>() &&
+        error.Function == failure["function"]!.GetValue<string>())
+    {
+    }
+    catch (FerruleRuntimeException error)
+    {
+        failures.Add($"{label}: {error.Error} {error.Function} {error.Message}");
+    }
+}
+if (failures.Count != 0 || verified == 0)
+{
+    Console.Error.WriteLine(string.Join('\n', failures));
+    return 1;
+}
+Console.WriteLine($"verified {verified} computed join cases");
+return 0;
+
+/// <summary>The host recipe codec: lossless scalar tags, float bits and ordered fields.</summary>
+internal static class Recipe
+{
+    private static JsonNode? Json(object? value) => JsonSerializer.SerializeToNode(value);
+
+    internal static FerruleInstance Decode(JsonNode recipe)
+    {
+        var tag = recipe[0]!.GetValue<string>();
+        if (tag == "Group")
+        {
+            if (recipe[2]!["kind"]!.GetValue<string>() != "Unknown")
+            {
+                throw new InvalidOperationException("Fixture input groups have no XML type origin.");
+            }
+            return new FerruleGroup(recipe[1]!.AsArray().Select(field =>
+                new FerruleField(field![0]!.GetValue<string>(), Decode(field[1]!))));
+        }
+        if (tag == "Repeated")
+        {
+            return new FerruleRepeated(recipe[1]!.AsArray().Select(item => Decode(item!)));
+        }
+        return new FerruleScalar(tag switch
+        {
+            "Null" => FerruleValue.Null,
+            "JsonNull" => FerruleValue.JsonNull,
+            "XmlNil" => FerruleValue.XmlNil,
+            "String" => FerruleValue.FromString(recipe[1]!.GetValue<string>()),
+            "Bool" => FerruleValue.FromBoolean(recipe[1]!.GetValue<bool>()),
+            "Int" => FerruleValue.FromInt64(recipe[1]!.GetValue<long>()),
+            "Float" => FerruleValue.FromDouble(BitConverter.Int64BitsToDouble(unchecked((long)ulong.Parse(
+                recipe[1]!.GetValue<string>(), NumberStyles.HexNumber, CultureInfo.InvariantCulture)))),
+            _ => throw new InvalidOperationException($"Unexpected scalar tag {tag}."),
+        });
+    }
+
+    internal static JsonNode Encode(FerruleInstance instance)
+    {
+        if (instance is FerruleGroup group)
+        {
+            return new JsonArray(
+                Json("Group"),
+                Json(group.Fields.Select(field => new JsonArray(Json(field.Name), Encode(field.Value))).ToArray()),
+                Json(new
+                {
+                    kind = group.XmlTypeOrigin.Kind.ToString(),
+                    identity = group.XmlTypeOrigin.Identity,
+                    literal = group.XmlTypeOrigin.Literal,
+                }));
+        }
+        if (instance is FerruleRepeated repeated)
+        {
+            return new JsonArray(Json("Repeated"), Json(repeated.Items.Select(Encode).ToArray()));
+        }
+        if (instance is not FerruleScalar scalar)
+        {
+            throw new InvalidOperationException($"Unexpected output kind {instance.GetType().Name}.");
+        }
+        var value = scalar.Value;
+        return value.Kind switch
+        {
+            FerruleValueKind.Null => new JsonArray(Json("Null")),
+            FerruleValueKind.JsonNull => new JsonArray(Json("JsonNull")),
+            FerruleValueKind.XmlNil => new JsonArray(Json("XmlNil")),
+            FerruleValueKind.String => new JsonArray(Json("String"), Json(value.StringValue)),
+            FerruleValueKind.Bool => new JsonArray(Json("Bool"), Json(value.BooleanValue)),
+            FerruleValueKind.Int64 => new JsonArray(Json("Int"), Json(value.Int64Value)),
+            FerruleValueKind.Double => new JsonArray(Json("Float"), Json(unchecked(
+                (ulong)BitConverter.DoubleToInt64Bits(value.DoubleValue)).ToString("x16", CultureInfo.InvariantCulture))),
+            _ => throw new InvalidOperationException($"Unexpected output value {value.Kind}."),
+        };
+    }
+}

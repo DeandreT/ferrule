@@ -214,19 +214,19 @@ fn imports_fixed_record_and_table_as_a_composite_xml_source() {
     assert!(project.source_options.xlsx_rows.is_empty());
     assert!(project.source_options.has_header_row.is_none());
     let layout = project.source_options.xlsx_composite.as_ref().unwrap();
-    assert_eq!(layout.table.path, ["Roster"]);
-    assert_eq!(layout.table.sheet.as_deref(), Some("Roster"));
-    assert_eq!(layout.table.start_row.get(), 1);
+    let table = layout.table.as_ref().unwrap();
+    assert_eq!(table.path, ["Roster"]);
+    assert_eq!(table.sheet.as_deref(), Some("Roster"));
+    assert_eq!(table.start_row.get(), 1);
     assert_eq!(
-        layout
-            .table
+        table
             .columns
             .iter()
             .map(|column| column.get())
             .collect::<Vec<_>>(),
         vec![1, 3]
     );
-    assert!(layout.table.has_header);
+    assert!(table.has_header);
     assert_eq!(layout.records.len(), 1);
     assert_eq!(layout.records[0].path, ["Branch"]);
     assert_eq!(layout.records[0].sheet.as_deref(), Some("Branch"));
@@ -371,12 +371,12 @@ fn imports_fixed_scalar_and_table_as_a_composite_json_source() {
     let project = &imported.project;
 
     let layout = project.source_options.xlsx_composite.as_ref().unwrap();
-    assert_eq!(layout.table.path, ["People"]);
-    assert_eq!(layout.table.sheet.as_deref(), Some("People"));
-    assert_eq!(layout.table.start_row.get(), 2);
+    let table = layout.table.as_ref().unwrap();
+    assert_eq!(table.path, ["People"]);
+    assert_eq!(table.sheet.as_deref(), Some("People"));
+    assert_eq!(table.start_row.get(), 2);
     assert_eq!(
-        layout
-            .table
+        table
             .columns
             .iter()
             .map(|column| column.get())
@@ -676,8 +676,9 @@ fn imports_and_executes_multiple_static_tables_with_row_numbers() {
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     let project = &imported.project;
     let layout = project.source_options.xlsx_composite.as_ref().unwrap();
-    assert_eq!(layout.table.path, ["Admin"]);
-    assert_eq!(layout.table.row_number_field.as_deref(), Some("r"));
+    let table = layout.table.as_ref().unwrap();
+    assert_eq!(table.path, ["Admin"]);
+    assert_eq!(table.row_number_field.as_deref(), Some("r"));
     assert_eq!(layout.additional_tables.len(), 1);
     assert_eq!(layout.additional_tables[0].path, ["Development"]);
     assert_eq!(

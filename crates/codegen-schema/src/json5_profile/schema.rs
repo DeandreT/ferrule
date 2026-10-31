@@ -189,6 +189,7 @@ fn metadata(node: &SchemaNode) -> Result<(), Json5ProfileError> {
         xml_name_alternatives,
         xml_wildcard_namespace,
         xml_wildcard_process_contents,
+        xml_wildcard_excluded_names,
         repeating,
         recursive_ref,
         attribute,
@@ -200,6 +201,7 @@ fn metadata(node: &SchemaNode) -> Result<(), Json5ProfileError> {
         container_nullable,
         json_object_item_nullable,
         json_array_wrapper,
+        json_tuple,
         json_any,
         json_undeclared_property,
         fixed,
@@ -233,8 +235,10 @@ fn metadata(node: &SchemaNode) -> Result<(), Json5ProfileError> {
     macro_rules! off { ($($field:ident),+ $(,)?) => { $(if *$field { return Err(unsupported(stringify!($field))); })+ }; }
     none!(
         json_object_item_nullable,
+        json_tuple,
         xml_namespace,
         xml_wildcard_namespace,
+        xml_wildcard_excluded_names,
         recursive_ref,
         fixed,
         json_allowed_values,

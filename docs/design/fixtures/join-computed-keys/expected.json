@@ -1,0 +1,761 @@
+{
+  "design": "../../join-computed-keys.md",
+  "format": "Expected tuples are [Number, Name] pairs of the matched Customer, in output order, for each target Order (or for the root Hit collection). Absent values in the inputs are omitted elements.",
+  "cases": [
+    {
+      "id": "direct",
+      "design": "designs/direct.mfd",
+      "input": "input.xml",
+      "key": "CustomerNumber (direct source scalar, existing singleton form)",
+      "right_key": "Customer/Number",
+      "context": "each source Order",
+      "connection": "copy-all",
+      "native": "observed",
+      "expected": {
+        "O1": [],
+        "O2": [],
+        "O3": [],
+        "O4": [],
+        "O5": [
+          [
+            "",
+            "Blank"
+          ]
+        ],
+        "O6": [
+          [
+            "C1",
+            "Ada"
+          ]
+        ],
+        "O7": [
+          [
+            "7",
+            "Seven"
+          ]
+        ]
+      },
+      "route": "current bounded singleton form; unchanged"
+    },
+    {
+      "id": "upper",
+      "design": "designs/upper.mfd",
+      "input": "input.xml",
+      "key": "uppercase(CustomerNumber)",
+      "right_key": "Customer/Number",
+      "context": "each source Order",
+      "connection": "ordinary",
+      "native": "observed",
+      "expected": {
+        "O1": [
+          [
+            "C1",
+            "Ada"
+          ]
+        ],
+        "O2": [
+          [
+            "C2",
+            "Grace"
+          ],
+          [
+            "C2",
+            "Hopper"
+          ]
+        ],
+        "O3": [],
+        "O4": [],
+        "O5": [
+          [
+            "",
+            "Blank"
+          ]
+        ],
+        "O6": [
+          [
+            "C1",
+            "Ada"
+          ]
+        ],
+        "O7": [
+          [
+            "7",
+            "Seven"
+          ]
+        ]
+      },
+      "route": "scopes 2-5"
+    },
+    {
+      "id": "lower",
+      "design": "designs/lower.mfd",
+      "input": "input.xml",
+      "key": "lowercase(CustomerNumber)",
+      "right_key": "Customer/Number",
+      "context": "each source Order",
+      "connection": "ordinary",
+      "native": "observed",
+      "expected": {
+        "O1": [],
+        "O2": [],
+        "O3": [],
+        "O4": [],
+        "O5": [
+          [
+            "",
+            "Blank"
+          ]
+        ],
+        "O6": [],
+        "O7": [
+          [
+            "7",
+            "Seven"
+          ]
+        ]
+      },
+      "route": "scopes 2-5"
+    },
+    {
+      "id": "concat",
+      "design": "designs/concat.mfd",
+      "input": "input.xml",
+      "key": "concat(CustomerNumber, \"\")",
+      "right_key": "Customer/Number",
+      "context": "each source Order",
+      "connection": "ordinary",
+      "native": "observed",
+      "expected": {
+        "O1": [],
+        "O2": [],
+        "O3": [],
+        "O4": [],
+        "O5": [
+          [
+            "",
+            "Blank"
+          ]
+        ],
+        "O6": [
+          [
+            "C1",
+            "Ada"
+          ]
+        ],
+        "O7": [
+          [
+            "7",
+            "Seven"
+          ]
+        ]
+      },
+      "route": "scopes 2-5"
+    },
+    {
+      "id": "constant",
+      "design": "designs/constant.mfd",
+      "input": "input.xml",
+      "key": "constant \"C2\"",
+      "right_key": "Customer/Number",
+      "context": "each source Order",
+      "connection": "ordinary",
+      "native": "observed",
+      "expected": {
+        "O1": [
+          [
+            "C2",
+            "Grace"
+          ],
+          [
+            "C2",
+            "Hopper"
+          ]
+        ],
+        "O2": [
+          [
+            "C2",
+            "Grace"
+          ],
+          [
+            "C2",
+            "Hopper"
+          ]
+        ],
+        "O3": [
+          [
+            "C2",
+            "Grace"
+          ],
+          [
+            "C2",
+            "Hopper"
+          ]
+        ],
+        "O4": [
+          [
+            "C2",
+            "Grace"
+          ],
+          [
+            "C2",
+            "Hopper"
+          ]
+        ],
+        "O5": [
+          [
+            "C2",
+            "Grace"
+          ],
+          [
+            "C2",
+            "Hopper"
+          ]
+        ],
+        "O6": [
+          [
+            "C2",
+            "Grace"
+          ],
+          [
+            "C2",
+            "Hopper"
+          ]
+        ],
+        "O7": [
+          [
+            "C2",
+            "Grace"
+          ],
+          [
+            "C2",
+            "Hopper"
+          ]
+        ]
+      },
+      "route": "scopes 2-5"
+    },
+    {
+      "id": "parameter",
+      "design": "designs/parameter.mfd",
+      "input": "input.xml",
+      "key": "runtime input parameter Key, preview \"C2\"",
+      "right_key": "Customer/Number",
+      "context": "each source Order",
+      "connection": "copy-all",
+      "native": "observed",
+      "expected": {
+        "O1": [
+          [
+            "C2",
+            "Grace"
+          ],
+          [
+            "C2",
+            "Hopper"
+          ]
+        ],
+        "O2": [
+          [
+            "C2",
+            "Grace"
+          ],
+          [
+            "C2",
+            "Hopper"
+          ]
+        ],
+        "O3": [
+          [
+            "C2",
+            "Grace"
+          ],
+          [
+            "C2",
+            "Hopper"
+          ]
+        ],
+        "O4": [
+          [
+            "C2",
+            "Grace"
+          ],
+          [
+            "C2",
+            "Hopper"
+          ]
+        ],
+        "O5": [
+          [
+            "C2",
+            "Grace"
+          ],
+          [
+            "C2",
+            "Hopper"
+          ]
+        ],
+        "O6": [
+          [
+            "C2",
+            "Grace"
+          ],
+          [
+            "C2",
+            "Hopper"
+          ]
+        ],
+        "O7": [
+          [
+            "C2",
+            "Grace"
+          ],
+          [
+            "C2",
+            "Hopper"
+          ]
+        ]
+      },
+      "route": "scopes 2-5; hosts supply Key = \"C2\""
+    },
+    {
+      "id": "tokens",
+      "design": "designs/tokens.mfd",
+      "input": "input.xml",
+      "key": "tokenize(Codes, \" \") as input 0",
+      "right_key": "Customer/Number",
+      "context": "each source Order",
+      "connection": "ordinary",
+      "native": "observed",
+      "expected": {
+        "O1": [
+          [
+            "C2",
+            "Grace"
+          ],
+          [
+            "C2",
+            "Hopper"
+          ],
+          [
+            "C1",
+            "Ada"
+          ],
+          [
+            "C2",
+            "Grace"
+          ],
+          [
+            "C2",
+            "Hopper"
+          ]
+        ],
+        "O2": [],
+        "O3": [],
+        "O4": [
+          [
+            "C1",
+            "Ada"
+          ]
+        ],
+        "O5": [
+          [
+            "",
+            "Blank"
+          ]
+        ],
+        "O6": [
+          [
+            "C2",
+            "Grace"
+          ],
+          [
+            "C2",
+            "Hopper"
+          ]
+        ],
+        "O7": [
+          [
+            "C1",
+            "Ada"
+          ],
+          [
+            "C1",
+            "Ada"
+          ]
+        ]
+      },
+      "route": "scope 6; refused by import until then"
+    },
+    {
+      "id": "tokens-second",
+      "design": "designs/tokens-second.mfd",
+      "input": "input.xml",
+      "key": "tokenize(Codes, \" \") as input 1, after Customer",
+      "right_key": "Customer/Number",
+      "context": "each source Order",
+      "connection": "ordinary",
+      "native": "observed",
+      "expected": {
+        "O1": [
+          [
+            "C1",
+            "Ada"
+          ],
+          [
+            "C2",
+            "Grace"
+          ],
+          [
+            "C2",
+            "Grace"
+          ],
+          [
+            "C2",
+            "Hopper"
+          ],
+          [
+            "C2",
+            "Hopper"
+          ]
+        ],
+        "O2": [],
+        "O3": [],
+        "O4": [
+          [
+            "C1",
+            "Ada"
+          ]
+        ],
+        "O5": [
+          [
+            "",
+            "Blank"
+          ]
+        ],
+        "O6": [
+          [
+            "C2",
+            "Grace"
+          ],
+          [
+            "C2",
+            "Hopper"
+          ]
+        ],
+        "O7": [
+          [
+            "C1",
+            "Ada"
+          ],
+          [
+            "C1",
+            "Ada"
+          ]
+        ]
+      },
+      "route": "scope 6; refused by import until then"
+    },
+    {
+      "id": "numeric",
+      "design": "designs/numeric.mfd",
+      "input": "input.xml",
+      "key": "add(Qty, 0) with a decimal constant",
+      "right_key": "Customer/Number",
+      "context": "each source Order",
+      "connection": "ordinary",
+      "native": "observed",
+      "expected": {
+        "O1": [
+          [
+            "7",
+            "Seven"
+          ]
+        ],
+        "O2": [
+          [
+            "8",
+            "Eight"
+          ]
+        ],
+        "O3": [],
+        "O4": [
+          [
+            "7",
+            "Seven"
+          ]
+        ],
+        "O5": [],
+        "O6": [],
+        "O7": []
+      },
+      "route": "scopes 2-5"
+    },
+    {
+      "id": "integer-direct",
+      "design": "designs/integer-direct.mfd",
+      "input": "input.xml",
+      "key": "Qty (direct source scalar, existing singleton form)",
+      "right_key": "Customer/Number",
+      "context": "each source Order",
+      "connection": "copy-all",
+      "native": "observed",
+      "expected": {
+        "O1": [
+          [
+            "7",
+            "Seven"
+          ]
+        ],
+        "O2": [
+          [
+            "8",
+            "Eight"
+          ]
+        ],
+        "O3": [],
+        "O4": [
+          [
+            "7",
+            "Seven"
+          ]
+        ],
+        "O5": [],
+        "O6": [],
+        "O7": []
+      },
+      "route": "current bounded singleton form; unchanged"
+    },
+    {
+      "id": "rank",
+      "design": "designs/rank.mfd",
+      "input": "input.xml",
+      "key": "uppercase(CustomerNumber)",
+      "right_key": "Customer/Rank",
+      "context": "each source Order",
+      "connection": "ordinary",
+      "native": "observed",
+      "expected": {
+        "O1": [],
+        "O2": [],
+        "O3": [],
+        "O4": [],
+        "O5": [],
+        "O6": [],
+        "O7": [
+          [
+            "7",
+            "Seven"
+          ],
+          [
+            "07",
+            "ZeroSeven"
+          ]
+        ]
+      },
+      "route": "scopes 2-5"
+    },
+    {
+      "id": "rank-direct",
+      "design": "designs/rank-direct.mfd",
+      "input": "input.xml",
+      "key": "CustomerNumber (direct source scalar, existing singleton form)",
+      "right_key": "Customer/Rank",
+      "context": "each source Order",
+      "connection": "copy-all",
+      "native": "observed",
+      "expected": {
+        "O1": [],
+        "O2": [],
+        "O3": [],
+        "O4": [],
+        "O5": [],
+        "O6": [],
+        "O7": [
+          [
+            "7",
+            "Seven"
+          ],
+          [
+            "07",
+            "ZeroSeven"
+          ]
+        ]
+      },
+      "route": "current bounded singleton form; unchanged"
+    },
+    {
+      "id": "rank-text",
+      "design": "designs/rank-text.mfd",
+      "input": "input-numeric-text.xml",
+      "key": "uppercase(CustomerNumber)",
+      "right_key": "Customer/Rank",
+      "context": "each source Order",
+      "connection": "ordinary",
+      "native": "observed",
+      "expected": {
+        "T1": [],
+        "T2": [],
+        "T3": [],
+        "T4": [],
+        "T5": [
+          [
+            "7",
+            "Seven"
+          ],
+          [
+            "07",
+            "ZeroSeven"
+          ]
+        ]
+      },
+      "route": "scopes 2-5"
+    },
+    {
+      "id": "rank-text-direct",
+      "design": "designs/rank-text-direct.mfd",
+      "input": "input-numeric-text.xml",
+      "key": "CustomerNumber (direct source scalar, existing singleton form)",
+      "right_key": "Customer/Rank",
+      "context": "each source Order",
+      "connection": "copy-all",
+      "native": "observed",
+      "expected": {
+        "T1": [],
+        "T2": [],
+        "T3": [],
+        "T4": [],
+        "T5": [
+          [
+            "7",
+            "Seven"
+          ],
+          [
+            "07",
+            "ZeroSeven"
+          ]
+        ]
+      },
+      "route": "current bounded singleton form; unchanged"
+    },
+    {
+      "id": "root-constant",
+      "design": "designs/root-constant.mfd",
+      "input": "input.xml",
+      "key": "constant \"C2\"",
+      "right_key": "Customer/Number",
+      "context": "root",
+      "connection": "ordinary",
+      "native": "observed",
+      "expected": {
+        "Hit": [
+          [
+            "C2",
+            "Grace"
+          ],
+          [
+            "C2",
+            "Hopper"
+          ]
+        ]
+      },
+      "route": "scopes 2-5"
+    },
+    {
+      "id": "root-header",
+      "design": "designs/root-header.mfd",
+      "input": "input.xml",
+      "key": "uppercase(Header/Code)",
+      "right_key": "Customer/Number",
+      "context": "root",
+      "connection": "ordinary",
+      "native": "observed",
+      "expected": {
+        "Hit": [
+          [
+            "C2",
+            "Grace"
+          ],
+          [
+            "C2",
+            "Hopper"
+          ]
+        ]
+      },
+      "route": "scopes 2-5"
+    },
+    {
+      "id": "root-repeating",
+      "design": "designs/root-repeating.mfd",
+      "input": "input.xml",
+      "key": "uppercase(Order/CustomerNumber) outside any Order iteration",
+      "right_key": "Customer/Number",
+      "context": "root",
+      "connection": "ordinary",
+      "native": "observed",
+      "expected": {
+        "Hit": [
+          [
+            "C1",
+            "Ada"
+          ],
+          [
+            "C2",
+            "Grace"
+          ],
+          [
+            "C2",
+            "Hopper"
+          ],
+          [
+            "",
+            "Blank"
+          ],
+          [
+            "C1",
+            "Ada"
+          ],
+          [
+            "7",
+            "Seven"
+          ]
+        ]
+      },
+      "route": "refused: the key crosses an inactive repeating level"
+    },
+    {
+      "id": "copy-all-computed",
+      "design": "designs/copy-all-computed.mfd",
+      "input": "input.xml",
+      "key": "uppercase(CustomerNumber)",
+      "right_key": "Customer/Number",
+      "context": "each source Order",
+      "connection": "copy-all",
+      "native": "refused at validation",
+      "native_message": "Items result and result cannot be connected via a copy-all connection.",
+      "route": "refused: the native application refuses a copy-all connection on a computed input"
+    },
+    {
+      "id": "key-read",
+      "design": "designs/key-read.mfd",
+      "input": "input.xml",
+      "key": "uppercase(CustomerNumber); Match/Number fed from the computed input",
+      "right_key": "Customer/Number",
+      "context": "each source Order",
+      "connection": "ordinary",
+      "native": "refused at validation",
+      "native_message": "The component join has missing items.",
+      "route": "refused: a computed member has no readable output"
+    },
+    {
+      "id": "unlisted-function",
+      "design": "designs/unlisted-function.mfd",
+      "input": "input.xml",
+      "key": "normalize-space(CustomerNumber)",
+      "right_key": "Customer/Number",
+      "context": "each source Order",
+      "connection": "ordinary",
+      "native": "unobserved",
+      "route": "refused: function outside the admitted list"
+    }
+  ]
+}

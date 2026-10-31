@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::Cursor;
 use std::path::Path;
@@ -88,20 +89,7 @@ fn read_worksheet(
         let next_row = data_start
             .checked_add(u32::try_from(rows.len()).map_err(|_| XlsxFormatError::InvalidCoordinate)?)
             .ok_or(XlsxFormatError::InvalidCoordinate)?;
-        let actual_end = next_row.saturating_sub(1);
-        previous_end = if let Some(count) = range.count {
-            start
-                .checked_add(u32::from(range.has_header))
-                .and_then(|value| value.checked_add(count.get()))
-                .and_then(|value| value.checked_sub(1))
-                .ok_or(XlsxFormatError::InvalidCoordinate)?
-                .max(actual_end)
-        } else {
-            actual_end
-        };
-        if previous_end > MAX_WORKSHEET_ROW {
-            return Err(XlsxFormatError::InvalidCoordinate);
-        }
+        previous_end = range_end(range, start, next_row)?;
         let value = if row_schema.repeating {
             Instance::Repeated(rows)
         } else {
@@ -117,7 +105,10 @@ fn read_worksheet(
     Ok(materialize_schema(schema, &mut Vec::new(), &assignments))
 }
 
-fn range_start(range: &XlsxOutputRange, previous_end: u32) -> Result<u32, XlsxFormatError> {
+pub(crate) fn range_start(
+    range: &XlsxOutputRange,
+    previous_end: u32,
+) -> Result<u32, XlsxFormatError> {
     let start = match range.start {
         XlsxRangeStart::Absolute { row } => row.get(),
         XlsxRangeStart::AfterPrevious { offset } => previous_end
@@ -323,15 +314,9 @@ pub fn to_bytes_hierarchical(
     let mut workbook = Workbook::new();
     let mut names = BTreeSet::new();
     for worksheet_instance in worksheets {
-        let name = scalar_at(worksheet_instance, &layout.worksheet_name_path)?;
-        let Value::String(name) = name else {
-            return Err(XlsxFormatError::HierarchicalValue {
-                path: layout.worksheet_name_path.join("/"),
-                reason: "worksheet name must be a non-null string",
-            });
-        };
-        if !names.insert(name.as_str()) {
-            return Err(XlsxFormatError::DuplicateWorksheet(name.clone()));
+        let name = worksheet_name(worksheet_instance, layout)?;
+        if !names.insert(name) {
+            return Err(XlsxFormatError::DuplicateWorksheet(name.to_string()));
         }
         let worksheet = workbook.add_worksheet();
         worksheet.set_name(name)?;
@@ -341,7 +326,21 @@ pub fn to_bytes_hierarchical(
     Ok((workbook.save_to_buffer()?, worksheet_count))
 }
 
-fn validate_layout(
+/// Returns the runtime worksheet name of one worksheet instance.
+pub(crate) fn worksheet_name<'a>(
+    worksheet: &'a Instance,
+    layout: &XlsxHierarchicalLayout,
+) -> Result<&'a str, XlsxFormatError> {
+    match scalar_at(worksheet, &layout.worksheet_name_path)? {
+        Value::String(name) => Ok(name),
+        _ => Err(XlsxFormatError::HierarchicalValue {
+            path: layout.worksheet_name_path.join("/"),
+            reason: "worksheet name must be a non-null string",
+        }),
+    }
+}
+
+pub(crate) fn validate_layout(
     schema: &SchemaNode,
     layout: &XlsxHierarchicalLayout,
 ) -> Result<(), XlsxFormatError> {
@@ -349,6 +348,9 @@ fn validate_layout(
         return Err(XlsxFormatError::HierarchicalLayout(
             "target schema must be a non-repeating group",
         ));
+    }
+    if schema.contains_json_tuple() {
+        return Err(XlsxFormatError::UnsupportedSchema);
     }
     let worksheet = schema_at(schema, &layout.worksheets_path)?;
     if !worksheet.repeating || !matches!(worksheet.kind, SchemaKind::Group { .. }) {
@@ -452,189 +454,218 @@ fn compatible_type(ty: ScalarType, kind: XlsxCellKind) -> bool {
     }
 }
 
+/// One cell addressed by a hierarchical layout, in layout write order.
+pub(crate) struct LayoutCell<'a> {
+    /// One-based worksheet row.
+    pub(crate) row: u32,
+    /// One-based worksheet column.
+    pub(crate) column: u32,
+    /// `None` when the addressed value is null or empty text and the cell
+    /// stays empty, as Excel and the new-workbook writer store empty text.
+    pub(crate) content: Option<CellContent<'a>>,
+    /// The owning band of a data cell; `None` for header cells.
+    pub(crate) data: Option<DataCell<'a>>,
+}
+
+/// Band context of one data cell.
+#[derive(Clone, Copy)]
+pub(crate) struct DataCell<'a> {
+    pub(crate) range: &'a XlsxOutputRange,
+    /// First data row of the band.
+    pub(crate) data_start: u32,
+}
+
+/// A value already validated and converted for its declared XLSX cell kind.
+pub(crate) enum CellContent<'a> {
+    Text(Cow<'a, str>),
+    Number(f64),
+    Boolean(bool),
+    DateTime(ExcelDateTime, XlsxCellKind),
+}
+
+/// Number format applied to date/time cells that have no explicit format.
+pub(crate) fn datetime_format_code(kind: XlsxCellKind) -> &'static str {
+    match kind {
+        XlsxCellKind::Date => "yyyy-mm-dd",
+        XlsxCellKind::DateTime => "yyyy-mm-dd hh:mm:ss",
+        _ => "hh:mm:ss",
+    }
+}
+
+/// Walks one worksheet instance through the ordered row bands. New-workbook
+/// and update writers share these positions, truncation, and conversions;
+/// `visit` sees cells in write order, so errors surface in the same order.
+pub(crate) fn visit_worksheet<'a, E: From<XlsxFormatError>>(
+    instance: &'a Instance,
+    layout: &'a XlsxHierarchicalLayout,
+    mut visit: impl FnMut(LayoutCell<'a>) -> Result<(), E>,
+) -> Result<(), E> {
+    let mut previous_end = 0_u32;
+    for range in &layout.ranges {
+        let start = range_start(range, previous_end)?;
+        let mut next_row = start;
+        if range.has_header {
+            for column in &range.columns {
+                if let Some(header) = &column.header {
+                    visit(LayoutCell {
+                        row: next_row,
+                        column: column.column.get(),
+                        content: (!header.is_empty())
+                            .then_some(CellContent::Text(Cow::Borrowed(header))),
+                        data: None,
+                    })?;
+                }
+            }
+            next_row = next_row
+                .checked_add(1)
+                .ok_or(XlsxFormatError::InvalidCoordinate)?;
+        }
+
+        let data_start = next_row;
+        let rows = rows_at(instance, &range.path)?;
+        let limit = range.count.map(mapping::XlsxRow::get).unwrap_or(u32::MAX);
+        for row in rows.iter().take(limit as usize) {
+            if next_row == 0 || next_row > MAX_WORKSHEET_ROW {
+                return Err(XlsxFormatError::InvalidCoordinate.into());
+            }
+            for column in &range.columns {
+                let value = scalar_at(row, &column.path)?;
+                visit(LayoutCell {
+                    row: next_row,
+                    column: column.column.get(),
+                    content: cell_content(value, column)?,
+                    data: Some(DataCell { range, data_start }),
+                })?;
+            }
+            next_row = next_row
+                .checked_add(1)
+                .ok_or(XlsxFormatError::InvalidCoordinate)?;
+        }
+        previous_end = range_end(range, start, next_row)?;
+    }
+    Ok(())
+}
+
+/// Returns the last row a band occupies: its written rows, or its full fixed
+/// extent when that is longer. `next_row` is the row after the last data row.
+pub(crate) fn range_end(
+    range: &XlsxOutputRange,
+    start: u32,
+    next_row: u32,
+) -> Result<u32, XlsxFormatError> {
+    let actual_end = next_row.saturating_sub(1);
+    let end = if let Some(count) = range.count {
+        start
+            .checked_add(u32::from(range.has_header))
+            .and_then(|value| value.checked_add(count.get()))
+            .and_then(|value| value.checked_sub(1))
+            .ok_or(XlsxFormatError::InvalidCoordinate)?
+            .max(actual_end)
+    } else {
+        actual_end
+    };
+    if end > MAX_WORKSHEET_ROW {
+        return Err(XlsxFormatError::InvalidCoordinate);
+    }
+    Ok(end)
+}
+
 fn write_worksheet(
     worksheet: &mut Worksheet,
     instance: &Instance,
     layout: &XlsxHierarchicalLayout,
 ) -> Result<(), XlsxFormatError> {
-    let date_format = Format::new().set_num_format("yyyy-mm-dd");
-    let datetime_format = Format::new().set_num_format("yyyy-mm-dd hh:mm:ss");
-    let time_format = Format::new().set_num_format("hh:mm:ss");
-    let mut previous_end = 0_u32;
+    let date_format = Format::new().set_num_format(datetime_format_code(XlsxCellKind::Date));
+    let datetime_format =
+        Format::new().set_num_format(datetime_format_code(XlsxCellKind::DateTime));
+    let time_format = Format::new().set_num_format(datetime_format_code(XlsxCellKind::Time));
 
-    for range in &layout.ranges {
-        let start = match range.start {
-            XlsxRangeStart::Absolute { row } => row.get(),
-            XlsxRangeStart::AfterPrevious { offset } => previous_end
-                .checked_add(offset.get())
-                .ok_or(XlsxFormatError::InvalidCoordinate)?,
+    visit_worksheet(instance, layout, |cell| {
+        let Some(content) = cell.content else {
+            return Ok(());
         };
-        if start == 0 || start > MAX_WORKSHEET_ROW {
-            return Err(XlsxFormatError::InvalidCoordinate);
-        }
-        let mut next_row = start;
-        if range.has_header {
-            write_header(worksheet, next_row, &range.columns)?;
-            next_row = next_row
-                .checked_add(1)
-                .ok_or(XlsxFormatError::InvalidCoordinate)?;
-        }
-
-        let rows = rows_at(instance, &range.path)?;
-        let limit = range.count.map(mapping::XlsxRow::get).unwrap_or(u32::MAX);
-        for row in rows.iter().take(limit as usize) {
-            if next_row == 0 || next_row > MAX_WORKSHEET_ROW {
-                return Err(XlsxFormatError::InvalidCoordinate);
+        let row = cell.row - 1;
+        let column =
+            u16::try_from(cell.column - 1).map_err(|_| XlsxFormatError::InvalidCoordinate)?;
+        match content {
+            CellContent::Text(value) => {
+                worksheet.write_string(row, column, value.as_ref())?;
             }
-            write_row(
-                worksheet,
-                next_row,
-                row,
-                &range.columns,
-                &date_format,
-                &datetime_format,
-                &time_format,
-            )?;
-            next_row = next_row
-                .checked_add(1)
-                .ok_or(XlsxFormatError::InvalidCoordinate)?;
+            CellContent::Number(value) => {
+                worksheet.write_number(row, column, value)?;
+            }
+            CellContent::Boolean(value) => {
+                worksheet.write_boolean(row, column, value)?;
+            }
+            CellContent::DateTime(datetime, kind) => {
+                let format = if kind == XlsxCellKind::Date {
+                    &date_format
+                } else if kind == XlsxCellKind::DateTime {
+                    &datetime_format
+                } else {
+                    &time_format
+                };
+                worksheet.write_datetime_with_format(row, column, &datetime, format)?;
+            }
         }
-
-        let actual_end = next_row.saturating_sub(1);
-        previous_end = if let Some(count) = range.count {
-            start
-                .checked_add(u32::from(range.has_header))
-                .and_then(|value| value.checked_add(count.get()))
-                .and_then(|value| value.checked_sub(1))
-                .ok_or(XlsxFormatError::InvalidCoordinate)?
-                .max(actual_end)
-        } else {
-            actual_end
-        };
-        if previous_end > MAX_WORKSHEET_ROW {
-            return Err(XlsxFormatError::InvalidCoordinate);
-        }
-    }
-    Ok(())
+        Ok(())
+    })
 }
 
-fn write_header(
-    worksheet: &mut Worksheet,
-    one_based_row: u32,
-    columns: &[XlsxOutputColumn],
-) -> Result<(), XlsxFormatError> {
-    for column in columns {
-        if let Some(header) = &column.header {
-            let physical_column = u16::try_from(column.column.get() - 1)
-                .map_err(|_| XlsxFormatError::InvalidCoordinate)?;
-            worksheet.write_string(one_based_row - 1, physical_column, header)?;
-        }
-    }
-    Ok(())
-}
-
-#[allow(clippy::too_many_arguments)]
-fn write_row(
-    worksheet: &mut Worksheet,
-    one_based_row: u32,
-    row: &Instance,
-    columns: &[XlsxOutputColumn],
-    date_format: &Format,
-    datetime_format: &Format,
-    time_format: &Format,
-) -> Result<(), XlsxFormatError> {
-    for column in columns {
-        let value = scalar_at(row, &column.path)?;
-        write_value(
-            worksheet,
-            one_based_row - 1,
-            column.column.get() - 1,
-            value,
-            column,
-            date_format,
-            datetime_format,
-            time_format,
-        )?;
-    }
-    Ok(())
-}
-
-#[allow(clippy::too_many_arguments)]
-fn write_value(
-    worksheet: &mut Worksheet,
-    row: u32,
-    column: u32,
-    value: &Value,
+/// Validates and converts one scalar for its declared cell kind. Null values
+/// and empty text address an empty cell.
+pub(crate) fn cell_content<'a>(
+    value: &'a Value,
     layout: &XlsxOutputColumn,
-    date_format: &Format,
-    datetime_format: &Format,
-    time_format: &Format,
-) -> Result<(), XlsxFormatError> {
+) -> Result<Option<CellContent<'a>>, XlsxFormatError> {
     if matches!(value, Value::Null | Value::JsonNull(_)) {
-        return Ok(());
+        return Ok(None);
     }
-    let column = u16::try_from(column).map_err(|_| XlsxFormatError::InvalidCoordinate)?;
-    match (layout.kind, value) {
-        (XlsxCellKind::String, Value::String(value)) => {
-            worksheet.write_string(row, column, value)?;
-        }
-        (XlsxCellKind::String, Value::Bool(value)) => {
-            worksheet.write_boolean(row, column, *value)?;
-        }
+    let content = match (layout.kind, value) {
+        (XlsxCellKind::String, Value::String(value)) if value.is_empty() => return Ok(None),
+        (XlsxCellKind::String, Value::String(value)) => CellContent::Text(Cow::Borrowed(value)),
+        (XlsxCellKind::String, Value::Bool(value)) => CellContent::Boolean(*value),
         (XlsxCellKind::String, Value::Int(value)) => {
-            worksheet.write_string(row, column, value.to_string())?;
+            CellContent::Text(Cow::Owned(value.to_string()))
         }
         (XlsxCellKind::String, Value::Float(value)) if value.is_finite() => {
-            worksheet.write_string(row, column, value.to_string())?;
+            CellContent::Text(Cow::Owned(value.to_string()))
         }
         (XlsxCellKind::Number, Value::Int(value)) => {
-            let number = exact_f64(*value).ok_or_else(|| {
+            CellContent::Number(exact_f64(*value).ok_or_else(|| {
                 value_error(layout, "integer exceeds Excel's exact numeric range")
-            })?;
-            worksheet.write_number(row, column, number)?;
+            })?)
         }
         (XlsxCellKind::Number, Value::Float(value)) if value.is_finite() => {
-            worksheet.write_number(row, column, *value)?;
+            CellContent::Number(*value)
         }
-        (XlsxCellKind::Number, Value::String(value)) => {
-            let number = value
+        (XlsxCellKind::Number, Value::String(value)) => CellContent::Number(
+            value
                 .parse::<f64>()
                 .ok()
                 .filter(|number| number.is_finite())
-                .ok_or_else(|| value_error(layout, "value is not a finite number"))?;
-            worksheet.write_number(row, column, number)?;
-        }
-        (XlsxCellKind::Boolean, Value::Bool(value)) => {
-            worksheet.write_boolean(row, column, *value)?;
-        }
-        (XlsxCellKind::Boolean, Value::String(value)) => {
-            let boolean = boolean_lexical(value)
-                .ok_or_else(|| value_error(layout, "value is not a boolean"))?;
-            worksheet.write_boolean(row, column, boolean)?;
-        }
+                .ok_or_else(|| value_error(layout, "value is not a finite number"))?,
+        ),
+        (XlsxCellKind::Boolean, Value::Bool(value)) => CellContent::Boolean(*value),
+        (XlsxCellKind::Boolean, Value::String(value)) => CellContent::Boolean(
+            boolean_lexical(value).ok_or_else(|| value_error(layout, "value is not a boolean"))?,
+        ),
         (
             kind @ (XlsxCellKind::Date | XlsxCellKind::DateTime | XlsxCellKind::Time),
             Value::String(value),
-        ) => {
-            let datetime = ExcelDateTime::parse_from_str(value)
-                .map_err(|_| value_error(layout, "value is not an Excel-compatible date/time"))?;
-            let format = if kind == XlsxCellKind::Date {
-                date_format
-            } else if kind == XlsxCellKind::DateTime {
-                datetime_format
-            } else {
-                time_format
-            };
-            worksheet.write_datetime_with_format(row, column, &datetime, format)?;
-        }
+        ) => CellContent::DateTime(
+            ExcelDateTime::parse_from_str(value)
+                .map_err(|_| value_error(layout, "value is not an Excel-compatible date/time"))?,
+            kind,
+        ),
         _ => {
             return Err(value_error(
                 layout,
                 "value type does not match the XLSX cell kind",
             ));
         }
-    }
-    Ok(())
+    };
+    Ok(Some(content))
 }
 
 fn value_error(column: &XlsxOutputColumn, reason: &'static str) -> XlsxFormatError {
@@ -683,7 +714,10 @@ fn instance_at<'a>(root: &'a Instance, path: &[String]) -> Result<&'a Instance, 
     Ok(instance)
 }
 
-fn repeated_at<'a>(root: &'a Instance, path: &[String]) -> Result<&'a [Instance], XlsxFormatError> {
+pub(crate) fn repeated_at<'a>(
+    root: &'a Instance,
+    path: &[String],
+) -> Result<&'a [Instance], XlsxFormatError> {
     match instance_at(root, path)? {
         Instance::Repeated(items) => Ok(items),
         _ => Err(XlsxFormatError::HierarchicalValue {

@@ -249,7 +249,7 @@ fn scope_settings_apply_revert_and_refuse_stale_state_atomically() {
 }
 
 #[test]
-fn presence_iterations_have_no_setting_value() {
+fn presence_iterations_have_a_typed_setting_value() {
     let mut scope = Scope {
         iteration: ScopeIteration::OwnedSource {
             source: OwnedSourceRef {
@@ -267,20 +267,75 @@ fn presence_iterations_have_no_setting_value() {
     scope.iteration = ScopeIteration::OptionalPresence { condition: 1 };
     assert_eq!(
         ScopeSettingValue::read(ScopeSetting::Iteration, &scope),
-        None
+        Some(ScopeSettingValue::Iteration(Iteration::OptionalPresence {
+            condition: 1
+        }))
     );
     let fields = ScopeFields::capture(&scope);
-    assert!(fields.setting(ScopeSetting::Iteration).is_none());
+    assert!(fields.setting(ScopeSetting::Iteration).is_some());
     assert!(fields.setting(ScopeSetting::Filter).is_some());
 
-    // A change into a form without a value is not captured as a setting.
+    // Conversion back to a plain constructed scope is captured too.
     let after = Scope::default();
     let patch = GraphPatch::of_scope(
         &ScopeLocation::root(),
         &fields,
         &ScopeFields::capture(&after),
     );
-    assert!(patch.is_empty());
+    assert_eq!(patch.settings().count(), 1);
+}
+
+#[test]
+fn presence_creation_and_replacement_apply_revert_and_refuse_stale_state() {
+    let mut before = project();
+    rows_scope(&mut before).iteration = ScopeIteration::None;
+    for condition in [1, 2] {
+        let (patch, after) = rows_patch(&before, |scope| {
+            scope.iteration = ScopeIteration::OptionalPresence { condition };
+        });
+        let command = GraphCommand::new(
+            primary(),
+            GraphAction::EditScope {
+                scope: rows(),
+                setting: ScopeSetting::Iteration,
+            },
+            patch,
+        )
+        .expect("typed presence edit");
+        let mut current = before.clone();
+        command.apply_to(&mut current).expect("apply");
+        assert_eq!(key(&current), key(&after));
+        command.revert_on(&mut current).expect("revert");
+        assert_eq!(key(&current), key(&before));
+        rows_scope(&mut current).iteration = ScopeIteration::OptionalPresence { condition: 99 };
+        let unchanged = key(&current);
+        assert!(matches!(
+            command.apply_to(&mut current),
+            Err(GraphEditError::SettingDiffers { .. })
+        ));
+        assert_eq!(key(&current), unchanged);
+        before = after;
+    }
+}
+
+#[test]
+fn presence_edit_does_not_admit_replacing_source_iterations() {
+    let mut before = project();
+    rows_scope(&mut before).iteration = ScopeIteration::Source(vec!["Rows".into()]);
+    let (patch, _) = rows_patch(&before, |scope| {
+        scope.iteration = ScopeIteration::OptionalPresence { condition: 1 };
+    });
+    assert!(
+        GraphCommand::new(
+            primary(),
+            GraphAction::EditScope {
+                scope: rows(),
+                setting: ScopeSetting::Iteration
+            },
+            patch,
+        )
+        .is_err()
+    );
 }
 
 #[test]

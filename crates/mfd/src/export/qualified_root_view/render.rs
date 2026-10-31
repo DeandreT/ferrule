@@ -18,6 +18,7 @@ fn xml_attr(value: &str) -> String {
         .collect()
 }
 
+#[allow(clippy::too_many_arguments)]
 fn boundary_xml(
     schema: &SchemaNode,
     role: Role,
@@ -26,6 +27,7 @@ fn boundary_xml(
     selected: &str,
     schema_file: &str,
     instance_path: &str,
+    schema_hint: bool,
 ) -> String {
     let root_ns = namespace(&schema.xml_namespace);
     let slot = |ns: &Option<XmlNamespace>| if namespace(ns).is_some() { 2 } else { 0 };
@@ -94,7 +96,9 @@ fn boundary_xml(
         xml_attr(instance_path)
     );
     let file = xml_attr(schema_file);
-    let properties = if role == Role::Target {
+    // The reference default writes the schema-location hint; Ferrule's
+    // ordinary unhinted output disables it.
+    let properties = if role == Role::Target && !schema_hint {
         "<properties AddSchemaLocation=\"0\"/>"
     } else {
         ""
@@ -139,6 +143,7 @@ pub(super) fn mapping_xml(
             &plan.canonical_type,
             source_schema,
             project.source_path.as_deref().unwrap(),
+            false,
         ),
         boundary_xml(
             &project.target,
@@ -148,6 +153,7 @@ pub(super) fn mapping_xml(
             &plan.canonical_type,
             target_schema,
             project.target_path.as_deref().unwrap(),
+            project.target_options.xml_schema_hints.is_some(),
         )
     )
 }

@@ -3,6 +3,7 @@ use std::path::Path;
 
 use ir::{SchemaKind, Value};
 
+use super::call_elements::call_elements;
 use super::{ImportedDefinition, Recipe, RecipeSource};
 use crate::import::function::read as read_function;
 use crate::import::graph::read_edges;
@@ -591,33 +592,16 @@ fn call_port(
     component_id: u32,
     attribute: &str,
 ) -> Result<u32, String> {
-    inherited_call_port(call, None, component_id, attribute)
+    inherited_call_port(call, component_id, attribute)
         .ok_or_else(|| format!("recursive call has no `{attribute}` for parameter {component_id}"))
 }
 
-fn inherited_call_port(
-    node: roxmltree::Node<'_, '_>,
-    inherited: Option<u32>,
-    wanted: u32,
-    attribute: &str,
-) -> Option<u32> {
-    for child in node.children().filter(|child| child.is_element()) {
-        let component = if child.has_tag_name("entry") {
-            parse_u32(child.attribute("componentid")).or(inherited)
-        } else {
-            inherited
-        };
-        if child.has_tag_name("entry")
-            && component == Some(wanted)
-            && let Some(key) = parse_u32(child.attribute(attribute))
-        {
-            return Some(key);
-        }
-        if let Some(key) = inherited_call_port(child, component, wanted, attribute) {
-            return Some(key);
-        }
-    }
-    None
+fn inherited_call_port(call: roxmltree::Node<'_, '_>, wanted: u32, attribute: &str) -> Option<u32> {
+    call_elements(call).find_map(|(child, component)| {
+        (child.has_tag_name("entry") && component == Some(wanted))
+            .then(|| parse_u32(child.attribute(attribute)))
+            .flatten()
+    })
 }
 
 fn input_feeds(

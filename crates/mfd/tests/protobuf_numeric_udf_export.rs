@@ -83,7 +83,7 @@ message Painting { float height = 1; string name = 2; }"#;
                     },
                 ),
                 (7, call("to_number", &[6])),
-                (8, call("round", &[5, 7])),
+                (8, call("round_half_ceiling", &[5, 7])),
             ]),
         },
         output: 8,

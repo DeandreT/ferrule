@@ -1709,6 +1709,32 @@
     }
   },
   {
+    "id": "root-metadata-xml_wildcard_excluded_names",
+    "schema": "schemas/root-metadata-xml_wildcard_excluded_names.json",
+    "project_template": "constant-envelope-project.json",
+    "construction": "direct_ir_after_base_construction",
+    "expected": {
+      "error": {
+        "variant": "SourceSchema",
+        "field": null,
+        "reason": "row metadata must use canonical defaults"
+      }
+    }
+  },
+  {
+    "id": "column-metadata-xml_wildcard_excluded_names",
+    "schema": "schemas/column-metadata-xml_wildcard_excluded_names.json",
+    "project_template": "constant-envelope-project.json",
+    "construction": "direct_ir_after_base_construction",
+    "expected": {
+      "error": {
+        "variant": "SourceSchema",
+        "field": 0,
+        "reason": "column metadata must use canonical defaults"
+      }
+    }
+  },
+  {
     "id": "root-metadata-xml_default_type",
     "schema": "schemas/root-metadata-xml_default_type.json",
     "project_template": "constant-envelope-project.json",

@@ -14,15 +14,15 @@ pub fn rebase(
 ) -> std::io::Result<()> {
     let from = absolute_parent(from_document)?;
     let to = absolute_parent(to_document)?;
-    rebase_optional(&mut project.source_path, &from, &to)?;
-    rebase_optional(&mut project.target_path, &from, &to)?;
+    rebase_optional(&mut project.source_path, &from, &to, PathSyntax::Glob)?;
+    rebase_optional(&mut project.target_path, &from, &to, PathSyntax::Literal)?;
     for source in &mut project.extra_sources {
         if source.dynamic_path.is_none() {
-            rebase_required(&mut source.path, &from, &to)?;
+            rebase_required(&mut source.path, &from, &to, PathSyntax::Glob)?;
         }
     }
     for target in &mut project.extra_targets {
-        rebase_optional(&mut target.path, &from, &to)?;
+        rebase_optional(&mut target.path, &from, &to, PathSyntax::Literal)?;
     }
     Ok(())
 }
@@ -40,18 +40,18 @@ pub fn mapping_identity_relative_to(
     mapping_path: &Path,
     pipeline_path: &Path,
 ) -> std::io::Result<String> {
-    let pipeline_dir = absolute_parent(pipeline_path)?;
+    let pipeline_dir = document_parent(pipeline_path)?;
     let mapping_path = if mapping_path.is_absolute() {
         mapping_path.to_path_buf()
     } else {
         std::env::current_dir()?.join(mapping_path)
     };
-    let mapping_path = normalize_absolute(&mapping_path).ok_or_else(|| {
-        std::io::Error::new(
-            std::io::ErrorKind::InvalidInput,
-            format!("mapping path `{}` is not absolute", mapping_path.display()),
-        )
-    })?;
+    require_absolute_spelling(&pipeline_dir)?;
+    require_absolute_spelling(&mapping_path)?;
+    // Directory links can cross volume roots. Compare the resolved directories,
+    // not their original drive-letter or UNC spellings.
+    let pipeline_dir = resolve_directory(&pipeline_dir)?;
+    let mapping_path = resolve_resource_path(&mapping_path)?;
     let relative = relative_path(&pipeline_dir, &mapping_path).ok_or_else(|| {
         std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
@@ -65,39 +65,93 @@ pub fn mapping_identity_relative_to(
     path_to_portable(&relative)
 }
 
-fn rebase_optional(path: &mut Option<String>, from: &Path, to: &Path) -> std::io::Result<()> {
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum PathSyntax {
+    Literal,
+    Glob,
+}
+
+fn rebase_optional(
+    path: &mut Option<String>,
+    from: &Path,
+    to: &Path,
+    syntax: PathSyntax,
+) -> std::io::Result<()> {
     if let Some(path) = path {
-        rebase_required(path, from, to)?;
+        rebase_required(path, from, to, syntax)?;
     }
     Ok(())
 }
 
-fn rebase_required(path: &mut String, from: &Path, to: &Path) -> std::io::Result<()> {
-    if let Some(rebased) = rebase_path(path, from, to)? {
+fn rebase_required(
+    path: &mut String,
+    from: &Path,
+    to: &Path,
+    syntax: PathSyntax,
+) -> std::io::Result<()> {
+    if let Some(rebased) = rebase_instance_path(path, from, to, syntax)? {
         *path = rebased;
     }
     Ok(())
 }
 
-pub(super) fn rebase_path(stored: &str, from: &Path, to: &Path) -> std::io::Result<Option<String>> {
+fn relative_local_path(stored: &str) -> Option<PathBuf> {
     if stored.trim().is_empty() || stored.contains("://") {
-        return Ok(None);
+        return None;
     }
     let portable = stored.replace('\\', "/");
     if looks_like_windows_absolute(&portable) {
-        return Ok(None);
+        return None;
     }
     let relative = Path::new(&portable);
     if relative.is_absolute() {
-        return Ok(None);
+        return None;
     }
+    Some(relative.to_path_buf())
+}
+
+/// Lexical rebasing for virtual, already-confined bundle paths. This must not
+/// inspect unrelated host filesystem entries that share a virtual pathname.
+pub(super) fn rebase_path(stored: &str, from: &Path, to: &Path) -> std::io::Result<Option<String>> {
+    let Some(relative) = relative_local_path(stored) else {
+        return Ok(None);
+    };
     let resolved = normalize_absolute(&from.join(relative)).ok_or_else(|| {
         std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
             format!("cannot resolve stored project path `{stored}`"),
         )
     })?;
-    let relative = relative_path(to, &resolved).ok_or_else(|| {
+    rebased_relative(stored, from, to, &resolved).map(Some)
+}
+
+fn rebase_instance_path(
+    stored: &str,
+    from: &Path,
+    to: &Path,
+    syntax: PathSyntax,
+) -> std::io::Result<Option<String>> {
+    let Some(relative) = relative_local_path(stored) else {
+        return Ok(None);
+    };
+    let from = resolve_directory(from)?;
+    let resolved = match (relative.parent(), relative.file_name()) {
+        (Some(parent), Some(name)) => {
+            resolve_components(from.clone(), parent.components(), syntax)?.join(name)
+        }
+        _ => resolve_components(from.clone(), relative.components(), syntax)?,
+    };
+    let to = resolve_directory(to)?;
+    rebased_relative(stored, &from, &to, &resolved).map(Some)
+}
+
+fn rebased_relative(
+    stored: &str,
+    from: &Path,
+    to: &Path,
+    resolved: &Path,
+) -> std::io::Result<String> {
+    let relative = relative_path(to, resolved).ok_or_else(|| {
         std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
             format!(
@@ -107,25 +161,112 @@ pub(super) fn rebase_path(stored: &str, from: &Path, to: &Path) -> std::io::Resu
             ),
         )
     })?;
-    path_to_portable(&relative).map(Some)
+    path_to_portable(&relative)
 }
 
 fn absolute_parent(document: &Path) -> std::io::Result<PathBuf> {
+    resolve_directory(&document_parent(document)?)
+}
+
+fn document_parent(document: &Path) -> std::io::Result<PathBuf> {
     let parent = document
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
         .unwrap_or_else(|| Path::new("."));
-    let absolute = if parent.is_absolute() {
+    Ok(if parent.is_absolute() {
         parent.to_path_buf()
     } else {
         std::env::current_dir()?.join(parent)
-    };
-    normalize_absolute(&absolute).ok_or_else(|| {
-        std::io::Error::new(
-            std::io::ErrorKind::InvalidInput,
-            format!("project directory `{}` is not absolute", absolute.display()),
-        )
     })
+}
+
+/// Resolve directory links but retain the resource entry itself. In particular,
+/// a linked output file must not become its referent: publication may replace
+/// that entry, and a nonexistent output or wildcard is still a valid resource.
+fn resolve_resource_path(path: &Path) -> std::io::Result<PathBuf> {
+    require_absolute_spelling(path)?;
+    match (path.parent(), path.file_name()) {
+        (Some(parent), Some(name)) => Ok(resolve_directory(parent)?.join(name)),
+        _ => resolve_directory(path),
+    }
+}
+
+fn require_absolute_spelling(path: &Path) -> std::io::Result<()> {
+    if path.is_absolute() && verbatim_has_ordinary_spelling(path) {
+        Ok(())
+    } else {
+        Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!(
+                "project path `{}` has no ordinary absolute spelling",
+                path.display()
+            ),
+        ))
+    }
+}
+
+/// Existing directory ancestors must be resolved before a following `..`.
+/// Unknown directories keep lexical behavior, but the suffix after a glob is
+/// opaque: removing `..` there could change which paths the pattern selects.
+fn resolve_directory(path: &Path) -> std::io::Result<PathBuf> {
+    require_absolute_spelling(path)?;
+    resolve_components(PathBuf::new(), path.components(), PathSyntax::Literal)
+}
+
+fn resolve_components<'a>(
+    mut resolved: PathBuf,
+    components: impl Iterator<Item = Component<'a>>,
+    syntax: PathSyntax,
+) -> std::io::Result<PathBuf> {
+    let mut pattern = false;
+    for component in components {
+        match component {
+            Component::Prefix(prefix) => resolved.push(ordinary_prefix(prefix.kind())),
+            Component::RootDir => resolved.push(component.as_os_str()),
+            Component::CurDir => {}
+            Component::ParentDir if !pattern => {
+                resolved.pop();
+            }
+            Component::ParentDir => resolved.push(".."),
+            Component::Normal(name) => {
+                resolved.push(name);
+                pattern |= syntax == PathSyntax::Glob
+                    && name
+                        .as_encoded_bytes()
+                        .iter()
+                        .any(|&byte| matches!(byte, b'*' | b'?'));
+                if pattern {
+                    continue;
+                }
+                match std::fs::symlink_metadata(&resolved) {
+                    Ok(_) => {
+                        let canonical = std::fs::canonicalize(&resolved)?;
+                        if !std::fs::metadata(&canonical)?.is_dir() {
+                            return Err(std::io::Error::new(
+                                std::io::ErrorKind::NotADirectory,
+                                format!(
+                                    "project path ancestor `{}` is not a directory",
+                                    resolved.display()
+                                ),
+                            ));
+                        }
+                        resolved = normalize_absolute(&canonical).ok_or_else(|| {
+                            std::io::Error::new(
+                                std::io::ErrorKind::InvalidInput,
+                                format!(
+                                    "project directory `{}` has no ordinary spelling",
+                                    canonical.display()
+                                ),
+                            )
+                        })?;
+                    }
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(error) => return Err(error),
+                }
+            }
+        }
+    }
+    Ok(resolved)
 }
 
 fn normalize_absolute(path: &Path) -> Option<PathBuf> {
@@ -301,6 +442,219 @@ mod tests {
     };
 
     use super::*;
+
+    #[cfg(unix)]
+    struct Scratch(PathBuf);
+
+    #[cfg(unix)]
+    impl Scratch {
+        fn new() -> Self {
+            static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+            let path = std::env::temp_dir().join(format!(
+                "ferrule-save-as-links-{}-{}",
+                std::process::id(),
+                NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+            ));
+            std::fs::create_dir_all(&path).unwrap();
+            Self(path)
+        }
+    }
+
+    #[cfg(unix)]
+    impl Drop for Scratch {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[cfg(unix)]
+    fn filesystem_path(stored: &str, from: &Path, to: &Path) -> std::io::Result<Option<String>> {
+        rebase_instance_path(stored, from, to, PathSyntax::Glob)
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn save_as_through_directory_symlink_keeps_resource_identity() {
+        let scratch = Scratch::new();
+        let original = scratch.0.join("maps[archive]");
+        let physical = scratch.0.join("physical/deep");
+        let wrong = scratch.0.join("physical/maps");
+        for directory in [&original, &physical, &wrong] {
+            std::fs::create_dir_all(directory).unwrap();
+        }
+        for resource in ["source.xml", "target.xml", "catalog.xml", "audit.xml"] {
+            std::fs::write(original.join(resource), b"original").unwrap();
+            std::fs::write(wrong.join(resource), b"wrong").unwrap();
+        }
+        for name in [
+            "linked",
+            "linked[archive]",
+            "linked*archive",
+            "linked?archive",
+        ] {
+            let linked = scratch.0.join(name);
+            std::os::unix::fs::symlink(&physical, &linked).unwrap();
+            for resource in ["source.xml", "target.xml", "catalog.xml", "audit.xml"] {
+                let rebased = filesystem_path(
+                    resource,
+                    &original,
+                    &absolute_parent(&linked.join("project.json")).unwrap(),
+                )
+                .unwrap()
+                .unwrap();
+                assert_eq!(std::fs::read(linked.join(rebased)).unwrap(), b"original");
+            }
+            assert!(
+                !relocates(&physical.join("project.json"), &linked.join("renamed.json")).unwrap()
+            );
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn stored_symlink_dotdot_is_resolved_before_rebasing() {
+        let scratch = Scratch::new();
+        let original = scratch.0.join("maps");
+        let physical = scratch.0.join("physical/deep");
+        let destination = scratch.0.join("saved");
+        for directory in [&original, &physical, &destination] {
+            std::fs::create_dir_all(directory).unwrap();
+        }
+        std::os::unix::fs::symlink(&physical, original.join("route")).unwrap();
+        std::fs::write(scratch.0.join("physical/source.xml"), b"physical parent").unwrap();
+        std::fs::write(original.join("source.xml"), b"lexical parent").unwrap();
+        let rebased = filesystem_path("route/../source.xml", &original, &destination)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            std::fs::read(destination.join(rebased)).unwrap(),
+            b"physical parent"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn linked_directories_preserve_missing_outputs_and_glob_suffixes() {
+        let scratch = Scratch::new();
+        let original = scratch.0.join("maps");
+        let physical = scratch.0.join("physical/deep");
+        let destination = scratch.0.join("saved");
+        for directory in [&original, &physical, &destination] {
+            std::fs::create_dir_all(directory).unwrap();
+        }
+        std::os::unix::fs::symlink(&physical, original.join("route")).unwrap();
+        for (stored, expected) in [
+            (
+                "route/../missing/output.json",
+                "../physical/missing/output.json",
+            ),
+            ("route/../*.xml", "../physical/*.xml"),
+            ("route/*/../*.xml", "../physical/deep/*/../*.xml"),
+        ] {
+            assert_eq!(
+                filesystem_path(stored, &original, &destination)
+                    .unwrap()
+                    .as_deref(),
+                Some(expected)
+            );
+        }
+        assert!(!scratch.0.join("physical/missing").exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rebasing_does_not_follow_resource_file_links() {
+        let scratch = Scratch::new();
+        let original = scratch.0.join("maps");
+        let destination = scratch.0.join("saved");
+        for directory in [&original, &destination] {
+            std::fs::create_dir_all(directory).unwrap();
+        }
+        let target = scratch.0.join("real-output.xml");
+        std::fs::write(&target, b"target").unwrap();
+        std::os::unix::fs::symlink(&target, original.join("output.xml")).unwrap();
+        let rebased =
+            rebase_instance_path("output.xml", &original, &destination, PathSyntax::Literal)
+                .unwrap()
+                .unwrap();
+        assert_eq!(rebased, "../maps/output.xml");
+        assert!(
+            std::fs::symlink_metadata(destination.join(&rebased))
+                .unwrap()
+                .is_symlink()
+        );
+        assert_eq!(std::fs::read(&target).unwrap(), b"target");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rebasing_rejects_unresolvable_existing_directory_entries() {
+        let scratch = Scratch::new();
+        let original = scratch.0.join("maps");
+        let destination = scratch.0.join("saved");
+        for directory in [&original, &destination] {
+            std::fs::create_dir_all(directory).unwrap();
+        }
+        std::os::unix::fs::symlink(scratch.0.join("missing"), original.join("broken")).unwrap();
+        std::fs::write(original.join("file"), b"not a directory").unwrap();
+        for stored in ["broken/../source.xml", "file/../source.xml"] {
+            assert!(
+                filesystem_path(stored, &original, &destination).is_err(),
+                "{stored}"
+            );
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn literal_output_directories_and_virtual_paths_have_distinct_rules() {
+        let scratch = Scratch::new();
+        let original = scratch.0.join("maps");
+        let destination = scratch.0.join("saved");
+        let physical = scratch.0.join("physical/deep");
+        for directory in [&original, &destination, &physical] {
+            std::fs::create_dir_all(directory).unwrap();
+        }
+        std::os::unix::fs::symlink(&physical, original.join("output[archive]")).unwrap();
+        let path = "output[archive]/../target.xml";
+        assert_eq!(
+            rebase_instance_path(path, &original, &destination, PathSyntax::Literal)
+                .unwrap()
+                .as_deref(),
+            Some("../physical/target.xml")
+        );
+        assert_eq!(
+            filesystem_path(path, &original, &destination)
+                .unwrap()
+                .as_deref(),
+            Some("../physical/target.xml"),
+            "brackets are literal in Ferrule's source wildcard syntax"
+        );
+        assert_eq!(
+            rebase_path(path, &original, &destination)
+                .unwrap()
+                .as_deref(),
+            Some("../maps/target.xml")
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn mapping_identity_uses_the_actual_pipeline_directory() {
+        let scratch = Scratch::new();
+        let original = scratch.0.join("maps");
+        let physical = scratch.0.join("physical/deep");
+        for directory in [&original, &physical] {
+            std::fs::create_dir_all(directory).unwrap();
+        }
+        let mapping = original.join("design.mfd");
+        std::fs::write(&mapping, b"mapping").unwrap();
+        let linked = scratch.0.join("linked[archive]");
+        std::os::unix::fs::symlink(&physical, &linked).unwrap();
+        let relative =
+            mapping_identity_relative_to(&mapping, &linked.join("pipeline.json")).unwrap();
+        assert_eq!(std::fs::read(linked.join(relative)).unwrap(), b"mapping");
+    }
 
     /// Spells a rooted test path as an absolute path on the current platform.
     fn absolute(path: &str) -> String {
@@ -543,8 +897,15 @@ mod tests {
                 r"\\other\share\pipeline.json",
             ),
         ] {
-            let error = mapping_identity_relative_to(Path::new(mapping), Path::new(pipeline))
-                .expect_err("different volumes must remain unrepresentable");
+            // This is a lexical prefix test, not an attempt to contact a
+            // fabricated UNC server. Real directory aliases are resolved by
+            // mapping_identity_relative_to before comparing their roots.
+            let error = rebase_path(
+                "design.mfd",
+                Path::new(mapping).parent().unwrap(),
+                Path::new(pipeline).parent().unwrap(),
+            )
+            .expect_err("different volumes must remain unrepresentable");
             assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
         }
         // The new guard applies only when removing a verbatim prefix.

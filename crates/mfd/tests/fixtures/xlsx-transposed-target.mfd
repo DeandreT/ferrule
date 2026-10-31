@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mapping version="22">
+	<resources/>
+	<component name="defaultmap" uid="1" editable="1">
+		<properties SelectedLanguage="builtin"/>
+		<structure>
+			<children>
+				<component name="Data" library="xml" uid="2" kind="14">
+					<view rbx="300" rby="400"/>
+					<data>
+						<root>
+							<header><namespaces><namespace/><namespace uid="http://www.altova.com/mapforce"/></namespaces></header>
+							<entry name="FileInstance" ns="1" expanded="1">
+								<entry name="document" ns="1" expanded="1">
+									<entry name="Data" outkey="11" expanded="1">
+										<entry name="Item" outkey="12" expanded="1">
+											<entry name="Name" outkey="13"/>
+											<entry name="Amount" outkey="14"/>
+											<entry name="Col" outkey="15"/>
+										</entry>
+									</entry>
+								</entry>
+							</entry>
+						</root>
+						<document schema="xlsx-transposed-target-source.xsd" instanceroot="{}Data" inputinstance="xlsx-transposed-target-source.xml"/>
+					</data>
+				</component>
+				<component name="Pivot" library="xlsx" uid="3" kind="26">
+					<properties XSLTDefaultOutput="1"/>
+					<view ltx="700" rbx="1000" rby="400"/>
+					<data>
+						<root scrollposition="1">
+							<header><namespaces><namespace/><namespace uid="http://www.altova.com/mapforce"/></namespaces></header>
+							<entry name="FileInstance" ns="1" expanded="1">
+								<entry name="document" ns="1" expanded="1">
+									<entry name="Workbook" expanded="1">
+										<entry name="Worksheet" expanded="1" displayselectionmode="selection">
+											<entry name="Row" expanded="1"><entry name="Cell" datatype="string"/></entry>
+										</entry>
+										<entry name="Worksheet" expanded="1">
+											<condition><expression><function name="equal-ignorecase" library="xlsx"><expression><attribute name="Name"/></expression><expression><constant value="Pivot"/></expression></function></expression></condition>
+											<ranges>
+												<range id="1" start="2" count="1"/>
+												<range id="2" start="4" count="1"/>
+											</ranges>
+											<entry name="Row" expanded="1" displayselectionmode="selection"><entry name="Cell" datatype="string"/></entry>
+											<entry name="Row" expanded="1">
+												<condition><expression><function name="is-range-id"><expression><constant value="1" datatype="long"/></expression></function></expression></condition>
+												<entry name="Cell" inpkey="201" expanded="1" datatype="string">
+													<entry name="n" type="attribute" inpkey="203"/>
+												</entry>
+											</entry>
+											<entry name="Row" expanded="1">
+												<condition><expression><function name="is-range-id"><expression><constant value="2" datatype="long"/></expression></function></expression></condition>
+												<entry name="Cell" inpkey="202" expanded="1" datatype="double">
+													<entry name="n" type="attribute" inpkey="204"/>
+												</entry>
+											</entry>
+										</entry>
+									</entry>
+								</entry>
+							</entry>
+						</root>
+						<wsdl/>
+						<excel outputinstance="pivot.xlsx"/>
+					</data>
+				</component>
+			</children>
+			<graph directed="1">
+				<edges/>
+				<vertices>
+					<vertex vertexkey="13"><edges><edge vertexkey="201"/></edges></vertex>
+					<vertex vertexkey="14"><edges><edge vertexkey="202"/></edges></vertex>
+					<vertex vertexkey="15"><edges><edge vertexkey="203"/><edge vertexkey="204"/></edges></vertex>
+				</vertices>
+			</graph>
+		</structure>
+	</component>
+</mapping>

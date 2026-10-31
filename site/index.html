@@ -10,6 +10,8 @@
 </head>
 <body>
 
+<a class="skip-link" href="#main">Skip to content</a>
+
 <header class="nav">
   <div class="wrap nav-inner">
     <a class="brand" href="#">
@@ -31,7 +33,7 @@
   </div>
 </header>
 
-<main>
+<main id="main">
   <section class="hero">
     <div class="wrap hero-grid">
       <div>
@@ -48,14 +50,14 @@
           import and export of <code>.mfd</code> designs.
         </p>
         <div class="cta">
-          <a class="btn" href="demo/">▶ try it in your browser</a>
+          <a class="btn" href="demo/"><span aria-hidden="true">▶ </span>try it in your browser</a>
           <a class="btn btn-ghost" href="docs/">read the docs</a>
           <a class="btn btn-ghost" href="https://github.com/DeandreT/ferrule">source on GitHub</a>
         </div>
       </div>
 
-      <figure class="hero-canvas" aria-label="a mapping: orders flow through sum and count nodes into a summary">
-        <svg viewBox="0 0 520 300" role="img">
+      <figure class="hero-canvas" aria-labelledby="hero-canvas-caption">
+        <svg viewBox="0 0 520 300" role="img" aria-label="a mapping: orders flow through sum and count nodes into a summary">
           <defs>
             <linearGradient id="wire" x1="0" y1="0" x2="1" y2="0">
               <stop offset="0" stop-color="#8a6a3f"/>
@@ -111,7 +113,7 @@
             <circle class="pin" cx="0" cy="136" r="4"/>
           </g>
         </svg>
-        <figcaption>a mapping is a graph: schemas at the edges, functions on the wires</figcaption>
+        <figcaption id="hero-canvas-caption">a mapping is a graph: schemas at the edges, functions on the wires</figcaption>
       </figure>
     </div>
   </section>
@@ -121,7 +123,7 @@
       <h2>What's in the box</h2>
       <div class="grid">
         <div class="card">
-          <h3>⚙ A real mapping engine</h3>
+          <h3><span aria-hidden="true">⚙ </span>A real mapping engine</h3>
           <p>Repeating elements become loops; enclosing values broadcast into
           nested rows; filters, <code>group-by</code>, aggregates
           (<code>count / sum / avg / min / max / join</code>) and cross-source
@@ -129,32 +131,32 @@
           crashing your run.</p>
         </div>
         <div class="card">
-          <h3>⇄ Any-to-any formats</h3>
+          <h3><span aria-hidden="true">⇄ </span>Any-to-any formats</h3>
           <p>XML (XSD-driven, attributes included), JSON (JSON&nbsp;Schema with
           <code>$ref</code>), CSV, SQLite tables, and configured visual PDF sources —
           mixed freely per side. Multiple named sources can feed one target.</p>
         </div>
         <div class="card">
-          <h3>⭑ EDI that actually parses</h3>
+          <h3><span aria-hidden="true">⭑ </span>EDI that actually parses</h3>
           <p>X12 and EDIFACT with composite elements, qualifier-driven loops
           (HIPAA <code>HL</code> hierarchies), repetition separators, and a
           lenient mode for slim schemas — validated against real 837 / ORDERS
           traffic.</p>
         </div>
         <div class="card">
-          <h3>🖱 Visual, headless, or embedded</h3>
+          <h3><span aria-hidden="true">🖱 </span>Visual, headless, or embedded</h3>
           <p>Draw mappings in the egui-based GUI, run them with
           <code>ferrule run</code> in CI, or embed the pure-Rust engine — it
           compiles to WebAssembly (that's the <a href="demo/">live demo</a>).</p>
         </div>
         <div class="card">
-          <h3>🧪 Warning, not wall</h3>
+          <h3><span aria-hidden="true">🧪 </span>Warning, not wall</h3>
           <p>Importers never die on the first unsupported construct: they
           convert everything they can and hand you one actionable warning per
           skipped piece, so a partial import still beats redrawing a mapping.</p>
         </div>
         <div class="card">
-          <h3>🦀 Small, honest Rust</h3>
+          <h3><span aria-hidden="true">🦀 </span>Small, honest Rust</h3>
           <p>A workspace of focused crates around one format-agnostic IR.
           No services, no runtime, no telemetry. GPL-3.0 licensed.</p>
         </div>
@@ -172,7 +174,7 @@
       controlled iteration. Supported project shapes also export back to
       <code>.mfd</code>; unsupported pieces remain explicit warnings you can
       finish in the editor.</p>
-      <pre><code><span class="c"># convert a design, then run it</span>
+      <pre tabindex="0" role="region" aria-label="Import and run an .mfd design"><code><span class="c"># convert a design, then run it</span>
 cargo run -p cli -- import-mfd --mfd design.mfd --out project.json
 cargo run -p cli -- import-mfd --mfd package/maps/design.mfd --package-manifest package/ferrule-package.json --out package/projects/project.json
 cargo run -p cli -- import-mfd --mfd design.mfd --edi-catalog-root edi-configs --out project.json
@@ -185,7 +187,7 @@ cargo run -p cli -- run --project project.json --input orders.xml --output summa
   <section id="start" class="start">
     <div class="wrap">
       <h2>Get started</h2>
-      <pre><code><span class="c"># clone &amp; run the GUI</span>
+      <pre tabindex="0" role="region" aria-label="Clone and run ferrule"><code><span class="c"># clone &amp; run the GUI</span>
 git clone https://github.com/DeandreT/ferrule
 cd ferrule
 cargo run -p gui

@@ -932,3 +932,105 @@ fn singular_owner_descendant_scalar_keeps_current_item_lazy_message_and_full_tar
         })
     );
 }
+
+fn raises_late(path: &Path, label: &str, project: &Project) {
+    let source = input(vec![
+        expense(Value::Bool(true), Value::String("one".into()), 10),
+        expense(Value::Bool(false), Value::String("late".into()), 20),
+    ]);
+    let (_, raise, _) = guard(project, false);
+    assert_eq!(
+        evaluate(path, label, project, &source),
+        Err(EngineError::MappingException {
+            node: raise,
+            message: Some("late".into())
+        })
+    );
+}
+
+const TARGET_OUTPUT: &str = "outputinstance=\"accepted.xml\"";
+
+/// A target's input instance is a design-time preview, so with an output
+/// instance it never affects the item-ordered import, whether it is a filename
+/// wildcard, a URL, or a path with a wildcard folder.
+#[test]
+fn target_preview_inputs_beside_an_output_instance_import_run_and_reexport() {
+    let dir = Directory::new("target-preview");
+    let plain_path = dir.case("plain");
+    let plain = imported(
+        &plain_path,
+        &stage(&plain_path, &design(false), "", ""),
+        true,
+    );
+    for (label, preview) in [
+        ("filename-wildcard", "prior*.xml"),
+        ("url", "https://example.invalid/prior.xml"),
+        ("url-wildcard", "https://example.invalid/prior*.xml"),
+        ("wildcard-folder", "prior*/accepted.xml"),
+    ] {
+        let path = dir.case(label);
+        let document = format!("inputinstance=\"{preview}\" {TARGET_OUTPUT}");
+        let mapping = stage(
+            &path,
+            &design(false).replace(TARGET_OUTPUT, &document),
+            "",
+            "",
+        );
+        let project = imported(&path, &mapping, true);
+        assert!(!project.target_options.local_xml_file_set, "{label}");
+        assert_eq!(
+            serde_json::to_value(&project).unwrap(),
+            serde_json::to_value(&plain).unwrap(),
+            "{label}"
+        );
+        raises_late(&path, label, &project);
+        let exported = path.join("export/roundtrip.mfd");
+        let report =
+            mfd::export_with_profile(&project, &exported, mfd::ExportProfile::NativeMfd).unwrap();
+        assert!(report.is_native_compatible(), "{report}");
+        let reimported = imported(&path, &exported, true);
+        assert_eq!(reimported.target_path.as_deref(), Some("accepted.xml"));
+        raises_late(&path, "reimported", &reimported);
+    }
+}
+
+/// Without an output instance, the preview input keeps the importer's output
+/// path rule: a plain local file names the output and a filename wildcard names
+/// none, while a URL or wildcard folder names an output that item-ordered import
+/// still refuses, as it would the same output instance.
+#[test]
+fn target_preview_inputs_without_an_output_instance_keep_the_output_path_rule() {
+    let dir = Directory::new("target-preview-only");
+    for (label, preview, target_path) in [
+        ("plain", "prior.xml", Some("prior.xml")),
+        ("filename-wildcard", "accepted?.xml", None),
+    ] {
+        let path = dir.case(label);
+        let document = format!("inputinstance=\"{preview}\"");
+        let mapping = stage(
+            &path,
+            &design(false).replace(TARGET_OUTPUT, &document),
+            "",
+            "",
+        );
+        let project = imported(&path, &mapping, true);
+        assert!(!project.target_options.local_xml_file_set, "{label}");
+        assert_eq!(project.target_path.as_deref(), target_path, "{label}");
+        raises_late(&path, label, &project);
+    }
+    for (label, preview) in [
+        ("url", "https://example.invalid/accepted.xml"),
+        ("wildcard-folder", "prior*/accepted.xml"),
+    ] {
+        let document = format!("inputinstance=\"{preview}\"");
+        refused(
+            &dir.case(label),
+            &design(false).replace(TARGET_OUTPUT, &document),
+        );
+        let output = format!("outputinstance=\"{preview}\"");
+        refused(
+            &dir.case(&format!("{label}-output")),
+            &design(false).replace(TARGET_OUTPUT, &output),
+        );
+    }
+}

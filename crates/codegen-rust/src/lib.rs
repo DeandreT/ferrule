@@ -835,8 +835,18 @@ fn expression_inputs(expression: &Expression) -> Vec<NodeId> {
             value.expression().into_iter().chain(*arg).collect()
         }
         Expression::JoinAggregate {
-            expression, arg, ..
-        } => expression.iter().copied().chain(*arg).collect(),
+            join,
+            expression,
+            arg,
+            ..
+        } => join
+            .plan()
+            .computed_source()
+            .map(|computed| computed.value())
+            .into_iter()
+            .chain(*expression)
+            .chain(*arg)
+            .collect(),
         Expression::SequenceExists {
             sequence,
             predicate,
@@ -2276,15 +2286,18 @@ fn render_inner_join(join: &InnerJoin, binding: &str, output: &mut String) {
 }
 
 fn render_inner_join_call(join: &InnerJoin) -> Option<String> {
-    let mut sources = join.plan().sources();
+    if let Some(computed) = join.plan().computed_source() {
+        return render_computed_inner_join_call(join, computed.value());
+    }
+    let mut sources = join.plan().collection_sources();
     let first = sources.next()?;
     let mut stages = join.plan().stages();
     let (second_source, second_conditions) = stages.next()?;
     let first = render_string_path(first.collection());
-    let second = render_inner_join_stage(second_source, second_conditions);
+    let second = render_inner_join_stage(second_source.as_collection()?, second_conditions)?;
     let rest = stages
-        .map(|(source, conditions)| render_inner_join_stage(source, conditions))
-        .collect::<Vec<_>>()
+        .map(|(source, conditions)| render_inner_join_stage(source.as_collection()?, conditions))
+        .collect::<Option<Vec<_>>>()?
         .join(", ");
     Some(format!(
         "context.inner_join({}, &[{first}], {second}, &[{rest}])?",
@@ -2293,23 +2306,75 @@ fn render_inner_join_call(join: &InnerJoin) -> Option<String> {
 }
 
 fn render_inner_join_stage(
-    source: &codegen::JoinSource,
+    source: &codegen::CollectionJoinSource,
     conditions: &codegen::JoinConditions,
-) -> String {
+) -> Option<String> {
     let collection = render_string_path(source.collection());
     let keys = conditions
         .iter()
         .map(|key| {
-            let left_collection = render_string_path(key.left_collection());
+            let left_collection = render_string_path(key.left_collection()?);
             let left_path = render_string_path(key.left_path());
             let right_path = render_string_path(key.right_path());
-            format!(
+            Some(format!(
                 "InnerJoinKey {{ left_collection: &[{left_collection}], left_path: &[{left_path}], right_path: &[{right_path}] }}"
-            )
+            ))
         })
-        .collect::<Vec<_>>()
+        .collect::<Option<Vec<_>>>()?
         .join(", ");
-    format!("InnerJoinStage {{ collection: &[{collection}], keys: &[{keys}] }}")
+    Some(format!(
+        "InnerJoinStage {{ collection: &[{collection}], keys: &[{keys}] }}"
+    ))
+}
+
+/// The key is evaluated once in the receiving context, before any source is
+/// walked; runtime items are spelled in full so collection-only joins keep
+/// their generated text.
+fn render_computed_inner_join_call(join: &InnerJoin, key: NodeId) -> Option<String> {
+    let mut sources = join.plan().sources();
+    let first = render_join_source(sources.next()?);
+    let mut stages = join.plan().stages().map(|(source, conditions)| {
+        let conditions = conditions
+            .iter()
+            .map(|condition| {
+                let left = match condition.left() {
+                    codegen::JoinKeyLeft::Collection { collection, path } => format!(
+                        "codegen_runtime::InnerJoinLeft::Collection {{ collection: &[{}], path: &[{}] }}",
+                        render_string_path(collection),
+                        render_string_path(path)
+                    ),
+                    codegen::JoinKeyLeft::Computed(_) => {
+                        "codegen_runtime::InnerJoinLeft::Computed".to_string()
+                    }
+                };
+                format!(
+                    "codegen_runtime::InnerJoinCondition {{ left: {left}, right_path: &[{}] }}",
+                    render_string_path(condition.right_path())
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        format!(
+            "codegen_runtime::InnerJoinSourceStage {{ source: {}, conditions: &[{conditions}] }}",
+            render_join_source(source)
+        )
+    });
+    let second = stages.next()?;
+    let rest = stages.collect::<Vec<_>>().join(", ");
+    Some(format!(
+        "{{ let join_key = expression_{key}(context)?; context.inner_join_with_computed_key({}, &join_key, {first}, {second}, &[{rest}])? }}",
+        join.id().get()
+    ))
+}
+
+fn render_join_source(source: &codegen::JoinSource) -> String {
+    match source {
+        codegen::JoinSource::Collection(source) => format!(
+            "codegen_runtime::InnerJoinSource::Collection(&[{}])",
+            render_string_path(source.collection())
+        ),
+        codegen::JoinSource::Computed(_) => "codegen_runtime::InnerJoinSource::Computed".into(),
+    }
 }
 
 fn render_generated_values(

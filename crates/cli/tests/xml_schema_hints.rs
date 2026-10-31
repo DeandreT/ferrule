@@ -294,41 +294,30 @@ fn writer_collision_keeps_existing_file_and_returns_no_payload_artifact() {
     );
 }
 #[test]
-fn both_generated_targets_and_mapping_export_refuse_before_artifacts() {
-    let directory = Dir::new("export");
+fn generated_targets_without_an_xml_adapter_keep_hints_with_typed_outputs() {
+    let directory = Dir::new("generate");
     let mut p = project();
-    // Literal hints are supported by the explicit XML input adapter. Keep this
-    // rejection case outside that adapter while retaining all atomicity checks.
+    // Without the explicit XML input adapter no generated XML writer exists;
+    // the hint stays with the typed outputs instead of refusing generation.
     p.source_options.xml_document = false;
     assert!(engine::validate(&p).is_empty());
     let path = directory.0.join("project.json");
     std::fs::write(&path, serde_json::to_vec_pretty(&p).unwrap()).unwrap();
+    std::fs::create_dir(directory.0.join("runtime")).unwrap();
     for (name, target) in [
         (
             "rust",
             cli::GenerateTarget::Rust {
-                runtime_path: directory.0.join("absent-runtime"),
+                runtime_path: directory.0.join("runtime"),
             },
         ),
         ("csharp", cli::GenerateTarget::CSharp),
     ] {
         let out = directory.0.join(name);
-        let error = cli::generate_project(&path, &out, target).unwrap_err();
-        assert!(format!("{error:#}").contains("does not support XML schema hints"));
-        assert!(!out.exists());
+        cli::generate_project(&path, &out, target).unwrap();
+        assert!(out.exists());
     }
-    let lowered = codegen::lower(&p).unwrap_err();
-    assert!(
-        lowered
-            .diagnostics()
-            .iter()
-            .any(|d| d.to_string().contains("XML schema hints"))
-    );
-    let out = directory.0.join("mapping.mfd");
-    let error = mfd::export(&p, &out).unwrap_err();
-    assert!(error.to_string().contains("schema hints"));
-    assert!(!out.exists());
-    assert!(!directory.0.join("mapping-source.xsd").exists());
+    assert!(codegen::lower(&p).unwrap().xml_boundary.is_none());
     let mut named = p.clone();
     named.target_options = Default::default();
     named.extra_targets.push(NamedTarget {
@@ -338,11 +327,169 @@ fn both_generated_targets_and_mapping_export_refuse_before_artifacts() {
         options: p.target_options.clone(),
         root: p.root.clone(),
     });
+    assert!(codegen::lower(&named).unwrap().xml_boundary.is_none());
+}
+
+fn derived(location: &str, reference: &str) -> XmlSchemaHints {
+    XmlSchemaHints {
+        derivation: Some(ir::XmlSchemaHintDerivation {
+            schema_reference: reference.into(),
+        }),
+        ..metadata(None, location)
+    }
+}
+
+#[test]
+fn mapping_export_keeps_derived_hints_as_the_default_and_refuses_explicit_ones() {
+    let directory = Dir::new("export");
+    let mut p = project();
+    p.target_path = Some("results/final.xml".into());
+    // Import provenance: the hint derives from the design's stored reference.
+    p.target_options = options(derived(
+        "schemas/Target%20Schema.xsd",
+        r"schemas\Target Schema.xsd",
+    ));
+    let out = directory.0.join("derived/mapping.mfd");
+    mfd::export(&p, &out).unwrap();
     assert!(
-        codegen::lower(&named)
-            .unwrap_err()
-            .diagnostics()
-            .iter()
-            .any(|d| d.to_string().contains("secondary"))
+        !std::fs::read_to_string(&out)
+            .unwrap()
+            .contains("AddSchemaLocation")
+    );
+    // Re-import derives the hint again, now from the exported schema sibling.
+    assert_eq!(
+        mfd::import(&out).unwrap().project.target_options,
+        options(derived("mapping-target.xsd", "mapping-target.xsd"))
+    );
+    let explicit = [
+        // Hand-written: the same kind of location without provenance.
+        project().target_options.xml_schema_hints.unwrap(),
+        metadata(Some("urn:other"), "other.xsd"),
+    ];
+    // Edited after import: the location no longer matches its derivation.
+    p.target_options = options(derived("edited.xsd", r"schemas\Target Schema.xsd"));
+    let error = mfd::export(&p, &directory.0.join("edited/mapping.mfd")).unwrap_err();
+    assert!(
+        error.to_string().contains(
+            "the imported XML schema-location hint on the primary target no longer matches the target schema"
+        ),
+        "{error}"
+    );
+    assert!(!directory.0.join("edited").exists());
+    for hints in explicit {
+        p.target_options = options(hints.clone());
+        let out = directory.0.join("explicit/mapping.mfd");
+        let error = mfd::export(&p, &out).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("explicit XML schema hints cannot be preserved in .mfd export"),
+            "{error}"
+        );
+        assert!(!directory.0.join("explicit").exists());
+        let mut named = p.clone();
+        named.target_options = FormatOptions {
+            xml_document: true,
+            ..Default::default()
+        };
+        named.extra_targets.push(NamedTarget {
+            name: "secondary".into(),
+            path: Some("other.xml".into()),
+            schema: p.target.clone(),
+            options: options(hints),
+            root: p.root.clone(),
+        });
+        assert!(
+            mfd::export(&named, &out)
+                .unwrap_err()
+                .to_string()
+                .contains("schema hints")
+        );
+        assert!(!directory.0.join("explicit").exists());
+    }
+}
+
+#[test]
+fn hint_provenance_round_trips_and_older_project_files_load_as_explicit() {
+    let directory = Dir::new("provenance");
+    let mut p = project();
+    p.target_path = Some("results/final.xml".into());
+    p.target_options = options(derived("target.xsd", "target.xsd"));
+    let text = mapping::project_file::encode_pretty(&p).unwrap();
+    assert!(text.contains("\"derivation\""), "{text}");
+    let decoded = mapping::project_file::decode_str(&text).unwrap();
+    assert_eq!(decoded.target_options, p.target_options);
+    assert_eq!(
+        mapping::project_file::encode_pretty(&decoded).unwrap(),
+        text
+    );
+    mfd::export(&decoded, &directory.0.join("derived/mapping.mfd")).unwrap();
+    // A file written before provenance existed has the same locations and no
+    // derivation; it stays explicit and keeps the export refusal.
+    let mut value: serde_json::Value = serde_json::from_str(&text).unwrap();
+    let hints = value
+        .pointer_mut("/target_options/xml_schema_hints")
+        .and_then(serde_json::Value::as_object_mut)
+        .expect("serialized hints");
+    assert!(hints.remove("derivation").is_some());
+    let older = mapping::project_file::decode_str(&value.to_string()).unwrap();
+    assert_eq!(
+        older.target_options.xml_schema_hints,
+        Some(metadata(None, "target.xsd"))
+    );
+    assert!(engine::validate(&older).is_empty());
+    let error = mfd::export(&older, &directory.0.join("older/mapping.mfd")).unwrap_err();
+    assert!(error.to_string().contains("schema hints"), "{error}");
+    // Unknown provenance fields stay refused.
+    let mut unknown: serde_json::Value = serde_json::from_str(&text).unwrap();
+    unknown["target_options"]["xml_schema_hints"]["derivation"]["extra"] = true.into();
+    assert!(mapping::project_file::decode_str(&unknown.to_string()).is_err());
+}
+
+#[test]
+fn stale_derived_hints_name_the_schema_mismatch_on_export() {
+    let directory = Dir::new("stale");
+    let mut p = project();
+    p.target_path = Some("results/final.xml".into());
+    p.target_options = options(derived("target.xsd", "target.xsd"));
+    let stale = "the imported XML schema-location hint on the primary target no longer matches the target schema; remove the hint or restore the target schema";
+    // The target root gained a namespace after import.
+    let mut namespaced = p.clone();
+    namespaced.target = namespaced.target.xml_qualified("urn:edited").unwrap();
+    // The target root now declares the hint attribute itself.
+    let mut declared = p.clone();
+    let ir::SchemaKind::Group { children, .. } = &mut declared.target.kind else {
+        unreachable!()
+    };
+    children.push(
+        SchemaNode::scalar("noNamespaceSchemaLocation", ScalarType::String)
+            .attribute()
+            .xml_qualified(XSI)
+            .unwrap(),
+    );
+    for changed in [namespaced, declared] {
+        let error = mfd::export(&changed, &directory.0.join("stale/mapping.mfd")).unwrap_err();
+        assert_eq!(error.to_string(), format!("cannot export: {stale}"));
+        assert!(!directory.0.join("stale").exists());
+    }
+    // A named target reports its own name.
+    let mut named = p.clone();
+    named.target_options = FormatOptions {
+        xml_document: true,
+        ..Default::default()
+    };
+    named.extra_targets.push(NamedTarget {
+        name: "secondary".into(),
+        path: Some("other.xml".into()),
+        schema: p.target.clone().xml_qualified("urn:edited").unwrap(),
+        options: p.target_options.clone(),
+        root: p.root.clone(),
+    });
+    let error = mfd::export(&named, &directory.0.join("stale/mapping.mfd")).unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("hint on target `secondary` no longer matches the target schema"),
+        "{error}"
     );
 }

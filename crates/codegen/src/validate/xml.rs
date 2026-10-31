@@ -222,11 +222,17 @@ fn unsupported_schema_feature(schema: &SchemaNode) -> Option<&'static str> {
     if schema.json_array_wrapper {
         return Some("JSON array wrapper");
     }
+    if schema.json_tuple.is_some() {
+        return Some("JSON tuple frame");
+    }
     if !schema.xml_name_alternatives.is_empty() {
         return Some("ambiguous expanded XML element names");
     }
     if !schema.xml_repeating_sequences.is_empty() {
         return Some("anonymous repeating-sequence metadata");
+    }
+    if schema.has_xml_wildcard_exclusions() {
+        return Some("XML wildcard exclusions");
     }
     if matches!(schema.kind, SchemaKind::ScalarUnion { .. }) {
         return Some("heterogeneous scalar unions");
@@ -331,7 +337,6 @@ pub(super) fn validate_boundary(
                     || !program.root.children.is_empty()
                     || !matches!(program.root.construction, crate::TargetConstruction::Group)))
             || policy.output.default_namespace.is_some()
-            || policy.output.schema_hints.is_some()
         {
             return Err(reject(
                 "XML scalar output v1 requires one flat constructed primary target",

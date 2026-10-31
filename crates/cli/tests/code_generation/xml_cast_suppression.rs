@@ -147,3 +147,39 @@ fn document_cast_suppression_matches_the_interpreter_in_generated_code() -> Test
         include_str!("xml_cast_suppression/DocumentHost.cs.txt"),
     )
 }
+
+#[test]
+fn hinted_document_cast_suppression_writes_the_schema_location_in_generated_code() -> TestResult<()>
+{
+    let mut project = document_project()?;
+    project.target_options.xml_schema_hints = Some(ir::XmlSchemaHints {
+        no_namespace_location: Some("schemas/Output%20Schema.xsd".into()),
+        ..Default::default()
+    });
+    assert!(engine::validate(&project).is_empty());
+    let input = "<Input><Orders><Order><Id>7</Id><Label>a</Label><Price>25</Price></Order></Orders></Input>";
+    let output = engine::run(&project, &format_xml::from_str(input, &project.source)?)?;
+    let expected = format_xml::to_string_with_options(
+        &project.target,
+        &output,
+        &format_xml::XmlWriteOptions {
+            scalar_output: project.target_options.xml_scalar_output.clone(),
+            schema_hints: project.target_options.xml_schema_hints.clone(),
+            ..Default::default()
+        },
+    )?;
+    assert!(
+        expected.contains("xsi:noNamespaceSchemaLocation=\"schemas/Output%20Schema.xsd\"")
+            && expected.contains("<Price>00025.00</Price>"),
+        "{expected}"
+    );
+    let cases = vec![serde_json::json!({"input": input, "expected": expected,
+        "json": {"Orders": {"Order": [{"Id": 7, "Label": "a", "Price": 25}]}}})];
+    json_text_boundaries::run_generated_boundary_cases_with_harnesses(
+        &project,
+        &cases,
+        "xml_cast_suppression_document_hint",
+        include_str!("xml_cast_suppression/DocumentHost.rs.txt"),
+        include_str!("xml_cast_suppression/DocumentHost.cs.txt"),
+    )
+}

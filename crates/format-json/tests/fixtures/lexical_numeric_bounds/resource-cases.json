@@ -54,16 +54,9 @@
     "expected_reason": "only JSON Pointer fragments are supported; named anchors are not"
   },
   {
-    "id": "cycle-existing-fallback",
+    "id": "cycle-contentless-root",
     "root": "cycle.json",
-    "expected_schema": {
-      "name": "Loop",
-      "repeating": false,
-      "kind": {
-        "kind": "scalar",
-        "ty": "string"
-      }
-    }
+    "expected_error_variant": "ContentlessSchema"
   },
   {
     "id": "outside-package",

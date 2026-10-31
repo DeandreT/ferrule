@@ -31,7 +31,9 @@ pub(in crate::json_schema) fn parse_object_alternatives(
         None | Some(serde_json::Value::Bool(true)) => WrapperAdditional::Open,
         Some(serde_json::Value::Bool(false)) => WrapperAdditional::Closed,
         Some(additional @ serde_json::Value::Object(_)) => {
-            WrapperAdditional::Typed(Box::new(parse("*", additional, doc, active_refs)?))
+            let value = parse("*", additional, doc, active_refs)?;
+            super::super::tuple_frames::reject_dynamic_value(name, &value, "additionalProperties")?;
+            WrapperAdditional::Typed(Box::new(value))
         }
         Some(_) => {
             return Err(unsupported_union(
@@ -97,6 +99,7 @@ pub(in crate::json_schema) fn parse_object_alternatives(
             .unwrap_or_else(|| format!("{keyword}{index}"));
         let normalized = without_direct_property_constraints(resolved);
         let mut parsed = parse(&alternative_name, &normalized, doc, active_refs)?;
+        super::super::tuple_frames::reject_alternative(name, &parsed)?;
         super::super::pattern_properties::reject_composed_node(name, &parsed, keyword)?;
         if !core::ptr::eq(resolved, alternative_schema)
             && files::ref_siblings_apply(alternative_schema)

@@ -5,12 +5,6 @@ use crate::JsonFormatError;
 fn unsupported_validation_keywords_never_widen_silently() {
     for schema in [
         r#"{
-  "$schema":"https://json-schema.org/draft/2020-12/schema",
-  "type":"array",
-  "prefixItems":[{"type":"string"},{"type":"integer"}],
-  "items":false
-}"#,
-        r#"{
   "$schema":"https://json-schema.org/draft/2019-09/schema",
   "type":"array",
   "unevaluatedItems":false

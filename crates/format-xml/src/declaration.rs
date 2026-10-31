@@ -85,6 +85,13 @@ pub(crate) fn validate_schema(schema: &SchemaNode) -> Result<(), XmlFormatError>
             kind: "JSON array wrapper",
         });
     }
+    if schema.json_tuple.is_some() {
+        return Err(XmlFormatError::UnsupportedSchemaRole {
+            node: schema.name.clone(),
+            role: "element",
+            kind: "JSON tuple frame",
+        });
+    }
     if !schema.xml_optional_is_valid() {
         return Err(XmlFormatError::InvalidXmlOptional {
             name: schema.name.clone(),

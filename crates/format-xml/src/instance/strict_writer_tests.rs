@@ -141,6 +141,7 @@ fn single_use_preview_keeps_native_body_scan_after_the_original_policy() {
     options.schema_hints = Some(ir::XmlSchemaHints {
         no_namespace_location: Some("literal.xsd".into()),
         locations: Vec::new(),
+        derivation: None,
     });
     let called = Cell::new(0);
     let original = String::from("borrowed policy payload");
@@ -248,6 +249,7 @@ fn original_native_control_character_document_keeps_the_exact_negative_bytes() {
                 namespace: "urn:document".into(),
                 location: "documents.xsd".into(),
             }],
+            derivation: None,
         }),
         ..XmlWriteOptions::default()
     };

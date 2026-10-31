@@ -9,8 +9,11 @@ use super::{
 
 mod float_text;
 mod guid;
+mod half_ceiling;
 mod isbn;
+mod literal_replace;
 mod regex_match;
+mod translate;
 
 const MAX_GENERATED_PADDING_CHARS: i64 = 1_000_000;
 // Match the bundled SQLite LIKE pattern cap, measured before NUL truncation.
@@ -43,6 +46,7 @@ pub(super) fn call_builtin(
         BuiltinId::Contains => binary_scalar_string(args, "contains", |a, b| a.contains(b)),
         BuiltinId::Matches => regex_match::matches(args),
         BuiltinId::Replace => regex_match::replace(args),
+        BuiltinId::ReplaceLiteral => literal_replace::replace_literal(args),
         BuiltinId::SqlLike => binary_string(args, "sql_like", sql_like),
         BuiltinId::PadStringLeft => pad_string(args, "pad_string_left", true),
         BuiltinId::PadStringRight => pad_string(args, "pad_string_right", false),
@@ -70,6 +74,7 @@ pub(super) fn call_builtin(
         BuiltinId::Substring => substring(args),
         BuiltinId::SubstringBefore => split_string(args, "substring_before", true),
         BuiltinId::SubstringAfter => split_string(args, "substring_after", false),
+        BuiltinId::Translate => translate::translate(args),
         BuiltinId::String => string(args),
         BuiltinId::IsNumeric => is_numeric(args),
         BuiltinId::ToNumber => to_number(args),
@@ -83,6 +88,7 @@ pub(super) fn call_builtin(
         BuiltinId::FormatNumber => format_number::format_number(args),
         BuiltinId::Exists => exists(args),
         BuiltinId::Round => round(args),
+        BuiltinId::RoundHalfCeiling => half_ceiling::round_half_ceiling(args),
         BuiltinId::DelayPassthrough => delay_passthrough(args),
         BuiltinId::DateFromDatetime => date_from_datetime(args),
         BuiltinId::YearFromDatetime => year_from_datetime(args),
@@ -115,6 +121,8 @@ pub(super) fn call_builtin(
         BuiltinId::JsonSerializeObject => json::serialize_object(args),
         BuiltinId::JsonParseField => json::parse_field(args),
         BuiltinId::JsonParseObjectExists => json::object_exists(args),
+        BuiltinId::JsonParseArrayLength => json::array_length(args),
+        BuiltinId::JsonParseArrayField => json::array_field(args),
         BuiltinId::FlextextParseField => flextext::parse_field(args),
     }
 }
@@ -870,7 +878,8 @@ fn exists(args: &[Value]) -> Result<Value, FunctionError> {
 }
 
 /// `round(x)` rounds to the nearest integer; `round(x, digits)` to that
-/// many decimal places (the reference application's `round-precision`).
+/// many decimal places. Exact halves round away from zero on binary floats;
+/// `round_half_ceiling` is the reference application's rounding.
 fn round(args: &[Value]) -> Result<Value, FunctionError> {
     match args {
         [Value::Int(i)] => Ok(Value::Int(*i)),

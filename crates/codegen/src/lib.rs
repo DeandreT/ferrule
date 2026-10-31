@@ -74,8 +74,9 @@ pub use emission_plan::{
 };
 pub use identity::{IdentityError, IdentityKind, IdentityViolation};
 pub use join::{
-    InnerJoin, JoinConditions, JoinId, JoinKey, JoinPlan, JoinPlanError, JoinSource,
-    JoinSourceCardinality, OwnedInnerJoin,
+    CollectionJoinSource, ComputedJoinSource, ComputedJoinSourceId, InnerJoin, JoinConditions,
+    JoinId, JoinKey, JoinKeyLeft, JoinPlan, JoinPlanError, JoinSource, JoinSourceCardinality,
+    OwnedInnerJoin,
 };
 pub use json5_boundary::{
     Json5BoundaryPolicyError, Json5BoundaryProfile, Json5BoundarySide, prepare_json5_boundary,

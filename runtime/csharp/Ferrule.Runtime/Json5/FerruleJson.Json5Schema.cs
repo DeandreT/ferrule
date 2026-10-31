@@ -172,7 +172,7 @@ public static partial class FerruleJson
             or "json_contains" or "json_dependent_schemas" or "property_count_range"
             or "json_property_dependencies" or "json_pattern_property_names" or "json_property_names"
             or "string_length_range" or "json_patterns" or "default" or "value_generation"
-            or "xml_default_type" or "database_relation" => value.ValueKind == JsonValueKind.Null,
+            or "xml_default_type" or "database_relation" or "json_tuple" => value.ValueKind == JsonValueKind.Null,
             "repeating" or "attribute" or "text" or "nillable" or "xml_optional"
             or "xml_attribute_required" or "container_nullable" or "json_array_wrapper" or "json_any"
             or "json_unique_items" or "xml_type_alternatives" => value.ValueKind == JsonValueKind.False,

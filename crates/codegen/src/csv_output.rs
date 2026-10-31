@@ -198,6 +198,7 @@ pub fn validate_csv_output(
     if !program.extra_targets.is_empty() {
         return Err(CsvOutputError::NamedOutputs);
     }
+    refuse_json_tuple_rows(&program.target)?;
     let target = &program.target;
     let bad = |field, reason| CsvOutputError::TargetSchema { field, reason };
     let SchemaKind::Group {
@@ -262,11 +263,23 @@ pub fn validate_csv_document_output(
     if !program.extra_targets.is_empty() {
         return Err(CsvOutputError::NamedOutputs);
     }
+    refuse_json_tuple_rows(&program.target)?;
     if !matches!(
         program.root.construction,
         crate::TargetConstruction::CopyCurrentRows
     ) {
         return Err(CsvOutputError::PrimaryRows);
+    }
+    Ok(())
+}
+
+/// A tuple frame is a JSON array, never a row of named CSV columns.
+fn refuse_json_tuple_rows(target: &ir::SchemaNode) -> Result<(), CsvOutputError> {
+    if target.contains_json_tuple() {
+        return Err(CsvOutputError::TargetSchema {
+            field: None,
+            reason: "a JSON tuple frame is not a CSV row",
+        });
     }
     Ok(())
 }
@@ -323,6 +336,39 @@ mod tests {
                 children: Vec::new(),
             },
         }
+    }
+
+    #[test]
+    fn tuple_frame_targets_are_not_csv_rows() {
+        let mut program = program();
+        program.target = SchemaNode::group(
+            "Row",
+            vec![
+                SchemaNode::scalar("item1", ScalarType::String),
+                SchemaNode::scalar("item2", ScalarType::Int),
+            ],
+        )
+        .with_json_tuple(ir::JsonTupleLayout {
+            length: ir::ItemCountRange::new(0, Some(2)),
+            tail: ir::JsonTupleTail::Closed,
+        })
+        .unwrap();
+        program.root.bindings[0].target_field = "item1".into();
+        crate::validate_program(&program).unwrap();
+        let refused = |result| {
+            matches!(
+                result,
+                Err(CsvOutputError::TargetSchema {
+                    field: None,
+                    reason: "a JSON tuple frame is not a CSV row"
+                })
+            )
+        };
+        let policy = CsvOutputPolicy::default();
+        assert!(refused(validate_csv_output(&program, &policy)));
+        assert!(refused(validate_csv_document_output(&program, &policy)));
+        program.target.json_tuple = None;
+        validate_csv_output(&program, &policy).unwrap();
     }
 
     #[test]

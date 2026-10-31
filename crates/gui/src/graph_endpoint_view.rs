@@ -44,6 +44,47 @@ impl GraphViewer<'_> {
         );
         changed
     }
+
+    /// Scrolls an endpoint list one row when an arrow key would move from the
+    /// visible field `pin` onto the hidden-fields pin next to it, and returns
+    /// the pin that then shows the next field.
+    pub(crate) fn scroll_endpoint_field(
+        &mut self,
+        pin: CanvasPin,
+        step: isize,
+        snarl: &mut Snarl<CanvasNode>,
+    ) -> Option<CanvasPin> {
+        let node = *snarl.get_node(pin.node())?;
+        let total = match node {
+            CanvasNode::SourceBlock(block) => self.source_blocks.get(block)?.leaves.len(),
+            CanvasNode::TargetBlock(block) => self.target_blocks.get(block)?.leaves.len(),
+            CanvasNode::Graph(_) | CanvasNode::Placeholder(_) => return None,
+        };
+        let Some(EndpointDisplayPin::Visible(_)) = self.endpoint_display_pin(node, pin.index())
+        else {
+            return None;
+        };
+        let neighbour = self.endpoint_display_pin(node, pin.index().checked_add_signed(step)?)?;
+        let hidden = match neighbour {
+            EndpointDisplayPin::HiddenBefore => step < 0,
+            EndpointDisplayPin::HiddenAfter => step > 0,
+            EndpointDisplayPin::Visible(_) => false,
+        };
+        if !hidden || !self.endpoint_scroll.scroll_rows(node, total, step) {
+            return None;
+        }
+        let visible = self.endpoint_scroll.visible_indices(node, total);
+        let revealed = if step < 0 {
+            visible.first()
+        } else {
+            visible.last()
+        };
+        let display = self
+            .endpoint_scroll
+            .visual_pin_for_semantic(node, *revealed?, total)?;
+        self.sync_endpoint_view(snarl);
+        Some(pin.with_index(display))
+    }
 }
 
 pub(super) fn show_filter(

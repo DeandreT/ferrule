@@ -297,14 +297,15 @@ fn legacy_filesystem_missing_json_pointer_remains_permissive() {
         .open(&path)
         .unwrap();
     let guard = File(path);
-    file.write_all(br##"{"$ref":"#/$defs/Missing"}"##).unwrap();
+    file.write_all(br##"{"type":"object","properties":{"Value":{"$ref":"#/$defs/Missing"}}}"##)
+        .unwrap();
     drop(file);
     let schema = format_json::json_schema::import(&guard.0).unwrap();
     assert!(matches!(
-        schema.kind,
-        ir::SchemaKind::Scalar {
+        schema.child("Value").map(|value| &value.kind),
+        Some(ir::SchemaKind::Scalar {
             ty: ir::ScalarType::String
-        }
+        })
     ));
 }
 

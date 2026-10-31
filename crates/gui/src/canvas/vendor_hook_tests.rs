@@ -11,6 +11,8 @@ struct Probe {
     to: Option<egui::Pos2>,
     clicks: Vec<Vec<(OutPinId, InPinId)>>,
     disconnected: usize,
+    /// The widget `first_widget_id` names in each header row.
+    header_first_widgets: Vec<Option<(egui::Sense, egui::Vec2)>>,
 }
 
 #[allow(refining_impl_trait)]
@@ -65,6 +67,22 @@ impl SnarlViewer<usize> for Probe {
         if snarl[node] == 1 {
             self.to = inputs.first().map(|(_, pos)| *pos);
         }
+    }
+    fn show_header(
+        &mut self,
+        node: NodeId,
+        _inputs: &[InPin],
+        _outputs: &[OutPin],
+        ui: &mut egui::Ui,
+        snarl: &mut Snarl<usize>,
+    ) {
+        let first = crate::canvas_keyboard::focus::first_widget_id(ui);
+        self.header_first_widgets.push(
+            ui.ctx()
+                .read_response(first)
+                .map(|response| (response.sense, response.rect.size())),
+        );
+        ui.label(self.title(&snarl[node]));
     }
     fn wire_clicked(
         &mut self,
@@ -189,4 +207,28 @@ fn primary_wire_click_reports_all_coincident_edges_without_disconnect_or_drag_cl
     );
     assert_eq!(probe.disconnected, 1);
     assert_eq!(snarl.wires().count(), 1);
+}
+
+#[test]
+fn the_first_header_widget_is_the_collapse_button() {
+    let context = egui::Context::default();
+    let mut snarl = Snarl::new();
+    snarl.insert_node(egui::pos2(60.0, 90.0), 0);
+    snarl.insert_node(egui::pos2(420.0, 90.0), 1);
+    let mut probe = Probe::default();
+    for _ in 0..3 {
+        frame(&context, &mut snarl, &mut probe, vec![]);
+    }
+    let icon = context.global_style().spacing.icon_width;
+    assert!(!probe.header_first_widgets.is_empty());
+    assert!(
+        probe
+            .header_first_widgets
+            .iter()
+            .all(|widget| widget
+                .is_some_and(|(sense, size)| sense == egui::Sense::click()
+                    && size == egui::Vec2::splat(icon))),
+        "{:?}",
+        probe.header_first_widgets
+    );
 }

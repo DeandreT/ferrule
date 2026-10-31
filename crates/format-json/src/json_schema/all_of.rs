@@ -234,7 +234,15 @@ fn finish_intersection(
         dependent_schemas::apply(name, &constraints, &mut merged, doc, active_refs, false)?;
         conditionals::apply(name, &constraints, &mut merged, doc, active_refs, false)?;
         property_names::apply(name, &constraints, &mut merged, doc, active_refs, false)?;
-        if merged.repeating {
+        if super::tuple_frames::is_single_frame(&merged) {
+            super::tuple_frames::apply_array_constraints(
+                name,
+                &constraints,
+                &mut merged,
+                doc,
+                active_refs,
+            )?;
+        } else if merged.repeating {
             ranges::validate_ignored(name, &constraints)?;
             multiples::validate_ignored(name, &constraints)?;
             item_counts::apply(name, &constraints, &mut merged, false)?;
@@ -463,6 +471,9 @@ fn intersect(
     }
     if branch.json_any && !branch.repeating {
         return Ok(());
+    }
+    if target.json_tuple.is_some() || branch.json_tuple.is_some() {
+        return super::tuple_frames::intersect_all_of(name, target, branch);
     }
     if target.repeating != branch.repeating {
         return Err(unsupported_union(

@@ -68,7 +68,107 @@ fn imported_x12_autocomplete_completes_unbound_isa_fields_with_the_run_clock() {
     let execution = engine::ExecutionContext::new(&design).with_current_datetime(timestamp);
     let output = engine::run_with_context(&imported.project, &source, &execution).unwrap();
 
-    let mapping_syntax = imported.project.target_options.x12_separators.unwrap();
+    let written = write_completed(&imported.project, &output, timestamp, directory.path());
+    assert_eq!(
+        written,
+        "ISA+00+          +00+          +ZZ+SENDER         +ZZ+               +260718+1200+!+00505+000000000+1+P+:'\nIEA+0+000000000'\n"
+    );
+}
+
+#[test]
+fn x12_line_break_terminators_round_trip_through_design_and_runtime() {
+    let directory = TempDir::new("line_break_terminators");
+    let design = directory.path().join("mapping.mfd");
+    for (encoded, terminator) in [("%0A", '\n'), ("%0D", '\r')] {
+        let text =
+            self_describing_design().replace("segment=\"%27\"", &format!("segment=\"{encoded}\""));
+        std::fs::write(&design, &text).unwrap();
+        let imported = mfd::import(&design).unwrap();
+        assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+        let separators = imported.project.target_options.x12_separators.unwrap();
+        assert_eq!(separators.segment, terminator);
+
+        let exported = directory.path().join("roundtrip.mfd");
+        let warnings = mfd::export(&imported.project, &exported).unwrap();
+        assert!(warnings.is_empty(), "{warnings:?}");
+        let text = std::fs::read_to_string(&exported).unwrap();
+        assert!(text.contains(&format!("segment=\"{encoded}\"")), "{text}");
+        assert!(text.contains("terminatewithlinefeed=\"false\""), "{text}");
+        let roundtrip = mfd::import(&exported).unwrap();
+        assert!(roundtrip.warnings.is_empty(), "{:?}", roundtrip.warnings);
+        assert_eq!(
+            roundtrip.project.target_options.x12_separators,
+            Some(separators)
+        );
+
+        let source = Instance::Group(
+            (vec![(
+                "SRC".into(),
+                Instance::Group(
+                    (vec![(
+                        "Value".into(),
+                        Instance::Scalar(Value::String("SENDER".into())),
+                    )])
+                    .into(),
+                ),
+            )])
+            .into(),
+        );
+        let timestamp = "2026-07-18T12:00:27-07:00";
+        let execution = engine::ExecutionContext::new(&design).with_current_datetime(timestamp);
+        let output = engine::run_with_context(&imported.project, &source, &execution).unwrap();
+        let written = write_completed(&imported.project, &output, timestamp, directory.path());
+        assert_eq!(
+            written,
+            format!(
+                "ISA+00+          +00+          +ZZ+SENDER         +ZZ+               +260718+1200+!+00505+000000000+1+P+:{terminator}IEA+0+000000000{terminator}"
+            )
+        );
+    }
+}
+
+#[test]
+fn unrepresentable_x12_terminators_are_refused_at_import() {
+    let directory = TempDir::new("unrepresentable_terminators");
+    let design = directory.path().join("mapping.mfd");
+    // CR or LF followed by a requested line feed would be CR LF or a blank line.
+    for (from, to, line_feed) in [
+        ("segment=\"%27\"", "segment=\"%0D\"", true),
+        ("segment=\"%27\"", "segment=\"%0A\"", true),
+        ("segment=\"%27\"", "segment=\"%0D%0A\"", false),
+        ("segment=\"%27\"", "segment=\"%09\"", false),
+        ("segment=\"%27\"", "segment=\" \"", false),
+        ("dataelement=\"+\"", "dataelement=\"%0A\"", false),
+        ("component=\":\"", "component=\"%0D\"", false),
+    ] {
+        let mut text = self_describing_design().replace(from, to);
+        if line_feed {
+            text = text.replace(
+                "<settings autocompletedata",
+                "<settings terminatewithlinefeed=\"true\" autocompletedata",
+            );
+        }
+        std::fs::write(&design, &text).unwrap();
+        let imported = mfd::import(&design).unwrap();
+        assert_eq!(imported.project.target_options.x12_separators, None, "{to}");
+        assert!(
+            imported
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("invalid X12 separator settings")),
+            "{to}: {:?}",
+            imported.warnings
+        );
+    }
+}
+
+fn write_completed(
+    project: &mapping::Project,
+    output: &Instance,
+    timestamp: &str,
+    directory: &Path,
+) -> String {
+    let mapping_syntax = project.target_options.x12_separators.unwrap();
     let syntax = format_edi::x12::Separators {
         element: mapping_syntax.element,
         component: mapping_syntax.component,
@@ -76,22 +176,17 @@ fn imported_x12_autocomplete_completes_unbound_isa_fields_with_the_run_clock() {
         repetition: mapping_syntax.repetition,
         release: mapping_syntax.release,
     };
-    let Some(EdiAutocomplete::X12(autocomplete)) =
-        imported.project.target_options.edi_autocomplete.as_ref()
+    let Some(EdiAutocomplete::X12(autocomplete)) = project.target_options.edi_autocomplete.as_ref()
     else {
         panic!("expected retained X12 autocomplete metadata");
     };
-    let result = directory.path().join("result.x12");
+    let result = directory.join("result.x12");
     format_edi::x12::write_with_syntax_and_autocomplete(
         &result,
-        &imported.project.target,
-        &output,
+        &project.target,
+        output,
         syntax,
-        imported
-            .project
-            .target_options
-            .x12_interchange_version
-            .as_deref(),
+        project.target_options.x12_interchange_version.as_deref(),
         format_edi::x12::Autocomplete {
             current_datetime: timestamp,
             request_acknowledgement: autocomplete.request_acknowledgement,
@@ -99,12 +194,7 @@ fn imported_x12_autocomplete_completes_unbound_isa_fields_with_the_run_clock() {
         },
     )
     .unwrap();
-
-    let written = std::fs::read_to_string(&result).unwrap();
-    assert_eq!(
-        written,
-        "ISA+00+          +00+          +ZZ+SENDER         +ZZ+               +260718+1200+!+00505+000000000+1+P+:'\nIEA+0+000000000'\n"
-    );
+    std::fs::read_to_string(&result).unwrap()
 }
 
 fn self_describing_design() -> &'static str {

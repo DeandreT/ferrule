@@ -47,7 +47,7 @@ impl FlexTextBoundaryDraft {
         ));
         ui.weak("The project keeps this layout for any data filename.");
         if let Err(error) = self.validate() {
-            ui.colored_label(ui.visuals().error_fg_color, error.to_string());
+            ui.colored_label(ui.visuals().error_fg_color, format!("{error:#}"));
         }
     }
 

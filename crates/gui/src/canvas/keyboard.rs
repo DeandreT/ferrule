@@ -9,6 +9,8 @@ const CANVAS_ID: &str = "mapping_canvas";
 #[path = "fit.rs"]
 mod fit;
 pub(crate) use fit::record_node_rect;
+#[path = "focus.rs"]
+pub(crate) mod focus;
 const EDGE_PAN_ZONE: f32 = 72.0;
 const EDGE_PAN_SPEED: f32 = 900.0;
 
@@ -76,7 +78,10 @@ pub fn show(
                 .pointer
                 .interact_pos()
                 .is_some_and(|position| viewport.contains(position))
-    });
+    }) || focus::has_keyboard_focus(ui.ctx(), canvas_id);
+    let shortcuts = focus::shortcuts(ui.ctx(), canvas_id);
+    focus::begin(ui.ctx(), canvas_id);
+    focus::cancel_wire_on_escape(ui.ctx(), canvas_id);
     let dragged_id = ui.ctx().dragged_id();
     let (pointer, primary_down, frame_seconds) = ui.ctx().input(|input| {
         (
@@ -129,17 +134,22 @@ pub fn show(
             wire: options.wire,
             requested: options.request_compact,
             search_open: search.is_open(),
+            shortcuts,
         },
     );
     let viewport = ui.available_rect_before_wrap().intersect(ui.clip_rect());
+    // Canvas commands act on the node owning the focused control, otherwise
+    // on the pointer selection.
+    let keyboard_node = shortcuts.node.map(|node| [node]);
+    let targets: &[SnarlNodeId] = keyboard_node.as_ref().map_or(&selected, |node| node);
     let find = !crate::canvas_tools::picker_open(ui.ctx())
         && !GraphViewer::properties_open(ui.ctx())
-        && !ui.ctx().egui_wants_keyboard_input()
+        && shortcuts.enabled
         && ui
             .ctx()
             .input_mut(|input| input.consume_key(egui::Modifiers::COMMAND, egui::Key::F));
     if find {
-        search.open_selected(&selected, snarl);
+        search.open_selected(targets, snarl);
     }
     viewer.endpoint_search_match = search.active_match(viewer.source_blocks, viewer.target_blocks);
     let previous_transform = ui
@@ -185,13 +195,13 @@ pub fn show(
         && !crate::canvas_tools::picker_open(ui.ctx())
         && !egui::Popup::is_any_open(ui.ctx())
         && !GraphViewer::properties_open(ui.ctx())
-        && !ui.ctx().egui_wants_keyboard_input()
+        && shortcuts.enabled
         && ui.ctx().input_mut(|input| {
             input.consume_key(egui::Modifiers::NONE, egui::Key::Delete)
                 || input.consume_key(egui::Modifiers::NONE, egui::Key::Backspace)
         });
     if delete {
-        viewer.remove_snarl_nodes_recorded(&selected, snarl);
+        viewer.remove_snarl_nodes_recorded(targets, snarl);
     }
     let frame = style
         .bg_frame
@@ -234,13 +244,28 @@ pub fn show(
     viewer.endpoint_scroll.begin_geometry_frame();
     viewer.sync_endpoint_view(snarl);
     crate::canvas_tools::begin(ui.ctx(), options.tools_id, viewer, snarl);
-    ui.scope(|ui| {
-        options.density.apply(ui);
-        SnarlWidget::new()
-            .id(canvas_id)
-            .style(style)
-            .show(snarl, viewer, ui);
-    });
+    let surface = ui
+        .scope(|ui| {
+            options.density.apply(ui);
+            SnarlWidget::new()
+                .id(canvas_id)
+                .style(style)
+                .show(snarl, viewer, ui)
+        })
+        .inner;
+    if let Some(graph_position) = focus::finish(ui, canvas_id, &surface, viewport, viewer, snarl) {
+        // Tabbing to a control outside the viewport brings it into view.
+        ui.ctx().data_mut(|data| {
+            data.insert_temp(
+                focus_marker,
+                CanvasFocus {
+                    graph_position,
+                    zoom: None,
+                },
+            );
+        });
+        ui.ctx().request_repaint();
+    }
     if let Some(transform) = viewer.canvas_transform {
         ui.ctx()
             .data_mut(|data| data.insert_temp(transform_marker, CanvasTransform(transform)));

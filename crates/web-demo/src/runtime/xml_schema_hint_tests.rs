@@ -70,6 +70,7 @@ fn namespace_pair_hints() -> XmlSchemaHints {
                 location: "extension&v2.xsd".into(),
             },
         ],
+        derivation: None,
     }
 }
 
@@ -77,6 +78,7 @@ fn no_namespace_hints() -> XmlSchemaHints {
     XmlSchemaHints {
         no_namespace_location: Some("https://schemas.invalid/target.xsd".into()),
         locations: Vec::new(),
+        derivation: None,
     }
 }
 

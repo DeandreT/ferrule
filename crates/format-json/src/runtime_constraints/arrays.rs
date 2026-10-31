@@ -52,7 +52,7 @@ pub(crate) fn validate_contains(
     Ok(())
 }
 
-fn describe(range: ItemCountRange) -> String {
+pub(crate) fn describe(range: ItemCountRange) -> String {
     match (range.minimum(), range.maximum()) {
         (minimum, Some(maximum)) if minimum == maximum => format!("exactly {minimum}"),
         (0, Some(maximum)) => format!("at most {maximum}"),

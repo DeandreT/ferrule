@@ -33,6 +33,7 @@ fn project() -> Project {
                 xml_schema_hints: Some(ir::XmlSchemaHints {
                     no_namespace_location: Some(format!("{name}.xsd")),
                     locations: vec![],
+                    derivation: None,
                 }),
                 ..Default::default()
             },
@@ -92,6 +93,7 @@ fn one_unsupported_ordinary_xml_target_omits_whole_adapter_without_dropping_core
     mixed.target_options.xml_schema_hints = Some(ir::XmlSchemaHints {
         no_namespace_location: Some("primary.xsd".into()),
         locations: vec![],
+        derivation: None,
     });
     mixed.extra_targets[1].options.xml_document = false;
     mixed.extra_targets[1].options.xml_schema_hints = None;

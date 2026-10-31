@@ -9,6 +9,12 @@ pub(super) struct Recipe {
     fields: Vec<Field>,
 }
 
+impl Recipe {
+    pub(super) fn input_pins(&self) -> impl Iterator<Item = u32> + '_ {
+        self.fields.iter().map(|field| field.input)
+    }
+}
+
 #[derive(Clone)]
 struct Field {
     input: u32,

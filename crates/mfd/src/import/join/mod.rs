@@ -2,20 +2,28 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use ir::SchemaKind;
 use mapping::{
-    IterationOutput, JoinConditions as MappingJoinConditions, JoinId, JoinKey as MappingJoinKey,
-    JoinPlan, JoinSource, Node as MappingNode, NodeId,
+    ComputedJoinSource, ComputedJoinSourceId, ComputedJoinValue, IterationOutput,
+    JoinConditions as MappingJoinConditions, JoinId, JoinKey as MappingJoinKey, JoinPlan,
+    JoinSource, Node as MappingNode, NodeId,
 };
 use roxmltree::Node as XmlNode;
 
 use super::graph::GraphBuilder;
 use super::group_projection::TargetIteration;
 use super::iteration::split_at_innermost_repeating;
-use super::schema::{
-    SchemaComponent, collect_matching_scalar_paths, normalize_xml_entry_name, parse_u32,
-    schema_node_at,
-};
+use super::schema::{SchemaComponent, collect_matching_scalar_paths, parse_u32, schema_node_at};
 use super::scope::ScopeBuilder;
 use super::source::SourcePath;
+
+mod computed;
+mod parse;
+
+use computed::ComputedInput;
+pub(super) use computed::KeyContext;
+use parse::{declared_output_ports, parse};
+
+/// A plan holds at most one computed source, so its id is fixed.
+const COMPUTED_KEY: ComputedJoinSourceId = ComputedJoinSourceId::new(1);
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct ParsedJoin {
@@ -85,34 +93,30 @@ impl ParsedJoin {
                 sources.len()
             ));
         }
-        let collections = sources
-            .iter()
-            .map(|source| source.collection().to_vec())
-            .collect::<Vec<_>>();
         let mut plan = JoinPlan::new(
             sources[0].clone(),
             sources[1].clone(),
-            self.stage_conditions(1, &collections)?,
+            self.stage_conditions(1, sources)?,
         )
         .map_err(|error| error.to_string())?;
         for (stage, source) in sources.iter().enumerate().skip(2) {
             plan = plan
-                .then(source.clone(), self.stage_conditions(stage, &collections)?)
+                .then(source.clone(), self.stage_conditions(stage, sources)?)
                 .map_err(|error| error.to_string())?;
         }
-        let outputs = self
-            .inputs
-            .iter()
-            .flat_map(|input| {
-                let collection = collections[input.index].clone();
-                input.outputs.iter().map(move |output| PlannedJoinOutput {
-                    port: output.port,
-                    input_index: input.index,
-                    collection: collection.clone(),
-                    path: output.path.clone(),
-                })
-            })
-            .collect();
+        let mut outputs = Vec::new();
+        for input in self.inputs.iter().filter(|input| !input.outputs.is_empty()) {
+            let collection = sources[input.index]
+                .as_collection()
+                .ok_or_else(|| format!("computed join input {} has an output", input.index))?
+                .collection();
+            outputs.extend(input.outputs.iter().map(|output| PlannedJoinOutput {
+                port: output.port,
+                input_index: input.index,
+                collection: collection.to_vec(),
+                path: output.path.clone(),
+            }));
+        }
         Ok(PlannedJoin {
             plan,
             tuple_output: self.tuple_output,
@@ -123,7 +127,7 @@ impl ParsedJoin {
     fn stage_conditions(
         &self,
         stage: usize,
-        collections: &[Vec<String>],
+        sources: &[JoinSource],
     ) -> Result<MappingJoinConditions, String> {
         let mut conditions = self.equalities.iter().filter_map(|equality| {
             let (left, right) = if equality.first.input_index == stage
@@ -135,11 +139,16 @@ impl ParsedJoin {
             } else {
                 return None;
             };
-            Some(MappingJoinKey::new(
-                collections[left.input_index].clone(),
-                left.path.clone(),
-                right.path.clone(),
-            ))
+            Some(match &sources[left.input_index] {
+                JoinSource::Collection(source) => MappingJoinKey::new(
+                    source.collection().to_vec(),
+                    left.path.clone(),
+                    right.path.clone(),
+                ),
+                JoinSource::Computed(source) => {
+                    MappingJoinKey::computed(source.id(), right.path.clone())
+                }
+            })
         });
         let first = conditions
             .next()
@@ -181,14 +190,32 @@ pub(super) struct Registry {
 struct ResolvedJoin {
     parsed: ParsedJoin,
     inputs: Vec<ResolvedInput>,
-    root: PlannedJoin,
+    /// The root-context plan. A computed key is lowered only in the
+    /// receiving context of the iteration it drives, so it has none.
+    root: Option<PlannedJoin>,
     planned: Option<PlannedJoin>,
     target_path: Option<Vec<String>>,
 }
 
 #[derive(Clone)]
 #[cfg_attr(test, derive(Debug))]
-struct ResolvedInput {
+enum ResolvedInput {
+    Source(SourceInput),
+    Computed(ComputedInput),
+}
+
+impl ResolvedInput {
+    fn as_source(&self) -> Option<&SourceInput> {
+        match self {
+            Self::Source(input) => Some(input),
+            Self::Computed(_) => None,
+        }
+    }
+}
+
+#[derive(Clone)]
+#[cfg_attr(test, derive(Debug))]
+struct SourceInput {
     source: usize,
     path: Vec<String>,
     singleton: bool,
@@ -236,13 +263,7 @@ impl PendingJoins {
         }
     }
 
-    pub(super) fn resolve(
-        self,
-        edge_from: &BTreeMap<u32, u32>,
-        sources: &[&SchemaComponent],
-        source_names: &[String],
-        warnings: &mut Vec<String>,
-    ) -> Registry {
+    pub(super) fn resolve(self, context: &KeyContext<'_>, warnings: &mut Vec<String>) -> Registry {
         let mut registry = Registry {
             rejected_row_outputs: self.rejected_row_outputs,
             rejected_field_outputs: self.rejected_field_outputs,
@@ -260,9 +281,10 @@ impl PendingJoins {
                 continue;
             }
             let resolved = if pending.parsed.equalities.is_empty() {
-                resolve_hierarchy(&pending, edge_from, sources).map(EitherJoin::Hierarchy)
+                resolve_hierarchy(&pending, context.edge_from, context.sources)
+                    .map(EitherJoin::Hierarchy)
             } else {
-                resolve_join(&pending, edge_from, sources, source_names)
+                resolve_join(&pending, context)
                     .map(Box::new)
                     .map(EitherJoin::Keyed)
             };
@@ -350,6 +372,7 @@ impl Registry {
         id: JoinId,
         target_path: &[String],
         anchor: &[String],
+        computed_key: Option<ComputedJoinValue>,
         sources: &[&SchemaComponent],
         source_names: &[String],
     ) -> Result<PreparedIteration, String> {
@@ -370,6 +393,18 @@ impl Registry {
             .inputs
             .iter()
             .map(|input| {
+                let input = match input {
+                    ResolvedInput::Source(input) => input,
+                    ResolvedInput::Computed(_) => {
+                        let value = computed_key
+                            .clone()
+                            .ok_or("the computed join key was not lowered")?;
+                        return Ok(JoinSource::Computed(ComputedJoinSource::with_value(
+                            COMPUTED_KEY,
+                            value,
+                        )));
+                    }
+                };
                 let mut absolute = if input.source == 0 {
                     Vec::new()
                 } else {
@@ -400,19 +435,38 @@ impl Registry {
         Ok(PreparedIteration::Owner)
     }
 
+    /// The computed input of a join no iteration has prepared yet: only the
+    /// first preparation lowers its key.
+    fn unprepared_computed_key(&self, id: JoinId) -> Option<ComputedInput> {
+        let join = self.joins.get(&id)?;
+        if join.target_path.is_some() {
+            return None;
+        }
+        join.inputs.iter().find_map(|input| match input {
+            ResolvedInput::Computed(computed) => Some(computed.clone()),
+            ResolvedInput::Source(_) => None,
+        })
+    }
+
     fn planned(&self, id: JoinId) -> Option<&PlannedJoin> {
         self.joins.get(&id)?.planned.as_ref()
     }
 
-    fn activate_root_plan(&mut self, id: JoinId) -> Option<JoinPlan> {
-        let join = self.joins.get_mut(&id)?;
+    fn activate_root_plan(&mut self, id: JoinId) -> Result<JoinPlan, String> {
+        let join = self
+            .joins
+            .get_mut(&id)
+            .ok_or("join descriptor is missing")?;
+        let root = join.root.as_ref().ok_or(
+            "a computed join key feeding a joined aggregate is not supported; it was not observed",
+        )?;
         if let Some(planned) = &join.planned
-            && planned.plan != join.root.plan
+            && planned.plan != root.plan
         {
-            return None;
+            return Err("joined sequence is owned by an incompatible nested context".to_string());
         }
-        join.planned.get_or_insert_with(|| join.root.clone());
-        Some(join.root.plan.clone())
+        join.planned.get_or_insert_with(|| root.clone());
+        Ok(root.plan.clone())
     }
 
     fn field(&self, port: u32) -> Option<&ResolvedField> {
@@ -477,10 +531,22 @@ impl GraphBuilder<'_> {
         scopes: &ScopeBuilder,
     ) -> PreparedIteration {
         let anchor = scopes.enclosing_anchor(target_path);
-        match self
+        let computed_key = self
             .joins
-            .prepare(id, target_path, &anchor, self.sources, self.source_names)
-        {
+            .unprepared_computed_key(id)
+            .map(|computed| self.lower_computed_key(&computed, &anchor))
+            .transpose();
+        let prepared = computed_key.and_then(|computed_key| {
+            self.joins.prepare(
+                id,
+                target_path,
+                &anchor,
+                computed_key,
+                self.sources,
+                self.source_names,
+            )
+        });
+        match prepared {
             Ok(PreparedIteration::Projection) if !allow_projection => {
                 self.rejected_join_paths.insert(target_path.to_vec());
                 if self.warned_join_controls.insert(id) {
@@ -518,9 +584,7 @@ impl GraphBuilder<'_> {
         feed: u32,
     ) -> Result<Option<(JoinId, JoinPlan, Option<NodeId>)>, String> {
         if let Some(join) = self.joins.row_join(feed) {
-            let plan = self.joins.activate_root_plan(join).ok_or_else(|| {
-                "joined sequence is owned by an incompatible nested context".to_string()
-            })?;
+            let plan = self.joins.activate_root_plan(join)?;
             return Ok(Some((join, plan, None)));
         }
 
@@ -603,9 +667,7 @@ impl GraphBuilder<'_> {
         let Some(join) = owner else {
             return Ok(None);
         };
-        let plan = self.joins.activate_root_plan(join).ok_or_else(|| {
-            "joined sequence is owned by an incompatible nested context".to_string()
-        })?;
+        let plan = self.joins.activate_root_plan(join)?;
         let expression = self
             .value_node(feed)
             .ok_or_else(|| "joined sequence expression cannot be materialized".to_string())?;
@@ -710,7 +772,11 @@ impl GraphBuilder<'_> {
             // structural source branch.
             return Vec::new();
         };
-        let Some(input) = resolved.inputs.get(output.input_index) else {
+        let Some(input) = resolved
+            .inputs
+            .get(output.input_index)
+            .and_then(ResolvedInput::as_source)
+        else {
             return Vec::new();
         };
         let Some(source) = self.sources.get(input.source) else {
@@ -793,21 +859,27 @@ pub(super) fn prepare_iterations(
     }
 }
 
-fn resolve_join(
-    pending: &PendingJoin,
-    edge_from: &BTreeMap<u32, u32>,
-    sources: &[&SchemaComponent],
-    source_names: &[String],
-) -> Result<ResolvedJoin, String> {
-    let inputs = resolve_inputs(&pending.parsed, edge_from, sources)?;
+fn resolve_join(pending: &PendingJoin, context: &KeyContext<'_>) -> Result<ResolvedJoin, String> {
+    let sources = context.sources;
+    let inputs = resolve_keyed_inputs(&pending.parsed, context)?;
     for equality in &pending.parsed.equalities {
         for key in [&equality.first, &equality.second] {
-            let input = inputs
+            let input = match inputs
                 .get(key.input_index)
-                .ok_or("join equality references an unknown input")?;
+                .ok_or("join equality references an unknown input")?
+            {
+                ResolvedInput::Source(input) => input,
+                ResolvedInput::Computed(_) if key.path.is_empty() => continue,
+                ResolvedInput::Computed(_) => {
+                    return Err(format!(
+                        "input {} computed key equality path must be empty",
+                        key.input_index
+                    ));
+                }
+            };
             let mut path = input.path.clone();
             path.extend(key.path.iter().cloned());
-            if inputs[key.input_index].singleton && !key.path.is_empty() {
+            if input.singleton && !key.path.is_empty() {
                 return Err(format!(
                     "input {} singleton equality path must be empty",
                     key.input_index
@@ -829,11 +901,20 @@ fn resolve_join(
     let plan_sources = inputs
         .iter()
         .map(|input| {
+            let input = match input {
+                ResolvedInput::Source(input) => input,
+                // Checks the plan's shape now; the key node itself is
+                // lowered in the receiving context of its iteration.
+                ResolvedInput::Computed(_) => {
+                    return Ok(JoinSource::computed(COMPUTED_KEY, NodeId::default()));
+                }
+            };
             let mut collection = if input.source == 0 {
                 Vec::new()
             } else {
                 vec![
-                    source_names
+                    context
+                        .source_names
                         .get(input.source)
                         .cloned()
                         .ok_or("join source has no runtime name")?,
@@ -849,10 +930,13 @@ fn resolve_join(
         .collect::<Result<Vec<_>, String>>()?;
     let root = pending.parsed.to_plan_sources(&plan_sources)?;
     validate_outputs(&root, &inputs, sources)?;
+    let computed = inputs
+        .iter()
+        .any(|input| matches!(input, ResolvedInput::Computed(_)));
     Ok(ResolvedJoin {
         parsed: pending.parsed.clone(),
         inputs,
-        root,
+        root: (!computed).then_some(root),
         planned: None,
         target_path: None,
     })
@@ -863,48 +947,90 @@ enum EitherJoin {
     Hierarchy(ResolvedHierarchy),
 }
 
-fn resolve_inputs(
+/// Resolves the inputs of a keyed join: source feeds as today, plus at most
+/// one computed key beside one repeating source collection.
+fn resolve_keyed_inputs(
     parsed: &ParsedJoin,
-    edge_from: &BTreeMap<u32, u32>,
-    sources: &[&SchemaComponent],
+    context: &KeyContext<'_>,
 ) -> Result<Vec<ResolvedInput>, String> {
+    let computed = parsed
+        .inputs
+        .iter()
+        .filter(|input| {
+            context
+                .edge_from
+                .get(&input.input_port)
+                .is_some_and(|feed| context.is_candidate(*feed))
+        })
+        .map(|input| input.index)
+        .collect::<Vec<_>>();
+    if let [first, second, ..] = computed.as_slice() {
+        return Err(format!(
+            "inputs {first} and {second} are both computed keys; a join admits at most one"
+        ));
+    }
     let mut inputs = Vec::with_capacity(parsed.inputs.len());
     for input in &parsed.inputs {
-        let feed = edge_from
-            .get(&input.input_port)
-            .copied()
-            .ok_or_else(|| format!("input {} is not connected", input.index))?;
-        let (source, path) = sources
-            .iter()
-            .enumerate()
-            .find_map(|(index, component)| {
-                component
-                    .ports
-                    .get(&feed)
-                    .cloned()
-                    .map(|path| (index, path))
-            })
-            .ok_or_else(|| format!("input {} is not a plain source feed", input.index))?;
-        let source_node = sources
-            .get(source)
-            .and_then(|source| schema_node_at(&source.schema, &path));
-        let singleton = source_node.is_some_and(|node| !node.repeating && node.is_scalar());
-        if !singleton
-            && !source_node
-                .is_some_and(|node| node.repeating && matches!(node.kind, SchemaKind::Group { .. }))
-        {
-            return Err(format!(
-                "input {} must be a repeating structural source or singleton scalar",
-                input.index
-            ));
-        }
-        inputs.push(ResolvedInput {
-            source,
-            path,
-            singleton,
+        let feed = connected_feed(input, context.edge_from)?;
+        inputs.push(if computed.contains(&input.index) {
+            ResolvedInput::Computed(computed::admit(input, feed, parsed.inputs.len(), context)?)
+        } else {
+            ResolvedInput::Source(resolve_source_input(input, feed, context.sources)?)
         });
     }
+    if !computed.is_empty()
+        && let Some(index) = inputs
+            .iter()
+            .position(|input| input.as_source().is_some_and(|input| input.singleton))
+    {
+        return Err(format!(
+            "input {index} beside a computed key must be a repeating source collection"
+        ));
+    }
     Ok(inputs)
+}
+
+fn connected_feed(input: &JoinInput, edge_from: &BTreeMap<u32, u32>) -> Result<u32, String> {
+    edge_from
+        .get(&input.input_port)
+        .copied()
+        .ok_or_else(|| format!("input {} is not connected", input.index))
+}
+
+fn resolve_source_input(
+    input: &JoinInput,
+    feed: u32,
+    sources: &[&SchemaComponent],
+) -> Result<SourceInput, String> {
+    let (source, path) = sources
+        .iter()
+        .enumerate()
+        .find_map(|(index, component)| {
+            component
+                .ports
+                .get(&feed)
+                .cloned()
+                .map(|path| (index, path))
+        })
+        .ok_or_else(|| format!("input {} is not a plain source feed", input.index))?;
+    let source_node = sources
+        .get(source)
+        .and_then(|source| schema_node_at(&source.schema, &path));
+    let singleton = source_node.is_some_and(|node| !node.repeating && node.is_scalar());
+    if !singleton
+        && !source_node
+            .is_some_and(|node| node.repeating && matches!(node.kind, SchemaKind::Group { .. }))
+    {
+        return Err(format!(
+            "input {} must be a repeating structural source or singleton scalar",
+            input.index
+        ));
+    }
+    Ok(SourceInput {
+        source,
+        path,
+        singleton,
+    })
 }
 
 fn resolve_hierarchy(
@@ -912,7 +1038,12 @@ fn resolve_hierarchy(
     edge_from: &BTreeMap<u32, u32>,
     sources: &[&SchemaComponent],
 ) -> Result<ResolvedHierarchy, String> {
-    let inputs = resolve_inputs(&pending.parsed, edge_from, sources)?;
+    let inputs = pending
+        .parsed
+        .inputs
+        .iter()
+        .map(|input| resolve_source_input(input, connected_feed(input, edge_from)?, sources))
+        .collect::<Result<Vec<_>, String>>()?;
     let Some(first) = inputs.first() else {
         return Err("keyless hierarchy has no inputs".to_string());
     };
@@ -985,7 +1116,8 @@ fn validate_outputs(
     for output in &planned.outputs {
         let input = inputs
             .get(output.input_index)
-            .ok_or("join output references an unknown input")?;
+            .and_then(ResolvedInput::as_source)
+            .ok_or("join output references an unknown source input")?;
         let mut absolute = input.path.clone();
         absolute.extend(output.path.iter().cloned());
         if !output.path.is_empty()
@@ -1001,355 +1133,6 @@ fn validate_outputs(
         }
     }
     Ok(())
-}
-
-fn declared_output_ports(component: XmlNode<'_, '_>) -> (BTreeSet<u32>, BTreeSet<u32>) {
-    let mut rows = BTreeSet::new();
-    let mut fields = BTreeSet::new();
-    let Some(tuple) = component
-        .descendants()
-        .find(|node| node.has_tag_name("entry") && node.attribute("name") == Some("tuple"))
-    else {
-        return (rows, fields);
-    };
-    if let Some(port) = tuple
-        .attribute("outkey")
-        .and_then(|value| value.parse().ok())
-    {
-        rows.insert(port);
-    }
-    for branch in tuple.children().filter(|node| node.has_tag_name("entry")) {
-        let Some(root) = branch.children().find(|node| node.has_tag_name("entry")) else {
-            continue;
-        };
-        for output in root.descendants().filter(|node| node.has_tag_name("entry")) {
-            let Some(port) = output
-                .attribute("outkey")
-                .and_then(|value| value.parse().ok())
-            else {
-                continue;
-            };
-            if output == root {
-                rows.insert(port);
-            } else {
-                fields.insert(port);
-            }
-        }
-    }
-    (rows, fields)
-}
-
-pub(super) fn parse(component: &XmlNode<'_, '_>) -> Result<ParsedJoin, String> {
-    if component.attribute("library") != Some("core") || component.attribute("kind") != Some("32") {
-        return Err("component is not a core kind=32 join".to_string());
-    }
-    let data = one_child(*component, "data", "join component")?;
-    let root = one_child(data, "root", "join data")?;
-    let document = one_named_entry(root, "document", "join root")?;
-    let tuple = one_named_entry(document, "tuple", "join document")?;
-    let tuple_output = optional_port(tuple, "outkey", "join tuple")?;
-    let inputs = parse_inputs(tuple)?;
-
-    let join = one_child(data, "join", "join data")?;
-    ensure_empty_custom_conditions(join)?;
-    let keypaths = one_child(join, "keypaths", "join metadata")?;
-    let paths = parse_keypaths(keypaths)?;
-    let joinkeys = one_child(join, "joinkeys", "join metadata")?;
-    let equalities = parse_equalities(joinkeys, &paths, inputs.len())?;
-
-    validate_ports(tuple_output, &inputs)?;
-    Ok(ParsedJoin {
-        tuple_output,
-        inputs,
-        equalities,
-    })
-}
-
-fn parse_inputs(tuple: XmlNode<'_, '_>) -> Result<Vec<JoinInput>, String> {
-    let mut branches = BTreeMap::new();
-    for branch in tuple.children().filter(|node| node.has_tag_name("entry")) {
-        let name = branch.attribute("name").unwrap_or_default();
-        let index = name
-            .strip_prefix("dynamic_tree_node")
-            .filter(|suffix| !suffix.is_empty())
-            .and_then(|suffix| suffix.parse::<usize>().ok())
-            .ok_or_else(|| format!("join tuple has unsupported branch `{name}`"))?;
-        if branches.insert(index, branch).is_some() {
-            return Err(format!("join tuple repeats input index {index}"));
-        }
-    }
-    if branches.len() < 2 {
-        return Err("join must declare at least two inputs".to_string());
-    }
-    for (expected, actual) in branches.keys().copied().enumerate() {
-        if actual != expected {
-            return Err(format!(
-                "join input indices must be contiguous from 0; expected {expected}, found {actual}"
-            ));
-        }
-    }
-
-    branches
-        .into_iter()
-        .map(|(index, branch)| parse_input(index, branch))
-        .collect()
-}
-
-fn parse_input(index: usize, branch: XmlNode<'_, '_>) -> Result<JoinInput, String> {
-    let roots = branch
-        .children()
-        .filter(|node| node.has_tag_name("entry"))
-        .collect::<Vec<_>>();
-    let [root] = roots.as_slice() else {
-        return Err(format!(
-            "join input {index} must contain exactly one root entry"
-        ));
-    };
-    let input_port = required_port(*root, "inpkey", &format!("join input {index}"))?;
-    let (name, _) = normalize_xml_entry_name(root.attribute("name").unwrap_or_default());
-    if name.is_empty() {
-        return Err(format!("join input {index} has no root name"));
-    }
-    let mut outputs = Vec::new();
-    if let Some(port) = optional_port(*root, "outkey", &format!("join input {index} root"))? {
-        outputs.push(JoinOutput {
-            port,
-            path: Vec::new(),
-        });
-    }
-    collect_outputs(*root, &mut Vec::new(), &mut outputs)?;
-    Ok(JoinInput {
-        index,
-        name: name.to_string(),
-        input_port,
-        outputs,
-    })
-}
-
-fn collect_outputs(
-    entry: XmlNode<'_, '_>,
-    path: &mut Vec<String>,
-    outputs: &mut Vec<JoinOutput>,
-) -> Result<(), String> {
-    for child in entry.children().filter(|node| node.has_tag_name("entry")) {
-        let (name, _) = normalize_xml_entry_name(child.attribute("name").unwrap_or_default());
-        if name.is_empty() {
-            return Err("join output entry has no name".to_string());
-        }
-        path.push(name.to_string());
-        if let Some(port) = optional_port(child, "outkey", "join output entry")? {
-            outputs.push(JoinOutput {
-                port,
-                path: path.clone(),
-            });
-        }
-        collect_outputs(child, path, outputs)?;
-        path.pop();
-    }
-    Ok(())
-}
-
-fn parse_keypaths(keypaths: XmlNode<'_, '_>) -> Result<BTreeMap<u32, Vec<String>>, String> {
-    let mut paths = BTreeMap::new();
-    for root in keypaths
-        .children()
-        .filter(|node| node.has_tag_name("entry"))
-    {
-        collect_keypaths(root, &mut Vec::new(), &mut paths)?;
-    }
-    Ok(paths)
-}
-
-fn collect_keypaths(
-    entry: XmlNode<'_, '_>,
-    path: &mut Vec<String>,
-    paths: &mut BTreeMap<u32, Vec<String>>,
-) -> Result<(), String> {
-    let raw_name = entry.attribute("name").unwrap_or_default();
-    let (name, _) = normalize_xml_entry_name(raw_name);
-    if !name.is_empty() {
-        path.push(name.to_string());
-    }
-    if let Some(id) = optional_port(entry, "outkey", "join key path")?
-        && paths.insert(id, path.clone()).is_some()
-    {
-        return Err(format!("join repeats key path id {id}"));
-    }
-    for child in entry.children().filter(|node| node.has_tag_name("entry")) {
-        collect_keypaths(child, path, paths)?;
-    }
-    if !name.is_empty() {
-        path.pop();
-    }
-    Ok(())
-}
-
-fn parse_equalities(
-    joinkeys: XmlNode<'_, '_>,
-    paths: &BTreeMap<u32, Vec<String>>,
-    input_count: usize,
-) -> Result<Vec<JoinEquality>, String> {
-    let pairs = joinkeys
-        .children()
-        .filter(|node| node.has_tag_name("keypair"))
-        .collect::<Vec<_>>();
-    if pairs.is_empty() {
-        if paths.is_empty() {
-            return Ok(Vec::new());
-        }
-        return Err("join must declare at least one equality condition".to_string());
-    }
-    let mut equalities = Vec::with_capacity(pairs.len());
-    let mut used_inputs = BTreeSet::new();
-    for pair in pairs {
-        let first = parse_key(
-            one_child(pair, "first-key", "join key pair")?,
-            0,
-            paths,
-            input_count,
-        )?;
-        let second = parse_key(
-            one_child(pair, "second-key", "join key pair")?,
-            1,
-            paths,
-            input_count,
-        )?;
-        if first.input_index == second.input_index {
-            return Err(format!(
-                "join equality must compare distinct inputs; both use index {}",
-                first.input_index
-            ));
-        }
-        used_inputs.insert(first.input_index);
-        used_inputs.insert(second.input_index);
-        equalities.push(JoinEquality { first, second });
-    }
-    if used_inputs.len() != input_count {
-        return Err("every join input must participate in an equality condition".to_string());
-    }
-    for stage in 1..input_count {
-        if !equalities.iter().any(|equality| {
-            equality.first.input_index == stage && equality.second.input_index < stage
-                || equality.second.input_index == stage && equality.first.input_index < stage
-        }) {
-            return Err(format!(
-                "join input {stage} must have an equality with an earlier input"
-            ));
-        }
-    }
-    Ok(equalities)
-}
-
-fn parse_key(
-    key: XmlNode<'_, '_>,
-    default_input: usize,
-    paths: &BTreeMap<u32, Vec<String>>,
-    input_count: usize,
-) -> Result<JoinKey, String> {
-    let path_id = required_port(key, "path-id", "join equality key")?;
-    let input_index = match key.attribute("input-index") {
-        Some(value) => value
-            .parse::<usize>()
-            .map_err(|_| format!("join equality has invalid input index `{value}`"))?,
-        None => default_input,
-    };
-    if input_index >= input_count {
-        return Err(format!(
-            "join equality input index {input_index} is out of range for {input_count} inputs"
-        ));
-    }
-    let path = paths
-        .get(&path_id)
-        .cloned()
-        .ok_or_else(|| format!("join equality references unknown key path id {path_id}"))?;
-    Ok(JoinKey {
-        input_index,
-        path_id,
-        path,
-    })
-}
-
-fn ensure_empty_custom_conditions(join: XmlNode<'_, '_>) -> Result<(), String> {
-    for condition in join
-        .descendants()
-        .filter(|node| node.has_tag_name("condition"))
-    {
-        let has_content = condition.attributes().len() != 0
-            || condition.children().any(|child| {
-                child.is_element() || child.text().is_some_and(|text| !text.trim().is_empty())
-            });
-        if has_content {
-            return Err("join custom key-path conditions are not supported".to_string());
-        }
-    }
-    Ok(())
-}
-
-fn validate_ports(tuple_output: Option<u32>, inputs: &[JoinInput]) -> Result<(), String> {
-    let mut ports = BTreeSet::new();
-    if let Some(port) = tuple_output {
-        ports.insert(port);
-    }
-    for input in inputs {
-        if !ports.insert(input.input_port) {
-            return Err(format!("join repeats port key {}", input.input_port));
-        }
-        for output in &input.outputs {
-            if !ports.insert(output.port) {
-                return Err(format!("join repeats port key {}", output.port));
-            }
-        }
-    }
-    Ok(())
-}
-
-fn one_child<'a, 'input>(
-    parent: XmlNode<'a, 'input>,
-    tag: &str,
-    context: &str,
-) -> Result<XmlNode<'a, 'input>, String> {
-    let matches = parent
-        .children()
-        .filter(|node| node.has_tag_name(tag))
-        .collect::<Vec<_>>();
-    let [node] = matches.as_slice() else {
-        return Err(format!("{context} must contain exactly one <{tag}>"));
-    };
-    Ok(*node)
-}
-
-fn one_named_entry<'a, 'input>(
-    parent: XmlNode<'a, 'input>,
-    name: &str,
-    context: &str,
-) -> Result<XmlNode<'a, 'input>, String> {
-    let matches = parent
-        .children()
-        .filter(|node| node.has_tag_name("entry") && node.attribute("name") == Some(name))
-        .collect::<Vec<_>>();
-    let [node] = matches.as_slice() else {
-        return Err(format!("{context} must contain exactly one `{name}` entry"));
-    };
-    Ok(*node)
-}
-
-fn required_port(node: XmlNode<'_, '_>, attribute: &str, context: &str) -> Result<u32, String> {
-    let value = node
-        .attribute(attribute)
-        .ok_or_else(|| format!("{context} has no `{attribute}`"))?;
-    value
-        .parse::<u32>()
-        .map_err(|_| format!("{context} has invalid `{attribute}` value `{value}`"))
-}
-
-fn optional_port(
-    node: XmlNode<'_, '_>,
-    attribute: &str,
-    context: &str,
-) -> Result<Option<u32>, String> {
-    node.attribute(attribute)
-        .map(|_| required_port(node, attribute, context))
-        .transpose()
 }
 
 #[cfg(test)]

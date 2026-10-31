@@ -51,9 +51,9 @@ impl ScopeSetting {
 }
 
 /// The iteration forms editors author: source-backed iterations, generated
-/// sequences, and joins over static collections. Owned joins, concatenated
-/// segments, and presence conditions have no setting value, so edits that
-/// involve them are not expressed as scope settings.
+/// sequences, optional presence, and joins over static collections. Owned joins
+/// and concatenated segments have no setting value, so edits that involve them
+/// are not expressed as scope settings.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Iteration {
     None,
@@ -67,6 +67,9 @@ pub enum Iteration {
         output_path: NodeId,
     },
     Generated(SequenceExpr),
+    OptionalPresence {
+        condition: NodeId,
+    },
     Joined {
         id: JoinId,
         plan: JoinPlan,
@@ -102,13 +105,14 @@ impl Iteration {
                 output_path: *output_path,
             },
             ScopeIteration::Sequence(sequence) => Self::Generated(sequence.clone()),
+            ScopeIteration::OptionalPresence { condition } => Self::OptionalPresence {
+                condition: *condition,
+            },
             ScopeIteration::InnerJoin { id, plan } => Self::Joined {
                 id: *id,
                 plan: plan.clone(),
             },
-            ScopeIteration::OwnedInnerJoin { .. }
-            | ScopeIteration::Concatenate(_)
-            | ScopeIteration::OptionalPresence { .. } => return None,
+            ScopeIteration::OwnedInnerJoin { .. } | ScopeIteration::Concatenate(_) => return None,
         })
     }
 
@@ -131,6 +135,9 @@ impl Iteration {
                 output_path: *output_path,
             },
             Self::Generated(sequence) => ScopeIteration::Sequence(sequence.clone()),
+            Self::OptionalPresence { condition } => ScopeIteration::OptionalPresence {
+                condition: *condition,
+            },
             Self::Joined { id, plan } => ScopeIteration::InnerJoin {
                 id: *id,
                 plan: plan.clone(),

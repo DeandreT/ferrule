@@ -267,6 +267,74 @@ fn scalar_function_project() -> Project {
         ],
     );
 
+    let translate = |graph: &mut GraphBuilder, value: Value, search: &str, replacement: &str| {
+        graph.call_values(
+            "translate",
+            vec![
+                value,
+                Value::String(search.into()),
+                Value::String(replacement.into()),
+            ],
+        )
+    };
+    let translate_positional = translate(&mut graph, Value::String("[12,3]".into()), "[,]", "(.)");
+    let translate_removed = translate(
+        &mut graph,
+        Value::String("38ab8a7a65xkh3".into()),
+        "0123456789",
+        "",
+    );
+    let translate_duplicate = translate(&mut graph, Value::String("abcabc".into()), "aba", "xyz");
+    let translate_unicode = translate(
+        &mut graph,
+        Value::String("a🙂b\u{10348}".into()),
+        "🙂b",
+        "é",
+    );
+    let translate_empty = translate(&mut graph, Value::String(String::new()), "abc", "x");
+    let translate_null = translate(&mut graph, Value::Null, "a", "b");
+    add_group(
+        &mut target,
+        &mut scopes,
+        "Translate",
+        vec![
+            ("Positional", ScalarType::String, translate_positional),
+            ("Removed", ScalarType::String, translate_removed),
+            ("Duplicate", ScalarType::String, translate_duplicate),
+            ("Unicode", ScalarType::String, translate_unicode),
+            ("Empty", ScalarType::String, translate_empty),
+            ("Null", ScalarType::String, translate_null),
+        ],
+    );
+
+    let replace_literal =
+        |graph: &mut GraphBuilder, value: Value, search: &str, replacement: &str| {
+            graph.call_values(
+                "replace_literal",
+                vec![
+                    value,
+                    Value::String(search.into()),
+                    Value::String(replacement.into()),
+                ],
+            )
+        };
+    let replace_metacharacters =
+        replace_literal(&mut graph, Value::String("1*2(3)$4\\5".into()), "(", "[");
+    let replace_dollar = replace_literal(&mut graph, Value::String("abc".into()), "b", "$0$1\\");
+    let replace_overlap = replace_literal(&mut graph, Value::String("aaa".into()), "aa", "b");
+    let replace_null = replace_literal(&mut graph, Value::Null, "a", "b");
+    add_group(
+        &mut target,
+        &mut scopes,
+        "ReplaceLiteral",
+        vec![
+            ("Metacharacters", ScalarType::String, replace_metacharacters),
+            ("Dollar", ScalarType::String, replace_dollar),
+            ("Overlap", ScalarType::String, replace_overlap),
+            ("Null", ScalarType::String, replace_null),
+        ],
+    );
+
     let string_null = graph.call_values("string", vec![Value::Null]);
     let string_nil = graph.call_values("string", vec![Value::xml_nil()]);
     let string_bool = graph.call_values("string", vec![Value::Bool(false)]);
@@ -622,6 +690,26 @@ fn expected() -> Instance {
                     ("AfterMiss", Value::String(String::new())),
                     ("BeforeUnicode", Value::String("head".into())),
                     ("AfterUnicode", Value::String("tail🙂end".into())),
+                ]),
+            ),
+            (
+                "Translate".into(),
+                values(vec![
+                    ("Positional", Value::String("(12.3)".into())),
+                    ("Removed", Value::String("abaaxkh".into())),
+                    ("Duplicate", Value::String("xycxyc".into())),
+                    ("Unicode", Value::String("aé\u{10348}".into())),
+                    ("Empty", Value::String(String::new())),
+                    ("Null", Value::String(String::new())),
+                ]),
+            ),
+            (
+                "ReplaceLiteral".into(),
+                values(vec![
+                    ("Metacharacters", Value::String("1*2[3)$4\\5".into())),
+                    ("Dollar", Value::String("a$0$1\\c".into())),
+                    ("Overlap", Value::String("ba".into())),
+                    ("Null", Value::String(String::new())),
                 ]),
             ),
             (

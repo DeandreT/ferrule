@@ -48,6 +48,8 @@ pub enum ScopeFeature {
     OwnedSourceIteration,
     Iteration,
     CorrelatedInnerJoin,
+    /// An inner join whose computed key is a sequence.
+    SequenceComputedJoinKey,
     DynamicBindings,
     DynamicChildren,
     DynamicFieldMerge,
@@ -59,6 +61,8 @@ pub enum UnsupportedNodeKind {
     OwnedPosition,
     OwnedRowDocumentPath,
     CorrelatedJoinAggregate,
+    /// A join aggregate whose computed key is a sequence.
+    SequenceComputedJoinAggregate,
 }
 
 /// Complete deterministic diagnostic set for one failed lowering attempt.
@@ -157,6 +161,9 @@ impl fmt::Display for ScopeFeature {
             Self::CorrelatedInnerJoin => {
                 formatter.write_str("an unsupported correlated inner join")
             }
+            Self::SequenceComputedJoinKey => {
+                formatter.write_str("an inner join with a sequence-valued computed key")
+            }
             Self::DynamicBindings => formatter.write_str("dynamic target bindings"),
             Self::DynamicChildren => formatter.write_str("dynamic target child scopes"),
             Self::DynamicFieldMerge => formatter.write_str("dynamic-field merging"),
@@ -171,6 +178,9 @@ impl fmt::Display for UnsupportedNodeKind {
             Self::OwnedPosition => "an unsupported owned position",
             Self::OwnedRowDocumentPath => "an unsupported owned physical row document path",
             Self::CorrelatedJoinAggregate => "an unsupported correlated join aggregate",
+            Self::SequenceComputedJoinAggregate => {
+                "a join aggregate with a sequence-valued computed key"
+            }
         })
     }
 }

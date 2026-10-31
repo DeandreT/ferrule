@@ -53,7 +53,11 @@ impl RootTypeViewPlan {
     ) -> Result<Option<Self>, MfdError> {
         if !project.source_options.xml_root_view_read_policy
             || project.source_options.xml_schema_hints.is_some()
-            || project.target_options.xml_schema_hints.is_some()
+            || project
+                .target_options
+                .xml_schema_hints
+                .as_ref()
+                .is_some_and(|hints| !crate::schema_location::is_derived(hints, &project.target))
             || !project.graph.nodes.values().any(|node| {
                 matches!(
                     node,
@@ -80,7 +84,13 @@ impl RootTypeViewPlan {
                     xml_root_view_read_policy: true,
                     ..FormatOptions::default()
                 })
-            || project.target_options != FormatOptions::default()
+            // A derived schema-location hint exports as the default setting.
+            || project.target_options
+                != (FormatOptions {
+                    xml_document: project.target_options.xml_schema_hints.is_some(),
+                    xml_schema_hints: project.target_options.xml_schema_hints.clone(),
+                    ..FormatOptions::default()
+                })
             || !local_xml_path(&project.source_path)
             || !local_xml_path(&project.target_path)
             || side_format(&project.source_path, &project.source_options) != SideFormat::Xml

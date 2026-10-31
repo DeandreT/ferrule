@@ -272,6 +272,7 @@ fn exact_focus_survives_filtered_pin_remapping_and_stays_in_its_document() {
                     wire: Default::default(),
                     requested: false,
                     search_open: false,
+                    shortcuts: Default::default(),
                 },
             );
         });
@@ -2207,6 +2208,9 @@ mod compact_xml_pin_identity_tests;
 
 #[path = "graph_viewer_tests/computed_aggregates.rs"]
 mod computed_aggregates;
+
+#[path = "graph_viewer_tests/computed_join_keys.rs"]
+mod computed_join_key_tests;
 
 #[path = "graph_viewer_tests/filter_map_guards.rs"]
 mod filter_map_guard_tests;

@@ -185,6 +185,17 @@ fn join_plan() -> JoinPlan {
     .expect("distinct collections with a joined left key")
 }
 
+/// `B` joined to a computed key read from `value`.
+fn computed_join_plan(value: NodeId) -> JoinPlan {
+    let key = mapping::ComputedJoinSourceId::new(1);
+    JoinPlan::new(
+        JoinSource::computed(key, value),
+        JoinSource::new(path(&["B"])),
+        JoinConditions::new(JoinKey::computed(key, path(&["Id"]))),
+    )
+    .expect("one computed key joined to one collection")
+}
+
 fn owned_join_plan() -> OwnedJoinPlan {
     OwnedJoinPlan::new(
         OwnedJoinSource::new(owned(&["A"])),
@@ -404,6 +415,13 @@ fn nodes(ids: &mut Ids, present: bool) -> Vec<Node> {
             function: AggregateOp::Sum,
             join: JoinId::new(1),
             plan: join_plan(),
+            expression: ids.optional(present),
+            arg: ids.optional(present),
+        },
+        Node::JoinAggregate {
+            function: AggregateOp::Sum,
+            join: JoinId::new(2),
+            plan: computed_join_plan(ids.id()),
             expression: ids.optional(present),
             arg: ids.optional(present),
         },

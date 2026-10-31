@@ -388,7 +388,7 @@ fn trailing_optional_function_pins_keep_the_declared_minimum_arity() {
             .nodes
             .values()
             .any(|node| matches!(node, Node::Call { function, args }
-        if function == "round" && args.len() == 1))
+        if function == "round_half_ceiling" && args.len() == 1))
     );
     assert!(
         !imported

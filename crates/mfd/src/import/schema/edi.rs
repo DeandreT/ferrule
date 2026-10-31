@@ -544,6 +544,7 @@ pub(super) fn read(
         db_queries: Vec::new(),
         db_xml_columns: BTreeMap::new(),
         dynamic_json: None,
+        target_schema_hints: None,
     })
 }
 
@@ -721,14 +722,13 @@ fn read_x12_separators(
     component_name: &str,
     warnings: &mut Vec<String>,
 ) -> Option<X12Separators> {
-    let separators = text
-        .children()
-        .find(|node| node.has_tag_name("settings"))?
+    let settings = text.children().find(|node| node.has_tag_name("settings"))?;
+    let separators = settings
         .children()
         .find(|node| node.has_tag_name("separators"))?;
     let required = |attribute: &'static str| -> Result<char, String> {
         one_separator(separators.attribute(attribute))
-            .ok_or_else(|| format!("`{attribute}` must contain exactly one visible character"))
+            .ok_or_else(|| format!("`{attribute}` must contain exactly one character"))
     };
     let parsed = (|| {
         let syntax = X12Separators {
@@ -738,14 +738,31 @@ fn read_x12_separators(
             repetition: optional_separator(separators.attribute("repetition"))?,
             release: optional_separator(separators.attribute("escape"))?,
         };
-        let mut characters = vec![syntax.element, syntax.component, syntax.segment];
+        let visible = |character: char| {
+            !(character.is_alphanumeric() || character.is_control() || character.is_whitespace())
+        };
+        // An LF or CR terminator is written alone, so a line feed requested
+        // after it (CR LF, or a blank line after LF) cannot be represented.
+        if matches!(syntax.segment, '\n' | '\r') {
+            if settings.attribute("terminatewithlinefeed") == Some("true") {
+                return Err(
+                    "an LF or CR segment terminator followed by a line feed cannot be represented"
+                        .to_string(),
+                );
+            }
+        } else if !visible(syntax.segment) {
+            return Err(
+                "the segment terminator must be LF, CR, or non-alphanumeric and visible"
+                    .to_string(),
+            );
+        }
+        let mut characters = vec![syntax.element, syntax.component];
         characters.extend(syntax.repetition);
         characters.extend(syntax.release);
-        if characters.iter().any(|character| {
-            character.is_alphanumeric() || character.is_control() || character.is_whitespace()
-        }) {
+        if !characters.iter().copied().all(visible) {
             return Err("separator characters must be non-alphanumeric and visible".to_string());
         }
+        characters.push(syntax.segment);
         characters.sort_unstable();
         if characters.windows(2).any(|pair| pair[0] == pair[1]) {
             return Err("separator characters must be distinct".to_string());

@@ -760,17 +760,19 @@ fn preflight_output_options(options: &FormatOptions) -> anyhow::Result<()> {
     if options.json5 && options.json_lines {
         bail!("JSON5 cannot be combined with JSON Lines");
     }
-    if options.swift_mt.is_some() || options.pdf.is_some() || options.external_source.is_some() {
+    if options.pdf.is_some() || options.external_source.is_some() {
         bail!("pipeline preview target uses an input-only format");
+    }
+    if options.swift_mt.is_some() && options.swift_mt_output.is_none() {
+        bail!("pipeline preview SWIFT MT target has no `swift_mt_output` message headers");
     }
     if options.xlsx_grid.is_some()
         || options.xlsx_worksheet_set.is_some()
         || options.xlsx_composite.is_some()
-        || !options.xlsx_rows.is_empty()
     {
         bail!("pipeline preview target uses an input-only XLSX layout");
     }
-    if options.xlsx_hierarchical.is_some() && super::has_legacy_xlsx_layout(options) {
+    if options.xlsx_hierarchical.is_some() && super::has_flat_xlsx_layout(options) {
         bail!("hierarchical XLSX output conflicts with legacy XLSX layout options");
     }
     Ok(())

@@ -228,10 +228,6 @@ fn malformed_or_unrepresentable_tuple_members_reject() {
             "at least one",
         ),
         (
-            r#"{"type":"array","items":[{"type":"string"},{"type":"integer"}],"additionalItems":false}"#,
-            "one identical item schema",
-        ),
-        (
             r#"{"type":"array","items":[false],"additionalItems":false}"#,
             "cannot use the false schema",
         ),
@@ -304,20 +300,6 @@ fn every_tail_schema_is_validated_even_when_maximum_makes_it_unreachable() {
 }
 
 #[test]
-fn reachable_open_or_different_tails_cannot_widen_the_tuple() {
-    for schema in [
-        r#"{"type":"array","items":[{"type":"string"}]}"#,
-        r#"{"type":"array","items":[{"type":"string"}],"additionalItems":true}"#,
-        r#"{"type":"array","items":[{"type":"string"}],"additionalItems":{"type":"integer"}}"#,
-    ] {
-        assert!(matches!(
-            import_str_result(schema),
-            Err(JsonFormatError::UnsupportedSchemaUnion { .. })
-        ));
-    }
-}
-
-#[test]
 fn unsupported_dialect_ambiguity_composition_and_active_keywords_reject() {
     for (schema, reason) in [
         (
@@ -341,8 +323,8 @@ fn unsupported_dialect_ambiguity_composition_and_active_keywords_reject() {
             "direct concrete array",
         ),
         (
-            r#"{"type":"array","items":[{"type":"string"}],"maxItems":1,"unevaluatedItems":false}"#,
-            "unevaluatedItems",
+            r#"{"type":"array","items":[{"type":"string"}],"maxItems":1,"if":{"minItems":1},"unevaluatedItems":false}"#,
+            "`unevaluatedItems` beside `if`",
         ),
         (
             r##"{

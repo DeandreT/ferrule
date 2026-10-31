@@ -1,7 +1,10 @@
 use std::collections::HashSet;
 
 use ir::{Instance, Value};
-use mapping::{AggregateOp, JoinConditions, JoinId, JoinPlan, JoinSource, NodeId};
+use mapping::{
+    AggregateOp, CollectionJoinSource, ComputedJoinValue, JoinConditions, JoinId, JoinKeyLeft,
+    JoinPlan, JoinSource, NodeId,
+};
 
 use super::EngineError;
 use super::aggregate::aggregate;
@@ -9,7 +12,8 @@ use super::eval_expr::{EvalProgram, eval_node_input};
 use super::frame_view::{FrameKind, FrameOrigin, FrameView};
 use super::policy::BudgetMeter;
 use super::resolve::field_scalar;
-use super::source_iteration::{PositionFrame, WalkExtension, walk};
+use super::sequence::eval_sequence_in_progress;
+use super::source_iteration::{InstanceBinding, PositionFrame, WalkExtension, walk};
 
 pub(super) struct JoinedRow<'a> {
     instances: Vec<&'a Instance>,
@@ -18,6 +22,9 @@ pub(super) struct JoinedRow<'a> {
     /// A walk can end at an unpositioned value or synthesize a position with
     /// no instance; such rows keep the legacy index pairing.
     exact: bool,
+    /// The computed member this row holds, as an index into the members of
+    /// the plan's computed source. It adds no instance or frame.
+    computed: Option<usize>,
 }
 
 struct RowFrame {
@@ -53,21 +60,37 @@ pub(super) struct AggregateInput<'a> {
     pub(super) arg: Option<NodeId>,
 }
 
+/// Executes `plan` in the receiving context. `key` evaluates the plan's
+/// computed source there to the values of its members, once, before any
+/// source is selected or compared; it is not called for a plan without a
+/// computed source.
 pub(super) fn execute<'a>(
     context: &[&'a Instance],
     positions: &[PositionFrame],
     join: JoinId,
     plan: &JoinPlan,
     budget: Option<&BudgetMeter>,
+    key: impl FnOnce(&ComputedJoinValue) -> Result<Vec<Value>, EngineError>,
 ) -> Result<Vec<JoinedRow<'a>>, EngineError> {
+    // Computed members live for this execution only: they add no instance or
+    // frame to a row, and no read names them once the tuples are built.
+    // Null-like values give no member; every other value, duplicates and
+    // empty strings included, gives one member in evaluation order.
+    let mut computed = plan
+        .computed_source()
+        .map(|computed| key(computed.value()))
+        .transpose()?
+        .unwrap_or_default();
+    computed.retain(|value| !is_null_like(value));
+    let computed = computed.as_slice();
     let mut sources = plan.sources();
     let Some(first) = sources.next() else {
         return Ok(Vec::new());
     };
     let receiving = FrameView::receiving(context, positions);
-    let mut rows = source_rows(context, &receiving, join, first);
+    let mut rows = member_rows(context, &receiving, join, first, computed);
     for (right_source, conditions) in plan.stages() {
-        let right_rows = source_rows(context, &receiving, join, right_source);
+        let right_rows = member_rows(context, &receiving, join, right_source, computed);
         let mut joined = Vec::new();
         for left in rows {
             let left_frames = left.view();
@@ -76,22 +99,45 @@ pub(super) fn execute<'a>(
                 if let Some(budget) = budget {
                     budget.charge_join_row()?;
                 }
-                if conditions_match(&left_frames, right, conditions)? {
+                let right_member = match right_source {
+                    JoinSource::Collection(_) => RightMember::Row(right),
+                    JoinSource::Computed(_) => {
+                        RightMember::Computed(computed_value(computed, right))
+                    }
+                };
+                let left_computed = computed_value(computed, &left);
+                if conditions_match(&left_frames, left_computed, right_member, conditions)? {
                     let mut instances = left.instances.clone();
                     instances.extend(right.instances.iter().copied());
+                    let exact = left.exact && right.exact;
                     let frames = left
                         .frames
                         .iter()
-                        .chain(&right.frames)
-                        .map(|frame| RowFrame {
-                            position: frame.position.clone(),
-                            origin: frame.origin,
+                        .map(|frame| (frame, 0))
+                        .chain(
+                            right
+                                .frames
+                                .iter()
+                                .map(|frame| (frame, left.instances.len())),
+                        )
+                        .map(|(frame, offset)| {
+                            let mut position = frame.position.clone();
+                            position.binding = if exact {
+                                position.binding.rebased(offset)
+                            } else {
+                                InstanceBinding::LegacyUnspecified
+                            };
+                            RowFrame {
+                                position,
+                                origin: frame.origin,
+                            }
                         })
                         .collect();
                     joined.push(JoinedRow {
                         instances,
                         frames,
-                        exact: left.exact && right.exact,
+                        exact,
+                        computed: left.computed.or(right.computed),
                     });
                 }
             }
@@ -104,6 +150,41 @@ pub(super) fn execute<'a>(
         }
     }
     Ok(rows)
+}
+
+/// Rows of one plan member. A computed source gives one row without
+/// instances or frames per present member value, in order.
+fn member_rows<'a>(
+    context: &[&'a Instance],
+    receiving: &FrameView<'_, 'a>,
+    join: JoinId,
+    source: &JoinSource,
+    computed: &[Value],
+) -> Vec<JoinedRow<'a>> {
+    match source {
+        JoinSource::Collection(source) => source_rows(context, receiving, join, source),
+        JoinSource::Computed(_) => (0..computed.len())
+            .map(|member| JoinedRow {
+                instances: Vec::new(),
+                frames: Vec::new(),
+                exact: true,
+                computed: Some(member),
+            })
+            .collect(),
+    }
+}
+
+/// The value of the computed member `row` holds, if it holds one.
+fn computed_value<'v>(computed: &'v [Value], row: &JoinedRow<'_>) -> Option<&'v Value> {
+    row.computed.and_then(|member| computed.get(member))
+}
+
+/// The right member of one examined pairing.
+#[derive(Clone, Copy)]
+enum RightMember<'r, 'a, 'v> {
+    Row(&'r JoinedRow<'a>),
+    /// A computed member, whose key is its value.
+    Computed(Option<&'v Value>),
 }
 
 pub(super) fn extensions<'a>(rows: &[JoinedRow<'a>]) -> Vec<WalkExtension<'a>> {
@@ -122,21 +203,55 @@ pub(super) fn eval_aggregate(
     positions: &[PositionFrame],
     in_progress: &mut HashSet<NodeId>,
 ) -> Result<Value, EngineError> {
-    let rows = execute(context, positions, input.join, input.plan, program.budget)?;
+    // Inputs are indexed in visit order: the computed key or its sequence's
+    // inputs, the per-tuple expression, then the argument.
+    let key_inputs = input
+        .plan
+        .computed_source()
+        .map_or(0, |computed| match computed.value() {
+            ComputedJoinValue::Scalar(_) => 1,
+            ComputedJoinValue::Sequence(sequence) => sequence.inputs().len(),
+        });
+    let rows = execute(
+        context,
+        positions,
+        input.join,
+        input.plan,
+        program.budget,
+        |key| match key {
+            ComputedJoinValue::Scalar(node) => eval_node_input(
+                program,
+                input.consumer,
+                *node,
+                0,
+                context,
+                positions,
+                in_progress,
+            )
+            .map(|value| vec![value]),
+            ComputedJoinValue::Sequence(sequence) => eval_sequence_in_progress(
+                program,
+                sequence,
+                Some(input.consumer),
+                context,
+                positions,
+                in_progress,
+            ),
+        },
+    )?;
     let extensions = extensions(&rows);
     let mut values = Vec::with_capacity(extensions.len());
     for extension in &extensions {
         let value = match input.expression {
             Some(expression) => {
                 let mut item_context = context.to_vec();
-                item_context.extend(extension.instances.iter().copied());
                 let mut item_positions = positions.to_vec();
-                item_positions.extend(extension.positions.iter().cloned());
+                extension.append_to(&mut item_context, &mut item_positions);
                 eval_node_input(
                     program,
                     input.consumer,
                     expression,
-                    0,
+                    key_inputs,
                     &item_context,
                     &item_positions,
                     in_progress,
@@ -153,7 +268,7 @@ pub(super) fn eval_aggregate(
                 program,
                 input.consumer,
                 arg,
-                usize::from(input.expression.is_some()),
+                key_inputs + usize::from(input.expression.is_some()),
                 context,
                 positions,
                 in_progress,
@@ -165,23 +280,29 @@ pub(super) fn eval_aggregate(
 
 /// Rows of one join source. The latest ungrouped receiving frame of the
 /// source's exact collection that this join did not contribute correlates
-/// the source to that one row. When that frame has no instance, or no frame
-/// matches, the source is walked from the innermost context frame holding
-/// its first segment, falling back to the innermost frame.
+/// the source to that one row. An explicitly unbound frame yields no rows.
+/// When no frame matches (or an unbound legacy frame matches), the source is
+/// walked from the innermost context holding its first segment.
 fn source_rows<'a>(
     context: &[&'a Instance],
     receiving: &FrameView<'_, 'a>,
     join: JoinId,
-    source: &JoinSource,
+    source: &CollectionJoinSource,
 ) -> Vec<JoinedRow<'a>> {
     let collection = source.collection();
     if let Some(frame) = receiving.latest(|frame| {
         frame.kind != FrameKind::GroupMembers
             && frame.origin != FrameOrigin::Joined(join)
             && frame.collection == collection
-    }) && let Some(instance) = receiving.instance(frame)
-    {
+    }) {
+        let Some(instance) = receiving.instance(frame) else {
+            if frame.position.binding != InstanceBinding::LegacyUnspecified {
+                return Vec::new();
+            }
+            return walked_source_rows(context, join, source);
+        };
         let mut correlated = frame.position.clone();
+        correlated.binding = InstanceBinding::ContextSlot(0);
         correlated.join = Some(join);
         correlated.join_position = None;
         return vec![JoinedRow {
@@ -191,8 +312,18 @@ fn source_rows<'a>(
                 origin: FrameOrigin::Correlated,
             }],
             exact: true,
+            computed: None,
         }];
     }
+    walked_source_rows(context, join, source)
+}
+
+fn walked_source_rows<'a>(
+    context: &[&'a Instance],
+    join: JoinId,
+    source: &CollectionJoinSource,
+) -> Vec<JoinedRow<'a>> {
+    let collection = source.collection();
     context
         .iter()
         .rev()
@@ -210,6 +341,10 @@ fn source_rows<'a>(
                     let mut positions = extension.positions;
                     let origin = if positions.is_empty() {
                         positions.push(PositionFrame {
+                            binding: extension.instances.len().checked_sub(1).map_or(
+                                InstanceBinding::ExplicitUnbound,
+                                InstanceBinding::ContextSlot,
+                            ),
                             generated_origin: None,
                             collection: collection.to_vec(),
                             index: index + 1,
@@ -225,8 +360,17 @@ fn source_rows<'a>(
                         }
                         FrameOrigin::Walked
                     };
+                    let exact = extension.instances.len() == positions.len();
+                    // Malformed unvalidated rows retain their historical index
+                    // pairing, including shifts caused by unpositioned members.
+                    if !exact {
+                        for position in &mut positions {
+                            position.binding = InstanceBinding::LegacyUnspecified;
+                        }
+                    }
                     JoinedRow {
-                        exact: extension.instances.len() == positions.len(),
+                        computed: None,
+                        exact,
                         instances: extension.instances,
                         frames: positions
                             .into_iter()
@@ -238,21 +382,30 @@ fn source_rows<'a>(
         })
 }
 
+/// `left_computed` is the value of the computed member the left row holds,
+/// if it holds one.
 fn conditions_match(
     left: &FrameView<'_, '_>,
-    right: &JoinedRow<'_>,
+    left_computed: Option<&Value>,
+    right: RightMember<'_, '_, '_>,
     conditions: &JoinConditions,
 ) -> Result<bool, EngineError> {
     for condition in conditions.iter() {
-        let Some(left_value) = row_value(left, condition.left_collection(), condition.left_path())
-        else {
+        let left_value = match condition.left() {
+            JoinKeyLeft::Collection { collection, path } => row_value(left, collection, path),
+            JoinKeyLeft::Computed(_) => left_computed,
+        };
+        let Some(left_value) = left_value else {
             return Ok(false);
         };
-        let Some(right_value) = right
-            .instances
-            .last()
-            .and_then(|item| field_scalar(item, condition.right_path()))
-        else {
+        let right_value = match right {
+            RightMember::Row(row) => row
+                .instances
+                .last()
+                .and_then(|item| field_scalar(item, condition.right_path())),
+            RightMember::Computed(value) => value,
+        };
+        let Some(right_value) = right_value else {
             return Ok(false);
         };
         if is_null_like(left_value) || is_null_like(right_value) {

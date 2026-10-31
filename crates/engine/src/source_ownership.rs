@@ -290,7 +290,7 @@ impl<'a> Admission<'a> {
                 self.sequence(sequence, None, context, false);
             }
             if let Some((_, join)) = scope.join() {
-                for source in join.sources() {
+                for source in join.collection_sources() {
                     self.path(source.collection());
                 }
             }
@@ -1073,7 +1073,7 @@ impl<'a> Admission<'a> {
                     self.sequence(sequence, function, child_context, true)
                 }
                 Node::JoinAggregate { plan, .. } => {
-                    for source in plan.sources() {
+                    for source in plan.collection_sources() {
                         self.path(source.collection());
                     }
                 }

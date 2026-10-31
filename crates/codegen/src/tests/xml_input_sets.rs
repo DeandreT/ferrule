@@ -68,6 +68,7 @@ fn ordinary_unproved_named_source_omits_whole_adapter_and_retains_hinted_core() 
         project.target_options.xml_schema_hints = Some(ir::XmlSchemaHints {
             no_namespace_location: Some("literal-primary.xsd".into()),
             locations: vec![],
+            derivation: None,
         });
         if mutation == 0 {
             project.extra_sources[0].options.xml_document = false;

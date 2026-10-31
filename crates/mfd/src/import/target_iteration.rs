@@ -989,12 +989,9 @@ fn build_one(
     } else if let Some(sequence) = sequence {
         scopes.add_sequence(&target_path, sequence, nodes, iteration.output);
     } else if let Some(scope_source) = &scope_source {
-        scopes.add_iteration(
-            &target_path,
-            &builder.context_path(scope_source),
-            nodes,
-            iteration.output,
-        );
+        let context = builder.context_path(scope_source);
+        scopes.add_iteration(&target_path, &context, nodes, iteration.output);
+        builder.record_scope_projection(iteration.feed, &context, &target_path);
     }
     if feed.projects_whole_group || iteration.projects_whole_group {
         project_whole_group(

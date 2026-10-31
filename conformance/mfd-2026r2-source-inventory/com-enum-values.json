@@ -1,0 +1,485 @@
+{
+  "format": "mapforce-enterprise-2026r2-com-enum-values",
+  "format_version": 1,
+  "inventory_complete": false,
+  "runtime_proof": false,
+  "status": "unassessed",
+  "applicability": "unknown",
+  "execution_evidence": [],
+  "purpose": "Signed declaration values only, not enum aliases, supported options, ABI or execution qualification.",
+  "type_library_source": {
+    "observation": "artifact-observations.json",
+    "member": "MapForce.tlb",
+    "sha256": "785c484fbaa882cae724a3568b04650300eb18941084ac23eb2d041dfb4a2789",
+    "library": "MapForceLib",
+    "version": "4.1",
+    "platform": "SYS_WIN64",
+    "dump_sha256": "672097183d6a6b0d80f3aa5f92d02172bb3a588609cb743bb82b73c342192bb4",
+    "cab_member": "MapForce.tlb_1193",
+    "bytes": 54108,
+    "release_binding": "2026r2"
+  },
+  "catalog_source": {
+    "file": "com-api.json",
+    "release_binding": "unestablished",
+    "sha256": "d9a2fd8a4f8935598fdd2590f837fd6205931ba43c6218dc6b32a29fbe35c16a"
+  },
+  "value_readback": {
+    "source": "type_library_source",
+    "type_info_table_offset": 624,
+    "type_info_record_bytes": 100,
+    "type_info_records": 75,
+    "name_table_offset": 10804,
+    "name_table_bytes": 13724,
+    "constant_segment_offset": 31100,
+    "constant_segment_bytes": 100,
+    "variable_record_bytes": 20,
+    "variable_datatype": "80030016",
+    "variable_kind": 2,
+    "referenced_values": [
+      {
+        "segment_relative_offset": 84,
+        "file_offset": 31184,
+        "vartype": 3,
+        "signed_value": -1
+      }
+    ],
+    "method": [
+      "Check the hash and size of the selected official-release member against artifact-observations.json before reading metadata.",
+      "Resolve each enum owner and constant name from bounded type-info and name tables; check indexes, record sizes, datatype, kind and contiguous coverage against retained name metadata.",
+      "record_index and record_offset identify the variable record within its owner and the pinned type-library file. member_block_offset points to the preceding block-size word.",
+      "For these inline-i4 declarations only, require VARTYPE 3 and a nonnegative 26-bit payload below 2^25. Do not infer other signed immediate encodings.",
+      "For referenced-i4 declarations, encoded_value is an offset into the constant segment, not a literal. Check its VARTYPE 3 tag and read the following signed little-endian 32-bit value.",
+      "Compare exact names and signed values with the pinned com-api.json, retaining each page hash, literal and independent release-binding boundary. No mutable online page is consulted."
+    ],
+    "dump_boundary": "ENUMViewMode has no rendered variable records in the pinned dump; its three values come from bounded raw declaration records, not inferred dump text."
+  },
+  "counts": {
+    "enumerations": 20,
+    "constants": 130,
+    "catalog_constants": 125,
+    "equal_values": 124,
+    "different_values": 1,
+    "type_library_only": 5,
+    "catalog_only": 0,
+    "referenced_signed_values": 3
+  },
+  "enumerations": [
+    {
+      "name": "ENUMDOMType",
+      "type_info_index": 2,
+      "member_block_offset": 35292,
+      "catalog_id": "provisional.com.ENUMDOMType",
+      "catalog_source": {
+        "official_url": "https://www.altova.com/manual/en/api/mapforceapi/mfapi_enum_enumdomtype.html",
+        "raw_sha256": "11494f76ef33c0150e6f90f50d4197227504b6014cd1a7684ac41f4ff4746f26",
+        "release_binding": "unestablished",
+        "source_file": "mfapi_enum_enumdomtype.html"
+      },
+      "members": [
+        {"name": "eDOMType_xerces", "value": 1, "record_index": 0, "record_offset": 35296, "encoded_value": "8c000001", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "1"}},
+        {"name": "eDOMType_xerces3", "value": 2, "record_index": 1, "record_offset": 35316, "encoded_value": "8c000002", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "2"}},
+        {"name": "eDOMType_msxml6", "value": 3, "record_index": 2, "record_offset": 35336, "encoded_value": "8c000003", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "3"}}
+      ]
+    },
+    {
+      "name": "ENUMLibType",
+      "type_info_index": 3,
+      "member_block_offset": 35392,
+      "catalog_id": "provisional.com.ENUMLibType",
+      "catalog_source": {
+        "official_url": "https://www.altova.com/manual/en/api/mapforceapi/mfapi_enum_enumlibtype.html",
+        "raw_sha256": "2cfcaee715658a2b66d79452a468e4e33628bcd6df522377d346266dc0907073",
+        "release_binding": "unestablished",
+        "source_file": "mfapi_enum_enumlibtype.html"
+      },
+      "members": [
+        {"name": "eLibType_static", "value": 0, "record_index": 0, "record_offset": 35396, "encoded_value": "8c000000", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "0"}},
+        {"name": "eLibType_dll", "value": 1, "record_index": 1, "record_offset": 35416, "encoded_value": "8c000001", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "1"}}
+      ]
+    },
+    {
+      "name": "ENUMProjectType",
+      "type_info_index": 4,
+      "member_block_offset": 35460,
+      "catalog_id": "provisional.com.ENUMProjectType",
+      "catalog_source": {
+        "official_url": "https://www.altova.com/manual/en/api/mapforceapi/mfapi_enum_enumprojecttype.html",
+        "raw_sha256": "e1057ce79cff2c5b85447510ac5204969244249994bfb25e476d426bdba347d0",
+        "release_binding": "unestablished",
+        "source_file": "mfapi_enum_enumprojecttype.html"
+      },
+      "members": [
+        {"name": "eVisualStudio2013Project", "value": 7, "record_index": 0, "record_offset": 35464, "encoded_value": "8c000007", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "7"}},
+        {"name": "eVisualStudio2015Project", "value": 8, "record_index": 1, "record_offset": 35484, "encoded_value": "8c000008", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "8"}},
+        {"name": "eVisualStudio2017Project", "value": 9, "record_index": 2, "record_offset": 35504, "encoded_value": "8c000009", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "9"}},
+        {"name": "eVisualStudio2019Project", "value": 10, "record_index": 3, "record_offset": 35524, "encoded_value": "8c00000a", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "10"}},
+        {"name": "eDotNetCore3_1", "value": 11, "record_index": 4, "record_offset": 35544, "encoded_value": "8c00000b", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "11"}},
+        {"name": "eDotNet5_0", "value": 12, "record_index": 5, "record_offset": 35564, "encoded_value": "8c00000c", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "12"}},
+        {"name": "eDotNet6_0", "value": 13, "record_index": 6, "record_offset": 35584, "encoded_value": "8c00000d", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "13"}},
+        {"name": "eVisualStudio2022Project", "value": 14, "record_index": 7, "record_offset": 35604, "encoded_value": "8c00000e", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "14"}},
+        {"name": "eDotNet8_0", "value": 15, "record_index": 8, "record_offset": 35624, "encoded_value": "8c00000f", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "15"}},
+        {"name": "eVisualStudio2026Project", "value": 16, "record_index": 9, "record_offset": 35644, "encoded_value": "8c000010", "value_storage": "inline-i4", "catalog": {"classification": "type-library-only", "value_literal": null}},
+        {"name": "eDotNet10_0", "value": 17, "record_index": 10, "record_offset": 35664, "encoded_value": "8c000011", "value_storage": "inline-i4", "catalog": {"classification": "type-library-only", "value_literal": null}},
+        {"name": "eProjectTypeCount", "value": 18, "record_index": 11, "record_offset": 35684, "encoded_value": "8c000012", "value_storage": "inline-i4", "catalog": {"classification": "different", "value_literal": "16"}}
+      ]
+    },
+    {
+      "name": "ENUMWrapperClassesVersion",
+      "type_info_index": 5,
+      "member_block_offset": 35848,
+      "catalog_id": "provisional.com.ENUMWrapperClassesVersion",
+      "catalog_source": {
+        "official_url": "https://www.altova.com/manual/en/api/mapforceapi/mfapi_enum_enumwrapperclassesversion.html",
+        "raw_sha256": "f143d9a983746d9e994fff76c8c0d263e9f49e117129dab472fd47b5f4a5b610",
+        "release_binding": "unestablished",
+        "source_file": "mfapi_enum_enumwrapperclassesversion.html"
+      },
+      "members": [
+        {"name": "eWrapperClassesVersion_2005r3", "value": 0, "record_index": 0, "record_offset": 35852, "encoded_value": "8c000000", "value_storage": "inline-i4", "catalog": {"classification": "type-library-only", "value_literal": null}},
+        {"name": "eWrapperClassesVersion_2006", "value": 1, "record_index": 1, "record_offset": 35872, "encoded_value": "8c000001", "value_storage": "inline-i4", "catalog": {"classification": "type-library-only", "value_literal": null}},
+        {"name": "eWrapperClassesVersion_2007r3", "value": 2, "record_index": 2, "record_offset": 35892, "encoded_value": "8c000002", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "2"}}
+      ]
+    },
+    {
+      "name": "ENUMApacheAxisVersion",
+      "type_info_index": 6,
+      "member_block_offset": 35948,
+      "catalog_id": "provisional.com.ENUMApacheAxisVersion",
+      "catalog_source": {
+        "official_url": "https://www.altova.com/manual/en/api/mapforceapi/mfapi_enum_enumapacheaxisversion.html",
+        "raw_sha256": "04ebd8306d31e5b52d5ed010cf794cb82321b70d4de7a0dff3195c06822da4b3",
+        "release_binding": "unestablished",
+        "source_file": "mfapi_enum_enumapacheaxisversion.html"
+      },
+      "members": [
+        {"name": "eApacheAxisVersion_Axis", "value": 1, "record_index": 0, "record_offset": 35952, "encoded_value": "8c000001", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "1"}},
+        {"name": "eApacheAxisVersion_Axis2", "value": 2, "record_index": 1, "record_offset": 35972, "encoded_value": "8c000002", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "2"}}
+      ]
+    },
+    {
+      "name": "ENUMComponentType",
+      "type_info_index": 12,
+      "member_block_offset": 42020,
+      "catalog_id": "provisional.com.ENUMComponentType",
+      "catalog_source": {
+        "official_url": "https://www.altova.com/manual/en/api/mapforceapi/mfapi_enum_enumcomponenttype.html",
+        "raw_sha256": "c66bc7c9d6024704d7be294e8e495839efb7af9aecaab82aafa0be0f0b0819af",
+        "release_binding": "unestablished",
+        "source_file": "mfapi_enum_enumcomponenttype.html"
+      },
+      "members": [
+        {"name": "eComponentType_Unknown", "value": 0, "record_index": 0, "record_offset": 42024, "encoded_value": "8c000000", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "0"}},
+        {"name": "eComponentType_XML", "value": 1, "record_index": 1, "record_offset": 42044, "encoded_value": "8c000001", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "1"}},
+        {"name": "eComponentType_DB", "value": 2, "record_index": 2, "record_offset": 42064, "encoded_value": "8c000002", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "2"}},
+        {"name": "eComponentType_Text", "value": 3, "record_index": 3, "record_offset": 42084, "encoded_value": "8c000003", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "3"}},
+        {"name": "eComponentType_Excel", "value": 4, "record_index": 4, "record_offset": 42104, "encoded_value": "8c000004", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "4"}},
+        {"name": "eComponentType_WSDL", "value": 5, "record_index": 5, "record_offset": 42124, "encoded_value": "8c000005", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "5"}},
+        {"name": "eComponentType_XBRL", "value": 6, "record_index": 6, "record_offset": 42144, "encoded_value": "8c000006", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "6"}},
+        {"name": "eComponentType_Input", "value": 7, "record_index": 7, "record_offset": 42164, "encoded_value": "8c000007", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "7"}},
+        {"name": "eComponentType_JSON", "value": 8, "record_index": 8, "record_offset": 42184, "encoded_value": "8c000008", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "8"}},
+        {"name": "eComponentType_Binary", "value": 9, "record_index": 9, "record_offset": 42204, "encoded_value": "8c000009", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "9"}},
+        {"name": "eComponentType_PDF", "value": 10, "record_index": 10, "record_offset": 42224, "encoded_value": "8c00000a", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "10"}}
+      ]
+    },
+    {
+      "name": "ENUMComponentSubType",
+      "type_info_index": 13,
+      "member_block_offset": 42376,
+      "catalog_id": "provisional.com.ENUMComponentSubType",
+      "catalog_source": {
+        "official_url": "https://www.altova.com/manual/en/api/mapforceapi/mfapi_enum_enumcomponentsubtype.html",
+        "raw_sha256": "2f03fc2b5007aa6b2ddc5cbe5eb33c6ed8e40f0a43d359b26613de66de40ea98",
+        "release_binding": "unestablished",
+        "source_file": "mfapi_enum_enumcomponentsubtype.html"
+      },
+      "members": [
+        {"name": "eComponentSubType_None", "value": 0, "record_index": 0, "record_offset": 42380, "encoded_value": "8c000000", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "0"}},
+        {"name": "eComponentSubType_Text_EDI", "value": 1, "record_index": 1, "record_offset": 42400, "encoded_value": "8c000001", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "1"}},
+        {"name": "eComponentSubType_Text_Flex", "value": 2, "record_index": 2, "record_offset": 42420, "encoded_value": "8c000002", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "2"}},
+        {"name": "eComponentSubType_Text_CSVFLF", "value": 3, "record_index": 3, "record_offset": 42440, "encoded_value": "8c000003", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "3"}}
+      ]
+    },
+    {
+      "name": "ENUMComponentUsageKind",
+      "type_info_index": 17,
+      "member_block_offset": 44168,
+      "catalog_id": "provisional.com.ENUMComponentUsageKind",
+      "catalog_source": {
+        "official_url": "https://www.altova.com/manual/en/api/mapforceapi/mfapi_enum_enumcomponentusagekind.html",
+        "raw_sha256": "dde890f8b36545a0d676af15899dce0923df8e8a820637bc649fc04d3f05af95",
+        "release_binding": "unestablished",
+        "source_file": "mfapi_enum_enumcomponentusagekind.html"
+      },
+      "members": [
+        {"name": "eComponentUsageKind_Unknown", "value": 0, "record_index": 0, "record_offset": 44172, "encoded_value": "8c000000", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "0"}},
+        {"name": "eComponentUsageKind_Instance", "value": 1, "record_index": 1, "record_offset": 44192, "encoded_value": "8c000001", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "1"}},
+        {"name": "eComponentUsageKind_Input", "value": 2, "record_index": 2, "record_offset": 44212, "encoded_value": "8c000002", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "2"}},
+        {"name": "eComponentUsageKind_Output", "value": 3, "record_index": 3, "record_offset": 44232, "encoded_value": "8c000003", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "3"}},
+        {"name": "eComponentUsageKind_Variable", "value": 4, "record_index": 4, "record_offset": 44252, "encoded_value": "8c000004", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "4"}},
+        {"name": "eComponentUsageKind_String", "value": 5, "record_index": 5, "record_offset": 44272, "encoded_value": "8c000005", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "5"}}
+      ]
+    },
+    {
+      "name": "ENUMComponentDatapointSide",
+      "type_info_index": 18,
+      "member_block_offset": 44364,
+      "catalog_id": "provisional.com.ENUMComponentDatapointSide",
+      "catalog_source": {
+        "official_url": "https://www.altova.com/manual/en/api/mapforceapi/mfapi_enum_enumcomponentdatapointside.html",
+        "raw_sha256": "1d057e2bf1b5eedb5d13824074a2fba3108cb2fe7e34f73e2469886b3e303ebe",
+        "release_binding": "unestablished",
+        "source_file": "mfapi_enum_enumcomponentdatapointside.html"
+      },
+      "members": [
+        {"name": "eDatapointSideInput", "value": 0, "record_index": 0, "record_offset": 44368, "encoded_value": "8c000000", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "0"}},
+        {"name": "eDatapointSideOutput", "value": 1, "record_index": 1, "record_offset": 44388, "encoded_value": "8c000001", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "1"}}
+      ]
+    },
+    {
+      "name": "ENUMSearchDatapointFlags",
+      "type_info_index": 20,
+      "member_block_offset": 44640,
+      "catalog_id": "provisional.com.ENUMSearchDatapointFlags",
+      "catalog_source": {
+        "official_url": "https://www.altova.com/manual/en/api/mapforceapi/mfapi_enum_enumsearchdatapointflags.html",
+        "raw_sha256": "4dcd4fd07fa87cfa8b2539f26352b90364182c9482a34810ae6d9be166d1a7af",
+        "release_binding": "unestablished",
+        "source_file": "mfapi_enum_enumsearchdatapointflags.html"
+      },
+      "members": [
+        {"name": "eSearchDatapointElement", "value": 1, "record_index": 0, "record_offset": 44644, "encoded_value": "8c000001", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "1"}},
+        {"name": "eSearchDatapointAttribute", "value": 2, "record_index": 1, "record_offset": 44664, "encoded_value": "8c000002", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "2"}}
+      ]
+    },
+    {
+      "name": "ENUMConnectionType",
+      "type_info_index": 22,
+      "member_block_offset": 44920,
+      "catalog_id": "provisional.com.ENUMConnectionType",
+      "catalog_source": {
+        "official_url": "https://www.altova.com/manual/en/api/mapforceapi/mfapi_enum_enumconnectiontype.html",
+        "raw_sha256": "0bf1186a70dab89f9673cea685247486f296e551da9ff973e9f3e00942228c8c",
+        "release_binding": "unestablished",
+        "source_file": "mfapi_enum_enumconnectiontype.html"
+      },
+      "members": [
+        {"name": "eConnectionTypeTargetDriven", "value": 0, "record_index": 0, "record_offset": 44924, "encoded_value": "8c000000", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "0"}},
+        {"name": "eConnectionTypeSourceDriven", "value": 1, "record_index": 1, "record_offset": 44944, "encoded_value": "8c000001", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "1"}},
+        {"name": "eConnectionTypeCopyAll", "value": 2, "record_index": 2, "record_offset": 44964, "encoded_value": "8c000002", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "2"}}
+      ]
+    },
+    {
+      "name": "ENUMProgrammingLanguage",
+      "type_info_index": 23,
+      "member_block_offset": 45020,
+      "catalog_id": "provisional.com.ENUMProgrammingLanguage",
+      "catalog_source": {
+        "official_url": "https://www.altova.com/manual/en/api/mapforceapi/mfapi_enum_enumprogramminglanguage.html",
+        "raw_sha256": "b98534dd13aeb5dacb777ba58f39b541b4e4b372aa9986e1790ee16e2f15ea72",
+        "release_binding": "unestablished",
+        "source_file": "mfapi_enum_enumprogramminglanguage.html"
+      },
+      "members": [
+        {"name": "eUndefinedLanguage", "value": -1, "record_index": 0, "record_offset": 45024, "encoded_value": "00000054", "value_storage": "referenced-i4", "catalog": {"classification": "equal", "value_literal": "-1"}},
+        {"name": "eJava", "value": 0, "record_index": 1, "record_offset": 45044, "encoded_value": "8c000000", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "0"}},
+        {"name": "eCpp", "value": 1, "record_index": 2, "record_offset": 45064, "encoded_value": "8c000001", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "1"}},
+        {"name": "eCSharp", "value": 2, "record_index": 3, "record_offset": 45084, "encoded_value": "8c000002", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "2"}},
+        {"name": "eXSLT", "value": 3, "record_index": 4, "record_offset": 45104, "encoded_value": "8c000003", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "3"}},
+        {"name": "eXSLT2", "value": 4, "record_index": 5, "record_offset": 45124, "encoded_value": "8c000004", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "4"}},
+        {"name": "eXQuery", "value": 5, "record_index": 6, "record_offset": 45144, "encoded_value": "8c000005", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "5"}},
+        {"name": "eXSLT3", "value": 6, "record_index": 7, "record_offset": 45164, "encoded_value": "8c000006", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "6"}}
+      ]
+    },
+    {
+      "name": "ENUMCodeGenErrorLevel",
+      "type_info_index": 26,
+      "member_block_offset": 45936,
+      "catalog_id": "provisional.com.ENUMCodeGenErrorLevel",
+      "catalog_source": {
+        "official_url": "https://www.altova.com/manual/en/api/mapforceapi/mfapi_enum_enumcodegenerrorlevel.html",
+        "raw_sha256": "e0c22903bddaf9460fa4feeac0e6b5103b16e77d3f5691c48c0b7c8f13b2e06f",
+        "release_binding": "unestablished",
+        "source_file": "mfapi_enum_enumcodegenerrorlevel.html"
+      },
+      "members": [
+        {"name": "eCodeGenErrorLevel_Information", "value": 0, "record_index": 0, "record_offset": 45940, "encoded_value": "8c000000", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "0"}},
+        {"name": "eCodeGenErrorLevel_Warning", "value": 1, "record_index": 1, "record_offset": 45960, "encoded_value": "8c000001", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "1"}},
+        {"name": "eCodeGenErrorLevel_Error", "value": 2, "record_index": 2, "record_offset": 45980, "encoded_value": "8c000002", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "2"}},
+        {"name": "eCodeGenErrorLevel_Undefined", "value": 3, "record_index": 3, "record_offset": 46000, "encoded_value": "8c000003", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "3"}}
+      ]
+    },
+    {
+      "name": "ENUMOutputGenerationResultCode",
+      "type_info_index": 29,
+      "member_block_offset": 46736,
+      "catalog_id": "provisional.com.ENUMOutputGenerationResultCode",
+      "catalog_source": {
+        "official_url": "https://www.altova.com/manual/en/api/mapforceapi/mfapi_enum_enumoutputgenerationresultcode.html",
+        "raw_sha256": "ceaf304c0c6e55858101a78617fc5815669c802d49fb36ab6b373703d3e26407",
+        "release_binding": "unestablished",
+        "source_file": "mfapi_enum_enumoutputgenerationresultcode.html"
+      },
+      "members": [
+        {"name": "eOutputGenerationResultCodeSuccess", "value": 0, "record_index": 0, "record_offset": 46740, "encoded_value": "8c000000", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "0"}},
+        {"name": "eOutputGenerationResultCodeMappingGenerationError", "value": 1, "record_index": 1, "record_offset": 46760, "encoded_value": "8c000001", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "1"}},
+        {"name": "eOutputGenerationResultCodeMappingExecutionError", "value": 2, "record_index": 2, "record_offset": 46780, "encoded_value": "8c000002", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "2"}},
+        {"name": "eOutputGenerationResultCodeMappingExceptionThrown", "value": 3, "record_index": 3, "record_offset": 46800, "encoded_value": "8c000003", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "3"}},
+        {"name": "eOutputGenerationResultCodeUserBreak", "value": 4, "record_index": 4, "record_offset": 46820, "encoded_value": "8c000004", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "4"}}
+      ]
+    },
+    {
+      "name": "ENUMCodeGenerationResultCode",
+      "type_info_index": 31,
+      "member_block_offset": 47296,
+      "catalog_id": "provisional.com.ENUMCodeGenerationResultCode",
+      "catalog_source": {
+        "official_url": "https://www.altova.com/manual/en/api/mapforceapi/mfapi_enum_enumcodegenerationresultcode.html",
+        "raw_sha256": "8a01455347a350e4661ee78493eb0415fe4b1756158139726b23ec43bb9f4e76",
+        "release_binding": "unestablished",
+        "source_file": "mfapi_enum_enumcodegenerationresultcode.html"
+      },
+      "members": [
+        {"name": "eCodeGenerationResultCodeSuccess", "value": 0, "record_index": 0, "record_offset": 47300, "encoded_value": "8c000000", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "0"}},
+        {"name": "eCodeGenerationResultCodeMappingGenerationError", "value": 1, "record_index": 1, "record_offset": 47320, "encoded_value": "8c000001", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "1"}}
+      ]
+    },
+    {
+      "name": "ENUMProjectItemType",
+      "type_info_index": 36,
+      "member_block_offset": 51232,
+      "catalog_id": "provisional.com.ENUMProjectItemType",
+      "catalog_source": {
+        "official_url": "https://www.altova.com/manual/en/api/mapforceapi/mfapi_enum_enumprojectitemtype.html",
+        "raw_sha256": "2adad5601af16bb6d0eeb1be659e7d810af0fc377dc4a6fe70c7d443c4580114",
+        "release_binding": "unestablished",
+        "source_file": "mfapi_enum_enumprojectitemtype.html"
+      },
+      "members": [
+        {"name": "eProjectItemType_MappingFolder", "value": 0, "record_index": 0, "record_offset": 51236, "encoded_value": "8c000000", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "0"}},
+        {"name": "eProjectItemType_Mapping", "value": 1, "record_index": 1, "record_offset": 51256, "encoded_value": "8c000001", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "1"}},
+        {"name": "eProjectItemType_WebServiceFolder", "value": 2, "record_index": 2, "record_offset": 51276, "encoded_value": "8c000002", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "2"}},
+        {"name": "eProjectItemType_WebServiceRoot", "value": 3, "record_index": 3, "record_offset": 51296, "encoded_value": "8c000003", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "3"}},
+        {"name": "eProjectItemType_WebServiceService", "value": 4, "record_index": 4, "record_offset": 51316, "encoded_value": "8c000004", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "4"}},
+        {"name": "eProjectItemType_WebServicePort", "value": 5, "record_index": 5, "record_offset": 51336, "encoded_value": "8c000005", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "5"}},
+        {"name": "eProjectItemType_WebServiceOperation", "value": 6, "record_index": 6, "record_offset": 51356, "encoded_value": "8c000006", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "6"}},
+        {"name": "eProjectItemType_ExternalFolder", "value": 7, "record_index": 7, "record_offset": 51376, "encoded_value": "8c000007", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "7"}},
+        {"name": "eProjectItemType_LibraryFolder", "value": 8, "record_index": 8, "record_offset": 51396, "encoded_value": "8c000008", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "8"}},
+        {"name": "eProjectItemType_ResourceFolder", "value": 9, "record_index": 9, "record_offset": 51416, "encoded_value": "8c000009", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "9"}},
+        {"name": "eProjectItemType_VirtualFolder", "value": 10, "record_index": 10, "record_offset": 51436, "encoded_value": "8c00000a", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "10"}},
+        {"name": "eProjectItemType_Count", "value": 11, "record_index": 11, "record_offset": 51456, "encoded_value": "8c00000b", "value_storage": "inline-i4", "catalog": {"classification": "type-library-only", "value_literal": null}},
+        {"name": "eProjectItemType_Invalid", "value": -1, "record_index": 12, "record_offset": 51476, "encoded_value": "00000054", "value_storage": "referenced-i4", "catalog": {"classification": "equal", "value_literal": "-1"}}
+      ]
+    },
+    {
+      "name": "ENUMApplicationStatus",
+      "type_info_index": 38,
+      "member_block_offset": 52104,
+      "catalog_id": "provisional.com.ENUMApplicationStatus",
+      "catalog_source": {
+        "official_url": "https://www.altova.com/manual/en/api/mapforceapi/mfapi_enum_enumapplicationstatus.html",
+        "raw_sha256": "ade3c32d2e1ce9e408f0d99535198b96127dd59a4f9da16eba1c6e4872dbcaa8",
+        "release_binding": "unestablished",
+        "source_file": "mfapi_enum_enumapplicationstatus.html"
+      },
+      "members": [
+        {"name": "eApplicationRunning", "value": 0, "record_index": 0, "record_offset": 52108, "encoded_value": "8c000000", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "0"}},
+        {"name": "eApplicationAfterLicenseCheck", "value": 1, "record_index": 1, "record_offset": 52128, "encoded_value": "8c000001", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "1"}},
+        {"name": "eApplicationBeforeLicenseCheck", "value": 2, "record_index": 2, "record_offset": 52148, "encoded_value": "8c000002", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "2"}},
+        {"name": "eApplicationConcurrentLicenseCheckFailed", "value": 3, "record_index": 3, "record_offset": 52168, "encoded_value": "8c000003", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "3"}},
+        {"name": "eApplicationProcessingCommandLine", "value": 4, "record_index": 4, "record_offset": 52188, "encoded_value": "8c000004", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "4"}}
+      ]
+    },
+    {
+      "name": "ENUMAppOutputLine_Severity",
+      "type_info_index": 39,
+      "member_block_offset": 52268,
+      "catalog_id": "provisional.com.ENUMAppOutputLine_Severity",
+      "catalog_source": {
+        "official_url": "https://www.altova.com/manual/en/api/mapforceapi/mfapi_enum_enumappoutputlineseverity.html",
+        "raw_sha256": "018dd622edf1c525efe776179459c8a5ea15304a4f72e7f8fcd75c29f861c7f5",
+        "release_binding": "unestablished",
+        "source_file": "mfapi_enum_enumappoutputlineseverity.html"
+      },
+      "members": [
+        {"name": "eSeverity_Undefined", "value": -1, "record_index": 0, "record_offset": 52272, "encoded_value": "00000054", "value_storage": "referenced-i4", "catalog": {"classification": "equal", "value_literal": "-1"}},
+        {"name": "eSeverity_Info", "value": 0, "record_index": 1, "record_offset": 52292, "encoded_value": "8c000000", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "0"}},
+        {"name": "eSeverity_Warning", "value": 1, "record_index": 2, "record_offset": 52312, "encoded_value": "8c000001", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "1"}},
+        {"name": "eSeverity_Error", "value": 2, "record_index": 3, "record_offset": 52332, "encoded_value": "8c000002", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "2"}},
+        {"name": "eSeverity_CriticalError", "value": 3, "record_index": 4, "record_offset": 52352, "encoded_value": "8c000003", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "3"}},
+        {"name": "eSeverity_Success", "value": 4, "record_index": 5, "record_offset": 52372, "encoded_value": "8c000004", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "4"}},
+        {"name": "eSeverity_Summary", "value": 5, "record_index": 6, "record_offset": 52392, "encoded_value": "8c000005", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "5"}},
+        {"name": "eSeverity_Progress", "value": 6, "record_index": 7, "record_offset": 52412, "encoded_value": "8c000006", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "6"}},
+        {"name": "eSeverity_DataEdit", "value": 7, "record_index": 8, "record_offset": 52432, "encoded_value": "8c000007", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "7"}},
+        {"name": "eSeverity_ParserInfo", "value": 8, "record_index": 9, "record_offset": 52452, "encoded_value": "8c000008", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "8"}},
+        {"name": "eSeverity_PossibleInconsistencyWarning", "value": 9, "record_index": 10, "record_offset": 52472, "encoded_value": "8c000009", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "9"}},
+        {"name": "eSeverity_Message", "value": 10, "record_index": 11, "record_offset": 52492, "encoded_value": "8c00000a", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "10"}},
+        {"name": "eSeverity_Document", "value": 11, "record_index": 12, "record_offset": 52512, "encoded_value": "8c00000b", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "11"}},
+        {"name": "eSeverity_Rest", "value": 12, "record_index": 13, "record_offset": 52532, "encoded_value": "8c00000c", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "12"}},
+        {"name": "eSeverity_NoSelect", "value": 13, "record_index": 14, "record_offset": 52552, "encoded_value": "8c00000d", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "13"}},
+        {"name": "eSeverity_Select", "value": 14, "record_index": 15, "record_offset": 52572, "encoded_value": "8c00000e", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "14"}},
+        {"name": "eSeverity_Autoinsertion", "value": 15, "record_index": 16, "record_offset": 52592, "encoded_value": "8c00000f", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "15"}},
+        {"name": "eSeverity_GlobalResources_DefaultWarning", "value": 16, "record_index": 17, "record_offset": 52612, "encoded_value": "8c000010", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "16"}},
+        {"name": "eSeverity_XPath_Styles_Changed", "value": 17, "record_index": 18, "record_offset": 52632, "encoded_value": "8c000011", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "17"}},
+        {"name": "eSeverity_XPath_Styles_Unchanged", "value": 18, "record_index": 19, "record_offset": 52652, "encoded_value": "8c000012", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "18"}},
+        {"name": "eSeverity_XPath_Styles_Skipped", "value": 19, "record_index": 20, "record_offset": 52672, "encoded_value": "8c000013", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "19"}},
+        {"name": "eSeverity_XPath_ComboBox_Values_Changed", "value": 20, "record_index": 21, "record_offset": 52692, "encoded_value": "8c000014", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "20"}},
+        {"name": "eSeverity_XPath_ComboBox_Values_Unchanged", "value": 21, "record_index": 22, "record_offset": 52712, "encoded_value": "8c000015", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "21"}},
+        {"name": "eSeverity_XPath_ComboBox_Values_Skipped", "value": 22, "record_index": 23, "record_offset": 52732, "encoded_value": "8c000016", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "22"}},
+        {"name": "eSeverity_XPath_Assertions_Changed", "value": 23, "record_index": 24, "record_offset": 52752, "encoded_value": "8c000017", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "23"}},
+        {"name": "eSeverity_XPath_Assertions_Unchanged", "value": 24, "record_index": 25, "record_offset": 52772, "encoded_value": "8c000018", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "24"}},
+        {"name": "eSeverity_XPath_Assertions_Skipped", "value": 25, "record_index": 26, "record_offset": 52792, "encoded_value": "8c000019", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "25"}}
+      ]
+    },
+    {
+      "name": "ENUMAppOutputLine_TextDecoration",
+      "type_info_index": 40,
+      "member_block_offset": 53136,
+      "catalog_id": "provisional.com.ENUMAppOutputLine_TextDecoration",
+      "catalog_source": {
+        "official_url": "https://www.altova.com/manual/en/api/mapforceapi/mfapi_enum_enumappoutputlinetextdecoration.html",
+        "raw_sha256": "bfd920239fae1044e35591b1900f7a676a94cb03d1687d9c525dd41620beb483",
+        "release_binding": "unestablished",
+        "source_file": "mfapi_enum_enumappoutputlinetextdecoration.html"
+      },
+      "members": [
+        {"name": "eTextDecorationDefault", "value": 0, "record_index": 0, "record_offset": 53140, "encoded_value": "8c000000", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "0"}},
+        {"name": "eTextDecorationBold", "value": 1, "record_index": 1, "record_offset": 53160, "encoded_value": "8c000001", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "1"}},
+        {"name": "eTextDecorationDebugValues", "value": 2, "record_index": 2, "record_offset": 53180, "encoded_value": "8c000002", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "2"}},
+        {"name": "eTextDecorationDB_ObjectName", "value": 3, "record_index": 3, "record_offset": 53200, "encoded_value": "8c000003", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "3"}},
+        {"name": "eTextDecorationDB_ObjectLink", "value": 4, "record_index": 4, "record_offset": 53220, "encoded_value": "8c000004", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "4"}},
+        {"name": "eTextDecorationDB_ObjectKind", "value": 5, "record_index": 5, "record_offset": 53240, "encoded_value": "8c000005", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "5"}},
+        {"name": "eTextDecorationDB_TimeoutValue", "value": 6, "record_index": 6, "record_offset": 53260, "encoded_value": "8c000006", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "6"}},
+        {"name": "eTextDecorationFind_MatchingString", "value": 7, "record_index": 7, "record_offset": 53280, "encoded_value": "8c000007", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "7"}},
+        {"name": "eTextDecorationValidation_Speclink", "value": 8, "record_index": 8, "record_offset": 53300, "encoded_value": "8c000008", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "8"}},
+        {"name": "eTextDecorationValidation_ErrorPosition", "value": 9, "record_index": 9, "record_offset": 53320, "encoded_value": "8c000009", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "9"}},
+        {"name": "eTextDecorationValidation_UnkownParam", "value": 10, "record_index": 10, "record_offset": 53340, "encoded_value": "8c00000a", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "10"}},
+        {"name": "eTextDecorationItalic", "value": 11, "record_index": 11, "record_offset": 53360, "encoded_value": "8c00000b", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "11"}},
+        {"name": "eTextDecorationReplacedString", "value": 12, "record_index": 12, "record_offset": 53380, "encoded_value": "8c00000c", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "12"}}
+      ]
+    },
+    {
+      "name": "ENUMViewMode",
+      "type_info_index": 47,
+      "member_block_offset": 53556,
+      "catalog_id": "provisional.com.ENUMViewMode",
+      "catalog_source": {
+        "official_url": "https://www.altova.com/manual/en/api/mapforceapi/mfapi_enum_enumviewmode.html",
+        "raw_sha256": "7994cb621826111cd38cc92f483b9eca693c3a793b0faba4262ddf26e5e3b351",
+        "release_binding": "unestablished",
+        "source_file": "mfapi_enum_enumviewmode.html"
+      },
+      "members": [
+        {"name": "eMapForceView", "value": 0, "record_index": 0, "record_offset": 53560, "encoded_value": "8c000000", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "0"}},
+        {"name": "eXSLView", "value": 1, "record_index": 1, "record_offset": 53580, "encoded_value": "8c000001", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "1"}},
+        {"name": "eOutputView", "value": 2, "record_index": 2, "record_offset": 53600, "encoded_value": "8c000002", "value_storage": "inline-i4", "catalog": {"classification": "equal", "value_literal": "2"}}
+      ]
+    }
+  ],
+  "remaining": [
+    "The online catalog release binding remains unestablished; matching values do not establish its applicability to this release.",
+    "The five type-library-only names and the eProjectTypeCount discrepancy remain distinct declarations, not aliases or independently supported capabilities.",
+    "This finite enum inventory does not complete the canonical source inventory, method/property/event contracts, backend applicability or native ABI and execution qualification.",
+    "HTTPS release acquisition and byte equality do not establish Authenticode signature trust."
+  ]
+}

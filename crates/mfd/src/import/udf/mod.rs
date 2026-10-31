@@ -644,13 +644,19 @@ pub(super) struct Call {
 }
 
 impl Call {
+    pub(super) fn scalar_input_pins(&self) -> impl Iterator<Item = u32> + '_ {
+        self.inputs.values().copied()
+    }
+
+    pub(super) fn structured_input_pins(&self) -> impl Iterator<Item = u32> + '_ {
+        self.structured_inputs
+            .values()
+            .flatten()
+            .map(|(_, input)| *input)
+    }
+
     pub(super) fn input_pins(&self) -> impl Iterator<Item = u32> + '_ {
-        self.inputs.values().copied().chain(
-            self.structured_inputs
-                .values()
-                .flatten()
-                .map(|(_, input)| *input),
-        )
+        self.scalar_input_pins().chain(self.structured_input_pins())
     }
 
     pub(super) fn read(

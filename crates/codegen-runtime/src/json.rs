@@ -35,6 +35,8 @@ mod scalar_item_nullability;
 #[cfg(test)]
 mod string_int_range;
 pub(crate) mod text;
+#[cfg(test)]
+mod tuple_frames;
 mod unique_items;
 #[cfg(test)]
 mod utf8;
@@ -209,6 +211,21 @@ fn without_boundary_constraints(mut schema: SchemaNode) -> SchemaNode {
 }
 
 fn clear_boundary_constraints(schema: &mut SchemaNode) {
+    if schema.json_tuple.is_some() {
+        // Positions that differ only in these constraints would describe a
+        // homogeneous array without them, which the formatter refuses. Such a
+        // frame keeps its constraints, which the formatter then also enforces.
+        let mut cleared = schema.clone();
+        clear_node_constraints(&mut cleared);
+        if cleared.json_tuple_frame_is_valid() {
+            *schema = cleared;
+        }
+        return;
+    }
+    clear_node_constraints(schema);
+}
+
+fn clear_node_constraints(schema: &mut SchemaNode) {
     schema.json_allowed_values = None;
     schema.json_multiple_of = None;
     schema.json_unique_items = false;
@@ -319,8 +336,11 @@ fn validate_json_document(
         return Ok(());
     }
     // Generated root scopes may produce flat rows against a non-repeating row
-    // schema. Every serialized row still shares the one output budget.
-    if let serde_json::Value::Array(items) = value {
+    // schema. Every serialized row still shares the one output budget. A
+    // non-repeating tuple root is itself the array.
+    if let serde_json::Value::Array(items) = value
+        && schema.json_tuple.is_none()
+    {
         for item in items {
             validate_json_node(schema, item)?;
         }
@@ -335,6 +355,16 @@ fn validate_json_node(
 ) -> Result<(), ConstraintValidationError> {
     if let Some(item) = schema.json_array_wrapper_item() {
         return validate_json_document(item, value);
+    }
+    if schema.json_tuple.is_some() {
+        if let serde_json::Value::Array(items) = value {
+            for (index, item) in items.iter().enumerate() {
+                if let Some(item_schema) = format_json::json_tuple::item_schema(schema, index) {
+                    validate_json_node(item_schema, item)?;
+                }
+            }
+        }
+        return Ok(());
     }
     match (&schema.kind, value) {
         (SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. }, value) => {

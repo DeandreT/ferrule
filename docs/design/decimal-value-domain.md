@@ -37,8 +37,31 @@ schemas still describe String, Int, Float and Bool, not Decimal.
   another existing schema type. Rust/C# literal emission reconstructs the exact
   bounded coefficient and scale without Float. `.mfd` export remains refused,
   including stored unused literals and value-map entries in exports.
-- The editor displays saved decimal literals read-only; it does not add a decimal
-  authoring choice or automatically turn them into strings or floats.
+
+## Native constant authoring
+
+The constant type picker offers **Exact decimal**, distinct from **Decimal**
+(binary64 floating point). Selecting it starts at exact zero. The text field
+retains an uncommitted draft across frames and popup closures. Only **Apply** or
+Enter parses that draft with `Decimal96::parse_exact`; invalid, incomplete,
+overflowing or precision-losing input leaves the stored value unchanged and
+shows the parser's error. Accepted input is displayed in canonical form.
+
+The field accepts at most 4,097 characters; the parser enforces the 4,096-byte
+decimal lexical limit. The extra character rejects oversized pastes rather than
+applying a truncated valid prefix.
+No decimal authoring path converts through a float or rounds input. Main,
+named-target and function canvases use the same control and existing edit locks,
+typed constant commands, Undo/Redo and lossless project persistence. An external
+value change, including Undo/Redo, resets an obsolete draft. Drafts are UI state,
+not saved project data; ValueMap-cell authoring is unchanged.
+Constant controls also use the current canvas instance identity, so replacing
+or reloading a project cannot inherit drafts or text-edit state from another
+instance, even when the project contents, node IDs and values are identical.
+
+Decimal constants can feed the explicit `string` conversion for exact text
+output. This does not admit Decimal directly at an existing typed output or
+function boundary or change schema and arithmetic support.
 
 The admitted conversion and aggregate path is described in
 [decimal mapping operations](decimal-mapping-operations.md). Schema/import rules

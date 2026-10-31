@@ -1169,6 +1169,14 @@ with embedded family-specific schemas and options; their package-free codecs
 handle X12, EDIFACT, HL7 v2, TRADACOMS, and IDoc. Each layer keeps its own admission ahead of the
 layer below it.
 
+An explicit filename-endpoint `DocumentProject` may instead read one direct EDI
+document and return one strict JSON document through those primary EDI byte APIs.
+Its retained output filename is available through `evaluate_output_filename` /
+`EvaluateOutputFilename`; the library never publishes it. Both filenames must
+resolve before the input host is called. This opt-in plan does not admit mixed
+formats for existing same-format document projects. See the
+[MFD filename route](mfd-interop.md#import) for import and transport boundaries.
+
 The Basic owned mappings render their own complete compilation unit, which
 may append the separate partial declaration of the owned JSON documents; they
 are assembled with the ordinary project file and take no companions. When a
@@ -1805,6 +1813,20 @@ rejects explicit object-item metadata. Scalar arrays likewise admit a null
 item only when the item's own value domain is nullable, independent of
 array-container nullability.
 
+Schemas that contain a [JSON tuple frame](design/json-tuple-arrays.md) use
+embedded descriptor version 5, which older runtimes reject, and the selected
+JSON5 companion profile rejects frames. Generated Rust JSON entry points share
+the native JSON codec's tuple-frame reading and writing, and their embedded
+allowed-value, `multipleOf` and `uniqueItems` checks reach every tuple
+position. The C# runtime applies the same frame check to version 5
+descriptors, and reads and writes frames with the native codec's absence
+rules and first-error order. After applicable raw-input uniqueness checks,
+reading applies the null rule, requires an array, checks its length, then reads
+each position and tail item. Positional decoding errors name their one-based
+position; raw uniqueness errors remain unwrapped. Gaps and length bounds are
+typed errors on output, and recursive frames are refused. Generated CSV output
+in both languages refuses a target schema that contains a frame.
+
 Rust:
 
 ```rust
@@ -2189,6 +2211,12 @@ instance-node cap. Both backends still enforce JSON syntax depth, recursive
 schema and keyword-specific validation limits, and valid Unicode/numbers.
 Null inputs return Null before either descriptor is parsed; non-null calls
 validate the schema, field path, and input in that order.
+
+Graph-level schema descriptors carry no file capability or descriptor version.
+The Rust and C# evaluators of `json_parse_field`, `json_parse_object_exists`,
+`json_parse_array_length`, and `json_parse_array_field` therefore refuse a
+descriptor that contains a [JSON tuple frame](design/json-tuple-arrays.md)
+during schema validation.
 
 Embedded scalar constants, bounded exact scalar allowed-value sets, and
 exact integer/finite-number ranges are enforced on both input and generated
@@ -3095,9 +3123,13 @@ create illegal reserved namespace declarations is rejected.
 
 Project generation uses the native XML writer defaults: an XML declaration
 and indentation, with namespaces taken from the target schema. It retains the
-project's literal XML schema-hint settings. Schema locations are emitted as
-metadata; the generated host does not open them or resolve them against a
-filesystem path. The host owns publication of the returned document.
+project's literal XML schema-hint settings, including beside an explicit XML
+scalar output policy. Schema locations are emitted as metadata; the generated
+host does not open them or resolve them against a filesystem path. Hint
+provenance is not emitted. A project without an XML adapter, such as a CSV or
+JSON source feeding an XML target, still generates its typed and JSON APIs; it
+writes no XML document, so the host that serializes the typed output owns any
+schema hint. The host owns publication of the returned document.
 
 Each input and returned output document is limited to 64 MiB of UTF-8.
 Embedded XML schemas have an 8 MiB limit, and the runtime schema-hint descriptor
@@ -3182,11 +3214,12 @@ The current portable model includes:
 - heterogeneous scalar-union source and target fields at JSON boundaries, with
   runtime tag preservation, exact-only numeric adaptation, and matching
   ambiguity or invalid-output failures in Rust and C#
-- lazy conditionals and a closed set of 75 boolean, arithmetic, comparison,
+- lazy conditionals and a closed set of 97 boolean, arithmetic, comparison,
   scalar text, pinned [Unicode casing](unicode-casing.md), Unicode
-  whitespace/substring/padding, finite numeric detection,
-  integer-first conversion, numeric picture formatting, SQL LIKE, bounded regex
-  matching/replacement, ISBN, rounding, date extraction, composition, picture parsing, exact
+  whitespace/substring/padding/character translation/literal replacement, finite
+  numeric detection, integer-first conversion, numeric picture formatting, SQL LIKE, bounded regex
+  matching/replacement, ISBN, rounding (away from zero, or exact halves toward
+  positive infinity on decimal digits), date extraction, composition, picture parsing, exact
   duration arithmetic, and EDIFACT date-time conversion,
   missing-value, XML-nil, lexical path, schema-guided JSON-string field
   projection and typed object serialization, and validated pure
@@ -3226,6 +3259,13 @@ The current portable model includes:
   singleton scalars and repeating sources or sources owned by any exact
   lexically enclosing repeated runtime frame, with direct tuple counts, computed
   per-tuple values, and parent-context scalar arguments
+- single-valued computed join keys in those join scopes and aggregates: the
+  key is evaluated once per join execution in the receiving context, before
+  any source is walked, and anchors a per-item join; Null-like keys yield no
+  tuples, `""` is a value, and comparison, order and duplicates follow the
+  interpreter. A joined aggregate evaluates its key before its tuple
+  expression and argument. Sequence-valued computed keys remain
+  interpreter-only and refuse with their own scope or node diagnostic
 - collection aggregates over direct fields or computed per-item expressions
 - nested, repeating-group, repeating-scalar, scalar-union, and exact
   whole-current-group target construction with exact numeric target adaptation

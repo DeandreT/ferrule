@@ -1487,6 +1487,8 @@ fn render_inner_join(scope: usize, join: &InnerJoin, output: &mut String) {
     output.push_str(");\n");
 }
 
+/// A computed key is passed after the plan, so it is evaluated once in the
+/// receiving context before the runtime walks any source.
 fn render_inner_join_call(join: &InnerJoin, output: &mut String) {
     let mut sources = join.plan().sources();
     let Some(first) = sources.next() else {
@@ -1505,20 +1507,38 @@ fn render_inner_join_call(join: &InnerJoin, output: &mut String) {
         render_join_source(source, output);
         output.push_str(",\n                        new global::Ferrule.Runtime.FerruleJoinKey[]\n                        {\n");
         for condition in conditions.iter() {
-            output.push_str("                            new(");
-            render_path(condition.left_collection(), output);
-            output.push_str(", ");
-            render_path(condition.left_path(), output);
-            output.push_str(", ");
+            match condition.left_collection() {
+                Some(left_collection) => {
+                    output.push_str("                            new(");
+                    render_path(left_collection, output);
+                    output.push_str(", ");
+                    render_path(condition.left_path(), output);
+                    output.push_str(", ");
+                }
+                None => output.push_str(
+                    "                            global::Ferrule.Runtime.FerruleJoinKey.FromComputed(",
+                ),
+            }
             render_path(condition.right_path(), output);
             output.push_str("),\n");
         }
         output.push_str("                        }),\n");
     }
-    output.push_str("                }))");
+    output.push_str("                })");
+    if let Some(computed) = join.plan().computed_source() {
+        output.push_str(&format!(
+            ",\n            Node_{}(context)",
+            computed.value()
+        ));
+    }
+    output.push(')');
 }
 
 fn render_join_source(source: &JoinSource, output: &mut String) {
+    let JoinSource::Collection(source) = source else {
+        output.push_str("global::Ferrule.Runtime.FerruleJoinSource.Computed");
+        return;
+    };
     output.push_str("new global::Ferrule.Runtime.FerruleJoinSource(");
     render_path(source.collection(), output);
     output.push_str(", global::Ferrule.Runtime.FerruleJoinSourceCardinality.");

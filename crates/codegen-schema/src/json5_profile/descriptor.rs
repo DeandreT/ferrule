@@ -63,7 +63,9 @@ pub(super) fn validate(descriptor: &str) -> Result<(), Json5ProfileError> {
             match field.as_str() {
                 "name" | "kind" | "nullable" => {}
                 "xml_namespace"
+                | "json_tuple"
                 | "xml_wildcard_namespace"
+                | "xml_wildcard_excluded_names"
                 | "recursive_ref"
                 | "fixed"
                 | "json_allowed_values"

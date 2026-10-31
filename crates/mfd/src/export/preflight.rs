@@ -302,21 +302,6 @@ pub(super) fn validate(project: &Project) -> Result<(), MfdError> {
         ));
     }
 
-    if project.source_options.xml_schema_hints.is_some()
-        || project.target_options.xml_schema_hints.is_some()
-        || project
-            .extra_sources
-            .iter()
-            .any(|source| source.options.xml_schema_hints.is_some())
-        || project
-            .extra_targets
-            .iter()
-            .any(|target| target.options.xml_schema_hints.is_some())
-    {
-        return Err(MfdError::Unsupported(
-            "explicit XML schema hints cannot be preserved in .mfd export".into(),
-        ));
-    }
     json_parser::validate_provenance(&project.graph)?;
     validate_csv_metadata_identity(&project.source_path, &project.source_options, "source")?;
     validate_csv_metadata_identity(&project.target_path, &project.target_options, "target")?;
@@ -388,6 +373,7 @@ pub(super) fn validate(project: &Project) -> Result<(), MfdError> {
     }
     exception::validate(project)?;
     wsdl::validate(project)?;
+    join::validate_computed_placement(project)?;
     join::validate(project)?;
     if project.extra_sources.len() > 256 {
         return Err(MfdError::Unsupported(
@@ -1175,6 +1161,52 @@ fn display_scope_path(path: &[String]) -> String {
     } else {
         path.join("/")
     }
+}
+
+/// Refuses schema hints other than a target hint that import derived from the
+/// native default setting and that still matches that derivation. Such a hint
+/// exports as that setting, and its location then follows the exported schema
+/// sibling. A derived hint that no longer matches its target schema is named
+/// as such; every other hint is explicit.
+pub(super) fn validate_schema_hints(project: &Project) -> Result<(), MfdError> {
+    let explicit = || {
+        Err(MfdError::Unsupported(
+            "explicit XML schema hints cannot be preserved in .mfd export".into(),
+        ))
+    };
+    if project.source_options.xml_schema_hints.is_some()
+        || project
+            .extra_sources
+            .iter()
+            .any(|source| source.options.xml_schema_hints.is_some())
+    {
+        return explicit();
+    }
+    let targets = std::iter::once((None, &project.target_options, &project.target)).chain(
+        project
+            .extra_targets
+            .iter()
+            .map(|target| (Some(target.name.as_str()), &target.options, &target.schema)),
+    );
+    for (name, options, schema) in targets {
+        let Some(hints) = &options.xml_schema_hints else {
+            continue;
+        };
+        if crate::schema_location::is_derived(hints, schema) {
+            continue;
+        }
+        if hints.derivation.is_none() {
+            return explicit();
+        }
+        let name = name.map_or_else(
+            || "the primary target".to_owned(),
+            |name| format!("target `{name}`"),
+        );
+        return Err(MfdError::Unsupported(format!(
+            "the imported XML schema-location hint on {name} no longer matches the target schema; remove the hint or restore the target schema"
+        )));
+    }
+    Ok(())
 }
 
 #[cfg(test)]

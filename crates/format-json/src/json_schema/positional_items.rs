@@ -1,5 +1,6 @@
-use ir::{ItemCountRange, SchemaNode};
+use ir::SchemaNode;
 
+use super::tuple_frames::{self, TupleShape, TupleTail};
 use super::{arbitrary_json_schema, files, item_counts, parse, unsupported_union};
 use crate::JsonFormatError;
 
@@ -30,9 +31,12 @@ pub(super) fn is_direct_array_schema(schema: &serde_json::Value) -> bool {
     }
 }
 
+/// `unevaluated` is the direct `unevaluatedItems` schema when it acts as the
+/// tail, which it does only when no active tail keyword is present.
 pub(super) fn normalize(
     name: &str,
     schema: &serde_json::Value,
+    unevaluated: Option<&serde_json::Value>,
     doc: &super::files::LoadedSchema,
     active_refs: &mut Vec<String>,
 ) -> Result<Option<SchemaNode>, JsonFormatError> {
@@ -50,7 +54,7 @@ pub(super) fn normalize(
         ));
     }
     if let Some(prefix) = prefix {
-        return normalize_prefix(name, schema, prefix, doc, active_refs).map(Some);
+        return normalize_prefix(name, schema, prefix, unevaluated, doc, active_refs).map(Some);
     }
     if let Some(tuple) = tuple {
         if !dialect.supports_legacy_tuple_items() {
@@ -59,7 +63,8 @@ pub(super) fn normalize(
                 "tuple-form array `items` is not valid in Draft 2020-12",
             ));
         }
-        return normalize_tuple(name, schema, tuple, dialect, doc, active_refs).map(Some);
+        return normalize_tuple(name, schema, tuple, unevaluated, dialect, doc, active_refs)
+            .map(Some);
     }
     Ok(None)
 }
@@ -68,49 +73,58 @@ fn normalize_prefix(
     name: &str,
     schema: &serde_json::Value,
     prefix: &serde_json::Value,
+    unevaluated: Option<&serde_json::Value>,
     doc: &super::files::LoadedSchema,
     active_refs: &mut Vec<String>,
 ) -> Result<SchemaNode, JsonFormatError> {
     let members = prefix.as_array().ok_or_else(|| {
         unsupported(
             name,
-            "`prefixItems` must be an array of homogeneous item schemas",
+            "`prefixItems` must be an array of positional item schemas",
         )
     })?;
     let tail = match schema.get("items") {
-        None => Tail::Open("an absent `items` tail"),
-        Some(serde_json::Value::Bool(false)) => Tail::Closed,
-        Some(serde_json::Value::Bool(true)) => Tail::Open("an unconstrained `items: true` tail"),
-        Some(schema) => Tail::Schema(schema, "`items` tail"),
+        Some(items) => Tail::new(items, "`items` tail"),
+        None => Tail::unevaluated(unevaluated),
     };
-    lower(
+    let dialect = files::validation_dialect(schema);
+    let node = lower(
         name,
         members,
         tail,
         true,
-        files::validation_dialect(schema),
+        dialect,
         schema,
         doc,
         active_refs,
         "prefixItems members",
-    )
+    )?;
+    // Without `$schema` both tail keywords are active spellings; shapes that
+    // lower homogeneously keep their established import.
+    if node.json_tuple.is_some()
+        && dialect == files::ValidationDialect::Undeclared
+        && schema.get("additionalItems").is_some()
+    {
+        return Err(unsupported(
+            name,
+            "`prefixItems` beside `additionalItems` without `$schema` has an ambiguous tail spelling",
+        ));
+    }
+    Ok(node)
 }
 
 fn normalize_tuple(
     name: &str,
     schema: &serde_json::Value,
     members: &[serde_json::Value],
+    unevaluated: Option<&serde_json::Value>,
     dialect: files::ValidationDialect,
     doc: &super::files::LoadedSchema,
     active_refs: &mut Vec<String>,
 ) -> Result<SchemaNode, JsonFormatError> {
     let tail = match schema.get("additionalItems") {
-        None => Tail::Open("an absent `additionalItems` tail"),
-        Some(serde_json::Value::Bool(false)) => Tail::Closed,
-        Some(serde_json::Value::Bool(true)) => {
-            Tail::Open("an unconstrained `additionalItems: true` tail")
-        }
-        Some(schema) => Tail::Schema(schema, "`additionalItems` tail"),
+        Some(additional) => Tail::new(additional, "`additionalItems` tail"),
+        None => Tail::unevaluated(unevaluated),
     };
     lower(
         name,
@@ -125,6 +139,9 @@ fn normalize_tuple(
     )
 }
 
+/// Parses every member and the tail, intersects the explicit counts, and puts
+/// the result into canonical form: an ordinary homogeneous array or a tuple
+/// frame. Even a tail that the maximum makes unreachable is validated.
 #[allow(clippy::too_many_arguments)]
 fn lower(
     name: &str,
@@ -161,64 +178,41 @@ fn lower(
             member_role,
         )?);
     }
-    if let Some(first) = parsed_members.first()
-        && parsed_members.iter().skip(1).any(|item| item != first)
-    {
-        return Err(unsupported(
-            name,
-            "positional item schemas must have one identical item schema",
-        ));
-    }
-
-    let explicit_count = item_counts::selected(name, schema)?;
-    let member_count = u64::try_from(members.len()).map_err(|_| {
-        unsupported(
-            name,
-            "positional item count cannot be represented as an array item count",
-        )
-    })?;
-    let tail_unreachable = explicit_count
-        .and_then(ItemCountRange::maximum)
-        .is_some_and(|maximum| maximum <= member_count);
-    let arbitrary = arbitrary_json_schema(name)?;
-
-    let (item, implicit_count) = match (parsed_members.first(), tail) {
-        (None, Tail::Open(_)) => (arbitrary, None),
-        (None, Tail::Closed) => (arbitrary, ItemCountRange::new(0, Some(0))),
-        (None, Tail::Schema(tail, role)) => (
-            parse_item_schema(name, tail, dialect, doc, active_refs, role)?,
+    let (parsed_tail, tail_schema) = match tail {
+        Tail::Closed => (TupleTail::Closed, None),
+        Tail::Open => (
+            TupleTail::Open(Box::new(arbitrary_json_schema(name)?)),
             None,
         ),
-        (Some(member), Tail::Closed) => {
-            (member.clone(), ItemCountRange::new(0, Some(member_count)))
-        }
-        (Some(member), Tail::Open(description)) => {
-            if member == &arbitrary || tail_unreachable {
-                (member.clone(), None)
-            } else {
-                return Err(unsupported(
-                    name,
-                    &format!(
-                        "{description} widens constrained positional items after their declared length"
-                    ),
-                ));
-            }
-        }
-        (Some(member), Tail::Schema(tail, role)) => {
-            let tail = parse_item_schema(name, tail, dialect, doc, active_refs, role)?;
-            if tail == *member || tail_unreachable {
-                (member.clone(), None)
-            } else {
-                return Err(unsupported(
-                    name,
-                    "the additional item schema differs from positional items and is not proven unreachable by `maxItems`",
-                ));
-            }
-        }
+        Tail::Schema(tail, role) => (
+            TupleTail::Open(Box::new(parse_item_schema(
+                name,
+                tail,
+                dialect,
+                doc,
+                active_refs,
+                role,
+            )?)),
+            Some(tail),
+        ),
     };
-
-    let mut node = item.repeating();
-    node.item_count_range = item_counts::intersect(name, explicit_count, implicit_count)?;
+    let node = tuple_frames::canonical(
+        name,
+        TupleShape {
+            members: parsed_members,
+            tail: parsed_tail,
+            length: item_counts::selected(name, schema)?,
+        },
+    )?;
+    if node.json_tuple.is_some() {
+        tuple_frames::reject_recursive_positions(
+            name,
+            schema,
+            members.iter().chain(tail_schema),
+            doc,
+            active_refs,
+        )?;
+    }
     Ok(node)
 }
 
@@ -255,13 +249,36 @@ fn parse_item_schema(
             &format!("{role} cannot contain a nested array wrapper"),
         ));
     }
+    if item.json_tuple.is_some() {
+        return Err(unsupported(
+            name,
+            &format!("{role} cannot contain a nested tuple"),
+        ));
+    }
     Ok(item)
 }
 
 enum Tail<'a> {
-    Open(&'static str),
+    /// An absent or `true` tail.
+    Open,
     Closed,
     Schema(&'a serde_json::Value, &'static str),
+}
+
+impl<'a> Tail<'a> {
+    fn new(schema: &'a serde_json::Value, role: &'static str) -> Self {
+        match schema {
+            serde_json::Value::Bool(true) => Self::Open,
+            serde_json::Value::Bool(false) => Self::Closed,
+            schema => Self::Schema(schema, role),
+        }
+    }
+
+    fn unevaluated(schema: Option<&'a serde_json::Value>) -> Self {
+        schema.map_or(Self::Open, |schema| {
+            Self::new(schema, "`unevaluatedItems` tail")
+        })
+    }
 }
 
 fn unsupported(name: &str, reason: &str) -> JsonFormatError {

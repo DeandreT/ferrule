@@ -135,6 +135,7 @@ pub(super) fn attach(
             }
         }
         let value = parse("*", value_schema, doc, active_refs)?;
+        super::tuple_frames::reject_dynamic_value(&group.name, &value, "patternProperties")?;
         if common.as_ref().is_some_and(|common| common != &value) {
             return Err(unsupported(
                 &group.name,

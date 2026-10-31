@@ -140,6 +140,7 @@ fn apply_metadata(node: &mut SchemaNode, field: &str, value: &Json) -> Result<()
         "xml_wildcard_process_contents" => {
             node.xml_wildcard_process_contents = serde_json::from_value(value.clone())?
         }
+        "xml_wildcard_excluded_names" => optional!(xml_wildcard_excluded_names),
         "xml_default_type" => optional!(xml_default_type),
         "xml_type_alternatives" => boolean!(xml_type_alternatives),
         "xml_alternative_kind" => {
@@ -228,7 +229,7 @@ fn csv_x12_complete_source_and_option_admission_oracles() -> Result<(), Box<dyn 
         )?;
         options.push((case.clone(), result));
     }
-    assert_eq!(sources.len(), 61);
+    assert_eq!(sources.len(), 63);
     assert_eq!(options.len(), 18);
     for (case, result) in sources {
         if !case["expected"]["error"].is_null() {

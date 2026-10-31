@@ -1974,6 +1974,11 @@ fn fixed_width_final_chain_rejects_unsupported_boundaries_without_artifacts() {
         .unwrap()
         .pipeline;
     intermediate_fixed.stages[0].project.target_path = Some("buffer.dat".into());
+    // A fixed-width buffer has no XML schema-location hint.
+    intermediate_fixed.stages[0]
+        .project
+        .target_options
+        .xml_schema_hints = None;
     intermediate_fixed.stages[0]
         .project
         .target_options
@@ -2219,7 +2224,7 @@ fn xlsx_final_chain_rejects_unsupported_boundaries_without_artifacts() {
     )
     .unwrap_err()
     .to_string();
-    assert!(error.contains("xlsx_update_existing"), "{error}");
+    assert!(error.contains("new-workbook XLSX"), "{error}");
     assert!(!destination.parent().unwrap().exists());
 
     let mut flat_update_existing = mfd::import_pipeline(&make_csv_final_chain(&directory.0))

@@ -630,7 +630,7 @@ fn join_nary_key_only_apply_is_atomic_when_locked_stale_invalid_or_ids_exhausted
             "empty" => stages[1].keys.clear(),
             "forward" => stages[0].keys[0].left_collection = vec!["C".into()],
             "path" => stages[1].keys[0].right = vec!["missing".into()],
-            "source" => stages[1].source = JoinSource::new(vec!["D".into()]),
+            "source" => stages[1].source = CollectionJoinSource::new(vec!["D".into()]),
             _ => stages.swap(0, 1),
         }
         app.apply_join_draft(&invalid, true);

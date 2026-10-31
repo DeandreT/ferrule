@@ -1,0 +1,9 @@
+[
+  {
+    "name":"conditional EDI keys retain nested current detail owners and authored branches",
+    "input":"ISA*00*          *00*          *ZZ*SYNTHETICFROM  *ZZ*SYNTHETICTO    *261029*1200*^*00501*000000001*0*T*:~GS*IB*FROM*TO*20261029*1200*1*X*005010~ST*888*0001~LIN*7*ID*B*ALT*A~LIN*2*ALT*B*ID*A~LIN*4*ID**ID*A~SE*5*0001~ST*888*0002~LIN*6**B*ID*C~SE*3*0002~GE*2*1~GS*IB*FROM*TO*20261029*1200*2*X*005010~ST*888*0003~LIN*8*ALT*A*ALT*B~SE*3*0003~GE*1*2~IEA*2*000000001~ISA*00*          *00*          *ZZ*SYNTHETICFROM  *ZZ*SYNTHETICTO    *261029*1200*^*00501*000000002*0*T*:~GS*IB*FROM*TO*20261029*1200*3*X*005010~ST*888*0004~LIN*9*ALT*A*ID*D~LIN*10*ID*007*ALT*A~SE*4*0004~GE*1*3~IEA*1*000000002~",
+    "lookup":"{\"Rows\":[{\"Code\":\"A\",\"Value\":\"alpha-first\"},{\"Code\":\"A\",\"Value\":\"alpha-later\"},{\"Code\":\"B\",\"Value\":\"beta-first\"},{\"Code\":\"B\",\"Value\":\"beta-later\"},{\"Code\":\"C\"},{\"Code\":\"C\",\"Value\":\"never\"},{\"Code\":\"D\",\"Value\":null},{\"Code\":\"D\",\"Value\":\"never\"},{\"Code\":\"007\",\"Value\":\"exact\"},{\"Code\":\"FALLBACK\",\"Value\":\"authored-literal\"}]}",
+    "expected":{"Results":[{"Code":"B","Ordinal":7,"Found":"beta-first"},{"Code":"A","Ordinal":2,"Found":"alpha-first"},{"Ordinal":4},{"Code":"C","Ordinal":6},{"Code":"FALLBACK","Ordinal":8,"Found":"authored-literal"},{"Code":"D","Ordinal":9,"Found":null},{"Code":"007","Ordinal":10,"Found":"exact"}]}
+  },
+  {"name":"conditional EDI miss validates malformed later lookup record","input":"ISA*00*          *00*          *ZZ*SYNTHETICFROM  *ZZ*SYNTHETICTO    *261029*1200*^*00501*000000001*0*T*:~GS*IB*FROM*TO*20261029*1200*1*X*005010~ST*888*0001~LIN*1*ID*Z*ALT*A~SE*3*0001~GE*1*1~IEA*1*000000001~","lookup":"{\"Rows\":[{\"Code\":\"A\",\"Value\":7}]}","error":"input does not match the JSON schema"}
+]

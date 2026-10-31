@@ -136,6 +136,12 @@ fn scalar_cases() -> Vec<FunctionCase> {
             vec![text("hello"), text("ell"), text("ipp")],
             "string",
         ),
+        FunctionCase::new(
+            "replace",
+            "lang",
+            vec![text("a.c abc"), text("."), text("$0")],
+            "string",
+        ),
         FunctionCase::new("upper-case", "xpath2", vec![text("Mixed")], "string"),
         FunctionCase::new("lower-case", "xpath2", vec![text("Mixed")], "string"),
         FunctionCase::new("string", "xpath2", vec![int(42)], "string"),
@@ -205,6 +211,12 @@ fn scalar_cases() -> Vec<FunctionCase> {
             "substring-after",
             "xpath2",
             vec![text("left:right"), text(":")],
+            "string",
+        ),
+        FunctionCase::new(
+            "translate",
+            "core",
+            vec![text("[12,3]"), text("[,]"), text("(.)")],
             "string",
         ),
         FunctionCase::new(

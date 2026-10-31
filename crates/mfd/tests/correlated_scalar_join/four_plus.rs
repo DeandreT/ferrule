@@ -634,7 +634,7 @@ fn nested_four_input_export_retains_primary_last_source_shadow_anchor_and_alias_
     });
     assert_refused(
         &wrong_primary,
-        "singleton and anchor must belong to the primary source component",
+        "anchor `Order` names both a primary source child and a named source",
         0,
     )?;
     for active in [false, true] {

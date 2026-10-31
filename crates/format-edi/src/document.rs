@@ -24,7 +24,9 @@ pub fn validate(
         ));
     }
     if kind == EdiBoundaryKind::SwiftMt {
-        return Err(invalid("SWIFT MT is input-only"));
+        return Err(invalid(
+            "SWIFT MT uses its own `swift` codec, not the shared EDI document boundary",
+        ));
     }
     if options.edi_config_reference.is_some() {
         return Err(invalid("unresolved EDI configuration"));
@@ -93,7 +95,7 @@ pub fn validate(
             crate::segments::scalar_or_fixed(node, None)?;
         }
     }
-    if schema.contains_json_array_wrapper() {
+    if schema.contains_json_array_wrapper() || schema.contains_json_tuple() {
         return Err(invalid("JSON array metadata is not an EDI schema"));
     }
     if let Some(separators) = options.x12_separators {

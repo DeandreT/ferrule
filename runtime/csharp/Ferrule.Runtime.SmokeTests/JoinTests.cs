@@ -114,6 +114,78 @@ internal static partial class Program
             Array.Empty<FerruleJoinKey>()));
     }
 
+    private static void ComputedKeyInnerJoinContexts()
+    {
+        var customers = Group(
+            Field("Customers", Repeated(
+                Group(Field("Number", Scalar(Text("C1"))), Field("Name", Scalar(Text("Ada")))),
+                Group(Field("Number", Scalar(Text("C2"))), Field("Name", Scalar(Text("Grace")))),
+                Group(Field("Number", Scalar(Text("C2"))), Field("Name", Scalar(Text("Hopper")))),
+                Group(Field("Number", Scalar(Text(""))), Field("Name", Scalar(Text("Blank")))),
+                Group(Field("Number", Scalar(FerruleValue.FromInt64(7))), Field("Name", Scalar(Text("Seven")))))),
+            Field("Orders", Repeated(
+                Group(Field("Id", Scalar(Text("O1"))), Field("Customer", Scalar(Text("C2")))),
+                Group(Field("Id", Scalar(Text("O2"))), Field("Customer", Scalar(Text("C1")))),
+                Group(Field("Id", Scalar(Text("O3"))), Field("Customer", Scalar(Text("C2")))))));
+        var context = ScopeContext.FromSources(customers, Array.Empty<FerruleField>());
+        var customerSource = new FerruleJoinSource(new[] { "Customers" });
+        var keyFirst = new FerruleJoinPlan(
+            FerruleJoinSource.Computed,
+            new[] { new FerruleJoinStage(customerSource, new[] { FerruleJoinKey.FromComputed(new[] { "Number" }) }) });
+        var keySecond = new FerruleJoinPlan(
+            customerSource,
+            new[]
+            {
+                new FerruleJoinStage(
+                    FerruleJoinSource.Computed,
+                    new[] { new FerruleJoinKey(new[] { "Customers" }, new[] { "Number" }, Array.Empty<string>()) }),
+            });
+        string Names(IReadOnlyList<ScopeContext> tuples) => string.Join(',', tuples.Select(tuple =>
+            $"{tuple.ResolveJoinScalar(81, new[] { "Customers" }, new[] { "Name" }).StringValue}@{tuple.JoinPosition(81)}"));
+        foreach (var plan in new[] { keyFirst, keySecond })
+        {
+            Equal("Grace@1,Hopper@2", Names(context.InnerJoin(81, plan, Text("C2"))));
+            // An empty string is a value; a string key matches an integer by text.
+            Equal("Blank@1", Names(context.InnerJoin(81, plan, Text(""))));
+            Equal("Seven@1", Names(context.InnerJoin(81, plan, Text("7"))));
+            foreach (var nullLike in new[] { FerruleValue.Null, FerruleValue.JsonNull, FerruleValue.XmlNil })
+            {
+                Equal(0, context.InnerJoin(81, plan, nullLike).Count);
+            }
+            Throws<FerruleRuntimeException>(() => context.InnerJoin(
+                81, plan, FerruleValue.FromDecimal(FerruleDecimal96.ParseExact("7"))));
+            // A plan with a computed source needs its key, and only such a plan takes one.
+            Throws<ArgumentException>(() => context.InnerJoin(81, plan));
+        }
+        Throws<ArgumentException>(() => context.InnerJoin(81, new FerruleJoinPlan(
+            customerSource,
+            new[] { new FerruleJoinStage(new FerruleJoinSource(new[] { "Orders" }), new[]
+            {
+                new FerruleJoinKey(new[] { "Customers" }, new[] { "Number" }, new[] { "Customer" }),
+            }) }), Text("C2")));
+
+        // The key as a middle stage's right source, then as the first source read again later.
+        var orderSource = new FerruleJoinSource(new[] { "Orders" });
+        var middle = new FerruleJoinPlan(customerSource, new[]
+        {
+            new FerruleJoinStage(
+                FerruleJoinSource.Computed,
+                new[] { new FerruleJoinKey(new[] { "Customers" }, new[] { "Number" }, Array.Empty<string>()) }),
+            new FerruleJoinStage(
+                orderSource,
+                new[] { new FerruleJoinKey(new[] { "Customers" }, new[] { "Number" }, new[] { "Customer" }) }),
+        });
+        var first = new FerruleJoinPlan(FerruleJoinSource.Computed, new[]
+        {
+            new FerruleJoinStage(customerSource, new[] { FerruleJoinKey.FromComputed(new[] { "Number" }) }),
+            new FerruleJoinStage(orderSource, new[] { FerruleJoinKey.FromComputed(new[] { "Customer" }) }),
+        });
+        string Orders(IReadOnlyList<ScopeContext> tuples) => string.Join(',', tuples.Select(tuple =>
+            tuple.ResolveJoinScalar(81, new[] { "Orders" }, new[] { "Id" }).StringValue));
+        Equal("O1,O3,O1,O3", Orders(context.InnerJoin(81, middle, Text("C2"))));
+        Equal("O2", Orders(context.InnerJoin(81, first, Text("C1"))));
+    }
+
     private static FerruleGroup JoinRow(
         string label,
         FerruleValue id,

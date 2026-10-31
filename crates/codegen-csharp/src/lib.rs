@@ -1234,6 +1234,13 @@ mod tests {
                     args: vec![2, 13, 15],
                 },
             },
+            ExpressionNode {
+                id: 17,
+                expression: Expression::Call {
+                    function: ScalarFunction::Translate,
+                    args: vec![2, 13, 15],
+                },
+            },
         ]);
         program.root.bindings[0].expression = 12;
 
@@ -1256,6 +1263,9 @@ mod tests {
         ));
         assert!(source.contains(
             "FerruleFunctions.Call(\"replace\", new global::Ferrule.Runtime.FerruleValue[] { Node_2(context), Node_13(context), Node_15(context) })"
+        ));
+        assert!(source.contains(
+            "FerruleFunctions.Call(\"translate\", new global::Ferrule.Runtime.FerruleValue[] { Node_2(context), Node_13(context), Node_15(context) })"
         ));
     }
 

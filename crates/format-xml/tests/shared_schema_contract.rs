@@ -28,6 +28,29 @@ fn compiler_reader_and_writer_share_schema_metadata_error_order() {
         [expected.clone(), expected.clone(), expected]
     );
 
+    let frame = SchemaNode::group(
+        "Point",
+        vec![
+            SchemaNode::scalar("item1", ScalarType::String),
+            SchemaNode::scalar("item2", ScalarType::Int),
+        ],
+    )
+    .with_json_tuple(ir::JsonTupleLayout {
+        length: ir::ItemCountRange::new(0, Some(2)),
+        tail: ir::JsonTupleTail::Closed,
+    })
+    .unwrap();
+    let expected = XmlFormatError::UnsupportedSchemaRole {
+        node: "Point".into(),
+        role: "element",
+        kind: "JSON tuple frame",
+    }
+    .to_string();
+    assert_eq!(
+        failures(&SchemaNode::group("Root", vec![frame])),
+        [expected.clone(), expected.clone(), expected]
+    );
+
     let mut child = SchemaNode::scalar("Field", ScalarType::String);
     child.attribute = true;
     child.xml_optional = true;

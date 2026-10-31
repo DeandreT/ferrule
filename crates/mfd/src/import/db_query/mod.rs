@@ -396,6 +396,7 @@ fn read_uncorrelated_component(
         }],
         db_xml_columns: BTreeMap::new(),
         dynamic_json: None,
+        target_schema_hints: None,
     })
 }
 
@@ -820,7 +821,9 @@ impl GraphBuilder<'_> {
                 Some(_) | None => input,
             });
         }
-        if !unscoped_query && let Some(node) = self.scalar_node_at_anchor(key, active_anchor) {
+        if !unscoped_query
+            && let Some(node) = self.binding_scalar_node_at_anchor(key, active_anchor, target_path)
+        {
             return Some(node);
         }
         self.binding_node(key, target_path)

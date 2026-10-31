@@ -6,7 +6,7 @@ use ir::{
 };
 use serde_json::value::RawValue;
 
-use crate::{JsonFormatError, RecursiveSchemas};
+use crate::{JsonFormatError, RecursiveSchemas, json_tuple};
 
 pub(crate) fn validate(
     schema: &SchemaNode,
@@ -86,6 +86,18 @@ fn validate_json_single_node(
     if schema.json_any {
         return Ok(());
     }
+    if let Some(roles) = json_tuple::roles(schema) {
+        if let serde_json::Value::Array(items) = value {
+            for (index, item) in items.iter().enumerate() {
+                if let Some(item_schema) = roles.item(index + 1) {
+                    let (item_schema, depth) =
+                        resolve_item(item_schema, recursive, recursion_depth)?;
+                    validate_json_single_node(&item_schema, item, recursive, depth)?;
+                }
+            }
+        }
+        return Ok(());
+    }
     let (
         SchemaKind::Group {
             children, dynamic, ..
@@ -123,6 +135,7 @@ pub fn validate_raw_json_unique_items(
     let document = document.strip_prefix('\u{feff}').unwrap_or(document);
     let raw = serde_json::from_str::<Box<RawValue>>(document)?;
     if !schema.repeating
+        && schema.json_tuple.is_none()
         && matches!(schema.kind, SchemaKind::Group { .. })
         && raw.get().trim_start().starts_with('[')
     {
@@ -212,6 +225,19 @@ fn validate_raw_single_node(
     if let Some(item) = schema.json_array_wrapper_item() {
         return validate_raw_node(item, raw, recursive, recursion_depth);
     }
+    if let Some(roles) = json_tuple::roles(schema) {
+        if raw.get().trim_start().starts_with('[') {
+            let items = serde_json::from_str::<Vec<Box<RawValue>>>(raw.get())?;
+            for (index, item) in items.iter().enumerate() {
+                if let Some(item_schema) = roles.item(index + 1) {
+                    let (item_schema, depth) =
+                        resolve_item(item_schema, recursive, recursion_depth)?;
+                    validate_raw_single_node(&item_schema, item, recursive, depth)?;
+                }
+            }
+        }
+        return Ok(());
+    }
     if schema.json_any
         || !matches!(schema.kind, SchemaKind::Group { .. })
         || !raw.get().trim_start().starts_with('{')
@@ -239,6 +265,19 @@ fn validate_raw_single_node(
         }
     }
     Ok(())
+}
+
+/// Resolves one tuple item schema, which may be a recursive occurrence.
+fn resolve_item<'s>(
+    schema: &'s SchemaNode,
+    recursive: &RecursiveSchemas<'_>,
+    recursion_depth: usize,
+) -> Result<(std::borrow::Cow<'s, SchemaNode>, usize), JsonFormatError> {
+    if schema.recursive_ref.is_some() {
+        let (resolved, depth) = recursive.resolve(schema, recursion_depth)?;
+        return Ok((std::borrow::Cow::Owned(resolved), depth));
+    }
+    Ok((std::borrow::Cow::Borrowed(schema), recursion_depth))
 }
 
 fn validate_raw_items(schema: &SchemaNode, items: &[Box<RawValue>]) -> Result<(), JsonFormatError> {

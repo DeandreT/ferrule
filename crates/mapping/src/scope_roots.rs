@@ -9,16 +9,16 @@
 //! can recover evaluation order from this visit order.
 
 use crate::{
-    FailureIteration, FailureRule, NodeId, NodeInputRole, NodeInputSlot, Scope, ScopeConstruction,
-    SequenceExpr,
+    ComputedJoinValue, FailureIteration, FailureRule, NodeId, NodeInputRole, NodeInputSlot, Scope,
+    ScopeConstruction, SequenceExpr,
 };
 
 /// Where and how often a root expression is evaluated.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ScopeRootRole {
     /// Once in the context enclosing the scope or rule, before any item
-    /// exists: presence conditions, window bounds, block sizes, and
-    /// generated-sequence inputs.
+    /// exists: presence conditions, window bounds, block sizes,
+    /// generated-sequence inputs, and a join's computed key.
     Parent,
     /// Once per candidate item, before grouping and windows: filters, sort
     /// keys, item-wise grouping keys, and failure predicates.
@@ -63,6 +63,9 @@ pub enum ScopeRootSlot {
     SequenceInput,
     /// The generated item identity returned by [`SequenceExpr::item`].
     SequenceItem,
+    /// The value of an inner join's computed source, or an input of its
+    /// sequence.
+    ComputedJoinKey,
     /// A reserved source item that a composed sequence owns besides its item.
     SequenceReservedItem,
     DynamicChildKey(usize),
@@ -95,7 +98,8 @@ impl Scope {
     /// Analyses that stop at their first finding or report findings in order
     /// see roots in this order, so it is part of their precedence: controls,
     /// then the output path, presence and windows, secondary sort keys,
-    /// bindings, construction, the sequence, and dynamic child keys.
+    /// bindings, construction, the sequence, a join's computed key, and
+    /// dynamic child keys.
     pub fn visit_roots(&self, visit: &mut impl FnMut(ScopeRoot)) {
         let mut root = |node, slot, role| visit(ScopeRoot { node, slot, role });
         use ScopeRootRole::{GroupMember, Item, Output, Parent, RecursiveGroup};
@@ -171,6 +175,21 @@ impl Scope {
         }
         if let Some(sequence) = self.sequence() {
             visit_sequence_roots(sequence, &mut root);
+        }
+        if let Some(computed) = self.join().and_then(|(_, plan)| plan.computed_source()) {
+            // A sequence key's inputs keep the computed-key slot; its item
+            // identity is private to the join, like a scope sequence's.
+            match computed.value() {
+                ComputedJoinValue::Scalar(node) => root(*node, Slot::ComputedJoinKey, Parent),
+                ComputedJoinValue::Sequence(sequence) => {
+                    for node in sequence.inputs() {
+                        root(node, Slot::ComputedJoinKey, Parent);
+                    }
+                    for item in sequence.owned_items() {
+                        root(item, Slot::SequenceItem, ScopeRootRole::GeneratedItem);
+                    }
+                }
+            }
         }
         for (index, child) in self.dynamic_children.iter().enumerate() {
             root(child.key, Slot::DynamicChildKey(index), Output);

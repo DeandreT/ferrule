@@ -8,9 +8,15 @@ use super::graph::GraphBuilder;
 use super::schema::{SchemaComponent, parse_u32, schema_node_at};
 
 pub(super) struct Recipe {
-    input: u32,
+    pub(super) input: u32,
     layout: FlexTextLayout,
     pub(super) outputs: BTreeMap<u32, Vec<String>>,
+}
+
+impl Recipe {
+    pub(super) fn input_pins(&self) -> impl Iterator<Item = u32> {
+        std::iter::once(self.input)
+    }
 }
 
 pub(super) fn read(

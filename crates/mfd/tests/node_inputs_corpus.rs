@@ -103,10 +103,21 @@ fn legacy_dependencies(node: &Node) -> Vec<NodeId> {
             .collect(),
         Node::Aggregate {
             expression, arg, ..
-        }
-        | Node::JoinAggregate {
-            expression, arg, ..
         } => expression.iter().chain(arg).copied().collect(),
+        // A computed key is read first, in the consumer's own context.
+        Node::JoinAggregate {
+            plan,
+            expression,
+            arg,
+            ..
+        } => plan
+            .computed_source()
+            .and_then(|computed| computed.scalar())
+            .iter()
+            .chain(expression)
+            .chain(arg)
+            .copied()
+            .collect(),
     }
 }
 
@@ -183,10 +194,21 @@ fn legacy_auto_number(node: &Node) -> Vec<NodeId> {
             .collect(),
         Node::Aggregate {
             expression, arg, ..
-        }
-        | Node::JoinAggregate {
-            expression, arg, ..
         } => expression.iter().chain(arg).copied().collect(),
+        // A computed key is read first, in the consumer's own context.
+        Node::JoinAggregate {
+            plan,
+            expression,
+            arg,
+            ..
+        } => plan
+            .computed_source()
+            .and_then(|computed| computed.scalar())
+            .iter()
+            .chain(expression)
+            .chain(arg)
+            .copied()
+            .collect(),
         Node::OwnedSourceField(_)
         | Node::OwnedPosition(_)
         | Node::OwnedRowDocumentPath(_)
@@ -299,10 +321,21 @@ fn legacy_recursive(node: &Node) -> Vec<NodeId> {
             .collect(),
         Node::Aggregate {
             expression, arg, ..
-        }
-        | Node::JoinAggregate {
-            expression, arg, ..
         } => expression.iter().chain(arg).copied().collect(),
+        // A computed key is read first, in the consumer's own context.
+        Node::JoinAggregate {
+            plan,
+            expression,
+            arg,
+            ..
+        } => plan
+            .computed_source()
+            .and_then(|computed| computed.scalar())
+            .iter()
+            .chain(expression)
+            .chain(arg)
+            .copied()
+            .collect(),
     }
 }
 
@@ -371,10 +404,21 @@ fn legacy_join(node: &Node) -> Vec<NodeId> {
             .collect(),
         Node::Aggregate {
             expression, arg, ..
-        }
-        | Node::JoinAggregate {
-            expression, arg, ..
         } => expression.iter().chain(arg).copied().collect(),
+        // A computed key is read first, in the consumer's own context.
+        Node::JoinAggregate {
+            plan,
+            expression,
+            arg,
+            ..
+        } => plan
+            .computed_source()
+            .and_then(|computed| computed.scalar())
+            .iter()
+            .chain(expression)
+            .chain(arg)
+            .copied()
+            .collect(),
         Node::OwnedSourceField(_)
         | Node::OwnedPosition(_)
         | Node::OwnedRowDocumentPath(_)
@@ -475,10 +519,21 @@ fn legacy_graph_references(node: &Node) -> Vec<NodeId> {
             .collect(),
         Node::Aggregate {
             expression, arg, ..
-        }
-        | Node::JoinAggregate {
-            expression, arg, ..
         } => expression.iter().chain(arg).copied().collect(),
+        // A computed key is read first, in the consumer's own context.
+        Node::JoinAggregate {
+            plan,
+            expression,
+            arg,
+            ..
+        } => plan
+            .computed_source()
+            .and_then(|computed| computed.scalar())
+            .iter()
+            .chain(expression)
+            .chain(arg)
+            .copied()
+            .collect(),
     }
 }
 
@@ -560,10 +615,21 @@ fn legacy_canvas(node: &Node) -> Vec<NodeId> {
             .collect(),
         Node::Aggregate {
             expression, arg, ..
-        }
-        | Node::JoinAggregate {
-            expression, arg, ..
         } => expression.iter().chain(arg).copied().collect(),
+        // A computed key is read first, in the consumer's own context.
+        Node::JoinAggregate {
+            plan,
+            expression,
+            arg,
+            ..
+        } => plan
+            .computed_source()
+            .and_then(|computed| computed.scalar())
+            .iter()
+            .chain(expression)
+            .chain(arg)
+            .copied()
+            .collect(),
     }
 }
 
@@ -658,10 +724,21 @@ fn legacy_dynamic_json(node: &Node) -> Vec<NodeId> {
             .collect(),
         Node::Aggregate {
             expression, arg, ..
-        }
-        | Node::JoinAggregate {
-            expression, arg, ..
         } => expression.iter().chain(arg).copied().collect(),
+        // A computed key is read first, in the consumer's own context.
+        Node::JoinAggregate {
+            plan,
+            expression,
+            arg,
+            ..
+        } => plan
+            .computed_source()
+            .and_then(|computed| computed.scalar())
+            .iter()
+            .chain(expression)
+            .chain(arg)
+            .copied()
+            .collect(),
     }
 }
 
@@ -721,9 +798,20 @@ fn legacy_position(node: &Node) -> Vec<NodeId> {
         Node::Aggregate {
             expression, arg, ..
         } => expression.iter().chain(arg).copied().collect(),
+        // A computed key is read first, in the consumer's own context.
         Node::JoinAggregate {
-            expression, arg, ..
-        } => expression.iter().chain(arg).copied().collect(),
+            plan,
+            expression,
+            arg,
+            ..
+        } => plan
+            .computed_source()
+            .and_then(|computed| computed.scalar())
+            .iter()
+            .chain(expression)
+            .chain(arg)
+            .copied()
+            .collect(),
         Node::OwnedSourceField(_)
         | Node::OwnedPosition(_)
         | Node::OwnedRowDocumentPath(_)

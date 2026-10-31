@@ -1,13 +1,23 @@
 use super::*;
 
 pub(super) fn project(cast_first: bool, explicit: bool) -> TestResult<Project> {
+    project_with_schema_location(cast_first, explicit, " AddSchemaLocation=\"0\"")
+}
+
+/// Imports the fixture with its target `AddSchemaLocation` property replaced.
+fn project_with_schema_location(
+    cast_first: bool,
+    explicit: bool,
+    setting: &str,
+) -> TestResult<Project> {
     let fixtures =
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../mfd/tests/fixtures/target_float_cast");
     let package = TempDir::new("target_float_cast")?;
     for name in ["source.xsd", "target.xsd"] {
         std::fs::copy(fixtures.join(name), package.0.join(name))?;
     }
-    let mut mapping = std::fs::read_to_string(fixtures.join("cast-first.mfd"))?;
+    let mut mapping = std::fs::read_to_string(fixtures.join("cast-first.mfd"))?
+        .replace(" AddSchemaLocation=\"0\"", setting);
     if !explicit {
         assert!(mapping.contains(" casttotargettypemode=\"cast-in-subtree\""));
         mapping = mapping.replace(" casttotargettypemode=\"cast-in-subtree\"", "");
@@ -61,6 +71,47 @@ fn target_float_cast_keeps_exact_xml_failure_selection() -> TestResult<()> {
                 (false, true) => "target_math_first_explicit",
                 (true, false) => "target_cast_first_default",
                 (false, false) => "target_math_first_default",
+            },
+            include_str!("target_float_cast/Host.rs.txt"),
+            include_str!("target_float_cast/Host.cs.txt"),
+        )?;
+    }
+    Ok(())
+}
+
+#[test]
+fn imported_reference_default_schema_location_is_written_by_generated_code() -> TestResult<()> {
+    for setting in ["", " AddSchemaLocation=\"1\""] {
+        let project = project_with_schema_location(true, true, setting)?;
+        assert_eq!(
+            project.target_options.xml_schema_hints,
+            Some(ir::XmlSchemaHints {
+                no_namespace_location: Some("target.xsd".into()),
+                derivation: Some(ir::XmlSchemaHintDerivation {
+                    schema_reference: "target.xsd".into(),
+                }),
+                ..Default::default()
+            })
+        );
+        let mut cases: Vec<serde_json::Value> = serde_json::from_str(include_str!(
+            "../../../mfd/tests/fixtures/target_float_cast/cases.json"
+        ))?;
+        for case in &mut cases {
+            case["input"] = format!("<Envelope><Numerator>{}</Numerator><Denominator>{}</Denominator><Text>{}</Text><Label>safe</Label></Envelope>", case["numerator"].as_str().unwrap(), case["denominator"].as_str().unwrap(), case["text"].as_str().unwrap()).into();
+            if case["error"] == "first" {
+                case["error"] = "cast".into();
+            }
+            if case["error"].is_null() {
+                case["expected_xml"] = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Envelope xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:noNamespaceSchemaLocation=\"target.xsd\">\n  <Amount>29</Amount>\n  <Amount>17</Amount>\n  <Label>safe</Label>\n</Envelope>".into();
+            }
+        }
+        json_text_boundaries::run_generated_boundary_cases_with_harnesses(
+            &project,
+            &cases,
+            if setting.is_empty() {
+                "target_schema_location_absent"
+            } else {
+                "target_schema_location_enabled"
             },
             include_str!("target_float_cast/Host.rs.txt"),
             include_str!("target_float_cast/Host.cs.txt"),

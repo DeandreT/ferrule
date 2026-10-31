@@ -75,10 +75,17 @@ fn assert_rejected(directory: &Fixture) {
         ),
         Err(mfd::MfdError::IncompatibleImport(_))
     ));
-    assert_ne!(
-        imported.project.root.children[0].children[0].iteration_output,
-        IterationOutput::First
-    );
+    // A rejected control may leave no child at all when its only value feed
+    // would otherwise discard an unowned source filter.
+    if let Some(selected) = imported
+        .project
+        .root
+        .children
+        .first()
+        .and_then(|scope| scope.children.first())
+    {
+        assert_ne!(selected.iteration_output, IterationOutput::First);
+    }
 }
 
 #[test]

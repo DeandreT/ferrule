@@ -45,6 +45,7 @@ impl FerruleApp {
                             crate::theme::METRICS.icon_size,
                         )),
                     )
+                    .accessible_name("Add source")
                     .on_hover_text("Add source")
                     .clicked()
                 {
@@ -112,7 +113,7 @@ impl FerruleApp {
                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                 ui.menu_button("⋯", |ui| {
                                     if ui.add_enabled(editing_enabled, egui::Button::new("Remove source…")).clicked() { remove = Some(index); ui.close(); }
-                                }).response.on_hover_text("Source actions");
+                                }).response.accessible_name("Source actions").on_hover_text("Source actions");
                             });
                         });
                         show_schema_tree(
@@ -263,6 +264,25 @@ impl FerruleApp {
             MappingDocument::Target(index) => Some(index),
             MappingDocument::Main | MappingDocument::Function(_) => None,
         };
+        if page == InspectorPage::Target {
+            // Keyed by name rather than position, so reordering targets
+            // never hands one target's draft to another.
+            let target = match active_target {
+                Some(index) => self
+                    .project
+                    .extra_targets
+                    .get_mut(index)
+                    .map(|target| (Some(target.name.as_str()), &mut target.options)),
+                None => Some((None, &mut self.project.target_options)),
+            };
+            if let Some((name, options)) = target.filter(|(_, options)| options.swift_mt.is_some())
+            {
+                ui.add_enabled_ui(editing_enabled, |ui| {
+                    crate::app::swift_output::show_fields(ui, options, name);
+                });
+                ui.separator();
+            }
+        }
         ui.add_enabled_ui(editing_enabled, |ui| {
             let (schema, root, path, options) = active_target
                 .and_then(|index| self.project.extra_targets.get(index))
@@ -353,8 +373,9 @@ impl FerruleApp {
             } else {
                 let max_tree_height = (ui.available_height() * 0.4).max(64.0);
                 let tree_width = ui.available_width();
+                let tree_id = ui.make_persistent_id(("scope_tree_split", active_target));
                 egui::Resize::default()
-                    .id_salt(("scope_tree_split", active_target))
+                    .id(tree_id)
                     .default_width(tree_width)
                     .min_width(tree_width)
                     .max_width(tree_width)
@@ -376,6 +397,11 @@ impl FerruleApp {
                                     self.selected_scope = new_selection;
                                 }
                             });
+                    });
+                // The drag corner is a Tab stop that egui leaves unnamed.
+                ui.ctx()
+                    .accesskit_node_builder(tree_id.with("__resize_corner"), |node| {
+                        node.set_label("Resize scope tree");
                     });
             }
         });
@@ -417,6 +443,18 @@ impl FerruleApp {
                 self.mapping_workspace.active,
                 MappingDocument::Main | MappingDocument::Target(_)
             );
+        let (presence_root, presence_schema) = active_target
+            .and_then(|index| self.project.extra_targets.get(index))
+            .map_or((&self.project.root, &self.project.target), |target| {
+                (&target.root, &target.schema)
+            });
+        let presence_profile = crate::scope_editor::presence_controls::profile(
+            &self.project,
+            presence_root,
+            presence_schema,
+            &self.selected_scope,
+            computed_property_owner,
+        );
         let mut type_action = None;
         // The edited scope's fields before and after this pass, retained only
         // on frames with input, and the document that owns the scope.
@@ -483,6 +521,12 @@ impl FerruleApp {
                                     let scope =
                                         scope_at_mut(&mut target.root, &self.selected_scope);
                                     let before = watch_scope.then(|| ScopeFields::capture(scope));
+                                    crate::scope_editor::presence_controls::show(
+                                        ui,
+                                        scope,
+                                        &self.project.graph,
+                                        &presence_profile,
+                                    );
                                     type_action = show_scope_editor(
                                         ui,
                                         scope,
@@ -558,6 +602,12 @@ impl FerruleApp {
                                     let scope =
                                         scope_at_mut(&mut self.project.root, &self.selected_scope);
                                     let before = watch_scope.then(|| ScopeFields::capture(scope));
+                                    crate::scope_editor::presence_controls::show(
+                                        ui,
+                                        scope,
+                                        &self.project.graph,
+                                        &presence_profile,
+                                    );
                                     type_action = show_scope_editor(
                                         ui,
                                         scope,

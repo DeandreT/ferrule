@@ -504,3 +504,272 @@ fn xml_optional_legacy_wire_and_checked_role_invariant() {
         assert!(serde_json::from_str::<SchemaNode>(&invalid).is_err());
     }
 }
+
+fn exclusion_wildcard(name: &str, constraint: XmlWildcardNamespaceConstraint) -> SchemaNode {
+    let mut children = vec![
+        SchemaNode::scalar(XML_LOCAL_NAME_FIELD, ScalarType::String),
+        SchemaNode::scalar(XML_NAMESPACE_URI_FIELD, ScalarType::String),
+    ];
+    if name == XML_ATTRIBUTES_FIELD {
+        children.push(SchemaNode::scalar(XML_TEXT_FIELD, ScalarType::String).text());
+    }
+    SchemaNode::group(name, children)
+        .repeating()
+        .with_xml_wildcard_namespace(constraint)
+        .unwrap()
+}
+
+fn expanded(namespace: Option<&str>, local: &str) -> XmlExpandedName {
+    let namespace = namespace.map_or(XmlNamespace::Unqualified, |uri| {
+        XmlNamespace::qualified(uri).unwrap()
+    });
+    XmlExpandedName::new(namespace, local).unwrap()
+}
+
+#[test]
+fn negated_wildcard_namespaces_round_trip_and_stay_distinct_from_other() {
+    let target = "urn:ferrule:wx:t";
+    let not = XmlWildcardNamespaceConstraint::Not {
+        namespaces: XmlWildcardNamespaceList::new([
+            XmlNamespace::qualified(target).unwrap(),
+            XmlNamespace::Unqualified,
+        ])
+        .unwrap(),
+    };
+    assert!(!not.allows(Some(target)));
+    assert!(!not.allows(None));
+    assert!(!not.allows(Some("")));
+    assert!(not.allows(Some("urn:ferrule:wx:a")));
+    assert!(!not.is_local_only());
+
+    let wire = serde_json::to_value(&not).unwrap();
+    assert_eq!(
+        wire,
+        serde_json::json!({"kind":"not","namespaces":[
+            {"kind":"qualified","uri":target},
+            {"kind":"unqualified"},
+        ]})
+    );
+    let decoded: XmlWildcardNamespaceConstraint = serde_json::from_value(wire).unwrap();
+    assert_eq!(decoded, not);
+    // `notNamespace="##targetNamespace ##local"` rejects the same names as
+    // `##other` but remains a separate constraint on the wire.
+    let other = XmlWildcardNamespaceConstraint::Other {
+        target_namespace: XmlNamespaceUri::new(target),
+    };
+    assert_ne!(decoded, other);
+    for text in [
+        r#"{"kind":"not","namespaces":[]}"#,
+        r#"{"kind":"not","namespaces":[{"kind":"unqualified"},{"kind":"unqualified"}]}"#,
+        r#"{"kind":"not"}"#,
+    ] {
+        assert!(
+            serde_json::from_str::<XmlWildcardNamespaceConstraint>(text).is_err(),
+            "{text}"
+        );
+    }
+
+    let wildcard = exclusion_wildcard(XML_ELEMENTS_FIELD, not);
+    assert!(wildcard.metadata_is_valid());
+    assert!(wildcard.has_xml_wildcard_exclusions());
+    let encoded = serde_json::to_string(&wildcard).unwrap();
+    assert_eq!(
+        serde_json::from_str::<SchemaNode>(&encoded).unwrap(),
+        wildcard
+    );
+}
+
+#[test]
+fn excluded_names_are_canonical_bounded_ncname_sets() {
+    let names = XmlWildcardExcludedNames::new([
+        expanded(Some("urn:ferrule:wx:b"), "x"),
+        expanded(None, "z"),
+        expanded(Some("urn:ferrule:wx:a"), "y"),
+        expanded(Some("urn:ferrule:wx:a"), "b"),
+    ])
+    .unwrap();
+    assert_eq!(
+        names.iter().cloned().collect::<Vec<_>>(),
+        [
+            expanded(None, "z"),
+            expanded(Some("urn:ferrule:wx:a"), "b"),
+            expanded(Some("urn:ferrule:wx:a"), "y"),
+            expanded(Some("urn:ferrule:wx:b"), "x"),
+        ]
+    );
+    let wire = serde_json::to_value(&names).unwrap();
+    assert_eq!(
+        wire[0],
+        serde_json::json!({"namespace":{"kind":"unqualified"},"local":"z"})
+    );
+    assert_eq!(
+        serde_json::from_value::<XmlWildcardExcludedNames>(wire).unwrap(),
+        names
+    );
+
+    assert_eq!(
+        XmlWildcardExcludedNames::new([]),
+        Err(XmlWildcardExcludedNamesError::Empty)
+    );
+    assert_eq!(
+        XmlWildcardExcludedNames::new([expanded(None, "a"), expanded(None, "a")]),
+        Err(XmlWildcardExcludedNamesError::Duplicate)
+    );
+    let over_limit = (0..=MAX_XML_WILDCARD_EXCLUDED_NAMES)
+        .map(|index| expanded(None, &format!("n{index}")))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        XmlWildcardExcludedNames::new(over_limit[1..].iter().cloned())
+            .map(|names| names.iter().count()),
+        Ok(MAX_XML_WILDCARD_EXCLUDED_NAMES)
+    );
+    assert_eq!(
+        XmlWildcardExcludedNames::new(over_limit.iter().cloned()),
+        Err(XmlWildcardExcludedNamesError::TooMany)
+    );
+    let mut over_limit_wire = serde_json::to_value(
+        XmlWildcardExcludedNames::new(over_limit[1..].iter().cloned()).unwrap(),
+    )
+    .unwrap();
+    over_limit_wire
+        .as_array_mut()
+        .unwrap()
+        .push(serde_json::json!({"namespace":{"kind":"unqualified"},"local":"zz"}));
+    assert!(serde_json::from_value::<XmlWildcardExcludedNames>(over_limit_wire).is_err());
+
+    for local in ["", "1st", "a:b", "has space", "-dash"] {
+        assert!(
+            XmlExpandedName::new(XmlNamespace::Unqualified, local).is_none(),
+            "{local}"
+        );
+    }
+    for text in [
+        "[]",
+        r#"[{"namespace":{"kind":"unqualified"},"local":"a"},{"namespace":{"kind":"unqualified"},"local":"a"}]"#,
+        r#"[{"namespace":{"kind":"qualified","uri":"urn:a"},"local":"a"},{"namespace":{"kind":"unqualified"},"local":"b"}]"#,
+        r#"[{"namespace":{"kind":"unqualified"},"local":"b"},{"namespace":{"kind":"unqualified"},"local":"a"}]"#,
+        r#"[{"namespace":{"kind":"unqualified"},"local":"a:b"}]"#,
+        r#"[{"namespace":{"kind":"unqualified"},"local":"a","prefix":"p"}]"#,
+        r#"[{"local":"a"}]"#,
+    ] {
+        assert!(
+            serde_json::from_str::<XmlWildcardExcludedNames>(text).is_err(),
+            "{text}"
+        );
+    }
+}
+
+#[test]
+fn excluded_names_require_an_allowing_wildcard_constraint() {
+    let a = "urn:ferrule:wx:a";
+    let names = || XmlWildcardExcludedNames::new([expanded(Some(a), "Secret")]).unwrap();
+
+    for constraint in [
+        XmlWildcardNamespaceConstraint::Any,
+        XmlWildcardNamespaceConstraint::Other {
+            target_namespace: XmlNamespaceUri::new("urn:ferrule:wx:t"),
+        },
+        XmlWildcardNamespaceConstraint::list([XmlNamespace::qualified(a).unwrap()]).unwrap(),
+        XmlWildcardNamespaceConstraint::Not {
+            namespaces: XmlWildcardNamespaceList::new([XmlNamespace::Unqualified]).unwrap(),
+        },
+    ] {
+        for name in [XML_ELEMENTS_FIELD, XML_ATTRIBUTES_FIELD] {
+            let wildcard = exclusion_wildcard(name, constraint.clone())
+                .with_xml_wildcard_excluded_names(names())
+                .unwrap();
+            assert!(wildcard.metadata_is_valid());
+            assert!(wildcard.has_xml_wildcard_exclusions());
+            let encoded = serde_json::to_string(&wildcard).unwrap();
+            assert_eq!(
+                serde_json::from_str::<SchemaNode>(&encoded).unwrap(),
+                wildcard
+            );
+        }
+    }
+
+    // A disallowed namespace for every constraint variety.
+    for constraint in [
+        XmlWildcardNamespaceConstraint::Other {
+            target_namespace: XmlNamespaceUri::new(a),
+        },
+        XmlWildcardNamespaceConstraint::list([XmlNamespace::Unqualified]).unwrap(),
+        XmlWildcardNamespaceConstraint::Not {
+            namespaces: XmlWildcardNamespaceList::new([XmlNamespace::qualified(a).unwrap()])
+                .unwrap(),
+        },
+    ] {
+        assert!(
+            exclusion_wildcard(XML_ELEMENTS_FIELD, constraint)
+                .with_xml_wildcard_excluded_names(names())
+                .is_none()
+        );
+    }
+    assert!(
+        exclusion_wildcard(
+            XML_ELEMENTS_FIELD,
+            XmlWildcardNamespaceConstraint::Other {
+                target_namespace: None
+            }
+        )
+        .with_xml_wildcard_excluded_names(
+            XmlWildcardExcludedNames::new([expanded(None, "local")]).unwrap()
+        )
+        .is_none()
+    );
+
+    // Wrong node: an ordinary group, or a generic group without a namespace
+    // constraint.
+    let mut ordinary = SchemaNode::group("Ordinary", Vec::new());
+    ordinary.xml_wildcard_excluded_names = Some(names());
+    assert!(!ordinary.xml_wildcard_excluded_names_are_valid());
+    assert!(!ordinary.metadata_is_valid());
+    let mut unconstrained =
+        exclusion_wildcard(XML_ELEMENTS_FIELD, XmlWildcardNamespaceConstraint::Any);
+    unconstrained.xml_wildcard_namespace = None;
+    unconstrained.xml_wildcard_excluded_names = Some(names());
+    assert!(!unconstrained.metadata_is_valid());
+    for node in [ordinary, unconstrained] {
+        let tree = SchemaNode::group("Root", vec![node]);
+        assert!(
+            serde_json::from_str::<SchemaNode>(&serde_json::to_string(&tree).unwrap()).is_err()
+        );
+    }
+}
+
+#[test]
+fn existing_wildcard_wire_forms_are_unchanged() {
+    let mut lax = exclusion_wildcard(XML_ELEMENTS_FIELD, XmlWildcardNamespaceConstraint::Any);
+    lax.xml_wildcard_process_contents = XmlWildcardProcessContents::Lax;
+    let any = r#"{"name":"element()","xml_wildcard_namespace":{"kind":"any"},"xml_wildcard_process_contents":"lax","repeating":true,"kind":{"kind":"group","children":[{"name":"LocalName","repeating":false,"kind":{"kind":"scalar","ty":"string"}},{"name":"NamespaceURI","repeating":false,"kind":{"kind":"scalar","ty":"string"}}]}}"#;
+    assert_eq!(serde_json::to_string(&lax).unwrap(), any);
+    assert!(!lax.has_xml_wildcard_exclusions());
+
+    let other = exclusion_wildcard(
+        XML_ELEMENTS_FIELD,
+        XmlWildcardNamespaceConstraint::Other {
+            target_namespace: XmlNamespaceUri::new("urn:t"),
+        },
+    );
+    assert_eq!(
+        serde_json::to_value(&other).unwrap()["xml_wildcard_namespace"],
+        serde_json::json!({"kind":"other","target_namespace":"urn:t"})
+    );
+    let list = exclusion_wildcard(
+        XML_ELEMENTS_FIELD,
+        XmlWildcardNamespaceConstraint::list([XmlNamespace::Unqualified]).unwrap(),
+    );
+    assert_eq!(
+        serde_json::to_value(&list).unwrap()["xml_wildcard_namespace"],
+        serde_json::json!({"kind":"list","namespaces":[{"kind":"unqualified"}]})
+    );
+    for node in [&lax, &other, &list] {
+        assert!(
+            serde_json::to_value(node)
+                .unwrap()
+                .get("xml_wildcard_excluded_names")
+                .is_none()
+        );
+        assert!(!SchemaNode::group("Root", vec![node.clone()]).uses_xml_wildcard_exclusions());
+    }
+}

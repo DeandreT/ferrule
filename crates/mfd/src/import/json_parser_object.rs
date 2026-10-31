@@ -181,6 +181,7 @@ mod tests {
             db_queries: Default::default(),
             db_xml_columns: Default::default(),
             dynamic_json: None,
+            target_schema_hints: None,
         }
     }
 

@@ -6,14 +6,14 @@ fn composite_xlsx_layout() -> mapping::XlsxCompositeLayout {
     };
 
     XlsxCompositeLayout {
-        table: XlsxTableRegion {
+        table: Some(XlsxTableRegion {
             path: vec!["Staff".into()],
             sheet: Some("Staff".into()),
             start_row: XlsxRow::new(1).unwrap(),
             columns: vec![XlsxColumn::new(1).unwrap(), XlsxColumn::new(2).unwrap()],
             has_header: true,
             row_number_field: None,
-        },
+        }),
         additional_tables: Vec::new(),
         records: vec![XlsxFixedRecord {
             path: vec!["Office".into()],
@@ -24,6 +24,7 @@ fn composite_xlsx_layout() -> mapping::XlsxCompositeLayout {
                 column: XlsxColumn::new(2).unwrap(),
             }],
         }],
+        grids: Vec::new(),
     }
 }
 
@@ -203,28 +204,61 @@ fn imported_hierarchical_xlsx_target_executes() {
 }
 
 #[test]
-fn transposed_xlsx_target_is_rejected_explicitly() {
+fn transposed_xlsx_target_writes_and_reads_back() {
+    use ir::{Instance, Value};
+
     let fixture_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
     let mut project: mapping::Project =
         serde_json::from_str(&std::fs::read_to_string(fixture_dir.join("project.json")).unwrap())
             .unwrap();
-    project.target_options.xlsx_rows = vec![1, 2];
+    project.target_options.xlsx_sheet = Some("People".into());
+    project.target_options.xlsx_rows = vec![3, 1];
 
     let tag = format!("xlsx_transposed_target_{}", std::process::id());
     let project_path = std::env::temp_dir().join(format!("ferrule_cli_{tag}.json"));
     let output_path = std::env::temp_dir().join(format!("ferrule_cli_{tag}.xlsx"));
     std::fs::write(&project_path, serde_json::to_vec(&project).unwrap()).unwrap();
 
-    let error =
-        cli::run_project(&project_path, &fixture_dir.join("input.csv"), &output_path).unwrap_err();
-    std::fs::remove_file(project_path).unwrap();
-    std::fs::remove_file(output_path).ok();
-
-    assert!(
-        error
-            .to_string()
-            .contains("transposed XLSX output is not supported")
+    let written =
+        cli::run_project(&project_path, &fixture_dir.join("input.csv"), &output_path).unwrap();
+    let records =
+        format_xlsx::read_transposed(&output_path, &project.target, Some("People"), &[3, 1])
+            .unwrap();
+    let record = |name: &str, age: i64| {
+        Instance::Group(
+            (vec![
+                (
+                    "full_name".into(),
+                    Instance::Scalar(Value::String(name.into())),
+                ),
+                ("age_next_year".into(), Instance::Scalar(Value::Int(age))),
+            ])
+            .into(),
+        )
+    };
+    assert_eq!(written, 2);
+    assert_eq!(
+        records,
+        vec![record("Jane Doe", 30), record("John Smith", 42)]
     );
+
+    // A missing value in a layout without `n` refuses before replacing the
+    // output written above.
+    project.root.bindings[1].node = 4;
+    std::fs::write(&project_path, serde_json::to_vec(&project).unwrap()).unwrap();
+    let before = std::fs::read(&output_path).unwrap();
+    let input_path = std::env::temp_dir().join(format!("ferrule_cli_{tag}.csv"));
+    std::fs::write(&input_path, "first_name,last_name,age\nJane,Doe,\n").unwrap();
+    let error = cli::run_project(&project_path, &input_path, &output_path).unwrap_err();
+    assert!(
+        format!("{error:#}").contains("field `age_next_year` has no value"),
+        "{error:#}"
+    );
+    assert_eq!(std::fs::read(&output_path).unwrap(), before);
+
+    for path in [project_path, input_path, output_path] {
+        std::fs::remove_file(path).unwrap();
+    }
 }
 
 #[test]

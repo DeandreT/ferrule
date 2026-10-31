@@ -7,6 +7,8 @@ use super::{
 
 /// Leading text of the issue reported for a malformed nested-array wrapper frame.
 pub(super) const WRAPPER_FRAME_ISSUE: &str = "JSON nested-array wrapper metadata";
+/// Leading text of the issue reported for a malformed or misplaced tuple frame.
+pub(super) const TUPLE_FRAME_ISSUE: &str = "JSON tuple frame metadata";
 
 pub(super) fn validate_schema(
     root: &str,
@@ -193,6 +195,14 @@ pub(super) fn validate_schema(
             ),
         ));
     }
+    if !schema.xml_wildcard_excluded_names_are_valid() {
+        issues.push(ValidationIssue::new(
+            root,
+            format!(
+                "XML wildcard excluded names{suffix} require one namespace-aware generic element or attribute group whose namespace constraint allows every name"
+            ),
+        ));
+    }
     if !schema.xml_repeating_sequences_are_valid() {
         issues.push(ValidationIssue::new(
             root,
@@ -243,6 +253,17 @@ pub(super) fn validate_schema(
             format!(
                 "{WRAPPER_FRAME_ISSUE}{suffix} requires a repeating group frame whose only child is a repeating `{}` array: {error}",
                 ir::JSON_ARRAY_ITEM_FIELD
+            ),
+        ));
+    }
+    if let Err(error) = schema.check_json_tuple_frame() {
+        issues.push(ValidationIssue::new(
+            root,
+            format!(
+                "{TUPLE_FRAME_ISSUE}{suffix} requires a canonical group of `{}1`..`{}N` members and an optional repeating `{}` tail, none of them a JSON array: {error}",
+                ir::JSON_TUPLE_MEMBER_PREFIX,
+                ir::JSON_TUPLE_MEMBER_PREFIX,
+                ir::JSON_TUPLE_REST_FIELD
             ),
         ));
     }
@@ -556,6 +577,55 @@ pub(super) fn source_path_matches_direct(
         || project.extra_sources.iter().any(|source| {
             any_schema_path_direct_from(&source.schema, &source.schema, path, predicate)
         })
+}
+
+/// Whether `path` reaches a repeating node, its terminal included, from any
+/// group it fully resolves from, or from a named source it names. An unframed
+/// read resolves from whichever context item holds its first segment and reads
+/// the first item where it crosses repetition, so a path that is direct from
+/// one anchor can still cross from the anchor the engine uses.
+pub(super) fn source_path_crosses_repetition(project: &Project, path: &[String]) -> bool {
+    fn crosses_from(root: &SchemaNode, schema: &SchemaNode, path: &[String]) -> bool {
+        let mut current = schema;
+        let mut crossed = false;
+        for segment in path {
+            if let Some(anchor) = &current.recursive_ref {
+                let Some(group) = find_concrete_schema_group(root, anchor) else {
+                    return false;
+                };
+                current = group;
+            }
+            let Some(child) = current.child(segment) else {
+                return false;
+            };
+            current = child;
+            crossed |= current.repeating;
+        }
+        crossed
+    }
+    fn any_anchor(root: &SchemaNode, schema: &SchemaNode, path: &[String]) -> bool {
+        crosses_from(root, schema, path)
+            || match &schema.kind {
+                SchemaKind::Group { children, .. } => {
+                    children.iter().any(|child| any_anchor(root, child, path))
+                }
+                SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => false,
+            }
+    }
+    if let Some((name, rest)) = path.split_first()
+        && let Some(extra) = project
+            .extra_sources
+            .iter()
+            .find(|source| source.name == *name)
+        && crosses_from(&extra.schema, &extra.schema, rest)
+    {
+        return true;
+    }
+    any_anchor(&project.source, &project.source, path)
+        || project
+            .extra_sources
+            .iter()
+            .any(|source| any_anchor(&source.schema, &source.schema, path))
 }
 
 /// Resolves a root-context path without crossing repetition. The primary root

@@ -8,14 +8,16 @@
 //! merge roles, and none of them can recover evaluation order from this
 //! visit order.
 
-use crate::{Node, NodeId, OwnedXmlMixedContentContext, SequenceExpr};
+use crate::{
+    ComputedJoinSource, ComputedJoinValue, Node, NodeId, OwnedXmlMixedContentContext, SequenceExpr,
+};
 
 /// Where and how often a node evaluates an input.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum NodeInputRole {
     /// Once in the consumer's own context whenever the consumer is evaluated:
     /// call arguments, conditions, lookup needles, aggregate arguments,
-    /// sequence inputs and indexes.
+    /// sequence inputs and indexes, and a join's computed key.
     Parent,
     /// In the consumer's own context, only when the consumer selects it: an
     /// `If` branch, or a runtime parameter's default.
@@ -78,6 +80,10 @@ pub enum NodeInputSlot {
     SequenceReservedItem,
     /// The generated item identity returned by [`SequenceExpr::item`].
     SequenceItem,
+    /// The value of a join plan's computed source, or an input of its
+    /// sequence, evaluated once per join execution in the consumer's own
+    /// context.
+    ComputedJoinKey,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -245,8 +251,14 @@ impl Node {
                 }
             }
             Self::JoinAggregate {
-                expression, arg, ..
+                plan,
+                expression,
+                arg,
+                ..
             } => {
+                if let Some(computed) = plan.computed_source() {
+                    visit_computed_join_inputs(computed, &mut input);
+                }
                 if let Some(expression) = expression {
                     input(*expression, Slot::Expression, JoinTuple);
                 }
@@ -284,6 +296,33 @@ impl Node {
             }
         });
         inputs
+    }
+}
+
+/// A computed join source's receiving-context inputs: its scalar value, or
+/// its sequence's inputs followed by the item identities that sequence owns.
+/// Sequence inputs keep the computed-key slot, because the join evaluates
+/// them as its key rather than as a scope's or reducer's sequence.
+fn visit_computed_join_inputs(
+    computed: &ComputedJoinSource,
+    input: &mut impl FnMut(NodeId, NodeInputSlot, NodeInputRole),
+) {
+    match computed.value() {
+        ComputedJoinValue::Scalar(node) => {
+            input(*node, NodeInputSlot::ComputedJoinKey, NodeInputRole::Parent);
+        }
+        ComputedJoinValue::Sequence(sequence) => {
+            for node in sequence.inputs() {
+                input(node, NodeInputSlot::ComputedJoinKey, NodeInputRole::Parent);
+            }
+            for item in sequence.owned_items() {
+                input(
+                    item,
+                    NodeInputSlot::SequenceItem,
+                    NodeInputRole::ItemIdentity,
+                );
+            }
+        }
     }
 }
 

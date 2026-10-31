@@ -161,6 +161,207 @@ fn validates_flat_xlsx_header_and_update_options_before_execution() {
 }
 
 #[test]
+fn update_existing_accepts_hierarchical_targets_and_refuses_other_retained_layouts() {
+    let row = XlsxRow::new(1).unwrap();
+    let mut project = valid_project();
+    project.target_options.xlsx_update_existing = true;
+    project.target_options.xlsx_hierarchical = Some(mapping::XlsxHierarchicalLayout {
+        worksheets_path: vec!["Sheets".into()],
+        worksheet_name_path: vec!["Name".into()],
+        ranges: Vec::new(),
+    });
+    assert!(validate(&project).is_empty(), "{:?}", validate(&project));
+
+    let table = mapping::XlsxTableRegion {
+        path: vec!["Rows".into()],
+        sheet: None,
+        start_row: row,
+        columns: Vec::new(),
+        has_header: true,
+        row_number_field: None,
+    };
+    let refused = [
+        (
+            "a transposed",
+            mapping::FormatOptions {
+                xlsx_rows: vec![1],
+                ..Default::default()
+            },
+        ),
+        (
+            "a composite",
+            mapping::FormatOptions {
+                xlsx_composite: Some(mapping::XlsxCompositeLayout {
+                    table: Some(table),
+                    additional_tables: Vec::new(),
+                    records: Vec::new(),
+                    grids: Vec::new(),
+                }),
+                ..Default::default()
+            },
+        ),
+        (
+            "a grid",
+            mapping::FormatOptions {
+                xlsx_grid: Some(mapping::XlsxGridLayout {
+                    sheet: None,
+                    header_row: row,
+                    data_start_row: XlsxRow::new(2).unwrap(),
+                    header_value_field: "Header".into(),
+                    header_position_field: "Column".into(),
+                    rows_field: "Rows".into(),
+                    cells_field: "Cells".into(),
+                    cell_value_field: "Value".into(),
+                    cell_position_field: "Position".into(),
+                    fixed_cells: Vec::new(),
+                }),
+                ..Default::default()
+            },
+        ),
+        (
+            "a worksheet-set",
+            mapping::FormatOptions {
+                xlsx_worksheet_set: Some(XlsxWorksheetSetLayout {
+                    worksheets_path: vec!["Sheets".into()],
+                    worksheet_name_path: vec!["Name".into()],
+                    rows_path: vec!["Rows".into()],
+                    row_number_path: None,
+                    start_row: row,
+                    columns: Vec::new(),
+                    has_header: false,
+                }),
+                ..Default::default()
+            },
+        ),
+    ];
+    for (layout, options) in refused {
+        let mut project = valid_project();
+        project.target_options = mapping::FormatOptions {
+            xlsx_update_existing: true,
+            ..options
+        };
+        let expected = format!(
+            "`xlsx_update_existing` cannot update {layout} XLSX layout; only flat tables and hierarchical layouts update existing workbooks"
+        );
+        let issues = validate(&project);
+        assert!(
+            issues.iter().any(|issue| {
+                issue.location == "target format options" && issue.message == expected
+            }),
+            "{layout}: {issues:?}"
+        );
+        assert!(
+            !issues
+                .iter()
+                .any(|issue| issue.message.contains("cannot be combined with flat")),
+            "{layout}: {issues:?}"
+        );
+    }
+}
+
+#[test]
+fn transposed_xlsx_targets_validate_rows_schema_and_flat_options() {
+    let mut project = valid_project();
+    project.target = SchemaNode::group(
+        "row",
+        vec![
+            SchemaNode::scalar("name", ScalarType::String),
+            SchemaNode::scalar("n", ScalarType::Int),
+        ],
+    );
+    project.target_options = mapping::FormatOptions {
+        tabular_kind: Some(mapping::TabularBoundaryKind::Xlsx),
+        has_header_row: Some(false),
+        xlsx_rows: vec![2],
+        ..Default::default()
+    };
+    assert!(validate(&project).is_empty(), "{:?}", validate(&project));
+
+    let target_messages = |project: &Project| {
+        validate(project)
+            .into_iter()
+            .filter(|issue| issue.location == "target format options")
+            .map(|issue| issue.message)
+            .collect::<Vec<_>>()
+    };
+    let mut flat = project.clone();
+    flat.target_options.has_header_row = Some(true);
+    flat.target_options.xlsx_start_row = Some(3);
+    assert_eq!(
+        target_messages(&flat),
+        [
+            "a transposed XLSX target writes no header row; leave `has_header_row` unset or false",
+            "a transposed XLSX target places fields by `xlsx_rows` and records by column; `xlsx_start_row` and `xlsx_columns` cannot be used with it",
+        ]
+    );
+    let mut columns = project.clone();
+    columns.target_options.xlsx_columns = vec![1];
+    assert_eq!(
+        target_messages(&columns),
+        [
+            "a transposed XLSX target places fields by `xlsx_rows` and records by column; `xlsx_start_row` and `xlsx_columns` cannot be used with it"
+        ]
+    );
+    let mut headers = project.clone();
+    headers.target_options.xlsx_headers = vec!["Name".into(), "n".into()];
+    assert!(
+        target_messages(&headers)
+            .contains(&"`xlsx_headers` can be used only with a flat XLSX table".to_string())
+    );
+
+    let mut rows = project.clone();
+    rows.target_options.xlsx_rows = vec![0];
+    assert_eq!(
+        target_messages(&rows),
+        ["transposed XLSX target rows must be distinct worksheet rows from 1 to 1048576"]
+    );
+    rows.target_options.xlsx_rows = vec![2, 2];
+    assert_eq!(
+        target_messages(&rows),
+        [
+            "transposed XLSX target rows must be distinct worksheet rows from 1 to 1048576",
+            "a transposed XLSX target has 2 row selector(s) for 1 data field(s)",
+        ]
+    );
+
+    let mut position = project.clone();
+    position.target = SchemaNode::group(
+        "row",
+        vec![
+            SchemaNode::scalar("name", ScalarType::String),
+            SchemaNode::scalar("n", ScalarType::String),
+        ],
+    );
+    assert!(target_messages(&position).contains(
+        &"a transposed XLSX target's `n` field must be one integer column position".to_string()
+    ));
+    let mut nested = project.clone();
+    nested.target = SchemaNode::group(
+        "row",
+        vec![SchemaNode::group(
+            "name",
+            vec![SchemaNode::scalar("value", ScalarType::String)],
+        )],
+    );
+    assert!(target_messages(&nested).contains(
+        &"a transposed XLSX target needs a non-repeating group of scalar fields".to_string()
+    ));
+
+    // The same layout on the source side keeps its read-time checks.
+    let mut source = valid_project();
+    source.source_options = mapping::FormatOptions {
+        xlsx_rows: vec![1],
+        has_header_row: Some(true),
+        ..Default::default()
+    };
+    assert!(
+        !validate(&source)
+            .iter()
+            .any(|issue| issue.message.contains("transposed XLSX target"))
+    );
+}
+
+#[test]
 fn validates_worksheet_set_direction_and_layout_exclusivity() {
     let mut project = valid_project();
     project.target_options.xlsx_sheet = Some("Legacy".into());
@@ -183,6 +384,37 @@ fn validates_worksheet_set_direction_and_layout_exclusivity() {
         issue.location == "target format options"
             && issue.message.contains("cannot be combined with flat")
     }));
+}
+
+#[test]
+fn local_xml_file_sets_are_source_only() {
+    let mut project = valid_project();
+    let file_set = mapping::FormatOptions {
+        xml_document: true,
+        local_xml_file_set: true,
+        ..Default::default()
+    };
+    project.target_options = file_set.clone();
+    project.extra_targets.push(mapping::NamedTarget {
+        name: "archive".into(),
+        path: Some("archive.xml".into()),
+        schema: project.target.clone(),
+        options: file_set,
+        root: project.root.clone(),
+    });
+
+    let rejected = validate(&project)
+        .into_iter()
+        .filter(|issue| issue.message == "local XML file sets are valid only for mapping sources")
+        .map(|issue| issue.location)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        rejected,
+        [
+            "target format options",
+            "extra target `archive` format options"
+        ]
+    );
 }
 
 #[test]
@@ -354,7 +586,9 @@ fn validates_idoc_output_and_structured_edi_format_exclusivity() {
     );
     assert!(validate(&swift_target).iter().any(|issue| {
         issue.location == "target format options"
-            && issue.message.contains("only for mapping sources")
+            && issue
+                .message
+                .contains("no `swift_mt_output` message headers")
     }));
 }
 
@@ -1122,3 +1356,6 @@ mod primary_root_named;
 
 #[path = "tests/json_array_wrappers.rs"]
 mod json_array_wrappers;
+
+#[path = "tests/json_tuple_frames.rs"]
+mod json_tuple_frames;

@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use format_json::{JsonFormatError, from_str, json_schema, to_string};
+use format_json::{ContentlessSchemaReason, JsonFormatError, from_str, json_schema, to_string};
 use ir::{Instance, SchemaNode, Value};
 use serde_json::Value as Json;
 
@@ -267,11 +267,15 @@ fn lexical_numeric_bounds_confined_resources_preserve_refusals() -> TestResult<(
             {
                 mismatches.push(format!("{}: existing resource refusal differs", row["id"]));
             }
-        } else if row["expected_export"].is_null() {
-            let wanted = serde_json::from_value::<SchemaNode>(row["expected_schema"].clone());
-            evidence.record("RESOURCE-EXPECTED", &wanted)?;
-            if !matches!((&original, &wanted), (Ok(actual), Ok(wanted)) if actual == wanted) {
-                mismatches.push(format!("{}: existing cycle fallback differs", row["id"]));
+        } else if row["expected_error_variant"] == "ContentlessSchema" {
+            if !matches!(
+                &original,
+                Err(JsonFormatError::ContentlessSchema {
+                    reason: ContentlessSchemaReason::ReferenceCycle,
+                    ..
+                })
+            ) {
+                mismatches.push(format!("{}: contentless root refusal differs", row["id"]));
             }
         } else {
             full_schema(&mut evidence, &row, &original, &mut mismatches)?;

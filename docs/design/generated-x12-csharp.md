@@ -502,10 +502,9 @@ delimiter. No occurrences write an empty element. A single Null occurrence also
 writes an empty element, so at a trailing position it is trimmed and reads back
 with no occurrences, as in the native writer.
 
-Generated LF input and output use the existing terminator contract. Native
-read discovery can consume LF, while its explicit syntax/writer API refuses LF;
-that native API difference is separate from the generated writer contract.
-The version profiles add raw C# companions only. Generated Rust continues to
+Generated LF input and output use the existing terminator contract, which the
+native reader and writer share: an LF terminator is written alone. The native
+writer also accepts a CR terminator; generated profiles refuse it. The version profiles add raw C# companions only. Generated Rust continues to
 expose its ordinary typed and JSON interfaces; a host can apply the native X12
 boundary separately.
 

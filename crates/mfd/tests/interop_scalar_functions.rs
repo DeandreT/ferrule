@@ -42,7 +42,7 @@ fn write_design(directory: &Path) -> Result<PathBuf, std::io::Error> {
   <xs:element name="Output"><xs:complexType><xs:sequence>
     <xs:element name="Formatted" type="xs:string"/>
     <xs:element name="Boolean" type="xs:boolean"/>
-    <xs:element name="Positive" type="xs:decimal"/>
+    <xs:element name="Positive" type="xs:boolean"/>
     <xs:element name="Floor" type="xs:decimal"/>
   </xs:sequence></xs:complexType></xs:element>
 </xs:schema>"#,
@@ -58,7 +58,7 @@ fn write_design(directory: &Path) -> Result<PathBuf, std::io::Error> {
   <component name="constant" library="core" kind="2"><targets><datapoint pos="0" key="13"/></targets><data><constant value="[D01] [MNn,3-3] [Y] [Z]" datatype="string"/></data></component>
   <component name="format-dateTime" library="xpath2" kind="5"><sources><datapoint pos="0" key="20"/><datapoint pos="1" key="21"/></sources><targets><datapoint pos="0" key="22"/></targets></component>
   <component name="boolean" library="xpath2" kind="5"><sources><datapoint pos="0" key="23"/></sources><targets><datapoint pos="0" key="24"/></targets></component>
-  <component name="positive" library="core" kind="5"><sources><datapoint pos="0" key="25"/></sources><targets><datapoint pos="0" key="26"/></targets></component>
+  <component name="positive" library="lang" kind="5"><sources><datapoint pos="0" key="25"/></sources><targets><datapoint pos="0" key="26"/></targets></component>
   <component name="floor" library="xpath2" kind="5"><sources><datapoint pos="0" key="27"/></sources><targets><datapoint pos="0" key="28"/></targets></component>
   <component name="target" library="xml" kind="14"><properties XSLTDefaultOutput="1"/><data>
     <root><entry name="Output"><entry name="Formatted" inpkey="30"/><entry name="Boolean" inpkey="31"/><entry name="Positive" inpkey="32"/><entry name="Floor" inpkey="33"/></entry></root>
@@ -90,7 +90,7 @@ fn assert_output(output: &Instance) {
     for (field, expected) in [
         ("Formatted", Value::String("01 Dec 2010 +01:00".to_string())),
         ("Boolean", Value::Bool(true)),
-        ("Positive", Value::Float(-2.1)),
+        ("Positive", Value::Bool(false)),
         ("Floor", Value::Float(-3.0)),
     ] {
         assert_eq!(
@@ -114,13 +114,15 @@ fn interoperable_scalar_components_import_execute_and_roundtrip_warning_free()
     assert!(mfd::export(&imported.project, &exported_path)?.is_empty());
     let exported = std::fs::read_to_string(&exported_path)?;
     for (name, library) in [
-        ("format-dateTime", "xpath2"),
-        ("boolean", "xpath2"),
-        ("positive", "core"),
-        ("floor", "xpath2"),
+        ("format-dateTime", "core"),
+        ("boolean", "core"),
+        ("greater", "core"),
+        ("add", "core"),
+        ("floor", "core"),
     ] {
         assert!(exported.contains(&format!("name=\"{name}\" library=\"{library}\"")));
     }
+    assert!(!exported.contains("name=\"positive\""));
 
     let roundtrip = mfd::import(&exported_path)?;
     assert!(roundtrip.warnings.is_empty(), "{:?}", roundtrip.warnings);

@@ -187,8 +187,7 @@ pub(super) fn apply_simple_content(
     }
     Ok(ParsedComplexType {
         children,
-        repeating_sequences: Vec::new(),
-        repeating_choices: Vec::new(),
+        ..ParsedComplexType::default()
     })
 }
 

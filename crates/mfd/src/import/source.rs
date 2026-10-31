@@ -507,21 +507,21 @@ impl GraphBuilder<'_> {
         let transposed_root = self.sources.get(source_path.source).is_some_and(|source| {
             source.format == ComponentFormat::Xlsx && !source.options.xlsx_rows.is_empty()
         });
-        let grid_root = self
+        let grid_records = self
             .sources
             .get(source_path.source)
             .filter(|source| source.format == ComponentFormat::Xlsx)
-            .and_then(|source| source.options.xlsx_grid.as_ref())
-            .is_some_and(|grid| {
-                source_path.path.as_slice() == [grid.header_value_field.as_str()]
-                    || source_path.path.as_slice() == [grid.header_position_field.as_str()]
-            });
-        if transposed_root || grid_root {
+            .and_then(|source| grid_header_records(&source.options, &source_path.path));
+        if transposed_root {
             // A transposed worksheet's driver Cell port carries both its
-            // scalar value and the physical column sequence. Grid headers
-            // use the same external-record convention. Only header fields
-            // collapse for a grid; nested Rows/Cells remain ordinary paths.
+            // scalar value and the physical column sequence.
             source_path.path.clear();
+        } else if let Some(records) = grid_records {
+            // Grid headers use the same convention: the header Cell iterates
+            // the header records, which are the root of a single grid or a
+            // composite region's group. Only header fields collapse; nested
+            // Rows/Cells remain ordinary paths.
+            source_path.path = records;
         }
         if feed.distinct_key.is_some() {
             let schema = &self.sources.get(source_path.source)?.schema;
@@ -543,6 +543,27 @@ impl GraphBuilder<'_> {
             })
             .or_else(|| self.joins.hierarchical_source(key).cloned())
     }
+}
+
+/// The header-record path a grid header field iterates, if `path` is the
+/// header value or position of a single grid or a composite grid region.
+fn grid_header_records(options: &mapping::FormatOptions, path: &[String]) -> Option<Vec<String>> {
+    let is_header = |layout: &mapping::XlsxGridLayout, field: &[String]| {
+        matches!(field, [name] if *name == layout.header_value_field
+            || *name == layout.header_position_field)
+    };
+    if let Some(grid) = &options.xlsx_grid {
+        return is_header(grid, path).then(Vec::new);
+    }
+    options
+        .xlsx_composite
+        .as_ref()?
+        .grids
+        .iter()
+        .find_map(|grid| {
+            let field = path.strip_prefix(grid.path.as_slice())?;
+            is_header(&grid.layout, field).then(|| grid.path.clone())
+        })
 }
 
 fn is_plain_scalar_expression(component: &FnComponent) -> bool {
@@ -630,6 +651,7 @@ mod tests {
             db_queries: Vec::new(),
             db_xml_columns: BTreeMap::new(),
             dynamic_json: None,
+            target_schema_hints: None,
         }
     }
 

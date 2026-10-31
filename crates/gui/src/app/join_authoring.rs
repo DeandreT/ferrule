@@ -3,7 +3,7 @@
 use super::*;
 use ir::{SchemaKind, SchemaNode};
 use mapping::{
-    Binding, JoinConditions, JoinId, JoinKey, JoinPlan, JoinSource, Node, ScopeIteration,
+    Binding, CollectionJoinSource, JoinConditions, JoinId, JoinKey, JoinPlan, Node, ScopeIteration,
 };
 
 pub(super) const JOIN_REMOVAL_REASON: &str =
@@ -38,7 +38,7 @@ enum Edit {
     },
     NaryKeys {
         join: JoinId,
-        first: JoinSource,
+        first: CollectionJoinSource,
         stages: Vec<StageKeys>,
     },
     Project {
@@ -58,7 +58,7 @@ struct EqualityPair {
 
 #[derive(Clone)]
 struct StageKeys {
-    source: JoinSource,
+    source: CollectionJoinSource,
     keys: Vec<StageEqualityPair>,
 }
 
@@ -412,7 +412,11 @@ fn editable_keys(scope: &Scope, available: &[Collection]) -> Option<Edit> {
         return None;
     }
     let (join, plan) = scope.join()?;
-    let mut sources = plan.sources();
+    // Computed key sources are shown read-only until authoring supports them.
+    if plan.computed_source().is_some() {
+        return None;
+    }
+    let mut sources = plan.collection_sources();
     let left = sources.next()?;
     let right = sources.next()?;
     if sources.next().is_some()
@@ -430,7 +434,7 @@ fn editable_keys(scope: &Scope, available: &[Collection]) -> Option<Edit> {
         .stages()
         .flat_map(|(_, conditions)| conditions.iter())
         .map(|key| {
-            (key.left_collection() == left.collection()
+            (key.left_collection() == Some(left.collection())
                 && left_fields
                     .iter()
                     .any(|path| path.as_slice() == key.left_path())
@@ -452,8 +456,8 @@ fn editable_keys(scope: &Scope, available: &[Collection]) -> Option<Edit> {
 }
 
 fn key_plan(
-    left: JoinSource,
-    right: JoinSource,
+    left: CollectionJoinSource,
+    right: CollectionJoinSource,
     keys: &[EqualityPair],
     available: &[Collection],
 ) -> Result<JoinPlan, String> {
@@ -482,7 +486,7 @@ fn key_plan(
             key.right.clone(),
         ));
     }
-    JoinPlan::new(left, right, conditions).map_err(|error| error.to_string())
+    JoinPlan::new(left.into(), right.into(), conditions).map_err(|error| error.to_string())
 }
 
 fn editable_nary_keys(scope: &Scope, available: &[Collection]) -> Option<Edit> {
@@ -490,7 +494,10 @@ fn editable_nary_keys(scope: &Scope, available: &[Collection]) -> Option<Edit> {
         return None;
     }
     let (join, plan) = scope.join()?;
-    let sources = plan.sources().cloned().collect::<Vec<_>>();
+    if plan.computed_source().is_some() {
+        return None;
+    }
+    let sources = plan.collection_sources().cloned().collect::<Vec<_>>();
     if sources.len() < 3
         || sources.iter().any(|source| {
             source.cardinality() != mapping::JoinSourceCardinality::Repeating
@@ -503,21 +510,23 @@ fn editable_nary_keys(scope: &Scope, available: &[Collection]) -> Option<Edit> {
         .stages()
         .enumerate()
         .map(|(index, (source, conditions))| {
+            let source = source.as_collection()?;
             let right_fields = field_paths(available, source.collection());
             let keys = conditions
                 .iter()
                 .map(|key| {
+                    let left_collection = key.left_collection()?;
                     (sources[..=index]
                         .iter()
-                        .any(|prior| prior.collection() == key.left_collection())
-                        && field_paths(available, key.left_collection())
+                        .any(|prior| prior.collection() == left_collection)
+                        && field_paths(available, left_collection)
                             .iter()
                             .any(|path| path.as_slice() == key.left_path())
                         && right_fields
                             .iter()
                             .any(|path| path.as_slice() == key.right_path()))
                     .then(|| StageEqualityPair {
-                        left_collection: key.left_collection().to_vec(),
+                        left_collection: left_collection.to_vec(),
                         left: key.left_path().to_vec(),
                         right: key.right_path().to_vec(),
                     })
@@ -539,7 +548,7 @@ fn editable_nary_keys(scope: &Scope, available: &[Collection]) -> Option<Edit> {
 fn stage_conditions(
     index: usize,
     stage: &StageKeys,
-    prior: &[JoinSource],
+    prior: &[CollectionJoinSource],
     available: &[Collection],
 ) -> Result<JoinConditions, String> {
     let Some((first, rest)) = stage.keys.split_first() else {
@@ -580,13 +589,16 @@ fn stage_conditions(
 
 fn nary_key_plan(
     original: &JoinPlan,
-    first: &JoinSource,
+    first: &CollectionJoinSource,
     stages: &[StageKeys],
     available: &[Collection],
 ) -> Result<JoinPlan, String> {
     if original
         .sources()
-        .ne(std::iter::once(first).chain(stages.iter().map(|stage| &stage.source)))
+        .map(|source| source.as_collection())
+        .ne(std::iter::once(first)
+            .chain(stages.iter().map(|stage| &stage.source))
+            .map(Some))
     {
         return Err(
             "Joined collections and their stage order stay fixed during key editing".into(),
@@ -597,13 +609,17 @@ fn nary_key_plan(
     };
     let mut prior = vec![first.clone()];
     let conditions = stage_conditions(0, second, &prior, available)?;
-    let mut plan = JoinPlan::new(first.clone(), second.source.clone(), conditions)
-        .map_err(|error| error.to_string())?;
+    let mut plan = JoinPlan::new(
+        first.clone().into(),
+        second.source.clone().into(),
+        conditions,
+    )
+    .map_err(|error| error.to_string())?;
     prior.push(second.source.clone());
     for (index, stage) in rest.iter().enumerate() {
         let conditions = stage_conditions(index + 1, stage, &prior, available)?;
         plan = plan
-            .then(stage.source.clone(), conditions)
+            .then(stage.source.clone().into(), conditions)
             .map_err(|error| error.to_string())?;
         prior.push(stage.source.clone());
     }
@@ -613,7 +629,7 @@ fn nary_key_plan(
 fn show_nary_keys(
     ui: &mut egui::Ui,
     join: JoinId,
-    first: &JoinSource,
+    first: &CollectionJoinSource,
     stages: &mut [StageKeys],
     available: &[Collection],
 ) -> bool {
@@ -782,12 +798,15 @@ impl FerruleApp {
                 }
                 let project = parts.as_ref().ok().and_then(|(scope, schema)| {
                     let (join, plan) = scope.join()?;
+                    if plan.computed_source().is_some() {
+                        return None;
+                    }
                     let inputs = plan
-                        .sources()
+                        .collection_sources()
                         .map(|source| source.collection().to_vec())
                         .collect::<Vec<_>>();
                     if inputs.len() != 2
-                        || plan.sources().any(|source| {
+                        || plan.collection_sources().any(|source| {
                             source.cardinality() != mapping::JoinSourceCardinality::Repeating
                         })
                     {
@@ -894,7 +913,7 @@ impl FerruleApp {
                     ui.strong(format!("Output from join #{}", join.get()));
                     ui.checkbox(position, "Tuple position");
                     if !*position {
-                        let inputs = scope_parts(&self.project, &draft.owner).ok().and_then(|(scope, _)| scope.join()).map(|(_, plan)| plan.sources().map(|source| source.collection().to_vec()).collect::<Vec<_>>()).unwrap_or_default();
+                        let inputs = scope_parts(&self.project, &draft.owner).ok().and_then(|(scope, _)| scope.join()).map(|(_, plan)| plan.collection_sources().map(|source| source.collection().to_vec()).collect::<Vec<_>>()).unwrap_or_default();
                         let choices = available.iter().filter(|choice| inputs.contains(&choice.path)).cloned().collect::<Vec<_>>();
                         ui.horizontal(|ui| { ui.label("Joined collection:"); pick_collection(ui, "join_projection_source", collection, field, &choices); });
                         ui.horizontal(|ui| { ui.label("Joined field:"); picker(ui, "join_projection_field", field, &field_paths(&choices, collection)); });
@@ -1037,8 +1056,8 @@ impl FerruleApp {
                     ));
                 }
                 let plan = JoinPlan::new(
-                    JoinSource::new(left.clone()),
-                    JoinSource::new(right.clone()),
+                    mapping::JoinSource::new(left.clone()),
+                    mapping::JoinSource::new(right.clone()),
                     conditions,
                 )
                 .map_err(|error| error.to_string())?;
@@ -1062,7 +1081,7 @@ impl FerruleApp {
                 if *join != actual || editable_keys(scope, &available).is_none() {
                     return Err("Choose an exact two-static-collection root join".into());
                 }
-                let mut sources = plan.sources();
+                let mut sources = plan.collection_sources();
                 let actual_left = sources
                     .next()
                     .ok_or("The left joined collection is missing")?;
@@ -1102,8 +1121,9 @@ impl FerruleApp {
                     .join()
                     .ok_or("The selected scope is no longer joined")?;
                 if *join != actual
-                    || plan.sources().count() != 2
-                    || plan.sources().any(|source| {
+                    || plan.computed_source().is_some()
+                    || plan.collection_sources().count() != 2
+                    || plan.collection_sources().any(|source| {
                         source.cardinality() != mapping::JoinSourceCardinality::Repeating
                     })
                 {
@@ -1114,7 +1134,7 @@ impl FerruleApp {
                 }
                 if !*position
                     && (!plan
-                        .sources()
+                        .collection_sources()
                         .any(|source| source.collection() == collection.as_slice())
                         || !field_paths(&available, collection).contains(field))
                 {

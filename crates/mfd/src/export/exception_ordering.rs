@@ -62,8 +62,11 @@ fn prove(project: &Project) -> Result<(), String> {
     {
         return Err("the totality proof budget or supported registry subset was exceeded".into());
     }
+    // The target's schema-location hint only annotates its written root.
+    let mut target_options = project.target_options.clone();
+    target_options.xml_schema_hints = None;
     if !local_xml(&project.source_path, &project.source_options)
-        || !local_xml(&project.target_path, &project.target_options)
+        || !local_xml(&project.target_path, &target_options)
         || !plain_schema(&project.source)
         || !plain_schema(&project.target)
         || project.source.repeating

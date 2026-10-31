@@ -10,6 +10,7 @@ use crate::{
 mod adjacency_tree;
 mod collection_find;
 mod collections;
+mod computed_joins;
 mod concatenate;
 mod failures;
 mod grouping;

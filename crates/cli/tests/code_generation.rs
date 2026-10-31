@@ -88,6 +88,8 @@ mod basic_owned_xml_serialize;
 mod boundary_emission_plan;
 #[path = "code_generation/collection_find.rs"]
 mod collection_find;
+#[path = "code_generation/computed_joins.rs"]
+mod computed_joins;
 #[path = "code_generation/conditional_group_presence.rs"]
 mod conditional_group_presence;
 #[path = "code_generation/copy_current_source.rs"]
@@ -164,6 +166,8 @@ mod ordered_text_selection;
 mod owned_capability_presets;
 #[path = "code_generation/owned_row_document_path.rs"]
 mod owned_row_document_path;
+#[path = "code_generation/singleton_frames.rs"]
+mod singleton_frames;
 #[path = "code_generation/typed_only_companions.rs"]
 mod typed_only_companions;
 
@@ -171,6 +175,8 @@ mod typed_only_companions;
 mod edi_structure_variables;
 #[path = "code_generation/json_text_boundaries.rs"]
 mod json_text_boundaries;
+#[path = "code_generation/json_tuple_arrays.rs"]
+mod json_tuple_arrays;
 #[path = "code_generation/json_undeclared_members.rs"]
 mod json_undeclared_members;
 #[path = "code_generation/json_variable_array_descendants.rs"]

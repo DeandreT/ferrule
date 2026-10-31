@@ -85,6 +85,9 @@ pub(crate) fn matches(
 }
 
 fn is_assertion_failure(error: &JsonFormatError) -> bool {
+    if let JsonFormatError::TuplePosition { error, .. } = error {
+        return is_assertion_failure(error);
+    }
     !matches!(
         error,
         JsonFormatError::Io(_)
@@ -107,6 +110,8 @@ fn is_assertion_failure(error: &JsonFormatError) -> bool {
             | JsonFormatError::InvalidArrayWrapperMetadata { .. }
             | JsonFormatError::InvalidObjectItemNullabilityMetadata { .. }
             | JsonFormatError::InvalidNullabilityMetadata { .. }
+            | JsonFormatError::InvalidJsonTupleFrameMetadata { .. }
+            | JsonFormatError::RecursiveJsonTupleFrame { .. }
             | JsonFormatError::PatternWorkLimit { .. }
             | JsonFormatError::InvalidRecursiveReference { .. }
             | JsonFormatError::MissingRecursiveAnchor { .. }

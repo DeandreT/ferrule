@@ -6,6 +6,12 @@ use mapping::{Node, NodeId};
 use super::graph::GraphBuilder;
 use super::schema::{SchemaComponent, parse_u32, schema_node_at};
 
+#[path = "json_parser_array.rs"]
+mod array;
+pub(super) use array::install as install_array_records;
+#[path = "json_parser_lookup.rs"]
+mod lookup;
+
 pub(super) struct Recipe {
     pub(super) input: u32,
     pub(super) schema: SchemaNode,
@@ -16,6 +22,13 @@ pub(super) struct Recipe {
     pub(super) runtime_scalar_outputs: BTreeSet<u32>,
     pub(super) required_string_inputs: Vec<super::constructed_parser_scalar::RequiredStringInput>,
     pub(super) optional_string_inputs: Vec<super::optional_parser_input::OptionalStringInput>,
+    pub(super) lookup_pins: lookup::RawPins,
+}
+
+impl Recipe {
+    pub(super) fn input_pins(&self) -> impl Iterator<Item = u32> {
+        std::iter::once(self.input)
+    }
 }
 
 /// A saved string parser with no declared outputs cannot supply a value to the
@@ -89,10 +102,17 @@ pub(super) fn read(
             ));
         };
         if has_repeating_ancestor(schema, &path) {
-            return Err(format!(
-                "output port `{output}` path `{}` crosses an array",
-                path.join("/")
-            ));
+            if !has_resolved_parser_schema(component, schema) {
+                return Err("array outputs require a resolved JSON schema".to_string());
+            }
+            if array::record_path(&schema.schema, &path).is_none() {
+                return Err(format!(
+                    "output port `{output}` path `{}` crosses an unsupported array; requires one array of ordinary records and scalar descendants",
+                    path.join("/")
+                ));
+            }
+            outputs.insert(output, path);
+            continue;
         }
         if ordinary_object(node) {
             if required_string_inputs.is_empty() && optional_string_inputs.is_empty() {
@@ -136,8 +156,35 @@ pub(super) fn read(
         object_outputs,
         required_string_inputs,
         optional_string_inputs,
+        lookup_pins: lookup::read_pins(*component),
         outputs,
     }))
+}
+
+fn has_resolved_parser_schema(
+    component: &roxmltree::Node<'_, '_>,
+    schema: &SchemaComponent,
+) -> bool {
+    // Ordinary file-reader authority excludes parameter children. A string
+    // parser instead needs its own exact schema declaration and the resource
+    // reader's unresolved-reference witness; never promote an inferred tree.
+    let data: Vec<_> = component
+        .children()
+        .filter(|node| node.has_tag_name("data"))
+        .collect();
+    let [data] = data.as_slice() else {
+        return false;
+    };
+    let roots: Vec<_> = data
+        .children()
+        .filter(|node| node.has_tag_name("root"))
+        .collect();
+    let json: Vec<_> = data
+        .children()
+        .filter(|node| node.has_tag_name("json"))
+        .collect();
+    matches!((roots.as_slice(), json.as_slice()), ([_], [json]) if json.attribute("schema").is_some_and(|reference| !reference.is_empty()))
+        && schema.options.json_schema_unresolved_reference.is_none()
 }
 
 pub(super) fn ordinary_object(node: &SchemaNode) -> bool {
@@ -248,6 +295,12 @@ impl GraphBuilder<'_> {
             .iter()
             .find(|parser| parser.outputs.contains_key(&output))?;
         let path = parser.outputs.get(&output)?.clone();
+        if array::record_path(&parser.schema, &path).is_some() {
+            self.warnings.push(format!(
+                "JSON string parser array output `{output}` requires a direct repeating record target or an owned equality-filter lookup in the primary-item frame; unsupported scalar use was skipped"
+            ));
+            return None;
+        }
         let schema = crate::json_parser_recipe::encode_schema(
             &parser.schema,
             parser.unresolved_schema_reference.as_deref(),

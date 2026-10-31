@@ -25,6 +25,7 @@ fn show_preview_input(ui: &mut egui::Ui, draft: &mut PreviewDraft, input_size: u
                 format_preview_bytes(input_size),
                 format_preview_bytes(cli::MAX_PAYLOAD_DOCUMENT_BYTES)
             ));
+            crate::ui_kit::help_icon(ui, INPUT_TAB_HINT);
             label
         })
         .inner;
@@ -37,14 +38,45 @@ fn show_preview_input(ui: &mut egui::Ui, draft: &mut PreviewDraft, input_size: u
         .auto_shrink([false, false])
         .max_height(height)
         .show(ui, |ui| {
+            let id = ui.make_persistent_id("preview_primary_input");
+            if ui.memory(|memory| memory.has_focus(id))
+                && ui.input_mut(|input| input.consume_key(egui::Modifiers::CTRL, egui::Key::Tab))
+            {
+                insert_tab(ui.ctx(), id, &mut draft.input_text);
+            }
             ui.add_sized(
                 egui::vec2(ui.available_width(), height),
                 egui::TextEdit::multiline(&mut draft.input_text)
+                    .id(id)
                     .code_editor()
+                    .lock_focus(false)
                     .desired_width(f32::INFINITY),
             )
             .labelled_by(label.id);
+            ui.ctx().accesskit_node_builder(id, |node| {
+                node.set_description(INPUT_TAB_HINT);
+            });
         });
+}
+
+/// Tab moves focus on like in any other field, so tab-separated input needs
+/// another key for a literal tab.
+const INPUT_TAB_HINT: &str = "Tab moves to the next control; Ctrl+Tab types a tab character.";
+
+/// Replaces the selection of text field `id` with a tab character.
+fn insert_tab(ctx: &egui::Context, id: egui::Id, text: &mut String) {
+    use egui::TextBuffer as _;
+    use egui::text::{CCursor, CCursorRange};
+
+    let mut state = egui::TextEdit::load_state(ctx, id).unwrap_or_default();
+    let selection = state
+        .cursor
+        .char_range()
+        .unwrap_or_else(|| CCursorRange::one(CCursor::new(text.chars().count())));
+    let mut cursor = text.delete_selected(&selection);
+    text.insert_text_at(&mut cursor, "\t", usize::MAX);
+    state.cursor.set_char_range(Some(CCursorRange::one(cursor)));
+    state.store(ctx, id);
 }
 
 pub(super) fn show_breakpoint_input_condition(

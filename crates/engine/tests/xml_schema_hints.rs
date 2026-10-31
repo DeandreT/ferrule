@@ -71,13 +71,14 @@ fn primary_and_disconnected_named_sources_refuse() {
 #[test]
 fn non_xml_conflicting_and_invalid_metadata_refuse() {
     let base = project();
-    for mutation in [0, 1, 2, 3, 4] {
+    for mutation in [0, 1, 2, 3, 4, 5] {
         let mut p = base.clone();
         match mutation {
             0 => p.target_options.xml_document = false,
             1 => p.target_options.json_document = true,
-            2 => p.target_options.local_xml_file_set = true,
+            2 => p.target_options.xml_root_view_read_policy = true,
             3 => p.target_options.xml_allow_inactive_root_type_members = true,
+            4 => p.target_options.local_xml_file_set = true,
             _ => {
                 p.target_options
                     .xml_schema_hints

@@ -200,6 +200,7 @@ pub(crate) fn csv_document_identity(project: &mapping::Project) -> Result<(), &'
 pub fn check_primary_document(document: &DocumentProject) -> anyhow::Result<()> {
     document.primary_route()?;
     document.global_filename()?;
+    document.global_output_filename()?;
     let issues = engine::validate_primary_document(document);
     if !issues.is_empty() {
         bail!(
@@ -369,8 +370,16 @@ pub fn execute_primary_document_with_host<H: PrimarySourceHost>(
         },
     )
     .map_err(PrimaryDocumentError::Run)?;
+    let output_route = if document.output_filename().is_some() {
+        mapping::PrimaryDocumentRoute {
+            format: PrimaryDocumentFormat::Json,
+            shape: PrimaryDocumentShape::Document,
+        }
+    } else {
+        route
+    };
     render_primary_output(
-        route,
+        output_route,
         &project.target,
         &project.target_options,
         &output,
@@ -499,10 +508,22 @@ pub fn run_primary_document_file(
     runtime_parameters: Option<&engine::RuntimeParameters>,
 ) -> anyhow::Result<RunOutcome> {
     let document = load_document_project(project_path)?;
+    let mut execution = engine::ExecutionContext::new(project_path);
+    if let Some(parameters) = runtime_parameters {
+        execution = execution.with_parameters(parameters);
+    }
+    let connected_output = engine::evaluate_output_filename(&document, &execution)?;
+    if connected_output.is_some() && output_path.is_some() {
+        bail!(
+            "--output cannot override a connected output filename; bind its runtime parameter instead"
+        );
+    }
     let output_path = resolve_run_path(
         project_path,
         output_path,
-        document.project().target_path.as_deref(),
+        connected_output
+            .as_deref()
+            .or(document.project().target_path.as_deref()),
         "output",
         "target_path",
         false,

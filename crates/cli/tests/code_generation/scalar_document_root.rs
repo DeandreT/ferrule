@@ -146,6 +146,28 @@ fn singleton_scalar_document_roots_compiled_complete_oracles() -> TestResult<()>
         if typed? != Instance::Scalar(models::scalar(case)) {
             return Err("native scalar differs".into());
         }
+        // The imported target writes the reference default schema-location
+        // hint on the root of every literal wire document.
+        let location = imported
+            .project
+            .target_options
+            .xml_schema_hints
+            .as_ref()
+            .and_then(|hints| hints.no_namespace_location.clone())
+            .ok_or("imported schema-location hint")?;
+        let mut hinted = parsed_cases.clone();
+        for case in hinted.as_array_mut().ok_or("literal case array")? {
+            if let Some(wire) = case["wire"].as_str() {
+                case["wire"] = wire
+                    .replacen(
+                        "<Output",
+                        &format!("<Output xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:noNamespaceSchemaLocation=\"{location}\""),
+                        1,
+                    )
+                    .into();
+            }
+        }
+        let hinted_cases = serde_json::to_vec(&hinted)?;
         let project = package.join("project.json");
         std::fs::write(
             &project,
@@ -182,7 +204,7 @@ fn singleton_scalar_document_roots_compiled_complete_oracles() -> TestResult<()>
             {
                 return Err("generated artifact census differs".into());
             }
-            std::fs::write(directory.join("cases.json"), &cases)?;
+            std::fs::write(directory.join("cases.json"), &hinted_cases)?;
             std::fs::copy(fixtures.join("input.xml"), directory.join("input.xml"))?;
             std::fs::copy(
                 fixtures.join("typed-controls.json"),

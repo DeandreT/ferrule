@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Source xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+<Header><Code>c2</Code></Header>
+<Order><Id>O1</Id><CustomerNumber>c1</CustomerNumber><Codes>C2 C1 C2</Codes><Qty>7</Qty></Order>
+<Order><Id>O2</Id><CustomerNumber>c2</CustomerNumber><Codes>C9</Codes><Qty>8</Qty></Order>
+<Order><Id>O3</Id></Order>
+<Order><Id>O4</Id><CustomerNumber xsi:nil="true"/><Codes>C1</Codes><Qty>07</Qty></Order>
+<Order><Id>O5</Id><CustomerNumber></CustomerNumber><Codes></Codes><Qty>9</Qty></Order>
+<Order><Id>O6</Id><CustomerNumber>C1</CustomerNumber><Codes>C2</Codes><Qty>1</Qty></Order>
+<Order><Id>O7</Id><CustomerNumber>7</CustomerNumber><Codes>C1 C1</Codes><Qty>2</Qty></Order>
+<Customer><Number>C1</Number><Name>Ada</Name><Rank>1</Rank></Customer>
+<Customer><Number>C2</Number><Name>Grace</Name><Rank>2</Rank></Customer>
+<Customer><Number>C2</Number><Name>Hopper</Name><Rank>3</Rank></Customer>
+<Customer><Number></Number><Name>Blank</Name><Rank>4</Rank></Customer>
+<Customer><Number>7</Number><Name>Seven</Name><Rank>7</Rank></Customer>
+<Customer><Number>07</Number><Name>ZeroSeven</Name><Rank>7</Rank></Customer>
+<Customer><Number>7.0</Number><Name>SevenPoint</Name><Rank>8</Rank></Customer>
+<Customer><Number>8</Number><Name>Eight</Name><Rank>9</Rank></Customer>
+</Source>

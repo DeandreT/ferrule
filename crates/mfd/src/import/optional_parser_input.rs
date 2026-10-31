@@ -313,6 +313,7 @@ mod tests {
             runtime_scalar_outputs: BTreeSet::new(),
             required_string_inputs: Vec::new(),
             optional_string_inputs: read(parser),
+            lookup_pins: Default::default(),
         }];
         let edges = BTreeMap::from([(410, 401)]);
         let sources = [];
@@ -334,6 +335,10 @@ mod tests {
                 parser_input_nodes: BTreeMap::new(),
                 next_id: 0,
                 fn_nodes: BTreeMap::new(),
+                filter_nodes: BTreeMap::new(),
+                refused_value_feeds: BTreeSet::new(),
+                refused_filter_projections: BTreeSet::new(),
+                scope_projection_feeds: BTreeSet::new(),
                 sequence_items: BTreeMap::new(),
                 sequence_scope_components: BTreeSet::new(),
                 sequence_predicate_components: BTreeSet::new(),

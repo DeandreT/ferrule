@@ -12,6 +12,7 @@ use mapping::{
 
 use crate::MfdError;
 
+mod aggregate_cardinality;
 mod artifact;
 mod auto_number;
 mod compatibility;
@@ -44,6 +45,7 @@ mod native_path_hierarchy;
 mod native_recursive_collect;
 mod native_recursive_filter;
 mod node;
+mod node_frames;
 mod order_decimal_output;
 mod pdf;
 mod pipeline;
@@ -69,6 +71,7 @@ mod exception_presence_tests;
 #[cfg(test)]
 mod filter_map_model_tests;
 mod udf;
+mod wildcard_exclusions;
 mod wsdl;
 mod xbrl;
 mod xlsx;
@@ -103,6 +106,8 @@ struct TargetExport<'a> {
     component_uid: u32,
     sibling_suffix: String,
     default_output: bool,
+    /// Keep the native default schema-location setting for a derived hint.
+    schema_hint: bool,
     document_path_port: Option<u32>,
 }
 
@@ -154,6 +159,13 @@ impl<'a> TargetExport<'a> {
         let mut explicit_text_ports = explicit_scope_text_ports(spec.schema, spec.root);
         explicit_text_ports.extend(mapped_scope_plans.explicit_text_ports());
         explicit_text_ports.extend(xbrl::explicit_text_ports(spec.schema, spec.options));
+        let mut ports = PortTree::build_with_explicit_text(spec.schema, keys, &explicit_text_ports);
+        if transposed_target(format, spec.options) {
+            require_plain_record_scope(spec.root)?;
+            // Every worksheet row reads the record's column from its own `n`.
+            let extra_rows = spec.options.xlsx_rows.len().saturating_sub(1);
+            ports.add_fanout(&["n".to_string()], extra_rows, keys);
+        }
         Ok(Self {
             component_name: spec.component_name,
             schema: spec.schema,
@@ -166,7 +178,7 @@ impl<'a> TargetExport<'a> {
                 SideFormat::Csv | SideFormat::FixedWidth | SideFormat::Xlsx | SideFormat::Db
             ) || (format == SideFormat::Json && spec.schema.repeating),
             force_root_port,
-            ports: PortTree::build_with_explicit_text(spec.schema, keys, &explicit_text_ports),
+            ports,
             branches: concatenation::TargetBranches::build(
                 spec.schema,
                 spec.root,
@@ -183,9 +195,32 @@ impl<'a> TargetExport<'a> {
                 format!("target-{}", index + 1)
             },
             default_output: index == 0,
+            schema_hint: false,
             document_path_port,
         })
     }
+}
+
+fn transposed_target(format: SideFormat, options: &FormatOptions) -> bool {
+    format == SideFormat::Xlsx && !options.xlsx_rows.is_empty()
+}
+
+/// The reference application iterates a transposed target's Cell feeds
+/// directly, so only an uncontrolled source iteration with plain field
+/// bindings has an equivalent design.
+fn require_plain_record_scope(root: &Scope) -> Result<(), MfdError> {
+    let plain = Scope {
+        iteration: root.iteration.clone(),
+        bindings: root.bindings.clone(),
+        ..Scope::default()
+    };
+    if !matches!(root.iteration, ScopeIteration::Source(_)) || *root != plain {
+        return Err(MfdError::Unsupported(
+            "a transposed XLSX target exports only an uncontrolled source iteration with field bindings"
+                .to_string(),
+        ));
+    }
+    Ok(())
 }
 
 fn explicit_scope_text_ports(schema: &SchemaNode, root: &Scope) -> BTreeSet<Vec<String>> {
@@ -361,6 +396,28 @@ fn prepare_export_mode(
     path: &Path,
     filesystem: bool,
 ) -> Result<PreparedExport, MfdError> {
+    wildcard_exclusions::validate(project)?;
+    // Derived target schema-location hints export as the native default
+    // setting. Every other proof sees the unhinted project; only the target
+    // renderer receives the per-target setting.
+    preflight::validate_schema_hints(project)?;
+    let hinted = std::iter::once(&project.target_options)
+        .chain(project.extra_targets.iter().map(|target| &target.options))
+        .map(|options| options.xml_schema_hints.is_some())
+        .collect::<Vec<_>>();
+    let original = project;
+    let unhinted;
+    let project = if hinted.contains(&true) {
+        let mut stripped = project.clone();
+        stripped.target_options.xml_schema_hints = None;
+        for target in &mut stripped.extra_targets {
+            target.options.xml_schema_hints = None;
+        }
+        unhinted = stripped;
+        &unhinted
+    } else {
+        project
+    };
     project
         .validate_xml_scalar_output()
         .map_err(|error| MfdError::Unsupported(error.to_string()))?;
@@ -385,7 +442,7 @@ fn prepare_export_mode(
         });
     }
     let mut scoped_exception_branches = scoped_exception::Branches::build(project)?;
-    if let Some(prepared) = qualified_root_view::prepare_export(project, path)? {
+    if let Some(prepared) = qualified_root_view::prepare_export(original, path)? {
         return Ok(prepared);
     }
     let mut warnings = Vec::new();
@@ -423,6 +480,9 @@ fn prepare_export_mode(
             index + 1,
             &mut keys,
         )?);
+    }
+    for (target, hinted) in targets.iter_mut().zip(&hinted) {
+        target.schema_hint = *hinted;
     }
     let first_presence = first_presence::Plan::build(&project.graph, &sources, &targets);
     scoped_exception_branches.validate_ports(&sources, &targets[0].ports)?;
@@ -492,7 +552,7 @@ fn prepare_export_mode(
         edges: &mut edges,
         structural_edges: &mut structural_edges,
         warnings: &mut warnings,
-    });
+    })?;
     let mut blocked_nodes = dynamic_sources.owned_nodes().clone();
     blocked_nodes.extend(exception::absorbed_filter_nodes(project));
     blocked_nodes.extend(scoped_exception_branches.owned_nodes());
@@ -549,6 +609,7 @@ fn prepare_export_mode(
         user_functions: &user_functions,
     })?;
     json_parser::ensure_provenance_emitted(&project.graph, &json_parser_outputs)?;
+    joins.connect_computed_keys(&node_out_key, &mut edges, &mut structural_edges)?;
     if let Some(plan) = &native_group_fahrenheit {
         plan.seed_aliases(&mut node_out_key)?;
     }
@@ -1011,6 +1072,7 @@ fn prepare_export_mode(
                 source.component_uid,
                 &source.sibling_suffix,
                 false,
+                false,
                 &used_ports,
                 source.document_path_port,
                 filesystem,
@@ -1086,6 +1148,7 @@ fn prepare_export_mode(
                 target.component_uid,
                 &target.sibling_suffix,
                 target.default_output,
+                target.schema_hint,
                 &used_ports,
                 target.document_path_port,
                 filesystem,
@@ -1112,6 +1175,11 @@ fn prepare_export_mode(
         target_components.push(rendered);
     }
     out.push_str(&components);
+    for target in &targets {
+        if transposed_target(target.format, target.options) {
+            xlsx::connect_transposed_target(&target.ports, &mut edges, &mut structural_edges);
+        }
+    }
     let (structural_edge_keys, edge_metadata) = render_edge_metadata(&structural_edges, &mut keys);
     let _ = write!(
         out,

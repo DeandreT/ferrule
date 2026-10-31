@@ -276,6 +276,46 @@ impl fmt::Display for ProgramValidationError {
                 join.get(),
                 display_path(collection)
             ),
+            Self::MissingComputedJoinKey {
+                join,
+                computed,
+                expression,
+            } => write!(
+                formatter,
+                "compiled mapping join {} computed source {computed} references missing expression {expression}",
+                join.get()
+            ),
+            Self::InvalidComputedJoinKeyNode {
+                join,
+                computed,
+                node,
+            } => write!(
+                formatter,
+                "compiled mapping join {} computed key {computed} reads expression {node}, which a computed key does not admit",
+                join.get()
+            ),
+            Self::ComputedJoinKeyCrossesRepetition {
+                join,
+                computed,
+                node,
+                path,
+            } => write!(
+                formatter,
+                "compiled mapping join {} computed key {computed} source field {node} {} crosses or ends at a repeating source level",
+                join.get(),
+                display_path(path)
+            ),
+            Self::UnresolvedRootComputedJoinKey {
+                join,
+                computed,
+                node,
+                path,
+            } => write!(
+                formatter,
+                "compiled mapping join {} computed key {computed} source field {node} {} does not resolve from the root source context",
+                join.get(),
+                display_path(path)
+            ),
             Self::InvalidJoinKey {
                 join,
                 side,

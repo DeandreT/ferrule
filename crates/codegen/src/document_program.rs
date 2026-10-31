@@ -23,6 +23,7 @@ pub struct DocumentProgram {
     fixed_width: Option<FixedWidthDocumentPolicy>,
     program: Program,
     primary_filename: PrimaryFilenamePlan,
+    output_filename: Option<PrimaryFilenamePlan>,
     primary_selection: PrimaryFileSelection,
     primary_route: Result<PrimaryDocumentRoute, PrimaryRouteError>,
 }
@@ -40,6 +41,10 @@ impl DocumentProgram {
 
     pub fn primary_filename(&self) -> &PrimaryFilenamePlan {
         &self.primary_filename
+    }
+
+    pub fn output_filename(&self) -> Option<&PrimaryFilenamePlan> {
+        self.output_filename.as_ref()
     }
 
     /// How the filename selects documents; generated document entry points
@@ -110,6 +115,22 @@ pub fn lower_document(document: &DocumentProject) -> Result<DocumentProgram, Doc
         },
     };
     let primary_route = document.primary_route();
+    let output_filename = document
+        .global_output_filename()
+        .map_err(DocumentLowerError::Filename)?
+        .map(|filename| {
+            let node = document.output_filename().expect("output filename");
+            match filename {
+                GlobalFilename::Literal(text) => PrimaryFilenamePlan::Literal {
+                    node,
+                    text: text.into(),
+                },
+                GlobalFilename::Parameter(name) => PrimaryFilenamePlan::Parameter {
+                    node,
+                    name: name.into(),
+                },
+            }
+        });
     let project = document.project();
     let program = match primary_route {
         Ok(PrimaryDocumentRoute {
@@ -150,6 +171,7 @@ pub fn lower_document(document: &DocumentProject) -> Result<DocumentProgram, Doc
         },
         program,
         primary_filename,
+        output_filename,
         primary_selection: document.primary_source().selection,
         primary_route,
     })

@@ -52,7 +52,7 @@ impl FerruleApp {
             Err(error) => {
                 self.status = format!("failed to load {} schema", side.label().to_lowercase());
                 self.diagnostics
-                    .error("Schema import failed", error.to_string());
+                    .error("Schema import failed", format!("{error:#}"));
             }
         }
     }
@@ -76,7 +76,7 @@ impl FerruleApp {
             Err(error) => {
                 self.status = "failed to sample CSV source".to_owned();
                 self.diagnostics
-                    .error("CSV source sample failed", error.to_string());
+                    .error("CSV source sample failed", format!("{error:#}"));
             }
         }
     }
@@ -119,7 +119,7 @@ impl FerruleApp {
                     side.label().to_lowercase()
                 );
                 self.diagnostics
-                    .error("SQLite database selection failed", error.to_string());
+                    .error("SQLite database selection failed", format!("{error:#}"));
             }
         }
     }
@@ -150,7 +150,7 @@ impl FerruleApp {
                     side.label().to_lowercase()
                 );
                 self.diagnostics
-                    .error("SQLite table import failed", error.to_string());
+                    .error("SQLite table import failed", format!("{error:#}"));
             }
         }
     }
@@ -249,7 +249,7 @@ impl FerruleApp {
             if let Err(error) = draft.refresh_sample() {
                 self.status = "failed to refresh CSV source sample".to_owned();
                 self.diagnostics
-                    .error("CSV source sample failed", error.to_string());
+                    .error("CSV source sample failed", format!("{error:#}"));
             } else {
                 self.diagnostics.clear();
             }
@@ -360,7 +360,7 @@ impl FerruleApp {
             Err(error) => {
                 self.status = "new mapping is incomplete".to_string();
                 self.diagnostics
-                    .error("New mapping is incomplete", error.to_string());
+                    .error("New mapping is incomplete", format!("{error:#}"));
                 return;
             }
         };
@@ -657,7 +657,7 @@ fn show_sqlite_table(
 
 fn show_sqlite_validation(ui: &mut egui::Ui, draft: &SqliteBoundaryDraft, target: bool) {
     if let Err(error) = draft.schema(target) {
-        ui.colored_label(ui.visuals().error_fg_color, error.to_string());
+        ui.colored_label(ui.visuals().error_fg_color, format!("{error:#}"));
     }
 }
 
@@ -857,7 +857,7 @@ fn short_preview_text(value: &str) -> String {
 
 fn show_csv_validation(ui: &mut egui::Ui, draft: &CsvBoundaryDraft) {
     if let Err(error) = draft.validate() {
-        ui.colored_label(ui.visuals().error_fg_color, error.to_string());
+        ui.colored_label(ui.visuals().error_fg_color, format!("{error:#}"));
     }
 }
 

@@ -3,18 +3,20 @@ use std::fmt::Write as _;
 use std::path::Path;
 
 use ir::{Value, XML_TEXT_FIELD};
-use mapping::{Graph, Node, NodeId, Project, RuntimeValue, SequenceExpr};
+use mapping::{AggregateOp, Graph, Node, NodeId, Project, RuntimeValue, SequenceExpr};
 
 use crate::MfdError;
 
+use super::aggregate_cardinality::expression_reads_collection;
 use super::auto_number::{self, AutoNumbers};
 use super::database_xml::DirectColumns;
 use super::decimal_input::{self, DecimalInputs};
 use super::function::{
-    aggregate_component_name, constant_parts, function_library, scalar_type_name,
-    unmap_function_name, value_scalar_type, value_text,
+    aggregate_component_name, constant_parts, native_function, scalar_type_name, value_scalar_type,
+    value_text,
 };
 use super::join::JoinExports;
+use super::node_frames::NodeFrames;
 use super::position::render_component;
 use super::schema::{GeneratedSibling, KeyAlloc, PortMatch, PortPairMatch, PortTree, xml_escape};
 use super::sequence::{SequenceContextPins, collect_scope_sequences};
@@ -67,6 +69,7 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<RenderedNodes, MfdError> {
         user_functions,
     } = args;
 
+    let node_frames = NodeFrames::new(project);
     let mut sequence_inputs = Vec::new();
     let mut sequences = Vec::new();
     collect_scope_sequences(&project.root, &mut sequences);
@@ -405,11 +408,17 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<RenderedNodes, MfdError> {
                 } else {
                     continue;
                 }
-                let mut pins = format!("<datapoint/><datapoint pos=\"1\" key=\"{in_sequence}\"/>");
+                let is_item_at = *function == AggregateOp::ItemAt;
+                let mut pins = if is_item_at {
+                    format!("<datapoint pos=\"0\" key=\"{in_sequence}\"/>")
+                } else {
+                    format!("<datapoint/><datapoint pos=\"1\" key=\"{in_sequence}\"/>")
+                };
                 if arg.is_some() {
                     let in_arg = keys.next();
                     dynamic_inputs.push(in_arg);
-                    let _ = write!(pins, "<datapoint pos=\"2\" key=\"{in_arg}\"/>");
+                    let position = if is_item_at { 1 } else { 2 };
+                    let _ = write!(pins, "<datapoint pos=\"{position}\" key=\"{in_arg}\"/>");
                 }
                 if !dynamic_inputs.is_empty() {
                     fn_inputs.insert(id, dynamic_inputs);
@@ -432,8 +441,15 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<RenderedNodes, MfdError> {
                 matches: _,
                 value,
             } => {
-                let (key_output, value_output) = match sources.lookup_ports(collection, key, value)
+                let mut ports = sources.lookup_ports(collection, key, value);
+                if matches!(ports, PortPairMatch::Ambiguous)
+                    && let Some(frame) = node_frames.frame(id)
+                    && let found @ PortPairMatch::Unique(..) =
+                        sources.lookup_ports_in(frame, collection, key, value)
                 {
+                    ports = found;
+                }
+                let (key_output, value_output) = match ports {
                     PortPairMatch::Unique(key_output, value_output) => (key_output, value_output),
                     PortPairMatch::Missing => {
                         warnings.push(format!(
@@ -762,6 +778,13 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<RenderedNodes, MfdError> {
                 expression,
                 arg,
             } => {
+                if *function == AggregateOp::ItemAt {
+                    return Err(MfdError::Unsupported(format!(
+                        "generated aggregate item-at node {id} cannot preserve its private \
+                         sequence ownership through native MFD import; use direct sequence \
+                         item-at for a supported plain selection"
+                    )));
+                }
                 let Some(&sequence_output) = node_out_key.get(&sequence.item()) else {
                     warnings.push(format!(
                         "sequence aggregate node {id} references an unexported sequence item; skipped"
@@ -839,9 +862,14 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<RenderedNodes, MfdError> {
                 let in_sequence = keys.next();
                 let out = keys.next();
                 let mut dynamic_inputs = Vec::new();
-                let context_input = if expression.is_some() {
-                    let input = keys.next();
-                    let collection_key = match sources.match_sequence(collection) {
+                let is_item_at = *function == AggregateOp::ItemAt;
+                let context_input = if let Some(expression) = expression {
+                    let collection_key = match match_framed_sequence(
+                        sources,
+                        &node_frames,
+                        id,
+                        collection,
+                    ) {
                         PortMatch::Unique(key) => key,
                         PortMatch::Missing => {
                             warnings.push(format!(
@@ -858,13 +886,38 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<RenderedNodes, MfdError> {
                             continue;
                         }
                     };
-                    edges.push((collection_key, input));
+                    if is_item_at
+                        && !expression_reads_collection(
+                            &project.graph,
+                            *expression,
+                            sources,
+                            collection_key,
+                        )
+                    {
+                        return Err(MfdError::Unsupported(format!(
+                            "item-at node {id} has an unproved expression/collection pairing; \
+                             native two-input export cannot preserve the collection's cardinality"
+                        )));
+                    }
                     dynamic_inputs.push(in_sequence);
-                    Some(input)
+                    if is_item_at {
+                        // Native item-at has only nodes and position inputs.
+                        // Its expression feed carries the collection context.
+                        None
+                    } else {
+                        let input = keys.next();
+                        edges.push((collection_key, input));
+                        Some(input)
+                    }
                 } else {
                     let mut sequence = collection.clone();
                     sequence.extend(value.iter().cloned());
-                    let sequence_key = match sources.match_sequence(&sequence) {
+                    let sequence_key = match match_framed_sequence(
+                        sources,
+                        &node_frames,
+                        id,
+                        &sequence,
+                    ) {
                         PortMatch::Unique(key) => key,
                         PortMatch::Missing => {
                             warnings.push(format!(
@@ -887,18 +940,23 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<RenderedNodes, MfdError> {
                     None
                 };
                 node_out_key.insert(id, out);
-                let mut pins = context_input.map_or_else(
-                    || format!("<datapoint/><datapoint pos=\"1\" key=\"{in_sequence}\"/>"),
-                    |context| {
-                        format!(
-                            "<datapoint pos=\"0\" key=\"{context}\"/><datapoint pos=\"1\" key=\"{in_sequence}\"/>"
-                        )
-                    },
-                );
+                let mut pins = if is_item_at {
+                    format!("<datapoint pos=\"0\" key=\"{in_sequence}\"/>")
+                } else {
+                    context_input.map_or_else(
+                        || format!("<datapoint/><datapoint pos=\"1\" key=\"{in_sequence}\"/>"),
+                        |context| {
+                            format!(
+                                "<datapoint pos=\"0\" key=\"{context}\"/><datapoint pos=\"1\" key=\"{in_sequence}\"/>"
+                            )
+                        },
+                    )
+                };
                 if arg.is_some() {
                     let in_arg = keys.next();
                     dynamic_inputs.push(in_arg);
-                    let _ = write!(pins, "<datapoint pos=\"2\" key=\"{in_arg}\"/>");
+                    let position = if is_item_at { 1 } else { 2 };
+                    let _ = write!(pins, "<datapoint pos=\"{position}\" key=\"{in_arg}\"/>");
                 }
                 if !dynamic_inputs.is_empty() {
                     fn_inputs.insert(id, dynamic_inputs);
@@ -975,7 +1033,7 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<RenderedNodes, MfdError> {
                 let (name, library) = match value {
                     RuntimeValue::MappingFilePath => ("mfd-filepath", "core"),
                     RuntimeValue::MainMappingFilePath => ("main-mfd-filepath", "core"),
-                    RuntimeValue::CurrentDateTime => ("current-dateTime", "xpath2"),
+                    RuntimeValue::CurrentDateTime => ("now", "lang"),
                 };
                 let _ = write!(
                     components,
@@ -1078,13 +1136,17 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<RenderedNodes, MfdError> {
                     );
                     continue;
                 }
+                let (name, library) =
+                    native_function(function, args.len()).map_err(|reason| {
+                        MfdError::Unsupported(format!(
+                            "function `{function}` at node {id} has no built-in .mfd equivalent: {reason}"
+                        ))
+                    })?;
                 let ins: Vec<u32> = args.iter().map(|_| keys.next()).collect();
                 let out = keys.next();
                 node_out_key.insert(id, out);
                 fn_inputs.insert(id, ins.clone());
                 *uid += 1;
-                let name = unmap_function_name(function);
-                let library = function_library(function);
                 let growable = if function == "datetime_add" {
                     " growable=\"1\" growablebasename=\"duration\""
                 } else {
@@ -1339,7 +1401,7 @@ fn xml_type_alternative_operand(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn render_sequence_component(
+pub(super) fn render_sequence_component(
     name: &str,
     library: &str,
     inputs: &[u32],
@@ -1392,5 +1454,23 @@ fn connect_inputs(
                 "sequence input references unexported node {node}; connection skipped"
             ));
         }
+    }
+}
+
+/// A relative sequence's port, using the node's evaluation frame when the
+/// path alone matches several source entries.
+fn match_framed_sequence(
+    sources: &SourceExports<'_>,
+    frames: &NodeFrames,
+    node: NodeId,
+    path: &[String],
+) -> PortMatch {
+    match sources.match_sequence(path) {
+        PortMatch::Ambiguous => frames
+            .frame(node)
+            .map(|frame| sources.match_sequence_in(frame, path))
+            .filter(|found| matches!(found, PortMatch::Unique(_)))
+            .unwrap_or(PortMatch::Ambiguous),
+        found => found,
     }
 }

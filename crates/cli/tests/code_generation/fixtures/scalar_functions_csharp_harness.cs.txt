@@ -64,6 +64,16 @@ static IEnumerable<(string Group, string Name, FerruleValue Value)> ExpectedValu
     yield return ("Split", "AfterMiss", Text(""));
     yield return ("Split", "BeforeUnicode", Text("head"));
     yield return ("Split", "AfterUnicode", Text("tail\U0001F642end"));
+    yield return ("Translate", "Positional", Text("(12.3)"));
+    yield return ("Translate", "Removed", Text("abaaxkh"));
+    yield return ("Translate", "Duplicate", Text("xycxyc"));
+    yield return ("Translate", "Unicode", Text("a\u00E9\U00010348"));
+    yield return ("Translate", "Empty", Text(""));
+    yield return ("Translate", "Null", Text(""));
+    yield return ("ReplaceLiteral", "Metacharacters", Text("1*2[3)$4\\5"));
+    yield return ("ReplaceLiteral", "Dollar", Text("a$0$1\\c"));
+    yield return ("ReplaceLiteral", "Overlap", Text("ba"));
+    yield return ("ReplaceLiteral", "Null", Text(""));
     yield return ("String", "Null", Text(""));
     yield return ("String", "Nil", Text(""));
     yield return ("String", "Bool", Text("false"));

@@ -11,6 +11,7 @@ use roxmltree::Node;
 
 use super::schema::{is_xml_document_wrapper, xml_document_wrapper};
 
+#[cfg_attr(test, derive(Debug, PartialEq))]
 pub(super) struct Inventory {
     connected: BTreeSet<u32>,
     owners: BTreeMap<u32, usize>,
@@ -24,6 +25,7 @@ pub(super) struct Inventory {
     xml_document_roles: BTreeMap<usize, Option<bool>>,
 }
 
+#[cfg_attr(test, derive(Debug, PartialEq))]
 struct PortOwner {
     component: usize,
     uid: Option<u32>,
@@ -95,7 +97,30 @@ impl Inventory {
         let mut malformed_components = BTreeSet::new();
         let mut variable_components = BTreeSet::new();
         let mut xml_document_roles = BTreeMap::new();
-        for node in structure.descendants().filter(Node::is_element) {
+        // One document-order pass carries what an ancestor search per element
+        // would find: whether the nearest `structure` is this one, and the
+        // nearest `component`, each counting the element itself. A nested
+        // structure leaves its whole subtree out of scope.
+        let mut pending = vec![(
+            structure,
+            true,
+            structure
+                .ancestors()
+                .find(|ancestor| ancestor.has_tag_name("component")),
+        )];
+        while let Some((node, in_scope, enclosing)) = pending.pop() {
+            let in_scope = in_scope && (node == structure || !node.has_tag_name("structure"));
+            let enclosing = if node.has_tag_name("component") {
+                Some(node)
+            } else {
+                enclosing
+            };
+            pending.extend(
+                node.children()
+                    .rev()
+                    .filter(Node::is_element)
+                    .map(|child| (child, in_scope, enclosing)),
+            );
             for attribute in ["inpkey", "outkey"] {
                 if let Some(key) = node
                     .attribute(attribute)
@@ -109,11 +134,7 @@ impl Inventory {
             {
                 *uids.entry(uid.to_string()).or_default() += 1;
             }
-            if node
-                .ancestors()
-                .find(|ancestor| ancestor.has_tag_name("structure"))
-                != Some(structure)
-            {
+            if !in_scope {
                 continue;
             }
             if node.has_tag_name("component")
@@ -129,10 +150,7 @@ impl Inventory {
             if node.has_tag_name("component") && node.attribute("library") == Some("xml") {
                 xml_document_roles.insert(node.range().start, document_role(node));
             }
-            let Some(component) = node
-                .ancestors()
-                .find(|ancestor| ancestor.has_tag_name("component"))
-            else {
+            let Some(component) = enclosing else {
                 continue;
             };
             for kind in ["inpkey", "outkey"] {
@@ -252,9 +270,16 @@ impl Inventory {
         let payloads: Vec<_> = containers
             .into_iter()
             .flat_map(|wrapper| {
+                // Payloads share their container's ancestry, so search it once
+                // rather than once per payload.
+                let conditioned_ancestor = wrapper
+                    .ancestors()
+                    .take_while(|ancestor| *ancestor != data)
+                    .find(|ancestor| has_condition(*ancestor));
                 wrapper
                     .children()
                     .filter(|node| node.has_tag_name("entry") && !decoration(*node))
+                    .map(move |entry| (entry, conditioned_ancestor))
             })
             .collect();
         let uid = component.attribute("uid").unwrap_or("<missing>");
@@ -276,7 +301,7 @@ impl Inventory {
             _ => "ambiguous",
         };
         let mut findings = Vec::new();
-        for entry in &payloads {
+        for (entry, conditioned_ancestor) in &payloads {
             let ports: Vec<_> = entry
                 .descendants()
                 .filter(Node::is_element)
@@ -290,11 +315,7 @@ impl Inventory {
             if ports.is_empty() {
                 continue;
             }
-            let conditioned_ancestor = entry
-                .ancestors()
-                .skip(1)
-                .take_while(|ancestor| *ancestor != data)
-                .find(|ancestor| has_condition(*ancestor));
+            let conditioned_ancestor = *conditioned_ancestor;
             let reason = if has_condition(*entry) {
                 "document-root condition has no proved source predicate/target construction lowering"
             } else if conditioned_ancestor.is_some() {
@@ -528,5 +549,219 @@ fn excerpt(value: &str) -> String {
         format!("{result}…")
     } else {
         result
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    use roxmltree::Document;
+
+    use super::*;
+
+    fn top_structure<'a, 'input>(document: &'a Document<'input>) -> Node<'a, 'input> {
+        document
+            .descendants()
+            .find(|node| node.has_tag_name("structure"))
+            .unwrap()
+    }
+
+    fn component_start(document: &Document<'_>, uid: &str) -> usize {
+        document
+            .descendants()
+            .find(|node| node.has_tag_name("component") && node.attribute("uid") == Some(uid))
+            .unwrap()
+            .range()
+            .start
+    }
+
+    /// The per-element ancestor search `Inventory::read` replaced, kept to
+    /// pin that the single pass finds the same owners.
+    fn ancestor_search(structure: Node<'_, '_>) -> Inventory {
+        let mut inventory = Inventory::read(structure);
+        inventory.owners.clear();
+        inventory.uids.clear();
+        inventory.scoped_owners.clear();
+        inventory.scoped_uids.clear();
+        inventory.malformed_components.clear();
+        inventory.variable_components.clear();
+        inventory.xml_document_roles.clear();
+        for node in structure.descendants().filter(Node::is_element) {
+            for attribute in ["inpkey", "outkey"] {
+                if let Some(key) = node
+                    .attribute(attribute)
+                    .and_then(|key| key.parse::<u32>().ok())
+                {
+                    *inventory.owners.entry(key).or_default() += 1;
+                }
+            }
+            if node.has_tag_name("component")
+                && let Some(uid) = node.attribute("uid")
+            {
+                *inventory.uids.entry(uid.to_string()).or_default() += 1;
+            }
+            if node
+                .ancestors()
+                .find(|ancestor| ancestor.has_tag_name("structure"))
+                != Some(structure)
+            {
+                continue;
+            }
+            if node.has_tag_name("component")
+                && let Some(uid) = node
+                    .attribute("uid")
+                    .and_then(|uid| uid.parse::<u32>().ok())
+            {
+                *inventory.scoped_uids.entry(uid).or_default() += 1;
+            }
+            if node.has_tag_name("component") && variable_component(node) {
+                inventory.variable_components.insert(node.range().start);
+            }
+            if node.has_tag_name("component") && node.attribute("library") == Some("xml") {
+                inventory
+                    .xml_document_roles
+                    .insert(node.range().start, document_role(node));
+            }
+            let Some(component) = node
+                .ancestors()
+                .find(|ancestor| ancestor.has_tag_name("component"))
+            else {
+                continue;
+            };
+            for kind in ["inpkey", "outkey"] {
+                if let Some(raw) = node.attribute(kind) {
+                    if let Ok(key) = raw.parse::<u32>() {
+                        inventory
+                            .scoped_owners
+                            .entry(key)
+                            .or_default()
+                            .push(PortOwner {
+                                component: component.range().start,
+                                uid: component.attribute("uid").and_then(|uid| uid.parse().ok()),
+                                kind,
+                            });
+                    } else {
+                        inventory
+                            .malformed_components
+                            .insert(component.range().start);
+                    }
+                }
+            }
+        }
+        inventory
+    }
+
+    #[test]
+    fn nested_structures_and_components_keep_their_owners() {
+        let text = r#"<mapping xmlns:x="urn:neutral">
+            <component name="outer" uid="9">
+              <structure>
+                <graph directed="1"><vertices><vertex vertexkey="1"><edges><edge vertexkey="8"/></edges></vertex></vertices></graph>
+                <port outkey="40"/>
+                <children>
+                  <component name="a" uid="1" library="xml">
+                    <properties PassThrough="1"/>
+                    <data><document inputinstance="in.xml"/><root><entry name="x" outkey="1"><entry inpkey="bad"/></entry></root></data>
+                    <component name="inner" uid="2"><entry inpkey="3"/></component>
+                    <entry outkey="4"/>
+                  </component>
+                  <component name="b" uid="1">
+                    <structure>
+                      <component name="hidden" uid="5" library="xml"><data><document outputinstance="o.xml"/></data><entry outkey="6"/></component>
+                      <n inpkey="7"/>
+                    </structure>
+                    <entry inpkey="8"/>
+                    <x:structure><entry inpkey="10"/></x:structure>
+                    <x:component uid="11"><entry inpkey="12"/></x:component>
+                  </component>
+                  <component name="target" uid="3" library="xml"><data><document outputinstance="out.xml"/></data></component>
+                  <n inpkey="13" outkey="nope"/>
+                </children>
+              </structure>
+            </component>
+            <structure><component uid="20"><entry inpkey="21"/></component></structure>
+        </mapping>"#;
+        let document = Document::parse(text).unwrap();
+        let structure = top_structure(&document);
+        let inventory = Inventory::read(structure);
+        assert_eq!(inventory, ancestor_search(structure));
+
+        let start = |name: &str| {
+            document
+                .descendants()
+                .find(|node| node.attribute("name") == Some(name))
+                .unwrap()
+                .range()
+                .start
+        };
+        let owner = |key: u32| {
+            let owners = &inventory.scoped_owners[&key];
+            assert_eq!(owners.len(), 1, "{key}: {owners:?}");
+            (owners[0].component, owners[0].uid, owners[0].kind)
+        };
+        // A port directly below the structure belongs to the component that
+        // encloses the structure itself.
+        assert_eq!(owner(40), (start("outer"), Some(9), "outkey"));
+        assert_eq!(owner(1), (start("a"), Some(1), "outkey"));
+        assert_eq!(owner(3), (start("inner"), Some(2), "inpkey"));
+        assert_eq!(owner(4), (start("a"), Some(1), "outkey"));
+        // Leaving a nested structure returns to its enclosing component.
+        assert_eq!(owner(8), (start("b"), Some(1), "inpkey"));
+        assert_eq!(
+            owner(12),
+            (component_start(&document, "11"), Some(11), "inpkey")
+        );
+        assert_eq!(owner(13), (start("outer"), Some(9), "inpkey"));
+        // Nested structures, prefixed or not, and sibling structures are out
+        // of scope but still count as raw owners.
+        for hidden in [6, 7, 10, 21] {
+            assert!(!inventory.scoped_owners.contains_key(&hidden), "{hidden}");
+        }
+        for raw in [6, 7, 10, 13, 40] {
+            assert_eq!(inventory.owners.get(&raw), Some(&1), "{raw}");
+        }
+        assert!(!inventory.owners.contains_key(&21));
+        assert_eq!(
+            inventory.scoped_uids,
+            BTreeMap::from([(1, 2), (2, 1), (3, 1), (11, 1)])
+        );
+        assert_eq!(inventory.uids.get("5"), Some(&1));
+        assert_eq!(
+            inventory.malformed_components,
+            BTreeSet::from([start("a"), start("outer")])
+        );
+        assert_eq!(inventory.variable_components, BTreeSet::from([start("a")]));
+        assert_eq!(
+            inventory.xml_document_roles,
+            BTreeMap::from([(start("a"), Some(true)), (start("target"), Some(false))])
+        );
+    }
+
+    /// The per-element ancestor search was quadratic in depth: 60,000 levels
+    /// took about two minutes in a debug build.
+    #[test]
+    fn deep_component_chain_is_read_in_one_pass() {
+        const LEVELS: usize = 60_000;
+        let (sender, receiver) = mpsc::channel();
+        std::thread::spawn(move || {
+            let text = format!(
+                "<mapping><structure><children><component uid=\"1\">{}<n outkey=\"2\"/>{}</component></children></structure></mapping>",
+                "<n>".repeat(LEVELS),
+                "</n>".repeat(LEVELS)
+            );
+            let document = Document::parse(&text).unwrap();
+            let inventory = Inventory::read(top_structure(&document));
+            let owners = &inventory.scoped_owners[&2];
+            let _ = sender.send((owners.len(), owners[0].uid, owners[0].kind));
+        });
+        match receiver.recv_timeout(Duration::from_secs(20)) {
+            Ok(read) => assert_eq!(read, (1, Some(1), "outkey")),
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                panic!("the inventory pass did not finish in time")
+            }
+            Err(mpsc::RecvTimeoutError::Disconnected) => panic!("the inventory pass panicked"),
+        }
     }
 }

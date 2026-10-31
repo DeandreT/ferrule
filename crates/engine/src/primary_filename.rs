@@ -26,10 +26,38 @@ pub fn evaluate_primary_filename(
     document: &DocumentProject,
     execution: &ExecutionContext<'_>,
 ) -> Result<String, PrimaryFilenameEvaluationError> {
-    match document.global_filename()? {
+    evaluate_filename(
+        document.global_filename()?,
+        document.primary_source().filename,
+        execution,
+    )
+}
+
+/// Resolve the explicit output transport without opening or publishing a file.
+pub fn evaluate_output_filename(
+    document: &DocumentProject,
+    execution: &ExecutionContext<'_>,
+) -> Result<Option<String>, PrimaryFilenameEvaluationError> {
+    document
+        .global_output_filename()?
+        .map(|filename| {
+            evaluate_filename(
+                filename,
+                document.output_filename().expect("output filename"),
+                execution,
+            )
+        })
+        .transpose()
+}
+
+fn evaluate_filename(
+    filename: GlobalFilename<'_>,
+    node: NodeId,
+    execution: &ExecutionContext<'_>,
+) -> Result<String, PrimaryFilenameEvaluationError> {
+    match filename {
         GlobalFilename::Literal(text) => Ok(text.to_string()),
         GlobalFilename::Parameter(name) => {
-            let node = document.primary_source().filename;
             let value = execution
                 .parameters
                 .and_then(|parameters| parameters.values.get(name))

@@ -110,7 +110,8 @@ public static partial class FerruleJson
                 });
             ValidateInputJsonScalars(schema, parsed.RootElement);
             var budget = new NodeBudget();
-            if (!schema.Repeating && !schema.IsScalar && !schema.JsonAny &&
+            // A non-repeating tuple root is itself the array, not root rows.
+            if (!schema.Repeating && !schema.IsScalar && !schema.JsonAny && schema.JsonTuple is null &&
                 parsed.RootElement.ValueKind == JsonValueKind.Array)
             {
                 budget.Visit(0);
@@ -144,10 +145,14 @@ public static partial class FerruleJson
         _ = ParseSchema(schemaJson);
     }
 
-    internal static void ValidateFunctionSchema(string schemaJson)
+    /// <summary>
+    /// Validates a graph-level function schema and reports whether it contains
+    /// a tuple frame, which those functions refuse.
+    /// </summary>
+    internal static bool FunctionSchemaContainsJsonTuple(string schemaJson)
     {
         ArgumentNullException.ThrowIfNull(schemaJson);
-        _ = ParseSchema(schemaJson);
+        return ContainsJsonTuple(ParseSchema(schemaJson));
     }
 
     internal static bool IsOrdinaryFunctionObjectPath(string schemaJson, IReadOnlyList<string> path)
@@ -164,6 +169,31 @@ public static partial class FerruleJson
             current = child;
         }
         return Ordinary(current);
+    }
+
+    private static JsonSchemaNode? FunctionPath(
+        JsonSchemaNode current, IReadOnlyList<string> path, bool arrayItem = false)
+    {
+        for (var index = 0; index < path.Count; index++)
+        {
+            if (current.IsScalar || (current.Repeating && !(arrayItem && index == 0)) ||
+                current.Child(path[index]) is not { } child)
+                return null;
+            current = child;
+        }
+        return current;
+    }
+
+    internal static bool IsFunctionArrayPath(string schemaJson, IReadOnlyList<string> path) =>
+        FunctionPath(ParseSchema(schemaJson), path) is { Repeating: true };
+
+    internal static bool IsFunctionArrayScalarPath(
+        string schemaJson, IReadOnlyList<string> arrayPath, IReadOnlyList<string> fieldPath)
+    {
+        var array = FunctionPath(ParseSchema(schemaJson), arrayPath);
+        if (array is not { Repeating: true }) return false;
+        if (fieldPath.Count == 0) return array.IsScalar;
+        return FunctionPath(array, fieldPath, arrayItem: true) is { IsScalar: true, Repeating: false };
     }
 
     public static string Serialize(string schemaJson, FerruleInstance instance)
@@ -205,6 +235,10 @@ public static partial class FerruleJson
                 var budget = new NodeBudget();
                 if (instance is FerruleRepeated repeated && !schema.Repeating)
                 {
+                    if (schema.JsonTuple is not null)
+                    {
+                        throw TupleRootRows(schema);
+                    }
                     budget.Visit(0);
                     writer.WriteStartArray();
                     foreach (var item in repeated.Items)
@@ -318,6 +352,7 @@ public static partial class FerruleJson
             throw Boundary($"Embedded JSON schema node '{name}' has invalid required XML attribute-use metadata.");
         }
         var recursiveReference = OptionalString(element, "recursive_ref");
+        var jsonTuple = ReadJsonTupleLayout(name, element);
         var jsonUniqueItems = ReadJsonUniqueItems(name, element, repeating);
         var scalarDomain = kind switch
         {
@@ -605,7 +640,7 @@ public static partial class FerruleJson
                 $"Embedded JSON recursive reference '{name}' is not an empty group occurrence.");
         }
 
-        return new JsonSchemaNode(
+        var node = new JsonSchemaNode(
             name,
             repeating,
             nullable,
@@ -636,7 +671,10 @@ public static partial class FerruleJson
             alternatives,
             inclusiveAlternatives,
             xmlTypeAlternatives,
-            recursiveReference);
+            recursiveReference,
+            jsonTuple);
+        ValidateJsonTupleFrame(node, element, kindElement);
+        return node;
     }
 
     private static bool ReadJsonArrayWrapper(string name, JsonElement element, JsonElement kindElement, string kind, bool repeating)
@@ -698,6 +736,7 @@ public static partial class FerruleJson
             }
         }
 
+        var anchorsByOccurrence = new Dictionary<JsonSchemaNode, JsonSchemaNode>();
         foreach (var occurrence in nodes)
         {
             if (occurrence.RecursiveReference is not { } reference)
@@ -715,7 +754,9 @@ public static partial class FerruleJson
                         $"ambiguous group anchor '{reference}'."));
             }
             occurrence.BindRecursiveAnchor(anchors[0]);
+            anchorsByOccurrence.Add(occurrence, anchors[0]);
         }
+        RefuseRecursiveTupleFrames(nodes, anchorsByOccurrence);
     }
 
     private static string[] ReadJsonFormats(
@@ -1386,6 +1427,11 @@ public static partial class FerruleJson
             return new FerruleScalar(FerruleValue.JsonNull);
         }
 
+        if (schema.JsonTuple is { } tuple)
+        {
+            return ReadTuple(schema, tuple, element, budget, depth);
+        }
+
         if (schema.IsScalar)
         {
             return new FerruleScalar(ReadScalar(schema, element, budget));
@@ -1550,7 +1596,9 @@ public static partial class FerruleJson
 
     private static FerruleInstance Missing(JsonSchemaNode schema)
     {
-        if (schema.NullLayers.Whole)
+        // A missing nullable object or array, or a missing single tuple, is
+        // absent, not an empty container.
+        if (schema.NullLayers.Whole || IsSingleTupleFrame(schema))
         {
             return new FerruleScalar(FerruleValue.Null);
         }
@@ -1675,6 +1723,12 @@ public static partial class FerruleJson
             instance is FerruleScalar { Value.Kind: FerruleValueKind.JsonNull })
         {
             writer.WriteNullValue();
+            return;
+        }
+
+        if (schema.JsonTuple is { } tuple)
+        {
+            WriteTuple(writer, schema, tuple, instance, budget, depth);
             return;
         }
 
@@ -2313,8 +2367,10 @@ public static partial class FerruleJson
         {
             return true;
         }
+        // A Null single tuple is absent like a Null nullable container.
         return instance is FerruleScalar { Value.Kind: FerruleValueKind.Null } &&
-               (schema.NullLayers.Whole || !schema.Repeating && schema.IsScalar);
+               (schema.NullLayers.Whole || !schema.Repeating && schema.IsScalar ||
+                IsSingleTupleFrame(schema));
     }
 
     private static void ValidateRequired(
@@ -3070,6 +3126,15 @@ public static partial class FerruleJson
 
     private static void ValidateInputJsonScalars(JsonSchemaNode schema, JsonElement element)
     {
+        // Native tuple reads validate raw uniqueItems before any positional
+        // conversion. Keep that precedence, including the unwrapped error,
+        // rather than letting an earlier tuple field fail first.
+        var hasUniqueItems = ContainsJsonUniqueItems(schema);
+        var checkedUniqueItems = hasUniqueItems && ContainsJsonTuple(schema);
+        if (checkedUniqueItems)
+        {
+            ValidateInputRawUniqueItems(schema, element);
+        }
         try
         {
             ValidateJsonScalars(element);
@@ -3079,20 +3144,28 @@ public static partial class FerruleJson
             // Rust checks exact raw uniqueItems before decoding JSON numbers.
             // Preserve that error precedence without repeating uniqueness work
             // for valid documents or consuming additional pattern-match work.
-            var budget = new NodeBudget();
-            if (!schema.Repeating && !schema.IsScalar && !schema.JsonAny &&
-                element.ValueKind == JsonValueKind.Array)
+            if (hasUniqueItems && !checkedUniqueItems)
             {
-                foreach (var row in element.EnumerateArray())
-                {
-                    ValidateRawUniqueSingle(schema, row, budget, 1);
-                }
-            }
-            else
-            {
-                ValidateRawUniqueNode(schema, element, budget, 0);
+                ValidateInputRawUniqueItems(schema, element);
             }
             throw;
+        }
+    }
+
+    private static void ValidateInputRawUniqueItems(JsonSchemaNode schema, JsonElement element)
+    {
+        var budget = new NodeBudget();
+        if (!schema.Repeating && !schema.IsScalar && !schema.JsonAny && schema.JsonTuple is null &&
+            element.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var row in element.EnumerateArray())
+            {
+                ValidateRawUniqueSingle(schema, row, budget, 1);
+            }
+        }
+        else
+        {
+            ValidateRawUniqueNode(schema, element, budget, 0);
         }
     }
 
@@ -3145,6 +3218,25 @@ public static partial class FerruleJson
         if (schema.JsonArrayWrapper)
         {
             ValidateRawUniqueNode(schema.Children[0], element, budget, depth + 1);
+            return;
+        }
+        if (schema.JsonTuple is not null)
+        {
+            if (element.ValueKind == JsonValueKind.Array)
+            {
+                var position = 0;
+                foreach (var item in element.EnumerateArray())
+                {
+                    position++;
+                    var itemSchema = position <= schema.TupleMembers.Count
+                        ? schema.TupleMembers[position - 1]
+                        : schema.TupleRest;
+                    if (itemSchema is not null)
+                    {
+                        ValidateRawUniqueSingle(itemSchema, item, budget, depth + 1);
+                    }
+                }
+            }
             return;
         }
         if (schema.JsonAny || schema.IsScalar || element.ValueKind != JsonValueKind.Object)

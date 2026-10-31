@@ -128,13 +128,34 @@ pub(super) fn project(
         target_field: ir::XML_TYPE_FIELD.into(),
         node: 2,
     });
+    // The target writes the schema-location hint its stored setting derives.
+    let schema_namespace = std::str::from_utf8(&plan.target.schema_owned_bytes)
+        .ok()
+        .and_then(crate::schema_location::schema_target_namespace);
+    let target_options = match crate::schema_location::derived_hints(
+        plan.target.schema_location_setting.as_deref(),
+        schema_namespace
+            .as_ref()
+            .and(Some(plan.target.declared_schema.as_str())),
+        schema_namespace.clone().flatten().as_deref(),
+        &plan.target.schema,
+    )
+    .map_err(|detail| reject(&detail))?
+    {
+        Some(hints) => FormatOptions {
+            xml_document: true,
+            xml_schema_hints: Some(hints),
+            ..FormatOptions::default()
+        },
+        None => FormatOptions::default(),
+    };
     let project = Project {
         source: plan.source.schema.clone(),
         target: plan.target.schema.clone(),
         source_path: Some(plan.source.instance_path.clone()),
         target_path: Some(plan.target.instance_path.clone()),
         source_options: source_options.clone(),
-        target_options: FormatOptions::default(),
+        target_options,
         extra_sources: vec![],
         extra_targets: vec![],
         failure_rules: vec![],

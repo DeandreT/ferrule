@@ -276,7 +276,7 @@ fn mapped_scope_plan(
         let constructs_fields = !scope.bindings.is_empty() || !scope.children.is_empty();
         if !constructs_fields {
             let matching_sources = join
-                .sources()
+                .collection_sources()
                 .filter(|source| {
                     source.cardinality() == mapping::JoinSourceCardinality::Repeating
                         && sources

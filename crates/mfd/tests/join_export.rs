@@ -5,9 +5,9 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{Instance, ScalarType, SchemaNode, Value};
 use mapping::{
-    AggregateOp, Binding, DynamicSourcePath, Graph, IterationOutput, JoinConditions, JoinId,
-    JoinKey, JoinPlan, JoinSource, JoinSourceCardinality, NamedSource, Node, Project, Scope,
-    ScopeIteration, SequenceWindow,
+    AggregateOp, Binding, CollectionJoinSource, ComputedJoinSourceId, DynamicSourcePath, Graph,
+    IterationOutput, JoinConditions, JoinId, JoinKey, JoinPlan, JoinSource, JoinSourceCardinality,
+    NamedSource, Node, Project, Scope, ScopeIteration, SequenceWindow,
 };
 
 struct TempDir(PathBuf);
@@ -452,7 +452,7 @@ fn repeating_join_inputs_are_source_driven_and_constructed_outputs_keep_default_
 }
 
 #[test]
-fn singleton_join_inputs_keep_scalar_connections_and_exact_tuple_execution() {
+fn singleton_join_inputs_are_source_driven_and_keep_exact_tuple_execution() {
     let mut project = two_way_project();
     let right = project.source.child("Right").unwrap().clone();
     project.source = SchemaNode::group(
@@ -493,7 +493,7 @@ fn singleton_join_inputs_keep_scalar_connections_and_exact_tuple_execution() {
     let dir = TempDir::new("scalar-feed");
     let path = dir.path("mapping.mfd");
     assert!(mfd::export(&project, &path).unwrap().is_empty());
-    assert_join_input_modes(&fs::read_to_string(&path).unwrap(), &[false, true]);
+    assert_join_input_modes(&fs::read_to_string(&path).unwrap(), &[true, true]);
     let imported = import_exported(&path);
     assert_eq!(engine::run(&imported.project, &source).unwrap(), expected);
 }
@@ -571,7 +571,7 @@ fn exports_and_executes_a_root_join_over_a_static_named_source() {
         panic!("expected the row scope to retain its join");
     };
     assert!(
-        plan.sources().any(|source| {
+        plan.collection_sources().any(|source| {
             source.collection() == ["Reference".to_string(), "Right".to_string()]
         })
     );
@@ -609,6 +609,58 @@ fn dynamic_named_source_join_rejects_before_replacing_artifacts() {
     assert!(!dir.path("mapping-source.xsd").exists());
     assert!(!dir.path("mapping-source-2.xsd").exists());
     assert!(!dir.path("mapping-target.xsd").exists());
+}
+
+#[test]
+fn computed_join_sources_reject_before_replacing_artifacts() {
+    let key = ComputedJoinSourceId::new(1);
+    let computed = JoinPlan::new(
+        JoinSource::new(vec!["Left".into()]),
+        JoinSource::computed(key, 40),
+        JoinConditions::new(JoinKey::new(
+            vec!["Left".into()],
+            vec!["Id".into()],
+            Vec::new(),
+        )),
+    )
+    .unwrap();
+    let constant = Node::Const {
+        value: Value::String("A".into()),
+    };
+    let mut scope = two_way_project();
+    scope.graph.nodes.insert(40, constant.clone());
+    scope.root.children[0].iteration = ScopeIteration::InnerJoin {
+        id: JoinId::new(8),
+        plan: computed.clone(),
+    };
+    let mut aggregate = two_way_project();
+    aggregate.graph.nodes.insert(40, constant);
+    aggregate.graph.nodes.insert(
+        41,
+        Node::JoinAggregate {
+            function: AggregateOp::Count,
+            join: JoinId::new(9),
+            plan: computed,
+            expression: None,
+            arg: None,
+        },
+    );
+    for project in [scope, aggregate] {
+        let dir = TempDir::new("computed-key");
+        let output = dir.path("mapping.mfd");
+        fs::write(&output, "sentinel").unwrap();
+        let error = mfd::export(&project, &output).unwrap_err();
+        assert!(
+            matches!(
+                &error,
+                mfd::MfdError::Unsupported(message) if message.contains("with a computed key")
+            ),
+            "{error}"
+        );
+        assert_eq!(fs::read_to_string(&output).unwrap(), "sentinel");
+        assert!(!dir.path("mapping-source.xsd").exists());
+        assert!(!dir.path("mapping-target.xsd").exists());
+    }
 }
 
 #[test]
@@ -1241,7 +1293,10 @@ fn mapped_join_sequence_round_trips_named_and_singleton_sources() {
         panic!("expected the mapped target to retain its join");
     };
     assert_eq!(
-        imported_plan.sources().next().map(JoinSource::cardinality),
+        imported_plan
+            .collection_sources()
+            .next()
+            .map(CollectionJoinSource::cardinality),
         Some(JoinSourceCardinality::Singleton)
     );
     assert_eq!(
@@ -1271,11 +1326,14 @@ fn mapped_join_sequence_round_trips_named_and_singleton_sources() {
     let warnings = mfd::export(&project, &structural_output).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
     let xml = fs::read_to_string(&structural_output).unwrap();
-    assert_eq!(xml.matches("<dataconnection type=\"2\"/>").count(), 2);
-    assert_join_input_modes(&xml, &[false, true]);
+    assert_eq!(xml.matches("<dataconnection type=\"2\"/>").count(), 3);
+    assert_join_input_modes(&xml, &[true, true]);
     let structural = import_exported(&structural_output);
     assert_eq!(
         structural.project.root.children[0].iteration_output,
         IterationOutput::MappedSequence
     );
 }
+
+#[path = "join_export/computed_keys.rs"]
+mod computed_keys;

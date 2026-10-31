@@ -270,6 +270,11 @@ fn harness(view: &'static str, size: (f32, f32)) -> Harness<'static, FerruleApp>
                     });
                     app.show_mapping_tabs(ui, true);
                 });
+                if !app.diagnostics.is_empty() {
+                    egui::Panel::bottom("dialog_test_diagnostics").show(ui, |ui| {
+                        app.diagnostics.show(ui);
+                    });
+                }
                 let ctx = ui.ctx().clone();
                 crate::ui_kit::set_workspace_rect(&ctx, ui.available_rect_before_wrap());
                 app.show_main_canvas(ui, true);
@@ -650,6 +655,41 @@ fn csv_target_format_selection_initializes_a_new_or_non_csv_target() {
             csv_draft_snapshot(&CsvBoundaryDraft::target())
         );
     }
+}
+
+#[test]
+fn schema_import_failure_diagnostic_shows_the_cause() {
+    let directory = std::env::temp_dir().join(format!(
+        "ferrule-dialog-{}-{}-schema",
+        std::process::id(),
+        NEXT_FIXTURE.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    ));
+    std::fs::create_dir_all(&directory).unwrap();
+    let path = directory.join("contentless.json");
+    std::fs::write(&path, "[1,2,3]").unwrap();
+    let mut harness = harness("wizard-empty", (1280.0, 800.0));
+    harness.run();
+    harness
+        .state_mut()
+        .stage_mapping_schema(SchemaSide::Source, path.clone());
+    std::fs::remove_dir_all(&directory).unwrap();
+    harness.run();
+
+    let app = harness.state();
+    assert!(app.new_mapping_setup.as_ref().unwrap().source.is_none());
+    let [diagnostic] = app.diagnostics.items() else {
+        panic!("one diagnostic: {:?}", app.diagnostics.items());
+    };
+    // The outer context names the file; the cause says why it was refused.
+    let context = format!("importing json schema {}", path.display());
+    let cause = "describes no JSON value: a schema must be an object or a boolean, \
+                 but this one is an array";
+    assert!(
+        diagnostic.message.starts_with(&context) && diagnostic.message.contains(cause),
+        "{}",
+        diagnostic.message
+    );
+    harness.get_by_label(&diagnostic.message);
 }
 
 #[test]

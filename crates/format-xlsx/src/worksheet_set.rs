@@ -102,6 +102,9 @@ fn validate_layout<'a>(
     if schema.repeating || !matches!(schema.kind, SchemaKind::Group { .. }) {
         return Err(XlsxFormatError::WorksheetSetRootSchema);
     }
+    if schema.contains_json_tuple() {
+        return Err(XlsxFormatError::UnsupportedSchema);
+    }
     let worksheet_schema = schema_node_at(schema, &layout.worksheets_path)?;
     if !worksheet_schema.repeating || !matches!(worksheet_schema.kind, SchemaKind::Group { .. }) {
         return Err(path_error(

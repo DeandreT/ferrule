@@ -1,20 +1,25 @@
-mod correlated_three;
+mod aggregate;
+mod computed;
+mod nested;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 
 use ir::{SchemaKind, SchemaNode};
 use mapping::{
-    AggregateOp, Graph, IterationOutput, JoinId, JoinPlan, JoinSource, JoinSourceCardinality, Node,
-    NodeId, Project, Scope, ScopeConstruction, ScopeIteration,
+    CollectionJoinSource, Graph, IterationOutput, JoinId, JoinKeyLeft, JoinPlan, JoinSource,
+    JoinSourceCardinality, Node, NodeId, Project, Scope, ScopeIteration,
 };
 
-use super::schema::{KeyAlloc, PortMatch, PortTree, xml_escape};
+use super::schema::{KeyAlloc, PortTree, xml_escape};
 use super::source::SourceExports;
 
 use crate::MfdError;
 
-use correlated_three::resolved_correlated_source_paths;
+use aggregate::{aggregate_contexts, validate_aggregate_consumer};
+use computed::ComputedKey;
+pub(super) use computed::validate_computed_placement;
+use nested::resolved_nested_source_paths;
 
 pub(super) fn validate(project: &Project) -> Result<(), MfdError> {
     let dynamic_sources = project
@@ -65,7 +70,7 @@ fn validate_plan_dynamic_sources(
     plan: &JoinPlan,
     dynamic_sources: &BTreeSet<&str>,
 ) -> Result<(), MfdError> {
-    let Some(source) = plan.sources().find_map(|source| {
+    let Some(source) = plan.collection_sources().find_map(|source| {
         source
             .collection()
             .first()
@@ -88,9 +93,54 @@ pub(super) struct JoinExports {
     plans: BTreeMap<JoinId, JoinPlan>,
     supported: BTreeSet<JoinId>,
     blocked_nodes: BTreeSet<NodeId>,
+    computed_inputs: Vec<(JoinId, ComputedInput)>,
+}
+
+/// The join input a computed key feeds, connected after the graph pass.
+#[derive(Clone, Copy)]
+struct ComputedInput {
+    value: NodeId,
+    port: u32,
+    copy_all: bool,
+    /// The input and delimiter pins of a sequence-valued key's `tokenize`
+    /// component, each with the node that feeds it.
+    tokenize: Option<[(NodeId, u32); 2]>,
 }
 
 impl JoinExports {
+    /// Connects each computed key's exported node to its join input, with
+    /// the connection kind the native application requires.
+    pub(super) fn connect_computed_keys(
+        &self,
+        node_out_key: &BTreeMap<NodeId, u32>,
+        edges: &mut Vec<(u32, u32)>,
+        structural_edges: &mut BTreeSet<(u32, u32)>,
+    ) -> Result<(), MfdError> {
+        for (join, input) in &self.computed_inputs {
+            let from = node_out_key.get(&input.value).copied().ok_or_else(|| {
+                MfdError::Unsupported(format!(
+                    "inner join {} computed key node {} has no exported output",
+                    join.get(),
+                    input.value
+                ))
+            })?;
+            edges.push((from, input.port));
+            if input.copy_all {
+                structural_edges.insert((from, input.port));
+            }
+            for (node, pin) in input.tokenize.into_iter().flatten() {
+                let from = node_out_key.get(&node).copied().ok_or_else(|| {
+                    MfdError::Unsupported(format!(
+                        "inner join {} computed key tokenize input node {node} has no exported output",
+                        join.get()
+                    ))
+                })?;
+                edges.push((from, pin));
+            }
+        }
+        Ok(())
+    }
+
     pub(super) fn row_output(&self, join: JoinId) -> Option<u32> {
         self.row_outputs.get(&join).copied()
     }
@@ -137,6 +187,7 @@ struct RenderedJoin {
     structural_row: bool,
     input_edges: Vec<(u32, u32)>,
     structural_input_edges: Vec<(u32, u32)>,
+    computed_input: Option<ComputedInput>,
     node_outputs: Vec<(NodeId, u32)>,
 }
 
@@ -241,7 +292,7 @@ pub(super) struct RenderJoinArgs<'a> {
     pub(super) warnings: &'a mut Vec<String>,
 }
 
-pub(super) fn render(args: RenderJoinArgs<'_>) -> JoinExports {
+pub(super) fn render(args: RenderJoinArgs<'_>) -> Result<JoinExports, MfdError> {
     let RenderJoinArgs {
         project,
         sources,
@@ -313,6 +364,8 @@ pub(super) fn render(args: RenderJoinArgs<'_>) -> JoinExports {
     }
 
     let mut exports = JoinExports::default();
+    // Import adds a computed key's null guard itself, so it is never written.
+    let mut guard_nodes = BTreeSet::new();
     for (join, owner) in owners {
         let mut supported_aggregates = Vec::new();
         for node_id in owner.aggregates.iter().copied() {
@@ -337,10 +390,15 @@ pub(super) fn render(args: RenderJoinArgs<'_>) -> JoinExports {
         if owner.aggregate_only && supported_aggregates.is_empty() {
             continue;
         }
+        let mut computed_key = None;
         let result = if owner.duplicate {
             Err("the same join id is owned by multiple scopes".to_string())
         } else {
             resolved_source_paths(&owner, sources).and_then(|source_paths| {
+                if owner.plan.computed_source().is_some() {
+                    let anchor = owner.correlation_anchor.as_deref().unwrap_or_default();
+                    computed_key = Some(computed::admit(project, &owner.plan, anchor, sources)?);
+                }
                 if !owner.aggregate_only && owner.chain.is_empty() && !target_root_iterable {
                     return Err("the target document root is not row/array shaped".to_string());
                 }
@@ -354,6 +412,7 @@ pub(super) fn render(args: RenderJoinArgs<'_>) -> JoinExports {
                     join,
                     &owner.plan,
                     &source_paths,
+                    computed_key.as_ref(),
                     &project.graph,
                     sources,
                     owner
@@ -367,12 +426,6 @@ pub(super) fn render(args: RenderJoinArgs<'_>) -> JoinExports {
         };
         match result {
             Ok(rendered) => {
-                if owner.nested
-                    && owner.plan.sources().count() >= 3
-                    && let Some(edge) = rendered.input_edges.first()
-                {
-                    structural_edges.insert(*edge);
-                }
                 components.push_str(&rendered.xml);
                 edges.extend(rendered.input_edges);
                 structural_edges.extend(rendered.structural_input_edges);
@@ -382,8 +435,22 @@ pub(super) fn render(args: RenderJoinArgs<'_>) -> JoinExports {
                 if rendered.structural_row {
                     exports.structural_rows.insert(join);
                 }
+                if let Some(input) = rendered.computed_input {
+                    exports.computed_inputs.push((join, input));
+                }
+                if let Some(key) = computed_key {
+                    guard_nodes.extend(key.guard);
+                }
                 exports.plans.insert(join, owner.plan);
                 exports.supported.insert(join);
+            }
+            // Import lowers a computed key only for the plan it reads back,
+            // so a computed join is exported whole or not at all.
+            Err(reason) if owner.plan.computed_source().is_some() => {
+                return Err(MfdError::Unsupported(format!(
+                    "inner join {} with a computed key cannot be exported to .mfd: {reason}",
+                    join.get()
+                )));
             }
             Err(reason) => warnings.push(format!(
                 "inner join {} is not exported: {reason}; its iteration and node connections are skipped",
@@ -391,8 +458,9 @@ pub(super) fn render(args: RenderJoinArgs<'_>) -> JoinExports {
             )),
         }
     }
+    rejected_aggregates.extend(guard_nodes);
     exports.blocked_nodes = blocked_nodes(&project.graph, &exports.plans, rejected_aggregates);
-    exports
+    Ok(exports)
 }
 
 fn collect_owners(
@@ -461,7 +529,7 @@ fn resolved_source_paths(
     owner: &JoinOwner,
     sources: &SourceExports<'_>,
 ) -> Result<Vec<Vec<String>>, String> {
-    let join_sources = owner.plan.sources().collect::<Vec<_>>();
+    let join_sources = owner.plan.collection_sources().collect::<Vec<_>>();
     if !owner.nested {
         return Ok(join_sources
             .iter()
@@ -473,45 +541,30 @@ fn resolved_source_paths(
         .as_deref()
         .filter(|anchor| !anchor.is_empty())
         .ok_or("nested join is not enclosed by one ordinary source iteration")?;
-    if join_sources.len() >= 3 {
-        return resolved_correlated_source_paths(&join_sources, anchor, sources);
+    resolved_nested_source_paths(
+        &join_sources,
+        owner.plan.computed_source().is_some(),
+        anchor,
+        sources,
+    )
+}
+
+/// One join input in plan order.
+enum RenderInput<'p> {
+    Collection {
+        source: &'p CollectionJoinSource,
+        path: &'p [String],
+    },
+    Computed(&'p ComputedKey),
+}
+
+impl RenderInput<'_> {
+    fn collection(&self) -> Option<(&CollectionJoinSource, &[String])> {
+        match self {
+            Self::Collection { source, path } => Some((source, path)),
+            Self::Computed(_) => None,
+        }
     }
-    if join_sources.len() != 2
-        || join_sources
-            .iter()
-            .filter(|source| source.cardinality() == JoinSourceCardinality::Singleton)
-            .count()
-            != 1
-        || join_sources
-            .iter()
-            .filter(|source| source.cardinality() == JoinSourceCardinality::Repeating)
-            .count()
-            != 1
-    {
-        return Err(
-            "nested join must contain exactly one correlated singleton and one repeating source"
-                .to_string(),
-        );
-    }
-    join_sources
-        .into_iter()
-        .map(|source| match source.cardinality() {
-            JoinSourceCardinality::Repeating => Ok(source.collection().to_vec()),
-            JoinSourceCardinality::Singleton => {
-                if source.collection().is_empty()
-                    || sources.is_named_extra_path(source.collection())
-                {
-                    return Err(
-                        "nested join singleton must be a field of the active primary source item"
-                            .to_string(),
-                    );
-                }
-                let mut absolute = anchor.to_vec();
-                absolute.extend(source.collection().iter().cloned());
-                Ok(absolute)
-            }
-        })
-        .collect()
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -519,24 +572,80 @@ fn render_one(
     join: JoinId,
     plan: &JoinPlan,
     source_paths: &[Vec<String>],
+    computed: Option<&ComputedKey>,
     graph: &Graph,
     source_exports: &SourceExports<'_>,
     mapped_target: Option<&SchemaNode>,
     keys: &mut KeyAlloc,
     uid: &mut u32,
 ) -> Result<RenderedJoin, String> {
-    let sources = plan.sources().cloned().collect::<Vec<_>>();
-    if sources.len() < 2 {
+    let mismatch = "join source resolution does not match its input count";
+    let mut collection_paths = source_paths.iter();
+    let mut inputs = Vec::new();
+    for source in plan.sources() {
+        inputs.push(match source {
+            JoinSource::Collection(source) => RenderInput::Collection {
+                source,
+                path: collection_paths.next().ok_or(mismatch)?,
+            },
+            JoinSource::Computed(_) => {
+                RenderInput::Computed(computed.ok_or("the computed key was not admitted")?)
+            }
+        });
+    }
+    if collection_paths.next().is_some() {
+        return Err(mismatch.to_string());
+    }
+    if inputs.len() < 2 {
         return Err("a join must contain at least two sources".to_string());
     }
-    if source_paths.len() != sources.len() {
-        return Err("join source resolution does not match its input count".to_string());
-    }
     let mut source_indices = BTreeMap::new();
-    let mut input_ports = Vec::with_capacity(sources.len());
-    let mut input_edges = Vec::with_capacity(sources.len());
-    let mut structural_input_edges = Vec::with_capacity(sources.len());
-    for (index, source) in sources.iter().enumerate() {
+    let mut computed_index = None;
+    let mut computed_input = None;
+    let mut input_ports = Vec::with_capacity(inputs.len());
+    let mut input_edges = Vec::with_capacity(inputs.len());
+    let mut structural_input_edges = Vec::with_capacity(inputs.len());
+    let mut sequence_components = String::new();
+    let mut node_outputs = Vec::new();
+    for (index, input) in inputs.iter().enumerate() {
+        let (source, resolved_path) = match input {
+            RenderInput::Collection { source, path } => (source, path),
+            RenderInput::Computed(key) => {
+                // The key's own node is written by the graph pass; its edge
+                // is connected once that node has an output port. A
+                // sequence-valued key's `tokenize` component is written here,
+                // and its item takes that component's output.
+                let input_port = keys.next();
+                input_ports.push(input_port);
+                computed_index = Some(index);
+                let tokenize = key.tokenize.map(|tokenize| {
+                    let input_pin = keys.next();
+                    let delimiter_pin = keys.next();
+                    let output = keys.next();
+                    super::node::render_sequence_component(
+                        "tokenize",
+                        "core",
+                        &[input_pin, delimiter_pin],
+                        output,
+                        None,
+                        uid,
+                        &mut sequence_components,
+                    );
+                    node_outputs.push((key.value, output));
+                    [
+                        (tokenize.input, input_pin),
+                        (tokenize.delimiter, delimiter_pin),
+                    ]
+                });
+                computed_input = Some(ComputedInput {
+                    value: key.value,
+                    port: input_port,
+                    copy_all: key.copy_all,
+                    tokenize,
+                });
+                continue;
+            }
+        };
         let collection = source.collection();
         if collection.is_empty() {
             return Err(format!("input {index} has an empty collection path"));
@@ -547,7 +656,6 @@ fn render_one(
                 collection.join("/")
             ));
         }
-        let resolved_path = &source_paths[index];
         let Some(resolved) = source_exports.join_collection(resolved_path) else {
             return Err(format!(
                 "input {index} collection `{}` is not in an exported source schema or has no source component port",
@@ -571,16 +679,16 @@ fn render_one(
         let input_port = keys.next();
         input_ports.push(input_port);
         input_edges.push((source_port, input_port));
-        if source.cardinality() == JoinSourceCardinality::Repeating {
-            structural_input_edges.push((source_port, input_port));
-        }
+        // The reference application accepts a join input fed directly by a source
+        // port only through a copy-all connection, for a singleton scalar as well
+        // as a repeating group.
+        structural_input_edges.push((source_port, input_port));
     }
 
-    let mut output_trees = (0..sources.len())
+    let mut output_trees = (0..inputs.len())
         .map(|_| EntryTree::default())
         .collect::<Vec<_>>();
     let mut output_ports = BTreeMap::new();
-    let mut node_outputs = Vec::new();
     for (&node_id, node) in &graph.nodes {
         let Node::JoinField {
             join: owner,
@@ -593,13 +701,16 @@ fn render_one(
         if *owner != join {
             continue;
         }
-        let Some(&source_index) = source_indices.get(collection) else {
+        let Some((&source_index, (_, source_path))) = source_indices
+            .get(collection)
+            .and_then(|index| Some((index, inputs[*index].collection()?)))
+        else {
             return Err(format!(
                 "join field node {node_id} uses unknown collection `{}`",
                 collection.join("/")
             ));
         };
-        let mut absolute = source_paths[source_index].clone();
+        let mut absolute = source_path.to_vec();
         absolute.extend(path.iter().cloned());
         let Some(field) = source_exports.schema_node_at(&absolute) else {
             return Err(format!(
@@ -620,35 +731,33 @@ fn render_one(
         node_outputs.push((node_id, output));
     }
 
+    let input_index = |source: &JoinSource| match source {
+        JoinSource::Collection(source) => source_indices.get(source.collection()).copied(),
+        JoinSource::Computed(_) => computed_index,
+    };
     let mut keypaths = BTreeMap::<Vec<String>, (u32, bool)>::new();
     let mut keypairs = Vec::new();
     for (right, conditions) in plan.stages() {
-        let right_collection = right.collection();
-        let Some(&right_index) = source_indices.get(right_collection) else {
-            return Err(format!(
-                "join stage uses unknown collection `{}`",
-                right_collection.join("/")
-            ));
+        let Some(right_index) = input_index(right) else {
+            return Err("join stage uses an unknown source".to_string());
         };
         for condition in conditions.iter() {
-            let Some(&left_index) = source_indices.get(condition.left_collection()) else {
-                return Err(format!(
-                    "join condition uses unknown left collection `{}`",
-                    condition.left_collection().join("/")
-                ));
+            let left_index = match condition.left() {
+                JoinKeyLeft::Collection { collection, .. } => source_indices.get(collection),
+                JoinKeyLeft::Computed(_) => computed_index.as_ref(),
             };
-            let left_source = &sources[left_index];
-            let left_attribute = validate_key_path(
+            let Some(&left_index) = left_index else {
+                return Err("join condition uses an unknown left source".to_string());
+            };
+            let left_attribute = key_attribute(
                 source_exports,
-                left_source,
-                &source_paths[left_index],
+                &inputs[left_index],
                 condition.left_path(),
                 "left",
             )?;
-            let right_attribute = validate_key_path(
+            let right_attribute = key_attribute(
                 source_exports,
-                right,
-                &source_paths[right_index],
+                &inputs[right_index],
                 condition.right_path(),
                 "right",
             )?;
@@ -659,19 +768,24 @@ fn render_one(
     }
 
     let structural_index = mapped_target
-        .map(|target| matching_structural_source(&sources, source_paths, source_exports, target))
+        .map(|target| matching_structural_source(&inputs, source_exports, target))
         .transpose()?
         .flatten();
-    let branch_outputs = (0..sources.len())
+    let branch_outputs = (0..inputs.len())
         .map(|index| (Some(index) == structural_index).then(|| keys.next()))
         .collect::<Vec<_>>();
     let tuple_output = keys.next();
     *uid += 1;
     let component_uid = *uid;
     let mut branches = String::new();
-    for (index, source) in sources.iter().enumerate() {
-        let collection = source.collection();
-        let name = collection.last().ok_or("join collection path is empty")?;
+    for (index, input) in inputs.iter().enumerate() {
+        let name = match input {
+            RenderInput::Collection { source, .. } => source
+                .collection()
+                .last()
+                .ok_or("join collection path is empty")?,
+            RenderInput::Computed(key) => &key.input_name,
+        };
         let input_port = input_ports[index];
         let output_attr = branch_outputs[index]
             .map(|output| format!(" outkey=\"{output}\""))
@@ -719,7 +833,8 @@ fn render_one(
         .map(|key| format!(" outkey=\"{key}\""))
         .unwrap_or_default();
     let xml = format!(
-        "\t\t\t\t<component name=\"join\" library=\"core\" uid=\"{component_uid}\" kind=\"32\">\n\
+        "{sequence_components}\
+         \t\t\t\t<component name=\"join\" library=\"core\" uid=\"{component_uid}\" kind=\"32\">\n\
          \t\t\t\t\t<view ltx=\"360\" lty=\"20\" rbx=\"560\" rby=\"300\"/>\n\
          \t\t\t\t\t<data>\n\
          \t\t\t\t\t\t<root><header><namespaces><namespace/><namespace uid=\"http://www.altova.com/mapforce\"/></namespaces></header><entry name=\"document\" ns=\"1\"><entry name=\"tuple\" ns=\"1\" outkey=\"{tuple_output}\">\n\
@@ -745,13 +860,32 @@ fn render_one(
         structural_row: structural_index.is_some(),
         input_edges,
         structural_input_edges,
+        computed_input,
         node_outputs,
     })
 }
 
+/// Whether the key path `path` of `input` names an attribute. A computed
+/// input is its own key, keyed by the root entry like a singleton.
+fn key_attribute(
+    sources: &SourceExports<'_>,
+    input: &RenderInput<'_>,
+    path: &[String],
+    side: &str,
+) -> Result<bool, String> {
+    match input {
+        RenderInput::Collection {
+            source,
+            path: source_path,
+        } => validate_key_path(sources, source, source_path, path, side),
+        RenderInput::Computed(_) if path.is_empty() => Ok(false),
+        RenderInput::Computed(_) => Err(format!("join {side} computed key path is not empty")),
+    }
+}
+
 fn validate_key_path(
     sources: &SourceExports<'_>,
-    source: &JoinSource,
+    source: &CollectionJoinSource,
     source_path: &[String],
     path: &[String],
     side: &str,
@@ -781,17 +915,17 @@ fn validate_key_path(
 }
 
 fn matching_structural_source(
-    sources: &[JoinSource],
-    source_paths: &[Vec<String>],
+    inputs: &[RenderInput<'_>],
     source_exports: &SourceExports<'_>,
     target: &SchemaNode,
 ) -> Result<Option<usize>, String> {
-    let matches = sources
+    let matches = inputs
         .iter()
         .enumerate()
-        .filter_map(|(index, source)| {
+        .filter_map(|(index, input)| {
+            let (source, path) = input.collection()?;
             (source.cardinality() == JoinSourceCardinality::Repeating)
-                .then(|| source_exports.schema_node_at(&source_paths[index]))
+                .then(|| source_exports.schema_node_at(path))
                 .flatten()
                 .filter(|candidate| structurally_compatible(candidate, target))
                 .map(|_| index)
@@ -843,297 +977,6 @@ fn schema_node_at<'a>(schema: &'a SchemaNode, path: &[String]) -> Option<&'a Sch
         node = node.child(segment)?;
     }
     Some(node)
-}
-
-fn aggregate_contexts(project: &Project) -> BTreeMap<NodeId, bool> {
-    let mut contexts = BTreeMap::new();
-    collect_scope_aggregate_contexts(&project.root, &project.graph, false, &mut contexts);
-    for target in &project.extra_targets {
-        collect_scope_aggregate_contexts(&target.root, &project.graph, false, &mut contexts);
-    }
-    contexts
-}
-
-fn collect_scope_aggregate_contexts(
-    scope: &Scope,
-    graph: &Graph,
-    inside_iteration: bool,
-    contexts: &mut BTreeMap<NodeId, bool>,
-) {
-    let nested = inside_iteration || scope.iterates();
-    let mut roots = [
-        scope.filter,
-        scope.post_group_filter,
-        scope.group_by,
-        scope.group_starting_with,
-        scope.group_adjacent_by,
-        scope.group_ending_with,
-        scope.group_into_blocks,
-        scope.sort_by,
-        scope.output_path(),
-    ]
-    .into_iter()
-    .flatten()
-    .collect::<Vec<_>>();
-    roots.extend(
-        scope
-            .windows
-            .iter()
-            .copied()
-            .flat_map(|window| window.nodes()),
-    );
-    roots.extend(scope.sort_then_by.iter().map(|key| key.node));
-    roots.extend(scope.bindings.iter().map(|binding| binding.node));
-    roots.extend(
-        scope
-            .dynamic_bindings
-            .iter()
-            .flat_map(|binding| [binding.key, binding.value]),
-    );
-    match &scope.construction {
-        ScopeConstruction::Scalar { value } => roots.push(*value),
-        ScopeConstruction::RecursiveFilter { plan } => roots.push(plan.predicate()),
-        ScopeConstruction::AdjacencyTree { plan } => roots.extend(plan.root()),
-        ScopeConstruction::OwnedAdjacencyTree { plan } => roots.extend(plan.root()),
-        ScopeConstruction::Constructed
-        | ScopeConstruction::CollectDocuments
-        | ScopeConstruction::CopyCurrentSource
-        | ScopeConstruction::CopyCurrentRows
-        | ScopeConstruction::XmlMixedContent { .. }
-        | ScopeConstruction::PathHierarchy { .. }
-        | ScopeConstruction::OwnedPathHierarchy { .. } => {}
-    }
-    if let Some(sequence) = scope.sequence() {
-        roots.extend(sequence.inputs());
-    }
-    for root in roots {
-        mark_aggregate_context(root, nested, graph, contexts, &mut BTreeSet::new());
-    }
-    if let Some(segments) = scope.concatenated() {
-        for segment in segments.iter() {
-            collect_scope_aggregate_contexts(segment, graph, inside_iteration, contexts);
-        }
-    }
-    for child in &scope.children {
-        collect_scope_aggregate_contexts(child, graph, nested, contexts);
-    }
-    for child in &scope.dynamic_children {
-        mark_aggregate_context(child.key, nested, graph, contexts, &mut BTreeSet::new());
-        collect_scope_aggregate_contexts(&child.scope, graph, nested, contexts);
-    }
-}
-
-fn mark_aggregate_context(
-    node_id: NodeId,
-    nested: bool,
-    graph: &Graph,
-    contexts: &mut BTreeMap<NodeId, bool>,
-    visited: &mut BTreeSet<NodeId>,
-) {
-    if !visited.insert(node_id) {
-        return;
-    }
-    let Some(node) = graph.nodes.get(&node_id) else {
-        return;
-    };
-    if matches!(node, Node::JoinAggregate { .. }) {
-        contexts
-            .entry(node_id)
-            .and_modify(|existing| *existing |= nested)
-            .or_insert(nested);
-    }
-    for dependency in node_inputs(node) {
-        mark_aggregate_context(dependency, nested, graph, contexts, visited);
-    }
-}
-
-fn validate_aggregate_consumer(
-    node_id: NodeId,
-    join: JoinId,
-    plan: &JoinPlan,
-    graph: &Graph,
-    sources: &SourceExports<'_>,
-    contexts: &BTreeMap<NodeId, bool>,
-) -> Result<(), String> {
-    match contexts.get(&node_id) {
-        Some(false) => {}
-        Some(true) => {
-            return Err(
-                "it is evaluated inside an iterating target context; nested or correlated joined reductions are not representable"
-                    .to_string(),
-            );
-        }
-        None => return Err("it is not consumed by an exported target".to_string()),
-    }
-    let Some(Node::JoinAggregate {
-        function,
-        join: owner,
-        plan: node_plan,
-        expression,
-        arg,
-    }) = graph.nodes.get(&node_id)
-    else {
-        return Err("the graph node is not a joined aggregate".to_string());
-    };
-    if *owner != join || node_plan != plan {
-        return Err("its join ownership does not match the exported plan".to_string());
-    }
-    match expression {
-        None if *function != AggregateOp::Count => {
-            return Err("only count can reduce a raw joined tuple sequence".to_string());
-        }
-        None => {}
-        Some(expression) => {
-            let owns_join = validate_join_expression(
-                *expression,
-                join,
-                plan,
-                graph,
-                &mut BTreeMap::new(),
-                &mut BTreeSet::new(),
-            )?;
-            if !owns_join {
-                return Err(
-                    "its computed sequence has no field or position owned by the joined tuple"
-                        .to_string(),
-                );
-            }
-        }
-    }
-    if let Some(arg) = arg {
-        if !matches!(function, AggregateOp::Join | AggregateOp::ItemAt) {
-            return Err(format!(
-                "{} does not have a scalar argument in the canonical aggregate shape",
-                super::function::aggregate_component_name(*function)
-            ));
-        }
-        validate_parent_expression(
-            *arg,
-            graph,
-            sources,
-            &mut BTreeSet::new(),
-            &mut BTreeSet::new(),
-        )?;
-    }
-    Ok(())
-}
-
-fn validate_join_expression(
-    node_id: NodeId,
-    join: JoinId,
-    plan: &JoinPlan,
-    graph: &Graph,
-    memo: &mut BTreeMap<NodeId, bool>,
-    active: &mut BTreeSet<NodeId>,
-) -> Result<bool, String> {
-    if let Some(owns_join) = memo.get(&node_id) {
-        return Ok(*owns_join);
-    }
-    if !active.insert(node_id) {
-        return Err(format!(
-            "computed sequence contains a cycle at node {node_id}"
-        ));
-    }
-    let node = graph
-        .nodes
-        .get(&node_id)
-        .ok_or_else(|| format!("computed sequence references missing node {node_id}"))?;
-    let owns_join = match node {
-        Node::JoinField {
-            join: owner,
-            collection,
-            ..
-        } if *owner == join
-            && plan
-                .sources()
-                .any(|source| source.collection() == collection) =>
-        {
-            true
-        }
-        Node::JoinPosition { join: owner } if *owner == join => true,
-        Node::Unconnected | Node::Const { .. } | Node::RuntimeValue { .. } => false,
-        Node::Call { .. } | Node::If { .. } | Node::ValueMap { .. } => {
-            let mut owns_join = false;
-            for dependency in node_inputs(node) {
-                owns_join |= validate_join_expression(dependency, join, plan, graph, memo, active)?;
-            }
-            owns_join
-        }
-        Node::JoinField { .. } | Node::JoinPosition { .. } => {
-            return Err(format!(
-                "computed sequence node {node_id} belongs to a different join or collection"
-            ));
-        }
-        _ => {
-            return Err(format!(
-                "computed sequence node {node_id} uses a non-scalar or external context"
-            ));
-        }
-    };
-    active.remove(&node_id);
-    memo.insert(node_id, owns_join);
-    Ok(owns_join)
-}
-
-fn validate_parent_expression(
-    node_id: NodeId,
-    graph: &Graph,
-    sources: &SourceExports<'_>,
-    visited: &mut BTreeSet<NodeId>,
-    active: &mut BTreeSet<NodeId>,
-) -> Result<(), String> {
-    if visited.contains(&node_id) {
-        return Ok(());
-    }
-    if !active.insert(node_id) {
-        return Err(format!(
-            "scalar argument contains a cycle at node {node_id}"
-        ));
-    }
-    let node = graph
-        .nodes
-        .get(&node_id)
-        .ok_or_else(|| format!("scalar argument references missing node {node_id}"))?;
-    match node {
-        Node::SourceField { path, frame } => {
-            let mut absolute = frame.clone().unwrap_or_default();
-            absolute.extend(path.iter().cloned());
-            match sources.match_field(&absolute, frame.is_some()) {
-                PortMatch::Unique(_) => {}
-                PortMatch::Missing => {
-                    return Err(format!(
-                        "scalar argument source `{}` has no exported port",
-                        absolute.join("/")
-                    ));
-                }
-                PortMatch::Ambiguous => {
-                    return Err(format!(
-                        "scalar argument source `{}` is ambiguous without an explicit frame",
-                        absolute.join("/")
-                    ));
-                }
-            }
-        }
-        Node::Unconnected | Node::Const { .. } | Node::RuntimeValue { .. } => {}
-        Node::Call { .. } | Node::If { .. } | Node::ValueMap { .. } => {
-            for dependency in node_inputs(node) {
-                validate_parent_expression(dependency, graph, sources, visited, active)?;
-            }
-        }
-        Node::JoinField { .. } | Node::JoinPosition { .. } | Node::JoinAggregate { .. } => {
-            return Err(format!(
-                "scalar argument node {node_id} depends on a joined tuple"
-            ));
-        }
-        _ => {
-            return Err(format!(
-                "scalar argument node {node_id} is not a canonical parent-context scalar"
-            ));
-        }
-    }
-    active.remove(&node_id);
-    visited.insert(node_id);
-    Ok(())
 }
 
 fn blocked_nodes(

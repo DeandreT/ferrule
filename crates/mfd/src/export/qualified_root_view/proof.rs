@@ -77,6 +77,12 @@ pub(crate) struct Boundary {
     pub schema_owned_bytes: Vec<u8>,
     pub schema: SchemaNode,
     pub pins: Vec<Pin>,
+    /// The stored schema reference and output schema-location setting, from
+    /// which the target's schema hint derives.
+    #[serde(skip)]
+    pub declared_schema: String,
+    #[serde(skip)]
+    pub schema_location_setting: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -380,7 +386,8 @@ fn boundary(
                 .is_some_and(|s| s != "UTF-8")
             || p.attribute("XSLTDefaultOutput").is_some_and(|s| s != "1")
             || p.attribute("PassThrough").is_some_and(|s| s != "0")
-            || p.attribute("AddSchemaLocation").is_some_and(|s| s != "0")
+            || p.attribute("AddSchemaLocation")
+                .is_some_and(|s| !matches!(s, "0" | "1"))
         {
             return reject("component", "unrepresented property behavior");
         }
@@ -689,6 +696,12 @@ fn boundary(
         schema_owned_bytes,
         schema,
         pins,
+        declared_schema: declared_schema.into(),
+        schema_location_setting: component
+            .children()
+            .filter(|n| n.has_tag_name("properties"))
+            .find_map(|n| n.attribute(crate::schema_location::PROPERTY))
+            .map(str::to_owned),
     })
 }
 

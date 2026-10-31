@@ -188,6 +188,17 @@ fn write_xlsx(
     options: &FormatOptions,
 ) -> Result<(), String> {
     if let Some(layout) = &options.xlsx_hierarchical {
+        if options.xlsx_update_existing {
+            return format_xlsx::update_hierarchical(
+                path,
+                schema,
+                instance,
+                layout,
+                &format_xlsx::XlsxLimits::default(),
+            )
+            .map(|_| ())
+            .map_err(|error| error.to_string());
+        }
         return format_xlsx::write_hierarchical(path, schema, instance, layout)
             .map(|_| ())
             .map_err(|error| error.to_string());

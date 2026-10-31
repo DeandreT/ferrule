@@ -627,6 +627,36 @@ fn option_libraries(
             .replace("000000124", "100000124"),
     )?;
     host.push_str("    physical(numeric_controls::execute_x12_to_x12, numeric_controls::execute_x12_to_x12_bytes, numeric_controls::execute_x12_to_x12_with_context, numeric_controls::execute_x12_to_x12_bytes_with_context, include_str!(\"../numeric-controls.x12\"), include_str!(\"../numeric-controls.x12\"))?;\n");
+    // The native writer emits an LF terminator alone, so the interchange
+    // round-trips byte for byte.
+    let program = codegen::lower(&project(envelope(
+        X12EnvelopeProfile::SingleTransaction,
+        "00501",
+    )))?;
+    let lf = X12BoundaryOptions {
+        interchange_version: Some("00501".into()),
+        separators: Some(mapping::X12Separators {
+            element: '*',
+            component: ':',
+            segment: '\n',
+            repetition: Some('^'),
+            release: None,
+        }),
+        ..Default::default()
+    };
+    artifacts(
+        root,
+        "lf_terminator",
+        &program,
+        &X12BoundaryPolicy {
+            source: Some(lf.clone()),
+            target: Some(lf),
+        },
+    )?;
+    manifest.push_str("lf_terminator = { path = \"../lf_terminator\" }\n");
+    let (_, wire) = fixture(X12EnvelopeProfile::SingleTransaction, "00501");
+    fs::write(root.join("lf-terminator.x12"), wire.replace("~\n", "\n"))?;
+    host.push_str("    physical(lf_terminator::execute_x12_to_x12, lf_terminator::execute_x12_to_x12_bytes, lf_terminator::execute_x12_to_x12_with_context, lf_terminator::execute_x12_to_x12_bytes_with_context, include_str!(\"../lf-terminator.x12\"), include_str!(\"../lf-terminator.x12\"))?;\n");
     Ok(())
 }
 
@@ -701,11 +731,12 @@ fn shared_admission_and_native_syntax_refuse_before_artifacts() -> Result<(), Bo
         ),
         Err(codegen_rust::X12EmitError::Policy(_))
     ));
+    // Generated profiles accept an LF terminator but not CR.
     let selected = X12BoundaryOptions {
         separators: Some(mapping::X12Separators {
             element: '*',
             component: ':',
-            segment: '\n',
+            segment: '\r',
             repetition: Some('^'),
             release: None,
         }),
@@ -716,11 +747,13 @@ fn shared_admission_and_native_syntax_refuse_before_artifacts() -> Result<(), Bo
             &program,
             &options,
             &X12BoundaryPolicy {
-                source: Some(selected),
-                target: None
+                source: None,
+                target: Some(selected)
             }
         ),
-        Err(codegen_rust::X12EmitError::UnsupportedNativeSetting { side: "source", .. })
+        Err(codegen_rust::X12EmitError::Policy(
+            codegen::X12BoundaryPolicyError::Separators { .. }
+        ))
     ));
     let mut named = program.clone();
     named.extra_sources.push(codegen::NamedSourceProgram {

@@ -146,6 +146,7 @@ impl<'a> PreparedStreamRun<'a> {
         }
         crate::sqlite_query::reject_query_inputs(project, HostRoute::StandardStreams)?;
         reject_dynamic_sources(project, request.target)?;
+        reject_transposed_xlsx_output(project, request.target)?;
         let policy = request
             .execution_policy
             .unwrap_or(&crate::execution_policy::TRUSTED);
@@ -347,6 +348,25 @@ fn stream_target_identity(
         )
     })?;
     resolve_stored_path(project_path, configured, false)
+}
+
+/// Transposed XLSX targets publish through the file and payload routes only.
+fn reject_transposed_xlsx_output(
+    project: &mapping::Project,
+    target: Option<TargetSelection<'_>>,
+) -> anyhow::Result<()> {
+    let options = match target {
+        Some(TargetSelection::Primary) | None => Some(&project.target_options),
+        Some(TargetSelection::Named(name)) => project
+            .extra_targets
+            .iter()
+            .find(|candidate| candidate.name == name)
+            .map(|candidate| &candidate.options),
+    };
+    if options.is_some_and(|options| !options.xlsx_rows.is_empty()) {
+        bail!("transposed XLSX output is unavailable on standard streams; write it to a file");
+    }
+    Ok(())
 }
 
 fn reject_dynamic_sources(

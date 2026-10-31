@@ -180,13 +180,18 @@ pub fn show(
             });
         });
 
-    let (escape, previous, next) = ctx.input_mut(|input| {
-        (
-            input.consume_key(egui::Modifiers::NONE, egui::Key::Escape),
-            input.consume_key(egui::Modifiers::SHIFT, egui::Key::Enter),
-            input.consume_key(egui::Modifiers::NONE, egui::Key::Enter),
-        )
-    });
+    // A modal dialog over the search takes its keys.
+    let (escape, previous, next) = if crate::ui_kit::modal_open(ctx) {
+        (false, false, false)
+    } else {
+        ctx.input_mut(|input| {
+            (
+                input.consume_key(egui::Modifiers::NONE, egui::Key::Escape),
+                input.consume_key(egui::Modifiers::SHIFT, egui::Key::Enter),
+                input.consume_key(egui::Modifiers::NONE, egui::Key::Enter),
+            )
+        })
+    };
     close |= escape;
     if previous {
         move_match = -1;

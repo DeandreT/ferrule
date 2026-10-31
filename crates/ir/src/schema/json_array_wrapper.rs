@@ -138,6 +138,7 @@ impl SchemaNode {
             || !self.xml_name_alternatives.is_empty()
             || self.xml_wildcard_namespace.is_some()
             || self.xml_wildcard_process_contents != XmlWildcardProcessContents::Skip
+            || self.xml_wildcard_excluded_names.is_some()
             || self.attribute
             || self.text
             || self.nillable

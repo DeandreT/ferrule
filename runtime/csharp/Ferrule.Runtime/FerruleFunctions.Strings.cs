@@ -337,6 +337,76 @@ public static partial class FerruleFunctions
         return FerruleValue.FromString(result);
     }
 
+    // XPath fn:translate over Unicode scalars: the first occurrence of a search
+    // scalar wins, and search scalars without a replacement are removed.
+    private static FerruleValue Translate(IReadOnlyList<FerruleValue> arguments)
+    {
+        RequireArity("translate", arguments, 3);
+        var replacement = new List<Rune>();
+        foreach (var rune in ScalarText(arguments[2]).EnumerateRunes())
+        {
+            replacement.Add(rune);
+        }
+        var table = new Dictionary<Rune, Rune?>();
+        var index = 0;
+        foreach (var rune in ScalarText(arguments[1]).EnumerateRunes())
+        {
+            table.TryAdd(rune, index < replacement.Count ? replacement[index] : null);
+            index++;
+        }
+        var result = new StringBuilder();
+        foreach (var rune in ScalarText(arguments[0]).EnumerateRunes())
+        {
+            if (!table.TryGetValue(rune, out var mapped))
+            {
+                result.Append(rune.ToString());
+            }
+            else if (mapped is { } output)
+            {
+                result.Append(output.ToString());
+            }
+        }
+        return FerruleValue.FromString(result.ToString());
+    }
+
+    // Ordinal, non-overlapping, left to right; an empty search is an error.
+    // The result shares the regex replacement's 64 MiB UTF-8 bound.
+    private static FerruleValue ReplaceLiteral(IReadOnlyList<FerruleValue> arguments)
+    {
+        RequireArity("replace_literal", arguments, 3);
+        var value = ScalarText(arguments[0]);
+        var search = ScalarText(arguments[1]);
+        if (search.Length == 0)
+        {
+            throw InvalidArgument("replace_literal", "search text is empty");
+        }
+        var replacement = ScalarText(arguments[2]);
+        var result = new StringBuilder();
+        var resultBytes = 0;
+        var end = 0;
+        for (var start = value.IndexOf(search, StringComparison.Ordinal);
+            start >= 0;
+            start = value.IndexOf(search, end, StringComparison.Ordinal))
+        {
+            AppendLiteralReplacement(result, value[end..start], ref resultBytes);
+            AppendLiteralReplacement(result, replacement, ref resultBytes);
+            end = start + search.Length;
+        }
+        AppendLiteralReplacement(result, value[end..], ref resultBytes);
+        return FerruleValue.FromString(result.ToString());
+    }
+
+    private static void AppendLiteralReplacement(StringBuilder output, string value, ref int outputBytes)
+    {
+        var added = Encoding.UTF8.GetByteCount(value);
+        if (added > MaximumRegexResultBytes - outputBytes)
+        {
+            throw InvalidArgument("replace_literal", "result exceeds 64 MiB");
+        }
+        output.Append(value);
+        outputBytes += added;
+    }
+
     private static FerruleValue StringValue(IReadOnlyList<FerruleValue> arguments)
     {
         RequireArity("string", arguments, 1);

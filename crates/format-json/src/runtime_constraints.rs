@@ -13,7 +13,7 @@ mod predicate;
 mod scalars;
 pub(crate) mod unique_items;
 
-pub(crate) use arrays::{validate_contains, validate_item_count};
+pub(crate) use arrays::{describe as describe_item_count, validate_contains, validate_item_count};
 pub(crate) use constants::validate_json as validate_constant;
 pub(crate) use objects::{
     validate_dependent_schemas, validate_property_count, validate_property_dependencies,

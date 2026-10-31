@@ -15,6 +15,39 @@ pub fn emit_with_primary_edi_documents(
     let input = serde_json::to_string(&policy.source).expect("options");
     let output = serde_json::to_string(&policy.target).expect("options");
     let kind = format!("{:?}", policy.kind);
+    let json_output = document.output_filename().is_some();
+    let output_setup = if json_output {
+        String::new()
+    } else {
+        format!(
+            "let output = EdiDocumentBoundary::new({target:?}, {output:?}, PrimaryEdiKind::{kind}).map_err(Error::Boundary)?;"
+        )
+    };
+    let filename = if json_output {
+        format!(
+            r#"{{ let output_filename = evaluate_output_filename(execution)?;
+    let input_filename = evaluate_primary_filename(execution)?;
+    for (node, text) in [({}, input_filename.as_str()), ({}, output_filename.as_str())] {{
+        codegen_runtime::validate_filename_endpoint(node, text)?;
+    }}
+    Ok::<_, codegen_runtime::RuntimeError>(input_filename) }}"#,
+            match document.primary_filename() {
+                codegen::PrimaryFilenamePlan::Literal { node, .. }
+                | codegen::PrimaryFilenamePlan::Parameter { node, .. } => node,
+            },
+            match document.output_filename().expect("output filename") {
+                codegen::PrimaryFilenamePlan::Literal { node, .. }
+                | codegen::PrimaryFilenamePlan::Parameter { node, .. } => node,
+            }
+        )
+    } else {
+        "evaluate_primary_filename(execution)".into()
+    };
+    let serialize: String = if json_output {
+        "serialize_json_bytes_outputs(mapped).map(|outputs| outputs.primary).map_err(EdiBoundaryError::JsonOutput).map_err(Error::Boundary)".into()
+    } else {
+        "output.serialize(&mapped.primary, execution.current_datetime().unwrap_or(\"\")).map_err(Error::Boundary)".into()
+    };
     let mut code = crate::primary_filename::evaluator(document);
     code.push_str(&crate::primary_filename::selection_constant(document));
     code.push_str(&crate::primary_xml_document::shape_constant(
@@ -25,14 +58,14 @@ pub fn execute_primary_edi_document_bytes<H: codegen_runtime::PrimarySourceHost>
     -> Result<Vec<u8>, codegen_runtime::PrimaryEdiDocumentError<H::Error>> {{
     use codegen_runtime::{{EdiBoundaryError, EdiDocumentBoundary, PrimaryEdiDocumentError as Error, PrimaryEdiKind}};
     let input = EdiDocumentBoundary::input({source:?}, {input:?}, PrimaryEdiKind::{kind}).map_err(Error::Boundary)?;
-    let output = EdiDocumentBoundary::new({target:?}, {output:?}, PrimaryEdiKind::{kind}).map_err(Error::Boundary)?;
+    {output_setup}
     let mut budget = codegen_runtime::EdiInputBudget::default();
-    let documents = codegen_runtime::acquire_primary_documents(|| evaluate_primary_filename(execution), PRIMARY_FILE_SELECTION, host, maximum,
+    let documents = codegen_runtime::acquire_primary_documents(|| {filename}, PRIMARY_FILE_SELECTION, host, maximum,
         |_, data| {{ budget.charge(data.bytes.len())?; input.parse(&data.bytes) }})
         .map_err(Error::Acquisition)?;
     let source = codegen_runtime::assemble_primary_documents(PRIMARY_DOCUMENT_SHAPE, documents).map_err(Error::Assembly)?;
     let mapped = execute_outputs_with_context(&source, execution).map_err(EdiBoundaryError::Execution).map_err(Error::Boundary)?;
-    output.serialize(&mapped.primary, execution.current_datetime().unwrap_or("")).map_err(Error::Boundary)
+    {serialize}
 }}
 "#));
     files

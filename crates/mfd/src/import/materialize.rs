@@ -119,6 +119,9 @@ pub(super) fn eager_functions(builder: &mut GraphBuilder<'_>, selected: Option<&
             continue;
         }
         let component = &builder.fn_components[index];
+        if builder.json_parser_lookup_predicate(index) {
+            continue;
+        }
         if !(component.outputs.is_empty()
             || is_filter(component)
             || is_db_where(component)

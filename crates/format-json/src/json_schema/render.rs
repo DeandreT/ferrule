@@ -46,7 +46,7 @@ fn render_non_nullable(
     Ok(())
 }
 
-fn render_shape(
+pub(super) fn render_shape(
     node: &SchemaNode,
     layers: JsonLayers,
     out: &mut serde_json::Map<String, serde_json::Value>,
@@ -75,6 +75,9 @@ fn render_non_nullable_shape(
             }
         })?;
         return render(item, out);
+    }
+    if node.json_tuple.is_some() {
+        return super::tuple_frames::render(node, out);
     }
     match &node.kind {
         SchemaKind::Scalar { ty } => {

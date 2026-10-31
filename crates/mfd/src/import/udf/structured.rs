@@ -5,12 +5,15 @@ use ir::{ScalarType, SchemaKind, Value};
 use mapping::{AggregateOp, RuntimeValue};
 
 use super::{Call, Definition, OutputExpr, Registry, ScalarExpr};
-use crate::import::function::{FnComponent, map_name, parse_constant, read as read_function};
+use crate::import::function::{
+    FnComponent, is_lang_positive, is_lang_replace, map_name, parse_constant, read as read_function,
+};
 use crate::import::schema::read_definition_parameter_component;
 use crate::import::schema::{SchemaComponent, parse_u32, schema_node_at};
 use crate::resource::ResourceResolver;
 
 mod adjacency;
+mod call_elements;
 mod hierarchy;
 mod record;
 mod recursive;
@@ -1185,6 +1188,16 @@ impl ExprContext<'_> {
                 })
         };
         match (function.name.as_str(), function.kind) {
+            _ if is_lang_positive(function) => Ok(Expr::Call {
+                function: "greater_than".to_string(),
+                args: vec![
+                    Expr::Call {
+                        function: "add".to_string(),
+                        args: vec![input(0, active, budget)?, Expr::Const(Value::Int(0))],
+                    },
+                    Expr::Const(Value::Int(0)),
+                ],
+            }),
             ("set-empty", 5) if function.library == "core" => Ok(Expr::Const(Value::Null)),
             ("set-xsi-nil", 5) if function.library == "core" => Ok(Expr::Const(Value::xml_nil())),
             (_, 2) => {
@@ -1213,7 +1226,12 @@ impl ExprContext<'_> {
                 Err("structured lookup scalar output uses a sequence component".to_string())
             }
             (name, _) => {
-                let function = map_name(name).ok_or_else(|| {
+                let mapped = if is_lang_replace(function) {
+                    Some("replace_literal")
+                } else {
+                    map_name(name)
+                };
+                let function = mapped.ok_or_else(|| {
                     format!("structured lookup uses unsupported scalar function `{name}`")
                 })?;
                 let arity = function_inputs(function, &self.functions[index], self.edge_from);

@@ -159,8 +159,28 @@ fn endpoint_options_and_failure_rules_have_owners_without_reading_display_text()
         selection: mapping::FailureSelection::All,
         message: Some(999),
     });
+    project.target_options.xlsx_update_existing = true;
+    project.target_options.xlsx_composite = Some(mapping::XlsxCompositeLayout {
+        table: Some(mapping::XlsxTableRegion {
+            path: vec!["Rows".into()],
+            sheet: None,
+            start_row: mapping::XlsxRow::new(1).unwrap(),
+            columns: Vec::new(),
+            has_header: true,
+            row_number_field: None,
+        }),
+        additional_tables: Vec::new(),
+        records: Vec::new(),
+        grids: Vec::new(),
+    });
     let issues = validate(&project);
     assert!(issues.iter().any(|issue| issue.owner == Some(ValidationOwner::Endpoint(ValidationEndpoint::Source))));
+    assert!(issues.iter().any(|issue| {
+        issue
+            .message
+            .contains("cannot update a composite XLSX layout")
+            && issue.owner == Some(ValidationOwner::Endpoint(ValidationEndpoint::Target))
+    }));
     assert!(issues.iter().any(
         |issue| issue.message == "message references missing node 999"
             && issue.owner == Some(ValidationOwner::FailureRule { index: 0 })

@@ -164,3 +164,143 @@ fn dialog_body_scrolls_instead_of_growing_past_the_viewport() {
     let rect = frame.expect("the modal area is laid out");
     assert!(rect.top() >= 0.0 && rect.bottom() <= 800.0, "{rect:?}");
 }
+
+/// A button that opens a modal with optional body field and footer state.
+#[derive(Default)]
+struct ModalHost {
+    open: bool,
+    body_field: bool,
+    primary_disabled: bool,
+    name: String,
+    action: Option<DialogAction>,
+}
+
+fn modal_host(host: ModalHost) -> egui_kittest::Harness<'static, ModalHost> {
+    let mut initialized = false;
+    let mut harness = egui_kittest::Harness::builder()
+        .with_size((800.0, 600.0))
+        .build_ui_state(
+            move |ui, host: &mut ModalHost| {
+                if !initialized {
+                    crate::icons::install(ui.ctx());
+                    initialized = true;
+                }
+                if ui.button("Open dialog").clicked() {
+                    host.open = true;
+                }
+                if !host.open {
+                    return;
+                }
+                let response = dialog(ui.ctx(), DialogKind::Modal, "Focus").show(
+                    |ui| {
+                        ui.label("Body text");
+                        if host.body_field {
+                            ui.add(text_field(&mut host.name, FieldWidth::Medium))
+                                .widget_info(|| {
+                                    egui::WidgetInfo::labeled(egui::Role::TextInput, true, "Name")
+                                });
+                        }
+                    },
+                    |ui| {
+                        dialog_buttons(
+                            ui,
+                            DialogButton::new("Apply")
+                                .disabled_if(host.primary_disabled, "Not ready"),
+                            Some("Cancel".into()),
+                            Some("Remove".into()),
+                        )
+                    },
+                );
+                if response.footer.is_some() {
+                    host.action = response.footer;
+                }
+                if response.close_requested || response.footer.is_some() {
+                    host.open = false;
+                }
+            },
+            host,
+        );
+    harness.run_steps(2);
+    harness
+}
+
+fn press(harness: &mut egui_kittest::Harness<'_, ModalHost>, key: egui::Key) {
+    harness.key_press(key);
+    harness.run_steps(3);
+}
+
+fn focused(harness: &egui_kittest::Harness<'_, ModalHost>) -> Option<String> {
+    use egui_kittest::kittest::NodeT as _;
+    harness
+        .root()
+        .children_recursive()
+        .find(|node| node.is_focused())
+        .and_then(|node| node.accesskit_node().label())
+}
+
+fn open_from_button(host: ModalHost) -> egui_kittest::Harness<'static, ModalHost> {
+    let mut harness = modal_host(host);
+    press(&mut harness, egui::Key::Tab);
+    assert_eq!(focused(&harness).as_deref(), Some("Open dialog"));
+    press(&mut harness, egui::Key::Enter);
+    assert!(harness.state().open);
+    // The Enter that opened the dialog does not also activate its default.
+    assert_eq!(harness.state().action, None);
+    harness
+}
+
+#[test]
+fn modal_dialog_focuses_its_default_action_and_tabs_in_visual_order() {
+    let mut harness = open_from_button(ModalHost::default());
+    assert_eq!(focused(&harness).as_deref(), Some("Apply"));
+    let mut order = Vec::new();
+    for _ in 0..4 {
+        press(&mut harness, egui::Key::Tab);
+        order.extend(focused(&harness));
+    }
+    assert_eq!(order, ["Close", "Remove", "Cancel", "Apply"]);
+}
+
+#[test]
+fn modal_dialog_focuses_its_first_body_control() {
+    let mut harness = open_from_button(ModalHost {
+        body_field: true,
+        ..ModalHost::default()
+    });
+    assert_eq!(focused(&harness).as_deref(), Some("Name"));
+    harness.event(egui::Event::Text("Ada".into()));
+    harness.run_steps(2);
+    assert_eq!(harness.state().name, "Ada");
+}
+
+#[test]
+fn modal_dialog_focuses_cancel_while_its_default_action_is_disabled() {
+    let harness = open_from_button(ModalHost {
+        primary_disabled: true,
+        ..ModalHost::default()
+    });
+    assert_eq!(focused(&harness).as_deref(), Some("Cancel"));
+}
+
+#[test]
+fn modal_dialog_closes_on_escape_and_returns_focus_to_its_opener() {
+    let mut harness = open_from_button(ModalHost {
+        body_field: true,
+        ..ModalHost::default()
+    });
+    press(&mut harness, egui::Key::Escape);
+    assert!(!harness.state().open);
+    assert_eq!(harness.state().action, None);
+    assert_eq!(focused(&harness).as_deref(), Some("Open dialog"));
+
+    // Reopening focuses the dialog again; closing from the footer also restores.
+    press(&mut harness, egui::Key::Enter);
+    assert_eq!(focused(&harness).as_deref(), Some("Name"));
+    for _ in 0..2 {
+        press(&mut harness, egui::Key::Tab);
+    }
+    assert_eq!(focused(&harness).as_deref(), Some("Cancel"));
+    press(&mut harness, egui::Key::Enter);
+    assert_eq!(harness.state().action, Some(DialogAction::Secondary));
+    assert_eq!(focused(&harness).as_deref(), Some("Open dialog"));
+}

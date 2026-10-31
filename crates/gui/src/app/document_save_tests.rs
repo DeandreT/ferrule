@@ -485,3 +485,133 @@ fn ordinary_save_keeps_pending_and_recorded_history() -> anyhow::Result<()> {
     assert!(app.is_dirty());
     Ok(())
 }
+
+#[cfg(unix)]
+#[test]
+fn symlinked_save_as_keeps_static_resources_through_history_and_reopen() -> anyhow::Result<()> {
+    let temp = TestDir::new()?;
+    for directory in [
+        "data",
+        "results",
+        "storage/deep",
+        "storage/data",
+        "storage/results",
+    ] {
+        std::fs::create_dir_all(temp.0.join(directory))?;
+    }
+    for (directory, names) in [
+        ("data", &["source.xml", "other.xml", "catalog.xml"][..]),
+        (
+            "results",
+            &["target.xml", "other.xml", "audit.xml", "other-audit.xml"][..],
+        ),
+    ] {
+        for name in names {
+            std::fs::write(temp.0.join(directory).join(name), b"intended resource")?;
+            std::fs::write(
+                temp.0.join("storage").join(directory).join(name),
+                b"wrong resource",
+            )?;
+        }
+    }
+    let linked = temp.0.join("shortcut[archive]");
+    std::os::unix::fs::symlink(temp.0.join("storage/deep"), &linked)?;
+    let mut app = edited_project(&temp)?;
+    app.undo_project();
+    let moved = linked.join("project.json");
+    app.save_document_to(&moved)?;
+    for _ in 0..2 {
+        for path in boundary_paths(&app.project).into_iter().flatten() {
+            assert_eq!(std::fs::read(linked.join(path))?, b"intended resource");
+        }
+        step(&mut app, true, MOVED_INITIAL, true);
+        step(&mut app, false, MOVED_FIRST_EDIT, false);
+        step(
+            &mut app,
+            false,
+            [
+                "../../data/other.xml",
+                "../../results/other.xml",
+                "../../data/catalog.xml",
+                "../../results/other-audit.xml",
+            ],
+            true,
+        );
+        step(&mut app, true, MOVED_FIRST_EDIT, false);
+    }
+    let mut reopened = FerruleApp::default();
+    reopened.load_project_from(&moved);
+    assert_eq!(key(&reopened.project), key(&app.project));
+    for path in boundary_paths(&reopened.project).into_iter().flatten() {
+        assert_eq!(std::fs::read(linked.join(path))?, b"intended resource");
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn unresolved_resource_symlink_does_not_publish_a_rebased_document() -> anyhow::Result<()> {
+    let temp = TestDir::new()?;
+    let original = temp.0.join("maps/project.json");
+    let destination = temp.0.join("saved/project.json");
+    std::fs::create_dir_all(original.parent().unwrap())?;
+    std::fs::create_dir_all(destination.parent().unwrap())?;
+    let mut app = mapped_app();
+    app.document = DocumentLocation::saved(original.clone());
+    saved_baseline(&mut app, &original)?;
+    std::os::unix::fs::symlink(temp.0.join("missing"), temp.0.join("maps/broken"))?;
+    app.project.source_path = Some("broken/../source.xml".into());
+    app.observe_editor_history(std::time::Instant::now(), true);
+    let undo_len = app.history.undo_len();
+    let can_redo = app.history.can_redo();
+    let pending = app
+        .pending_history
+        .as_ref()
+        .map(|pending| key(&pending.before.project));
+    let before = key(&app.project);
+    std::fs::write(&destination, b"existing destination")?;
+    assert!(app.save_document_to(&destination).is_err());
+    assert_eq!(std::fs::read(&destination)?, b"existing destination");
+    assert!(!layout_path(&destination).exists());
+    assert_eq!(app.document, DocumentLocation::saved(original));
+    assert_eq!(key(&app.project), before);
+    assert!(app.is_dirty());
+    assert_eq!(app.history.undo_len(), undo_len);
+    assert_eq!(app.history.can_redo(), can_redo);
+    assert_eq!(
+        app.pending_history
+            .as_ref()
+            .map(|pending| key(&pending.before.project)),
+        pending
+    );
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn save_as_discards_history_that_cannot_retain_its_resource_identity() -> anyhow::Result<()> {
+    let temp = TestDir::new()?;
+    let original = temp.0.join("maps/project.json");
+    let destination = temp.0.join("saved/project.json");
+    std::fs::create_dir_all(original.parent().unwrap())?;
+    std::fs::create_dir_all(destination.parent().unwrap())?;
+    let mut app = mapped_app();
+    app.document = DocumentLocation::saved(original.clone());
+    app.rebase_history();
+    saved_baseline(&mut app, &original)?;
+    std::os::unix::fs::symlink(temp.0.join("missing"), temp.0.join("maps/broken"))?;
+    let start = std::time::Instant::now();
+    app.project.source_path = Some("broken/../source.xml".into());
+    app.observe_editor_history(start, false);
+    app.project.source_path = Some("source.xml".into());
+    app.observe_editor_history(start, false);
+    assert!(app.history.can_undo());
+    app.save_document_to(&destination)?;
+    assert!(!app.history.can_undo());
+    assert!(!app.history.can_redo());
+    assert!(app.pending_history.is_none());
+    assert_eq!(app.document, DocumentLocation::saved(destination.clone()));
+    let saved = mapping::project_file::decode_bytes(&std::fs::read(destination)?)?;
+    assert_eq!(saved.source_path.as_deref(), Some("../maps/source.xml"));
+    Ok(())
+}

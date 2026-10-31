@@ -59,16 +59,6 @@ pub fn emit_with_x12(
         {
             return Err(X12EmitError::UnsupportedNativeSetting { side, setting });
         }
-        if selected
-            .as_ref()
-            .and_then(|options| options.separators)
-            .is_some_and(|syntax| syntax.segment == '\n')
-        {
-            return Err(X12EmitError::UnsupportedNativeSetting {
-                side,
-                setting: "LF segment separators in the native codec",
-            });
-        }
     }
     let mut files = emit(program, options)
         .map_err(X12EmitError::Ordinary)?

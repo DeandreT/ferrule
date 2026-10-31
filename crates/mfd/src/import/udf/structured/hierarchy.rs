@@ -3,6 +3,7 @@ use std::path::Path;
 
 use ir::{SchemaKind, Value};
 
+use super::call_elements::call_elements;
 use super::{ImportedDefinition, Recipe, RecipeSource};
 use crate::import::function::{FnComponent, parse_constant, read as read_function};
 use crate::import::graph::read_edges;
@@ -148,22 +149,16 @@ pub(in crate::import::udf) fn try_read(
                 && node.attribute("name") == component.attribute("name")
         })
         .ok_or("path hierarchy definition has no direct self call")?;
-    let recursive_input = inherited_call_port(recursive_call, None, input_id, "inpkey", None)
+    let recursive_input = inherited_call_port(recursive_call, input_id, "inpkey", None)
         .ok_or("path hierarchy self call has no input port")?;
     if edge_from.get(&recursive_input) != Some(&after_output) {
         return Err("path hierarchy self call is not driven by substring-after".to_string());
     }
-    let recursive_files = inherited_call_port(
-        recursive_call,
-        None,
-        output_id,
-        "outkey",
-        Some(&shape.files),
-    )
-    .ok_or("path hierarchy self call has no recursive file output")?;
+    let recursive_files =
+        inherited_call_port(recursive_call, output_id, "outkey", Some(&shape.files))
+            .ok_or("path hierarchy self call has no recursive file output")?;
     let recursive_directories = inherited_call_port(
         recursive_call,
-        None,
         output_id,
         "outkey",
         Some(&shape.directories),
@@ -376,18 +371,12 @@ fn require_target_feed(
 }
 
 fn inherited_call_port(
-    node: roxmltree::Node<'_, '_>,
-    inherited: Option<u32>,
+    call: roxmltree::Node<'_, '_>,
     wanted: u32,
     attribute: &str,
     wanted_name: Option<&str>,
 ) -> Option<u32> {
-    for child in node.children().filter(|child| child.is_element()) {
-        let component = if child.has_tag_name("entry") {
-            parse_u32(child.attribute("componentid")).or(inherited)
-        } else {
-            inherited
-        };
+    call_elements(call).find_map(|(child, component)| {
         let name_matches = wanted_name.is_none_or(|wanted_name| {
             child.has_tag_name("entry")
                 && crate::import::schema::normalize_xml_entry_name(
@@ -395,15 +384,8 @@ fn inherited_call_port(
                 )
                 .0 == wanted_name
         });
-        if component == Some(wanted)
-            && name_matches
-            && let Some(key) = parse_u32(child.attribute(attribute))
-        {
-            return Some(key);
-        }
-        if let Some(key) = inherited_call_port(child, component, wanted, attribute, wanted_name) {
-            return Some(key);
-        }
-    }
-    None
+        (component == Some(wanted) && name_matches)
+            .then(|| parse_u32(child.attribute(attribute)))
+            .flatten()
+    })
 }

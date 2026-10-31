@@ -360,6 +360,247 @@ public static partial class FerruleFunctions
         ? value + ('a' - 'A')
         : value;
 
+    private const string RoundHalfCeilingName = "round_half_ceiling";
+    private const string RoundHalfCeilingNotFinite = "requires a finite numeric value";
+
+    // Mirrors the Rust `round_half_ceiling`: decimal digits, halves toward positive infinity.
+    // Doubles contribute their shortest round-trip text, as Rust's `{:e}` does.
+    private static FerruleValue RoundHalfCeiling(IReadOnlyList<FerruleValue> arguments)
+    {
+        if (arguments.Count is < 1 or > 2)
+        {
+            throw Arity(RoundHalfCeilingName, 1, arguments.Count);
+        }
+        var precision = arguments.Count == 2 ? HalfCeilingPrecision(arguments[1]) : 0;
+        var value = arguments[0];
+        switch (value.Kind)
+        {
+            case FerruleValueKind.Int64:
+                return FerruleValue.FromInt64(HalfCeilingInteger(value.Int64Value, precision));
+            case FerruleValueKind.Double when !double.IsFinite(value.DoubleValue):
+                return value;
+            case FerruleValueKind.Double:
+                return FerruleValue.FromDouble(HalfCeilingDigits
+                    .ParseOrThrow(value.DoubleValue.ToString("R", CultureInfo.InvariantCulture))
+                    .Round(precision)
+                    .ToDouble());
+            case FerruleValueKind.String:
+                var text = TrimRustWhitespace(value.StringValue);
+                if (long.TryParse(
+                        text,
+                        NumberStyles.AllowLeadingSign,
+                        CultureInfo.InvariantCulture,
+                        out var integer))
+                {
+                    return FerruleValue.FromInt64(HalfCeilingInteger(integer, precision));
+                }
+                if (!TryFiniteDouble(text, out _))
+                {
+                    throw InvalidArgument(RoundHalfCeilingName, RoundHalfCeilingNotFinite);
+                }
+                return FerruleValue.FromDouble(
+                    HalfCeilingDigits.ParseOrThrow(text).Round(precision).ToDouble());
+            default:
+                throw Type(RoundHalfCeilingName, value);
+        }
+    }
+
+    private static int HalfCeilingPrecision(FerruleValue value)
+    {
+        switch (value.Kind)
+        {
+            case FerruleValueKind.Int64:
+                return (int)Math.Clamp(value.Int64Value, int.MinValue, int.MaxValue);
+            case FerruleValueKind.Double:
+                return SaturatingInt32(RustRound(value.DoubleValue));
+            case FerruleValueKind.String:
+                var text = TrimRustWhitespace(value.StringValue);
+                if (long.TryParse(
+                        text,
+                        NumberStyles.AllowLeadingSign,
+                        CultureInfo.InvariantCulture,
+                        out var integer))
+                {
+                    return (int)Math.Clamp(integer, int.MinValue, int.MaxValue);
+                }
+                if (TryFiniteDouble(text, out var number))
+                {
+                    return SaturatingInt32(RustRound(number));
+                }
+                throw InvalidArgument(RoundHalfCeilingName, RoundHalfCeilingNotFinite);
+            default:
+                throw Type(RoundHalfCeilingName, value);
+        }
+    }
+
+    private static long HalfCeilingInteger(long integer, int precision)
+    {
+        if (precision >= 0)
+        {
+            return integer;
+        }
+        var rounded = HalfCeilingDigits
+            .ParseOrThrow(integer.ToString(CultureInfo.InvariantCulture))
+            .Round(precision);
+        if (rounded.Digits.Length == 0)
+        {
+            return 0;
+        }
+        // A nonzero result has at least `-precision` trailing zeros.
+        var magnitude = rounded.Exponent > 19
+            ? BigInteger.Pow(10, 20)
+            : BigInteger.Parse(rounded.Digits, CultureInfo.InvariantCulture) *
+                BigInteger.Pow(10, (int)rounded.Exponent);
+        var signed = rounded.Negative ? -magnitude : magnitude;
+        if (signed < long.MinValue || signed > long.MaxValue)
+        {
+            throw new FerruleRuntimeException(
+                FerruleRuntimeError.IntegerOverflow,
+                $"`{RoundHalfCeilingName}` integer arithmetic overflowed.",
+                function: RoundHalfCeilingName);
+        }
+        return (long)signed;
+    }
+
+    /// <summary>
+    /// <c>Digits * 10^Exponent</c> with no leading or trailing zeros; zero has
+    /// no digits and no sign.
+    /// </summary>
+    private sealed class HalfCeilingDigits
+    {
+        private const long ExponentLimit = 1_000_000_000_000;
+        private const long FloatMagnitudeLimit = 400;
+
+        private HalfCeilingDigits(bool negative, string digits, long exponent)
+        {
+            var leading = 0;
+            while (leading < digits.Length && digits[leading] == '0')
+            {
+                leading++;
+            }
+            var end = digits.Length;
+            while (end > leading && digits[end - 1] == '0')
+            {
+                end--;
+            }
+            Digits = digits[leading..end];
+            Exponent = Digits.Length == 0 ? 0 : exponent + (digits.Length - end);
+            Negative = Digits.Length != 0 && negative;
+        }
+
+        public bool Negative { get; }
+        public string Digits { get; }
+        public long Exponent { get; }
+
+        public static HalfCeilingDigits ParseOrThrow(string text) =>
+            Parse(text) ?? throw InvalidArgument(RoundHalfCeilingName, RoundHalfCeilingNotFinite);
+
+        // `[+-]?(d+(.d*)?|.d+)([eE][+-]?d+)?`
+        private static HalfCeilingDigits? Parse(string text)
+        {
+            var mantissa = text;
+            long exponent = 0;
+            var exponentIndex = text.IndexOfAny(['e', 'E']);
+            if (exponentIndex >= 0)
+            {
+                mantissa = text[..exponentIndex];
+                if (!TryParseExponent(text[(exponentIndex + 1)..], out exponent))
+                {
+                    return null;
+                }
+            }
+            var negative = mantissa.StartsWith('-');
+            if (mantissa.StartsWith('-') || mantissa.StartsWith('+'))
+            {
+                mantissa = mantissa[1..];
+            }
+            var point = mantissa.IndexOf('.');
+            var whole = point < 0 ? mantissa : mantissa[..point];
+            var fraction = point < 0 ? string.Empty : mantissa[(point + 1)..];
+            if ((whole.Length == 0 && fraction.Length == 0) ||
+                !whole.All(char.IsAsciiDigit) ||
+                !fraction.All(char.IsAsciiDigit))
+            {
+                return null;
+            }
+            return new HalfCeilingDigits(negative, whole + fraction, exponent - fraction.Length);
+        }
+
+        private static bool TryParseExponent(string text, out long exponent)
+        {
+            exponent = 0;
+            var negative = text.StartsWith('-');
+            var digits = text.StartsWith('-') || text.StartsWith('+') ? text[1..] : text;
+            if (digits.Length == 0 || !digits.All(char.IsAsciiDigit))
+            {
+                return false;
+            }
+            foreach (var digit in digits)
+            {
+                exponent = Math.Min(exponent * 10 + (digit - '0'), ExponentLimit);
+            }
+            if (negative)
+            {
+                exponent = -exponent;
+            }
+            return true;
+        }
+
+        public HalfCeilingDigits Round(int precision)
+        {
+            var last = -(long)precision;
+            if (Digits.Length == 0 || Exponent >= last)
+            {
+                return this;
+            }
+            var dropped = last - Exponent;
+            var kept = (int)Math.Max(Digits.Length - dropped, 0);
+            // Below the first dropped place every digit is an implicit zero.
+            var first = dropped > Digits.Length ? 0 : Digits[kept] - '0';
+            var rest = dropped <= Digits.Length && Digits.AsSpan(kept + 1).ContainsAnyExcept('0');
+            var up = first > 5 || (first == 5 && (rest || !Negative));
+            var digits = Digits[..kept];
+            if (up)
+            {
+                digits = Increment(digits);
+            }
+            return new HalfCeilingDigits(Negative, digits, last);
+        }
+
+        public double ToDouble()
+        {
+            if (Digits.Length == 0)
+            {
+                return 0.0;
+            }
+            var magnitude = Exponent + Digits.Length;
+            var value = magnitude > FloatMagnitudeLimit
+                ? double.PositiveInfinity
+                : magnitude < -FloatMagnitudeLimit
+                    ? 0.0
+                    : double.Parse(
+                        $"{Digits}e{Exponent.ToString(CultureInfo.InvariantCulture)}",
+                        NumberStyles.Float,
+                        CultureInfo.InvariantCulture);
+            return Negative ? -value : value;
+        }
+
+        private static string Increment(string digits)
+        {
+            var result = digits.ToCharArray();
+            for (var index = result.Length - 1; index >= 0; index--)
+            {
+                if (result[index] != '9')
+                {
+                    result[index]++;
+                    return new string(result);
+                }
+                result[index] = '0';
+            }
+            return "1" + new string(result);
+        }
+    }
+
     private static double NumberArgument(FerruleValue value, string function) => value.Kind switch
     {
         FerruleValueKind.Int64 => value.Int64Value,

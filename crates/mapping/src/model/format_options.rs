@@ -6,8 +6,8 @@ use crate::{
     CsvTextRepairDependency, EdiAutocomplete, EdiBoundaryKind, EdiImpliedDecimal, EdiLexicalFormat,
     EdiValueConstraint, ExternalSourceOptions, FixedWidthLayout, FlexTextLayout, HttpGetOptions,
     IdocLayout, IdocNativeConfig, IdocNativeTextSettings, NodeId, PdfLayout, ProtobufOptions,
-    SqliteReadProfile, SwiftMtLayout, TabularBoundaryKind, WsdlMessageOptions, X12Separators,
-    XbrlBoundaryOptions, XlsxHierarchicalLayout, is_false,
+    SqliteReadProfile, SwiftMtLayout, SwiftMtOutputOptions, TabularBoundaryKind,
+    WsdlMessageOptions, X12Separators, XbrlBoundaryOptions, XlsxHierarchicalLayout, is_false,
 };
 
 macro_rules! xlsx_coordinate {
@@ -179,16 +179,50 @@ pub struct XlsxFixedRecord {
     pub cells: Vec<XlsxFixedCell>,
 }
 
-/// Composite XLSX source layout with one or more repeated tables and fixed
-/// records. `table` remains the first table for serialized-project
-/// compatibility; additional regions are read into the same root instance.
+/// One header-driven worksheet grid inside a composite XLSX source.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct XlsxGridRegion {
+    /// Absolute path to the repeating group that receives one record per
+    /// non-empty header cell.
+    pub path: Vec<String>,
+    /// The grid's worksheet, rows and fields. Field names and fixed-cell
+    /// paths are relative to one header record.
+    pub layout: XlsxGridLayout,
+}
+
+/// Composite XLSX source layout with repeated tables, header-driven grids,
+/// and fixed records read into one root instance. `table` remains the first
+/// table for serialized-project compatibility; a composite without tables
+/// omits it and needs at least one grid.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct XlsxCompositeLayout {
-    pub table: XlsxTableRegion,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub table: Option<XlsxTableRegion>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub additional_tables: Vec<XlsxTableRegion>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub records: Vec<XlsxFixedRecord>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub grids: Vec<XlsxGridRegion>,
+}
+
+impl XlsxCompositeLayout {
+    /// Every table region in order: `table` first, then `additional_tables`.
+    pub fn tables(&self) -> impl Iterator<Item = &XlsxTableRegion> {
+        self.table.iter().chain(&self.additional_tables)
+    }
+
+    /// Checks the region counts that serde cannot express: at least one table
+    /// or grid, and additional tables only after a first table.
+    pub fn validate_regions(&self) -> Result<(), &'static str> {
+        if self.table.is_none() && !self.additional_tables.is_empty() {
+            return Err("`additional_tables` requires a first `table`");
+        }
+        if self.table.is_none() && self.grids.is_empty() {
+            return Err("a composite XLSX layout needs at least one table or grid");
+        }
+        Ok(())
+    }
 }
 
 /// Input layout that materializes every worksheet as a repeated group, with
@@ -300,10 +334,15 @@ pub struct FormatOptions {
     /// This records provenance only; runtime I/O keeps its legacy behavior.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub idoc_native_text_settings: Option<IdocNativeTextSettings>,
-    /// SWIFT MT: embedded selected-message field grammar. This mode is
-    /// input-only and takes precedence over the file extension.
+    /// SWIFT MT: embedded selected-message field grammar. This mode takes
+    /// precedence over the file extension.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub swift_mt: Option<SwiftMtLayout>,
+    /// SWIFT MT targets: the direction and per-message header values that
+    /// the mapped instance does not carry. Required to write `swift_mt`
+    /// output; invalid on sources.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub swift_mt_output: Option<SwiftMtOutputOptions>,
     /// XML document identity retained when no instance filename is available
     /// to carry an `.xml` extension.
     #[serde(default, skip_serializing_if = "core::ops::Not::not")]
@@ -480,6 +519,16 @@ pub struct FormatOptions {
 }
 
 impl FormatOptions {
+    /// Whether an input-only XLSX grid is configured, either as the single
+    /// grid layout or as a region of a composite layout.
+    pub fn has_xlsx_grid(&self) -> bool {
+        self.xlsx_grid.is_some()
+            || self
+                .xlsx_composite
+                .as_ref()
+                .is_some_and(|composite| !composite.grids.is_empty())
+    }
+
     /// Validates the deliberately bounded, target-only XML hint profile.
     pub fn validate_xml_schema_hint_options(&self, output: bool) -> Result<(), String> {
         let Some(hints) = &self.xml_schema_hints else {
@@ -487,13 +536,16 @@ impl FormatOptions {
         };
         // Establish the token/pair bounds before constructing the comparison profile.
         hints.validate().map_err(|error| error.to_string())?;
+        // Hints annotate the written document root, so they combine with the
+        // target's scalar output policy.
         let accepted = Self {
             xml_document: true,
             xml_schema_hints: Some(hints.clone()),
+            xml_scalar_output: self.xml_scalar_output.clone(),
             ..Default::default()
         };
         if !output || *self != accepted {
-            return Err("`xml_schema_hints` requires an XML target with `xml_document` and no other format options".into());
+            return Err("`xml_schema_hints` requires an XML target with `xml_document` and no format options other than XML scalar output".into());
         }
         Ok(())
     }

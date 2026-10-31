@@ -50,9 +50,9 @@ are preserved.
 ## Current Baseline
 
 - Formats, both directions: XML, JSON, CSV/fixed-width/FlexText, SQLite, XLSX,
-  XBRL instances, X12, EDIFACT, HL7 v2, TRADACOMS, embedded IDoc layouts,
-  and proto2/proto3 Protocol Buffers. SWIFT MT and visual PDF extraction are
-  source-only.
+  XBRL instances, X12, EDIFACT, HL7 v2, TRADACOMS, embedded IDoc and SWIFT
+  MT layouts, and proto2/proto3 Protocol Buffers. SWIFT MT output needs
+  configured per-message headers. Visual PDF extraction is source-only.
 - Mapping semantics: nested iteration and broadcast, filters, grouping,
   stable distinct-value iteration, literal/length/regex tokenizer and integer-range sequences,
   bounded existential reduction, 1-based scalar selection, and
@@ -351,12 +351,12 @@ are preserved.
 
 | Area | Ferrule now | Full-compatibility target |
 | --- | --- | --- |
-| XML | XSD subset, local include/import graphs, named model/attribute groups, retained required-attribute uses, typed element/simple-content/attribute defaults, expanded-name identity for elements and attributes including compatible same-local strict-wildcard alternatives, simple and ordered mixed content, `xsi:nil`, namespace-constrained skip element wildcards, lax element and attribute wildcards with typed known declarations plus nonduplicating generic fallback, closed strict wildcards resolved to exact singular or repeating typed choices, strict known-attribute projection, direct or named-group attribute wildcards, bounded cross-namespace substitution groups, and compatible transitive element-only or mixed `complexContent` plus scalar-text/attribute-only `simpleContent` extension/restriction alternatives | Remaining derived-type input shapes, XSD 1.1 wildcard exclusions, unordered wildcard compositors, and unresolved strict wildcard declaration sets |
-| JSON | JSON Schema subset, confined external and local refs, compatible structural `allOf` intersections across objects, scalar domains, and matching arrays, bounded exact scalar `const`/`enum` value sets including finite `anyOf`/`oneOf` composition, exact numeric ranges including contiguous same-type `anyOf` unions, exact decimal `multipleOf` constraints, exact array-count, `contains` match-count, object-property-count, and Unicode string-length intervals, exact structural `uniqueItems`, bounded exact homogeneous Draft 2020-12/undeclared `prefixItems` and Draft 4/6/7/2019-09/undeclared tuple-form `items` normalization, bounded portable string `pattern` assertions, exact closed homogeneous `patternProperties`, exact object-property presence, property dependencies and whole-object dependent-schema predicates, exact single-property-presence conditional normalization for Draft 7/2019-09/2020-12/undeclared schemas including guarded nullable objects and representable `else: false`, property-name constraints including exact finite and portable-pattern `not` complements, and open/closed object semantics, exact nullable scalar/object/array wrappers including flat multi-branch nullable compositions, heterogeneous scalar type arrays, exact scalar `anyOf`, pairwise-disjoint scalar `oneOf`, identical or scalar-domain-subsumed array `anyOf` branches, compatible object `oneOf`/`anyOf` with required or optional string, boolean, signed-integer, finite-number, or JSON-null discriminators, same-mode and provably disjoint cross-mode nested object unions with compatible wrapper constraints, typed and unconstrained dynamic properties, and bounded ordered `format` annotation preservation without vocabulary assertion | Incompatible or correlated validation composition, correlated property-name unions and complements involving length, format, or mixed assertions, distinct per-selector `patternProperties` schemas, pattern-property objects under active `allOf`, alternatives, or structural `$ref` siblings, open or typed pattern-property fallbacks, general overlap intersection, pattern-property value shapes outside the ordinary exact JSON profile, `unevaluatedProperties`, value-sensitive, multi-trigger, general-`if`, `else: false` over object alternatives or a closed undeclared trigger, or other nontrivial-`else` conditional schemas, general heterogeneous positional array schemas, heterogeneous or correlated numeric-range scalar unions, heterogeneous array composition, overlapping cross-mode or incompatible typed-wrapper union composition, structured discriminator values, mixed arrays, and remaining validation-keyword enforcement |
+| XML | XSD subset, local include/import graphs, named model/attribute groups, retained required-attribute uses, typed element/simple-content/attribute defaults, expanded-name identity for elements and attributes including compatible same-local strict-wildcard alternatives, simple and ordered mixed content, `xsi:nil`, namespace-constrained skip element wildcards, lax element and attribute wildcards with typed known declarations plus nonduplicating generic fallback, closed strict wildcards resolved to exact singular or repeating typed choices, strict known-attribute projection, direct or named-group attribute wildcards, XSD 1.1 `notNamespace`/`notQName` exclusions on skip and lax element wildcards and on attribute wildcards, bounded cross-namespace substitution groups, and compatible transitive element-only or mixed `complexContent` plus scalar-text/attribute-only `simpleContent` extension/restriction alternatives | Remaining derived-type input shapes, XSD 1.1 wildcard exclusions on strict element wildcards, unordered wildcard compositors, and unresolved strict wildcard declaration sets |
+| JSON | JSON Schema subset, confined external and local refs, compatible structural `allOf` intersections across objects, scalar domains, and matching arrays, bounded exact scalar `const`/`enum` value sets including finite `anyOf`/`oneOf` composition, exact numeric ranges including contiguous same-type `anyOf` unions, exact decimal `multipleOf` constraints, exact array-count, `contains` match-count, object-property-count, and Unicode string-length intervals, exact structural `uniqueItems`, exact tuple arrays from Draft 2020-12/undeclared `prefixItems` and Draft 4/6/7/2019-09/undeclared tuple-form `items`, imported as homogeneous arrays or tuple frames and exported as `prefixItems`, bounded portable string `pattern` assertions, exact closed homogeneous `patternProperties`, exact object-property presence, property dependencies and whole-object dependent-schema predicates, exact single-property-presence conditional normalization for Draft 7/2019-09/2020-12/undeclared schemas including guarded nullable objects and representable `else: false`, property-name constraints including exact finite and portable-pattern `not` complements, and open/closed object semantics, exact nullable scalar/object/array wrappers including flat multi-branch nullable compositions, heterogeneous scalar type arrays, exact scalar `anyOf`, pairwise-disjoint scalar `oneOf`, identical or scalar-domain-subsumed array `anyOf` branches, compatible object `oneOf`/`anyOf` with required or optional string, boolean, signed-integer, finite-number, or JSON-null discriminators, same-mode and provably disjoint cross-mode nested object unions with compatible wrapper constraints, typed and unconstrained dynamic properties, and bounded ordered `format` annotation preservation without vocabulary assertion | Incompatible or correlated validation composition, correlated property-name unions and complements involving length, format, or mixed assertions, distinct per-selector `patternProperties` schemas, pattern-property objects under active `allOf`, alternatives, or structural `$ref` siblings, open or typed pattern-property fallbacks, general overlap intersection, pattern-property value shapes outside the ordinary exact JSON profile, `unevaluatedProperties`, value-sensitive, multi-trigger, general-`if`, `else: false` over object alternatives or a closed undeclared trigger, or other nontrivial-`else` conditional schemas, tuple alternatives, per-position tuple intersection, cross-position tuple predicates, nested or recursive tuples, heterogeneous or correlated numeric-range scalar unions, heterogeneous array composition, overlapping cross-mode or incompatible typed-wrapper union composition, structured discriminator values, mixed arrays, and remaining validation-keyword enforcement |
 | Flat files | Delimited CSV with configurable single-byte or disabled quoting, fixed length, reusable FlexText layouts, and bounded string-fed parsing | Additional FlexText commands and parser variants |
 | Database | Relational SQLite reads and full-replace writes, imported WHERE/ORDER controls, static/correlated queries, and deterministic generated keys | General query model, insert/update/delete, PostgreSQL |
 | EDI | Bounded X12/EDIFACT/HL7/TRADACOMS runtime plus embedded IDoc/SWIFT layouts and executable `.mfd` configurations | Complete applicable validation/autocompletion behavior, configuration commands, dialects, and versioned release packs |
-| Other formats | XLSX including hierarchical and update-existing targets, native XBRL instances, proto2/proto3 input/output, static HTTP XML sources, and visual PDF sources with page selection, vertical collages, marker groups, and table layouts | XBRL taxonomy/package/view semantics, complete applicable Protobuf/XLSX profiles, and remaining PDF extraction, template-editor, and OCR workflows; PDF remains source-only like the reference product |
+| Other formats | XLSX including transposed and hierarchical targets and update-existing writes into flat and hierarchical targets, native XBRL instances, proto2/proto3 input/output, static HTTP XML sources, and visual PDF sources with page selection, vertical collages, marker groups, and table layouts | XBRL taxonomy/package/view semantics, complete applicable Protobuf/XLSX profiles, and remaining PDF extraction, template-editor, and OCR workflows; PDF remains source-only like the reference product |
 | Dataflow | One primary driver per stage plus named static/dynamic and wildcard document sources, bounded typed host runtime parameters, multiple mapped targets, dynamic per-document output paths, a validated ordered stage DAG with a file host and optional per-stage mapping paths, bounded serial XML pass-through chain import and guarded export for up to 64 pass-through targets with XML, CSV, fixed-width, FlexText, JSON, Protocol Buffers, bounded XBRL, or new-workbook XLSX final primary output, connected final-stage XML target fan-out or one named CSV or JSON target beside an XML primary, and original XML hosts feeding named inputs across stages through distinct ports or shared-port fan-out, plus one guarded earlier-intermediate branch that feeds the final stage as a named input, and GUI editing/inspection/running of saved pipelines with stored input-path hints | Fully general named N-to-M endpoints, general `.mfd` stage-graph import/export including other connected later-stage named sources, service hosts, and embedded per-stage graph editing |
 | Functions | Scalar subset plus aggregates, generated-sequence reducers, ordered scope sequence windows, and typed reusable graph UDFs | General first-class sequence composition and higher-order reusable mappings |
 | Execution | Native interpreter, unified bounded host run options, bounded raw-payload library execution, ordered file and payload artifact reports, deterministic versioned CLI JSONL traces, CLI, GUI, browser demo | Packaged runtime, documented HTTP API |
@@ -483,37 +483,30 @@ existing object alternatives, and a closed object must already declare the
 trigger. Canonical export writes `required` and, when `then` retains a
 dependency, `dependentRequired` or `dependentSchemas` as appropriate.
 Value-sensitive, multi-trigger, general-`if`, and other nontrivial `else`
-schemas, unevaluated keywords, and heterogeneous positional array schemas
-remain explicit rejections rather than approximations.
+schemas, `unevaluatedProperties`, `unevaluatedItems` outside its direct array
+form, and tuple shapes outside the exact tuple frame remain explicit
+rejections rather than approximations.
 
-The bounded exact homogeneous `prefixItems` subset normalizes Draft 2020-12
-and schemas without `$schema` into the existing repeated-item form. Every
-entry in the bounded finite prefix must normalize to one identical
-non-repeating item shape. The tail must use that shape, be closed so the prefix
-length becomes `maxItems`, or be provably unreachable under an existing
-maximum; an unconstrained tail is exact only when the common item shape accepts
-arbitrary JSON. Canonical export writes equivalent ordinary `items` and `maxItems`
-constraints. This lowers entirely to the current schema IR and therefore
-requires no engine, Rust runtime, C# runtime, or backend-emitter extension.
-Draft 4 through Draft 2019-09 treat `prefixItems` as unknown, while
-heterogeneous prefixes, contradictory bounds, concrete nested-array entries,
-and active `unevaluatedItems` continue to reject.
-
-The complementary homogeneous legacy tuple profile accepts array-valued
-`items` in Draft 4, 6, 7, and 2019-09 resources and in schemas without
-`$schema`. Each non-empty bounded tuple contains at most 4,096 positional
-members, all of which must normalize to the same non-repeating item shape. Its
-`additionalItems` tail must use that same shape, be `false` so the tuple length
-becomes `maxItems`, or be provably unreachable
-under an existing maximum; an absent or `true` tail is exact only for an
-arbitrary-JSON item shape or when the maximum makes the tail unreachable.
-Explicit and derived item-count intervals are intersected, and contradictions
-reject. Canonical export lowers the result to ordinary schema-valued `items`
-plus `maxItems` when closed, so the existing mapping IR and native/generated
-Rust and C# boundaries execute it unchanged. Draft 2020-12 instead requires
-schema-valued `items`; array-valued `items` rejects there rather than being
-mistaken for `prefixItems`. Heterogeneous positional members or reachable
-heterogeneous tails remain unsupported.
+Tuple arrays import from `prefixItems` in Draft 2020-12 and schemas without
+`$schema`, and from array-valued `items` with `additionalItems` in Draft 4, 6,
+7, 2019-09 and schemas without `$schema`. Draft 2020-12 rejects array-valued
+`items` rather than reading it as `prefixItems`, and earlier drafts treat
+`prefixItems` as unknown. Members and the tail are validated before the
+tuple's own counts, modern `$ref` sibling counts and count-only `allOf`
+branches are intersected; only then is the tuple put into canonical form.
+Positions beyond the maximum are dropped, identical members with a closed,
+identical, or arbitrary-JSON tail keep the existing homogeneous-array lowering
+and `items` export, and every other tuple of 1 to 4,096 members becomes a
+[JSON tuple frame](design/json-tuple-arrays.md) that native JSON, JSON Lines,
+JSON5 and generated Rust and C# boundaries execute. JSON Schema export writes a frame
+as `prefixItems` without `$schema` and re-imports it unchanged. Tuple
+alternatives, two positional `allOf` branches, `contains` or `uniqueItems` on a
+tuple, nested or recursive tuples, a tuple as a runtime-named property value or
+inside a predicate, and active `unevaluatedItems` beside composition,
+conditionals, `contains`, `dependentSchemas` or a reference remain explicit
+rejections. On a direct concrete array schema, `unevaluatedItems` has no effect
+after schema-valued `items` or after `additionalItems`, and otherwise acts as
+the tail after the positional members.
 
 Object `propertyNames` assertions validate every actual key, including declared,
 runtime-named, and empty-string properties. Exact `false`, finite
@@ -575,6 +568,13 @@ plan. Nested non-repeating target projections reuse the owning tuple, while reje
 join shapes suppress redundant downstream warnings. Canonical export round-trips
 root-context joins whose collections all belong to the primary source, including raw
 tuple counts and computed joined aggregate values with parent-context scalar arguments.
+Joins nested in one iteration over the primary source or a static named source
+export with singletons from the active item or a static named source, at any input
+position and in any number, or with no singleton at all. Their repeating inputs come
+from static named sources or, inside a primary iteration, from one collection below
+the active item, which correlates to that item. A two-input plan may also pair one
+singleton with a primary repeating collection outside the iteration. Other nested
+shapes are refused atomically.
 Named static XML, JSON, flat-file, and database sources now retain separate component ownership
 during export; per-item dynamic XML sources and captured HTTP POST response
 boundaries also round-trip with their typed contracts.

@@ -88,6 +88,7 @@ fn serde_preserves_order_and_rejects_unknown_hint_fields() {
                 location: "a.xsd".into(),
             },
         ],
+        derivation: None,
     };
     assert_eq!(
         serde_json::from_str::<XmlSchemaHints>(&serde_json::to_string(&hints).unwrap()).unwrap(),
@@ -99,5 +100,36 @@ fn serde_preserves_order_and_rejects_unknown_hint_fields() {
             r#"{"locations":[{"namespace":"urn:a","location":"a.xsd","unknown":true}]}"#
         )
         .is_err()
+    );
+}
+
+#[test]
+fn derivation_is_optional_typed_provenance() {
+    let explicit: XmlSchemaHints =
+        serde_json::from_str(r#"{"no_namespace_location":"target.xsd"}"#).unwrap();
+    assert_eq!(explicit.derivation, None);
+    let derived: XmlSchemaHints = serde_json::from_str(
+        r#"{"no_namespace_location":"target.xsd","derivation":{"schema_reference":"target.xsd"}}"#,
+    )
+    .unwrap();
+    assert!(derived.validate().is_ok());
+    assert_eq!(derived.without_derivation(), explicit);
+    assert_eq!(
+        serde_json::to_string(&explicit).unwrap(),
+        r#"{"no_namespace_location":"target.xsd"}"#
+    );
+    assert!(
+        serde_json::from_str::<XmlSchemaHints>(
+            r#"{"no_namespace_location":"t.xsd","derivation":{"schema_reference":"t.xsd","x":1}}"#
+        )
+        .is_err()
+    );
+    let mut empty = derived;
+    empty.derivation = Some(ir::XmlSchemaHintDerivation {
+        schema_reference: String::new(),
+    });
+    assert_eq!(
+        empty.validate(),
+        Err(ir::XmlSchemaHintsError::InvalidDerivation)
     );
 }

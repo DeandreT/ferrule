@@ -96,6 +96,7 @@ pub enum ScalarFunction {
     Contains,
     Matches,
     Replace,
+    ReplaceLiteral,
     Concat,
     Upper,
     Lower,
@@ -108,6 +109,7 @@ pub enum ScalarFunction {
     Length,
     SubstringBefore,
     SubstringAfter,
+    Translate,
     String,
     IsNumeric,
     ToNumber,
@@ -119,6 +121,8 @@ pub enum ScalarFunction {
     Random,
     JsonParseField,
     JsonParseObjectExists,
+    JsonParseArrayLength,
+    JsonParseArrayField,
     JsonSerializeObject,
     FormatNumber,
     SubstituteMissing,
@@ -135,6 +139,7 @@ pub enum ScalarFunction {
     FormatGuidString,
     Isbn10ToIsbn13,
     Round,
+    RoundHalfCeiling,
     DelayPassthrough,
     DateFromDatetime,
     YearFromDatetime,
@@ -182,6 +187,7 @@ impl ScalarFunction {
         Self::Contains,
         Self::Matches,
         Self::Replace,
+        Self::ReplaceLiteral,
         Self::Concat,
         Self::Upper,
         Self::Lower,
@@ -194,6 +200,7 @@ impl ScalarFunction {
         Self::Length,
         Self::SubstringBefore,
         Self::SubstringAfter,
+        Self::Translate,
         Self::String,
         Self::IsNumeric,
         Self::ToNumber,
@@ -205,6 +212,8 @@ impl ScalarFunction {
         Self::Random,
         Self::JsonParseField,
         Self::JsonParseObjectExists,
+        Self::JsonParseArrayLength,
+        Self::JsonParseArrayField,
         Self::JsonSerializeObject,
         Self::FormatNumber,
         Self::SubstituteMissing,
@@ -221,6 +230,7 @@ impl ScalarFunction {
         Self::FormatGuidString,
         Self::Isbn10ToIsbn13,
         Self::Round,
+        Self::RoundHalfCeiling,
         Self::DelayPassthrough,
         Self::DateFromDatetime,
         Self::YearFromDatetime,
@@ -268,6 +278,7 @@ impl ScalarFunction {
             Self::Contains => "contains",
             Self::Matches => "matches",
             Self::Replace => "replace",
+            Self::ReplaceLiteral => "replace_literal",
             Self::Concat => "concat",
             Self::Upper => "upper",
             Self::Lower => "lower",
@@ -280,6 +291,7 @@ impl ScalarFunction {
             Self::Length => "length",
             Self::SubstringBefore => "substring_before",
             Self::SubstringAfter => "substring_after",
+            Self::Translate => "translate",
             Self::String => "string",
             Self::IsNumeric => "is_numeric",
             Self::ToNumber => "to_number",
@@ -291,6 +303,8 @@ impl ScalarFunction {
             Self::Random => "random",
             Self::JsonParseField => "json_parse_field",
             Self::JsonParseObjectExists => "json_parse_object_exists",
+            Self::JsonParseArrayLength => "json_parse_array_length",
+            Self::JsonParseArrayField => "json_parse_array_field",
             Self::JsonSerializeObject => "json_serialize_object",
             Self::FormatNumber => "format_number",
             Self::SubstituteMissing => "substitute_missing",
@@ -307,6 +321,7 @@ impl ScalarFunction {
             Self::FormatGuidString => "format_guid_string",
             Self::Isbn10ToIsbn13 => "isbn10_to_isbn13",
             Self::Round => "round",
+            Self::RoundHalfCeiling => "round_half_ceiling",
             Self::DelayPassthrough => "delay_passthrough",
             Self::DateFromDatetime => "date_from_datetime",
             Self::YearFromDatetime => "year_from_datetime",
@@ -355,6 +370,7 @@ impl ScalarFunction {
             "contains" => Some(Self::Contains),
             "matches" => Some(Self::Matches),
             "replace" => Some(Self::Replace),
+            "replace_literal" => Some(Self::ReplaceLiteral),
             "concat" => Some(Self::Concat),
             "upper" => Some(Self::Upper),
             "lower" => Some(Self::Lower),
@@ -367,6 +383,7 @@ impl ScalarFunction {
             "length" => Some(Self::Length),
             "substring_before" => Some(Self::SubstringBefore),
             "substring_after" => Some(Self::SubstringAfter),
+            "translate" => Some(Self::Translate),
             "string" => Some(Self::String),
             "is_numeric" => Some(Self::IsNumeric),
             "to_number" => Some(Self::ToNumber),
@@ -378,6 +395,8 @@ impl ScalarFunction {
             "random" => Some(Self::Random),
             "json_parse_field" => Some(Self::JsonParseField),
             "json_parse_object_exists" => Some(Self::JsonParseObjectExists),
+            "json_parse_array_length" => Some(Self::JsonParseArrayLength),
+            "json_parse_array_field" => Some(Self::JsonParseArrayField),
             "json_serialize_object" => Some(Self::JsonSerializeObject),
             "format_number" => Some(Self::FormatNumber),
             "substitute_missing" => Some(Self::SubstituteMissing),
@@ -394,6 +413,7 @@ impl ScalarFunction {
             "format_guid_string" => Some(Self::FormatGuidString),
             "isbn10_to_isbn13" => Some(Self::Isbn10ToIsbn13),
             "round" => Some(Self::Round),
+            "round_half_ceiling" => Some(Self::RoundHalfCeiling),
             "delay_passthrough" => Some(Self::DelayPassthrough),
             "date_from_datetime" => Some(Self::DateFromDatetime),
             "year_from_datetime" => Some(Self::YearFromDatetime),
@@ -1040,7 +1060,8 @@ pub enum Expression {
         arg: Option<NodeId>,
     },
     /// Reduces the tuples produced by a locally owned static inner join.
-    /// The value expression executes once per tuple with the join active;
+    /// A computed key source executes first, once, in the parent context;
+    /// the value expression executes once per tuple with the join active;
     /// `arg` executes once afterward in the unchanged parent context.
     JoinAggregate {
         function: AggregateFunction,
@@ -1963,6 +1984,11 @@ impl IterationPlan {
                     .map(DynamicDocumentIteration::output_path),
             )
             .chain(self.presence().map(OptionalPresence::condition))
+            .chain(
+                self.inner_join()
+                    .and_then(|join| join.plan().computed_source())
+                    .map(crate::ComputedJoinSource::value),
+            )
     }
 }
 

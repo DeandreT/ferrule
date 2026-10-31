@@ -356,7 +356,7 @@ fn lower_scope(
             ))
         }
     } else {
-        match lower_iteration(scope) {
+        match lower_iteration(scope, target_path) {
             Ok(iteration) => iteration,
             Err(error) => {
                 diagnostics.push(error);
@@ -381,6 +381,12 @@ fn lower_scope(
     }
     roots.extend(scope.output_path());
     roots.extend(scope.presence());
+    roots.extend(
+        scope
+            .join()
+            .and_then(|(_, plan)| plan.computed_source())
+            .and_then(mapping::ComputedJoinSource::scalar),
+    );
     let base_construction = match &scope.construction {
         ScopeConstruction::Scalar { value } => {
             roots.push(*value);
@@ -638,7 +644,10 @@ fn scalar_target_domain(schema: &SchemaNode) -> Option<ScalarTargetDomain> {
     }
 }
 
-fn lower_iteration(scope: &Scope) -> Result<Option<IterationPlan>, Diagnostic> {
+fn lower_iteration(
+    scope: &Scope,
+    target_path: &[String],
+) -> Result<Option<IterationPlan>, Diagnostic> {
     let input: IterationSource = match &scope.iteration {
         ScopeIteration::OwnedSource {
             source,
@@ -655,7 +664,13 @@ fn lower_iteration(scope: &Scope) -> Result<Option<IterationPlan>, Diagnostic> {
         } => DynamicDocumentIteration::new(source.clone(), *output_path).into(),
         ScopeIteration::Sequence(sequence) => lower_generated_sequence(sequence)?.into(),
         ScopeIteration::InnerJoin { id, plan } => {
-            InnerJoin::new(JoinId::from(*id), JoinPlan::from_mapping(plan)).into()
+            let Some(plan) = JoinPlan::from_mapping(plan) else {
+                return Err(Diagnostic::UnsupportedScope {
+                    target_path: target_path.to_vec(),
+                    feature: ScopeFeature::SequenceComputedJoinKey,
+                });
+            };
+            InnerJoin::new(JoinId::from(*id), plan).into()
         }
         ScopeIteration::OwnedInnerJoin { id, plan } => {
             OwnedInnerJoin::new(JoinId::from(*id), plan.clone()).into()
@@ -1186,7 +1201,13 @@ fn lower_expression(id: NodeId, node: &Node, graph: &Graph) -> Result<Expression
             arg,
         } => Expression::JoinAggregate {
             function: (*function).into(),
-            join: InnerJoin::new(JoinId::from(*join), JoinPlan::from_mapping(plan)),
+            join: InnerJoin::new(
+                JoinId::from(*join),
+                JoinPlan::from_mapping(plan).ok_or(Diagnostic::UnsupportedNode {
+                    node: id,
+                    kind: UnsupportedNodeKind::SequenceComputedJoinAggregate,
+                })?,
+            ),
             expression: *expression,
             arg: *arg,
         },
@@ -1328,6 +1349,10 @@ fn owned_document_diagnostic(
 }
 
 #[cfg(test)]
+#[path = "lower/computed_join_tests.rs"]
+mod computed_join_tests;
+
+#[cfg(test)]
 mod structured_xml_admission_tests {
     use super::*;
     use ir::{ScalarType, Value};
@@ -1410,7 +1435,8 @@ mod structured_xml_admission_tests {
             program.xml_boundary.unwrap().output.schema_hints,
             project.target_options.xml_schema_hints
         );
+        // Without an XML adapter no generated writer emits the hint.
         project.source_options.xml_document = false;
-        assert!(lower(&project).is_err());
+        assert!(lower(&project).unwrap().xml_boundary.is_none());
     }
 }

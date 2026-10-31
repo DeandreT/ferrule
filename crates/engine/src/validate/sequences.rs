@@ -3,7 +3,9 @@
 
 use std::collections::BTreeSet;
 
-use mapping::{FailureIteration, Graph, Node, NodeId, Project, Scope, ScopeConstruction};
+use mapping::{
+    ComputedJoinSource, FailureIteration, Graph, Node, NodeId, Project, Scope, ScopeConstruction,
+};
 
 use super::node_inputs::node_inputs;
 use super::{
@@ -339,6 +341,17 @@ fn validate_scope<'a>(
     };
     let parent = ItemContext::Scope(&parent_items);
     let mut current_items = parent_items.clone();
+    // A join's sequence-valued key runs in the enclosing context, and its
+    // item stays private to the join.
+    if let Some(sequence) = scope
+        .join()
+        .and_then(|(_, plan)| plan.computed_source())
+        .and_then(ComputedJoinSource::as_sequence)
+    {
+        for input in sequence.inputs() {
+            validate_root(&project.graph, items, input, parent, origin, issues);
+        }
+    }
     if let Some(sequence) = scope.sequence() {
         for input in sequence.inputs() {
             validate_root(&project.graph, items, input, parent, origin, issues);

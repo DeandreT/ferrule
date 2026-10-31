@@ -1140,7 +1140,24 @@ pub(super) fn produces_scalar(component: &FnComponent) -> bool {
             )
         || component.kind == 5 && component.library == "core" && component.name == "not-exists"
         || component.kind == 5 && aggregate_op(&component.name).is_some()
+        || is_lang_positive(component)
         || map_component_name(component).is_some()
+}
+
+/// `lang.positive` tests whether a decimal is greater than zero; native runs
+/// return false for zero, although the vendor reference describes it as
+/// "equal to or greater than zero". Import lowers it to
+/// `greater_than(add(value, 0), 0)`; the zero addend applies the same numeric
+/// conversion as that decimal input. The unary-plus `positive` that earlier
+/// Ferrule exports wrote as `core.positive` keeps its own meaning.
+pub(super) fn is_lang_positive(component: &FnComponent) -> bool {
+    component.kind == 5 && component.library == "lang" && component.name == "positive"
+}
+
+/// `lang.replace` substitutes literal text, while the `core` (earlier Ferrule
+/// exports) and `xpath2` spellings are regular-expression replacement.
+pub(super) fn is_lang_replace(component: &FnComponent) -> bool {
+    component.kind == 5 && component.library == "lang" && component.name == "replace"
 }
 
 pub(super) fn map_component_name(component: &FnComponent) -> Option<&str> {
@@ -1150,6 +1167,12 @@ pub(super) fn map_component_name(component: &FnComponent) -> Option<&str> {
     }
     if component.name == "random" {
         return (component.kind == 5 && component.library == "lang").then_some("random");
+    }
+    if is_lang_positive(component) {
+        return None;
+    }
+    if is_lang_replace(component) {
+        return Some("replace_literal");
     }
     if component.library == "ferrule"
         && component.kind == 5
@@ -1372,6 +1395,7 @@ pub(super) fn map_name(name: &str) -> Option<&'static str> {
         "substring" => "substring",
         "substring-before" => "substring_before",
         "substring-after" => "substring_after",
+        "translate" => "translate",
         "normalize-space" => "normalize_space",
         "empty" => "is_empty",
         "get-folder" => "get_folder",
@@ -1380,7 +1404,9 @@ pub(super) fn map_name(name: &str) -> Option<&'static str> {
         "is-xsi-nil" => "is_xml_nil",
         "substitute-missing-with-xsi-nil" => "substitute_missing_with_xml_nil",
         "exists" => "exists",
-        "round" | "round-precision" => "round",
+        // Native rounding sends exact halves toward positive infinity on
+        // decimal values, unlike Ferrule's away-from-zero `round`.
+        "round" | "round-precision" => "round_half_ceiling",
         "date-from-datetime" => "date_from_datetime",
         "year-from-datetime" => "year_from_datetime",
         "month-from-datetime" => "month_from_datetime",
@@ -1448,6 +1474,7 @@ mod tests {
         assert_eq!(map_name("ends-with"), Some("ends_with"));
         assert_eq!(map_name("matches"), Some("matches"));
         assert_eq!(map_name("replace"), Some("replace"));
+        assert_eq!(map_name("translate"), Some("translate"));
         assert_eq!(map_name("left"), Some("left"));
         assert_eq!(map_name("right"), Some("right"));
         assert_eq!(map_name("empty"), Some("is_empty"));
@@ -1503,6 +1530,46 @@ mod tests {
             let document = roxmltree::Document::parse(&text).expect("authored component XML");
             let component = read(&document.root_element());
             assert_eq!(map_component_name(&component), expected);
+        }
+    }
+
+    #[test]
+    fn only_lang_positive_is_the_greater_than_zero_test() {
+        for (library, kind, mapped) in [
+            ("lang", "5", None),
+            ("core", "5", Some("positive")),
+            ("lang", "6", Some("positive")),
+        ] {
+            let text = format!(r#"<component library="{library}" name="positive" kind="{kind}"/>"#);
+            let document = roxmltree::Document::parse(&text).expect("authored component XML");
+            let component = read(&document.root_element());
+            assert_eq!(map_component_name(&component), mapped, "{library}/{kind}");
+            assert_eq!(
+                super::is_lang_positive(&component),
+                mapped.is_none(),
+                "{library}/{kind}"
+            );
+            assert!(produces_scalar(&component), "{library}/{kind}");
+        }
+    }
+
+    #[test]
+    fn only_lang_replace_is_literal_replacement() {
+        for (library, kind, mapped) in [
+            ("lang", "5", "replace_literal"),
+            ("core", "5", "replace"),
+            ("xpath2", "5", "replace"),
+            ("lang", "6", "replace"),
+        ] {
+            let text = format!(r#"<component library="{library}" name="replace" kind="{kind}"/>"#);
+            let document = roxmltree::Document::parse(&text).expect("authored component XML");
+            let component = read(&document.root_element());
+            assert_eq!(
+                map_component_name(&component),
+                Some(mapped),
+                "{library}/{kind}"
+            );
+            assert!(produces_scalar(&component), "{library}/{kind}");
         }
     }
 

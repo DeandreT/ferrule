@@ -160,8 +160,14 @@ fn malformed_and_ambiguous_count_constraints_reject() {
     let unconstrained = import_str(r#"{"title":"Anything","minItems":0}"#);
     assert!(unconstrained.item_count_range.is_none());
 
-    let unresolved_noop = import_str(r##"{"title":"Noop","$ref":"#/missing","minItems":0}"##);
-    assert!(unresolved_noop.item_count_range.is_none());
+    let unresolved_noop = import_str(
+        r##"{"title":"Noop","type":"object","properties":{"Value":{"$ref":"#/missing","minItems":0}}}"##,
+    );
+    assert!(
+        unresolved_noop
+            .child("Value")
+            .is_some_and(|value| value.item_count_range.is_none())
+    );
     assert!(matches!(
         import_str_result(r##"{"title":"Broken","$ref":"#/missing","minItems":"0"}"##),
         Err(JsonFormatError::UnsupportedSchemaUnion { ref reason, .. })

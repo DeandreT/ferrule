@@ -83,6 +83,26 @@ fn explicit_policy_preserves_text_and_integer_values_without_changing_default() 
 }
 
 #[test]
+fn schema_hints_annotate_the_projected_root_and_namespaces_stay_refused() {
+    let mut hinted = options();
+    hinted.schema_hints = Some(ir::XmlSchemaHints {
+        no_namespace_location: Some("target.xsd".into()),
+        ..Default::default()
+    });
+    let xml =
+        to_string_with_options(&schema(), &input(Value::String("00029".into())), &hinted).unwrap();
+    assert_eq!(
+        xml,
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Envelope xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:noNamespaceSchemaLocation=\"target.xsd\">\n  <Amount>00029</Amount>\n  <Amount>17</Amount>\n  <Label>safe</Label>\n</Envelope>"
+    );
+    let mut namespaced = options();
+    namespaced.default_namespace = Some("urn:default".into());
+    assert!(
+        to_string_with_options(&schema(), &input(Value::String("1".into())), &namespaced).is_err()
+    );
+}
+
+#[test]
 fn explicit_policy_still_rejects_unsafe_xml_and_wrong_shapes() {
     assert!(matches!(
         to_string_with_options(&schema(), &input(Value::String("\0".into())), &options()),

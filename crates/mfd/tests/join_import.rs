@@ -721,3 +721,6 @@ fn rejected_join_provenance_propagates_through_scalar_functions() {
             .all(|binding| binding.target_field != "Summary")
     );
 }
+
+#[path = "join_import/computed_keys.rs"]
+mod computed_keys;

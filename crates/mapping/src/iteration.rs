@@ -22,7 +22,7 @@ impl JoinId {
     }
 }
 
-/// Cardinality of one source participating in an inner join.
+/// Cardinality of one collection source participating in an inner join.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum JoinSourceCardinality {
@@ -31,15 +31,15 @@ pub enum JoinSourceCardinality {
     Singleton,
 }
 
-/// One source participating in an inner join.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct JoinSource {
+/// A join source read from a source collection path.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct CollectionJoinSource {
     collection: Vec<String>,
-    #[serde(default, skip_serializing_if = "is_repeating_join_source")]
+    #[serde(skip_serializing_if = "is_repeating_join_source")]
     cardinality: JoinSourceCardinality,
 }
 
-impl JoinSource {
+impl CollectionJoinSource {
     pub fn new(collection: Vec<String>) -> Self {
         Self {
             collection,
@@ -67,12 +67,276 @@ fn is_repeating_join_source(cardinality: &JoinSourceCardinality) -> bool {
     *cardinality == JoinSourceCardinality::Repeating
 }
 
-/// One equality condition between a collection already in the left tuple
-/// and the collection introduced by the current join stage.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// Plan-local identity of a computed join source, independent of the
+/// [`NodeId`] that computes its value.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ComputedJoinSourceId(u32);
+
+impl ComputedJoinSourceId {
+    pub const fn new(value: u32) -> Self {
+        Self(value)
+    }
+
+    pub const fn get(self) -> u32 {
+        self.0
+    }
+}
+
+impl fmt::Display for ComputedJoinSourceId {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(formatter)
+    }
+}
+
+/// A join source whose members are computed in the join's receiving context
+/// rather than read from a collection. It has no collection, so no join read
+/// names it and it never correlates with an active frame.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ComputedJoinSource {
+    id: ComputedJoinSourceId,
+    value: ComputedJoinValue,
+}
+
+/// What a computed join source evaluates to its members.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ComputedJoinValue {
+    /// One scalar graph value: one member unless it is Null-like.
+    Scalar(NodeId),
+    /// A generated sequence: one member per item, in sequence order, with
+    /// empty and duplicate items kept. Its item identity is private to the
+    /// source and is never read as an expression. Boxed so that join plans
+    /// keep their size.
+    Sequence(Box<SequenceExpr>),
+}
+
+impl ComputedJoinSource {
+    pub const fn new(id: ComputedJoinSourceId, value: NodeId) -> Self {
+        Self {
+            id,
+            value: ComputedJoinValue::Scalar(value),
+        }
+    }
+
+    pub fn sequence(id: ComputedJoinSourceId, sequence: SequenceExpr) -> Self {
+        Self {
+            id,
+            value: ComputedJoinValue::Sequence(Box::new(sequence)),
+        }
+    }
+
+    pub const fn with_value(id: ComputedJoinSourceId, value: ComputedJoinValue) -> Self {
+        Self { id, value }
+    }
+
+    pub const fn id(&self) -> ComputedJoinSourceId {
+        self.id
+    }
+
+    pub const fn value(&self) -> &ComputedJoinValue {
+        &self.value
+    }
+
+    /// The scalar node of a single-valued source.
+    pub const fn scalar(&self) -> Option<NodeId> {
+        match self.value {
+            ComputedJoinValue::Scalar(node) => Some(node),
+            ComputedJoinValue::Sequence(_) => None,
+        }
+    }
+
+    /// The nodes this source evaluates in the receiving context: its scalar
+    /// value, or its sequence's inputs. A sequence's item is not among them.
+    pub fn key_inputs(&self) -> Vec<NodeId> {
+        match &self.value {
+            ComputedJoinValue::Scalar(node) => vec![*node],
+            ComputedJoinValue::Sequence(sequence) => sequence.inputs(),
+        }
+    }
+
+    /// The generated sequence of a sequence-valued source.
+    pub fn as_sequence(&self) -> Option<&SequenceExpr> {
+        match &self.value {
+            ComputedJoinValue::Sequence(sequence) => Some(sequence),
+            ComputedJoinValue::Scalar(_) => None,
+        }
+    }
+}
+
+/// Wire form `{"id": 1, "value": 12}` for a scalar source and
+/// `{"id": 1, "sequence": {...}}` for a sequence source. Older readers
+/// refuse the sequence form on its missing `value`.
+#[derive(Serialize)]
+struct ComputedJoinSourceRef<'a> {
+    id: ComputedJoinSourceId,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    value: Option<NodeId>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sequence: Option<&'a SequenceExpr>,
+}
+
+impl Serialize for ComputedJoinSource {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        ComputedJoinSourceRef {
+            id: self.id,
+            value: self.scalar(),
+            sequence: self.as_sequence(),
+        }
+        .serialize(serializer)
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ComputedJoinSourceWire {
+    id: ComputedJoinSourceId,
+    #[serde(default, deserialize_with = "present")]
+    value: Option<NodeId>,
+    #[serde(default, deserialize_with = "present")]
+    sequence: Option<SequenceExpr>,
+}
+
+impl<'de> Deserialize<'de> for ComputedJoinSource {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let wire = ComputedJoinSourceWire::deserialize(deserializer)?;
+        match (wire.value, wire.sequence) {
+            (Some(value), None) => Ok(Self::new(wire.id, value)),
+            (None, Some(sequence)) => Ok(Self::sequence(wire.id, sequence)),
+            (None, None) => Err(serde::de::Error::missing_field("value")),
+            (Some(_), Some(_)) => Err(serde::de::Error::custom(
+                "a computed join source has either a `value` or a `sequence`, not both",
+            )),
+        }
+    }
+}
+
+/// One source participating in an inner join. Consumers that cannot run a
+/// computed source must refuse it rather than treat it as a collection.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum JoinSource {
+    /// Wire form `{"collection": [...]}`, unchanged from collection-only plans.
+    Collection(CollectionJoinSource),
+    /// Wire form `{"computed": {"id": 1, "value": 12}}`.
+    Computed(ComputedJoinSource),
+}
+
+impl JoinSource {
+    pub fn new(collection: Vec<String>) -> Self {
+        Self::Collection(CollectionJoinSource::new(collection))
+    }
+
+    pub fn singleton(path: Vec<String>) -> Self {
+        Self::Collection(CollectionJoinSource::singleton(path))
+    }
+
+    pub const fn computed(id: ComputedJoinSourceId, value: NodeId) -> Self {
+        Self::Computed(ComputedJoinSource::new(id, value))
+    }
+
+    pub fn computed_sequence(id: ComputedJoinSourceId, sequence: SequenceExpr) -> Self {
+        Self::Computed(ComputedJoinSource::sequence(id, sequence))
+    }
+
+    pub const fn as_collection(&self) -> Option<&CollectionJoinSource> {
+        match self {
+            Self::Collection(source) => Some(source),
+            Self::Computed(_) => None,
+        }
+    }
+
+    pub const fn as_computed(&self) -> Option<&ComputedJoinSource> {
+        match self {
+            Self::Computed(source) => Some(source),
+            Self::Collection(_) => None,
+        }
+    }
+}
+
+impl From<CollectionJoinSource> for JoinSource {
+    fn from(source: CollectionJoinSource) -> Self {
+        Self::Collection(source)
+    }
+}
+
+impl From<ComputedJoinSource> for JoinSource {
+    fn from(source: ComputedJoinSource) -> Self {
+        Self::Computed(source)
+    }
+}
+
+#[derive(Serialize)]
+#[serde(untagged)]
+enum JoinSourceRef<'a> {
+    Collection(&'a CollectionJoinSource),
+    Computed { computed: &'a ComputedJoinSource },
+}
+
+impl Serialize for JoinSource {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Collection(source) => JoinSourceRef::Collection(source),
+            Self::Computed(computed) => JoinSourceRef::Computed { computed },
+        }
+        .serialize(serializer)
+    }
+}
+
+/// Reads a present member as its value, so an explicit `null` is refused
+/// rather than read as an absent member.
+fn present<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    T::deserialize(deserializer).map(Some)
+}
+
+/// Collection sources keep their lenient legacy members; the computed form
+/// is new and admits no collection members beside it. No member is nullable.
+#[derive(Deserialize)]
+struct JoinSourceWire {
+    #[serde(default, deserialize_with = "present")]
+    collection: Option<Vec<String>>,
+    #[serde(default, deserialize_with = "present")]
+    cardinality: Option<JoinSourceCardinality>,
+    #[serde(default, deserialize_with = "present")]
+    computed: Option<ComputedJoinSource>,
+}
+
+impl<'de> Deserialize<'de> for JoinSource {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let wire = JoinSourceWire::deserialize(deserializer)?;
+        match (wire.collection, wire.cardinality, wire.computed) {
+            (Some(collection), cardinality, None) => Ok(Self::Collection(CollectionJoinSource {
+                collection,
+                cardinality: cardinality.unwrap_or_default(),
+            })),
+            (None, None, Some(computed)) => Ok(Self::Computed(computed)),
+            (None, None | Some(_), None) => Err(serde::de::Error::missing_field("collection")),
+            (Some(_), _, Some(_)) | (None, Some(_), Some(_)) => Err(serde::de::Error::custom(
+                "a computed join source has no `collection` or `cardinality`",
+            )),
+        }
+    }
+}
+
+/// The left member of one join condition.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum JoinKeyLeft {
+    /// A collection already in the left tuple and the key path within it.
+    Collection {
+        collection: Vec<String>,
+        path: Vec<String>,
+    },
+    /// A computed source already in the left tuple; its key is its value.
+    Computed(ComputedJoinSourceId),
+}
+
+/// One equality condition between a member already in the left tuple and
+/// the source introduced by the current join stage.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct JoinKey {
-    left_collection: Vec<String>,
-    left_path: Vec<String>,
+    left: JoinKeyLeft,
     right_path: Vec<String>,
 }
 
@@ -83,22 +347,110 @@ impl JoinKey {
         right_path: Vec<String>,
     ) -> Self {
         Self {
-            left_collection,
-            left_path,
+            left: JoinKeyLeft::Collection {
+                collection: left_collection,
+                path: left_path,
+            },
             right_path,
         }
     }
 
-    pub fn left_collection(&self) -> &[String] {
-        &self.left_collection
+    /// A condition whose left member is the computed source `left`.
+    pub fn computed(left: ComputedJoinSourceId, right_path: Vec<String>) -> Self {
+        Self {
+            left: JoinKeyLeft::Computed(left),
+            right_path,
+        }
     }
 
+    pub const fn left(&self) -> &JoinKeyLeft {
+        &self.left
+    }
+
+    /// The left collection, or `None` when the left member is computed.
+    pub fn left_collection(&self) -> Option<&[String]> {
+        match &self.left {
+            JoinKeyLeft::Collection { collection, .. } => Some(collection),
+            JoinKeyLeft::Computed(_) => None,
+        }
+    }
+
+    /// The left key path. A computed left member is its own key, so its path
+    /// is always empty.
     pub fn left_path(&self) -> &[String] {
-        &self.left_path
+        match &self.left {
+            JoinKeyLeft::Collection { path, .. } => path,
+            JoinKeyLeft::Computed(_) => &[],
+        }
     }
 
     pub fn right_path(&self) -> &[String] {
         &self.right_path
+    }
+}
+
+#[derive(Serialize)]
+#[serde(untagged)]
+enum JoinKeyRef<'a> {
+    Collection {
+        left_collection: &'a [String],
+        left_path: &'a [String],
+        right_path: &'a [String],
+    },
+    Computed {
+        left_computed: ComputedJoinSourceId,
+        right_path: &'a [String],
+    },
+}
+
+impl Serialize for JoinKey {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let right_path = self.right_path.as_slice();
+        match &self.left {
+            JoinKeyLeft::Collection { collection, path } => JoinKeyRef::Collection {
+                left_collection: collection,
+                left_path: path,
+                right_path,
+            },
+            JoinKeyLeft::Computed(left_computed) => JoinKeyRef::Computed {
+                left_computed: *left_computed,
+                right_path,
+            },
+        }
+        .serialize(serializer)
+    }
+}
+
+/// No member is nullable, so a `null` beside either form is refused.
+#[derive(Deserialize)]
+struct JoinKeyWire {
+    #[serde(default, deserialize_with = "present")]
+    left_collection: Option<Vec<String>>,
+    #[serde(default, deserialize_with = "present")]
+    left_path: Option<Vec<String>>,
+    #[serde(default, deserialize_with = "present")]
+    left_computed: Option<ComputedJoinSourceId>,
+    right_path: Vec<String>,
+}
+
+impl<'de> Deserialize<'de> for JoinKey {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let wire = JoinKeyWire::deserialize(deserializer)?;
+        let left = match (wire.left_collection, wire.left_path, wire.left_computed) {
+            (Some(collection), Some(path), None) => JoinKeyLeft::Collection { collection, path },
+            (None, None, Some(id)) => JoinKeyLeft::Computed(id),
+            (Some(_), None, None) => return Err(serde::de::Error::missing_field("left_path")),
+            (None, _, None) => return Err(serde::de::Error::missing_field("left_collection")),
+            (Some(_), _, Some(_)) | (None, Some(_), Some(_)) => {
+                return Err(serde::de::Error::custom(
+                    "a computed join key has no `left_collection` or `left_path`",
+                ));
+            }
+        };
+        Ok(Self {
+            left,
+            right_path: wire.right_path,
+        })
     }
 }
 
@@ -136,6 +488,7 @@ struct JoinStep {
 
 /// Left-deep inner-join plan. Its private `second` field makes every plan
 /// contain at least two inputs, while each stage owns non-empty conditions.
+/// At most one source is computed, and at least one reads a collection.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct JoinPlan {
     first: JoinSource,
@@ -156,6 +509,20 @@ struct JoinPlanWire {
 pub enum JoinPlanError {
     DuplicateCollection(Vec<String>),
     UnknownLeftCollection(Vec<String>),
+    /// A computed source reuses the id of an earlier one.
+    DuplicateComputedSource(ComputedJoinSourceId),
+    /// A plan already holds its one computed source.
+    MultipleComputedSources(ComputedJoinSourceId),
+    /// A condition references a computed source not yet joined.
+    UnknownLeftComputed(ComputedJoinSourceId),
+    /// A computed right source is its own key, so its conditions take an
+    /// empty right path.
+    ComputedRightPath {
+        source: ComputedJoinSourceId,
+        right_path: Vec<String>,
+    },
+    /// Every source of the plan is computed.
+    NoCollectionSource,
 }
 
 impl fmt::Display for JoinPlanError {
@@ -171,6 +538,26 @@ impl fmt::Display for JoinPlanError {
                 "join condition references collection `{}` before it is joined",
                 collection.join("/")
             ),
+            Self::DuplicateComputedSource(id) => {
+                write!(
+                    formatter,
+                    "computed join source {id} is used more than once"
+                )
+            }
+            Self::MultipleComputedSources(id) => write!(
+                formatter,
+                "computed join source {id} is a second computed source; a join holds at most one"
+            ),
+            Self::UnknownLeftComputed(id) => write!(
+                formatter,
+                "join condition references computed source {id} before it is joined"
+            ),
+            Self::ComputedRightPath { source, right_path } => write!(
+                formatter,
+                "join condition on computed source {source} has right path `{}`; a computed source is its own key",
+                right_path.join("/")
+            ),
+            Self::NoCollectionSource => formatter.write_str("join plan has no collection source"),
         }
     }
 }
@@ -183,10 +570,7 @@ impl JoinPlan {
         second: JoinSource,
         conditions: JoinConditions,
     ) -> Result<Self, JoinPlanError> {
-        if first.collection == second.collection {
-            return Err(JoinPlanError::DuplicateCollection(second.collection));
-        }
-        validate_left_collections(&conditions, std::slice::from_ref(&first))?;
+        validate_stage(&[&first], &second, &conditions)?;
         Ok(Self {
             first,
             second: JoinStep {
@@ -202,13 +586,7 @@ impl JoinPlan {
         source: JoinSource,
         conditions: JoinConditions,
     ) -> Result<Self, JoinPlanError> {
-        if self
-            .sources()
-            .any(|existing| existing.collection == source.collection)
-        {
-            return Err(JoinPlanError::DuplicateCollection(source.collection));
-        }
-        validate_left_collections(&conditions, self.sources())?;
+        validate_stage(&self.sources().collect::<Vec<_>>(), &source, &conditions)?;
         self.rest.push(JoinStep { source, conditions });
         Ok(self)
     }
@@ -225,6 +603,18 @@ impl JoinPlan {
                 .iter()
                 .map(|step| (&step.source, &step.conditions)),
         )
+    }
+
+    /// The plan's collection sources in plan order, without its computed
+    /// source. Analyses of source paths read these; consumers that execute or
+    /// rewrite a plan must refuse a computed source instead.
+    pub fn collection_sources(&self) -> impl Iterator<Item = &CollectionJoinSource> {
+        self.sources().filter_map(JoinSource::as_collection)
+    }
+
+    /// The plan's computed source, if it has one.
+    pub fn computed_source(&self) -> Option<&ComputedJoinSource> {
+        self.sources().find_map(JoinSource::as_computed)
     }
 }
 
@@ -245,19 +635,71 @@ impl<'de> Deserialize<'de> for JoinPlan {
     }
 }
 
-fn validate_left_collections<'a>(
+/// Checks one stage joining `source` to the already joined `prior` sources:
+/// source identity, then the right paths of a computed source, then that
+/// every left member is already joined.
+fn validate_stage(
+    prior: &[&JoinSource],
+    source: &JoinSource,
     conditions: &JoinConditions,
-    sources: impl IntoIterator<Item = &'a JoinSource>,
 ) -> Result<(), JoinPlanError> {
-    let collections: Vec<_> = sources
-        .into_iter()
-        .map(|source| source.collection.as_slice())
-        .collect();
+    match source {
+        JoinSource::Collection(source) => {
+            if prior
+                .iter()
+                .filter_map(|source| source.as_collection())
+                .any(|existing| existing.collection == source.collection)
+            {
+                return Err(JoinPlanError::DuplicateCollection(
+                    source.collection.clone(),
+                ));
+            }
+        }
+        JoinSource::Computed(computed) => {
+            let mut earlier = prior.iter().filter_map(|source| source.as_computed());
+            if earlier.clone().any(|existing| existing.id == computed.id) {
+                return Err(JoinPlanError::DuplicateComputedSource(computed.id));
+            }
+            if prior
+                .iter()
+                .all(|existing| existing.as_collection().is_none())
+            {
+                return Err(JoinPlanError::NoCollectionSource);
+            }
+            if earlier.next().is_some() {
+                return Err(JoinPlanError::MultipleComputedSources(computed.id));
+            }
+            if let Some(condition) = conditions
+                .iter()
+                .find(|condition| !condition.right_path.is_empty())
+            {
+                return Err(JoinPlanError::ComputedRightPath {
+                    source: computed.id,
+                    right_path: condition.right_path.clone(),
+                });
+            }
+        }
+    }
     for condition in conditions.iter() {
-        if !collections.contains(&condition.left_collection.as_slice()) {
-            return Err(JoinPlanError::UnknownLeftCollection(
-                condition.left_collection.clone(),
-            ));
+        match &condition.left {
+            JoinKeyLeft::Collection { collection, .. } => {
+                if !prior
+                    .iter()
+                    .filter_map(|source| source.as_collection())
+                    .any(|source| source.collection == *collection)
+                {
+                    return Err(JoinPlanError::UnknownLeftCollection(collection.clone()));
+                }
+            }
+            JoinKeyLeft::Computed(id) => {
+                if !prior
+                    .iter()
+                    .filter_map(|source| source.as_computed())
+                    .any(|source| source.id == *id)
+                {
+                    return Err(JoinPlanError::UnknownLeftComputed(*id));
+                }
+            }
         }
     }
     Ok(())
