@@ -211,11 +211,11 @@ and concatenated-segment routes, other construction modes, isolated functions,
 and embedded stage views are outside this editor's bounded contract.
 
 When a source walk descends into a single group beneath an active repeated
-item, frame-pinned and collection-qualified field reads are not offered: their
-runtime frame association is not proven by this picker. Directly resolvable
-Boolean fields and independent expressions remain available. The picker is
-limited to graphs of 4,096 nodes, expression depth 64, and 256 dependency visits
-per candidate.
+item, frame-pinned and collection-qualified Boolean ancestor fields remain
+available, including in Boolean expressions. Separate and multi-hop singleton
+walks preserve the ancestor's collection identity and position; ordinary local
+fields still use the innermost matching scalar type. The picker is limited to
+graphs of 4,096 nodes, expression depth 64, and 256 dependency visits per candidate.
 
 Stored conditions outside this subset remain visible and unchanged. Inspecting
 the scope does not repair its expression or alter its content. Save and reopen
