@@ -184,41 +184,130 @@ fn unsupported_xlsx_schema_does_not_replace_existing_design() {
 }
 
 #[test]
-fn exports_and_reimports_transposed_xlsx_source() {
+fn refuses_unverified_integer_transposed_xlsx_source() {
     let project = mfd::import(&fixture("xlsx-transposed.mfd"))
         .unwrap()
         .project;
 
     let dir = TempDir::new("transposed");
     let design = dir.0.join("mapping.mfd");
-    let warnings = mfd::export(&project, &design).unwrap();
-    assert!(warnings.is_empty(), "{warnings:?}");
+    assert!(matches!(
+        mfd::export(&project, &design),
+        Err(mfd::MfdError::Unsupported(message)) if message.contains("integer row")
+    ));
+    assert!(!design.exists());
+}
 
-    let imported = mfd::import(&design).unwrap();
-    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
-    assert_eq!(imported.project.source, project.source);
-    assert_eq!(imported.project.source_path, project.source_path);
-    assert_eq!(imported.project.source_options, project.source_options);
-    assert!(engine::validate(&imported.project).is_empty());
-    let source = Instance::Repeated(vec![
-        Instance::Group(
-            (vec![
-                ("Category".into(), scalar(Value::String("Hardware".into()))),
-                ("Range9".into(), scalar(Value::Int(12))),
-                ("n".into(), scalar(Value::Int(1))),
-            ])
-            .into(),
-        ),
-        Instance::Group(
-            (vec![
-                ("Category".into(), scalar(Value::String("Software".into()))),
-                ("Range9".into(), scalar(Value::Int(18))),
-                ("n".into(), scalar(Value::Int(2))),
-            ])
-            .into(),
-        ),
-    ]);
-    assert_same_execution(&project, &imported.project, &source);
+fn transposed_record(category: &str, amount: f64, rate: f64, column: Option<i64>) -> Instance {
+    let mut fields = vec![
+        ("Category".into(), scalar(Value::String(category.into()))),
+        ("Amount".into(), scalar(Value::Float(amount))),
+        ("Rate".into(), scalar(Value::Float(rate))),
+    ];
+    if let Some(column) = column {
+        fields.push(("n".into(), scalar(Value::Int(column))));
+    }
+    Instance::Group(fields.into())
+}
+
+/// The reference application refuses source Cells without the generic
+/// selection entries and integer Cell datatypes, and reads each row as its
+/// own sequence. Export therefore aligns later rows through `n` filters.
+#[test]
+fn exports_transposed_xlsx_source_rows_aligned_by_column() {
+    let indexed = std::fs::read_to_string(fixture("xlsx-transposed-rows.mfd"))
+        .unwrap()
+        .replace(
+            r#"annotation="Amount" datatype="integer""#,
+            r#"annotation="Amount" datatype="double""#,
+        )
+        .replace(
+            r#"<field1 name="Amount" type="integer"/>"#,
+            r#"<field1 name="Amount" type="double"/>"#,
+        );
+    let plain = indexed
+        .replace(r#"<entry name="n" type="attribute" outkey="104"/>"#, "")
+        .replace(
+            r#"<vertex vertexkey="104"><edges><edge vertexkey="204"/></edges></vertex>"#,
+            "",
+        );
+    assert_ne!(plain, indexed);
+    for (label, design_text, has_index) in [("indexed", indexed, true), ("plain", plain, false)] {
+        let dir = TempDir::new(&format!("transposed-rows-{label}"));
+        let authored = dir.0.join("authored.mfd");
+        std::fs::write(&authored, design_text).unwrap();
+        let imported = mfd::import(&authored).unwrap();
+        assert!(
+            imported.warnings.is_empty(),
+            "{label}: {:?}",
+            imported.warnings
+        );
+        let project = imported.project;
+
+        let design = dir.0.join("mapping.mfd");
+        let warnings = mfd::export(&project, &design).unwrap();
+        assert!(warnings.is_empty(), "{label}: {warnings:?}");
+        let text = std::fs::read_to_string(&design).unwrap();
+        assert_eq!(
+            text.matches(r#"displayselectionmode="selection""#).count(),
+            2,
+            "{label}"
+        );
+        assert!(text.contains(r#"<entry name="Workbook" expanded="1">"#));
+        assert!(text.contains(r#"annotation="Amount" datatype="double""#));
+        assert!(!text.contains("ferrule-datatype"));
+        assert!(text.contains(r#"annotation="Rate" datatype="double" expanded="1""#));
+        assert_eq!(text.matches(r#"<component name="filter""#).count(), 2);
+        assert_eq!(text.matches(r#"<component name="equal""#).count(), 2);
+        // The driver row reuses the record's own `n` when the schema has one.
+        assert_eq!(
+            text.matches(r#"ferrule-row-alignment="1""#).count(),
+            if has_index { 2 } else { 3 },
+            "{label}"
+        );
+
+        let reimported = mfd::import(&design).unwrap();
+        assert!(
+            reimported.warnings.is_empty(),
+            "{label}: {:?}",
+            reimported.warnings
+        );
+        assert_eq!(reimported.project.source, project.source, "{label}");
+        assert_eq!(reimported.project.source_options, project.source_options);
+        assert_eq!(reimported.project.root, project.root, "{label}");
+        assert_eq!(
+            serde_json::to_value(&reimported.project.graph).unwrap(),
+            serde_json::to_value(&project.graph).unwrap(),
+            "{label}"
+        );
+        let column = |value| has_index.then_some(value);
+        let source = Instance::Repeated(vec![
+            transposed_record("Hardware", 12.0, 1.5, column(2)),
+            transposed_record("Software", 18.0, 2.25, column(3)),
+        ]);
+        assert_same_execution(&project, &reimported.project, &source);
+    }
+}
+
+/// Native item-at reads a compacted row sequence, not the aligned records.
+#[test]
+fn transposed_xlsx_source_aggregates_refuse_unaligned_row_cells() {
+    let mut project = mfd::import(&fixture("xlsx-transposed.mfd"))
+        .unwrap()
+        .project;
+    let ir::SchemaKind::Group { children, .. } = &mut project.source.kind else {
+        panic!("expected flat source");
+    };
+    children[1].kind = ir::SchemaKind::Scalar {
+        ty: ir::ScalarType::Float,
+    };
+    let dir = TempDir::new("transposed-aggregate");
+    let design = dir.0.join("mapping.mfd");
+    assert!(matches!(
+        mfd::export(&project, &design),
+        Err(mfd::MfdError::Unsupported(message)) if message.contains("aggregates over later")
+    ));
+    assert!(!design.exists());
 }
 
 #[test]
