@@ -588,6 +588,7 @@ fn prepare_export_mode(
         sequence_context_pins,
         siblings: node_siblings,
         json_parser_outputs,
+        whole_sequence_inputs,
     } = node::render(node::RenderArgs {
         project,
         sources: &sources,
@@ -879,6 +880,21 @@ fn prepare_export_mode(
         )?;
     }
     native_database_xml.mark_structural_edges(&edges, &mut structural_edges)?;
+    for source in sources.iter() {
+        if source.format == SideFormat::Xlsx && xlsx::is_transposed_source(source.options) {
+            xlsx::connect_transposed_source(xlsx::TransposedSourceWiring {
+                schema: source.schema,
+                options: source.options,
+                ports: &source.ports,
+                keys: &mut keys,
+                uid: &mut uid,
+                components: &mut components,
+                edges: &mut edges,
+                structural_edges: &mut structural_edges,
+                whole_sequence_inputs: &whole_sequence_inputs,
+            })?;
+        }
+    }
 
     // Database components reference a mapping-level datasource.
     let mut datasources: Vec<(String, String, BTreeSet<String>)> = Vec::new();
