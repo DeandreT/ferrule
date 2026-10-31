@@ -12,6 +12,7 @@ use crate::path_picker::SourcePathCatalog;
 pub(crate) mod computed_properties;
 mod copy_controls;
 mod output_controls;
+pub(crate) mod presence_controls;
 mod sort_controls;
 mod source_iteration;
 mod window_controls;
@@ -764,7 +765,7 @@ pub(crate) fn show_scope_editor(
         return None;
     }
     if let Some(condition) = scope.presence() {
-        ui.label("Optional presence is not editable yet; this saved scope is read-only.");
+        ui.label("Constructs zero or one group in the parent item; item controls do not apply.");
         ui.monospace(format!("presence condition node: {condition}"));
         return None;
     }
@@ -1790,7 +1791,7 @@ mod tests {
     }
 
     #[test]
-    fn optional_presence_renders_read_only_and_stays_unchanged() {
+    fn optional_presence_has_no_item_controls_and_stays_unchanged() {
         use crate::test_ui::ContextExt as _;
 
         let original = Scope {
