@@ -36,6 +36,8 @@ impl GraphViewer<'_> {
             Vec::new()
         };
         let filter_map_owned = self.owned_item_ids();
+        let lookup_editable = self.function_output.is_none()
+            && self.source_paths.lookup_editable(self.graph, node_id);
         let filter_map_inputs = graph_references::filter_map_item_ids(
             self.graph,
             self.root_scope,
@@ -122,7 +124,6 @@ impl GraphViewer<'_> {
                 | Node::OwnedRowDocumentPath(_)
                 | Node::OwnedSourceDocumentPath(_)
                 | Node::OwnedDynamicSourceField(_)
-                | Node::OwnedLookup(_)
                 | Node::OwnedCollectionFind(_)
                 | Node::OwnedXmlSerialize(_)
                 | Node::OwnedAggregate(_)
@@ -419,8 +420,30 @@ impl GraphViewer<'_> {
                     collection,
                     key,
                     value,
-                    ..
-                } => show_lookup_editor(ui, self.source_paths, collection, key, value),
+                    matches,
+                } => {
+                    let needle = *matches;
+                    show_lookup_editor(ui, self.source_paths, collection, key, value);
+                    if ui
+                        .add_enabled(
+                            lookup_editable
+                                && self.source_paths.first_owned_lookup(needle).is_some(),
+                            egui::Button::new("Use an exact input"),
+                        )
+                        .clicked()
+                        && let Some(lookup) = self.source_paths.first_owned_lookup(needle)
+                    {
+                        *node = Node::OwnedLookup(lookup);
+                    }
+                }
+                Node::OwnedLookup(lookup) => {
+                    ui.add_enabled_ui(lookup_editable, |ui| {
+                        self.source_paths.show_owned_lookup_editor(ui, lookup);
+                    });
+                    if !lookup_editable {
+                        ui.weak("Owned lookup editing is unavailable in this context. Stored paths and wiring are unchanged.");
+                    }
+                }
                 Node::DynamicSourceField { object, frame, .. } => {
                     ui.label(format!(
                         "open source object: {}{}",

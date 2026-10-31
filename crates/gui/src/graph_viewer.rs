@@ -41,6 +41,46 @@ mod graph_node_properties;
 pub(crate) fn readable_node_label(node: &mapping::Node) -> String {
     graph_node_presentation::node_label(node)
 }
+
+fn complete_node_title(node: Option<&Node>, fallback: String) -> String {
+    if let Some(Node::OwnedLookup(lookup)) = node {
+        format!(
+            "Lookup from {}\nCollection: {:?}\nKey: {:?}\nReturn field: {:?}\nReads exactly this input; a missing match returns Null",
+            crate::source_ownership::owner_label(&lookup.collection.owner),
+            lookup.collection.path,
+            lookup.key,
+            lookup.value,
+        )
+    } else {
+        graph_node_presentation::complete_title(node, fallback)
+    }
+}
+
+fn has_node_properties(node: &Node) -> bool {
+    matches!(node, Node::OwnedLookup(_)) || graph_node_presentation::has_properties(node)
+}
+
+fn show_owned_lookup_header(
+    ui: &mut Ui,
+    node: SnarlNodeId,
+    id: NodeId,
+    label: &str,
+) -> egui::Response {
+    ui.horizontal(|ui| {
+        let response = ui.strong(label);
+        let edit = crate::ui_kit::icon_button(ui, lucide_icons::Icon::Pencil, "Edit lookup", None);
+        focus::record_control(ui, edit.id, node);
+        let popup = ui.layer_id().id.with(("node_properties", id));
+        if edit.clicked() || crate::canvas_tools::take_edit(ui.ctx(), CanvasNode::Graph(id)) {
+            ui.ctx().data_mut(|data| data.insert_temp(popup, true));
+        }
+        ui.ctx().data_mut(|data| {
+            data.insert_temp(ui.layer_id().id.with(("node_edit_anchor", id)), edit);
+        });
+        response
+    })
+    .inner
+}
 #[path = "graph_planned_edits.rs"]
 mod graph_planned_edits;
 #[path = "graph_references.rs"]
@@ -634,6 +674,44 @@ impl GraphViewer<'_> {
         self.show_node_properties(pin, ui, snarl);
     }
 
+    fn insert_owned_lookup(
+        &mut self,
+        snarl: &mut Snarl<CanvasNode>,
+        pos: egui::Pos2,
+    ) -> Result<(NodeId, SnarlNodeId), String> {
+        if self.function_output.is_some()
+            || !self
+                .source_paths
+                .lookup_binding_supported(self.root_scope, &[])
+        {
+            return Err(
+                "Owned lookups require an ungrouped ordinary target context outside isolated functions."
+                    .into(),
+            );
+        }
+        let lookup = self
+            .source_paths
+            .first_owned_lookup(0)
+            .ok_or_else(|| "No supported static input collection is available.".to_owned())?;
+        self.plan_edit(
+            |viewer| {
+                viewer.insert_with_unconnected_inputs(snarl, pos, 1, |inputs| {
+                    Node::OwnedLookup(mapping::OwnedLookup {
+                        matches: inputs[0],
+                        ..lookup
+                    })
+                })
+            },
+            |_, inserted| {
+                let &(node, _) = inserted.as_ref().ok()?;
+                Some(GraphAction::InsertNode {
+                    node,
+                    position: editor_ui::CanvasPosition { x: pos.x, y: pos.y },
+                })
+            },
+        )
+    }
+
     pub(crate) fn source_block_connection_error(&self, block: usize) -> Option<String> {
         let index = block.checked_sub(1)?;
         let source = self.project_references.named_source(index)?;
@@ -1079,8 +1157,23 @@ impl GraphViewer<'_> {
                 .is_some_and(crate::filter_map_editor::editable)
     }
 
-    fn read_only_inputs(&self, node: &Node) -> bool {
+    fn read_only_inputs(&self, id: NodeId, node: &Node) -> bool {
+        if let Node::OwnedLookup(lookup) = node {
+            return self.function_output.is_some()
+                || !self.source_paths.lookup_editable(self.graph, id)
+                || !self
+                    .source_paths
+                    .lookup_owner_available(&lookup.collection.owner);
+        }
         graph_sequence::inputs_are_read_only(node) && !self.filter_map_inputs_writable(node)
+    }
+
+    fn read_only_input_message(&self, id: NodeId) -> &'static str {
+        if matches!(self.graph.nodes.get(&id), Some(Node::OwnedLookup(_))) {
+            "This owned Lookup is read-only in its current source or evaluation context."
+        } else {
+            graph_sequence::READ_ONLY_INPUTS_MESSAGE
+        }
     }
 
     fn check_filter_map_connection(
@@ -1125,11 +1218,71 @@ impl GraphViewer<'_> {
         Ok(())
     }
 
+    fn check_lookup_connection(
+        &self,
+        from: &OutPin,
+        to: &InPin,
+        snarl: &Snarl<CanvasNode>,
+    ) -> Result<(), String> {
+        let Some(from_id) = Self::mapping_id(snarl[from.id.node]) else {
+            return Ok(());
+        };
+        let lookups = crate::source_ownership::lookup_dependencies(self.graph, from_id);
+        if lookups.is_empty() {
+            return Ok(());
+        }
+        let refused = || {
+            "Owned Lookup values require an ungrouped ordinary receiving context; this connection would change their source ownership context.".to_owned()
+        };
+        if self.function_output.is_some()
+            || !crate::source_ownership::lookup_assignment_allowed(
+                self.graph,
+                from_id,
+                true,
+                |id| self.source_paths.lookup_editable(self.graph, id),
+            )
+        {
+            return Err(refused());
+        }
+        match snarl[to.id.node] {
+            CanvasNode::TargetBlock(block) => {
+                let leaf = self.target_leaf(block, to.id.input).ok_or_else(refused)?;
+                if !self
+                    .source_paths
+                    .lookup_binding_supported(self.root_scope, &leaf.chain)
+                {
+                    return Err(refused());
+                }
+            }
+            CanvasNode::Graph(id) | CanvasNode::Placeholder(id) => {
+                let node = self.graph.nodes.get(&id).ok_or_else(refused)?;
+                let mut inputs = Vec::new();
+                node.visit_inputs(&mut |input| {
+                    if !matches!(
+                        input.role,
+                        mapping::NodeInputRole::ItemIdentity
+                            | mapping::NodeInputRole::ItemReference
+                    ) {
+                        inputs.push(input);
+                    }
+                });
+                let input = inputs.get(to.id.input).copied().ok_or_else(refused)?;
+                if !crate::source_ownership::lookup_input_supported(node, input)
+                    || !self.source_paths.lookup_editable(self.graph, id)
+                {
+                    return Err(refused());
+                }
+            }
+            CanvasNode::SourceBlock(_) => return Err(refused()),
+        }
+        Ok(())
+    }
+
     fn set_input(&mut self, node_id: NodeId, idx: usize, from_id: NodeId) -> bool {
         let Some(node) = self.graph.nodes.get(&node_id) else {
             return false;
         };
-        if idx >= Self::input_count(node) || self.read_only_inputs(node) {
+        if idx >= Self::input_count(node) || self.read_only_inputs(node_id, node) {
             return false;
         }
         if let Err(error) = self.check_filter_map_connection(from_id, Some((node_id, idx))) {
@@ -1143,6 +1296,7 @@ impl GraphViewer<'_> {
             return true;
         }
         match node {
+            Node::OwnedLookup(lookup) => lookup.matches = from_id,
             Node::DynamicSourceField { key, .. } => *key = from_id,
             Node::XmlMixedContent { replacements, .. } => {
                 let Some(replacement) = replacements.get_mut(idx) else {
@@ -1667,7 +1821,11 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                     Some(Node::OwnedRowDocumentPath(_)) => "Owned row document path".into(),
                     Some(Node::OwnedSourceDocumentPath(_)) => "Owned document path".into(),
                     Some(Node::OwnedLookup(lookup)) => {
-                        format!("Owned lookup: {}", lookup.collection.path.join("/"))
+                        format!(
+                            "{}: Lookup {}",
+                            crate::source_ownership::owner_label(&lookup.collection.owner),
+                            lookup.collection.path.join("/")
+                        )
                     }
                     Some(Node::OwnedCollectionFind(find)) => {
                         format!("Owned find: {}", find.collection.path.join("/"))
@@ -1981,7 +2139,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
         let graph_node = Self::mapping_id(canvas_node).and_then(|id| self.graph.nodes.get(&id));
         let compact_header = graph_node
             .and_then(|node| graph_node_presentation::header(node, &full_title, is_output));
-        let full_title = graph_node_presentation::complete_title(graph_node, full_title);
+        let full_title = complete_node_title(graph_node, full_title);
         let header_hint = if matches!(
             canvas_node,
             CanvasNode::SourceBlock(_) | CanvasNode::TargetBlock(_)
@@ -2004,7 +2162,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                 if let Some(header) = compact_header {
                     let manual = crate::canvas_tools::manual_width(ui.ctx(), canvas_node);
                     if let Some(id) = Self::mapping_id(canvas_node)
-                        && graph_node.is_some_and(graph_node_presentation::has_properties)
+                        && graph_node.is_some_and(has_node_properties)
                     {
                         let anchor = ui.layer_id().id.with(("node_edit_anchor", id));
                         let popup = ui.layer_id().id.with(("node_properties", id));
@@ -2050,6 +2208,10 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                         });
                         graph_node_presentation::show_header(ui, header, &full_title, width)
                     }
+                } else if let (Some(id), Some(lookup @ Node::OwnedLookup(_))) =
+                    (Self::mapping_id(canvas_node), graph_node)
+                {
+                    show_owned_lookup_header(ui, node, id, &readable_node_label(lookup))
                 } else {
                     ui.label(&full_title)
                 }
@@ -2353,7 +2515,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                         ["start", "step", "restart (optional)"][idx].to_string()
                     }
                     Some(Node::ValueMap { .. }) => "input".to_string(),
-                    Some(Node::Lookup { .. }) => "match/key".to_string(),
+                    Some(Node::Lookup { .. } | Node::OwnedLookup(_)) => "match/key".to_string(),
                     Some(Node::DynamicSourceField { .. }) => "property name".to_string(),
                     Some(Node::CollectionFind { .. }) => ["predicate", "value"][idx].to_string(),
                     Some(Node::SequenceExists { sequence, .. }) => {
@@ -2657,13 +2819,12 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                 )
             })
             .is_some();
-        let full_title =
-            graph_node_presentation::complete_title(self.graph.nodes.get(&node_id), full_title);
+        let full_title = complete_node_title(self.graph.nodes.get(&node_id), full_title);
         if self
             .graph
             .nodes
             .get(&node_id)
-            .is_some_and(graph_node_presentation::has_properties)
+            .is_some_and(has_node_properties)
         {
             let anchor = ui.layer_id().id.with(("node_edit_anchor", node_id));
             let edit = ui
@@ -2774,6 +2935,10 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
     }
 
     fn connect(&mut self, from: &OutPin, to: &InPin, snarl: &mut Snarl<CanvasNode>) {
+        if let Err(error) = self.check_lookup_connection(from, to, snarl) {
+            self.error = Some(error);
+            return;
+        }
         self.plan_edit(
             |viewer| viewer.connect_in_place(from, to, snarl),
             |viewer, connected| {
@@ -2805,6 +2970,22 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
 
     fn show_graph_menu(&mut self, pos: egui::Pos2, ui: &mut Ui, snarl: &mut Snarl<CanvasNode>) {
         ui.set_style(ui.ctx().global_style());
+        if ui
+            .add_enabled(
+                self.function_output.is_none()
+                    && self
+                        .source_paths
+                        .lookup_binding_supported(self.root_scope, &[])
+                    && self.source_paths.first_owned_lookup(0).is_some(),
+                egui::Button::new("Lookup from one input"),
+            )
+            .clicked()
+        {
+            self.error = self.insert_owned_lookup(snarl, pos).err();
+            ui.close();
+            return;
+        }
+        ui.separator();
         if let Some(template) = node_palette::show_available(
             ui,
             self.primary_root_authoring && self.source_paths.first_primary_root_field().is_some(),
