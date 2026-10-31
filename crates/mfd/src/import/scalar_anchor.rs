@@ -16,20 +16,49 @@ impl GraphBuilder<'_> {
         key: u32,
         active_anchor: &[String],
     ) -> Option<NodeId> {
-        self.anchored_scalar_node(key, active_anchor, &mut BTreeSet::new())
-            .or_else(|| self.value_node(key))
+        if self.value_feed_is_refused(key) {
+            return None;
+        }
+        let node = self
+            .anchored_scalar_node(key, active_anchor, None, &mut BTreeSet::new())
+            .or_else(|| self.value_node(key));
+        if self.value_feed_is_refused(key) {
+            None
+        } else {
+            node
+        }
+    }
+
+    pub(super) fn binding_scalar_node_at_anchor(
+        &mut self,
+        key: u32,
+        active_anchor: &[String],
+        target: &[String],
+    ) -> Option<NodeId> {
+        if self.value_feed_is_refused(key) {
+            return None;
+        }
+        let node = self
+            .anchored_scalar_node(key, active_anchor, Some(target), &mut BTreeSet::new())
+            .or_else(|| self.value_node(key));
+        if self.value_feed_is_refused(key) {
+            None
+        } else {
+            node
+        }
     }
 
     fn anchored_scalar_node(
         &mut self,
         key: u32,
         active_anchor: &[String],
+        target: Option<&[String]>,
         active: &mut BTreeSet<u32>,
     ) -> Option<NodeId> {
         if !active.insert(key) {
             return None;
         }
-        let result = self.anchored_scalar_node_inner(key, active_anchor, active);
+        let result = self.anchored_scalar_node_inner(key, active_anchor, target, active);
         active.remove(&key);
         result
     }
@@ -38,6 +67,7 @@ impl GraphBuilder<'_> {
         &mut self,
         key: u32,
         active_anchor: &[String],
+        target: Option<&[String]>,
         active: &mut BTreeSet<u32>,
     ) -> Option<NodeId> {
         if let Some(source_path) = self.source_abs_path(key) {
@@ -57,6 +87,23 @@ impl GraphBuilder<'_> {
             });
         }
 
+        if let Some(intermediate) = self.intermediate_feed(key) {
+            if let Some(target) = target
+                && let Some(node) = self.scope_projected_binding_node(key, active_anchor, target)
+            {
+                return Some(node);
+            }
+            if intermediate.suffix.is_empty() {
+                // Preserve the ordinary cached expression for transparent
+                // scalar forwards (notably collection reductions).
+                return None;
+            }
+            return self.projected_value_node_at_anchor(
+                intermediate.feed,
+                &intermediate.suffix,
+                active_anchor,
+            );
+        }
         let index = *self.fn_by_output.get(&key)?;
         let function = self.fn_components.get(index)?;
         if self.json_parser_array_filter(index) {
@@ -81,6 +128,14 @@ impl GraphBuilder<'_> {
             return Some(self.alloc(node));
         }
         let inputs = self.fn_components.get(index)?.inputs.clone();
+        let filter_branch = is_filter(&self.fn_components[index]).then(|| {
+            self.fn_components[index]
+                .output_pins
+                .get(1)
+                .copied()
+                .flatten()
+                == Some(key)
+        });
         let input_feeds = inputs
             .iter()
             .map(|input| input.and_then(|input| self.edge_from.get(&input)).copied())
@@ -93,7 +148,7 @@ impl GraphBuilder<'_> {
             if self.value_node(feed) != Some(original) {
                 return None;
             }
-            self.anchored_scalar_node(feed, active_anchor, active)
+            self.anchored_scalar_node(feed, active_anchor, target, active)
                 .filter(|remapped| *remapped != original)
         };
         let mut remap_or_original =
@@ -115,11 +170,25 @@ impl GraphBuilder<'_> {
                 then,
                 else_,
             } => {
-                let remapped = [
-                    remap_or_original(0, condition),
-                    remap_or_original(1, then),
-                    remap_or_original(2, else_),
-                ];
+                // A synthetic filter conditional has predicate=input 1 and
+                // value=input 0, unlike an ordinary if-else component.
+                let remapped = match filter_branch {
+                    Some(false) => [
+                        remap_or_original(1, condition),
+                        remap_or_original(0, then),
+                        else_,
+                    ],
+                    Some(true) => [
+                        remap_or_original(1, condition),
+                        then,
+                        remap_or_original(0, else_),
+                    ],
+                    None => [
+                        remap_or_original(0, condition),
+                        remap_or_original(1, then),
+                        remap_or_original(2, else_),
+                    ],
+                };
                 (remapped != [condition, then, else_]).then(|| Node::If {
                     condition: remapped[0],
                     then: remapped[1],
@@ -161,7 +230,7 @@ impl GraphBuilder<'_> {
                 if self.value_node(passthrough) != Some(original_id) {
                     return None;
                 }
-                return self.anchored_scalar_node(passthrough, active_anchor, active);
+                return self.anchored_scalar_node(passthrough, active_anchor, target, active);
             }
         }?;
         Some(self.alloc(node))

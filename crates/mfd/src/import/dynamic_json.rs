@@ -160,6 +160,10 @@ impl DynamicJsonTarget {
         let previous_graph = builder.graph.clone();
         let previous_next_id = builder.next_id;
         let previous_fn_nodes = builder.fn_nodes.clone();
+        let previous_filter_nodes = builder.filter_nodes.clone();
+        let previous_refused_value_feeds = builder.refused_value_feeds.clone();
+        let previous_refused_filter_projections = builder.refused_filter_projections.clone();
+        let previous_scope_projection_feeds = builder.scope_projection_feeds.clone();
         let previous_sequence_items = builder.sequence_items.clone();
         let previous_sequence_scope_components = builder.sequence_scope_components.clone();
         let previous_sequence_predicate_components = builder.sequence_predicate_components.clone();
@@ -193,6 +197,10 @@ impl DynamicJsonTarget {
                 builder.graph = previous_graph;
                 builder.next_id = previous_next_id;
                 builder.fn_nodes = previous_fn_nodes;
+                builder.filter_nodes = previous_filter_nodes;
+                builder.refused_value_feeds = previous_refused_value_feeds;
+                builder.refused_filter_projections = previous_refused_filter_projections;
+                builder.scope_projection_feeds = previous_scope_projection_feeds;
                 builder.sequence_items = previous_sequence_items;
                 builder.sequence_scope_components = previous_sequence_scope_components;
                 builder.sequence_predicate_components = previous_sequence_predicate_components;

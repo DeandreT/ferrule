@@ -85,7 +85,9 @@ pub(in crate::import) fn attach(
         },
         None => None,
     };
-    if builder.graph.nodes.len() > MAX_NODES - 3 || !bounded_expressions(&builder.graph) {
+    if builder.graph.nodes.len() > MAX_NODES - 3
+        || !bounded_expressions(&builder.graph, root, message)
+    {
         rollback_builder(builder, attachment, previous_next);
         warn(
             &mut builder.warnings,
@@ -235,7 +237,7 @@ fn plan(
     if !bounded_schema(&source.schema)
         || !bounded_schema(&target.schema)
         || !bounded_scopes(root)
-        || !bounded_expressions(&builder.graph)
+        || !bounded_expressions(&builder.graph, root, None)
     {
         return Err("requires bounded closed schemas and ordinary scalar graph/scope shapes");
     }
@@ -465,12 +467,33 @@ fn bounded_scopes(root: &Scope) -> bool {
     true
 }
 
-fn bounded_expressions(graph: &Graph) -> bool {
+fn bounded_expressions(graph: &Graph, root: &Scope, message: Option<NodeId>) -> bool {
     if graph.nodes.len() > MAX_NODES {
         return false;
     }
+    // Eager lowering can retain an unreferenced collection lookup before a
+    // scope-owned projection is rebound to its current item. Only executable
+    // roots constrain the attached scalar guard; keep the total allocation cap.
+    let mut scopes = vec![root];
+    let mut pending = message.into_iter().collect::<Vec<_>>();
+    while let Some(scope) = scopes.pop() {
+        scope.visit_roots(&mut |root| pending.push(root.node));
+        scopes.extend(scope.nested_scopes().map(|(_, scope)| scope));
+    }
+    let mut reachable = BTreeSet::new();
+    while let Some(id) = pending.pop() {
+        if reachable.insert(id)
+            && let Some(node) = graph.nodes.get(&id)
+        {
+            pending.extend(node.dependencies());
+        }
+    }
     let mut dependencies = 0usize;
-    for node in graph.nodes.values() {
+    for node in graph
+        .nodes
+        .iter()
+        .filter_map(|(id, node)| reachable.contains(id).then_some(node))
+    {
         let count = match node {
             Node::Const { .. } | Node::SourceField { .. } | Node::Position { .. } => 0,
             Node::Call { args, .. } => args.len(),
@@ -487,7 +510,7 @@ fn bounded_expressions(graph: &Graph) -> bool {
     // accept only ordinary scalar dependencies and cap its recursion depth.
     let mut depths = BTreeMap::new();
     let mut active = BTreeSet::new();
-    for id in graph.nodes.keys() {
+    for id in &reachable {
         if expression_depth(*id, graph, &mut depths, &mut active).is_none() {
             return false;
         }

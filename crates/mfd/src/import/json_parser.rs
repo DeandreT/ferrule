@@ -25,6 +25,12 @@ pub(super) struct Recipe {
     pub(super) lookup_pins: lookup::RawPins,
 }
 
+impl Recipe {
+    pub(super) fn input_pins(&self) -> impl Iterator<Item = u32> {
+        std::iter::once(self.input)
+    }
+}
+
 /// A saved string parser with no declared outputs cannot supply a value to the
 /// mapping. Keep reading its schema and input declaration, but do not invent a
 /// demand for parsing or promote it to a physical source.
