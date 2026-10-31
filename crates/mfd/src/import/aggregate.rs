@@ -186,13 +186,14 @@ impl GraphBuilder<'_> {
                 .and_then(|feed| self.sequence_source_path(feed))
             {
                 let frame = self.context_path(&context);
-                let expression = self.value_node_in_collection(sequence_feed, &frame)?;
+                let expression = self.anchored_value_node_in_collection(sequence_feed, &frame)?;
                 (context.source, context.path, Vec::new(), Some(expression))
             } else {
                 let source_schema = self.sources.first()?.schema.clone();
                 let dependencies = self.sequence_dependency_paths(sequence_feed);
                 let collection = compatible_collection(&source_schema, &dependencies)?;
-                let expression = self.value_node_in_collection(sequence_feed, &collection)?;
+                let expression =
+                    self.anchored_value_node_in_collection(sequence_feed, &collection)?;
                 (0, collection, Vec::new(), Some(expression))
             };
 

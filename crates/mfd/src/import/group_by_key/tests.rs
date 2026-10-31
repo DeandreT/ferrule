@@ -18,6 +18,10 @@ fn builder<'a>(
         parser_input_nodes: BTreeMap::new(),
         next_id: 0,
         fn_nodes: BTreeMap::new(),
+        filter_nodes: BTreeMap::new(),
+        refused_value_feeds: BTreeSet::new(),
+        refused_filter_projections: BTreeSet::new(),
+        scope_projection_feeds: BTreeSet::new(),
         sequence_items: BTreeMap::new(),
         sequence_scope_components: BTreeSet::new(),
         sequence_predicate_components: BTreeSet::new(),
@@ -75,6 +79,10 @@ fn state(builder: &GraphBuilder<'_>) -> Vec<String> {
         format!("{:?}", builder.parser_input_nodes),
         format!("{:?}", builder.next_id),
         format!("{:?}", builder.fn_nodes),
+        format!("{:?}", builder.filter_nodes),
+        format!("{:?}", builder.refused_value_feeds),
+        format!("{:?}", builder.refused_filter_projections),
+        format!("{:?}", builder.scope_projection_feeds),
         format!("{:?}", builder.sequence_items),
         format!("{:?}", builder.sequence_scope_components),
         format!("{:?}", builder.sequence_predicate_components),
@@ -460,7 +468,7 @@ fn anchored_scalar_and_binding_keys_reuse_the_proven_pregroup_adapter() {
                 ),
             }
             let before = state(&graph);
-            assert_eq!(before.len(), 34);
+            assert_eq!(before.len(), 38);
             assert_eq!(graph.group_by_key_node(0, &anchor), Some(key));
             assert_eq!(graph.scalar_node_at_anchor(122, &anchor), Some(key));
             assert_eq!(
@@ -551,7 +559,7 @@ fn refused_anchored_apis_equal_the_complete_legacy_fallback() {
                     candidate.warnings.push("prior diagnostic".into());
                 }
                 let before = state(&graph);
-                assert_eq!(before.len(), 34);
+                assert_eq!(before.len(), 38);
                 assert_eq!(graph.group_by_key_node(0, &anchor), None);
                 assert_eq!(state(&graph), before);
                 let target = ["Group".into(), "Key".into()];
@@ -777,7 +785,7 @@ fn consumer_refusals_preserve_real_scalar_and_binding_fallbacks_and_all_state() 
                 candidate.warnings.push("prior diagnostic".into());
             }
             let before = state(&graph);
-            assert_eq!(before.len(), 34);
+            assert_eq!(before.len(), 38);
             assert_eq!(graph.group_by_key_node(0, &["Rows".into()]), None);
             assert_eq!(state(&graph), before);
             let anchor = ["Rows".into()];
@@ -994,7 +1002,7 @@ fn skipped_and_shadowed_target_owners_keep_real_api_legacy_state() {
                     candidate.warnings.push("prior diagnostic".into());
                 }
                 let before = state(&graph);
-                assert_eq!(before.len(), 34);
+                assert_eq!(before.len(), 38);
                 let anchor = ["Rows".into()];
                 let target = ["Group".into(), "Key".into()];
                 assert_eq!(graph.group_by_key_node(0, &anchor), None);
