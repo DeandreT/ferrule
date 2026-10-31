@@ -95,6 +95,10 @@ fn with_design_world(
         parser_input_nodes: BTreeMap::new(),
         next_id: 0,
         fn_nodes: BTreeMap::new(),
+        filter_nodes: BTreeMap::new(),
+        refused_value_feeds: BTreeSet::new(),
+        refused_filter_projections: BTreeSet::new(),
+        scope_projection_feeds: BTreeSet::new(),
         sequence_items: BTreeMap::new(),
         sequence_scope_components: BTreeSet::new(),
         sequence_predicate_components: BTreeSet::new(),
@@ -241,6 +245,19 @@ pub(super) fn state(
         ),
         ("next_id", format!("{:?}", builder.next_id)),
         ("fn_nodes", format!("{:?}", builder.fn_nodes)),
+        ("filter_nodes", format!("{:?}", builder.filter_nodes)),
+        (
+            "refused_value_feeds",
+            format!("{:?}", builder.refused_value_feeds),
+        ),
+        (
+            "refused_filter_projections",
+            format!("{:?}", builder.refused_filter_projections),
+        ),
+        (
+            "scope_projection_feeds",
+            format!("{:?}", builder.scope_projection_feeds),
+        ),
         ("sequence_items", format!("{:?}", builder.sequence_items)),
         (
             "sequence_scope_components",

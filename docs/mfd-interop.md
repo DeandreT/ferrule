@@ -68,6 +68,24 @@ may be combined. `--require-executable` applies to single-project imports and
 cannot be combined with `--pipeline`. Static admission does not execute the
 mapping or establish behavioral equivalence with another application.
 
+Source-field filters retain their selected true or false branch. Proven singleton
+scalar values use a nullable conditional; supported repeated-field selections use
+collection lookup. Missing, nonboolean, or unsupported predicates never become
+unfiltered bindings: repair-oriented import skips the affected binding and warns,
+and executable import refuses the partial mapping.
+Refusal propagates through dependent functions, defaults, UDFs, and scalar parsers;
+it is not an absent value that a default may replace. Collection-position
+predicates must refer to the selected collection. Repeating filtered-variable
+inputs to scalar UDFs or parsers are refused where the consumer cannot retain
+the active item context.
+Structural serializers also refuse filtered sequences whose selection they cannot preserve.
+Specialized scalar lowering and refusal checks share one producer input contract,
+including structured UDF parameters. Refusal of one projected child does not
+discard supported sibling projections; an invalid filter predicate still refuses
+every projection of that filter branch.
+UDF input admission is per pin: scalar arguments retain scalar handling, while
+structural catalog inputs refuse crossed filters that cannot be preserved.
+
 CSV, JSON and EDI document imports diagnose connected `FileInstance` filename
 inputs and outputs. Their document-loading and output-document behavior is not
 represented by the imported data mapping, so executable import refuses them.
