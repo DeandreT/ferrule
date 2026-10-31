@@ -107,9 +107,10 @@ pub(super) fn eval_basic_owned_groups<'a>(
             .with_owned_context(&candidate)
             .with_owned_trace_phase(crate::TraceOwnedPhase::Selection);
         let mut item_context = context.to_vec();
-        item_context.extend(extension.extension.instances.iter().copied());
         let mut item_positions = positions.to_vec();
-        item_positions.extend_from_slice(&extension.extension.positions);
+        extension
+            .extension
+            .append_to(&mut item_context, &mut item_positions);
         // Unlike ordinary window selection, this is deliberately fused: the
         // current candidate's key/boundary and post precede the next filter.
         if !filter_before_sort
@@ -229,7 +230,9 @@ pub(super) fn eval_basic_owned_groups<'a>(
             owned_ancestry: ancestry,
         };
         let mut item_positions = positions.to_vec();
-        item_positions.extend_from_slice(&first.extension.positions);
+        first
+            .extension
+            .append_positions_to(context.len(), &mut item_positions);
         record_owned_event(
             program.with_owned_context(&candidate),
             &item_positions,
@@ -505,9 +508,14 @@ pub(super) fn eval_basic_owned_groups<'a>(
         item_context.extend(wrapper);
         item_context.push(members);
         let mut output_positions = positions.to_vec();
-        output_positions.extend_from_slice(&first.extension.positions);
+        first
+            .extension
+            .append_positions_to(context.len(), &mut output_positions);
         if terminal.is_none() {
             output_positions.push(PositionFrame {
+                binding: crate::source_iteration::InstanceBinding::ContextSlot(
+                    item_context.len() - 1,
+                ),
                 generated_origin: None,
                 collection: raw_collection.to_vec(),
                 index: ordinal + 1,
@@ -518,6 +526,8 @@ pub(super) fn eval_basic_owned_groups<'a>(
             });
         } else {
             let position = &mut output_positions[slot];
+            position.binding =
+                crate::source_iteration::InstanceBinding::ContextSlot(item_context.len() - 1);
             position.index = ordinal + 1;
             position.grouped = wrapper.is_some();
         }
