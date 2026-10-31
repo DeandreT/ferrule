@@ -1817,3 +1817,6 @@ mod primary_document_tests;
 
 #[cfg(test)]
 mod keyboard_accessibility_tests;
+
+#[cfg(test)]
+mod exact_decimal_authoring_tests;
