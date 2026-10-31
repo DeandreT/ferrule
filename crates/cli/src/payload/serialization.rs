@@ -7,7 +7,8 @@ use mapping::{EdiAutocomplete, EdiBoundaryKind, FormatOptions};
 use super::super as cli;
 use super::super::format_selection::{self, Direction, JsonMode, Origin, SelectedFormat};
 use super::super::{
-    extension_of, formatted_edi_output, has_legacy_xlsx_layout, protobuf_layout, x12_separators,
+    formatted_edi_output, has_flat_xlsx_layout, protobuf_layout, transposed_xlsx_records,
+    x12_separators,
 };
 use super::profile::{self, BoundaryProfile};
 use super::{
@@ -218,7 +219,10 @@ fn render_payload_with_limit(
         return Ok(PayloadBytes::Ready(bytes, 1));
     }
     if let SelectedFormat::Swift(_) = selected {
-        bail!("SWIFT MT output is not supported; `swift_mt` is input-only");
+        let formatted = formatted_edi_output(instance, options)?;
+        let bytes = format_edi::swift::to_bytes_with_options(schema, &formatted, options)
+            .context("rendering SWIFT MT output payload")?;
+        return Ok(PayloadBytes::Ready(bytes, 1));
     }
     if let SelectedFormat::Pdf(_) = selected {
         bail!("PDF output is not supported; `pdf` is input-only");
@@ -414,10 +418,9 @@ fn render_payload_with_limit(
         }
         SelectedFormat::MissingPdf => bail!("PDF output is not supported; PDF is input-only"),
         SelectedFormat::MissingIdoc => bail!("unsupported output payload extension: .idoc"),
-        SelectedFormat::MissingSwift => bail!(
-            "unsupported output payload extension: .{}",
-            extension_of(path)?
-        ),
+        SelectedFormat::MissingSwift => {
+            bail!("SWIFT MT output requires an embedded `swift_mt` layout and message headers")
+        }
         SelectedFormat::Unsupported(other) => {
             bail!("unsupported output payload extension: .{other}")
         }
@@ -486,7 +489,7 @@ fn render_xlsx_payload(
         if options.xlsx_grid.is_some()
             || options.xlsx_composite.is_some()
             || options.xlsx_worksheet_set.is_some()
-            || has_legacy_xlsx_layout(options)
+            || has_flat_xlsx_layout(options)
         {
             bail!("`xlsx_hierarchical` cannot be combined with other XLSX layout options");
         }
@@ -494,8 +497,8 @@ fn render_xlsx_payload(
             .context("rendering hierarchical XLSX output payload")?;
         return Ok((bytes, worksheets));
     }
-    if options.xlsx_grid.is_some() {
-        bail!("grid XLSX output is not supported; `xlsx_grid` is input-only");
+    if options.has_xlsx_grid() {
+        bail!("grid XLSX output is not supported; XLSX grids are input-only");
     }
     if options.xlsx_worksheet_set.is_some() {
         bail!("worksheet-set XLSX output is not supported; `xlsx_worksheet_set` is input-only");
@@ -504,7 +507,15 @@ fn render_xlsx_payload(
         bail!("composite XLSX output is not supported; `xlsx_composite` is input-only");
     }
     if !options.xlsx_rows.is_empty() {
-        bail!("transposed XLSX output is not supported; `xlsx_rows` is input-only");
+        let records = transposed_xlsx_records(instance, options)?;
+        let bytes = format_xlsx::to_bytes_transposed(
+            schema,
+            records,
+            options.xlsx_sheet.as_deref(),
+            &options.xlsx_rows,
+        )
+        .context("rendering transposed XLSX output payload")?;
+        return Ok((bytes, records.len()));
     }
     let rows = instance
         .as_repeated()
@@ -578,7 +589,7 @@ fn render_edi_payload(
             bail!("SAP IDoc output requires an embedded runtime layout")
         }
         EdiBoundaryKind::SwiftMt => {
-            bail!("SWIFT MT output is not supported; SWIFT MT is input-only")
+            bail!("SWIFT MT output requires an embedded `swift_mt` layout")
         }
     }
     .context("rendering EDI output payload")

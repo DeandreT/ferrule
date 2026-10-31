@@ -138,14 +138,12 @@ pub(super) fn collect_scope_owners<'a>(
 pub(super) fn collect_scope_item_ids(root: &Scope, items: &mut std::collections::BTreeSet<NodeId>) {
     let mut pending = vec![root];
     while let Some(scope) = pending.pop() {
-        if let Some(sequence) = scope.sequence() {
-            items.extend(sequence.owned_items());
-        }
-        if let Some(segments) = scope.concatenated() {
-            pending.extend(segments.iter());
-        }
-        pending.extend(scope.children.iter());
-        pending.extend(scope.dynamic_children.iter().map(|child| &child.scope));
+        scope.visit_roots(&mut |root| {
+            if root.role == mapping::ScopeRootRole::GeneratedItem {
+                items.insert(root.node);
+            }
+        });
+        pending.extend(scope.nested_scopes().map(|(_, scope)| scope));
     }
 }
 

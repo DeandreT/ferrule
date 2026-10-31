@@ -134,14 +134,18 @@ fn cyclic_ref_siblings_follow_the_owning_dialect() {
     let legacy = import_str_result(
         r##"{
   "$schema":"http://json-schema.org/draft-07/schema#",
-  "$ref":"#/definitions/Loop",
-  "minimum":"ignored",
+  "type":"object",
+  "properties":{"Value":{"$ref":"#/definitions/Loop","minimum":"ignored"}},
   "definitions":{
     "Loop":{"$ref":"#/definitions/Loop","type":"integer","minimum":"ignored"}
   }
 }"##,
     );
-    let Ok(legacy) = legacy else {
+    let Some(legacy) = legacy
+        .as_ref()
+        .ok()
+        .and_then(|schema| schema.child("Value"))
+    else {
         panic!("legacy cyclic ref siblings should be ignored");
     };
     assert_eq!(

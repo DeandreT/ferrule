@@ -706,3 +706,162 @@ fn runtime_rejects_schema_mismatches_and_oversized_input() {
         Err(FlexTextError::InputTooLarge)
     ));
 }
+
+#[test]
+fn wide_fixed_columns_refuse_padding_past_the_output_limit_before_allocating() {
+    let layout = layout(FlexCommand::SplitOnce {
+        name: "parts".into(),
+        splitter: OnceSplitter::FixedColumns(nonzero(u32::MAX)),
+        first: Box::new(FlexCommand::store("head", ScalarType::String, None)),
+        second: Box::new(FlexCommand::store("tail", ScalarType::String, None)),
+    });
+    let parsed = parse(&layout, "abc");
+    assert!(matches!(
+        to_string(&layout.schema(), &parsed, &layout),
+        Err(FlexTextError::OutputTooLarge)
+    ));
+}
+
+#[test]
+fn many_wide_fixed_width_records_stop_at_the_output_limit() {
+    let wide = |width| {
+        FlexTextLayout::new(
+            "document",
+            FlexCommand::FixedWidthRecords {
+                name: "rows".into(),
+                fields: vec![
+                    FixedWidthRecordField::new("value", ScalarType::String, nonzero(width))
+                        .unwrap(),
+                ],
+                fill_char: ' ',
+                record_delimiters: true,
+                treat_empty_as_absent: false,
+            },
+            FlexLineEnding::Lf,
+            false,
+        )
+        .unwrap()
+    };
+    let rows = |count| {
+        Instance::Group(
+            vec![(
+                "rows".into(),
+                Instance::Repeated(
+                    (0..count)
+                        .map(|_| {
+                            Instance::Group(
+                                vec![("value".into(), scalar(Value::String("x".into())))].into(),
+                            )
+                        })
+                        .collect(),
+                ),
+            )]
+            .into(),
+        )
+    };
+    // Each record alone is within the limit; together they are not.
+    let layout = wide(8_000_000);
+    assert!(matches!(
+        to_string(&layout.schema(), &rows(400), &layout),
+        Err(FlexTextError::OutputTooLarge)
+    ));
+    // A field wider than the whole limit is refused before padding it.
+    let layout = wide(u32::MAX);
+    assert!(matches!(
+        to_string(&layout.schema(), &rows(1), &layout),
+        Err(FlexTextError::OutputTooLarge)
+    ));
+    // Ordinary padding is unchanged.
+    let layout = wide(3);
+    assert_eq!(
+        to_string(&layout.schema(), &rows(2), &layout).unwrap(),
+        "x  \nx  "
+    );
+}
+
+#[test]
+fn undelimited_fixed_width_length_errors_name_the_command_path() {
+    let layout = FlexTextLayout::new(
+        "document",
+        FlexCommand::FixedWidthRecords {
+            name: "rows".into(),
+            fields: vec![
+                FixedWidthRecordField::new("value", ScalarType::String, nonzero(3)).unwrap(),
+            ],
+            fill_char: ' ',
+            record_delimiters: false,
+            treat_empty_as_absent: false,
+        },
+        FlexLineEnding::Lf,
+        false,
+    )
+    .unwrap();
+    match from_str("abcd", &layout.schema(), &layout) {
+        Err(FlexTextError::Data { path, message }) => {
+            assert_eq!(path, "document/rows");
+            assert!(
+                message.contains("not a multiple of record width 3"),
+                "{message}"
+            );
+        }
+        other => panic!("expected a data error, got {other:?}"),
+    }
+}
+
+#[test]
+fn data_carriage_returns_before_line_breaks_round_trip_or_refuse() {
+    let store = |ending| {
+        FlexTextLayout::new(
+            "document",
+            FlexCommand::store("text", ScalarType::String, None),
+            ending,
+            false,
+        )
+        .unwrap()
+    };
+    let split = |ending| {
+        FlexTextLayout::new(
+            "document",
+            FlexCommand::SplitOnce {
+                name: "parts".into(),
+                splitter: OnceSplitter::Delimiter("\r".into()),
+                first: Box::new(FlexCommand::store("head", ScalarType::String, None)),
+                second: Box::new(FlexCommand::store("tail", ScalarType::String, None)),
+            },
+            ending,
+            false,
+        )
+        .unwrap()
+    };
+    for (layout, input) in [
+        (store(FlexLineEnding::Lf), "x\r\r\n"),
+        (split(FlexLineEnding::Lf), "a\r\r\nb"),
+    ] {
+        let parsed = parse(&layout, input);
+        match to_string(&layout.schema(), &parsed, &layout) {
+            Err(FlexTextError::Data { message, .. }) => {
+                assert!(
+                    message.contains("carriage return before a line break"),
+                    "{message}"
+                );
+            }
+            other => panic!("{input:?} should be refused under LF, got {other:?}"),
+        }
+    }
+    for (layout, input) in [
+        (store(FlexLineEnding::Crlf), "x\r\r\n"),
+        (split(FlexLineEnding::Crlf), "a\r\r\nb"),
+    ] {
+        let parsed = parse(&layout, input);
+        let output = to_string(&layout.schema(), &parsed, &layout).unwrap();
+        assert_eq!(output, input);
+        assert_eq!(parse(&layout, &output), parsed);
+    }
+    // A CRLF break inside data still becomes the layout's LF break.
+    let layout = store(FlexLineEnding::Lf);
+    let parsed = parse(&layout, "a\r\nb");
+    assert_eq!(
+        to_string(&layout.schema(), &parsed, &layout).unwrap(),
+        "a\nb"
+    );
+}

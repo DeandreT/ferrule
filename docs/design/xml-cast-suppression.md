@@ -58,10 +58,11 @@ occurrence bounds and `xs:double` declarations are exactly representable;
 otherwise an ordinary document keeps the request through the document profile.
 The authoritative XSD may use named types, references and value facets, which
 never change written text, but not the element settings listed above. An
-explicit `AddSchemaLocation="1"` stays unresolved; an absent setting is
-imported like every other XML target, without the reference application's
-automatic schema URI. Native export emits the suppression token on the document
-wrapper and, for the flat profile, restores the double declarations. For the
+absent or `"1"` `AddSchemaLocation` setting adds the target's schema-location
+hint, as for every other XML target: the stored, design-relative schema
+reference, which only annotates the written root. Native export emits the
+suppression token on the document wrapper and, for the flat profile, restores
+the double declarations. For the
 flat profile, export also refuses a binding order it cannot preserve. Both keep
 any explicit conversion helpers.
 
@@ -71,6 +72,6 @@ filename, as they do for other formats. Preview and browser XML output use the
 same explicit policy. Generated XML adapter admission is mandatory when this
 policy is present: a failure cannot silently produce a typed-only fallback.
 
-The For example, `00025.00` can satisfy a decimal field's lexical pattern while
+For example, `00025.00` can satisfy a decimal field's lexical pattern while
 `25` does not. This mode preserves the formatted text; it cannot replace
 the separate [`coerce_float` contract](target-float-cast.md).

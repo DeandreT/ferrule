@@ -14,8 +14,9 @@ use super::{
 };
 use crate::MfdError;
 
-/// A repair-oriented document import. Warnings still describe omitted or
-/// unsupported behavior; this result does not authorize document execution.
+/// A document import with retained transport graph roots. Admission depends on
+/// the selected import API: CSV retention remains repair-oriented, while the
+/// explicit filename-endpoint route refuses incomplete documents.
 pub struct ImportedDocument {
     pub document: DocumentProject,
     pub warnings: Vec<String>,
@@ -37,7 +38,7 @@ pub fn import_csv_document_with_options(
         &resources,
         StageSelection::Ordinary,
         options.item_ordered_exceptions,
-        true,
+        super::FilenameImport::CsvRetention,
     );
     resources.finish_bindings()?;
     let lowered = result?;
@@ -170,7 +171,7 @@ pub(super) fn retain_filename(
         .ok_or_else(|| unsupported("filename feed cannot be retained"))
 }
 
-fn protocol_namespace_header(node: roxmltree::Node<'_, '_>) -> bool {
+pub(super) fn protocol_namespace_header(node: roxmltree::Node<'_, '_>) -> bool {
     if !node.has_tag_name("header") || node.attributes().len() != 0 {
         return false;
     }

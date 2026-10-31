@@ -23,6 +23,7 @@ use mapping::{
 use crate::appearance::{SemanticThemeColors, WireColorMode};
 use crate::canvas::{CanvasNode, SourceBlock, SourceLeaf, TargetBlock, TargetLeaf};
 use crate::canvas_endpoints::EndpointDisplayPin;
+use crate::canvas_keyboard::focus::{self, CanvasPin};
 use crate::path_picker::SourcePathCatalog;
 use crate::value_editor::{show_value_editor, show_value_map_editor};
 use crate::wire_colors::WireEmphasis;
@@ -254,12 +255,25 @@ fn show_lookup_editor(
     });
 }
 
+/// Where an endpoint label's tooltip is hit-tested.
+#[derive(Clone, Copy)]
+enum LabelHover {
+    /// The label has its own Ui, so it registers its own hover target.
+    Row,
+    /// The label is drawn in the pin row, whose next auto ID is the pin widget
+    /// egui-snarl creates afterwards. A second, unfocusable widget under that
+    /// ID would clear the pin's keyboard focus every frame, so the tooltip
+    /// follows the pin's response from the preceding pass instead.
+    Pin,
+}
+
 fn show_endpoint_label(
     ui: &mut Ui,
     path: &str,
     align: egui::Align,
     hover_text: impl Into<egui::WidgetText>,
     highlighted: bool,
+    hover: LabelHover,
 ) -> egui::Rect {
     let clip_rect = ui.clip_rect();
     let row_height = ui
@@ -304,8 +318,17 @@ fn show_endpoint_label(
     let painted = text_align.anchor_size(anchor, galley.size());
     ui.painter()
         .galley(painted.min, galley, ui.visuals().text_color());
-    ui.interact(row_rect, ui.next_auto_id(), egui::Sense::hover())
-        .on_hover_text(hover_text);
+    match hover {
+        LabelHover::Row => {
+            ui.interact(row_rect, ui.next_auto_id(), egui::Sense::hover())
+                .on_hover_text(hover_text);
+        }
+        LabelHover::Pin => {
+            if let Some(response) = ui.ctx().read_response(ui.next_auto_id()) {
+                response.on_hover_text(hover_text);
+            }
+        }
+    }
     row_rect
 }
 
@@ -331,6 +354,7 @@ fn show_endpoint_proxy_label(
         align,
         format!("{connection}Scroll to show {hidden} hidden {side} fields {direction}"),
         false,
+        LabelHover::Pin,
     );
     let icon = egui::WidgetText::from(crate::icons::text(
         if above {
@@ -523,10 +547,63 @@ impl GraphViewer<'_> {
         )
     }
 
-    fn record_pin_interaction_id(&mut self, ui: &Ui) {
+    /// Records a pin widget; `field` is the schema field or graph input the
+    /// pin stands for, if it has one.
+    fn record_pin_interaction_id(
+        &mut self,
+        ui: &Ui,
+        pin: CanvasPin,
+        node: CanvasNode,
+        field: Option<String>,
+    ) {
+        let direction = match pin {
+            CanvasPin::Input(_) => "Input",
+            CanvasPin::Output(_) => "Output",
+        };
+        let title = self.title(&node);
+        let name = match field.filter(|field| !field.is_empty()) {
+            Some(field) => format!("{direction} {field} · {title}"),
+            None => format!("{direction} · {title}"),
+        };
         // egui-snarl 0.11 creates the pin's drag widget with this exact next
         // auto ID immediately after `show_input`/`show_output` returns.
-        self.pin_interaction_ids.push(ui.next_auto_id());
+        let id = ui.next_auto_id();
+        self.pin_interaction_ids.push(id);
+        focus::record_pin(ui, focus::PinWidget { id, pin, name });
+    }
+
+    /// The schema field or proxy row an endpoint pin stands for.
+    fn endpoint_pin_field(&self, node: CanvasNode, pin: usize) -> Option<String> {
+        let labels = match node {
+            CanvasNode::SourceBlock(block) => self
+                .source_blocks
+                .get(block)?
+                .leaves
+                .iter()
+                .map(|leaf| leaf.label.as_str())
+                .collect::<Vec<_>>(),
+            CanvasNode::TargetBlock(block) => self
+                .target_blocks
+                .get(block)?
+                .leaves
+                .iter()
+                .map(|leaf| leaf.label.as_str())
+                .collect(),
+            CanvasNode::Graph(_) | CanvasNode::Placeholder(_) => return None,
+        };
+        match self.endpoint_display_pin(node, pin)? {
+            EndpointDisplayPin::Visible(semantic) => {
+                labels.get(semantic).map(|label| (*label).to_owned())
+            }
+            EndpointDisplayPin::HiddenBefore => Some(format!(
+                "{} hidden fields above",
+                self.endpoint_scroll.hidden_before(node, labels.len())
+            )),
+            EndpointDisplayPin::HiddenAfter => Some(format!(
+                "{} hidden fields below",
+                self.endpoint_scroll.hidden_after(node, labels.len())
+            )),
+        }
     }
 
     fn mapping_id(node: CanvasNode) -> Option<NodeId> {
@@ -1447,10 +1524,19 @@ impl GraphViewer<'_> {
             }
             Node::Aggregate {
                 expression, arg, ..
-            }
-            | Node::JoinAggregate {
-                expression, arg, ..
             } => usize::from(expression.is_some()) + usize::from(arg.is_some()),
+            // A computed key's inputs are the first, read-only pins.
+            Node::JoinAggregate {
+                plan,
+                expression,
+                arg,
+                ..
+            } => {
+                plan.computed_source()
+                    .map_or(0, |computed| computed.key_inputs().len())
+                    + usize::from(expression.is_some())
+                    + usize::from(arg.is_some())
+            }
         }
     }
 }
@@ -1825,6 +1911,21 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
         snarl: &mut Snarl<CanvasNode>,
     ) {
         let canvas_node = snarl[node];
+        // egui-snarl's collapse button reacts to the pointer only.
+        let collapse_id = focus::first_widget_id(ui);
+        if let Some(collapse) = ui
+            .ctx()
+            .read_response(collapse_id)
+            .filter(|response| response.sense.senses_click())
+        {
+            let open = snarl.get_node_info(node).is_some_and(|info| info.open);
+            let action = if open { "Collapse" } else { "Expand" };
+            focus::name(&collapse, &format!("{action} {}", self.title(&canvas_node)));
+            focus::record_control(ui, collapse_id, node);
+            if focus::keyboard_activated(&collapse) {
+                snarl.open_node(node, !open);
+            }
+        }
         let (endpoint_width, endpoint_hint) = match canvas_node {
             CanvasNode::SourceBlock(block) => {
                 self.source_blocks
@@ -1928,6 +2029,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                             reveal,
                             true,
                         );
+                        focus::record_control(ui, edit.id, node);
                         if edit.clicked() || requested {
                             ui.ctx().data_mut(|data| data.insert_temp(popup, true));
                             Self::mark_properties_open(ui.ctx());
@@ -2093,15 +2195,22 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
         // egui-snarl's node frame already participates in transformed, clipped
         // widget hit-testing. Area-only rectangle checks miss its child layer.
         // Reuse its response without adding a click/drag target or an auto ID.
-        let frame_id = ui.layer_id().id.with(("snarl-node", node)).with("frame");
-        if ui
-            .ctx()
-            .read_response(frame_id)
-            .is_some_and(|response| response.contains_pointer())
-        {
-            self.hovered_node_this_frame = Some(node);
-        }
+        let frame_id = focus::frame_id(ui.layer_id().id, node);
         let canvas_node = snarl[node];
+        if let Some(frame) = ui.ctx().read_response(frame_id) {
+            if frame.contains_pointer() {
+                self.hovered_node_this_frame = Some(node);
+            }
+            // Enter or Space on a focused frame selects the node as a click does.
+            focus::name(&frame, &self.title(&canvas_node));
+            focus::record_control(ui, frame_id, node);
+            if focus::keyboard_activated(&frame) {
+                crate::canvas_tools::node_click(ui.ctx(), canvas_node);
+            }
+            if frame.has_focus() {
+                focus::paint_focus(ui, rect.expand(5.0), 6.0);
+            }
+        }
         let endpoint = match canvas_node {
             CanvasNode::SourceBlock(block) => self.source_blocks.get(block).map(|section| {
                 (
@@ -2121,6 +2230,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
         };
         if let Some((total, natural_width, accent)) = endpoint {
             self.endpoint_scroll.finish_geometry(canvas_node, rect);
+            let title = self.title(&canvas_node);
             let scrolled = crate::canvas_endpoints::show_scrollbar(
                 ui,
                 canvas_node,
@@ -2128,6 +2238,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                 total,
                 self.endpoint_scroll,
                 accent,
+                &title,
             );
             let resized = crate::canvas_endpoints::show_resize_handles(
                 ui,
@@ -2136,6 +2247,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                 total,
                 natural_width,
                 self.endpoint_scroll,
+                &title,
             );
             if scrolled || resized {
                 ui.ctx().request_repaint();
@@ -2276,10 +2388,28 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                             .to_string()
                         }
                     }
-                    Some(
-                        Node::Aggregate { expression, .. } | Node::JoinAggregate { expression, .. },
-                    ) if expression.is_some() && idx == 0 => "values".to_string(),
-                    Some(Node::Aggregate { .. } | Node::JoinAggregate { .. }) => "arg".to_string(),
+                    Some(Node::JoinAggregate {
+                        plan,
+                        expression,
+                        arg,
+                        ..
+                    }) => plan
+                        .computed_source()
+                        .map(|computed| computed.key_inputs())
+                        .unwrap_or_default()
+                        .into_iter()
+                        .map(|_| "key")
+                        .chain(expression.as_ref().map(|_| "values"))
+                        .chain(arg.as_ref().map(|_| "arg"))
+                        .nth(idx)
+                        .unwrap_or_default()
+                        .to_string(),
+                    Some(Node::Aggregate { expression, .. })
+                        if expression.is_some() && idx == 0 =>
+                    {
+                        "values".to_string()
+                    }
+                    Some(Node::Aggregate { .. }) => "arg".to_string(),
                     Some(Node::OwnedAggregate(aggregate))
                         if aggregate.expression().is_some() && idx == 0 =>
                     {
@@ -2320,6 +2450,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                                 egui::Align::Min,
                                 hover,
                                 self.endpoint_search_match == Some((canvas_node, semantic_idx)),
+                                LabelHover::Pin,
                             );
                             self.endpoint_scroll.record_field_row(canvas_node, row_rect);
                         }
@@ -2345,10 +2476,10 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                     None => {}
                 }
             }
-        } else if let Some(label) = label {
+        } else if let Some(label) = &label {
             let node = Self::mapping_id(canvas_node).and_then(|id| self.graph.nodes.get(&id));
             if !node.is_some_and(graph_node_presentation::is_inline) {
-                graph_node_presentation::show_input(ui, &label, node, idx);
+                graph_node_presentation::show_input(ui, label, node, idx);
             }
         }
         // Snarl creates this exact native pin widget immediately after this
@@ -2364,7 +2495,13 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
         {
             response.on_hover_text(hint);
         }
-        self.record_pin_interaction_id(ui);
+        let field = match canvas_node {
+            CanvasNode::Graph(_) | CanvasNode::Placeholder(_) => label,
+            CanvasNode::SourceBlock(_) | CanvasNode::TargetBlock(_) => {
+                self.endpoint_pin_field(canvas_node, idx)
+            }
+        };
+        self.record_pin_interaction_id(ui, CanvasPin::Input(pin.id), canvas_node, field);
         let pin_info = if matches!(
             endpoint_pin,
             Some(EndpointDisplayPin::HiddenBefore | EndpointDisplayPin::HiddenAfter)
@@ -2455,6 +2592,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                                     hover,
                                     self.endpoint_search_match
                                         == Some((CanvasNode::SourceBlock(block), semantic)),
+                                    LabelHover::Row,
                                 );
                                 self.endpoint_scroll.record_field_row(canvas_node, row_rect);
                             });
@@ -2482,7 +2620,8 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                 }
             }
             ui.set_clip_rect(row_clip);
-            self.record_pin_interaction_id(ui);
+            let field = self.endpoint_pin_field(canvas_node, pin.id.output);
+            self.record_pin_interaction_id(ui, CanvasPin::Output(pin.id), canvas_node, field);
             let pin_info = if matches!(
                 self.endpoint_display_pin(canvas_node, pin.id.output),
                 Some(EndpointDisplayPin::HiddenBefore | EndpointDisplayPin::HiddenAfter)
@@ -2541,8 +2680,10 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
             if open {
                 Self::mark_properties_open(ui.ctx());
                 // Handle dismissal before a focused TextEdit consumes Escape.
-                // A nested selector gets the first Escape when it is open.
+                // A nested selector or a modal dialog gets the first Escape
+                // when it is open.
                 if !egui::Popup::is_any_open(ui.ctx())
+                    && !crate::ui_kit::modal_open(ui.ctx())
                     && ui.input_mut(|input| {
                         input.consume_key(egui::Modifiers::NONE, egui::Key::Escape)
                     })
@@ -2626,7 +2767,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
         {
             let _ = crate::canvas_tools::fanout(ui, self, pin.id, snarl);
         }
-        self.record_pin_interaction_id(ui);
+        self.record_pin_interaction_id(ui, CanvasPin::Output(pin.id), canvas_node, None);
         PinInfo::circle()
             .with_fill(fill.to_egui())
             .with_wire_color(self.output_wire_color(pin))

@@ -1,0 +1,43 @@
+use codegen_runtime::{Instance, Value};
+use ferrule_edi_group_counts::{execute, execute_x12_to_json, execute_x12_to_json_bytes, parse_x12, parse_x12_bytes};
+
+fn verify(actual: &Instance, expected: &serde_json::Value) {
+    match expected {
+        serde_json::Value::Object(fields) => {
+            let Instance::Group(actual_fields) = actual else { panic!("expected group") };
+            assert_eq!(actual_fields.len(), fields.len());
+            for (name, value) in fields { verify(actual.field(name).unwrap(), value); }
+        }
+        serde_json::Value::Array(items) => {
+            let actual = actual.as_repeated().unwrap();
+            assert_eq!(actual.len(), items.len());
+            for (actual, expected) in actual.iter().zip(items) { verify(actual, expected); }
+        }
+        serde_json::Value::Number(number) => assert_eq!(actual.as_scalar(), Some(&Value::Int(number.as_i64().unwrap()))),
+        serde_json::Value::String(text) => assert_eq!(actual.as_scalar(), Some(&Value::String(text.clone()))),
+        _ => panic!("outside authored output domain"),
+    }
+}
+
+fn main() {
+    let cases: Vec<serde_json::Value> = serde_json::from_str(include_str!("../cases.json")).unwrap();
+    for case in &cases {
+        let wire = case["input"].as_str().unwrap();
+        if case["reject"] == true {
+            assert!(parse_x12(wire).is_err());
+            assert!(parse_x12_bytes(wire.as_bytes()).is_err());
+            assert!(execute_x12_to_json(wire).is_err());
+            assert!(execute_x12_to_json_bytes(wire.as_bytes()).is_err());
+            continue;
+        }
+        let input = parse_x12(wire).unwrap();
+        assert_eq!(input, parse_x12_bytes(wire.as_bytes()).unwrap());
+        let before = input.clone();
+        verify(&execute(&input).unwrap(), &case["expected"]);
+        assert_eq!(input, before);
+        for json in [execute_x12_to_json(wire).unwrap(), String::from_utf8(execute_x12_to_json_bytes(wire.as_bytes()).unwrap()).unwrap()] {
+            assert_eq!(serde_json::from_str::<serde_json::Value>(&json).unwrap(), case["expected"]);
+        }
+    }
+    println!("EDI group-count Release cases: {}", cases.len());
+}

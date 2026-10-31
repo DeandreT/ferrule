@@ -144,6 +144,7 @@ fn build(
         db_queries: Vec::new(),
         db_xml_columns: BTreeMap::new(),
         dynamic_json: None,
+        target_schema_hints: None,
     });
     BuildResult { component, issues }
 }
@@ -171,6 +172,7 @@ pub(super) fn install_fallback(
 pub(super) fn missing_error(
     side: &str,
     skipped_libraries: &[String],
+    skipped_reasons: &[String],
     output_parameter_target_failed: bool,
 ) -> MfdError {
     if side == "target" && output_parameter_target_failed {
@@ -179,7 +181,7 @@ pub(super) fn missing_error(
                 .to_string(),
         );
     }
-    MfdError::UnsupportedImport(if skipped_libraries.is_empty() {
+    let mut message = if skipped_libraries.is_empty() {
         format!(
             "no importable {side} component (xml/json/csv/fixed-length/flextext/edi/db/xlsx/protobuf/pdf-source/static-http-xml) found in this design"
         )
@@ -188,5 +190,12 @@ pub(super) fn missing_error(
             "no importable {side} component (xml/json/csv/fixed-length/flextext/edi/db/xlsx/protobuf/pdf-source/static-http-xml) found; this design uses {} components, which ferrule cannot import yet",
             skipped_libraries.join("/")
         )
-    })
+    };
+    // Name the refusal of a component whose format ferrule does import, rather
+    // than implying the whole format is unsupported.
+    for reason in skipped_reasons {
+        message.push_str("; ");
+        message.push_str(reason);
+    }
+    MfdError::UnsupportedImport(message)
 }

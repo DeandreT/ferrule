@@ -21,7 +21,15 @@ pub fn emit_with_primary_filename(
 
 /// The `evaluate_primary_filename` item appended to a generated library.
 pub(crate) fn evaluator(document: &DocumentProgram) -> String {
-    let expression = match document.primary_filename() {
+    let mut code = filename_evaluator(document.primary_filename(), "evaluate_primary_filename");
+    if let Some(filename) = document.output_filename() {
+        code.push_str(&filename_evaluator(filename, "evaluate_output_filename"));
+    }
+    code
+}
+
+fn filename_evaluator(filename: &PrimaryFilenamePlan, name: &str) -> String {
+    let expression = match filename {
         PrimaryFilenamePlan::Literal { text, .. } => {
             format!("Ok({}.to_string())", rust_string(text))
         }
@@ -30,16 +38,13 @@ pub(crate) fn evaluator(document: &DocumentProgram) -> String {
             rust_string(name)
         ),
     };
-    let parameter = if matches!(
-        document.primary_filename(),
-        PrimaryFilenamePlan::Literal { .. }
-    ) {
+    let parameter = if matches!(filename, PrimaryFilenamePlan::Literal { .. }) {
         "_execution"
     } else {
         "execution"
     };
     format!(
-        "\n/// Resolve filename text only. No path interpretation, source loading or mapping execution.\npub fn evaluate_primary_filename({parameter}: &ExecutionContext<'_>) -> Result<String, codegen_runtime::RuntimeError> {{\n    {expression}\n}}\n"
+        "\n/// Resolve filename text only. No path interpretation, source loading or mapping execution.\npub fn {name}({parameter}: &ExecutionContext<'_>) -> Result<String, codegen_runtime::RuntimeError> {{\n    {expression}\n}}\n"
     )
 }
 

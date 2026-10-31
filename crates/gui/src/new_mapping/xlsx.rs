@@ -97,11 +97,11 @@ impl XlsxBoundaryDraft {
                 )
             })
         {
-            bail!("transposed source field `n` must be one integer physical-column position");
+            bail!("transposed field `n` must be one integer physical-column position");
         }
         let count = fields.len() - positions.len();
         if count == 0 {
-            bail!("transposed sources need at least one worksheet data field besides `n`");
+            bail!("transposed layouts need at least one worksheet data field besides `n`");
         }
         Ok(count)
     }
@@ -131,15 +131,10 @@ impl XlsxBoundaryDraft {
         Ok(selected)
     }
 
+    /// Sources and targets accept the same choices: a transposed target
+    /// writes the row selection that a transposed source reads.
     pub(crate) fn validate(&self) -> anyhow::Result<()> {
-        self.validate_for(false)
-    }
-
-    pub(crate) fn validate_for(&self, target: bool) -> anyhow::Result<()> {
         let fields = Self::fields(&self.schema)?;
-        if target && self.transposed {
-            bail!("transposed workbook layout is available only for sources");
-        }
         if self.transposed {
             self.selected_rows()?;
         } else if self.columns.len() != fields.len() || self.headers.len() != fields.len() {
@@ -198,11 +193,7 @@ impl XlsxBoundaryDraft {
     }
 
     pub(crate) fn options(&self, target: bool) -> anyhow::Result<FormatOptions> {
-        if target {
-            self.validate_for(true)?;
-        } else {
-            self.validate()?;
-        }
+        self.validate()?;
         if self.transposed {
             return Ok(FormatOptions {
                 tabular_kind: Some(TabularBoundaryKind::Xlsx),

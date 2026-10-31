@@ -1,0 +1,71 @@
+use std::{cell::RefCell, path::Path};
+use codegen_runtime::{ExecutionContext, RuntimeParameters, Value, PrimarySourceHost, PrimaryFileSelection, CsvSourceData, PrimaryEdiDocumentError, EdiBoundaryError, RuntimeError, PrimaryAcquisitionError};
+use ferrule_generated_mapping::{execute_primary_edi_document_bytes, evaluate_output_filename};
+
+const INPUT_NODE: u32 = __INPUT_NODE__;
+const OUTPUT_NODE: u32 = __OUTPUT_NODE__;
+const EXPECTED: &[u8] = b"{\n  \"label\": \"blue widget\",\n  \"units\": \"7\"\n}\n";
+
+#[derive(Default)]
+struct Host { calls: RefCell<Vec<String>>, count: Option<usize>, malformed: bool }
+impl PrimarySourceHost for Host {
+    type Error = std::io::Error;
+    fn select(&self, filename: &str, selection: PrimaryFileSelection) -> Result<Vec<String>, Self::Error> {
+        assert_eq!(selection, PrimaryFileSelection::Direct);
+        self.calls.borrow_mut().push(format!("select:{filename}"));
+        Ok((0..self.count.unwrap_or(1)).map(|_| filename.to_string()).collect())
+    }
+    fn load(&self, request: &str) -> Result<CsvSourceData, Self::Error> {
+        self.calls.borrow_mut().push(format!("load:{request}"));
+        Ok(CsvSourceData { bytes: if self.malformed { b"not an HL7 message".to_vec() } else { b"MSH|^~\\&|\rABC|blue widget|7\r".to_vec() }, resolved_path: None })
+    }
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    for (input, output, expected) in [
+        (Some(" ./input.hl7 "), Some(" ./output.json "), None),
+        (None, Some("output.json"), Some("InputFile")),
+        (Some("input.hl7"), None, Some("OutputFile")),
+        (Some("*.hl7"), Some("output.json"), Some("wildcards")),
+        (Some("input.hl7"), Some(""), Some("nonempty")),
+        (Some("input.hl7"), Some("*.json"), Some("wildcards")),
+    ] {
+        let mut parameters = RuntimeParameters::new();
+        for (name, value) in [("InputFile", input), ("OutputFile", output)] {
+            if let Some(value) = value { parameters.insert(name, Value::String(value.into()))?; }
+        }
+        let execution = ExecutionContext::new(Path::new("mapping.json")).with_parameters(&parameters);
+        let host = Host::default();
+        match (execute_primary_edi_document_bytes(&execution, &host, 1), expected) {
+            (Ok(bytes), None) => {
+                assert_eq!(bytes, EXPECTED);
+                assert_eq!(evaluate_output_filename(&execution)?, output.unwrap());
+                assert_eq!(*host.calls.borrow(), [format!("select:{}", input.unwrap()), format!("load:{}", input.unwrap())]);
+            }
+            (Err(PrimaryEdiDocumentError::Acquisition(PrimaryAcquisitionError::Filename(RuntimeError::MissingRuntimeParameter {node, name}))), Some(expected @ ("InputFile" | "OutputFile"))) => {
+                assert_eq!(name, expected);
+                assert_eq!(node, if expected == "InputFile" { INPUT_NODE } else { OUTPUT_NODE });
+                assert!(host.calls.borrow().is_empty());
+            }
+            (Err(PrimaryEdiDocumentError::Acquisition(PrimaryAcquisitionError::Filename(error @ RuntimeError::InvalidFilenameEndpoint {node}))), Some(_)) => {
+                assert_eq!(node, if input == Some("*.hl7") { INPUT_NODE } else { OUTPUT_NODE });
+                assert_eq!(error.to_string(), format!("filename endpoint node {node} requires nonempty text without wildcards or control characters"));
+                assert!(host.calls.borrow().is_empty());
+            }
+            other => panic!("unexpected complete outcome: {other:?}"),
+        }
+    }
+    let mut parameters = RuntimeParameters::new();
+    parameters.insert("InputFile", Value::String("input.hl7".into()))?;
+    parameters.insert("OutputFile", Value::String("output.json".into()))?;
+    let execution = ExecutionContext::new(Path::new("mapping.json")).with_parameters(&parameters);
+    for count in [0, 2] {
+        let host = Host { count: Some(count), ..Default::default() };
+        assert!(matches!(execute_primary_edi_document_bytes(&execution, &host, 3), Err(PrimaryEdiDocumentError::Acquisition(PrimaryAcquisitionError::DirectSelection {found})) if found == count));
+        assert_eq!(*host.calls.borrow(), ["select:input.hl7"]);
+    }
+    let host = Host { malformed: true, ..Default::default() };
+    assert!(matches!(execute_primary_edi_document_bytes(&execution, &host, 1), Err(PrimaryEdiDocumentError::Acquisition(PrimaryAcquisitionError::Input {path, source: EdiBoundaryError::Format(codegen_runtime::EdiFormatError::NotHl7("stream must start with FHS, BHS, or MSH"))})) if path == "input.hl7"));
+    assert_eq!(*host.calls.borrow(), ["select:input.hl7", "load:input.hl7"]);
+    Ok(())
+}

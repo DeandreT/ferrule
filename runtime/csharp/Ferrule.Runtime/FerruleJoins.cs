@@ -20,9 +20,25 @@ public sealed class FerruleJoinSource
         Cardinality = cardinality;
     }
 
+    private FerruleJoinSource()
+    {
+        Collection = Array.Empty<string>();
+        Cardinality = FerruleJoinSourceCardinality.Singleton;
+        IsComputed = true;
+    }
+
+    /// <summary>
+    /// The computed source of a plan: one member whose value is the join key
+    /// the caller evaluates once in the receiving context.
+    /// </summary>
+    public static FerruleJoinSource Computed { get; } = new();
+
     public IReadOnlyList<string> Collection { get; }
 
     public FerruleJoinSourceCardinality Cardinality { get; }
+
+    /// <summary>Whether this is the plan's computed source rather than a collection.</summary>
+    public bool IsComputed { get; }
 
     private static void ValidatePath(IReadOnlyList<string> path, string parameter)
     {
@@ -50,6 +66,18 @@ public sealed class FerruleJoinKey
         ValidatePath(LeftPath, nameof(leftPath));
         ValidatePath(RightPath, nameof(rightPath));
     }
+
+    private FerruleJoinKey(IEnumerable<string> rightPath)
+        : this(Array.Empty<string>(), Array.Empty<string>(), rightPath)
+    {
+        LeftComputed = true;
+    }
+
+    /// <summary>A condition whose left member is the plan's computed source, its own key.</summary>
+    public static FerruleJoinKey FromComputed(IEnumerable<string> rightPath) => new(rightPath);
+
+    /// <summary>Whether the left member is the plan's computed source.</summary>
+    public bool LeftComputed { get; }
 
     public IReadOnlyList<string> LeftCollection { get; }
 
@@ -121,16 +149,45 @@ public sealed partial class ScopeContext
     public IReadOnlyList<ScopeContext> InnerJoin(ulong join, FerruleJoinPlan plan)
     {
         ArgumentNullException.ThrowIfNull(plan);
-        var rows = JoinSourceRows(join, plan.First);
+        if (ComputedSources(plan) != 0)
+        {
+            throw new ArgumentException("A plan with a computed source requires its key value.", nameof(plan));
+        }
+        return ExecuteInnerJoin(join, plan, null);
+    }
+
+    /// <summary>
+    /// Executes a plan holding one computed source whose value <paramref name="key"/>
+    /// the caller evaluated once in this receiving context. A Null-like key gives
+    /// the computed source no member, so the join yields no tuples; any other value,
+    /// an empty string included, is one member that adds no frame to its tuples.
+    /// </summary>
+    public IReadOnlyList<ScopeContext> InnerJoin(ulong join, FerruleJoinPlan plan, FerruleValue key)
+    {
+        ArgumentNullException.ThrowIfNull(plan);
+        if (ComputedSources(plan) != 1)
+        {
+            throw new ArgumentException("A computed key requires exactly one computed source.", nameof(plan));
+        }
+        return ExecuteInnerJoin(join, plan, key);
+    }
+
+    private static int ComputedSources(FerruleJoinPlan plan) =>
+        (plan.First.IsComputed ? 1 : 0) + plan.Stages.Count(stage => stage.Source.IsComputed);
+
+    private ReadOnlyCollection<ScopeContext> ExecuteInnerJoin(ulong join, FerruleJoinPlan plan, FerruleValue? key)
+    {
+        FerruleValue? computed = key is { } value && !IsNullLike(value) ? value : null;
+        var rows = JoinMemberRows(join, plan.First, computed);
         foreach (var stage in plan.Stages)
         {
-            var rightRows = JoinSourceRows(join, stage.Source);
+            var rightRows = JoinMemberRows(join, stage.Source, computed);
             var joined = new List<JoinRow>();
             foreach (var left in rows)
             {
                 foreach (var right in rightRows)
                 {
-                    if (JoinConditionsMatch(left, right, stage.Conditions))
+                    if (JoinConditionsMatch(left, right, stage.Source.IsComputed, computed, stage.Conditions))
                     {
                         joined.Add(left.Append(right));
                     }
@@ -205,6 +262,18 @@ public sealed partial class ScopeContext
             join: join);
     }
 
+    /// <summary>The computed member is one row without frames when its value is present.</summary>
+    private List<JoinRow> JoinMemberRows(ulong join, FerruleJoinSource source, FerruleValue? computed)
+    {
+        if (!source.IsComputed)
+        {
+            return JoinSourceRows(join, source);
+        }
+        return computed.HasValue
+            ? new List<JoinRow> { new(Array.Empty<FerruleInstance>(), Array.Empty<CollectionIdentity>()) }
+            : new List<JoinRow>();
+    }
+
     private List<JoinRow> JoinSourceRows(ulong join, FerruleJoinSource source)
     {
         var candidates = IterateSource(source.Collection);
@@ -228,17 +297,40 @@ public sealed partial class ScopeContext
         return rows;
     }
 
+    /// <summary>
+    /// <paramref name="computed"/> is the plan's present computed value, if any; a
+    /// computed member absent there contributed no row, so no pairing reads it.
+    /// </summary>
     private static bool JoinConditionsMatch(
         JoinRow left,
         JoinRow right,
+        bool rightComputed,
+        FerruleValue? computed,
         IReadOnlyList<FerruleJoinKey> conditions)
     {
         foreach (var condition in conditions)
         {
-            if (!left.TryScalar(condition.LeftCollection, condition.LeftPath, out var leftValue) ||
-                !right.TryTerminalScalar(condition.RightPath, out var rightValue) ||
-                IsNullLike(leftValue) ||
-                IsNullLike(rightValue))
+            FerruleValue leftValue;
+            FerruleValue rightValue;
+            if (condition.LeftComputed)
+            {
+                if (computed is not { } leftKey) return false;
+                leftValue = leftKey;
+            }
+            else if (!left.TryScalar(condition.LeftCollection, condition.LeftPath, out leftValue))
+            {
+                return false;
+            }
+            if (rightComputed)
+            {
+                if (computed is not { } rightKey) return false;
+                rightValue = rightKey;
+            }
+            else if (!right.TryTerminalScalar(condition.RightPath, out rightValue))
+            {
+                return false;
+            }
+            if (IsNullLike(leftValue) || IsNullLike(rightValue))
             {
                 return false;
             }

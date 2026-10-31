@@ -92,7 +92,9 @@ pub use primary_csv::{
     PrimaryDocumentRunError, acquire_primary_csv, primary_csv_parser, run_primary_csv_document,
     run_primary_document,
 };
-pub use primary_filename::{PrimaryFilenameEvaluationError, evaluate_primary_filename};
+pub use primary_filename::{
+    PrimaryFilenameEvaluationError, evaluate_output_filename, evaluate_primary_filename,
+};
 pub use trace::{
     TraceEvent, TraceFilterPhase, TraceGrouping, TraceIteration, TraceOutputKind,
     TraceOwnedContextError, TraceOwnedDomain, TraceOwnedFrame, TraceOwnedFrameRef,
@@ -1084,6 +1086,9 @@ mod adjacency_tree_tests;
 #[path = "tests/aggregate.rs"]
 mod aggregate_tests;
 #[cfg(test)]
+#[path = "tests/anchored_join.rs"]
+mod anchored_join_tests;
+#[cfg(test)]
 #[path = "tests/collection.rs"]
 mod collection_tests;
 #[cfg(test)]
@@ -1096,6 +1101,9 @@ mod debug_tests;
 #[path = "tests/dynamic_document_output.rs"]
 mod dynamic_document_output_tests;
 
+#[cfg(test)]
+#[path = "tests/computed_join.rs"]
+mod computed_join_tests;
 #[cfg(test)]
 #[path = "tests/document_collections.rs"]
 mod document_collection_tests;
@@ -1142,8 +1150,12 @@ mod iteration_output_tests;
 #[path = "tests/join.rs"]
 mod join_tests;
 #[cfg(test)]
+#[path = "tests/json_tuple_frames.rs"]
+mod json_tuple_frame_tests;
+#[cfg(test)]
 #[path = "tests/optional_presence.rs"]
 mod optional_presence_tests;
+
 #[cfg(test)]
 #[path = "tests/owned_adjacency_tree.rs"]
 mod owned_adjacency_tree_tests;
@@ -1204,6 +1216,9 @@ mod sequence_item_at_tests;
 #[cfg(test)]
 #[path = "tests/sequence_windows.rs"]
 mod sequence_windows_tests;
+#[cfg(test)]
+#[path = "tests/singleton_frames.rs"]
+mod singleton_frames_tests;
 #[cfg(test)]
 #[path = "tests/singleton_join.rs"]
 mod singleton_join_tests;

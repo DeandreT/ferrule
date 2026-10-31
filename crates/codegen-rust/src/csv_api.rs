@@ -418,6 +418,37 @@ mod tests {
     }
 
     #[test]
+    fn csv_output_refuses_a_tuple_frame_target_instead_of_writing_columns() {
+        let mut program = program();
+        program.target = SchemaNode::group(
+            "Row",
+            vec![
+                SchemaNode::scalar("item1", ScalarType::String),
+                SchemaNode::scalar("item2", ScalarType::Int),
+            ],
+        )
+        .with_json_tuple(ir::JsonTupleLayout {
+            length: ir::ItemCountRange::new(0, Some(2)),
+            tail: ir::JsonTupleTail::Closed,
+        })
+        .unwrap();
+        program.root.bindings[0].target_field = "item1".into();
+        program.root.bindings[1].target_field = "item2".into();
+        for result in [
+            emit_with_csv_output(&program, &options(), &CsvOutputPolicy::default()),
+            crate::emit_with_csv_document_output(&program, &options(), &CsvOutputPolicy::default()),
+        ] {
+            assert!(matches!(
+                result,
+                Err(EmitError::CsvOutput(CsvOutputError::TargetSchema {
+                    field: None,
+                    reason: "a JSON tuple frame is not a CSV row"
+                }))
+            ));
+        }
+    }
+
+    #[test]
     fn named_csv_companions_are_conditional_and_preserve_the_complete_legacy_adapter() {
         let plain = program();
         let before = render(&plain, &CsvOutputPolicy::default()).unwrap();

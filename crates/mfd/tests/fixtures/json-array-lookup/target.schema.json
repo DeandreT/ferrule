@@ -1,0 +1,7 @@
+{
+  "type": "object",
+  "properties": {
+    "Results": {"type":"array","items":{"type":"object","properties":{"Code":{"type":["string","null"]},"Ordinal":{"type":"integer"},"Found":{"type":["string","null"]}},"required":["Ordinal"],"additionalProperties":false}}
+  },
+  "additionalProperties": false
+}

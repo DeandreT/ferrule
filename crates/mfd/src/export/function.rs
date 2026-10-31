@@ -67,13 +67,14 @@ pub(super) fn unmap_function_name(name: &str) -> String {
         "length" => "string-length",
         "starts_with" => "starts-with",
         "ends_with" => "ends-with",
-        "upper" => "upper-case",
-        "lower" => "lower-case",
+        "upper" => "uppercase",
+        "lower" => "lowercase",
         "left_trim" => "left-trim",
         "right_trim" => "right-trim",
         "pad_string_left" => "pad-string-left",
         "pad_string_right" => "pad-string-right",
         "format_guid_string" => "format-guid-string",
+        "replace_literal" => "replace",
         "substring_before" => "substring-before",
         "substring_after" => "substring-after",
         "normalize_space" => "normalize-space",
@@ -113,19 +114,84 @@ pub(super) fn unmap_function_name(name: &str) -> String {
     .to_string()
 }
 
+/// Native component name and library for a canonical function called with
+/// `arity` arguments, or why the built-in execution language has none.
+///
+/// The reasons come from native runs of self-authored designs and the
+/// vendor's per-function language listings (see `docs/mfd-interop.md`).
+pub(super) fn native_function(
+    function: &str,
+    arity: usize,
+) -> Result<(String, &'static str), &'static str> {
+    let refusal = match function {
+        "positive" => Some(
+            "the built-in `positive` tests whether a number is greater than zero, \
+             while this `positive` returns the number unchanged",
+        ),
+        "trim" => Some(
+            "the built-in trim functions remove only spaces, tabs, carriage returns \
+             and line feeds, while `trim` removes all Unicode whitespace",
+        ),
+        "ends_with" => Some("`ends-with` exists only for XSLT 2.0, XSLT 3.0 and XQuery"),
+        "matches" => Some(
+            "`matches` exists only for XSLT 2.0, XSLT 3.0 and XQuery, and the built-in \
+             `match-pattern` must match the whole text",
+        ),
+        "replace" => Some(
+            "regular-expression `replace` exists only for XSLT 2.0, XSLT 3.0 and XQuery; \
+             the built-in `replace` replaces literal text",
+        ),
+        "format_date" | "format_datetime" if arity > 3 => Some(
+            "the built-in function takes only value, format and language inputs, \
+             so calendar and place arguments have no equivalent",
+        ),
+        "format_time" if arity > 2 => {
+            Some("the built-in `format-time` takes only value and format inputs")
+        }
+        "round" => Some(
+            "`round` rounds exact halves away from zero on binary floating-point values, \
+             while the built-in `round` and `round-precision` round them toward positive \
+             infinity on decimals; use `round_half_ceiling` for the built-in rounding",
+        ),
+        _ => None,
+    };
+    if let Some(reason) = refusal {
+        return Err(reason);
+    }
+    // The built-in `round` has one input; rounding to decimals is
+    // `round-precision`. Import reads both back as `round_half_ceiling`.
+    if function == "round_half_ceiling" {
+        let name = if arity == 2 {
+            "round-precision"
+        } else {
+            "round"
+        };
+        return Ok((name.to_string(), "core"));
+    }
+    Ok((unmap_function_name(function), function_library(function)))
+}
+
+/// Library of the native component for a canonical function.
+///
+/// Exported designs always select the built-in execution language, so each
+/// name and library pair must be one that language offers. The xpath2 library
+/// (`upper-case`, `lower-case`) exists only for XSLT 2.0, XSLT 3.0 and XQuery,
+/// and core has no case functions; import still accepts those spellings.
 pub(super) fn function_library(name: &str) -> &'static str {
     if canonical_function::is_internal(name) {
         return "ferrule";
     }
     match name {
-        "left" | "right" => "lang",
+        "left" | "right" | "upper" | "lower" => "lang",
         "left_trim"
         | "right_trim"
         | "pad_string_left"
         | "pad_string_right"
         | "format_guid_string"
+        | "replace_literal"
         | "is_numeric"
         | "is_empty"
+        | "date_from_datetime"
         | "year_from_datetime"
         | "month_from_datetime"
         | "day_from_datetime"
@@ -140,7 +206,6 @@ pub(super) fn function_library(name: &str) -> &'static str {
         | "create_guid"
         | "random"
         | "delay_passthrough" => "lang",
-        "boolean" | "floor" | "format_date" | "format_datetime" | "format_time" => "xpath2",
         "edifact_to_datetime" => "edifact",
         _ => "core",
     }
@@ -148,7 +213,7 @@ pub(super) fn function_library(name: &str) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::{function_library, unmap_function_name};
+    use super::{function_library, native_function, unmap_function_name};
 
     #[test]
     fn internal_whitespace_function_names_export_canonically() {
@@ -186,5 +251,58 @@ mod tests {
         assert_eq!(function_library("to_number"), "ferrule");
         assert_eq!(function_library("sql_like"), "ferrule");
         assert_eq!(function_library("json_serialize_object"), "ferrule");
+    }
+
+    #[test]
+    fn built_in_language_functions_export_under_their_native_libraries() {
+        for (function, name, library) in [
+            ("upper", "uppercase", "lang"),
+            ("lower", "lowercase", "lang"),
+            ("date_from_datetime", "date-from-datetime", "lang"),
+            ("boolean", "boolean", "core"),
+            ("floor", "floor", "core"),
+            ("format_date", "format-date", "core"),
+            ("format_datetime", "format-dateTime", "core"),
+            ("format_time", "format-time", "core"),
+            ("translate", "translate", "core"),
+        ] {
+            assert_eq!(unmap_function_name(function), name, "{function}");
+            assert_eq!(function_library(function), library, "{function}");
+        }
+    }
+
+    #[test]
+    fn calls_export_under_their_native_arity_or_are_refused() {
+        for (function, arity, expected) in [
+            ("round_half_ceiling", 1, Some(("round", "core"))),
+            ("round_half_ceiling", 2, Some(("round-precision", "core"))),
+            ("round", 1, None),
+            ("round", 2, None),
+            ("format_date", 3, Some(("format-date", "core"))),
+            ("format_datetime", 3, Some(("format-dateTime", "core"))),
+            ("format_time", 2, Some(("format-time", "core"))),
+            ("format_date", 4, None),
+            ("format_datetime", 5, None),
+            ("format_time", 3, None),
+            ("positive", 1, None),
+            ("trim", 1, None),
+            ("ends_with", 2, None),
+            ("matches", 2, None),
+            ("matches", 3, None),
+            ("replace", 3, None),
+            ("replace", 4, None),
+            ("replace_literal", 3, Some(("replace", "lang"))),
+            ("left_trim", 1, Some(("left-trim", "lang"))),
+        ] {
+            let actual = native_function(function, arity);
+            match expected {
+                Some((name, library)) => assert_eq!(
+                    actual,
+                    Ok((name.to_string(), library)),
+                    "{function}/{arity}"
+                ),
+                None => assert!(actual.is_err(), "{function}/{arity}: {actual:?}"),
+            }
+        }
     }
 }

@@ -116,9 +116,10 @@ pub(super) fn eval_loading_scope<'a>(
             owned_ancestry: true,
         };
         let mut item_context = context.to_vec();
-        item_context.extend(driver.extension.instances.iter().copied());
         let mut item_positions = positions.to_vec();
-        item_positions.extend(driver.extension.positions.iter().cloned());
+        driver
+            .extension
+            .append_to(&mut item_context, &mut item_positions);
         let path = eval_expr(
             program.with_owned_context(&item_state),
             loading.node,
@@ -217,9 +218,8 @@ fn eval_documents<'b>(
             .visit(&loaded.budget, &mut |mut extension| {
                 // The candidate's own walk follows its driver row.
                 let mut instances = driver.extension.instances.clone();
-                instances.extend(extension.extension.instances);
                 let mut walked = driver.extension.positions.clone();
-                walked.extend(extension.extension.positions);
+                extension.extension.append_to(&mut instances, &mut walked);
                 extension.extension = WalkExtension {
                     instances,
                     positions: walked,

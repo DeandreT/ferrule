@@ -1,7 +1,8 @@
 use std::collections::BTreeSet;
 
 use mapping::{
-    FailureIteration, NamedTarget, Node, NodeId, Project, Scope, ScopeConstruction, SequenceExpr,
+    FailureIteration, JoinPlan, NamedTarget, Node, NodeId, Project, Scope, ScopeConstruction,
+    SequenceExpr,
 };
 
 use crate::{EngineError, TargetSelection, scope_slots};
@@ -81,6 +82,14 @@ impl<'a> Analysis<'a> {
         }
     }
 
+    /// A computed key is a graph input of its scope or aggregate, so its
+    /// reads are inspected with the graph.
+    fn inspect_join(&mut self, plan: &JoinPlan) {
+        for source in plan.collection_sources() {
+            self.inspect_path(source.collection());
+        }
+    }
+
     fn inspect_scope(&mut self, scope: &Scope) {
         match scope.source_selector() {
             Some(mapping::SourceSelectorRef::Legacy(source)) => self.inspect_path(source),
@@ -91,9 +100,7 @@ impl<'a> Analysis<'a> {
             self.inspect_sequence_sources(sequence);
         }
         if let Some((_, join)) = scope.join() {
-            for source in join.sources() {
-                self.inspect_path(source.collection());
-            }
+            self.inspect_join(join);
         }
         if let Some((_, join)) = scope.iteration.owned_join() {
             for source in join.sources() {
@@ -193,11 +200,7 @@ impl<'a> Analysis<'a> {
             Node::SequenceExists { sequence, .. }
             | Node::SequenceItemAt { sequence, .. }
             | Node::SequenceAggregate { sequence, .. } => self.inspect_sequence_sources(sequence),
-            Node::JoinAggregate { plan, .. } => {
-                for source in plan.sources() {
-                    self.inspect_path(source.collection());
-                }
-            }
+            Node::JoinAggregate { plan, .. } => self.inspect_join(plan),
             Node::OwnedSourceField(field) => self.inspect_owner(&field.source.owner),
             Node::OwnedPosition(position) => self.inspect_owner(&position.owner),
             Node::OwnedRowDocumentPath(path) => self.inspect_owner(&path.owner),

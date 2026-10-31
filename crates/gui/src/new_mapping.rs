@@ -117,7 +117,7 @@ impl SqliteBoundaryDraft {
                 Ok(())
             }
             Err(error) => {
-                self.introspection_error = Some(error.to_string());
+                self.introspection_error = Some(format!("{error:#}"));
                 Err(error)
             }
         }
@@ -258,7 +258,7 @@ impl CsvBoundaryDraft {
         }) {
             Ok(sample) => sample,
             Err(error) => {
-                self.sample_error = Some(error.to_string());
+                self.sample_error = Some(format!("{error:#}"));
                 return Err(error);
             }
         };
@@ -361,7 +361,7 @@ impl NewMappingSetup {
         let ready = |boundary: &MappingBoundary, target| match boundary {
             MappingBoundary::Schema(_) => true,
             MappingBoundary::FixedWidth(draft) => draft.validate().is_ok(),
-            MappingBoundary::Xlsx(draft) => draft.validate_for(target).is_ok(),
+            MappingBoundary::Xlsx(draft) => draft.validate().is_ok(),
             MappingBoundary::Csv(draft) => draft.validate().is_ok(),
             MappingBoundary::Sqlite(draft) => draft.schema(target).is_ok(),
             MappingBoundary::Protobuf(draft) => draft.validate().is_ok(),

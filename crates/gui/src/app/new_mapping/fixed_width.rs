@@ -145,7 +145,7 @@ pub(super) fn show_options(
         "Treat fill-only fields as absent on input",
     );
     if let Err(error) = draft.validate() {
-        ui.colored_label(ui.visuals().error_fg_color, error.to_string());
+        ui.colored_label(ui.visuals().error_fg_color, format!("{error:#}"));
     }
     ui.button("Abandon fixed-width setup").clicked()
 }

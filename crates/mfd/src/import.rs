@@ -77,13 +77,17 @@ mod target_mixed_content;
 mod target_node_default;
 mod target_node_function;
 mod target_type_cast;
+mod transposed_target;
 mod udf;
 mod unused_xml_source;
+mod value_producer;
+mod value_refusal;
 mod xml_root_view;
 mod xml_scalar_output;
 mod xml_serializer;
 
 pub use csv_document::{ImportedDocument, import_csv_document, import_csv_document_with_options};
+pub use document_paths::{import_filename_document, import_filename_document_with_options};
 pub use schema::{MAX_FLEXTEXT_CONFIGURATION_BYTES, import_flextext_configuration};
 
 use db_query::is_routine_catalog;
@@ -165,8 +169,16 @@ struct SourceIdentity {
 struct LoweredStage {
     imported: Imported,
     primary_filename: Option<mapping::NodeId>,
+    output_filename: Option<mapping::NodeId>,
     /// Original component identities in primary-then-secondary source order.
     source_components: Vec<SourceIdentity>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum FilenameImport {
+    None,
+    CsvRetention,
+    Endpoints,
 }
 
 /// Filesystem policy for importing one mapping package.
@@ -374,7 +386,12 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
 
 pub(crate) fn import_package(package: &crate::MfdPackage) -> Result<Imported, MfdError> {
     let resources = ResourceResolver::from_package(package)?;
-    let result = import_resolved(&resources, StageSelection::Ordinary, false, false);
+    let result = import_resolved(
+        &resources,
+        StageSelection::Ordinary,
+        false,
+        FilenameImport::None,
+    );
     resources.finish_bindings()?;
     Ok(result?.imported)
 }
@@ -385,7 +402,7 @@ pub fn import_with_options(path: &Path, options: &ImportOptions) -> Result<Impor
         &resources,
         StageSelection::Ordinary,
         options.item_ordered_exceptions,
-        false,
+        FilenameImport::None,
     );
     resources.finish_bindings()?;
     Ok(result?.imported)
@@ -430,7 +447,7 @@ fn import_pipeline_resolved(
             target_inputs: &first_intermediate.inputs,
         },
         options.item_ordered_exceptions,
-        false,
+        FilenameImport::None,
     )?];
     for pair in chain.intermediates.windows(2) {
         let [first_intermediate, second_intermediate] = pair else {
@@ -445,7 +462,7 @@ fn import_pipeline_resolved(
                 target_inputs: &second_intermediate.inputs,
             },
             options.item_ordered_exceptions,
-            false,
+            FilenameImport::None,
         )?);
     }
     let last_intermediate = chain
@@ -462,7 +479,7 @@ fn import_pipeline_resolved(
             final_inputs: &chain.final_inputs,
         },
         options.item_ordered_exceptions,
-        false,
+        FilenameImport::None,
     )?);
 
     resources.finish_bindings()?;
@@ -740,7 +757,7 @@ pub(crate) fn validate_pipeline_export_graph(xml: &str) -> Result<(), MfdError> 
 }
 
 fn discover_pipeline_chain_text(text: &str) -> Result<DiscoveredPipelineChain, MfdError> {
-    let doc = roxmltree::Document::parse(text)?;
+    let doc = crate::design::parse(text)?;
     let mapping = doc.root_element();
     if !mapping.has_tag_name("mapping") {
         return Err(MfdError::NotMfd("root element is not <mapping>"));
@@ -1553,11 +1570,12 @@ fn import_resolved(
     resources: &ResourceResolver,
     selection: StageSelection<'_>,
     item_ordered_exceptions: bool,
-    retain_primary_filename: bool,
+    filename_import: FilenameImport,
 ) -> Result<LoweredStage, MfdError> {
+    let retain_primary_filename = filename_import != FilenameImport::None;
     let path = resources.mapping_path();
     let text = resources.read_design()?;
-    let doc = roxmltree::Document::parse(&text)?;
+    let doc = crate::design::parse(&text)?;
     let mapping_el = doc.root_element();
     if mapping_el.tag_name().name() != "mapping" {
         return Err(MfdError::NotMfd("root element is not <mapping>"));
@@ -1593,10 +1611,20 @@ fn import_resolved(
     let edges = read_edge_inputs(&structure, Some(&wrapper));
     if retain_primary_filename && (!edges.complete || !edges.conflicts.is_empty()) {
         return Err(MfdError::UnsupportedImport(
-            "CSV document filename retention requires complete, unambiguous input feeds".into(),
+            if filename_import == FilenameImport::CsvRetention {
+                "CSV document filename retention requires complete, unambiguous input feeds"
+            } else {
+                "filename endpoints require complete, unambiguous input feeds"
+            }
+            .into(),
         ));
     }
     let mut warnings = edges.conflicts.clone();
+    let filename_endpoints = if filename_import == FilenameImport::Endpoints {
+        Some(document_paths::Endpoints::read(structure, &edges.feeds)?)
+    } else {
+        None
+    };
     let csv_occurrence_raw_authority =
         edges.complete && target_iteration::csv_raw_authority(&structure, &edges.feeds);
     let mut schema_components = Vec::new();
@@ -1619,6 +1647,9 @@ fn import_resolved(
     let mut exception_recipes = Vec::new();
     let mut pending_joins = join::PendingJoins::default();
     let mut skipped_libraries: Vec<String> = Vec::new();
+    // Components ferrule can import in general but refused in this design,
+    // with the reasons their readers gave.
+    let mut skipped_reasons: Vec<String> = Vec::new();
     let mut json5_string_dependencies = Vec::new();
     let inspect_unused_input = unused_xml_source::may_contain_unused_input(structure);
     let root_view_inventory = xml_root_view::Inventory::read(structure);
@@ -1640,6 +1671,7 @@ fn import_resolved(
         resources.append_refusals(&mut resource_warnings);
         return Ok(LoweredStage {
             primary_filename: None,
+            output_filename: None,
             imported: Imported {
                 project,
                 warnings: resource_warnings,
@@ -1799,10 +1831,14 @@ fn import_resolved(
                                     Ok(Some(parser)) => json_parsers.push(parser),
                                     Ok(None) => {
                                         if !sc.is_variable {
-                                            document_paths::warn(
+                                            document_paths::warn_with_admitted_outputs(
                                                 component,
                                                 &edges.feeds,
                                                 "JSON",
+                                                &filename_endpoints
+                                                    .as_ref()
+                                                    .map(|endpoints| endpoints.inputs())
+                                                    .unwrap_or_default(),
                                                 &mut warnings,
                                             );
                                         }
@@ -1824,10 +1860,17 @@ fn import_resolved(
                     }
                 }
                 "xlsx" if component.attribute("kind") == Some("26") => {
+                    let first_warning = warnings.len();
                     match read_xlsx_component(&component, &mut warnings) {
                         Some(sc) => schema_components.push(sc),
                         None => {
-                            note_skipped_library(&mut skipped_libraries, "xlsx");
+                            let reason = warnings[first_warning..].join("; ");
+                            if reason.is_empty() {
+                                note_skipped_library(&mut skipped_libraries, "xlsx");
+                            } else {
+                                skipped_reasons
+                                    .push(format!("skipped xlsx component `{name}`: {reason}"));
+                            }
                             warnings.push(format!("skipped xlsx component `{name}`"));
                         }
                     }
@@ -1850,10 +1893,14 @@ fn import_resolved(
                         match read_edi_component(&component, resources, &mut warnings) {
                             Some(sc) => {
                                 if !sc.is_variable {
-                                    document_paths::warn(
+                                    document_paths::warn_with_admitted_outputs(
                                         component,
                                         &edges.feeds,
                                         "EDI",
+                                        &filename_endpoints
+                                            .as_ref()
+                                            .map(|endpoints| endpoints.inputs())
+                                            .unwrap_or_default(),
                                         &mut warnings,
                                     );
                                 }
@@ -2275,7 +2322,12 @@ fn import_resolved(
 
     let target_inputs =
         external_udf::selected_target_inputs(&schema_components).ok_or_else(|| {
-            output_parameter::missing_error("target", &skipped_libraries, output_failed)
+            output_parameter::missing_error(
+                "target",
+                &skipped_libraries,
+                &skipped_reasons,
+                output_failed,
+            )
         })?;
     external_udf::install_fallback(
         &mut schema_components,
@@ -2303,8 +2355,9 @@ fn import_resolved(
         .collect();
     let intermediates: Vec<&SchemaComponent> =
         schema_components.iter().filter(|c| c.is_variable).collect();
-    let unsupported =
-        |side: &str| output_parameter::missing_error(side, &skipped_libraries, output_failed);
+    let unsupported = |side: &str| {
+        output_parameter::missing_error(side, &skipped_libraries, &skipped_reasons, output_failed)
+    };
     let default_target = targets
         .iter()
         .copied()
@@ -2409,7 +2462,16 @@ fn import_resolved(
         .collect();
     let source_names = runtime_names(&sources);
     let primary = sources[0];
-    let joins = pending_joins.resolve(&edge_from, &sources, &source_names, &mut warnings);
+    let joins = pending_joins.resolve(
+        &join::KeyContext {
+            edge_from: &edge_from,
+            sources: &sources,
+            source_names: &source_names,
+            fn_components: &fn_components,
+            copy_all_targets: &copy_all_targets,
+        },
+        &mut warnings,
+    );
 
     let xml_type_conditions = alternatives::conditioned_port_types(&structure);
     let xml_condition_ports = structure
@@ -2437,6 +2499,10 @@ fn import_resolved(
         parser_input_nodes: BTreeMap::new(),
         next_id: 0,
         fn_nodes: BTreeMap::new(),
+        filter_nodes: BTreeMap::new(),
+        refused_value_feeds: BTreeSet::new(),
+        refused_filter_projections: BTreeSet::new(),
+        scope_projection_feeds: BTreeSet::new(),
         sequence_items: BTreeMap::new(),
         sequence_scope_components: BTreeSet::new(),
         sequence_predicate_components: BTreeSet::new(),
@@ -2590,17 +2656,13 @@ fn import_resolved(
         let extra_path = if extra_root.produces_documents() {
             None
         } else {
-            extra
-                .output_instance
-                .clone()
-                .or_else(|| extra.input_instance.clone())
-                .or_else(|| default_pass_through_output_path(extra))
+            target_instance_path(extra).or_else(|| default_pass_through_output_path(extra))
         };
         extra_targets.push(NamedTarget {
             name: target_names[index].clone(),
             path: extra_path,
             schema: runtime_target_schema(extra, &edge_from),
-            options: extra.options.clone(),
+            options: target_format_options(extra, &edge_from),
             root: extra_root,
         });
     }
@@ -2681,10 +2743,7 @@ fn import_resolved(
             .clone()
             .or_else(|| builder.static_target_document_path(target))
     } else {
-        target
-            .output_instance
-            .clone()
-            .or_else(|| target.input_instance.clone())
+        target_instance_path(target)
             .or_else(|| builder.static_target_document_path(target))
             .or_else(|| default_pass_through_output_path(target))
     };
@@ -2704,14 +2763,20 @@ fn import_resolved(
     } else {
         (exception::lower(exception_recipes, &mut builder), None)
     };
-    let primary_filename = if retain_primary_filename {
-        Some(csv_document::retain_filename(
-            structure,
-            primary,
-            &mut builder,
-        )?)
+    let (primary_filename, output_filename) = if let Some(endpoints) = &filename_endpoints {
+        let (input, output) = endpoints.retain(primary, target, &mut builder)?;
+        (Some(input), Some(output))
+    } else if retain_primary_filename {
+        (
+            Some(csv_document::retain_filename(
+                structure,
+                primary,
+                &mut builder,
+            )?),
+            None,
+        )
     } else {
-        None
+        (None, None)
     };
     let global_auto_number_nodes = builder
         .fn_nodes
@@ -2754,7 +2819,7 @@ fn import_resolved(
         source_path,
         target_path,
         source_options,
-        target_options: target.options.clone(),
+        target_options: target_format_options(target, &edge_from),
         extra_sources,
         extra_targets,
         failure_rules,
@@ -2781,6 +2846,9 @@ fn import_resolved(
     if let Some(filename) = primary_filename {
         let mut document =
             mapping::DocumentProject::new(project, mapping::PrimarySourcePlan::new(filename));
+        if let Some(output) = output_filename {
+            document = document.with_output_filename(output);
+        }
         document.prune_unreachable_nodes();
         project = document.project().clone();
     } else {
@@ -2844,6 +2912,7 @@ fn import_resolved(
     resources.append_refusals(&mut warnings);
     Ok(LoweredStage {
         primary_filename,
+        output_filename,
         imported: Imported {
             project,
             warnings,
@@ -2851,6 +2920,51 @@ fn import_resolved(
         },
         source_components,
     })
+}
+
+/// A component's format options in its target role, including the output
+/// schema-location hint its settings derive. A mapping that feeds the root's
+/// attribute wildcard, or the whole root, can write `xsi` attributes at run
+/// time; the mapped value then wins and no automatic hint is added.
+fn target_format_options(
+    component: &SchemaComponent,
+    edge_from: &BTreeMap<u32, u32>,
+) -> mapping::FormatOptions {
+    let mut options = component.options.clone();
+    // An input instance is read only in a source role, so a pass-through
+    // component's file set never applies to its output.
+    options.local_xml_file_set = false;
+    let feeds_root_wildcard = component.schema.child(ir::XML_ATTRIBUTES_FIELD).is_some()
+        && component.input_keys.iter().any(|key| {
+            edge_from.contains_key(key)
+                && component.ports.get(key).is_some_and(|path| {
+                    path.first()
+                        .is_none_or(|segment| segment == ir::XML_ATTRIBUTES_FIELD)
+                })
+        });
+    if options.xml_schema_hints.is_none() && !feeds_root_wildcard {
+        options.xml_schema_hints = component.target_schema_hints.clone();
+    }
+    options
+}
+
+/// The output document a target's own instance paths name. Its input instance
+/// is only a preview, so it counts only when there is no output instance.
+fn target_instance_path(component: &SchemaComponent) -> Option<String> {
+    component
+        .output_instance
+        .clone()
+        .or_else(|| target_preview_path(component))
+}
+
+/// A target without an output instance writes to its input instance, unless
+/// that names a file set, which no single output document can be, whatever
+/// the target's format.
+fn target_preview_path(component: &SchemaComponent) -> Option<String> {
+    component
+        .input_instance
+        .clone()
+        .filter(|path| !schema::is_local_file_set_pattern(path))
 }
 
 fn default_pass_through_output_path(component: &SchemaComponent) -> Option<String> {
@@ -2998,6 +3112,7 @@ fn build_target_scope_inner(
 ) -> Scope {
     let edge_from = builder.edge_from;
     builder.rejected_join_paths.clear();
+    builder.scope_projection_feeds.clear();
     let mut scopes = ScopeBuilder::new(BTreeMap::new());
     if let Some(plan) = document_plan {
         plan.initialize(&mut scopes);
@@ -3041,6 +3156,7 @@ fn build_target_scope_inner(
             }
         })).flatten();
     let dynamic_target = dynamic_json::prepare_target(target, builder);
+    transposed_target::install(target, builder, &mut scopes);
     let mut iterations = Vec::new();
     let mut bindings = Vec::new();
     let mut float_cast_witnesses = Vec::new();
@@ -3048,11 +3164,17 @@ fn build_target_scope_inner(
     let mut group_projections = Vec::new();
     let mut structured_udf_targets = Vec::new();
     let mut csv_singleton_bindings = BTreeMap::new();
+    let array_parser_ports = json_parser::install_array_records(target, builder, &mut scopes);
     for (&inpkey, target_path) in &target.ports {
+        if array_parser_ports.contains(&inpkey) {
+            continue;
+        }
         let Some(&from) = edge_from.get(&inpkey) else {
             continue;
         };
-        if target_path.as_slice() == [schema::TARGET_DOCUMENT_PATH_PORT] {
+        if target_path.as_slice() == [schema::TARGET_DOCUMENT_PATH_PORT]
+            || transposed_target::is_row_index_port(target_path)
+        {
             continue;
         }
         if let Some((position, field)) = schema::split_singleton_port(target_path) {
@@ -3294,9 +3416,11 @@ fn build_target_scope_inner(
     scopes.root
 }
 
+/// A record-per-row target without an iterated record writes one record.
 fn ensure_singleton_csv_row_set(target: &SchemaComponent, scopes: &mut ScopeBuilder) {
     let has_row_port = target.ports.values().any(Vec::is_empty);
-    if target.format != ComponentFormat::Csv || has_row_port || scopes.root.iterates() {
+    let record_rows = target.format == ComponentFormat::Csv || transposed_target::is_target(target);
+    if !record_rows || has_row_port || scopes.root.iterates() {
         return;
     }
     let row = std::mem::take(&mut scopes.root);

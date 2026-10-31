@@ -100,8 +100,16 @@ pub fn expected_total_string_value_map_project() -> Project {
             json_document: true,
             ..Default::default()
         },
+        // Import derives the output schema-location hint from the target schema.
         target_options: FormatOptions {
             xml_document: true,
+            xml_schema_hints: Some(ir::XmlSchemaHints {
+                no_namespace_location: Some("target.xsd".into()),
+                derivation: Some(ir::XmlSchemaHintDerivation {
+                    schema_reference: "target.xsd".into(),
+                }),
+                ..Default::default()
+            }),
             ..Default::default()
         },
         graph,

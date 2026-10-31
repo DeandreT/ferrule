@@ -377,6 +377,32 @@ fn publish_mfd_import(
     Ok(imported.warnings)
 }
 
+/// Imports explicit EDI input/JSON output filename endpoints as a document plan.
+/// Publication requires complete admission; connected filenames are never rebased.
+pub fn import_mfd_filename_document(
+    mfd_path: &Path,
+    out_path: &Path,
+    package_root: Option<&Path>,
+    package_manifest: Option<&Path>,
+    edi_catalog_roots: &[PathBuf],
+    json_schema_catalog_roots: &[PathBuf],
+    item_ordered_exceptions: bool,
+) -> anyhow::Result<Vec<String>> {
+    let mut options = mfd_import_options(
+        package_root,
+        package_manifest,
+        edi_catalog_roots,
+        json_schema_catalog_roots,
+    )?;
+    if item_ordered_exceptions {
+        options = options.with_item_ordered_exceptions();
+    }
+    let imported = mfd::import_filename_document_with_options(mfd_path, &options)?;
+    let json = mapping::document_project_file::encode_pretty(&imported.document)?;
+    std::fs::write(out_path, json).with_context(|| format!("writing {}", out_path.display()))?;
+    Ok(imported.warnings)
+}
+
 /// Imports a bounded serial XML `.mfd` design as a runnable typed pipeline.
 /// The complete pipeline is validated before its JSON file is written.
 pub fn import_mfd_pipeline(
@@ -587,7 +613,10 @@ fn write_output(
         return Ok(1);
     }
     if let SelectedFormat::Swift(_) = selected {
-        bail!("SWIFT MT output is not supported; `swift_mt` is input-only");
+        let formatted = formatted_edi_output(instance, options)?;
+        format_edi::swift::write_with_options(path, schema, &formatted, options)
+            .with_context(|| format!("writing SWIFT MT output {}", path.display()))?;
+        return Ok(1);
     }
     if let SelectedFormat::Pdf(_) = selected {
         bail!("PDF output is not supported; `pdf` is input-only");
@@ -653,15 +682,25 @@ fn write_output(
                 if options.xlsx_grid.is_some()
                     || options.xlsx_composite.is_some()
                     || options.xlsx_worksheet_set.is_some()
-                    || has_legacy_xlsx_layout(options)
+                    || has_flat_xlsx_layout(options)
                 {
                     bail!("`xlsx_hierarchical` cannot be combined with other XLSX layout options");
+                }
+                if options.xlsx_update_existing {
+                    return format_xlsx::update_hierarchical(
+                        path,
+                        schema,
+                        instance,
+                        layout,
+                        &format_xlsx::XlsxLimits::default(),
+                    )
+                    .with_context(|| format!("updating output {}", path.display()));
                 }
                 return format_xlsx::write_hierarchical(path, schema, instance, layout)
                     .with_context(|| format!("writing output {}", path.display()));
             }
-            if options.xlsx_grid.is_some() {
-                bail!("grid XLSX output is not supported; `xlsx_grid` is input-only");
+            if options.has_xlsx_grid() {
+                bail!("grid XLSX output is not supported; XLSX grids are input-only");
             }
             if options.xlsx_worksheet_set.is_some() {
                 bail!(
@@ -672,7 +711,16 @@ fn write_output(
                 bail!("composite XLSX output is not supported; `xlsx_composite` is input-only");
             }
             if !options.xlsx_rows.is_empty() {
-                bail!("transposed XLSX output is not supported; `xlsx_rows` is input-only");
+                let records = transposed_xlsx_records(instance, options)?;
+                format_xlsx::write_transposed(
+                    path,
+                    schema,
+                    records,
+                    options.xlsx_sheet.as_deref(),
+                    &options.xlsx_rows,
+                )
+                .with_context(|| format!("writing output {}", path.display()))?;
+                return Ok(records.len());
             }
             let rows = instance
                 .as_repeated()
@@ -747,10 +795,9 @@ fn write_output(
         }
         SelectedFormat::MissingPdf => bail!("PDF output is not supported; PDF is input-only"),
         SelectedFormat::MissingIdoc => bail!("unsupported output file extension: .idoc"),
-        SelectedFormat::MissingSwift => bail!(
-            "unsupported output file extension: .{}",
-            extension_of(path)?
-        ),
+        SelectedFormat::MissingSwift => {
+            bail!("SWIFT MT output requires an embedded `swift_mt` layout and message headers")
+        }
         SelectedFormat::Unsupported(other) => bail!("unsupported output file extension: .{other}"),
         _ => unreachable!("explicit formats returned above"),
     }
@@ -1858,7 +1905,7 @@ fn write_edi_output(
             bail!("SAP IDoc output requires an embedded runtime layout")
         }
         EdiBoundaryKind::SwiftMt => {
-            bail!("SWIFT MT output is not supported; SWIFT MT is input-only")
+            bail!("SWIFT MT output requires an embedded `swift_mt` layout")
         }
     }
     .with_context(|| format!("writing EDI output {}", path.display()))?;
@@ -1938,11 +1985,41 @@ fn has_any_xlsx_layout(options: &FormatOptions) -> bool {
 }
 
 fn has_legacy_xlsx_layout(options: &FormatOptions) -> bool {
+    has_flat_xlsx_layout(options) || options.xlsx_update_existing
+}
+
+/// The records of a new-workbook transposed XLSX target. Engine validation
+/// rejects these combinations first; this guards direct library callers.
+fn transposed_xlsx_records<'a>(
+    instance: &'a Instance,
+    options: &FormatOptions,
+) -> anyhow::Result<&'a [Instance]> {
+    if options.xlsx_update_existing {
+        bail!(
+            "`xlsx_update_existing` cannot update a transposed XLSX layout; transposed targets write a new workbook"
+        );
+    }
+    if options.has_header_row == Some(true)
+        || options.xlsx_start_row.is_some()
+        || !options.xlsx_columns.is_empty()
+        || !options.xlsx_headers.is_empty()
+    {
+        bail!(
+            "transposed XLSX output cannot be combined with flat header, start-row, or column options"
+        );
+    }
+    instance
+        .as_repeated()
+        .context("mapping did not produce a repeating record set for a transposed XLSX output")
+}
+
+/// Flat and transposed table options. Update-existing is not among them
+/// because hierarchical targets accept it too.
+fn has_flat_xlsx_layout(options: &FormatOptions) -> bool {
     options.xlsx_sheet.is_some()
         || options.xlsx_start_row.is_some()
         || !options.xlsx_columns.is_empty()
         || !options.xlsx_headers.is_empty()
-        || options.xlsx_update_existing
         || !options.xlsx_rows.is_empty()
         || options.has_header_row.is_some()
 }

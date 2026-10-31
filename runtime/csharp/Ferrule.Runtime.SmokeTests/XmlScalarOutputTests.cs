@@ -51,6 +51,18 @@ internal static partial class Program
         }
         var strict = FerruleXml.SerializeDocumentEmbedded(ScalarOutputSchema, ScalarOutputValue(Text("00029")), true, true, null, null);
         Equal("29", XDocument.Parse(strict).Root!.Elements().First().Value);
+        // Schema hints only annotate the projected document root.
+        var hinted = XDocument.Parse(FerruleXml.SerializeDocumentEmbedded(ScalarOutputSchema,
+            ScalarOutputValue(Text("00029")), true, true, null,
+            "{\"no_namespace_location\":\"target.xsd\"}", ScalarOutputPolicy));
+        Equal("target.xsd", hinted.Root!.Attribute(XName.Get("noNamespaceSchemaLocation",
+            "http://www.w3.org/2001/XMLSchema-instance"))!.Value);
+        Equal("00029", hinted.Root!.Elements().First().Value);
+        try {
+            FerruleXml.SerializeDocumentEmbedded(ScalarOutputSchema, ScalarOutputValue(Text("29")), true, true,
+                "urn:default", null, ScalarOutputPolicy);
+            throw new InvalidOperationException("scalar output accepted a default namespace");
+        } catch (FerruleXmlBoundaryException error) { Equal(FerruleXmlBoundaryErrorKind.Output, error.Kind); }
         XmlDocumentScalarOutputPolicyCases();
     }
 

@@ -109,13 +109,15 @@ pub(crate) fn uses_path_format(options: &FormatOptions, path: &str) -> bool {
         && !options.json_lines
 }
 
+/// Flat tables and hierarchical layouts can write into an existing workbook.
+/// Transposed targets always write a new workbook, and composite,
+/// worksheet-set and grid layouts are input-only.
 pub(crate) fn can_update_existing_workbook(options: &FormatOptions, path: &str) -> bool {
     uses_xlsx_format(options, path)
         && options.xlsx_rows.is_empty()
         && options.xlsx_composite.is_none()
         && options.xlsx_worksheet_set.is_none()
         && options.xlsx_grid.is_none()
-        && options.xlsx_hierarchical.is_none()
 }
 
 pub(crate) fn has_workbook_options(options: &FormatOptions) -> bool {

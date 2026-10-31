@@ -41,12 +41,19 @@ pub(crate) fn scalar(context: &[&Instance], path: &[String]) -> Option<Value> {
     for item in context.iter().rev() {
         let mut current = *item;
         let mut found = true;
-        for segment in path {
+        for (index, segment) in path.iter().enumerate() {
             if let Instance::Repeated(items) = current {
                 match items.first() {
                     Some(first) => current = first,
                     None => return Some(Value::Null),
                 }
+            }
+            // An absent or null container on the path, such as an absent
+            // tuple frame, owns the rest of the path: its fields are absent,
+            // and an outer item must not supply them instead. A null context
+            // item itself still falls back outward.
+            if index > 0 && matches!(current, Instance::Scalar(Value::Null | Value::JsonNull(_))) {
+                return Some(Value::Null);
             }
             match current.field(segment) {
                 Some(next) => current = next,
@@ -99,21 +106,26 @@ pub(crate) fn instance<'a>(context: &[&'a Instance], path: &[String]) -> Option<
     None
 }
 
-/// The deepest bound receiving frame whose nonempty collection prefixes the
-/// absolute `path`, with the path's suffix below that collection.
+/// The deepest receiving frame whose nonempty collection prefixes the absolute
+/// `path`, with its optional owner and the suffix below that collection.
 ///
 /// Legacy fallback: a context too short for its positions binds none of its
 /// frames, so this finds nothing and the caller reads `path` outward from the
-/// whole context instead.
+/// whole context instead. Explicit unbound frames remain authoritative.
 fn active_collection_owner<'a, 'p>(
     context: &[&'a Instance],
     positions: &[PositionFrame],
     path: &'p [String],
-) -> Option<(&'a Instance, &'p [String])> {
+) -> Option<(Option<&'a Instance>, &'p [String])> {
     let (frame, owner) = FrameView::latest_receiving(context, positions, |frame| {
         !frame.collection.is_empty() && path.starts_with(frame.collection)
     })?;
-    Some((owner?, &path[frame.collection.len()..]))
+    if owner.is_none()
+        && frame.position.binding == crate::source_iteration::InstanceBinding::LegacyUnspecified
+    {
+        return None;
+    }
+    Some((owner, &path[frame.collection.len()..]))
 }
 
 /// The instance of the latest receiving frame a pin names: the pinned
@@ -138,7 +150,7 @@ pub(crate) fn instance_in_active_collection<'a>(
     match active_collection_owner(context, positions, path) {
         // The active item owns this absolute path. Its absent optional group
         // must not borrow another item's group through the root context.
-        Some((owner, suffix)) => instance(&[owner], suffix),
+        Some((owner, suffix)) => instance(&[owner?], suffix),
         None => instance(context, path),
     }
 }
@@ -164,7 +176,11 @@ pub(crate) fn scalar_in_active_collection(
     match active_collection_owner(context, positions, path) {
         // The active item owns this absolute path. An absent optional group
         // must not read the first item again through the root context.
-        Some((owner, suffix)) => Some(scalar(&[owner], suffix).unwrap_or(Value::Null)),
+        Some((owner, suffix)) => Some(
+            owner
+                .and_then(|owner| scalar(&[owner], suffix))
+                .unwrap_or(Value::Null),
+        ),
         None => scalar(context, path),
     }
 }
@@ -372,6 +388,7 @@ mod tests {
             .and_then(|items| items.get(1))
             .expect("the self-authored fixture has a second item");
         let positions = [PositionFrame {
+            binding: crate::source_iteration::InstanceBinding::LegacyUnspecified,
             generated_origin: None,
             collection: vec!["items".into()],
             index: 2,
@@ -419,6 +436,7 @@ mod tests {
         let absolute = ["Order".into(), "Details".into(), "Counter".into()];
         for (index, row) in rows.iter().enumerate() {
             let positions = [PositionFrame {
+                binding: crate::source_iteration::InstanceBinding::LegacyUnspecified,
                 generated_origin: None,
                 collection: vec!["Order".into()],
                 index: index + 1,
@@ -445,6 +463,7 @@ mod tests {
             scalar_in_frame(
                 &[&root, &rows[1]],
                 &[PositionFrame {
+                    binding: crate::source_iteration::InstanceBinding::LegacyUnspecified,
                     generated_origin: None,
                     collection: vec!["Order".into()],
                     index: 2,

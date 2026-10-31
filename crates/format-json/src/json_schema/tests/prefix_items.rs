@@ -211,10 +211,6 @@ fn legacy_dialects_ignore_prefix_items_completely() {
 fn malformed_or_unrepresentable_prefix_members_reject() {
     for (schema, reason) in [
         (
-            r#"{"type":"array","prefixItems":[{"type":"string"},{"type":"integer"}],"items":false}"#,
-            "one identical item schema",
-        ),
-        (
             r#"{"type":"array","prefixItems":[false],"items":false}"#,
             "cannot use the false schema",
         ),
@@ -256,20 +252,6 @@ fn every_tail_schema_is_validated_even_when_maximum_makes_it_unreachable() {
 }
 
 #[test]
-fn reachable_open_or_different_tails_cannot_widen_the_prefix() {
-    for schema in [
-        r#"{"type":"array","prefixItems":[{"type":"string"}]}"#,
-        r#"{"type":"array","prefixItems":[{"type":"string"}],"items":true}"#,
-        r#"{"type":"array","prefixItems":[{"type":"string"}],"items":{"type":"integer"}}"#,
-    ] {
-        assert!(matches!(
-            import_str_result(schema),
-            Err(JsonFormatError::UnsupportedSchemaUnion { .. })
-        ));
-    }
-}
-
-#[test]
 fn active_composition_unevaluated_items_and_ref_siblings_reject() {
     for (schema, reason) in [
         (
@@ -293,8 +275,8 @@ fn active_composition_unevaluated_items_and_ref_siblings_reject() {
             "direct concrete array",
         ),
         (
-            r#"{"type":"array","prefixItems":[{"type":"string"}],"items":false,"unevaluatedItems":false}"#,
-            "unevaluatedItems",
+            r#"{"type":"array","prefixItems":[{"type":"string"}],"items":false,"contains":{"type":"string"},"unevaluatedItems":false}"#,
+            "`unevaluatedItems` beside `contains`",
         ),
         (
             r##"{

@@ -7,7 +7,10 @@
 use std::collections::{BTreeMap, HashSet};
 
 use ir::{DocumentMember, Instance, Value};
-use mapping::{IterationOutput, NamedSource, NodeId, Scope, ScopeConstruction, SortFilterOrder};
+use mapping::{
+    ComputedJoinValue, IterationOutput, NamedSource, NodeId, Scope, ScopeConstruction,
+    SortFilterOrder,
+};
 
 use crate::aggregate::sort_value_ordering;
 use crate::eval_expr::{EvalProgram, eval_expr};
@@ -200,7 +203,24 @@ pub(crate) fn eval_scope_with_scalar_output(
         });
     let join_rows = scope
         .join()
-        .map(|(join, plan)| execute_join(context, positions, join, plan, program.budget))
+        .map(|(join, plan)| {
+            execute_join(
+                context,
+                positions,
+                join,
+                plan,
+                program.budget,
+                |key| match key {
+                    ComputedJoinValue::Scalar(node) => {
+                        eval_expr(program, *node, context, positions, &mut HashSet::new())
+                            .map(|value| vec![value])
+                    }
+                    ComputedJoinValue::Sequence(sequence) => {
+                        eval_sequence(program, sequence, context, positions)
+                    }
+                },
+            )
+        })
         .transpose()?;
     let dynamic_source = scope
         .source()
@@ -246,9 +266,8 @@ pub(crate) fn eval_scope_with_scalar_output(
         })?;
         for (driver_index, driver) in dynamic_drivers.iter().enumerate() {
             let mut item_context = context.to_vec();
-            item_context.extend(driver.instances.iter().copied());
             let mut item_positions = positions.to_vec();
-            item_positions.extend(driver.positions.iter().cloned());
+            driver.append_to(&mut item_context, &mut item_positions);
             let mut in_progress = HashSet::new();
             let path = eval_expr(
                 program,
@@ -301,14 +320,12 @@ pub(crate) fn eval_scope_with_scalar_output(
                 walk(instance, tail, &prefix, &[], &[])
                     .into_iter()
                     .map(|loaded| {
-                        let mut instances = driver.instances.clone();
-                        instances.extend(loaded.instances);
-                        let mut positions = driver.positions.clone();
-                        positions.extend(loaded.positions);
-                        WalkExtension {
-                            instances,
-                            positions,
-                        }
+                        let mut extension = WalkExtension {
+                            instances: driver.instances.clone(),
+                            positions: driver.positions.clone(),
+                        };
+                        loaded.append_to(&mut extension.instances, &mut extension.positions);
+                        extension
                     })
                     .collect::<Vec<_>>()
             })
@@ -359,7 +376,7 @@ pub(crate) fn eval_scope_with_scalar_output(
     let candidate_count = extensions.len();
     for (ordinal, extension) in extensions.iter().enumerate() {
         let mut candidate_positions = positions.to_vec();
-        candidate_positions.extend(extension.positions.iter().cloned());
+        extension.append_positions_to(context.len(), &mut candidate_positions);
         let wants_source_row = scope
             .source()
             .expect("owned iteration refused before evaluation")
@@ -390,9 +407,8 @@ pub(crate) fn eval_scope_with_scalar_output(
         let mut filtered = Vec::with_capacity(extensions.len());
         for extension in extensions {
             let mut item_context = context.to_vec();
-            item_context.extend(extension.instances.iter().copied());
             let mut item_positions = positions.to_vec();
-            item_positions.extend(extension.positions.iter().cloned());
+            extension.append_to(&mut item_context, &mut item_positions);
             if passes_scope_filter(
                 program,
                 scope.filter,
@@ -412,9 +428,8 @@ pub(crate) fn eval_scope_with_scalar_output(
         let mut keyed = Vec::with_capacity(extensions.len());
         for extension in extensions {
             let mut item_context = context.to_vec();
-            item_context.extend(extension.instances.iter().copied());
             let mut item_positions = positions.to_vec();
-            item_positions.extend(extension.positions.iter().cloned());
+            extension.append_to(&mut item_context, &mut item_positions);
             let mut values = Vec::with_capacity(sort_keys.len());
             for key in &sort_keys {
                 let mut in_progress = HashSet::new();
@@ -460,7 +475,7 @@ pub(crate) fn eval_scope_with_scalar_output(
             .enumerate()
             .map(|(index, (mut extension, _))| {
                 let mut input_positions = positions.to_vec();
-                input_positions.extend(extension.positions.iter().cloned());
+                extension.append_positions_to(context.len(), &mut input_positions);
                 renumber_extension(&mut extension.positions, index + 1);
                 record(program.trace_sink, || TraceEvent::SortPosition {
                     scope: trace_scope.clone(),
@@ -531,9 +546,8 @@ pub(crate) fn eval_scope_with_scalar_output(
         let mut ending_group_closed = true;
         for extension in &extensions {
             let mut item_context = context.to_vec();
-            item_context.extend(extension.instances.iter().copied());
             let mut item_positions = positions.to_vec();
-            item_positions.extend(extension.positions.iter().cloned());
+            extension.append_to(&mut item_context, &mut item_positions);
             if !filter_before_sort
                 && !passes_scope_filter(
                     program,
@@ -693,6 +707,8 @@ pub(crate) fn eval_scope_with_scalar_output(
             next_context.push(members);
             let mut output_positions = group.positions.clone();
             if let Some(position) = output_positions.last_mut() {
+                position.binding =
+                    crate::source_iteration::InstanceBinding::ContextSlot(next_context.len() - 1);
                 position.index = produced.len() + 1;
                 position.grouped = wrapper.is_some();
                 // A group has no single original generated item. Its members
@@ -705,9 +721,12 @@ pub(crate) fn eval_scope_with_scalar_output(
                     position.generated_origin = None;
                 }
             }
-            if let Some(instance) =
-                item_evaluator.produce(&next_context, &group.positions, &output_positions, false)?
-            {
+            if let Some(instance) = item_evaluator.produce(
+                &next_context,
+                &output_positions,
+                &output_positions,
+                false,
+            )? {
                 produced.push(instance);
             }
         }
@@ -716,9 +735,8 @@ pub(crate) fn eval_scope_with_scalar_output(
             let mut filtered = Vec::with_capacity(extensions.len());
             for extension in extensions {
                 let mut item_context = context.to_vec();
-                item_context.extend(extension.instances.iter().copied());
                 let mut item_positions = positions.to_vec();
-                item_positions.extend(extension.positions.iter().cloned());
+                extension.append_to(&mut item_context, &mut item_positions);
                 if passes_scope_filter(
                     program,
                     scope.filter,
@@ -738,9 +756,8 @@ pub(crate) fn eval_scope_with_scalar_output(
         let renumber_output = scope.filter.is_some() || scope.has_sort() || !windows.is_empty();
         for extension in &extensions {
             let mut next_context = context.to_vec();
-            next_context.extend(extension.instances.iter().copied());
             let mut candidate_positions = positions.to_vec();
-            candidate_positions.extend(extension.positions.iter().cloned());
+            extension.append_to(&mut next_context, &mut candidate_positions);
 
             // Intermediate repeating levels crossed by this scope belong to
             // one flattened candidate sequence. Only already-active outer

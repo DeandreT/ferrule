@@ -6,7 +6,10 @@ use mapping::{
     XlsxFixedRecord, XlsxRow, XlsxTableRegion,
 };
 
-use super::{ComponentFormat, SchemaComponent, entry_key_sets, is_default_output, parse_u32};
+use super::{
+    ComponentFormat, SchemaComponent, TRANSPOSED_ROW_INDEX_PORT, entry_key_sets, is_default_output,
+    parse_u32,
+};
 
 mod grid;
 mod hierarchical;
@@ -43,7 +46,6 @@ enum TableLayout {
     },
     Transposed {
         rows: Vec<TransposedRow>,
-        index_ports: Vec<u32>,
     },
 }
 
@@ -53,6 +55,8 @@ struct TransposedRow {
     row: u32,
     ty: ScalarType,
     ports: Vec<u32>,
+    /// `Cell/@n` ports below this row's open Cell sequence.
+    index_ports: Vec<u32>,
 }
 
 struct FixedRecord {
@@ -99,25 +103,16 @@ pub(super) fn read(
         return Some(with_workbook_root_ports(hierarchical, workbook));
     }
 
-    if let Some(grid) = grid::read(
-        *component,
-        excel,
-        workbook,
-        &name,
-        input_keys.clone(),
-        output_keys.clone(),
-        is_source,
-        warnings,
-    ) {
-        return Some(with_workbook_root_ports(grid, workbook));
-    }
+    let mut grids = grid::scan(workbook, &name, is_source, warnings).ok()?;
+    let grid_worksheets = grids.iter().map(|grid| grid.node).collect::<Vec<_>>();
 
     let mut tables = Vec::new();
     let mut records = Vec::new();
-    for worksheet in workbook
-        .children()
-        .filter(|node| node.has_tag_name("entry") && node.attribute("name") == Some("Worksheet"))
-    {
+    for worksheet in workbook.children().filter(|node| {
+        node.has_tag_name("entry")
+            && node.attribute("name") == Some("Worksheet")
+            && !grid_worksheets.contains(&node.id())
+    }) {
         inspect_worksheet(
             worksheet,
             &name,
@@ -128,25 +123,54 @@ pub(super) fn read(
         );
     }
 
-    if let Some(worksheet_set) = worksheet_set::read(
-        &name,
-        excel,
-        &tables,
-        input_keys.clone(),
-        output_keys.clone(),
-        is_source,
-        is_default_output(component),
-        warnings,
-    ) {
+    // A target writes either one transposed table or other tables. Keep the
+    // other tables, as before transposed targets were recognized.
+    let transposed = |table: &Table| matches!(table.layout, TableLayout::Transposed { .. });
+    if !is_source && tables.len() > 1 && tables.iter().any(transposed) {
+        tables.retain(|table| !transposed(table));
+        warnings.push(format!(
+            "xlsx component `{name}` combines transposed target rows with another table; the transposed rows were skipped"
+        ));
+    }
+
+    if grids.len() == 1 && tables.is_empty() && records.is_empty() {
+        let grid = grids.pop()?;
+        return Some(with_workbook_root_ports(
+            grid::single_component(
+                *component,
+                excel,
+                &name,
+                grid,
+                input_keys,
+                output_keys,
+                warnings,
+            ),
+            workbook,
+        ));
+    }
+
+    if grids.is_empty()
+        && let Some(worksheet_set) = worksheet_set::read(
+            &name,
+            excel,
+            &tables,
+            input_keys.clone(),
+            output_keys.clone(),
+            is_source,
+            is_default_output(component),
+            warnings,
+        )
+    {
         return Some(with_workbook_root_ports(worksheet_set, workbook));
     }
 
-    if (!records.is_empty() || tables.len() > 1)
+    if (!grids.is_empty() || !records.is_empty() || tables.len() > 1)
         && let Some(composite) = read_composite(
             name.clone(),
             excel,
             tables.clone(),
             records,
+            grids,
             input_keys.clone(),
             output_keys.clone(),
             is_source,
@@ -219,25 +243,36 @@ pub(super) fn read(
                 },
             )
         }
-        TableLayout::Transposed { rows, index_ports } => {
+        TableLayout::Transposed { rows } => {
             if !is_source && excel.attribute("updateexistingfile") == Some("1") {
                 warnings.push(format!(
-                    "xlsx component `{name}` updates a transposed table in an existing workbook; that target layout is unsupported"
+                    "xlsx component `{name}` updates a transposed table in an existing workbook; ferrule writes transposed targets to a new workbook"
                 ));
             }
-            let mut fields = Vec::with_capacity(rows.len() + usize::from(!index_ports.is_empty()));
+            let indexed = rows.iter().any(|row| !row.index_ports.is_empty());
+            let mut fields = Vec::with_capacity(rows.len() + usize::from(indexed));
             let mut xlsx_rows = Vec::with_capacity(rows.len());
-            for row in rows {
+            for (position, row) in rows.into_iter().enumerate() {
                 for key in row.ports {
                     ports.insert(key, vec![row.name.clone()]);
+                }
+                // A source reads one physical column per record. A target's
+                // driver row owns `n`; later rows must repeat its feed.
+                let index_path = if is_source || position == 0 {
+                    vec!["n".to_string()]
+                } else {
+                    vec![
+                        TRANSPOSED_ROW_INDEX_PORT.to_string(),
+                        (position + 1).to_string(),
+                    ]
+                };
+                for key in row.index_ports {
+                    ports.insert(key, index_path.clone());
                 }
                 fields.push(SchemaNode::scalar(&row.name, row.ty));
                 xlsx_rows.push(row.row);
             }
-            if !index_ports.is_empty() {
-                for key in index_ports {
-                    ports.insert(key, vec!["n".to_string()]);
-                }
+            if indexed {
                 fields.push(SchemaNode::scalar("n", ScalarType::Int));
             }
             (
@@ -278,6 +313,7 @@ pub(super) fn read(
             db_queries: Vec::new(),
             db_xml_columns: BTreeMap::new(),
             dynamic_json: None,
+            target_schema_hints: None,
         },
         workbook,
     ))
@@ -299,15 +335,16 @@ fn read_composite(
     excel: roxmltree::Node<'_, '_>,
     mut tables: Vec<Table>,
     records: Vec<FixedRecord>,
+    grids: Vec<grid::GridWorksheet>,
     input_keys: BTreeSet<u32>,
     output_keys: BTreeSet<u32>,
     is_source: bool,
     is_default_output: bool,
     warnings: &mut Vec<String>,
 ) -> Option<SchemaComponent> {
-    if tables.is_empty() {
+    if tables.is_empty() && grids.is_empty() {
         warnings.push(format!(
-            "xlsx component `{name}` has fixed records but no supported open row table; composite XLSX sources require at least one table"
+            "xlsx component `{name}` has fixed records but no supported open row table or grid; composite XLSX sources require at least one table or grid"
         ));
         return None;
     }
@@ -315,7 +352,9 @@ fn read_composite(
         .iter()
         .any(|table| matches!(table.layout, TableLayout::Transposed { .. }))
     {
-        let reason = if !records.is_empty() && tables.len() == 1 {
+        let reason = if !grids.is_empty() {
+            "combines a grid with a transposed table"
+        } else if !records.is_empty() && tables.len() == 1 {
             "combines fixed records with a transposed table"
         } else {
             "combines multiple tables with a transposed table"
@@ -342,7 +381,9 @@ fn read_composite(
     }
     if records
         .iter()
-        .any(|record| !names.insert(record.name.as_str()))
+        .map(|record| record.name.as_str())
+        .chain(grids.iter().filter_map(grid::GridWorksheet::sheet))
+        .any(|sheet| !names.insert(sheet))
     {
         warnings.push(format!(
             "xlsx component `{name}` uses the same worksheet name for more than one composite region; component skipped"
@@ -378,6 +419,13 @@ fn read_composite(
             sheet: record.sheet,
             cells,
         });
+    }
+
+    let mut grid_layouts = Vec::with_capacity(grids.len());
+    for grid in grids {
+        let (group, region) = grid::composite_region(grid, &name, &mut ports, warnings)?;
+        fields.push(group);
+        grid_layouts.push(region);
     }
 
     let mut table_layouts = Vec::with_capacity(tables.len());
@@ -436,7 +484,7 @@ fn read_composite(
             row_number_field,
         });
     }
-    let table = table_layouts.remove(0);
+    let table = (!table_layouts.is_empty()).then(|| table_layouts.remove(0));
 
     if excel.attribute("updateexistingfile") == Some("1") {
         warnings.push(format!(
@@ -455,6 +503,7 @@ fn read_composite(
                 table,
                 additional_tables: table_layouts,
                 records: fixed_layouts,
+                grids: grid_layouts,
             }),
             ..FormatOptions::default()
         },
@@ -475,6 +524,7 @@ fn read_composite(
         db_queries: Vec::new(),
         db_xml_columns: BTreeMap::new(),
         dynamic_json: None,
+        target_schema_hints: None,
     })
 }
 
@@ -495,7 +545,6 @@ fn inspect_worksheet(
         .collect();
 
     let mut transposed_rows = Vec::new();
-    let mut transposed_index_ports = Vec::new();
     let mut fixed_cells = Vec::new();
     for row in worksheet
         .children()
@@ -519,15 +568,8 @@ fn inspect_worksheet(
         };
         if range.attribute("count") == Some("1")
             && range.attribute("offset").is_none()
-            && is_source
-            && let Some(transposed) = read_transposed_row(
-                row,
-                range,
-                &range_id,
-                component_name,
-                warnings,
-                &mut transposed_index_ports,
-            )
+            && let Some(transposed) =
+                read_transposed_row(row, range, &range_id, component_name, warnings)
         {
             transposed_rows.push(transposed);
             continue;
@@ -642,7 +684,6 @@ fn inspect_worksheet(
                 worksheet_name_ports: worksheet_name_ports(worksheet),
                 layout: TableLayout::Transposed {
                     rows: transposed_rows,
-                    index_ports: transposed_index_ports,
                 },
             });
         }
@@ -737,7 +778,6 @@ fn read_transposed_row(
     range_id: &str,
     component_name: &str,
     warnings: &mut Vec<String>,
-    index_ports: &mut Vec<u32>,
 ) -> Option<TransposedRow> {
     let physical_row = match range.attribute("start")?.parse::<u32>() {
         Ok(value) if (1..=MAX_WORKSHEET_ROW).contains(&value) => value,
@@ -775,11 +815,11 @@ fn read_transposed_row(
             "xlsx component `{component_name}` exposes physical Row/@r ports; those index values were skipped"
         ));
     }
-    index_ports.extend(
-        cell.children()
-            .filter(|node| node.has_tag_name("entry") && node.attribute("name") == Some("n"))
-            .flat_map(port_keys),
-    );
+    let index_ports = cell
+        .children()
+        .filter(|node| node.has_tag_name("entry") && node.attribute("name") == Some("n"))
+        .flat_map(port_keys)
+        .collect();
     let name = cell
         .attribute("annotation")
         .or_else(|| row.attribute("annotation"))
@@ -791,6 +831,7 @@ fn read_transposed_row(
         row: physical_row,
         ty: scalar_type(cell.attribute("datatype")),
         ports: port_keys(cell),
+        index_ports,
     })
 }
 

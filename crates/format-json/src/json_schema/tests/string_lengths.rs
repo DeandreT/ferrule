@@ -194,11 +194,16 @@ fn modern_ref_siblings_apply_and_legacy_siblings_are_ignored() {
     let legacy_cycle = import_str(
         r##"{
           "$schema":"http://json-schema.org/draft-07/schema#",
-          "$ref":"#/definitions/loop",
+          "type":"object",
+          "properties":{"Value":{"$ref":"#/definitions/loop"}},
           "definitions":{"loop":{"$ref":"#/definitions/loop","minLength":"ignored"}}
         }"##,
     );
-    assert!(legacy_cycle.string_length_range.is_none());
+    assert!(
+        legacy_cycle
+            .child("Value")
+            .is_some_and(|value| value.string_length_range.is_none())
+    );
     assert!(
         import_str_result(
             r##"{

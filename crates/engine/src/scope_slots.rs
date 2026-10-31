@@ -112,19 +112,21 @@ pub(crate) enum ParentJoinRoot {
     Window,
     SequenceInput,
     Presence,
+    ComputedJoinKey,
 }
 
 /// The roots whose join references are validated against the parent's active
 /// joins: exactly the parent-role roots. Validation pops roots last first, so
-/// they are read block size first, then windows, sequence inputs and
-/// presence, the order these issues have always been reported in, rather
-/// than in visit order.
+/// they are read block size first, then windows, sequence inputs, presence
+/// and a join's computed key, rather than in visit order. A computed key is
+/// read before its own join is active, so it never sees that join's tuple.
 pub(crate) fn parent_join_validation(slot: Slot) -> Option<ParentJoinRoot> {
     match slot {
         Slot::GroupIntoBlocks => Some(ParentJoinRoot::BlockSize),
         Slot::Window(_) => Some(ParentJoinRoot::Window),
         Slot::SequenceInput => Some(ParentJoinRoot::SequenceInput),
         Slot::Presence => Some(ParentJoinRoot::Presence),
+        Slot::ComputedJoinKey => Some(ParentJoinRoot::ComputedJoinKey),
         _ => None,
     }
 }
@@ -194,9 +196,11 @@ pub(crate) fn admitted(slot: Slot) -> Option<AdmittedRoot> {
             Some(AdmittedRoot::Construction)
         }
         Slot::DynamicChildKey(_) => Some(AdmittedRoot::DynamicChildKey),
+        // A computed join key admits no owned read: join validation refuses one.
         Slot::SequenceInput
         | Slot::SequenceItem
         | Slot::SequenceReservedItem
+        | Slot::ComputedJoinKey
         | Slot::FailurePredicate
         | Slot::FailureMessage => None,
     }

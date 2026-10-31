@@ -630,6 +630,7 @@ fn all_known_unsupported_formats_reject_before_any_stage_callback() -> anyhow::R
     let mut transposed = copy_project();
     transposed.target_options = FormatOptions {
         xlsx_rows: vec![1],
+        xlsx_update_existing: true,
         ..FormatOptions::default()
     };
     transposed.target_path = Some("sentinel.xlsx".into());
@@ -686,6 +687,113 @@ fn all_known_unsupported_formats_reject_before_any_stage_callback() -> anyhow::R
         );
         assert_eq!(calls.load(Ordering::Relaxed), 0);
     }
+    Ok(())
+}
+
+#[test]
+fn hierarchical_update_existing_target_is_refused_as_stateful() -> anyhow::Result<()> {
+    let mut project = copy_project();
+    project.target_path = Some("sentinel.xlsx".into());
+    project.target_options = FormatOptions {
+        xlsx_update_existing: true,
+        xlsx_hierarchical: Some(mapping::XlsxHierarchicalLayout {
+            worksheets_path: vec!["Sheets".into()],
+            worksheet_name_path: vec!["Name".into()],
+            ranges: Vec::new(),
+        }),
+        ..FormatOptions::default()
+    };
+    let hosts = [host("input", Path::new("input.json"), b"invalid JSON")?];
+    let error = preview_pipeline_value_payloads(
+        &single(project),
+        Path::new("absent/pipeline.json"),
+        &PipelinePreviewOptions::new(&hosts),
+    )
+    .unwrap_err();
+    assert!(
+        format!("{error:#}").contains("pipeline preview does not support update-existing XLSX"),
+        "{error:#}"
+    );
+    Ok(())
+}
+
+#[test]
+fn transposed_xlsx_target_previews_as_a_new_workbook() -> anyhow::Result<()> {
+    let mut project = dynamic_project();
+    project.source = SchemaNode::group(
+        "Input",
+        vec![
+            SchemaNode::group(
+                "Rows",
+                vec![
+                    SchemaNode::scalar("File", ScalarType::String),
+                    SchemaNode::scalar("Value", ScalarType::String),
+                ],
+            )
+            .repeating(),
+        ],
+    );
+    project.target = SchemaNode::group(
+        "Record",
+        vec![
+            SchemaNode::scalar("Value", ScalarType::String),
+            SchemaNode::scalar("File", ScalarType::String),
+        ],
+    );
+    project.root = Scope {
+        iteration: ScopeIteration::Source(vec!["Rows".into()]),
+        bindings: vec![
+            Binding {
+                target_field: "Value".into(),
+                node: 1,
+            },
+            Binding {
+                target_field: "File".into(),
+                node: 0,
+            },
+        ],
+        ..Scope::default()
+    };
+    project.target_path = Some("columns.xlsx".into());
+    project.target_options = FormatOptions {
+        tabular_kind: Some(mapping::TabularBoundaryKind::Xlsx),
+        xlsx_sheet: Some("Columns".into()),
+        xlsx_rows: vec![2, 5],
+        ..FormatOptions::default()
+    };
+    let target = project.target.clone();
+    let bytes = br#"{"Rows":[{"File":"a.txt","Value":"first"},{"File":"b.txt","Value":"second"}]}"#;
+    let hosts = [host("input", Path::new("input.json"), bytes)?];
+    let output = preview_pipeline_value_payloads(
+        &single(project),
+        Path::new("absent/pipeline.json"),
+        &PipelinePreviewOptions::new(&hosts),
+    )?;
+    assert_eq!(output.artifacts.len(), 1);
+    let record = |value: &str, file: &str| {
+        ir::Instance::Group(
+            (vec![
+                (
+                    "Value".to_string(),
+                    ir::Instance::Scalar(Value::String(value.into())),
+                ),
+                (
+                    "File".to_string(),
+                    ir::Instance::Scalar(Value::String(file.into())),
+                ),
+            ])
+            .into(),
+        )
+    };
+    assert_eq!(
+        format_xlsx::from_bytes_transposed(
+            &output.artifacts[0].bytes,
+            &target,
+            Some("Columns"),
+            &[2, 5]
+        )?,
+        vec![record("first", "a.txt"), record("second", "b.txt")]
+    );
     Ok(())
 }
 
@@ -765,7 +873,19 @@ fn dynamic_outputs_render_each_member_and_validate_options_before_execution() ->
     assert!(!dir.0.join("uncreated").exists());
     let mut unsupported = pipeline;
     unsupported.stages[0].project.target_options = FormatOptions {
-        xlsx_rows: vec![1],
+        xlsx_composite: Some(mapping::XlsxCompositeLayout {
+            table: Some(mapping::XlsxTableRegion {
+                path: vec!["Rows".into()],
+                sheet: None,
+                start_row: mapping::XlsxRow::new(1).unwrap(),
+                columns: Vec::new(),
+                has_header: true,
+                row_number_field: None,
+            }),
+            additional_tables: Vec::new(),
+            records: Vec::new(),
+            grids: Vec::new(),
+        }),
         ..FormatOptions::default()
     };
     let count = AtomicUsize::new(0);

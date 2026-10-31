@@ -190,6 +190,7 @@ pub fn from_str(
     schema: &SchemaNode,
     lenient: bool,
 ) -> Result<Instance, EdiFormatError> {
+    crate::refuse_json_tuple(schema)?;
     let (segments, separators) = tokenize_with_separators(text)?;
     read_segments_with_subcomponent_escape(
         schema,

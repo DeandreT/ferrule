@@ -22,6 +22,9 @@ pub const V2_PREFIX: &str = "FERRULE-EMBEDDED-SCHEMA/2\n";
 pub const V3_PREFIX: &str = "FERRULE-EMBEDDED-SCHEMA/3\n";
 /// Descriptor version carrying independent JSON object-item nullability.
 pub const V4_PREFIX: &str = "FERRULE-EMBEDDED-SCHEMA/4\n";
+/// Descriptor version carrying JSON Schema tuple frames. Older readers reject
+/// this version instead of reading each tuple as an object.
+pub const V5_PREFIX: &str = "FERRULE-EMBEDDED-SCHEMA/5\n";
 /// Marker used only at schema positions whose IR type is `FiniteF64`.
 pub const FLOAT_BITS_MARKER_PREFIX: &str = "FERRULE-F64-BITS:";
 const VERSION_STEM: &str = "FERRULE-EMBEDDED-SCHEMA/";
@@ -85,8 +88,8 @@ impl std::error::Error for CodecError {}
 
 /// Encode one schema. Stable schemas keep their byte-for-byte v1 JSON form;
 /// schemas changed by default JSON parsing receive the v2 descriptor. Explicit
-/// nested array wrappers receive v3 and explicit object-item nullability receives
-/// v4 so older readers fail closed.
+/// nested array wrappers receive v3, explicit object-item nullability receives
+/// v4 and tuple frames receive v5 so older readers fail closed.
 pub fn encode(schema: &SchemaNode, max_bytes: usize) -> Result<String, CodecError> {
     preflight_depth(schema)?;
     let plain = serde_json::to_string(schema)
@@ -94,6 +97,7 @@ pub fn encode(schema: &SchemaNode, max_bytes: usize) -> Result<String, CodecErro
     check_size(plain.len(), max_bytes)?;
     if !schema.contains_json_array_wrapper()
         && !schema.contains_json_object_item_nullability()
+        && !schema.contains_json_tuple()
         && let Ok(decoded) = serde_json::from_str::<SchemaNode>(&plain)
     {
         let canonical = serde_json::to_string(&decoded)
@@ -107,7 +111,9 @@ pub fn encode(schema: &SchemaNode, max_bytes: usize) -> Result<String, CodecErro
     let payload = marked_value(schema)?;
     let payload = serde_json::to_string(&payload)
         .map_err(|error| CodecError::Serialization(error.to_string()))?;
-    let prefix = if schema.contains_json_object_item_nullability() {
+    let prefix = if schema.contains_json_tuple() {
+        V5_PREFIX
+    } else if schema.contains_json_object_item_nullability() {
         V4_PREFIX
     } else if schema.contains_json_array_wrapper() {
         V3_PREFIX
@@ -128,13 +134,14 @@ pub fn encode(schema: &SchemaNode, max_bytes: usize) -> Result<String, CodecErro
     Ok(descriptor)
 }
 
-/// Decode v1 JSON or an exact v2/v3/v4 descriptor under one UTF-8 byte limit.
+/// Decode v1 JSON or an exact v2/v3/v4/v5 descriptor under one UTF-8 byte limit.
 pub fn decode(descriptor: &str, max_bytes: usize) -> Result<SchemaNode, CodecError> {
     check_size(descriptor.len(), max_bytes)?;
     if let Some(payload) = descriptor
         .strip_prefix(V2_PREFIX)
         .or_else(|| descriptor.strip_prefix(V3_PREFIX))
         .or_else(|| descriptor.strip_prefix(V4_PREFIX))
+        .or_else(|| descriptor.strip_prefix(V5_PREFIX))
     {
         let mut value: Value = serde_json::from_str(payload)
             .map_err(|error| CodecError::Deserialization(error.to_string()))?;

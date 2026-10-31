@@ -29,9 +29,10 @@ pub use xml_scalar_output::{
 };
 mod xml_structured_input;
 mod xml_type_origin;
+mod xml_wildcard_exclusions;
 pub use xml_schema_hints::{
-    MAX_XML_SCHEMA_HINT_PAIRS, MAX_XML_SCHEMA_HINT_TOKEN_BYTES, XmlSchemaHints,
-    XmlSchemaHintsError, XmlSchemaLocation,
+    MAX_XML_SCHEMA_HINT_PAIRS, MAX_XML_SCHEMA_HINT_TOKEN_BYTES, XmlSchemaHintDerivation,
+    XmlSchemaHints, XmlSchemaHintsError, XmlSchemaLocation,
 };
 
 pub use decimal::{
@@ -57,6 +58,10 @@ pub use xml_structured_input::{
     MAX_STRUCTURED_XML_SCHEMA_NODES, xml_structured_document_input_is_supported,
 };
 pub use xml_type_origin::{XmlTypeOrigin, XmlTypeOriginError};
+pub use xml_wildcard_exclusions::{
+    MAX_XML_WILDCARD_EXCLUDED_NAMES, XmlExpandedName, XmlWildcardExcludedNames,
+    XmlWildcardExcludedNamesError,
+};
 
 pub use scalar_lexical::parse_exact_decimal_i64;
 pub use source_origin::{
@@ -65,25 +70,26 @@ pub use source_origin::{
 
 pub use schema::{
     EffectiveCardinality, EffectiveNullability, EffectivePresence, EffectiveSchemaView,
-    EffectiveViewError, EffectiveXmlView, IntegerRange, ItemCountRange, JsonAllowedValue,
-    JsonAllowedValues, JsonAllowedValuesError, JsonArrayWrapperFrameError, JsonContainsConstraint,
-    JsonContainsConstraints, JsonContainsPredicate, JsonDependentSchemaConstraint,
-    JsonDependentSchemaConstraints, JsonFormatAnnotations, JsonFormatAnnotationsError,
-    JsonMultipleOf, JsonMultipleOfConstraints, JsonMultipleOfConstraintsError, JsonNullability,
-    JsonPatternConstraints, JsonPatternConstraintsError, JsonPatternPropertyNames,
-    JsonPropertyDependencies, JsonPropertyDependenciesError, JsonPropertyNameConstraints,
-    JsonPropertyNameSet, JsonPropertyNameSetError, JsonSchemaPredicate,
-    JsonUndeclaredPropertyError, MAX_DISTINCT_JSON_PATTERNS, MAX_JSON_ALLOWED_VALUE_STRING_BYTES,
-    MAX_JSON_ALLOWED_VALUE_TOTAL_STRING_BYTES, MAX_JSON_ALLOWED_VALUES,
-    MAX_JSON_CONTAINS_CONSTRAINTS, MAX_JSON_DEPENDENT_SCHEMA_CONSTRAINTS,
+    EffectiveViewError, EffectiveXmlView, IntegerRange, ItemCountRange, JSON_TUPLE_MEMBER_PREFIX,
+    JSON_TUPLE_REST_FIELD, JsonAllowedValue, JsonAllowedValues, JsonAllowedValuesError,
+    JsonArrayWrapperFrameError, JsonContainsConstraint, JsonContainsConstraints,
+    JsonContainsPredicate, JsonDependentSchemaConstraint, JsonDependentSchemaConstraints,
+    JsonFormatAnnotations, JsonFormatAnnotationsError, JsonMultipleOf, JsonMultipleOfConstraints,
+    JsonMultipleOfConstraintsError, JsonNullability, JsonPatternConstraints,
+    JsonPatternConstraintsError, JsonPatternPropertyNames, JsonPropertyDependencies,
+    JsonPropertyDependenciesError, JsonPropertyNameConstraints, JsonPropertyNameSet,
+    JsonPropertyNameSetError, JsonSchemaPredicate, JsonTupleFrame, JsonTupleFrameError,
+    JsonTupleLayout, JsonTupleTail, JsonUndeclaredPropertyError, MAX_DISTINCT_JSON_PATTERNS,
+    MAX_JSON_ALLOWED_VALUE_STRING_BYTES, MAX_JSON_ALLOWED_VALUE_TOTAL_STRING_BYTES,
+    MAX_JSON_ALLOWED_VALUES, MAX_JSON_CONTAINS_CONSTRAINTS, MAX_JSON_DEPENDENT_SCHEMA_CONSTRAINTS,
     MAX_JSON_FORMAT_ANNOTATION_BYTES, MAX_JSON_FORMAT_ANNOTATION_TOTAL_BYTES,
     MAX_JSON_FORMAT_ANNOTATIONS, MAX_JSON_MULTIPLE_OF_ALTERNATIVES, MAX_JSON_MULTIPLE_OF_TERMS,
     MAX_JSON_PATTERN_ALTERNATIVES, MAX_JSON_PATTERN_INSTRUCTIONS, MAX_JSON_PATTERN_SOURCE_BYTES,
     MAX_JSON_PATTERN_TERMS, MAX_JSON_PROPERTY_DEPENDENCY_EDGES,
     MAX_JSON_PROPERTY_DEPENDENCY_NAME_BYTES, MAX_JSON_PROPERTY_DEPENDENCY_TRIGGERS,
     MAX_JSON_PROPERTY_NAME_BYTES, MAX_JSON_PROPERTY_NAME_TOTAL_BYTES, MAX_JSON_PROPERTY_NAMES,
-    NumberBound, NumberRange, NumericRange, PropertyCountRange, RepeatedItems, StringLengthRange,
-    XmlOccurrence,
+    MAX_JSON_TUPLE_MEMBERS, NumberBound, NumberRange, NumericRange, PropertyCountRange,
+    RepeatedItems, StringLengthRange, XmlOccurrence, json_tuple_member_name,
 };
 
 /// Instance-field name used for an XML element's simple text content.
@@ -323,6 +329,11 @@ pub enum XmlWildcardNamespaceConstraint {
     List {
         namespaces: XmlWildcardNamespaceList,
     },
+    /// An XSD 1.1 `notNamespace` set. It stays distinct from `Other`, which
+    /// models `##other`, even when both reject the same namespaces.
+    Not {
+        namespaces: XmlWildcardNamespaceList,
+    },
 }
 
 impl XmlWildcardNamespaceConstraint {
@@ -342,6 +353,9 @@ impl XmlWildcardNamespaceConstraint {
                         .is_none_or(|target| namespace != target.as_str())
             }),
             Self::List { namespaces } => namespaces
+                .iter()
+                .any(|candidate| candidate.matches(namespace)),
+            Self::Not { namespaces } => !namespaces
                 .iter()
                 .any(|candidate| candidate.matches(namespace)),
         }
@@ -551,6 +565,9 @@ pub struct SchemaNode {
     /// Validation policy for one generic XML wildcard group.
     #[serde(default, skip_serializing_if = "XmlWildcardProcessContents::is_skip")]
     pub xml_wildcard_process_contents: XmlWildcardProcessContents,
+    /// XSD 1.1 expanded names this generic wildcard group never matches.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub xml_wildcard_excluded_names: Option<XmlWildcardExcludedNames>,
     #[serde(default)]
     pub repeating: bool,
     /// Reuses the shape of the nearest concrete group with this name.
@@ -607,6 +624,12 @@ pub struct SchemaNode {
     /// inner array schema; JSON boundaries make this group frame transparent.
     #[serde(default, skip_serializing_if = "core::ops::Not::not")]
     pub json_array_wrapper: bool,
+    /// This group is a JSON Schema tuple frame: an array whose positions
+    /// have their own schemas. Its children are the positional members
+    /// `item1`..`itemN` and, for an open tail, a repeating `rest` item.
+    /// See [`SchemaNode::check_json_tuple_frame`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub json_tuple: Option<JsonTupleLayout>,
     /// This string scalar stores one arbitrary JSON value as canonical JSON
     /// text. JSON boundaries use it for unconstrained dynamic object fields;
     /// other formats and the mapping graph continue to see an ordinary string.
@@ -807,6 +830,8 @@ impl<'de> Deserialize<'de> for SchemaNode {
             #[serde(default)]
             xml_wildcard_process_contents: XmlWildcardProcessContents,
             #[serde(default)]
+            xml_wildcard_excluded_names: Option<XmlWildcardExcludedNames>,
+            #[serde(default)]
             repeating: bool,
             #[serde(default)]
             recursive_ref: Option<String>,
@@ -831,6 +856,8 @@ impl<'de> Deserialize<'de> for SchemaNode {
             json_object_item_nullable: Option<bool>,
             #[serde(default)]
             json_array_wrapper: bool,
+            #[serde(default)]
+            json_tuple: Option<JsonTupleLayout>,
             #[serde(default)]
             json_any: bool,
             #[serde(default)]
@@ -894,6 +921,7 @@ impl<'de> Deserialize<'de> for SchemaNode {
             xml_name_alternatives: repr.xml_name_alternatives,
             xml_wildcard_namespace: repr.xml_wildcard_namespace,
             xml_wildcard_process_contents: repr.xml_wildcard_process_contents,
+            xml_wildcard_excluded_names: repr.xml_wildcard_excluded_names,
             repeating: repr.repeating,
             recursive_ref: repr.recursive_ref,
             attribute: repr.attribute,
@@ -905,6 +933,7 @@ impl<'de> Deserialize<'de> for SchemaNode {
             container_nullable: repr.container_nullable,
             json_object_item_nullable: repr.json_object_item_nullable,
             json_array_wrapper: repr.json_array_wrapper,
+            json_tuple: repr.json_tuple,
             json_any: repr.json_any,
             json_undeclared_property: repr.json_undeclared_property,
             fixed: repr.fixed,
@@ -943,6 +972,11 @@ impl<'de> Deserialize<'de> for SchemaNode {
                 "invalid JSON array-wrapper metadata",
             ));
         }
+        if guard.is_root && !node.json_tuple_frames_tree_is_valid() {
+            return Err(serde::de::Error::custom(
+                "invalid JSON tuple frame metadata",
+            ));
+        }
         if guard.is_root && node.json_undeclared_property {
             return Err(serde::de::Error::custom(
                 "a schema root cannot be an undeclared JSON object property",
@@ -953,7 +987,7 @@ impl<'de> Deserialize<'de> for SchemaNode {
                 || !node.json_pattern_budget_is_valid())
         {
             return Err(serde::de::Error::custom(
-                "schema metadata contains invalid nested alternatives, required fields, recursion, fixed or JSON allowed values, numeric range, JSON multipleOf constraints, item-count, contains, property-count, property-dependency, pattern-property selector, property-name, or unique-items constraints, string-length range, JSON pattern constraints or format annotations, value generation, default value, alternative mode, XML alternative kind, XML name alternatives, XML repeating sequences or choices, XML wildcard namespace or process policy, database relation, or JSON nullability, or exceeds its schema-wide JSON pattern program or match-work budget",
+                "schema metadata contains invalid nested alternatives, required fields, recursion, fixed or JSON allowed values, numeric range, JSON multipleOf constraints, item-count, contains, property-count, property-dependency, pattern-property selector, property-name, or unique-items constraints, string-length range, JSON pattern constraints or format annotations, value generation, default value, alternative mode, XML alternative kind, XML name alternatives, XML repeating sequences or choices, XML wildcard namespace, process policy or excluded names, database relation, or JSON nullability, or exceeds its schema-wide JSON pattern program or match-work budget",
             ));
         }
         Ok(node)
@@ -1175,6 +1209,7 @@ impl SchemaNode {
     pub fn metadata_is_valid(&self) -> bool {
         self.alternatives_are_valid()
             && self.json_array_wrapper_is_valid()
+            && self.json_tuple_frame_is_valid()
             && self.required_fields_are_valid()
             && self.xml_name_alternatives_are_valid()
             && self.recursive_ref_is_valid()
@@ -1211,11 +1246,13 @@ impl SchemaNode {
             && self.json_undeclared_properties_are_valid()
             && self.xml_wildcard_namespace_is_valid()
             && self.xml_wildcard_process_contents_is_valid()
+            && self.xml_wildcard_excluded_names_are_valid()
     }
 
     fn metadata_without_pattern_evaluation_is_valid(&self) -> bool {
         self.alternatives_are_valid()
             && self.json_array_wrapper_is_valid()
+            && self.json_tuple_frame_is_valid()
             && self.required_fields_are_valid()
             && self.xml_name_alternatives_are_valid()
             && self.recursive_ref_is_valid()
@@ -1253,6 +1290,7 @@ impl SchemaNode {
             && self.json_undeclared_properties_are_valid()
             && self.xml_wildcard_namespace_is_valid()
             && self.xml_wildcard_process_contents_is_valid()
+            && self.xml_wildcard_excluded_names_are_valid()
     }
 
     pub fn scalar(name: impl Into<String>, ty: ScalarType) -> Self {
@@ -1262,6 +1300,7 @@ impl SchemaNode {
             xml_name_alternatives: Vec::new(),
             xml_wildcard_namespace: None,
             xml_wildcard_process_contents: XmlWildcardProcessContents::Skip,
+            xml_wildcard_excluded_names: None,
             repeating: false,
             recursive_ref: None,
             attribute: false,
@@ -1273,6 +1312,7 @@ impl SchemaNode {
             container_nullable: false,
             json_object_item_nullable: None,
             json_array_wrapper: false,
+            json_tuple: None,
             json_any: false,
             json_undeclared_property: false,
             fixed: None,
@@ -1316,6 +1356,7 @@ impl SchemaNode {
             xml_name_alternatives: Vec::new(),
             xml_wildcard_namespace: None,
             xml_wildcard_process_contents: XmlWildcardProcessContents::Skip,
+            xml_wildcard_excluded_names: None,
             repeating: false,
             recursive_ref: None,
             attribute: false,
@@ -1327,6 +1368,7 @@ impl SchemaNode {
             container_nullable: false,
             json_object_item_nullable: None,
             json_array_wrapper: false,
+            json_tuple: None,
             json_any: false,
             json_undeclared_property: false,
             fixed: None,
@@ -1402,6 +1444,7 @@ impl SchemaNode {
             xml_name_alternatives: Vec::new(),
             xml_wildcard_namespace: None,
             xml_wildcard_process_contents: XmlWildcardProcessContents::Skip,
+            xml_wildcard_excluded_names: None,
             repeating: false,
             recursive_ref: None,
             attribute: false,
@@ -1413,6 +1456,7 @@ impl SchemaNode {
             container_nullable: false,
             json_object_item_nullable: None,
             json_array_wrapper: false,
+            json_tuple: None,
             json_any: false,
             json_undeclared_property: false,
             fixed: None,
@@ -2621,7 +2665,7 @@ impl SchemaNode {
 
     pub fn with_json_array_wrapper(mut self) -> Option<Self> {
         self.json_array_wrapper = true;
-        self.json_array_wrapper_is_valid().then_some(self)
+        (self.json_array_wrapper_is_valid() && self.json_tuple_frame_is_valid()).then_some(self)
     }
 
     pub fn json_array_wrappers_tree_is_valid(&self) -> bool {
@@ -2724,7 +2768,7 @@ impl SchemaNode {
     /// Attaches exact relation endpoints to a nested repeating database group.
     pub fn with_database_relation(mut self, relation: DatabaseRelation) -> Option<Self> {
         self.database_relation = Some(relation);
-        self.database_relation_is_valid().then_some(self)
+        (self.database_relation_is_valid() && self.json_tuple_frame_is_valid()).then_some(self)
     }
 
     /// Marks a non-repeating scalar as format-generated.
@@ -2764,7 +2808,8 @@ impl SchemaNode {
             }
             std::mem::replace(dynamic, value.map(Box::new))
         };
-        if self.property_count_range_is_valid()
+        if self.json_tuple_frame_is_valid()
+            && self.property_count_range_is_valid()
             && self.json_property_dependencies_are_valid()
             && self.json_pattern_property_names_are_valid()
             && self.json_property_names_are_valid()
@@ -2808,7 +2853,8 @@ impl SchemaNode {
             }
             std::mem::replace(target, required)
         };
-        if self.property_count_range_is_valid()
+        if self.json_tuple_frame_is_valid()
+            && self.property_count_range_is_valid()
             && self.json_property_dependencies_are_valid()
             && self.json_pattern_property_names_are_valid()
             && self.json_property_names_are_valid()
@@ -2925,7 +2971,8 @@ impl SchemaNode {
         let previous_xml_type_alternatives =
             std::mem::replace(&mut self.xml_type_alternatives, false);
         let previous_xml_default_type = self.xml_default_type.take();
-        if self.property_count_range_is_valid()
+        if self.json_tuple_frame_is_valid()
+            && self.property_count_range_is_valid()
             && self.json_property_dependencies_are_valid()
             && self.json_pattern_property_names_are_valid()
             && self.json_property_names_are_valid()
@@ -3085,7 +3132,7 @@ impl SchemaNode {
     /// Sets optional XML occurrence metadata without leaving an invalid role.
     pub fn set_xml_optional(&mut self, optional: bool) -> bool {
         let previous = std::mem::replace(&mut self.xml_optional, optional);
-        if self.xml_optional_is_valid() {
+        if self.xml_optional_is_valid() && self.json_tuple_frame_is_valid() {
             true
         } else {
             self.xml_optional = previous;
@@ -3200,7 +3247,7 @@ impl SchemaNode {
 
     pub fn set_xml_repeating_sequences(&mut self, sequences: Vec<XmlRepeatingSequence>) -> bool {
         let previous = std::mem::replace(&mut self.xml_repeating_sequences, sequences);
-        if self.xml_repeating_sequences_are_valid() {
+        if self.xml_repeating_sequences_are_valid() && self.json_tuple_frame_is_valid() {
             true
         } else {
             self.xml_repeating_sequences = previous;
@@ -3247,7 +3294,7 @@ impl SchemaNode {
 
     pub fn set_xml_repeating_choices(&mut self, choices: Vec<XmlRepeatingChoice>) -> bool {
         let previous = std::mem::replace(&mut self.xml_repeating_choices, choices);
-        if self.xml_repeating_choices_are_valid() {
+        if self.xml_repeating_choices_are_valid() && self.json_tuple_frame_is_valid() {
             true
         } else {
             self.xml_repeating_choices = previous;
@@ -3349,7 +3396,10 @@ impl SchemaNode {
 
     pub fn with_json_contains(mut self, constraints: JsonContainsConstraints) -> Option<Self> {
         self.json_contains = Some(constraints);
-        (self.json_contains_are_valid() && self.json_pattern_budget_is_valid()).then_some(self)
+        (self.json_contains_are_valid()
+            && self.json_tuple_frame_is_valid()
+            && self.json_pattern_budget_is_valid())
+        .then_some(self)
     }
 
     pub fn with_json_dependent_schemas(
@@ -3357,13 +3407,16 @@ impl SchemaNode {
         constraints: JsonDependentSchemaConstraints,
     ) -> Option<Self> {
         self.json_dependent_schemas = Some(constraints);
-        (self.json_dependent_schemas_are_valid() && self.json_pattern_budget_is_valid())
-            .then_some(self)
+        (self.json_dependent_schemas_are_valid()
+            && self.json_tuple_frame_is_valid()
+            && self.json_pattern_budget_is_valid())
+        .then_some(self)
     }
 
     pub fn with_property_count_range(mut self, range: PropertyCountRange) -> Option<Self> {
         self.property_count_range = Some(range);
-        (self.property_count_range_is_valid()
+        (self.json_tuple_frame_is_valid()
+            && self.property_count_range_is_valid()
             && self.json_property_dependencies_are_valid()
             && self.json_property_names_are_valid())
         .then_some(self)
@@ -3382,7 +3435,8 @@ impl SchemaNode {
         dependencies: Option<JsonPropertyDependencies>,
     ) -> bool {
         let previous = std::mem::replace(&mut self.json_property_dependencies, dependencies);
-        if self.json_property_dependencies_are_valid()
+        if self.json_tuple_frame_is_valid()
+            && self.json_property_dependencies_are_valid()
             && self.json_pattern_property_names_are_valid()
             && self.property_count_range_is_valid()
             && self.json_property_names_are_valid()
@@ -3408,7 +3462,10 @@ impl SchemaNode {
         selectors: Option<JsonPatternPropertyNames>,
     ) -> bool {
         let previous = std::mem::replace(&mut self.json_pattern_property_names, selectors);
-        if self.json_pattern_property_names_are_valid() && self.json_pattern_budget_is_valid() {
+        if self.json_tuple_frame_is_valid()
+            && self.json_pattern_property_names_are_valid()
+            && self.json_pattern_budget_is_valid()
+        {
             true
         } else {
             self.json_pattern_property_names = previous;
@@ -3425,7 +3482,8 @@ impl SchemaNode {
         constraints: JsonPropertyNameConstraints,
     ) -> Option<Self> {
         self.json_property_names = Some(constraints);
-        (self.json_property_names_are_valid()
+        (self.json_tuple_frame_is_valid()
+            && self.json_property_names_are_valid()
             && self.property_count_range_is_valid()
             && self.json_property_dependencies_are_valid()
             && self.json_pattern_budget_is_valid())
@@ -3435,7 +3493,7 @@ impl SchemaNode {
     /// Requires pairwise-distinct JSON array items under JSON Schema equality.
     pub fn with_json_unique_items(mut self) -> Option<Self> {
         self.json_unique_items = true;
-        self.json_unique_items_is_valid().then_some(self)
+        (self.json_unique_items_is_valid() && self.json_tuple_frame_is_valid()).then_some(self)
     }
 
     pub fn with_string_length_range(mut self, range: StringLengthRange) -> Option<Self> {

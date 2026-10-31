@@ -262,3 +262,82 @@ fn validates_xml_serializer_source_schema_cardinality_and_namespace() {
         })
     );
 }
+
+#[test]
+fn xml_serializer_refuses_wildcard_exclusions() {
+    let attributes = || {
+        SchemaNode::group(
+            ir::XML_ATTRIBUTES_FIELD,
+            vec![
+                SchemaNode::scalar(ir::XML_LOCAL_NAME_FIELD, ScalarType::String),
+                SchemaNode::scalar(ir::XML_NAMESPACE_URI_FIELD, ScalarType::String),
+                SchemaNode::scalar(ir::XML_TEXT_FIELD, ScalarType::String).text(),
+            ],
+        )
+        .repeating()
+    };
+    let negated = attributes()
+        .with_xml_wildcard_namespace(ir::XmlWildcardNamespaceConstraint::Not {
+            namespaces: ir::XmlWildcardNamespaceList::new([ir::XmlNamespace::Unqualified]).unwrap(),
+        })
+        .unwrap();
+    let excluded = attributes()
+        .with_xml_wildcard_namespace(ir::XmlWildcardNamespaceConstraint::Any)
+        .and_then(|group| {
+            group.with_xml_wildcard_excluded_names(
+                ir::XmlWildcardExcludedNames::new([ir::XmlExpandedName::new(
+                    ir::XmlNamespace::Unqualified,
+                    "internal",
+                )?])
+                .ok()?,
+            )
+        })
+        .unwrap();
+    for wildcard in [negated, excluded] {
+        let mut program = xml_program();
+        let Expression::XmlSerialize { schema, .. } = &mut program.expressions[0].expression else {
+            panic!("fixture has XML serialization expression");
+        };
+        **schema = SchemaNode::group(
+            "Item",
+            vec![SchemaNode::scalar("Name", ScalarType::String), wildcard],
+        );
+        assert_eq!(
+            validate_program(&program),
+            Err(ProgramValidationError::UnsupportedXmlSerializeSchema {
+                node: 1,
+                schema: "Item".into(),
+                feature: "XML wildcard exclusions",
+            })
+        );
+    }
+}
+
+#[test]
+fn xml_serializer_schemas_refuse_json_tuple_frames() {
+    let mut program = xml_program();
+    let Expression::XmlSerialize { schema, .. } = &mut program.expressions[0].expression else {
+        panic!("fixture has XML serialization expression");
+    };
+    let frame = SchemaNode::group(
+        "Point",
+        vec![
+            SchemaNode::scalar("item1", ScalarType::String),
+            SchemaNode::scalar("item2", ScalarType::Int),
+        ],
+    )
+    .with_json_tuple(ir::JsonTupleLayout {
+        length: ir::ItemCountRange::new(0, Some(2)),
+        tail: ir::JsonTupleTail::Closed,
+    })
+    .expect("the test frame is canonical");
+    **schema = SchemaNode::group("Item", vec![frame]);
+    assert_eq!(
+        validate_program(&program),
+        Err(ProgramValidationError::UnsupportedXmlSerializeSchema {
+            node: 1,
+            schema: "Item".into(),
+            feature: "JSON tuple frame",
+        })
+    );
+}

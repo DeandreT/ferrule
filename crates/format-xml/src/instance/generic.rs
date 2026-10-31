@@ -9,8 +9,9 @@ use quick_xml::Writer;
 use quick_xml::events::{BytesEnd, BytesStart, Event};
 
 use super::{
-    NodeWriteContext, XmlFormatError, attribute_value, element_matches_schema,
-    format_schema_scalar, parse_input_schema_scalar, parse_schema_scalar, push_attribute,
+    NodeWriteContext, OrderedContentLayout, XmlFormatError, attribute_namespace, attribute_value,
+    declared_namespace_matches, element_matches_schema, element_namespace, format_schema_scalar,
+    instance_occurs, parse_input_schema_scalar, parse_schema_scalar, push_attribute,
     push_element_namespace, push_schema_attribute, read_node, shape_error, validate_group_fields,
     write_node, write_ordered_mixed_content, xml_text,
 };
@@ -33,20 +34,24 @@ pub(super) fn read_generic_element(
             kind: "scalar",
         });
     };
+    let namespace = element_namespace(element);
     if let Some(constraint) = &schema.xml_wildcard_namespace
-        && !constraint.allows(element.tag_name().namespace())
+        && !constraint.allows(namespace)
     {
         return Err(wildcard_namespace_mismatch(
             element.tag_name().name(),
-            element.tag_name().namespace(),
+            namespace,
         ));
+    }
+    if excludes(schema, namespace, element.tag_name().name()) {
+        return Err(XmlFormatError::XmlWildcardExcludedName {
+            name: element.tag_name().name().to_string(),
+            namespace: namespace_label(namespace),
+        });
     }
     if schema.xml_wildcard_namespace.is_none()
         && schema.xml_namespace == Some(ir::XmlNamespace::Unqualified)
-        && element
-            .tag_name()
-            .namespace()
-            .is_some_and(|namespace| !namespace.is_empty())
+        && namespace.is_some()
     {
         return Err(XmlFormatError::UnsupportedXmlWildcard {
             reason: "the supported ##local wildcard profile cannot retain qualified descendant elements",
@@ -54,11 +59,9 @@ pub(super) fn read_generic_element(
     }
     if schema.xml_wildcard_namespace.is_none()
         && schema.xml_namespace == Some(ir::XmlNamespace::Unqualified)
-        && element.attributes().any(|attribute| {
-            attribute
-                .namespace()
-                .is_some_and(|namespace| !namespace.is_empty())
-        })
+        && element
+            .attributes()
+            .any(|attribute| attribute_namespace(&attribute).is_some())
     {
         return Err(XmlFormatError::UnsupportedXmlWildcard {
             reason: "the supported ##local wildcard profile cannot retain qualified descendant attributes",
@@ -88,6 +91,7 @@ pub(super) fn read_group_fields(
     recursion_depth: usize,
 ) -> Result<Instance, XmlFormatError> {
     let mut fields = Vec::with_capacity(children.len());
+    let surplus = SurplusOccurrences::new(element, children);
     for child in children {
         if generic_element
             && matches!(
@@ -102,14 +106,7 @@ pub(super) fn read_group_fields(
         } else if generic_element && child.name == XML_NAMESPACE_URI_FIELD {
             fields.push((
                 child.name.clone(),
-                Instance::Scalar(
-                    element
-                        .tag_name()
-                        .namespace()
-                        .map_or(Value::Null, |namespace| {
-                            Value::String(namespace.to_string())
-                        }),
-                ),
+                Instance::Scalar(namespace_uri_value(element_namespace(element))),
             ));
         } else if generic_element
             && child.name == element.tag_name().name()
@@ -150,26 +147,29 @@ pub(super) fn read_group_fields(
             let value = parse_input_schema_scalar(child, ty, &text)?;
             fields.push((child.name.clone(), Instance::Scalar(value)));
         } else if child.name == XML_ELEMENTS_FIELD {
-            let elements = element
-                .children()
-                .filter(|node| node.is_element())
-                .filter(|node| {
-                    child.xml_wildcard_process_contents == XmlWildcardProcessContents::Skip
-                        || !children.iter().any(|known| {
-                            known.name != XML_ELEMENTS_FIELD
-                                && !known.attribute
-                                && !known.text
-                                && element_matches_schema(node, known)
-                        })
-                })
-                .collect::<Vec<_>>();
-            if child.xml_wildcard_process_contents == XmlWildcardProcessContents::Strict
-                && let Some(undeclared) = elements.first()
-            {
-                return Err(XmlFormatError::UndeclaredStrictXmlWildcardElement {
-                    name: undeclared.tag_name().name().to_string(),
-                    namespace: namespace_label(undeclared.tag_name().namespace()),
-                });
+            let ordered = retain_element_order || children.iter().any(|candidate| candidate.text);
+            let mut elements = Vec::new();
+            for node in element.children().filter(|node| node.is_element()) {
+                if child.xml_wildcard_process_contents == XmlWildcardProcessContents::Skip {
+                    elements.push(node);
+                    continue;
+                }
+                if children
+                    .iter()
+                    .any(|known| is_declared_element(known) && element_matches_schema(&node, known))
+                {
+                    let Some(declared) = surplus.declared_sibling(&node) else {
+                        continue;
+                    };
+                    validate_surplus_read(&node, declared, child, children, ordered)?;
+                } else if child.xml_wildcard_process_contents == XmlWildcardProcessContents::Strict
+                {
+                    return Err(XmlFormatError::UndeclaredStrictXmlWildcardElement {
+                        name: node.tag_name().name().to_string(),
+                        namespace: namespace_label(element_namespace(&node)),
+                    });
+                }
+                elements.push(node);
             }
             let mut items = elements
                 .into_iter()
@@ -196,22 +196,32 @@ pub(super) fn read_group_fields(
             let items = element
                 .attributes()
                 .filter(|attribute| {
-                    child.xml_wildcard_process_contents == XmlWildcardProcessContents::Skip
+                    // With exclusions, declared attributes go to their typed
+                    // fields only, as they do for `lax` and `strict`.
+                    (child.xml_wildcard_process_contents == XmlWildcardProcessContents::Skip
+                        && !child.has_xml_wildcard_exclusions())
                         || !children.iter().any(|known| {
                             known.attribute && attribute_matches_schema(attribute, known)
                         })
                 })
                 .map(|attribute| {
                     let namespace_aware = child.child(XML_NAMESPACE_URI_FIELD).is_some();
+                    let namespace = attribute_namespace(&attribute);
                     if let Some(constraint) = &child.xml_wildcard_namespace
-                        && !constraint.allows(attribute.namespace())
+                        && !constraint.allows(namespace)
                     {
                         return Err(
                             XmlFormatError::XmlAttributeWildcardNamespaceMismatch {
                                 name: attribute.name().to_string(),
-                                namespace: namespace_label(attribute.namespace()),
+                                namespace: namespace_label(namespace),
                             },
                         );
+                    }
+                    if excludes(child, namespace, attribute.name()) {
+                        return Err(XmlFormatError::XmlAttributeWildcardExcludedName {
+                            name: attribute.name().to_string(),
+                            namespace: namespace_label(namespace),
+                        });
                     }
                     if child.xml_wildcard_process_contents
                         == XmlWildcardProcessContents::Strict
@@ -219,15 +229,13 @@ pub(super) fn read_group_fields(
                         return Err(
                             XmlFormatError::UndeclaredStrictXmlWildcardAttribute {
                                 name: attribute.name().to_string(),
-                                namespace: namespace_label(attribute.namespace()),
+                                namespace: namespace_label(namespace),
                             },
                         );
                     }
                     if !namespace_aware
                         && child.xml_namespace == Some(ir::XmlNamespace::Unqualified)
-                        && attribute
-                            .namespace()
-                            .is_some_and(|namespace| !namespace.is_empty())
+                        && namespace.is_some()
                     {
                         return Err(XmlFormatError::UnsupportedXmlAttributeWildcard {
                             reason: "the supported ##local wildcard profile cannot retain qualified attributes",
@@ -242,10 +250,7 @@ pub(super) fn read_group_fields(
                     if namespace_aware {
                         fields.push((
                             XML_NAMESPACE_URI_FIELD.to_string(),
-                            Instance::Scalar(attribute.namespace().map_or(
-                                Value::Null,
-                                |namespace| Value::String(namespace.to_string()),
-                            )),
+                            Instance::Scalar(namespace_uri_value(namespace)),
                         ));
                     }
                     fields.push((
@@ -300,10 +305,174 @@ pub(super) fn read_group_fields(
     if (mixed || retain_element_order) && element.children().any(|node| node.is_element()) {
         fields.push((
             XML_MIXED_CONTENT_FIELD.to_string(),
-            Instance::Repeated(mixed_content_items(element, children, &fields, mixed)),
+            Instance::Repeated(mixed_content_items(
+                element, children, &fields, &surplus, mixed,
+            )),
         ));
     }
     Ok(Instance::Group((fields).into()))
+}
+
+const STRICT_SURPLUS: &str = "a strict wildcard keeps no generic element content";
+
+fn is_declared_element(schema: &SchemaNode) -> bool {
+    schema.name != XML_ELEMENTS_FIELD && !schema.attribute && !schema.text
+}
+
+/// Extra occurrences of single-occurrence declared children beside a `lax` or
+/// `strict` element wildcard. The first matching element fills the typed
+/// field, as declared particles take precedence over wildcards; a later one
+/// can only be a wildcard match.
+struct SurplusOccurrences<'a> {
+    children: &'a [SchemaNode],
+    /// The first matching element of each single-occurrence declared child;
+    /// empty when no `lax` or `strict` element wildcard can take extras.
+    first: Vec<Option<roxmltree::NodeId>>,
+}
+
+impl<'a> SurplusOccurrences<'a> {
+    fn new(element: &roxmltree::Node<'_, '_>, children: &'a [SchemaNode]) -> Self {
+        let wildcard = children.iter().any(|child| {
+            child.name == XML_ELEMENTS_FIELD
+                && child.xml_wildcard_process_contents != XmlWildcardProcessContents::Skip
+        });
+        let first = if wildcard {
+            children
+                .iter()
+                .map(|child| {
+                    if !is_declared_element(child) || child.repeating {
+                        return None;
+                    }
+                    element
+                        .children()
+                        .find(|node| node.is_element() && element_matches_schema(node, child))
+                        .map(|node| node.id())
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
+        Self { children, first }
+    }
+
+    /// The declared child that `node` repeats, when `node` is an extra
+    /// occurrence of every declared child it matches.
+    fn declared_sibling(&self, node: &roxmltree::Node<'_, '_>) -> Option<&'a SchemaNode> {
+        let mut declared = None;
+        for (child, first) in self.children.iter().zip(&self.first) {
+            if !is_declared_element(child) || !element_matches_schema(node, child) {
+                continue;
+            }
+            if child.repeating || *first == Some(node.id()) {
+                return None;
+            }
+            declared.get_or_insert(child);
+        }
+        declared
+    }
+}
+
+fn validate_surplus_read(
+    node: &roxmltree::Node<'_, '_>,
+    declared: &SchemaNode,
+    wildcard: &SchemaNode,
+    children: &[SchemaNode],
+    ordered: bool,
+) -> Result<(), XmlFormatError> {
+    let surplus_error = |reason| XmlFormatError::UnrepresentableXmlWildcardSurplusElement {
+        name: node.tag_name().name().to_string(),
+        namespace: namespace_label(element_namespace(node)),
+        reason,
+    };
+    if wildcard.xml_wildcard_process_contents == XmlWildcardProcessContents::Strict {
+        return Err(surplus_error(STRICT_SURPLUS));
+    }
+    // Unordered groups write typed fields in schema order, so an extra
+    // occurrence held by an earlier wildcard would read back as the first.
+    let position = |name: &str| children.iter().position(|child| child.name == name);
+    // A name the wildcard refuses reports that refusal when it is read.
+    if !ordered
+        && position(&declared.name) > position(&wildcard.name)
+        && wildcard
+            .xml_wildcard_namespace
+            .as_ref()
+            .is_none_or(|constraint| constraint.allows(element_namespace(node)))
+        && !excludes(wildcard, element_namespace(node), node.tag_name().name())
+    {
+        return Err(surplus_error(
+            "the declared element follows the wildcard and element order is not retained",
+        ));
+    }
+    Ok(())
+}
+
+/// The declared siblings of a generic element item.
+#[derive(Clone, Copy, Default)]
+pub(super) struct GenericSiblings<'a> {
+    /// Declared children whose names a `lax` or `strict` item cannot take.
+    pub(super) elements: &'a [SchemaNode],
+    /// Single-occurrence declared children written before this item, whose
+    /// names it may repeat as an extra occurrence.
+    pub(super) written: &'a [&'a str],
+}
+
+impl<'a> GenericSiblings<'a> {
+    /// The single-occurrence declared children an unordered group writes
+    /// before its wildcard items.
+    pub(super) fn written_before_wildcard(
+        children: &'a [SchemaNode],
+        fields: &[(String, Instance)],
+    ) -> Vec<&'a str> {
+        children
+            .iter()
+            .take_while(|child| child.name != XML_ELEMENTS_FIELD)
+            .filter(|child| {
+                is_declared_element(child)
+                    && !child.repeating
+                    && fields
+                        .iter()
+                        .find(|(name, _)| name == &child.name)
+                        .is_some_and(|(_, instance)| instance_occurs(instance))
+            })
+            .map(|child| child.name.as_str())
+            .collect()
+    }
+}
+
+/// The wildcard that receives a stream item repeating `declared`, after the
+/// declared child already wrote its single occurrence. The item must then
+/// carry a generic element value, as an extra occurrence reads back as one.
+pub(super) fn surplus_wildcard<'a>(
+    declared: &SchemaNode,
+    children: &'a [SchemaNode],
+    written: &[&str],
+    value: Option<&Instance>,
+) -> Result<Option<&'a SchemaNode>, XmlFormatError> {
+    // A generic element value cannot fill a scalar declaration, so it goes to
+    // the wildcard, which refuses an item that would read back as the typed
+    // field.
+    let generic_scalar_item = matches!(declared.kind, SchemaKind::Scalar { .. })
+        && matches!(value, Some(Instance::Group(_)));
+    if !is_declared_element(declared)
+        || declared.repeating
+        || !(written.contains(&declared.name.as_str()) || generic_scalar_item)
+    {
+        return Ok(None);
+    }
+    let Some(wildcard) = children.iter().find(|child| {
+        child.name == XML_ELEMENTS_FIELD
+            && child.xml_wildcard_process_contents != XmlWildcardProcessContents::Skip
+    }) else {
+        return Ok(None);
+    };
+    if !matches!(value, Some(Instance::Group(_))) {
+        return Err(XmlFormatError::UnrepresentableXmlWildcardSurplusElement {
+            name: declared.name.clone(),
+            namespace: namespace_label(declared.xml_namespace.as_ref().and_then(|ns| ns.uri())),
+            reason: "an ordered item repeating a single-occurrence element must hold a generic element value",
+        });
+    }
+    Ok(Some(wildcard))
 }
 
 fn attribute_matches_schema(attribute: &roxmltree::Attribute<'_, '_>, schema: &SchemaNode) -> bool {
@@ -311,14 +480,30 @@ fn attribute_matches_schema(attribute: &roxmltree::Attribute<'_, '_>, schema: &S
         && schema
             .xml_namespace
             .as_ref()
-            .is_none_or(|namespace| namespace.matches(attribute.namespace()))
+            .is_none_or(|namespace| namespace.matches(attribute_namespace(attribute)))
+}
+
+/// Whether a wildcard group's own excluded names contain this expanded name.
+fn excludes(schema: &SchemaNode, namespace: Option<&str>, local: &str) -> bool {
+    schema
+        .xml_wildcard_excluded_names
+        .as_ref()
+        .is_some_and(|names| {
+            names
+                .iter()
+                .any(|name| name.local() == local && name.namespace().matches(namespace))
+        })
 }
 
 fn namespace_label(namespace: Option<&str>) -> String {
-    namespace
-        .filter(|namespace| !namespace.is_empty())
-        .unwrap_or("##local")
-        .to_string()
+    namespace.unwrap_or("##local").to_string()
+}
+
+/// A read `NamespaceURI` field value: null for a name in no namespace.
+fn namespace_uri_value(namespace: Option<&str>) -> Value {
+    namespace.map_or(Value::Null, |namespace| {
+        Value::String(namespace.to_string())
+    })
 }
 
 fn element_string_value(element: &roxmltree::Node<'_, '_>) -> String {
@@ -347,6 +532,7 @@ fn mixed_content_items(
     element: &roxmltree::Node<'_, '_>,
     children: &[SchemaNode],
     fields: &[(String, Instance)],
+    surplus: &SurplusOccurrences<'_>,
     include_text: bool,
 ) -> Vec<Instance> {
     let mut occurrence = std::collections::BTreeMap::<&str, usize>::new();
@@ -371,29 +557,14 @@ fn mixed_content_items(
                 } else {
                     String::new()
                 };
+                // Extra occurrences read into the wildcard's generic items.
                 let matched = children
                     .iter()
-                    .find(|child| child.name == name && element_matches_schema(&node, child));
+                    .find(|child| child.name == name && element_matches_schema(&node, child))
+                    .filter(|_| surplus.declared_sibling(&node).is_none());
                 let namespace = matched
-                    .filter(|child| !child.xml_name_alternatives.is_empty())
-                    .map(|_| {
-                        node.tag_name()
-                            .namespace()
-                            .filter(|namespace| !namespace.is_empty())
-                            .map_or(Value::Null, |namespace| {
-                                Value::String(namespace.to_string())
-                            })
-                    })
-                    .or_else(|| {
-                        matched.is_none().then(|| {
-                            node.tag_name()
-                                .namespace()
-                                .filter(|namespace| !namespace.is_empty())
-                                .map_or(Value::Null, |namespace| {
-                                    Value::String(namespace.to_string())
-                                })
-                        })
-                    });
+                    .is_none_or(|child| !child.xml_name_alternatives.is_empty())
+                    .then(|| namespace_uri_value(element_namespace(&node)));
                 let value = matched
                     .and_then(|child| {
                         let instance = fields
@@ -456,7 +627,7 @@ pub(super) fn write_generic_element<W: std::io::Write>(
     instance: &Instance,
     recursion_depth: usize,
     inherited_namespace: Option<&str>,
-    known_elements: &[SchemaNode],
+    siblings: GenericSiblings<'_>,
 ) -> Result<(), XmlFormatError> {
     let SchemaKind::Group { children, .. } = &schema.kind else {
         return Err(shape_error(schema, "a generic XML element group", instance));
@@ -488,19 +659,35 @@ pub(super) fn write_generic_element<W: std::io::Write>(
     {
         return Err(wildcard_namespace_mismatch(name, runtime_namespace));
     }
-    if schema.xml_wildcard_process_contents != XmlWildcardProcessContents::Skip
-        && known_elements.iter().any(|known| {
-            known.name != XML_ELEMENTS_FIELD
-                && !known.attribute
-                && !known.text
-                && known.name == name
-                && known.xml_namespace_matches(runtime_namespace)
-        })
-    {
-        return Err(XmlFormatError::KnownXmlWildcardElementRequiresTypedField {
+    if excludes(schema, runtime_namespace, name) {
+        return Err(XmlFormatError::XmlWildcardExcludedName {
             name: name.to_string(),
             namespace: namespace_label(runtime_namespace),
         });
+    }
+    if schema.xml_wildcard_process_contents != XmlWildcardProcessContents::Skip
+        && let Some(known) = siblings.elements.iter().find(|known| {
+            // Match as `element_matches_schema` does on read.
+            is_declared_element(known)
+                && known.name == name
+                && declared_namespace_matches(known, runtime_namespace)
+        })
+    {
+        // An item reads back as an extra occurrence only after the declared
+        // child's own element; otherwise it would fill the typed field.
+        if known.repeating || !siblings.written.contains(&known.name.as_str()) {
+            return Err(XmlFormatError::KnownXmlWildcardElementRequiresTypedField {
+                name: name.to_string(),
+                namespace: namespace_label(runtime_namespace),
+            });
+        }
+        if schema.xml_wildcard_process_contents == XmlWildcardProcessContents::Strict {
+            return Err(XmlFormatError::UnrepresentableXmlWildcardSurplusElement {
+                name: name.to_string(),
+                namespace: namespace_label(runtime_namespace),
+                reason: STRICT_SURPLUS,
+            });
+        }
     }
     if schema.xml_wildcard_process_contents == XmlWildcardProcessContents::Strict {
         return Err(XmlFormatError::UndeclaredStrictXmlWildcardElement {
@@ -566,6 +753,7 @@ pub(super) fn write_generic_element<W: std::io::Write>(
         fields,
         recursion_depth,
         element_namespace,
+        OrderedContentLayout::Verbatim,
     )? {
         writer.write_event(Event::End(BytesEnd::new(name)))?;
         return Ok(());
@@ -676,10 +864,7 @@ fn generic_namespace_uri<'a>(
 fn wildcard_namespace_mismatch(name: &str, namespace: Option<&str>) -> XmlFormatError {
     XmlFormatError::XmlWildcardNamespaceMismatch {
         name: name.to_string(),
-        namespace: namespace
-            .filter(|namespace| !namespace.is_empty())
-            .unwrap_or("##local")
-            .to_string(),
+        namespace: namespace_label(namespace),
     }
 }
 
@@ -747,13 +932,22 @@ pub(super) fn push_generic_attributes<'a>(
                 namespace: namespace_label(namespace),
             });
         }
+        if excludes(schema, namespace, attribute_name) {
+            return Err(XmlFormatError::XmlAttributeWildcardExcludedName {
+                name: attribute_name.to_string(),
+                namespace: namespace_label(namespace),
+            });
+        }
         if schema.xml_wildcard_process_contents == XmlWildcardProcessContents::Strict {
             return Err(XmlFormatError::UndeclaredStrictXmlWildcardAttribute {
                 name: attribute_name.to_string(),
                 namespace: namespace_label(namespace),
             });
         }
-        if schema.xml_wildcard_process_contents != XmlWildcardProcessContents::Skip
+        // With exclusions, a `skip` group also leaves declared attributes to
+        // their typed fields, matching how it reads them.
+        if (schema.xml_wildcard_process_contents != XmlWildcardProcessContents::Skip
+            || schema.has_xml_wildcard_exclusions())
             && known_attributes.iter().any(|known| {
                 known.attribute
                     && known.name == attribute_name

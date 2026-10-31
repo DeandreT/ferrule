@@ -68,7 +68,9 @@ struct State {
     message: String,
 }
 
-fn active(ctx: &egui::Context) -> Option<egui::Id> {
+/// Identity of the canvas instance currently drawing its widgets. Rebuilt
+/// canvases get a new identity even when their graph and node IDs are unchanged.
+pub(crate) fn active(ctx: &egui::Context) -> Option<egui::Id> {
     ctx.data(|data| data.get_temp::<egui::Id>(egui::Id::unique("active_canvas_tools")))
 }
 
@@ -658,6 +660,7 @@ pub(crate) struct ToolbarOptions {
     pub wire: crate::appearance::WireAppearance,
     pub requested: bool,
     pub search_open: bool,
+    pub shortcuts: crate::canvas_keyboard::focus::Shortcuts,
 }
 
 pub(crate) fn toolbar(
@@ -671,6 +674,7 @@ pub(crate) fn toolbar(
         wire,
         requested,
         search_open,
+        shortcuts,
     } = options;
     let Some(id) = active(ui.ctx()) else {
         return;
@@ -692,10 +696,12 @@ pub(crate) fn toolbar(
         && state.picker.is_empty()
         && !egui::Popup::is_any_open(ui.ctx())
         && !GraphViewer::properties_open(ui.ctx())
-        && !ui.ctx().egui_wants_keyboard_input()
+        && shortcuts.enabled
         && ui.input_mut(|input| input.consume_key(egui::Modifiers::NONE, egui::Key::F2))
     {
-        state.edit_requested = if selected.len() == 1 {
+        state.edit_requested = if let Some(node) = shortcuts.node {
+            snarl.get_node(node).copied()
+        } else if selected.len() == 1 {
             snarl.get_node(selected[0]).copied()
         } else if let Some(Focus::Node(node)) = state.focus {
             Some(node)
@@ -828,7 +834,10 @@ pub(crate) fn toolbar(
     let picker_keyboard = !search_open
         && !egui::Popup::is_any_open(ui.ctx())
         && !GraphViewer::properties_open(ui.ctx());
-    let escape = (!editing || (!state.picker.is_empty() && picker_keyboard))
+    // Another open modal takes Escape as Cancel; it is drawn after the canvas,
+    // so leave the key unconsumed. The connection picker is handled here.
+    let escape = !crate::ui_kit::other_modal_open(ui.ctx(), id.with("picker"))
+        && (!editing || (!state.picker.is_empty() && picker_keyboard))
         && ui.input_mut(|input| input.consume_key(egui::Modifiers::NONE, egui::Key::Escape));
     if !state.picker.is_empty() {
         if escape {

@@ -19,6 +19,12 @@ fn lowers_exact_numeric_and_delay_scalar_calls() {
         ("lower", ScalarFunction::Lower, vec![20]),
         ("matches", ScalarFunction::Matches, vec![20, 20]),
         ("replace", ScalarFunction::Replace, vec![20, 20, 20]),
+        (
+            "replace_literal",
+            ScalarFunction::ReplaceLiteral,
+            vec![20, 20, 20],
+        ),
+        ("translate", ScalarFunction::Translate, vec![20, 20, 20]),
         ("is_numeric", ScalarFunction::IsNumeric, vec![20]),
         ("to_number", ScalarFunction::ToNumber, vec![20]),
         ("create_guid", ScalarFunction::CreateGuid, vec![]),
@@ -43,7 +49,22 @@ fn lowers_exact_numeric_and_delay_scalar_calls() {
             ScalarFunction::JsonSerializeObject,
             vec![20, 20, 20],
         ),
+        (
+            "json_parse_array_length",
+            ScalarFunction::JsonParseArrayLength,
+            vec![20, 20, 20],
+        ),
+        (
+            "json_parse_array_field",
+            ScalarFunction::JsonParseArrayField,
+            vec![20, 20, 20, 20, 10],
+        ),
         ("format_number", ScalarFunction::FormatNumber, vec![10, 20]),
+        (
+            "round_half_ceiling",
+            ScalarFunction::RoundHalfCeiling,
+            vec![10, 10],
+        ),
         (
             "substitute_missing_with_xml_nil",
             ScalarFunction::SubstituteMissingWithXmlNil,
@@ -96,6 +117,8 @@ fn newly_supported_names_are_closed_and_canonical() {
         ("lower", ScalarFunction::Lower),
         ("matches", ScalarFunction::Matches),
         ("replace", ScalarFunction::Replace),
+        ("replace_literal", ScalarFunction::ReplaceLiteral),
+        ("translate", ScalarFunction::Translate),
         ("is_numeric", ScalarFunction::IsNumeric),
         ("to_number", ScalarFunction::ToNumber),
         ("create_guid", ScalarFunction::CreateGuid),
@@ -107,7 +130,16 @@ fn newly_supported_names_are_closed_and_canonical() {
             ScalarFunction::JsonParseObjectExists,
         ),
         ("json_serialize_object", ScalarFunction::JsonSerializeObject),
+        (
+            "json_parse_array_length",
+            ScalarFunction::JsonParseArrayLength,
+        ),
+        (
+            "json_parse_array_field",
+            ScalarFunction::JsonParseArrayField,
+        ),
         ("format_number", ScalarFunction::FormatNumber),
+        ("round_half_ceiling", ScalarFunction::RoundHalfCeiling),
         (
             "substitute_missing_with_xml_nil",
             ScalarFunction::SubstituteMissingWithXmlNil,

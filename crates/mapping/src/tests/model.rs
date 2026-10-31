@@ -188,6 +188,7 @@ fn json_lines_format_option_defaults_off_and_roundtrips_when_enabled() {
     assert!(defaults.idoc_native_config.is_none());
     assert!(defaults.idoc_native_text_settings.is_none());
     assert!(defaults.swift_mt.is_none());
+    assert!(defaults.swift_mt_output.is_none());
     assert!(defaults.pdf.is_none());
     assert!(defaults.http_get.is_none());
     assert!(defaults.external_source.is_none());
@@ -627,14 +628,14 @@ fn xlsx_layout_options_default_empty_and_roundtrip() {
 #[test]
 fn xlsx_composite_layout_roundtrips() {
     let composite = XlsxCompositeLayout {
-        table: XlsxTableRegion {
+        table: Some(XlsxTableRegion {
             path: vec!["Staff".into()],
             sheet: Some("Roster".into()),
             start_row: XlsxRow::new(2).unwrap(),
             columns: vec![XlsxColumn::new(1).unwrap(), XlsxColumn::new(3).unwrap()],
             has_header: true,
             row_number_field: None,
-        },
+        }),
         additional_tables: Vec::new(),
         records: vec![XlsxFixedRecord {
             path: vec!["Office".into()],
@@ -645,14 +646,90 @@ fn xlsx_composite_layout_roundtrips() {
                 column: XlsxColumn::new(2).unwrap(),
             }],
         }],
+        grids: Vec::new(),
     };
     let options = FormatOptions {
         xlsx_composite: Some(composite.clone()),
         ..FormatOptions::default()
     };
     let encoded = serde_json::to_string(&options).unwrap();
+    // Table composites keep the serialized form they had before grid regions.
+    let layout = serde_json::to_value(&options).unwrap()["xlsx_composite"].clone();
+    assert_eq!(
+        layout,
+        serde_json::json!({
+            "table": {
+                "path": ["Staff"],
+                "sheet": "Roster",
+                "start_row": 2,
+                "columns": [1, 3],
+                "has_header": true
+            },
+            "records": [{
+                "path": ["Office"],
+                "sheet": "Office",
+                "cells": [{"path": ["Name"], "row": 1, "column": 2}]
+            }]
+        })
+    );
     let decoded: FormatOptions = serde_json::from_str(&encoded).unwrap();
     assert_eq!(decoded.xlsx_composite, Some(composite));
+}
+
+#[test]
+fn xlsx_composite_grid_regions_roundtrip_without_a_table() {
+    let grid = |sheet: &str| XlsxGridRegion {
+        path: vec![sheet.into()],
+        layout: XlsxGridLayout {
+            sheet: Some(sheet.into()),
+            header_row: XlsxRow::new(1).unwrap(),
+            data_start_row: XlsxRow::new(2).unwrap(),
+            header_value_field: "Range1".into(),
+            header_position_field: "HeaderColumn".into(),
+            rows_field: "Rows".into(),
+            cells_field: "Cells".into(),
+            cell_value_field: "value".into(),
+            cell_position_field: "CellColumn".into(),
+            fixed_cells: Vec::new(),
+        },
+    };
+    let composite = XlsxCompositeLayout {
+        table: None,
+        additional_tables: Vec::new(),
+        records: Vec::new(),
+        grids: vec![grid("Quarterly"), grid("Annual")],
+    };
+    assert_eq!(composite.validate_regions(), Ok(()));
+    let options = FormatOptions {
+        xlsx_composite: Some(composite.clone()),
+        ..FormatOptions::default()
+    };
+    let layout = serde_json::to_value(&options).unwrap()["xlsx_composite"].clone();
+    assert!(layout.get("table").is_none(), "{layout}");
+    let decoded: FormatOptions =
+        serde_json::from_str(&serde_json::to_string(&options).unwrap()).unwrap();
+    assert_eq!(decoded.xlsx_composite, Some(composite));
+
+    let empty = XlsxCompositeLayout {
+        table: None,
+        additional_tables: Vec::new(),
+        records: Vec::new(),
+        grids: Vec::new(),
+    };
+    assert!(empty.validate_regions().is_err());
+    let orphan = XlsxCompositeLayout {
+        additional_tables: vec![XlsxTableRegion {
+            path: vec!["Staff".into()],
+            sheet: None,
+            start_row: XlsxRow::new(1).unwrap(),
+            columns: Vec::new(),
+            has_header: true,
+            row_number_field: None,
+        }],
+        grids: vec![grid("Quarterly")],
+        ..empty
+    };
+    assert!(orphan.validate_regions().is_err());
 }
 
 #[test]
@@ -833,7 +910,7 @@ fn join_plan_enforces_ordered_distinct_sources() {
         .unwrap();
     let sources: Vec<_> = plan
         .sources()
-        .map(|source| source.collection().join("/"))
+        .map(|source| source.as_collection().unwrap().collection().join("/"))
         .collect();
     assert_eq!(sources, ["orders", "products", "inventory"]);
     assert_eq!(plan.stages().count(), 2);

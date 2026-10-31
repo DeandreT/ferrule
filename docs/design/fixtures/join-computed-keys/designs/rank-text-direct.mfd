@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mapping xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" version="22"><resources/><component name="rank-text-direct" uid="1" editable="1" blackbox="0"><properties SelectedLanguage="builtin"/><structure><children>
+<component name="Source" library="xml" kind="14" uid="2"><properties XSLTTargetEncoding="UTF-8"/><view ltx="20" lty="40" rbx="260" rby="460"/><data><root><header><namespaces><namespace/><namespace uid="http://www.altova.com/mapforce"/></namespaces></header><entry name="FileInstance" ns="1" expanded="1"><entry name="document" ns="1" expanded="1"><entry name="Source" expanded="1">
+<entry name="Header" expanded="1"><entry name="Code" outkey="30"/></entry>
+<entry name="Order" outkey="10" expanded="1"><entry name="Id" outkey="11"/><entry name="CustomerNumber" outkey="12"/><entry name="Codes" outkey="13"/><entry name="Qty" outkey="14"/></entry>
+<entry name="Customer" outkey="20" expanded="1"><entry name="Number" outkey="21"/><entry name="Name" outkey="22"/><entry name="Rank" outkey="23"/></entry>
+</entry></entry></entry></root><document schema="source.xsd" instanceroot="{}Source" inputinstance="input-numeric-text.xml"/></data></component>
+<component name="Target" library="xml" kind="14" uid="3"><properties XSLTTargetEncoding="UTF-8" XSLTDefaultOutput="1" AddSchemaLocation="0"/><view ltx="820" lty="40" rbx="1060" rby="460"/><data><root><header><namespaces><namespace/><namespace uid="http://www.altova.com/mapforce"/></namespaces></header><entry name="FileInstance" ns="1" expanded="1"><entry name="document" ns="1" expanded="1"><entry name="Report" expanded="1">
+<entry name="Order" inpkey="40" expanded="1"><entry name="Id" inpkey="41"/><entry name="Match" inpkey="42" expanded="1"><entry name="Number" inpkey="43"/><entry name="Name" inpkey="44"/></entry></entry>
+<entry name="Hit" inpkey="50" expanded="1"><entry name="Number" inpkey="51"/><entry name="Name" inpkey="52"/></entry>
+</entry></entry></entry></root><document schema="target.xsd" instanceroot="{}Report" outputinstance="output.xml"/></data></component>
+<component name="join" library="core" uid="4" kind="32"><view ltx="440" lty="40" rbx="640" rby="320"/><data>
+<root><header><namespaces><namespace/><namespace uid="http://www.altova.com/mapforce"/></namespaces></header><entry name="document" ns="1" expanded="1"><entry name="tuple" ns="1" outkey="65" expanded="1">
+<entry name="dynamic_tree_node0" ns="1" expanded="1"><entry name="CustomerNumber" inpkey="60"/></entry>
+<entry name="dynamic_tree_node1" ns="1" expanded="1"><entry name="Customer" inpkey="61" outkey="62" expanded="1"><entry name="Number" outkey="63"/><entry name="Name" outkey="64"/></entry></entry>
+</entry></entry></root>
+<join><joinkeys><keypair><first-key path-id="1" input-index="0"/><second-key path-id="2" input-index="1"/></keypair></joinkeys>
+<keypaths><header><namespaces><namespace/></namespaces></header><entry outkey="1"><condition/><entry name="Rank" outkey="2"><condition/></entry></entry></keypaths></join>
+</data></component>
+</children><graph directed="1"><edges><edge edgekey="960"><data><dataconnection type="2"/></data></edge><edge edgekey="961"><data><dataconnection type="2"/></data></edge></edges><vertices>
+<vertex vertexkey="10"><edges><edge vertexkey="40"/></edges></vertex>
+<vertex vertexkey="11"><edges><edge vertexkey="41"/></edges></vertex>
+<vertex vertexkey="20"><edges><edge vertexkey="61" edgekey="961"/></edges></vertex>
+<vertex vertexkey="62"><edges><edge vertexkey="42"/></edges></vertex>
+<vertex vertexkey="63"><edges><edge vertexkey="43"/></edges></vertex>
+<vertex vertexkey="64"><edges><edge vertexkey="44"/></edges></vertex>
+<vertex vertexkey="12"><edges><edge vertexkey="60" edgekey="960"/></edges></vertex>
+</vertices></graph></structure></component></mapping>

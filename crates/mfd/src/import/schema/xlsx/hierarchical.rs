@@ -155,12 +155,6 @@ pub(super) fn read(
     if ranges.is_empty() {
         return None;
     }
-    if excel.attribute("updateexistingfile") == Some("1") {
-        warnings.push(format!(
-            "xlsx component `{component_name}` updates an existing workbook; hierarchical import requires a new-workbook target"
-        ));
-        return None;
-    }
 
     let mut worksheet_fields = Vec::with_capacity(range_fields.len() + 1);
     worksheet_fields.push(SchemaNode::scalar(WORKSHEET_NAME_FIELD, ScalarType::String));
@@ -181,6 +175,7 @@ pub(super) fn read(
                 worksheet_name_path: vec![WORKSHEET_NAME_FIELD.to_string()],
                 ranges,
             }),
+            xlsx_update_existing: excel.attribute("updateexistingfile") == Some("1"),
             ..FormatOptions::default()
         },
         is_source: false,
@@ -200,6 +195,7 @@ pub(super) fn read(
         db_queries: Vec::new(),
         db_xml_columns: BTreeMap::new(),
         dynamic_json: None,
+        target_schema_hints: None,
     })
 }
 

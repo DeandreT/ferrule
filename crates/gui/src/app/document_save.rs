@@ -58,7 +58,7 @@ impl FerruleApp {
         }
         let layout_warning = write_layout(path, &layout)
             .err()
-            .map(|error| format!("canvas layout was not saved: {error}"));
+            .map(|error| format!("canvas layout was not saved: {error:#}"));
         Ok(DocumentSaveOutcome {
             validation_issues: cli::validate(&self.project),
             layout_warning,

@@ -82,6 +82,27 @@ impl<'a> SourceExports<'a> {
         std::iter::once(&self.primary).chain(&self.extras)
     }
 
+    pub(super) fn repetition_owner_of_port(&self, port: u32) -> Option<u32> {
+        for source in self.iter() {
+            let Some(path) = source.ports.path_for_key(port) else {
+                continue;
+            };
+            let mut node = source.schema;
+            let mut owner = node
+                .repeating
+                .then(|| source.ports.key_for_abs(&[]))
+                .flatten();
+            for (index, segment) in path.iter().enumerate() {
+                node = node.child(segment)?;
+                if node.repeating {
+                    owner = source.ports.key_for_abs(&path[..=index]);
+                }
+            }
+            return owner;
+        }
+        None
+    }
+
     pub(super) fn xml_sequence_identity_for_port(
         &self,
         port: u32,
@@ -257,6 +278,32 @@ impl<'a> SourceExports<'a> {
             }
         }
         unique.map_or(PortMatch::Missing, PortMatch::Unique)
+    }
+
+    /// The sequence port of a relative `path` evaluated in the absolute
+    /// source `frame`, for paths whose suffix matches several entries.
+    pub(super) fn match_sequence_in(&self, frame: &[String], path: &[String]) -> PortMatch {
+        self.key_for_abs(&[frame, path].concat())
+            .map_or(PortMatch::Missing, PortMatch::Unique)
+    }
+
+    /// [`Self::lookup_ports`] for a relative collection evaluated in the
+    /// absolute source `frame`.
+    pub(super) fn lookup_ports_in(
+        &self,
+        frame: &[String],
+        collection: &[String],
+        key: &[String],
+        value: &[String],
+    ) -> PortPairMatch {
+        let collection = [frame, collection].concat();
+        match (
+            self.key_for_abs(&[collection.as_slice(), key].concat()),
+            self.key_for_abs(&[collection.as_slice(), value].concat()),
+        ) {
+            (Some(key), Some(value)) => PortPairMatch::Unique(key, value),
+            _ => PortPairMatch::Missing,
+        }
     }
 
     pub(super) fn lookup_ports(
