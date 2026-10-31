@@ -778,6 +778,13 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<RenderedNodes, MfdError> {
                 expression,
                 arg,
             } => {
+                if *function == AggregateOp::ItemAt {
+                    return Err(MfdError::Unsupported(format!(
+                        "generated aggregate item-at node {id} cannot preserve its private \
+                         sequence ownership through native MFD import; use direct sequence \
+                         item-at for a supported plain selection"
+                    )));
+                }
                 let Some(&sequence_output) = node_out_key.get(&sequence.item()) else {
                     warnings.push(format!(
                         "sequence aggregate node {id} references an unexported sequence item; skipped"
