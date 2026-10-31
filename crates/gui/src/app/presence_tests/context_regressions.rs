@@ -706,27 +706,17 @@ fn presence_singleton_walk_does_not_offer_unproved_retained_frame_fields() {
 
     app.project.root.children[0].children[0].children[0].iteration =
         ScopeIteration::OptionalPresence { condition: 2 };
-    let source = format_json::from_str(input, &app.project.source).unwrap();
-    assert!(matches!(
-        engine::run(&app.project, &source),
-        Err(engine::EngineError::NotABool {
-            node: 2,
-            found: "string"
-        })
-    ));
+    // The interpreter now retains the Rows owner through singleton Detail.
+    // Picker admission remains conservative, but a saved pin must execute
+    // against its actual row rather than reading Detail's same-named string.
+    let expected = serde_json::json!({"Rows":[{"Detail":[{"Item":[{"Value":true}]}]},{"Detail":[{"Item":[]}]}]});
+    assert_output_and_preview(&mut app, input, expected.clone());
     let retained = key(&app);
     frame(&mut app, &context, true, vec![]);
     assert_eq!(
         key(&app),
         retained,
-        "viewing the saved condition does not repair it"
+        "viewing the saved condition does not change it"
     );
-    let scratch = Scratch::new();
-    assert!(preview(&mut app, &context, input, &scratch.0.join("unwritten.json")).is_none());
-    assert!(
-        app.diagnostics
-            .items()
-            .iter()
-            .any(|item| format!("{item:?}").contains("string"))
-    );
+    assert_output_and_preview(&mut app, input, expected);
 }

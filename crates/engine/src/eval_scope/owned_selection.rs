@@ -44,6 +44,7 @@ pub(super) fn record_basic_candidate<'tree>(
         return;
     };
     let mut candidate_positions = positions.to_vec();
+    // Trace-only metadata: no context instance is resolved through this copy.
     candidate_positions.extend_from_slice(&extension.extension.positions);
     // Move the already-budgeted metadata into this transient borrowed view.
     // Restore it before traversal retains or drops the candidate; no tree is cloned.
@@ -91,6 +92,7 @@ fn record_basic_sort_position<'tree>(
         return;
     }
     let mut input_positions = positions.to_vec();
+    // Trace-only metadata: no context instance is resolved through this copy.
     input_positions.extend_from_slice(&extension.extension.positions);
     // Ranking observes the original structural cursor before renumbering.
     // Borrow its already-budgeted metadata without retaining a second cohort.
@@ -460,9 +462,10 @@ pub(super) fn eval_basic_owned_selected<'a>(
                 owned_ancestry: ancestry,
             };
             let mut item_context = context.to_vec();
-            item_context.extend(extension.extension.instances.iter().copied());
             let mut item_positions = positions.to_vec();
-            item_positions.extend(extension.extension.positions.iter().cloned());
+            extension
+                .extension
+                .append_to(&mut item_context, &mut item_positions);
             if passes_scope_filter(
                 program.with_owned_context(&item_state),
                 scope.filter,
@@ -506,9 +509,10 @@ pub(super) fn eval_basic_owned_selected<'a>(
                 owned_ancestry: ancestry,
             };
             let mut item_context = context.to_vec();
-            item_context.extend(extension.extension.instances.iter().copied());
             let mut item_positions = positions.to_vec();
-            item_positions.extend(extension.extension.positions.iter().cloned());
+            extension
+                .extension
+                .append_to(&mut item_context, &mut item_positions);
             let values = sort_keys
                 .iter()
                 .map(|key| {
@@ -696,9 +700,10 @@ pub(super) fn eval_basic_owned_selected<'a>(
                     owned_ancestry: ancestry,
                 };
                 let mut item_context = context.to_vec();
-                item_context.extend(extension.extension.instances.iter().copied());
                 let mut item_positions = positions.to_vec();
-                item_positions.extend(extension.extension.positions.iter().cloned());
+                extension
+                    .extension
+                    .append_to(&mut item_context, &mut item_positions);
                 if passes_scope_filter(
                     program.with_owned_context(&item_state),
                     scope.filter,
@@ -752,9 +757,10 @@ pub(super) fn eval_basic_owned_selected<'a>(
             owned_ancestry: ancestry,
         };
         let mut item_context = context.to_vec();
-        item_context.extend(extension.extension.instances.iter().copied());
         let mut candidate_positions = positions.to_vec();
-        candidate_positions.extend(extension.extension.positions.iter().cloned());
+        extension
+            .extension
+            .append_to(&mut item_context, &mut candidate_positions);
         reserve_observed_copy(&budget, &[], &[], &candidate_positions, 0).map_err(access)?;
         let mut output_positions = candidate_positions.clone();
         let next = compact
