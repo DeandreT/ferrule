@@ -10,15 +10,25 @@ public static partial class FerruleFunctions
     private const string JsonParseObjectExistsName = "json_parse_object_exists";
     private const string JsonSerializeObjectName = "json_serialize_object";
 
+    // Graph-level schema descriptors carry no file capability or descriptor
+    // version, so a reader that predates tuple frames would read a frame as an
+    // object; frames are therefore refused here.
+    private static void RequireFunctionSchema(string schema, string function)
+    {
+        bool frames;
+        try { frames = FerruleJson.FunctionSchemaContainsJsonTuple(schema); }
+        catch (FerruleRuntimeException error) when (error.Error == FerruleRuntimeError.JsonBoundary)
+        { throw InvalidArgument(function, "schema descriptor is invalid"); }
+        if (frames) throw InvalidArgument(function, "schema descriptor contains a JSON tuple frame");
+    }
+
     private static (FerruleRepeated Array, string Schema, IReadOnlyList<string> Path) ParseJsonArray(
         IReadOnlyList<FerruleValue> arguments, string function)
     {
         var input = RequireString(arguments[0], function);
         var schema = RequireString(arguments[1], function);
         var path = RequireString(arguments[2], function);
-        try { FerruleJson.ValidateFunctionSchema(schema); }
-        catch (FerruleRuntimeException error) when (error.Error == FerruleRuntimeError.JsonBoundary)
-        { throw InvalidArgument(function, "schema descriptor is invalid"); }
+        RequireFunctionSchema(schema, function);
         var segments = ParseJsonStringArray(path, function, "array path descriptor is invalid");
         FerruleInstance current;
         try { current = FerruleJson.ParseFunctionInput(schema, input); }
@@ -92,14 +102,7 @@ public static partial class FerruleFunctions
         {
             throw Type(function, input);
         }
-        try
-        {
-            FerruleJson.ValidateFunctionSchema(schema);
-        }
-        catch (FerruleRuntimeException error) when (error.Error == FerruleRuntimeError.JsonBoundary)
-        {
-            throw InvalidArgument(function, "schema descriptor is invalid");
-        }
+        RequireFunctionSchema(schema, function);
         var segments = ParseJsonStringArray(path, function, "field path descriptor is invalid");
         if (!FerruleJson.IsOrdinaryFunctionObjectPath(schema, segments))
         {
@@ -150,14 +153,7 @@ public static partial class FerruleFunctions
             throw Type(JsonParseFieldName, input);
         }
 
-        try
-        {
-            FerruleJson.ValidateFunctionSchema(schema);
-        }
-        catch (FerruleRuntimeException error) when (error.Error == FerruleRuntimeError.JsonBoundary)
-        {
-            throw InvalidArgument(JsonParseFieldName, "schema descriptor is invalid");
-        }
+        RequireFunctionSchema(schema, JsonParseFieldName);
 
         var segments = ParseJsonStringArray(
             path,

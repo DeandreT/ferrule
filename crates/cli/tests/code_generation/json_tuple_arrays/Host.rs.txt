@@ -1,0 +1,223 @@
+use codegen_runtime::{Instance, JsonBoundaryError, JsonFormatError, Value};
+use ferrule_generated_mapping as generated;
+use serde_json::{Value as Json, json};
+use std::{error::Error, fs, path::Path};
+
+type Result<T> = std::result::Result<T, Box<dyn Error>>;
+
+fn typed(value: &Json) -> Result<Instance> {
+    Ok(match value["kind"].as_str() {
+        Some("Repeated") => Instance::Repeated(
+            value["items"]
+                .as_array()
+                .ok_or("repeated items")?
+                .iter()
+                .map(typed)
+                .collect::<Result<_>>()?,
+        ),
+        Some("Group") => Instance::Group(
+            value["fields"]
+                .as_array()
+                .ok_or("group fields")?
+                .iter()
+                .map(|field| {
+                    Ok((
+                        field["name"].as_str().ok_or("field name")?.to_owned(),
+                        typed(&field["value"])?,
+                    ))
+                })
+                .collect::<Result<Vec<_>>>()?
+                .into(),
+        ),
+        Some("Scalar") => {
+            let scalar = &value["value"];
+            Instance::Scalar(match scalar["kind"].as_str() {
+                Some("Int") => Value::Int(scalar["value"].as_i64().ok_or("int")?),
+                Some("String") => Value::String(scalar["value"].as_str().ok_or("text")?.into()),
+                Some("Bool") => Value::Bool(scalar["value"].as_bool().ok_or("bool")?),
+                Some("Float") => Value::Float(scalar["value"].as_f64().ok_or("float")?),
+                Some("JsonNull") => Value::json_null(),
+                Some("Null") => Value::Null,
+                _ => return Err("closed authored scalar kind".into()),
+            })
+        }
+        _ => return Err("closed authored instance kind".into()),
+    })
+}
+
+/// The innermost error's kind and node, and the one-based position of the
+/// outermost positional error.
+fn record(error: &JsonFormatError) -> Json {
+    let mut position = None;
+    let mut error = error;
+    while let JsonFormatError::TuplePosition {
+        position: at,
+        error: inner,
+        ..
+    } = error
+    {
+        position.get_or_insert(*at);
+        error = inner;
+    }
+    let (kind, name) = match error {
+        JsonFormatError::Shape { name, .. } => ("Shape", name),
+        JsonFormatError::TupleLengthMismatch { name, .. } => ("TupleLengthMismatch", name),
+        JsonFormatError::TupleGap {
+            name,
+            position: gap,
+        } => {
+            position.get_or_insert(*gap);
+            ("TupleGap", name)
+        }
+        JsonFormatError::UndeclaredTupleField { name, .. } => ("UndeclaredTupleField", name),
+        JsonFormatError::TupleRootRows { name } => ("TupleRootRows", name),
+        JsonFormatError::RangeMismatch { name, .. } => ("RangeMismatch", name),
+        JsonFormatError::StringLengthMismatch { name, .. } => ("StringLengthMismatch", name),
+        JsonFormatError::ItemCountMismatch { name, .. } => ("ItemCountMismatch", name),
+        JsonFormatError::UniqueItemsMismatch { name, .. } => ("UniqueItemsMismatch", name),
+        JsonFormatError::MissingRequiredProperty { object, .. } => {
+            ("MissingRequiredProperty", object)
+        }
+        JsonFormatError::RecursiveJsonTupleFrame { node, frame } => {
+            return json!({"kind": "RecursiveJsonTupleFrame", "name": node, "frame": frame});
+        }
+        other => return json!({"unexpected": format!("{other:?}")}),
+    };
+    json!({"kind": kind, "name": name, "position": position})
+}
+
+struct Check {
+    passed: usize,
+    failures: Vec<String>,
+}
+
+impl Check {
+    fn that(&mut self, good: bool, label: impl FnOnce() -> String) {
+        if good {
+            self.passed += 1;
+        } else {
+            self.failures.push(label());
+        }
+    }
+}
+
+fn input_message(result: &std::result::Result<Instance, JsonBoundaryError>) -> Option<&str> {
+    match result {
+        Err(JsonBoundaryError::InvalidInput { message }) => Some(message),
+        _ => None,
+    }
+}
+
+fn run_case(check: &mut Check, case: &Json, mapped: bool) -> Result<()> {
+    let id = case["id"].as_str().ok_or("id")?;
+    let descriptor = case["descriptor"].as_str().ok_or("descriptor")?;
+    for row in case["accepted"].as_array().ok_or("accepted")? {
+        let wire = row["wire"].as_str().ok_or("wire")?;
+        let output = row["output"].as_str().ok_or("output")?;
+        let expected = typed(&row["typed"])?;
+        for (route, read) in [
+            ("parse", codegen_runtime::parse_json(descriptor, wire)),
+            (
+                "parse bytes",
+                codegen_runtime::parse_json_bytes(descriptor, wire.as_bytes()),
+            ),
+        ] {
+            check.that(read.as_ref().is_ok_and(|read| *read == expected), || {
+                format!("{id} {wire} {route}: {read:?}")
+            });
+        }
+        let written = codegen_runtime::serialize_json(descriptor, &expected);
+        check.that(written.as_deref().is_ok_and(|text| text == output), || {
+            format!("{id} {wire} serialize: {written:?}")
+        });
+        let bytes = codegen_runtime::serialize_json_bytes(descriptor, &expected);
+        check.that(
+            bytes
+                .as_deref()
+                .is_ok_and(|bytes| bytes == output.as_bytes()),
+            || format!("{id} {wire} serialize bytes: {bytes:?}"),
+        );
+        if mapped {
+            let text = generated::execute_json(wire);
+            check.that(text.as_deref().is_ok_and(|text| text == output), || {
+                format!("{id} {wire} execute_json: {text:?}")
+            });
+            let bytes = generated::execute_json_bytes(wire.as_bytes());
+            check.that(
+                bytes
+                    .as_deref()
+                    .is_ok_and(|bytes| bytes == output.as_bytes()),
+                || format!("{id} {wire} execute_json_bytes: {bytes:?}"),
+            );
+            let result = generated::execute(&expected);
+            let wanted = typed(&row["mapped"])?;
+            check.that(result.as_ref().is_ok_and(|result| *result == wanted), || {
+                format!("{id} {wire} execute: {result:?}")
+            });
+        }
+    }
+    for row in case["rejected"].as_array().ok_or("rejected")? {
+        let wire = row["wire"].as_str().ok_or("wire")?;
+        let message = row["message"].as_str().ok_or("message")?;
+        for (route, read) in [
+            ("parse", codegen_runtime::parse_json(descriptor, wire)),
+            (
+                "parse bytes",
+                codegen_runtime::parse_json_bytes(descriptor, wire.as_bytes()),
+            ),
+        ] {
+            check.that(input_message(&read) == Some(message), || {
+                format!("{id} {wire} {route}: {read:?}")
+            });
+        }
+        let caused = codegen_runtime::parse_json_with_format_cause(descriptor, wire);
+        check.that(
+            matches!(&caused, Err(JsonBoundaryError::InvalidDocument(cause))
+                if record(cause.format_error()) == row["error"]),
+            || format!("{id} {wire} format cause: {caused:?}"),
+        );
+        if mapped {
+            let text = generated::execute_json(wire);
+            check.that(
+                matches!(&text, Err(JsonBoundaryError::InvalidInput { message: actual }) if actual == message),
+                || format!("{id} {wire} execute_json: {text:?}"),
+            );
+        }
+    }
+    for row in case["write_only"].as_array().ok_or("write-only")? {
+        let instance = typed(&row["typed"])?;
+        let written = codegen_runtime::serialize_json(descriptor, &instance);
+        let good = match (row["output"].as_str(), row["message"].as_str()) {
+            (Some(output), None) => written.as_deref().is_ok_and(|text| text == output),
+            (None, Some(message)) => matches!(&written,
+                Err(JsonBoundaryError::InvalidOutput { message: actual }) if actual == message),
+            _ => return Err("write-only rows need one outcome".into()),
+        };
+        check.that(good, || format!("{id} write {instance:?}: {written:?}"));
+    }
+    Ok(())
+}
+
+fn main() -> Result<()> {
+    let directory = std::env::args_os().nth(1).ok_or("generated directory")?;
+    let corpus: Json =
+        serde_json::from_slice(&fs::read(Path::new(&directory).join("tuple-cases.json"))?)?;
+    let mapped = corpus["mapped"].as_str().ok_or("mapped case")?;
+    let mut check = Check {
+        passed: 0,
+        failures: Vec::new(),
+    };
+    let cases = corpus["cases"].as_array().ok_or("cases")?;
+    for case in cases {
+        run_case(&mut check, case, case["id"] == mapped)?;
+    }
+    if !check.failures.is_empty() {
+        return Err(check.failures.join("\n").into());
+    }
+    println!(
+        "JSON_TUPLE_ARRAYS rust cases={} checks={}",
+        cases.len(),
+        check.passed
+    );
+    Ok(())
+}
