@@ -443,6 +443,18 @@ impl FerruleApp {
                 self.mapping_workspace.active,
                 MappingDocument::Main | MappingDocument::Target(_)
             );
+        let (presence_root, presence_schema) = active_target
+            .and_then(|index| self.project.extra_targets.get(index))
+            .map_or((&self.project.root, &self.project.target), |target| {
+                (&target.root, &target.schema)
+            });
+        let presence_profile = crate::scope_editor::presence_controls::profile(
+            &self.project,
+            presence_root,
+            presence_schema,
+            &self.selected_scope,
+            computed_property_owner,
+        );
         let mut type_action = None;
         // The edited scope's fields before and after this pass, retained only
         // on frames with input, and the document that owns the scope.
@@ -509,6 +521,12 @@ impl FerruleApp {
                                     let scope =
                                         scope_at_mut(&mut target.root, &self.selected_scope);
                                     let before = watch_scope.then(|| ScopeFields::capture(scope));
+                                    crate::scope_editor::presence_controls::show(
+                                        ui,
+                                        scope,
+                                        &self.project.graph,
+                                        &presence_profile,
+                                    );
                                     type_action = show_scope_editor(
                                         ui,
                                         scope,
@@ -584,6 +602,12 @@ impl FerruleApp {
                                     let scope =
                                         scope_at_mut(&mut self.project.root, &self.selected_scope);
                                     let before = watch_scope.then(|| ScopeFields::capture(scope));
+                                    crate::scope_editor::presence_controls::show(
+                                        ui,
+                                        scope,
+                                        &self.project.graph,
+                                        &presence_profile,
+                                    );
                                     type_action = show_scope_editor(
                                         ui,
                                         scope,

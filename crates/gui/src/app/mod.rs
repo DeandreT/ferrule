@@ -1759,6 +1759,9 @@ mod sort_controls_tests;
 mod window_controls_tests;
 
 #[cfg(test)]
+mod presence_tests;
+
+#[cfg(test)]
 mod copy_scope_tests;
 
 #[cfg(test)]
