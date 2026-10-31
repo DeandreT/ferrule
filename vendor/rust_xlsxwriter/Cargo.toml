@@ -1,0 +1,37 @@
+# Minimal library manifest derived from the crates.io rust_xlsxwriter 0.96.0 package.
+# See README.md for provenance and the local patch boundary.
+[package]
+edition = "2021"
+rust-version = "1.83.0"
+name = "rust_xlsxwriter"
+version = "0.96.0"
+authors = ["John McNamara <jmcnamara@cpan.org>"]
+build = false
+autolib = false
+autobins = false
+autoexamples = false
+autotests = false
+autobenches = false
+description = "A Rust library for writing Excel 2007 xlsx files"
+homepage = "https://rustxlsxwriter.github.io"
+readme = "README.md"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/jmcnamara/rust_xlsxwriter"
+
+[features]
+default = []
+
+[lib]
+name = "rust_xlsxwriter"
+path = "src/lib.rs"
+# The upstream API documentation examples write files and are not Ferrule tests.
+doctest = false
+
+[dependencies.zip]
+version = "7.2"
+features = ["deflate"]
+default-features = false
+
+[lints.rust]
+# Optional upstream features are not offered by this copy; their gated code stays as published.
+unexpected_cfgs = "allow"
