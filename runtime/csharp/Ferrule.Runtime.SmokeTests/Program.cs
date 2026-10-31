@@ -186,6 +186,7 @@ internal static partial class Program
             ("JSON syntax depth boundaries", JsonSyntaxDepthBoundaries),
             ("JSON floating metadata coercion", JsonFloatingMetadataCoercion),
             ("generated embedded schema descriptors", GeneratedEmbeddedSchemaDescriptors),
+            ("generated embedded tuple frames", GeneratedEmbeddedTupleFrames),
             ("JSON recursive references", JsonRecursiveReferences),
             ("JSON mapped-sequence output", JsonMappedSequenceOutput),
             ("JSON root rows", JsonRootRows),

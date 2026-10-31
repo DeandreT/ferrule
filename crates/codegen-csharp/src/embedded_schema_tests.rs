@@ -24,11 +24,16 @@ fn tuple_frame() -> SchemaNode {
 }
 
 fn with_frame(name: &str) -> SchemaNode {
-    SchemaNode::group(name, vec![tuple_frame()])
+    // The shared fixture maps its scalar constant to Out. Keep that binding
+    // valid when adding an otherwise unused tuple to a boundary schema.
+    SchemaNode::group(
+        name,
+        vec![SchemaNode::scalar("Out", ScalarType::Float), tuple_frame()],
+    )
 }
 
 #[test]
-fn csharp_refuses_tuple_frames_in_every_boundary_schema_before_artifacts() {
+fn csharp_embeds_tuple_frames_in_every_boundary_schema_as_v5_descriptors() {
     let mut source = stable_program();
     source.source = with_frame("FramedSource");
     let mut target = stable_program();
@@ -51,25 +56,50 @@ fn csharp_refuses_tuple_frames_in_every_boundary_schema_before_artifacts() {
         (named_source, "FramedCatalog"),
         (named_target, "FramedReport"),
     ] {
-        let expected = Err(crate::EmitError::JsonTupleFrame {
-            schema: schema.into(),
-        });
-        assert_eq!(crate::emit(&program), expected, "{schema}");
-        assert_eq!(
-            crate::emit_with_companions(&program, codegen::CompanionSelection::TypedOnly),
-            expected,
+        let descriptor =
+            codegen::serialize_embedded_schema(&with_frame(schema), MAX_EMBEDDED_JSON_SCHEMA_BYTES)
+                .expect("the framed schema encodes");
+        assert!(
+            descriptor.starts_with("FERRULE-EMBEDDED-SCHEMA/5\n"),
             "{schema}"
         );
-        assert_eq!(crate::emit_typed(&program), expected, "{schema}");
-        assert_eq!(
-            crate::emit_with_basic_owned_sources(&program),
-            expected,
-            "{schema}"
-        );
-        assert_eq!(
-            crate::emit_with_basic_owned_filters(&program),
-            expected,
-            "{schema}"
+        for (route, json_boundary, artifacts) in [
+            ("complete", true, crate::emit(&program)),
+            ("legacy typed", false, crate::emit_typed(&program)),
+            (
+                "basic owned sources",
+                true,
+                crate::emit_with_basic_owned_sources(&program),
+            ),
+            (
+                "basic owned filters",
+                false,
+                crate::emit_with_basic_owned_filters(&program),
+            ),
+        ] {
+            let artifacts = artifacts.unwrap_or_else(|error| panic!("{schema}: {error}"));
+            let literal = serde_json::to_string(&descriptor).unwrap();
+            let emitted = artifacts
+                .files()
+                .iter()
+                .any(|file| String::from_utf8_lossy(&file.contents).contains(&literal));
+            assert_eq!(
+                emitted, json_boundary,
+                "{schema}: {route} must embed a descriptor only when it has a JSON boundary"
+            );
+        }
+        // TypedOnly intentionally has no JSON/XML boundary descriptor. It
+        // must still accept the tuple-shaped typed schema without losing that
+        // distinction by accidentally adding JSON companions.
+        let typed = crate::emit_with_companions(&program, codegen::CompanionSelection::TypedOnly)
+            .unwrap_or_else(|error| panic!("{schema}: {error}"));
+        let literal = serde_json::to_string(&descriptor).unwrap();
+        assert!(
+            typed
+                .files()
+                .iter()
+                .all(|file| { !String::from_utf8_lossy(&file.contents).contains(&literal) }),
+            "{schema}: typed-only emission must not add a JSON descriptor"
         );
     }
 }
