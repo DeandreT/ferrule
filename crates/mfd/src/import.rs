@@ -80,6 +80,8 @@ mod target_type_cast;
 mod transposed_target;
 mod udf;
 mod unused_xml_source;
+mod value_producer;
+mod value_refusal;
 mod xml_root_view;
 mod xml_scalar_output;
 mod xml_serializer;
@@ -2497,6 +2499,10 @@ fn import_resolved(
         parser_input_nodes: BTreeMap::new(),
         next_id: 0,
         fn_nodes: BTreeMap::new(),
+        filter_nodes: BTreeMap::new(),
+        refused_value_feeds: BTreeSet::new(),
+        refused_filter_projections: BTreeSet::new(),
+        scope_projection_feeds: BTreeSet::new(),
         sequence_items: BTreeMap::new(),
         sequence_scope_components: BTreeSet::new(),
         sequence_predicate_components: BTreeSet::new(),
@@ -3106,6 +3112,7 @@ fn build_target_scope_inner(
 ) -> Scope {
     let edge_from = builder.edge_from;
     builder.rejected_join_paths.clear();
+    builder.scope_projection_feeds.clear();
     let mut scopes = ScopeBuilder::new(BTreeMap::new());
     if let Some(plan) = document_plan {
         plan.initialize(&mut scopes);

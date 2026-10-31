@@ -5,11 +5,17 @@ use super::schema::{SchemaComponent, parse_u32};
 
 pub(super) struct Recipe {
     pub(super) output: u32,
-    input: u32,
+    pub(super) input: u32,
     schema: ir::SchemaNode,
     declaration: bool,
     indent: bool,
     namespace: Option<String>,
+}
+
+impl Recipe {
+    pub(super) fn input_pins(&self) -> impl Iterator<Item = u32> {
+        std::iter::once(self.input)
+    }
 }
 
 pub(super) fn read(

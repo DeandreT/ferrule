@@ -337,53 +337,31 @@ impl GraphBuilder<'_> {
     /// The ferrule node producing the value at output-port `key`, creating
     /// SourceField/function nodes on demand. `None` for unsupported feeds.
     pub(super) fn value_node(&mut self, key: u32) -> Option<NodeId> {
+        if self.value_feed_is_refused(key) || self.refuse_unanchored_filter_consumer(key) {
+            return None;
+        }
+        let node = self.value_node_inner(key);
+        if self.value_feed_is_refused(key) {
+            None
+        } else {
+            node
+        }
+    }
+
+    fn value_node_inner(&mut self, key: u32) -> Option<NodeId> {
         if let Some(node) = self.join_field_node(key) {
             return Some(node);
         }
         if let Some(node) = self.db_computed_projection_node(key) {
             return Some(node);
         }
-        if self
-            .external_scalar_recipes
-            .iter()
-            .any(|recipe| recipe.output == key)
+        if let Some(producer) = self.specialized_value_producer(key)
+            && !matches!(
+                producer,
+                super::value_producer::SpecializedProducer::Udf { .. }
+            )
         {
-            return self.external_scalar_node(key);
-        }
-        if self
-            .external_xslt_aggregates
-            .iter()
-            .any(|aggregate| aggregate.output == key)
-        {
-            return self.external_xslt_aggregate_node(key);
-        }
-        if self
-            .json_serializers
-            .iter()
-            .any(|serializer| serializer.output == key)
-        {
-            return self.json_serializer_node(key);
-        }
-        if self
-            .xml_serializers
-            .iter()
-            .any(|serializer| serializer.output == key)
-        {
-            return self.xml_serializer_node(key);
-        }
-        if self
-            .json_parsers
-            .iter()
-            .any(|parser| parser.outputs.contains_key(&key))
-        {
-            return self.json_parser_node(key);
-        }
-        if self
-            .flextext_parsers
-            .iter()
-            .any(|parser| parser.outputs.contains_key(&key))
-        {
-            return self.flextext_parser_node(key);
+            return producer.materialize(self, key);
         }
         // A source schema entry?
         for (idx, source) in self.sources.iter().enumerate() {
@@ -427,25 +405,17 @@ impl GraphBuilder<'_> {
                 }
                 return self.value_node(intermediate.feed);
             }
-            let mut source_path = self.sequence_source_path(intermediate.feed)?;
-            source_path.path.extend(intermediate.suffix);
-            let source_path = self.source_value_path(source_path.source, source_path.path);
-            return self.source_field_at(&source_path);
+            return self.projected_value_node(intermediate.feed, &intermediate.suffix);
         }
-        if let Some(&(call_idx, component_id)) = self.udf_by_output.get(&key) {
-            return self.udf_output_node(key, call_idx, component_id);
+        if let Some(producer @ super::value_producer::SpecializedProducer::Udf { .. }) =
+            self.specialized_value_producer(key)
+        {
+            return producer.materialize(self, key);
         }
         // A function output?
         let idx = *self.fn_by_output.get(&key)?;
         if is_filter_component(&self.fn_components[idx]) {
-            if let Some(node) = self.scalar_filter_lookup_node(idx) {
-                return Some(node);
-            }
-            // A filter feeding a value position is pass-through of its
-            // node input for our purposes; treat the value as whatever
-            // feeds the filter's first input.
-            let feed = self.input_feed(idx, 0)?;
-            return self.value_node(feed);
+            return self.source_field_filter_node(idx, key, &[]);
         }
         if is_db_where_component(&self.fn_components[idx]) {
             let feed = self.input_feed(idx, 0)?;
@@ -655,6 +625,19 @@ impl GraphBuilder<'_> {
     ) -> Option<NodeId> {
         let inserted = !collection.is_empty() && self.framed.insert(collection.to_vec());
         let node = self.value_node(key);
+        if inserted {
+            self.framed.remove(collection);
+        }
+        node
+    }
+
+    pub(super) fn anchored_value_node_in_collection(
+        &mut self,
+        key: u32,
+        collection: &[String],
+    ) -> Option<NodeId> {
+        let inserted = !collection.is_empty() && self.framed.insert(collection.to_vec());
+        let node = self.scalar_node_at_anchor(key, collection);
         if inserted {
             self.framed.remove(collection);
         }

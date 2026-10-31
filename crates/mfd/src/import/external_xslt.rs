@@ -22,6 +22,12 @@ pub(super) struct Recipe {
     selector: Vec<String>,
 }
 
+impl Recipe {
+    pub(super) fn input_pins(&self) -> impl Iterator<Item = u32> {
+        std::iter::once(self.input)
+    }
+}
+
 /// Imports a deliberately small, executable XSLT extension-function shape:
 /// one named template with one parameter and one aggregate `value-of`.
 /// Unknown libraries without an adjacent module remain available to the
