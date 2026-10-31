@@ -47,6 +47,9 @@ pub(super) struct RenderedNodes {
     pub(super) sequence_context_pins: Vec<SequenceContextPins>,
     pub(super) siblings: Vec<GeneratedSibling>,
     pub(super) json_parser_outputs: BTreeSet<NodeId>,
+    /// Aggregate inputs that read a whole source sequence rather than the
+    /// current item.
+    pub(super) whole_sequence_inputs: BTreeSet<u32>,
 }
 
 pub(super) fn render(args: RenderArgs<'_>) -> Result<RenderedNodes, MfdError> {
@@ -71,6 +74,7 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<RenderedNodes, MfdError> {
 
     let node_frames = NodeFrames::new(project);
     let mut sequence_inputs = Vec::new();
+    let mut whole_sequence_inputs = BTreeSet::new();
     let mut sequences = Vec::new();
     collect_scope_sequences(&project.root, &mut sequences);
     for node in project.graph.nodes.values() {
@@ -886,6 +890,7 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<RenderedNodes, MfdError> {
                             continue;
                         }
                     };
+                    super::xlsx::validate_transposed_aggregate(sources, collection_key, true)?;
                     if is_item_at
                         && !expression_reads_collection(
                             &project.graph,
@@ -936,7 +941,9 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<RenderedNodes, MfdError> {
                             continue;
                         }
                     };
+                    super::xlsx::validate_transposed_aggregate(sources, sequence_key, false)?;
                     edges.push((sequence_key, in_sequence));
+                    whole_sequence_inputs.insert(in_sequence);
                     None
                 };
                 node_out_key.insert(id, out);
@@ -1331,6 +1338,7 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<RenderedNodes, MfdError> {
         sequence_context_pins,
         siblings,
         json_parser_outputs: json_parsers.outputs.keys().copied().collect(),
+        whole_sequence_inputs,
     })
 }
 

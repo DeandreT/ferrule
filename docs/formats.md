@@ -623,6 +623,30 @@ for a complete format standard or another product.
   feed. `n` must be connected to every row from the same value; the reference
   application positions only the rows whose `n` is connected. Export writes
   every row's `n` input from the record's `n` binding.
+- The reference application also reads each selected row of a transposed
+  XLSX source as its own run of non-empty cells, so rows do not line up by
+  column on their own. MFD export iterates records over the first row's
+  cells and reads each later row through a filter that keeps the cell whose
+  `n` equals the first row's `n`. Import turns that filter back into the
+  plain field only for direct scalar target bindings in a proven first-row
+  driver context. It retains the physical owner of every index, including
+  unmarked later-row indexes; missing or duplicate indexes cannot prove
+  alignment. Sequence consumers and unproved contexts are disconnected with
+  their dependent results and reported as non-executable imports, rather than
+  silently becoming unfiltered bindings. Refusal follows physical component
+  input/output ports through specialized producers as well as ordinary
+  functions; UDF defaults, serializers, parsers and dynamic sources cannot
+  replace a refused value with a new result. Export refuses aggregates over later
+  rows, whose native cell sequences include non-driver columns and omit
+  missing record values. It also refuses computed aggregates over transposed
+  records until their native record alignment is established. Direct
+  driver-row aggregates remain supported. Integer row schemas are refused
+  rather than converted through
+  double and losing exact `i64` values; the synthetic column index `n` remains
+  supported. A `ferrule-datatype` annotation never overrides the declared Cell
+  datatype: only matching canonical annotations are accepted, and unsupported
+  or conflicting annotations warn and retain the declared type. These export
+  refusals happen before any design or schema files are published.
 - EDI output validates every present configured field after wire lexical
   formatting. The bounded report includes all length and code-list violations
   it finds, and validation failures do not replace the destination.

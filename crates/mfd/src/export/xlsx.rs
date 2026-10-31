@@ -15,8 +15,13 @@ use super::schema::{PortTree, xml_escape};
 
 mod grid;
 mod transposed;
+mod transposed_source;
 
 pub(super) use transposed::{connect_transposed_target, render_transposed_target};
+pub(super) use transposed_source::{
+    SourceWiring as TransposedSourceWiring, allocate_source_row_index, connect_transposed_source,
+    is_transposed_source, validate_transposed_aggregate,
+};
 
 pub(super) struct RenderArgs<'a> {
     pub(super) schema: &'a SchemaNode,
@@ -29,7 +34,10 @@ pub(super) struct RenderArgs<'a> {
 
 /// Renders a retained transposed, composite, or two-dimensional XLSX source.
 /// `None` leaves ordinary flat worksheet rendering to `schema`.
-pub(super) fn render(args: RenderArgs<'_>) -> Result<Option<String>, MfdError> {
+pub(super) fn render(
+    args: RenderArgs<'_>,
+    used_ports: &BTreeSet<u32>,
+) -> Result<Option<String>, MfdError> {
     if !args.options.xlsx_headers.is_empty()
         && (args.options.xlsx_grid.is_some()
             || args.options.xlsx_composite.is_some()
@@ -50,7 +58,7 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<Option<String>, MfdError> {
         return render_composite(&args, layout).map(Some);
     }
     if !args.options.xlsx_rows.is_empty() {
-        return transposed::render_source(&args).map(Some);
+        return transposed_source::render_source(&args, used_ports).map(Some);
     }
     Ok(None)
 }

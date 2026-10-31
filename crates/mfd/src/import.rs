@@ -77,6 +77,7 @@ mod target_mixed_content;
 mod target_node_default;
 mod target_node_function;
 mod target_type_cast;
+mod transposed_source;
 mod transposed_target;
 mod udf;
 mod unused_xml_source;
@@ -1608,7 +1609,7 @@ fn import_resolved(
         .unwrap_or_default()
         .to_ascii_lowercase();
 
-    let edges = read_edge_inputs(&structure, Some(&wrapper));
+    let mut edges = read_edge_inputs(&structure, Some(&wrapper));
     if retain_primary_filename && (!edges.complete || !edges.conflicts.is_empty()) {
         return Err(MfdError::UnsupportedImport(
             if filename_import == FilenameImport::CsvRetention {
@@ -2263,6 +2264,14 @@ fn import_resolved(
         component.is_variable = false;
         component.is_source = false;
     }
+
+    transposed_source::absorb_alignment_filters(
+        structure,
+        &schema_components,
+        &mut fn_components,
+        &mut edges.feeds,
+        &mut warnings,
+    );
 
     // Only inputs with one distinct physical feed enter the lowering map.
     let edge_from = edges.feeds;

@@ -433,7 +433,10 @@ fn build_source<'a>(
         side_format(&path.map(str::to_string), options)
     };
     let explicit_text = xbrl::explicit_text_ports(schema, options);
-    let ports = PortTree::build_with_explicit_text(schema, keys, &explicit_text);
+    let mut ports = PortTree::build_with_explicit_text(schema, keys, &explicit_text);
+    if format == SideFormat::Xlsx && super::xlsx::is_transposed_source(options) {
+        super::xlsx::allocate_source_row_index(schema, options, &mut ports, keys);
+    }
     let request_ports = external_source::request_ports(options, keys);
     let document_path_port = options.local_xml_file_set.then(|| keys.next());
     Ok(SourceExport {

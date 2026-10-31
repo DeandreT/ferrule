@@ -129,6 +129,44 @@ fn duplicate_source_annotations_keep_both_physical_columns_executable() {
     );
 }
 
+/// A row-alignment `n` port is only an alignment filter's input; it is not
+/// the record's `n` field.
+#[test]
+fn transposed_source_skips_alignment_ports_read_elsewhere() {
+    let text = std::fs::read_to_string(fixture("xlsx-transposed-rows.mfd"))
+        .unwrap()
+        .replace(
+            r#"<entry name="n" type="attribute" outkey="104"/>"#,
+            r#"<entry name="n" type="attribute" outkey="104" ferrule-row-alignment="1"/>"#,
+        );
+    let dir = std::env::temp_dir().join(format!(
+        "ferrule_mfd_xlsx_import_alignment_{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    let design = dir.join("mapping.mfd");
+    std::fs::write(&design, text).unwrap();
+    let imported = mfd::import(&design);
+    let _ = std::fs::remove_dir_all(&dir);
+    let imported = imported.unwrap();
+
+    assert_eq!(
+        imported.warnings,
+        [
+            "xlsx component `Ledger` reads a row-alignment `n` port outside an alignment filter; those connections were skipped"
+        ]
+    );
+    assert!(imported.project.source.child("n").is_none());
+    assert!(
+        !imported
+            .project
+            .root
+            .bindings
+            .iter()
+            .any(|binding| binding.target_field == "Col")
+    );
+}
+
 #[test]
 fn imports_fixed_rows_with_open_cells_as_a_transposed_table() {
     let imported = mfd::import(&fixture("xlsx-transposed.mfd")).unwrap();
@@ -199,6 +237,99 @@ fn imports_fixed_rows_with_open_cells_as_a_transposed_table() {
         Some(Node::SourceField { path, .. }) if path == &["n"]
     ));
     assert!(engine::validate(project).is_empty());
+}
+
+#[test]
+fn transposed_datatype_markers_cannot_override_the_declared_cell_type() {
+    let original = std::fs::read_to_string(fixture("xlsx-transposed-rows.mfd")).unwrap();
+    for (index, (attributes, expected, warn)) in [
+        (r#"datatype="double""#, ScalarType::Float, false),
+        (
+            r#"datatype="string" ferrule-datatype="string""#,
+            ScalarType::String,
+            false,
+        ),
+        (
+            r#"datatype="integer" ferrule-datatype="integer""#,
+            ScalarType::Int,
+            false,
+        ),
+        (
+            r#"datatype="double" ferrule-datatype="double""#,
+            ScalarType::Float,
+            false,
+        ),
+        (
+            r#"datatype="boolean" ferrule-datatype="boolean""#,
+            ScalarType::Bool,
+            false,
+        ),
+        (
+            r#"datatype="double" ferrule-datatype="integer""#,
+            ScalarType::Float,
+            true,
+        ),
+        (
+            r#"datatype="boolean" ferrule-datatype="integer""#,
+            ScalarType::Bool,
+            true,
+        ),
+        (
+            r#"datatype="integer" ferrule-datatype="string""#,
+            ScalarType::Int,
+            true,
+        ),
+        (
+            r#"datatype="double" ferrule-datatype="unknown""#,
+            ScalarType::Float,
+            true,
+        ),
+        (
+            r#"datatype="double" ferrule-datatype="""#,
+            ScalarType::Float,
+            true,
+        ),
+        (r#"ferrule-datatype="integer""#, ScalarType::String, true),
+        (
+            r#"datatype="unknown" ferrule-datatype="integer""#,
+            ScalarType::String,
+            true,
+        ),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let text = original.replace(
+            r#"annotation="Amount" datatype="integer""#,
+            &format!(r#"annotation="Amount" {attributes}"#),
+        );
+        assert_ne!(text, original);
+        let directory = std::env::temp_dir().join(format!(
+            "ferrule_mfd_xlsx_marker_{}_{index}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&directory).unwrap();
+        let design = directory.join("mapping.mfd");
+        std::fs::write(&design, text).unwrap();
+        let imported = mfd::import(&design);
+        let _ = std::fs::remove_dir_all(&directory);
+        let imported = imported.unwrap();
+        assert_eq!(
+            imported.project.source.child("Amount").unwrap().kind,
+            SchemaKind::Scalar { ty: expected },
+            "{attributes}"
+        );
+        assert_eq!(
+            imported.warnings.len(),
+            usize::from(warn),
+            "{attributes}: {:?}",
+            imported.warnings
+        );
+        if warn {
+            assert!(imported.warnings[0].contains("unsupported ferrule-datatype"));
+            assert!(imported.warnings[0].contains("declared Cell datatype was retained"));
+        }
+    }
 }
 
 #[test]
