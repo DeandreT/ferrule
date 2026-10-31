@@ -427,12 +427,25 @@ impl GraphAction {
                     setting: *setting,
                 };
                 let change = patch.setting(scope, *setting).ok_or_else(not_changed)?;
+                let presence_edit = matches!(
+                    (change.before(), change.after()),
+                    (
+                        ScopeSettingValue::Iteration(
+                            crate::Iteration::None | crate::Iteration::OptionalPresence { .. }
+                        ),
+                        ScopeSettingValue::Iteration(
+                            crate::Iteration::None | crate::Iteration::OptionalPresence { .. }
+                        )
+                    )
+                );
                 let named_elsewhere = |value: &ScopeSettingValue| match value {
                     ScopeSettingValue::Iteration(iteration) => !iteration.is_source_backed(),
                     ScopeSettingValue::ComputedProperties(_) => true,
                     _ => false,
                 };
-                if named_elsewhere(change.before()) || named_elsewhere(change.after()) {
+                if !presence_edit
+                    && (named_elsewhere(change.before()) || named_elsewhere(change.after()))
+                {
                     return Err(not_changed());
                 }
                 if patch.nodes().next().is_none()
