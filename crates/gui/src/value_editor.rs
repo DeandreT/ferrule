@@ -5,7 +5,7 @@
 use crate::test_ui::ContextExt as _;
 
 use egui::Ui;
-use ir::Value;
+use ir::{Decimal96, DecimalError, MAX_DECIMAL_LEXICAL_BYTES, Value};
 
 const VALUE_MAP_CELL_WIDTH: f32 = crate::theme::METRICS.value_map_cell_width;
 const VALUE_MAP_CONTENT_WIDTH: f32 = crate::theme::METRICS.value_map_content_width;
@@ -85,10 +85,7 @@ pub fn title_preview(value: &Value) -> String {
 }
 
 pub fn show_value_editor(ui: &mut Ui, value: &mut Value) {
-    if let Value::Decimal(value) = value {
-        ui.label(format!("decimal {value} (read-only)"));
-        return;
-    }
+    let before_kind = std::mem::discriminant(value);
     ui.label("Type");
     egui::ComboBox::from_id_salt(ui.scope_id().with("value_kind"))
         .selected_text(type_label(value))
@@ -125,6 +122,13 @@ pub fn show_value_editor(ui: &mut Ui, value: &mut Value) {
                 *value = Value::Float(0.0);
             }
             if ui
+                .selectable_label(matches!(value, Value::Decimal(_)), "Exact decimal")
+                .clicked()
+                && !matches!(value, Value::Decimal(_))
+            {
+                *value = Value::decimal(Decimal96::ZERO);
+            }
+            if ui
                 .selectable_label(matches!(value, Value::String(_)), "Text")
                 .clicked()
             {
@@ -136,6 +140,11 @@ pub fn show_value_editor(ui: &mut Ui, value: &mut Value) {
         })
         .response
         .accessible_name("Constant type");
+    if !matches!(value, Value::Decimal(_)) || before_kind != std::mem::discriminant(value) {
+        ui.ctx().data_mut(|data| {
+            data.remove::<DecimalDraft>(ui.scope_id().with("exact_decimal_draft"));
+        });
+    }
     ui.label("Value");
     match value {
         Value::Null => {
@@ -169,8 +178,67 @@ pub fn show_value_editor(ui: &mut Ui, value: &mut Value) {
         Value::XmlNil(_) => {
             crate::ui_kit::help(ui, "Explicit XML nil (xsi:nil)");
         }
-        Value::Decimal(_) => {}
+        Value::Decimal(decimal) => show_decimal_editor(ui, decimal),
     }
+}
+
+#[derive(Clone)]
+struct DecimalDraft {
+    original: Decimal96,
+    text: String,
+    error: Option<DecimalError>,
+}
+
+impl DecimalDraft {
+    fn new(value: Decimal96) -> Self {
+        Self {
+            original: value,
+            text: value.to_string(),
+            error: None,
+        }
+    }
+}
+
+fn show_decimal_editor(ui: &mut Ui, value: &mut Decimal96) {
+    let draft_id = ui.scope_id().with("exact_decimal_draft");
+    let mut draft = ui
+        .ctx()
+        .data_mut(|data| data.get_temp::<DecimalDraft>(draft_id))
+        // Undo/Redo and replacement values invalidate an uncommitted draft.
+        .filter(|draft| draft.original == *value)
+        .unwrap_or_else(|| DecimalDraft::new(*value));
+    let response = ui.add(
+        egui::TextEdit::singleline(&mut draft.text)
+            .desired_width(f32::INFINITY)
+            // Keep one extra character so oversized input cannot become an
+            // accepted truncated prefix. The parser enforces the byte limit.
+            .char_limit(MAX_DECIMAL_LEXICAL_BYTES + 1)
+            .hint_text("Exact decimal, e.g. 9007199254740993.1"),
+    );
+    response.widget_info(|| {
+        let mut info = egui::WidgetInfo::text_edit(ui.is_enabled(), "", &draft.text, "");
+        info.label = Some("Exact decimal value".into());
+        info
+    });
+    if response.changed() {
+        draft.error = None;
+    }
+    let enter = response.lost_focus() && ui.input(|input| input.key_pressed(egui::Key::Enter));
+    let apply = ui.button("Apply").clicked();
+    if ui.is_enabled() && (apply || enter) {
+        match Decimal96::parse_exact(&draft.text) {
+            Ok(next) => {
+                *value = next;
+                draft = DecimalDraft::new(next);
+            }
+            Err(error) => draft.error = Some(error),
+        }
+    }
+    if let Some(error) = draft.error {
+        ui.colored_label(ui.visuals().error_fg_color, error.to_string());
+    }
+    ui.small("Exact base-10 value. Apply or press Enter to save; no rounding.");
+    ui.ctx().data_mut(|data| data.insert_temp(draft_id, draft));
 }
 
 pub(super) fn value_map_editor_width(entry_count: usize) -> f32 {
@@ -573,7 +641,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn decimal_editor_retains_exact_read_only_values() {
+    fn decimal_editor_retains_exact_values_until_applied() {
         let mut value = Value::decimal(ir::Decimal96::parse_exact("9007199254740993.1").unwrap());
         let original = value.clone();
         let context = egui::Context::default();
