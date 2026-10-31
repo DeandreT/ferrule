@@ -1814,13 +1814,18 @@ item only when the item's own value domain is nullable, independent of
 array-container nullability.
 
 Schemas that contain a [JSON tuple frame](design/json-tuple-arrays.md) use
-embedded descriptor version 5, which older runtimes reject. C# generation
-refuses a primary or named boundary schema that contains a frame before any
-artifact exists, and the selected JSON5 companion profile rejects frames.
-Generated Rust JSON entry points share the native JSON codec's tuple-frame
-reading and writing, and their embedded allowed-value, `multipleOf` and
-`uniqueItems` checks reach every tuple position. Generated CSV output in both
-languages refuses a target schema that contains a frame.
+embedded descriptor version 5, which older runtimes reject, and the selected
+JSON5 companion profile rejects frames. Generated Rust JSON entry points share
+the native JSON codec's tuple-frame reading and writing, and their embedded
+allowed-value, `multipleOf` and `uniqueItems` checks reach every tuple
+position. The C# runtime applies the same frame check to version 5
+descriptors, and reads and writes frames with the native codec's absence
+rules and first-error order. After applicable raw-input uniqueness checks,
+reading applies the null rule, requires an array, checks its length, then reads
+each position and tail item. Positional decoding errors name their one-based
+position; raw uniqueness errors remain unwrapped. Gaps and length bounds are
+typed errors on output, and recursive frames are refused. Generated CSV output
+in both languages refuses a target schema that contains a frame.
 
 Rust:
 
@@ -2208,8 +2213,8 @@ Null inputs return Null before either descriptor is parsed; non-null calls
 validate the schema, field path, and input in that order.
 
 Graph-level schema descriptors carry no file capability or descriptor version.
-The Rust evaluator of `json_parse_field`, `json_parse_object_exists`,
-`json_parse_array_length`, and `json_parse_array_field` therefore refuses a
+The Rust and C# evaluators of `json_parse_field`, `json_parse_object_exists`,
+`json_parse_array_length`, and `json_parse_array_field` therefore refuse a
 descriptor that contains a [JSON tuple frame](design/json-tuple-arrays.md)
 during schema validation.
 

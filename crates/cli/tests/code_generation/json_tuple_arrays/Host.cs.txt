@@ -1,0 +1,177 @@
+using System.Globalization;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+internal static class Host
+{
+    private static readonly UTF8Encoding Utf8 = new(false, true);
+    private static readonly List<string> Failures = new();
+    private static int Passed;
+
+    private static FerruleInstance Typed(JsonElement literal) => literal.GetProperty("kind").GetString() switch
+    {
+        "Repeated" => new FerruleRepeated(literal.GetProperty("items").EnumerateArray().Select(Typed).ToArray()),
+        "Group" => new FerruleGroup(literal.GetProperty("fields").EnumerateArray()
+            .Select(field => new FerruleField(field.GetProperty("name").GetString()!, Typed(field.GetProperty("value")))).ToArray()),
+        "Scalar" => new FerruleScalar(Scalar(literal.GetProperty("value"))),
+        _ => throw new InvalidOperationException("Closed authored instance kind."),
+    };
+
+    private static FerruleValue Scalar(JsonElement literal) => literal.GetProperty("kind").GetString() switch
+    {
+        "Null" => FerruleValue.Null,
+        "JsonNull" => FerruleValue.JsonNull,
+        "Int" => FerruleValue.FromInt64(literal.GetProperty("value").GetInt64()),
+        "Bool" => FerruleValue.FromBoolean(literal.GetProperty("value").GetBoolean()),
+        "String" => FerruleValue.FromString(literal.GetProperty("value").GetString()!),
+        "Float" => FerruleValue.FromDouble(literal.GetProperty("value").GetDouble()),
+        _ => throw new InvalidOperationException("Closed authored scalar kind."),
+    };
+
+    private static JsonNode Full(FerruleInstance instance) => instance switch
+    {
+        FerruleScalar scalar => new JsonObject { ["kind"] = "Scalar", ["value"] = scalar.Value.Kind switch
+        {
+            FerruleValueKind.Null => new JsonObject { ["kind"] = "Null" },
+            FerruleValueKind.JsonNull => new JsonObject { ["kind"] = "JsonNull" },
+            FerruleValueKind.Int64 => new JsonObject { ["kind"] = "Int", ["value"] = scalar.Value.Int64Value },
+            FerruleValueKind.Bool => new JsonObject { ["kind"] = "Bool", ["value"] = scalar.Value.BooleanValue },
+            FerruleValueKind.String => new JsonObject { ["kind"] = "String", ["value"] = scalar.Value.StringValue },
+            FerruleValueKind.Double => new JsonObject { ["kind"] = "Float", ["bits"] = BitConverter.DoubleToInt64Bits(scalar.Value.DoubleValue).ToString("x16", CultureInfo.InvariantCulture) },
+            _ => new JsonObject { ["unexpected_scalar"] = scalar.Value.Kind.ToString() },
+        } },
+        FerruleRepeated repeated => new JsonObject { ["kind"] = "Repeated", ["items"] = new JsonArray(repeated.Items.Select(item => (JsonNode?)Full(item)).ToArray()) },
+        FerruleGroup group => new JsonObject
+        {
+            ["kind"] = "Group",
+            ["fields"] = new JsonArray(group.Fields.Select(field => (JsonNode?)new JsonObject { ["name"] = field.Name, ["value"] = Full(field.Value) }).ToArray()),
+        },
+        _ => new JsonObject { ["unexpected_instance"] = instance.GetType().FullName },
+    };
+
+    private static readonly (Regex Pattern, string Kind)[] Kinds =
+    {
+        (new Regex("^JSON field '(.+?)' expected "), "Shape"),
+        (new Regex("^JSON tuple '(.+?)' requires .* items, got \\d+\\.$"), "TupleLengthMismatch"),
+        (new Regex("^JSON tuple '(.+?)' cannot write position (\\d+) as absent "), "TupleGap"),
+        (new Regex("^JSON tuple '(.+?)' does not declare field "), "UndeclaredTupleField"),
+        (new Regex("^Non-repeating JSON tuple frame root '(.+?)' "), "TupleRootRows"),
+        (new Regex("^JSON scalar '(.+?)' is outside its numeric range"), "RangeMismatch"),
+        (new Regex("^JSON string '(.+?)' is outside its declared string-length range"), "StringLengthMismatch"),
+        (new Regex("^JSON array '(.+?)' has \\d+ items outside "), "ItemCountMismatch"),
+        (new Regex("^JSON array '(.+?)' violates uniqueItems at item "), "UniqueItemsMismatch"),
+        (new Regex("^JSON object '(.+?)' requires property "), "MissingRequiredProperty"),
+    };
+
+    private static readonly Regex PositionPattern = new("^JSON tuple '(.+?)' position (\\d+): ");
+    private static readonly Regex RecursivePattern = new("^Embedded JSON recursive reference '(.+?)' expands tuple frame '(.+?)' ");
+
+    /// <summary>
+    /// The innermost error's kind and node, and the one-based position of the
+    /// outermost positional error, as the native codec's corpus records them.
+    /// </summary>
+    private static JsonNode Record(Exception error)
+    {
+        if (error is not FerruleRuntimeException { Error: FerruleRuntimeError.JsonBoundary } current)
+            return new JsonObject { ["unexpected"] = error.ToString() };
+        int? position = null;
+        while (PositionPattern.Match(current.Message) is { Success: true } wrapper &&
+               current.InnerException is FerruleRuntimeException inner)
+        {
+            position ??= int.Parse(wrapper.Groups[2].Value, CultureInfo.InvariantCulture);
+            current = inner;
+        }
+        if (RecursivePattern.Match(current.Message) is { Success: true } recursive)
+            return new JsonObject { ["kind"] = "RecursiveJsonTupleFrame", ["name"] = recursive.Groups[1].Value, ["frame"] = recursive.Groups[2].Value };
+        foreach (var (pattern, kind) in Kinds)
+        {
+            if (pattern.Match(current.Message) is not { Success: true } match) continue;
+            if (kind == "TupleGap") position ??= int.Parse(match.Groups[2].Value, CultureInfo.InvariantCulture);
+            return new JsonObject { ["kind"] = kind, ["name"] = match.Groups[1].Value, ["position"] = position };
+        }
+        return new JsonObject { ["unexpected"] = current.Message };
+    }
+
+    private static void That(bool good, Func<string> label)
+    {
+        if (good) Passed++;
+        else Failures.Add(label());
+    }
+
+    private static Exception? Failure(Action action)
+    {
+        try { action(); return null; }
+        catch (Exception error) { return error; }
+    }
+
+    private static void Same<T>(string label, Func<T> call, JsonNode expected, Func<T, JsonNode> normalize)
+    {
+        JsonNode actual;
+        try { actual = new JsonObject { ["ok"] = normalize(call()) }; }
+        catch (Exception error) { actual = new JsonObject { ["error"] = Record(error) }; }
+        That(JsonNode.DeepEquals(actual, expected), () => $"{label}: expected {expected.ToJsonString()}, got {actual.ToJsonString()}");
+    }
+
+    private static JsonNode Ok(JsonNode value) => new JsonObject { ["ok"] = value };
+    private static JsonNode Refused(JsonElement record) => new JsonObject { ["error"] = JsonNode.Parse(record.GetRawText()) };
+
+    private static void RunCase(JsonElement test, bool mapped)
+    {
+        string id = test.GetProperty("id").GetString()!;
+        string descriptor = test.GetProperty("descriptor").GetString()!;
+        foreach (var row in test.GetProperty("accepted").EnumerateArray())
+        {
+            string wire = row.GetProperty("wire").GetString()!;
+            string output = row.GetProperty("output").GetString()!;
+            var expected = Typed(row.GetProperty("typed"));
+            var label = $"{id} {wire}";
+            Same(label + " parse", () => FerruleJson.ParseEmbedded(descriptor, wire), Ok(Full(expected)), Full);
+            Same(label + " parse bytes", () => FerruleJson.ParseEmbeddedBytes(descriptor, Utf8.GetBytes(wire)), Ok(Full(expected)), Full);
+            Same(label + " serialize", () => FerruleJson.SerializeEmbedded(descriptor, expected), Ok(JsonValue.Create(output)), text => JsonValue.Create(text));
+            Same(label + " serialize bytes", () => FerruleJson.SerializeEmbeddedBytes(descriptor, expected), Ok(JsonValue.Create(output)), bytes => JsonValue.Create(Utf8.GetString(bytes)));
+            if (!mapped) continue;
+            Same(label + " ExecuteJson", () => GeneratedMapping.ExecuteJson(wire), Ok(JsonValue.Create(output)), text => JsonValue.Create(text));
+            Same(label + " ExecuteJsonBytes", () => GeneratedMapping.ExecuteJsonBytes(Utf8.GetBytes(wire)), Ok(JsonValue.Create(output)), bytes => JsonValue.Create(Utf8.GetString(bytes)));
+            Same(label + " Execute", () => GeneratedMapping.Execute(expected), Ok(Full(Typed(row.GetProperty("mapped")))), Full);
+        }
+        foreach (var row in test.GetProperty("rejected").EnumerateArray())
+        {
+            string wire = row.GetProperty("wire").GetString()!;
+            var refused = Refused(row.GetProperty("error"));
+            var label = $"{id} {wire}";
+            Same(label + " parse", () => FerruleJson.ParseEmbedded(descriptor, wire), refused, Full);
+            Same(label + " parse bytes", () => FerruleJson.ParseEmbeddedBytes(descriptor, Utf8.GetBytes(wire)), refused, Full);
+            if (mapped)
+                Same(label + " ExecuteJson", () => GeneratedMapping.ExecuteJson(wire), refused, text => JsonValue.Create(text));
+        }
+        foreach (var row in test.GetProperty("write_only").EnumerateArray())
+        {
+            var instance = Typed(row.GetProperty("typed"));
+            var expected = row.TryGetProperty("output", out var output)
+                ? Ok(JsonValue.Create(output.GetString()!))
+                : Refused(row.GetProperty("error"));
+            Same($"{id} write {Full(instance).ToJsonString()}", () => FerruleJson.SerializeEmbedded(descriptor, instance), expected, text => JsonValue.Create(text));
+        }
+    }
+
+    public static int Main(string[] args)
+    {
+        if (args.Length != 1) throw new ArgumentException("Need the generated directory.");
+        using var document = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(args[0], "tuple-cases.json")));
+        string mapped = document.RootElement.GetProperty("mapped").GetString()!;
+        var cases = document.RootElement.GetProperty("cases");
+        foreach (var test in cases.EnumerateArray())
+            RunCase(test, test.GetProperty("id").GetString() == mapped);
+        if (Failures.Count != 0)
+        {
+            Console.Error.WriteLine(string.Join("\n", Failures));
+            return 1;
+        }
+        Console.WriteLine($"JSON_TUPLE_ARRAYS csharp cases={cases.GetArrayLength()} checks={Passed}");
+        return 0;
+    }
+}

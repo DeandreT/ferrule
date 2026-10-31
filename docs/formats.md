@@ -130,9 +130,10 @@ for a complete format standard or another product.
    retains observed JSON5 metadata separately and refuses execution/export: the
    vendor setting, filename selection and numeric behavior differ from these
    codecs. See the [interchange observation](conformance/json5-interchange.md).
-- Native JSON, JSON Lines and JSON5 reading and writing, including prepared
-  schemas and generated Rust hosts, read and write
-  [JSON tuple frames](design/json-tuple-arrays.md). Array position *k* is the
+- Native JSON, JSON Lines and JSON5 codecs, including prepared schemas, read
+  and write [JSON tuple frames](design/json-tuple-arrays.md). Generated Rust
+  and C# JSON and JSON Lines boundaries share these semantics; the generated
+  JSON5 companion profile still refuses frames. Array position *k* is the
   frame's `item`*k* field, and an open frame's later items are its repeating
   `rest` field. A missing frame property and a position beyond the end of the
   array read as absent (`Null`); writing omits an absent frame, and writes
