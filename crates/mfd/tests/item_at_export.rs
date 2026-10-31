@@ -474,6 +474,207 @@ fn direct_generated_sequence_item_at_keeps_its_two_ports() {
 }
 
 #[test]
+fn generated_aggregate_item_at_refuses_unproved_sequence_ownership() {
+    for (filtered, computed) in [(false, false), (false, true), (true, false), (true, true)] {
+        let mut project = project(false, AggregateOp::ItemAt);
+        project.graph.nodes.extend([
+            (
+                5,
+                Node::SourceField {
+                    path: vec![],
+                    frame: None,
+                },
+            ),
+            (
+                6,
+                Node::Const {
+                    value: Value::Int(3),
+                },
+            ),
+            (
+                7,
+                Node::Const {
+                    value: Value::Int(1),
+                },
+            ),
+            (
+                8,
+                Node::Call {
+                    function: "greater_than".into(),
+                    args: vec![5, 7],
+                },
+            ),
+            (
+                2,
+                Node::Call {
+                    function: "add".into(),
+                    args: vec![5, 1],
+                },
+            ),
+            (
+                4,
+                Node::SequenceAggregate {
+                    function: AggregateOp::ItemAt,
+                    sequence: SequenceExpr::Generate {
+                        from: None,
+                        to: 6,
+                        item: 5,
+                    },
+                    predicate: filtered.then_some(8),
+                    expression: computed.then_some(2),
+                    arg: Some(3),
+                },
+            ),
+        ]);
+        let value = if filtered { 3 } else { 2 };
+        let expected = value + if computed { 100 } else { 0 };
+        assert_eq!(
+            engine::run(&project, &source()).unwrap().field("Selected"),
+            Some(&Instance::Scalar(Value::Int(expected)))
+        );
+        assert_transformed_sequence_refusal(&project);
+    }
+}
+
+#[test]
+fn generated_item_at_refuses_broadcast_only_expressions_before_publication() {
+    let mut project = project(false, AggregateOp::ItemAt);
+    project.graph.nodes.extend([
+        (
+            5,
+            Node::SourceField {
+                path: vec![],
+                frame: None,
+            },
+        ),
+        (
+            6,
+            Node::Const {
+                value: Value::Int(3),
+            },
+        ),
+        (
+            4,
+            Node::SequenceAggregate {
+                function: AggregateOp::ItemAt,
+                sequence: SequenceExpr::Generate {
+                    from: None,
+                    to: 6,
+                    item: 5,
+                },
+                predicate: None,
+                expression: Some(1),
+                arg: Some(3),
+            },
+        ),
+    ]);
+    assert_eq!(
+        engine::run(&project, &source()).unwrap().field("Selected"),
+        Some(&Instance::Scalar(Value::Int(100)))
+    );
+    assert_transformed_sequence_refusal(&project);
+}
+
+fn assert_transformed_sequence_refusal(project: &Project) {
+    let directory = Scratch::new();
+    let path = directory.0.join("existing.mfd");
+    std::fs::write(&path, "original").unwrap();
+    let error =
+        mfd::export_with_profile(project, &path, mfd::ExportProfile::NativeMfd).unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("cannot preserve its private sequence ownership"),
+        "{error}"
+    );
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "original");
+    assert_eq!(std::fs::read_dir(&directory.0).unwrap().count(), 1);
+}
+
+#[test]
+fn generated_aggregate_item_at_refuses_outer_generated_index() {
+    let mut project = project(false, AggregateOp::ItemAt);
+    project.target = SchemaNode::group(
+        "Target",
+        vec![
+            SchemaNode::group(
+                "Rows",
+                vec![SchemaNode::scalar("Selected", ScalarType::Int)],
+            )
+            .repeating(),
+        ],
+    );
+    project.graph.nodes.extend([
+        (
+            5,
+            Node::SourceField {
+                path: vec![],
+                frame: None,
+            },
+        ),
+        (
+            6,
+            Node::Const {
+                value: Value::Int(3),
+            },
+        ),
+        (
+            9,
+            Node::SourceField {
+                path: vec![],
+                frame: None,
+            },
+        ),
+        (
+            4,
+            Node::SequenceAggregate {
+                function: AggregateOp::ItemAt,
+                sequence: SequenceExpr::Generate {
+                    from: None,
+                    to: 6,
+                    item: 5,
+                },
+                predicate: None,
+                expression: None,
+                arg: Some(9),
+            },
+        ),
+    ]);
+    project.root = Scope {
+        children: vec![Scope {
+            target_field: "Rows".into(),
+            iteration: mapping::ScopeIteration::Sequence(SequenceExpr::Generate {
+                from: None,
+                to: 6,
+                item: 9,
+            }),
+            bindings: vec![Binding {
+                target_field: "Selected".into(),
+                node: 4,
+            }],
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    let issues = engine::validate(&project);
+    assert!(issues.is_empty(), "{issues:?}");
+    let output = engine::run(&project, &source()).unwrap();
+    assert_eq!(
+        output.field("Rows"),
+        Some(&Instance::Repeated(
+            (1..=3)
+                .map(|value| {
+                    Instance::Group(
+                        vec![("Selected".into(), Instance::Scalar(Value::Int(value)))].into(),
+                    )
+                })
+                .collect()
+        ))
+    );
+    assert_transformed_sequence_refusal(&project);
+}
+
+#[test]
 fn joined_item_at_uses_the_same_two_ports() {
     let mut project = project(false, AggregateOp::ItemAt);
     let join = JoinId::new(12);
