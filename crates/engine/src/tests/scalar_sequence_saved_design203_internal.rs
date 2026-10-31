@@ -373,6 +373,7 @@ fn evaluate(index: usize, id: &str) {
     });
     let positions = if index == 8 {
         vec![PositionFrame {
+            binding: crate::source_iteration::InstanceBinding::LegacyUnspecified,
             generated_origin: None,
             collection: vec!["Parents".into()],
             index: 7,
