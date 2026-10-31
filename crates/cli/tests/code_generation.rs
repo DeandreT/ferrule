@@ -173,6 +173,8 @@ mod typed_only_companions;
 mod edi_structure_variables;
 #[path = "code_generation/json_text_boundaries.rs"]
 mod json_text_boundaries;
+#[path = "code_generation/json_tuple_arrays.rs"]
+mod json_tuple_arrays;
 #[path = "code_generation/json_undeclared_members.rs"]
 mod json_undeclared_members;
 #[path = "code_generation/json_variable_array_descendants.rs"]

@@ -498,7 +498,7 @@ Positions beyond the maximum are dropped, identical members with a closed,
 identical, or arbitrary-JSON tail keep the existing homogeneous-array lowering
 and `items` export, and every other tuple of 1 to 4,096 members becomes a
 [JSON tuple frame](design/json-tuple-arrays.md) that native JSON, JSON Lines,
-JSON5 and generated Rust boundaries execute. JSON Schema export writes a frame
+JSON5 and generated Rust and C# boundaries execute. JSON Schema export writes a frame
 as `prefixItems` without `$schema` and re-imports it unchanged. Tuple
 alternatives, two positional `allOf` branches, `contains` or `uniqueItems` on a
 tuple, nested or recursive tuples, a tuple as a runtime-named property value or
