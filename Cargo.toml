@@ -33,6 +33,8 @@ members = [
     "crates/gui",
     "crates/web-demo",
 ]
+# A path dependency, not a member: its upstream sources keep their own lints and docs.
+exclude = ["vendor/rust_xlsxwriter"]
 
 [workspace.package]
 version = "0.1.0"
@@ -80,7 +82,8 @@ clap = { version = "4", features = ["derive"] }
 clap_complete = "4"
 csv = "1"
 calamine = { version = "0.36", default-features = false }
-rust_xlsxwriter = { version = "0.96", default-features = false }
+# Thread-free save; see vendor/rust_xlsxwriter/README.md.
+rust_xlsxwriter = { path = "vendor/rust_xlsxwriter", version = "0.96.0", default-features = false }
 umya-spreadsheet = { version = "3.0.1", default-features = false }
 roxmltree = "0.21"
 quick-xml = "0.41"
