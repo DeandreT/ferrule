@@ -64,7 +64,6 @@ struct Context<'a> {
     project: &'a Project,
     items: Vec<ContextItem<'a>>,
     private_items: BTreeSet<NodeId>,
-    frame_bindings_proven: bool,
 }
 
 /// Flat input adapters carry their row collection outside the schema. Do not
@@ -173,13 +172,8 @@ impl<'a> Context<'a> {
             }
         }
         if !collection.is_empty() && !schema.repeating {
-            // A singleton walk appends a context item but no position. The
-            // runtime associates retained positions from the end of that
-            // context, so their owners can shift. Do not infer a pinned or
-            // collection-qualified field's type from its earlier schema.
-            if self.items.iter().any(|item| item.collection.is_some()) {
-                self.frame_bindings_proven = false;
-            }
+            // A singleton adds a lookup context, not a collection frame. The
+            // runtime retains each ancestor collection's explicit owner.
             self.items.push(ContextItem {
                 schema_path,
                 schema,
@@ -191,9 +185,6 @@ impl<'a> Context<'a> {
 
     fn field(&self, path: &[String], frame: Option<&[String]>) -> Option<&'a SchemaNode> {
         if let Some(pin) = frame {
-            if !self.frame_bindings_proven {
-                return None;
-            }
             return self
                 .items
                 .iter()
@@ -214,9 +205,6 @@ impl<'a> Context<'a> {
                 .filter(|collection| !collection.is_empty() && path.starts_with(collection))
                 .map(|collection| (item, collection))
         }) {
-            if !self.frame_bindings_proven {
-                return None;
-            }
             return at(item.schema, &path[collection.len()..]);
         }
         self.items
@@ -331,7 +319,6 @@ pub(crate) fn profile(
             collection: None,
         }],
         private_items: crate::graph_viewer::project_sequence_item_ids(project),
-        frame_bindings_proven: true,
     };
     let mut scope = root;
     let mut schema = target;
