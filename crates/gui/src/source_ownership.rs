@@ -80,6 +80,192 @@ pub(crate) fn project_uses_ownership(project: &Project) -> bool {
             .any(|rule| rule.iteration.owned_source().is_some())
 }
 
+/// The editor deliberately offers lookups only in ungrouped ordinary target
+/// contexts. Introducing an owned read in a group changes admission for the
+/// entire grouped subtree, including otherwise valid legacy sibling expressions.
+pub(crate) fn lookup_scope_supported(scope: &mapping::Scope) -> bool {
+    matches!(
+        scope.construction,
+        mapping::ScopeConstruction::Constructed | mapping::ScopeConstruction::Scalar { .. }
+    ) && matches!(
+        scope.iteration,
+        mapping::ScopeIteration::None
+            | mapping::ScopeIteration::Source(_)
+            | mapping::ScopeIteration::OwnedSource {
+                output_path: None,
+                ..
+            }
+    ) && scope.iteration_output != mapping::IterationOutput::MappedSequence
+        && !scope.has_grouping()
+        && scope.post_group_filter.is_none()
+        && scope.dynamic_bindings.is_empty()
+        && scope.dynamic_children.is_empty()
+        && !scope.merge_dynamic_fields
+}
+
+pub(crate) fn lookup_binding_supported(
+    root: &mapping::Scope,
+    chain: &[String],
+    ownership: &SourceOwnership,
+) -> bool {
+    let mut scope = root;
+    for field in std::iter::once(None).chain(chain.iter().map(Some)) {
+        if let Some(field) = field {
+            let Some(child) = scope
+                .children
+                .iter()
+                .find(|child| &child.target_field == field)
+            else {
+                // The normal binding command creates ordinary missing child scopes.
+                return true;
+            };
+            scope = child;
+        }
+        if !lookup_scope_supported(scope) {
+            return false;
+        }
+        let selected = match scope.source_selector() {
+            Some(mapping::SourceSelectorRef::Legacy(path)) => path.first(),
+            Some(mapping::SourceSelectorRef::Owned(source)) => match &source.owner {
+                SourceOwner::Primary => None,
+                SourceOwner::Named { name } => Some(name),
+            },
+            None => None,
+        };
+        if selected.is_some_and(|name| ownership.lookup_owner_is_dynamic(name)) {
+            return false;
+        }
+    }
+    true
+}
+
+/// Roots evaluated outside the bounded Lookup authoring contexts. Kept separate
+/// from graph traversal so wire guards can inspect the current, edited graph.
+pub(crate) fn lookup_excluded_roots(project: &Project) -> BTreeSet<mapping::NodeId> {
+    let mut pending = Vec::new();
+    let mut scopes = std::iter::once((&project.root, false))
+        .chain(
+            project
+                .extra_targets
+                .iter()
+                .map(|target| (&target.root, false)),
+        )
+        .collect::<Vec<_>>();
+    while let Some((scope, inherited)) = scopes.pop() {
+        let selected_name = match scope.source_selector() {
+            Some(mapping::SourceSelectorRef::Legacy(path)) => path.first(),
+            Some(mapping::SourceSelectorRef::Owned(source)) => match &source.owner {
+                SourceOwner::Primary => None,
+                SourceOwner::Named { name } => Some(name),
+            },
+            None => None,
+        };
+        let dynamic = selected_name.is_some_and(|name| {
+            project
+                .extra_sources
+                .iter()
+                .any(|source| source.name == *name && source.dynamic_path.is_some())
+        });
+        let excluded = inherited || dynamic || !lookup_scope_supported(scope);
+        if excluded {
+            scope.visit_roots(&mut |root| pending.push(root.node));
+        }
+        scopes.extend(scope.nested_scopes().map(|(_, scope)| (scope, excluded)));
+    }
+    for rule in &project.failure_rules {
+        rule.visit_roots(&mut |root| pending.push(root.node));
+    }
+    for source in &project.extra_sources {
+        if let Some(dynamic) = &source.dynamic_path {
+            pending.push(dynamic.node);
+        }
+    }
+    pending.into_iter().collect()
+}
+
+/// Closed GUI capability policy, not a list of exceptional legacy operators.
+/// Only ordinary receiving-context scalar inputs and an owned Lookup's needle
+/// admit a Lookup dependency. In particular, a legacy operator's *parent*
+/// inputs still inherit its engine capability context: a legacy Lookup needle,
+/// Aggregate argument and DynamicSourceField key are not Basic scalar contexts.
+pub(crate) fn lookup_input_supported(node: &mapping::Node, input: mapping::NodeInput) -> bool {
+    use mapping::{Node, NodeInputRole};
+    matches!(input.role, NodeInputRole::Parent | NodeInputRole::Lazy)
+        && matches!(
+            node,
+            Node::Call { .. }
+                | Node::If { .. }
+                | Node::ValueMap { .. }
+                | Node::RuntimeParameterDefault { .. }
+                | Node::UserFunctionCall { .. }
+                | Node::Raise { .. }
+                | Node::OwnedLookup(_)
+        )
+}
+
+/// All potential inputs are visited, including unselected If/default branches.
+/// A shared dependency is read-only if even one consumer requires a closed
+/// context. This never rewrites nodes or assumes the current runtime branch.
+pub(crate) fn lookup_read_only_in_graph(
+    graph: &mapping::Graph,
+    roots: &BTreeSet<mapping::NodeId>,
+) -> BTreeSet<mapping::NodeId> {
+    let mut pending = roots.iter().copied().collect::<Vec<_>>();
+    for node in graph.nodes.values() {
+        node.visit_inputs(&mut |input| {
+            if !lookup_input_supported(node, input) {
+                pending.push(input.node);
+            }
+        });
+    }
+    let mut excluded = BTreeSet::new();
+    while let Some(id) = pending.pop() {
+        if excluded.insert(id)
+            && let Some(node) = graph.nodes.get(&id)
+        {
+            node.visit_inputs(&mut |input| pending.push(input.node));
+        }
+    }
+    excluded
+}
+
+#[cfg(test)]
+pub(crate) fn lookup_read_only_nodes(project: &Project) -> BTreeSet<mapping::NodeId> {
+    lookup_read_only_in_graph(&project.graph, &lookup_excluded_roots(project))
+}
+
+pub(crate) fn lookup_dependencies(
+    graph: &mapping::Graph,
+    start: mapping::NodeId,
+) -> BTreeSet<mapping::NodeId> {
+    let mut pending = vec![start];
+    let mut seen = BTreeSet::new();
+    let mut lookups = BTreeSet::new();
+    while let Some(id) = pending.pop() {
+        if seen.insert(id)
+            && let Some(node) = graph.nodes.get(&id)
+        {
+            if matches!(node, mapping::Node::OwnedLookup(_)) {
+                lookups.insert(id);
+            }
+            node.visit_inputs(&mut |input| pending.push(input.node));
+        }
+    }
+    lookups
+}
+
+/// Common admission for assigning a complete potential expression closure.
+/// Callers supply the receiving context and current graph's lookup eligibility.
+pub(crate) fn lookup_assignment_allowed(
+    graph: &mapping::Graph,
+    node: mapping::NodeId,
+    receiving: bool,
+    editable: impl Fn(mapping::NodeId) -> bool,
+) -> bool {
+    let lookups = lookup_dependencies(graph, node);
+    lookups.is_empty() || receiving && lookups.into_iter().all(editable)
+}
+
 impl SourceOwnership {
     pub(crate) fn new(primary: &SchemaNode, sources: &[NamedSource]) -> Self {
         let named = sources
@@ -193,6 +379,30 @@ impl SourceOwnership {
 
     pub(crate) fn collections(&self) -> &[OwnedCollectionChoice] {
         &self.collections
+    }
+
+    /// Exact static endpoints, including aliases shadowed by another schema.
+    /// Blank/duplicate aliases and per-item documents cannot own a GUI lookup.
+    pub(crate) fn lookup_owners(&self) -> Vec<SourceOwner> {
+        std::iter::once(SourceOwner::Primary)
+            .chain(
+                self.named
+                    .iter()
+                    .filter(|endpoint| {
+                        endpoint.static_root
+                            && !matches!(endpoint.access, NamedAccess::Unavailable(_))
+                    })
+                    .map(|endpoint| SourceOwner::Named {
+                        name: endpoint.name.clone(),
+                    }),
+            )
+            .collect()
+    }
+
+    pub(crate) fn lookup_owner_is_dynamic(&self, name: &str) -> bool {
+        self.named
+            .iter()
+            .any(|endpoint| endpoint.name == name && !endpoint.static_root)
     }
 
     /// The owner of a source block: zero is primary, others are named inputs.

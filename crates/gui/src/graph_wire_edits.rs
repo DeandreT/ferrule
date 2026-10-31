@@ -6,7 +6,7 @@ use egui_snarl::{InPin, NodeId as SnarlNodeId, OutPin, OutPinId, Snarl};
 use mapping::{Node, NodeId};
 
 use super::node_palette::NodeTemplate;
-use super::{GraphViewer, NodeIdReservation, graph_sequence};
+use super::{GraphViewer, NodeIdReservation};
 use crate::canvas::{CanvasNode, SourceLeaf};
 use crate::source_ownership::PinRead;
 
@@ -26,9 +26,9 @@ impl GraphViewer<'_> {
                 .graph
                 .nodes
                 .get(&to_id)
-                .is_some_and(|node| self.read_only_inputs(node))
+                .is_some_and(|node| self.read_only_inputs(to_id, node))
         {
-            self.error = Some(graph_sequence::READ_ONLY_INPUTS_MESSAGE.into());
+            self.error = Some(self.read_only_input_message(to_id).into());
             return None;
         }
         if let CanvasNode::SourceBlock(block) = from_node
@@ -271,9 +271,9 @@ impl GraphViewer<'_> {
                 .graph
                 .nodes
                 .get(&to_id)
-                .is_some_and(|node| self.read_only_inputs(node))
+                .is_some_and(|node| self.read_only_inputs(to_id, node))
         {
-            self.error = Some(graph_sequence::READ_ONLY_INPUTS_MESSAGE.into());
+            self.error = Some(self.read_only_input_message(to_id).into());
             return None;
         }
         let disconnected = match snarl[to.id.node] {

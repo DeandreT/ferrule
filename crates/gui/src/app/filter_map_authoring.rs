@@ -45,7 +45,13 @@ fn compatible_scope(app: &FerruleApp) -> bool {
         scope = child;
         schema = child_schema;
     }
-    schema.repeating
+    let mut owns_lookup = false;
+    scope.visit_tree_roots(&mut |root| {
+        owns_lookup |=
+            !crate::source_ownership::lookup_dependencies(&app.project.graph, root.node).is_empty();
+    });
+    !owns_lookup
+        && schema.repeating
         && matches!(schema.kind, SchemaKind::Group { .. })
         && scope.construction == ScopeConstruction::Constructed
         && (matches!(

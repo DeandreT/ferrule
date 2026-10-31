@@ -1,4 +1,4 @@
-use super::{first_node_id, node_picker};
+use super::{binding_node_ids_with_policy, lookup_admission::Policy, node_picker_with_policy};
 use egui::Ui;
 use mapping::{Graph, Scope, SortFilterOrder, SortKey};
 
@@ -9,8 +9,8 @@ enum KeyAction {
     MoveDown(usize),
 }
 
-pub(super) fn show(ui: &mut Ui, scope: &mut Scope, graph: &Graph) {
-    let first_node = first_node_id(graph);
+pub(super) fn show(ui: &mut Ui, scope: &mut Scope, graph: &Graph, policy: Policy<'_>) {
+    let first_node = binding_node_ids_with_policy(graph, false, policy).next();
     crate::ui_kit::section(ui, "Sort", |ui| {
         let mut sorted = scope.has_sort();
         if ui
@@ -33,7 +33,7 @@ pub(super) fn show(ui: &mut Ui, scope: &mut Scope, graph: &Graph) {
                 ui.label("Primary key");
                 ui.checkbox(&mut scope.sort_descending, "Descending");
             });
-            node_picker(ui, "sort_by_node", sort_by, graph);
+            node_picker_with_policy(ui, "sort_by_node", sort_by, graph, policy);
         } else if !scope.sort_then_by.is_empty() {
             ui.label("Primary key is missing");
             if ui
@@ -84,7 +84,13 @@ pub(super) fn show(ui: &mut Ui, scope: &mut Scope, graph: &Graph) {
                             action = Some(KeyAction::Remove(index));
                         }
                     });
-                    node_picker(ui, ("sort_then_by_node", index), &mut key.node, graph);
+                    node_picker_with_policy(
+                        ui,
+                        ("sort_then_by_node", index),
+                        &mut key.node,
+                        graph,
+                        policy,
+                    );
                     ui.checkbox(&mut key.descending, "Descending");
                 });
             });

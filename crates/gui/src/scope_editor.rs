@@ -11,6 +11,7 @@ use crate::path_picker::SourcePathCatalog;
 
 pub(crate) mod computed_properties;
 mod copy_controls;
+pub(crate) mod lookup_admission;
 mod output_controls;
 pub(crate) mod presence_controls;
 mod sort_controls;
@@ -187,7 +188,34 @@ fn set_grouping_mode(scope: &mut Scope, mode: GroupingMode, first_node: Option<N
     }
 }
 
-fn first_node_id(graph: &Graph) -> Option<NodeId> {
+fn prospective_grouping(
+    scope: &Scope,
+    mode: GroupingMode,
+    graph: &Graph,
+    paths: &SourcePathCatalog,
+    ancestors: bool,
+) -> Option<Scope> {
+    let mut proposed = scope.clone();
+    if mode == GroupingMode::None {
+        set_grouping_mode(&mut proposed, mode, None);
+        return lookup_admission::permits_change(graph, scope, &proposed, paths, ancestors)
+            .then_some(proposed);
+    }
+    // Grouping changes the receiving context. Never seed the new control from
+    // the old ungrouped choice list, even if its first Lookup is used elsewhere.
+    for node in binding_node_ids(graph, false) {
+        set_grouping_mode(&mut proposed, mode, Some(node));
+        let policy = lookup_admission::Policy::for_scope(paths, &proposed, ancestors);
+        if policy.allows(graph, node)
+            && lookup_admission::permits_change(graph, scope, &proposed, paths, ancestors)
+        {
+            return Some(proposed);
+        }
+    }
+    None
+}
+
+pub(crate) fn first_node_id(graph: &Graph) -> Option<NodeId> {
     binding_node_ids(graph, false).next()
 }
 
@@ -195,10 +223,23 @@ fn binding_node_ids(
     graph: &Graph,
     primary_root_binding: bool,
 ) -> impl Iterator<Item = NodeId> + '_ {
+    binding_node_ids_with_policy(
+        graph,
+        primary_root_binding,
+        lookup_admission::Policy::default(),
+    )
+}
+
+fn binding_node_ids_with_policy<'a>(
+    graph: &'a Graph,
+    primary_root_binding: bool,
+    policy: lookup_admission::Policy<'a>,
+) -> impl Iterator<Item = NodeId> + 'a {
     let unavailable =
         (!primary_root_binding).then(|| crate::primary_root_authoring::dependent_nodes(graph));
     graph.nodes.iter().filter_map(move |(&id, node)| {
         (!matches!(node, mapping::Node::Unconnected)
+            && policy.allows(graph, id)
             && unavailable
                 .as_ref()
                 .is_none_or(|nodes| !nodes.contains(&id)))
@@ -697,6 +738,7 @@ fn show_scope_node(
 #[derive(Clone, Copy)]
 pub(crate) struct ScopeEditorOwner<'a> {
     pub nested: bool,
+    pub lookup_context: bool,
     pub primary_root_bindings: bool,
     pub target_xml_types: &'a [String],
     pub target_xml_default: Option<&'a str>,
@@ -713,7 +755,37 @@ pub(crate) fn show_scope_editor(
     owner: ScopeEditorOwner<'_>,
     output_profile: ScopeOutputProfile,
 ) -> Option<crate::target_xml_type::Action> {
-    let first_node = first_node_id(graph);
+    lookup_admission::edit(
+        ui,
+        scope,
+        graph,
+        source_paths,
+        owner.lookup_context,
+        |ui, scope| {
+            show_scope_editor_inner(
+                ui,
+                scope,
+                graph,
+                source_paths,
+                target_fields,
+                owner,
+                output_profile,
+            )
+        },
+    )
+}
+
+fn show_scope_editor_inner(
+    ui: &mut Ui,
+    scope: &mut Scope,
+    graph: &Graph,
+    source_paths: &SourcePathCatalog,
+    target_fields: &[String],
+    owner: ScopeEditorOwner<'_>,
+    output_profile: ScopeOutputProfile,
+) -> Option<crate::target_xml_type::Action> {
+    let policy = lookup_admission::Policy::for_scope(source_paths, scope, owner.lookup_context);
+    let first_node = binding_node_ids_with_policy(graph, false, policy).next();
     ui.strong(if scope.target_field.is_empty() {
         "Root scope".to_string()
     } else {
@@ -860,7 +932,13 @@ pub(crate) fn show_scope_editor(
     if let Some(mut output_path) = scope.output_path() {
         ui.horizontal(|ui| {
             ui.label("Output path");
-            node_picker(ui, "scope_output_path_node", &mut output_path, graph);
+            node_picker_with_policy(
+                ui,
+                "scope_output_path_node",
+                &mut output_path,
+                graph,
+                policy,
+            );
         });
         scope.set_output_path(Some(output_path));
     }
@@ -880,7 +958,7 @@ pub(crate) fn show_scope_editor(
                 scope.filter = if has_filter { first_node } else { None };
             }
             if let Some(filter) = &mut scope.filter {
-                node_picker(ui, "filter_node", filter, graph);
+                node_picker_with_policy(ui, "filter_node", filter, graph, policy);
             }
         });
 
@@ -902,45 +980,107 @@ pub(crate) fn show_scope_editor(
                                     GroupingMode::EndingWith,
                                     GroupingMode::IntoBlocks,
                                 ] {
-                                    ui.selectable_value(&mut mode, choice, choice.label());
+                                    let allowed = choice == previous
+                                        || prospective_grouping(
+                                            scope,
+                                            choice,
+                                            graph,
+                                            source_paths,
+                                            owner.lookup_context,
+                                        )
+                                        .is_some();
+                                    ui.add_enabled_ui(allowed, |ui| {
+                                        ui.selectable_value(&mut mode, choice, choice.label());
+                                    });
                                 }
                             });
                     })
                     .response
                     .on_disabled_hover_text("Add a graph node before enabling grouping");
                     if mode != previous {
-                        set_grouping_mode(scope, mode, first_node);
+                        if let Some(proposed) = prospective_grouping(
+                            scope,
+                            mode,
+                            graph,
+                            source_paths,
+                            owner.lookup_context,
+                        ) {
+                            *scope = proposed;
+                        } else {
+                            mode = previous;
+                        }
                     }
+                    let group_policy = lookup_admission::Policy::for_scope(
+                        source_paths,
+                        scope,
+                        owner.lookup_context,
+                    );
                     match mode {
                         GroupingMode::None => {}
                         GroupingMode::ByKey => {
                             if let Some(group_by) = &mut scope.group_by {
-                                node_picker(ui, "group_by_node", group_by, graph);
+                                node_picker_with_policy(
+                                    ui,
+                                    "group_by_node",
+                                    group_by,
+                                    graph,
+                                    group_policy,
+                                );
                             }
                         }
                         GroupingMode::AdjacentBy => {
                             if let Some(group_by) = &mut scope.group_adjacent_by {
-                                node_picker(ui, "group_adjacent_by_node", group_by, graph);
+                                node_picker_with_policy(
+                                    ui,
+                                    "group_adjacent_by_node",
+                                    group_by,
+                                    graph,
+                                    group_policy,
+                                );
                             }
                         }
                         GroupingMode::StartingWith => {
                             if let Some(predicate) = &mut scope.group_starting_with {
-                                node_picker(ui, "group_starting_node", predicate, graph);
+                                node_picker_with_policy(
+                                    ui,
+                                    "group_starting_node",
+                                    predicate,
+                                    graph,
+                                    group_policy,
+                                );
                             }
                         }
                         GroupingMode::EndingWith => {
                             if let Some(predicate) = &mut scope.group_ending_with {
-                                node_picker(ui, "group_ending_node", predicate, graph);
+                                node_picker_with_policy(
+                                    ui,
+                                    "group_ending_node",
+                                    predicate,
+                                    graph,
+                                    group_policy,
+                                );
                             }
                         }
                         GroupingMode::IntoBlocks => {
                             if let Some(block_size) = &mut scope.group_into_blocks {
-                                node_picker(ui, "group_block_size_node", block_size, graph);
+                                node_picker_with_policy(
+                                    ui,
+                                    "group_block_size_node",
+                                    block_size,
+                                    graph,
+                                    group_policy,
+                                );
                             }
                         }
                     }
                 });
                 if grouping_mode(scope) != GroupingMode::None {
+                    let policy = lookup_admission::Policy::for_scope(
+                        source_paths,
+                        scope,
+                        owner.lookup_context,
+                    );
+                    let first_node = binding_node_ids_with_policy(graph, false, policy).next();
                     ui.vertical(|ui| {
                         let mut enabled = scope.post_group_filter.is_some();
                         if ui
@@ -954,16 +1094,23 @@ pub(crate) fn show_scope_editor(
                             scope.post_group_filter = enabled.then_some(first_node).flatten();
                         }
                         if let Some(filter) = &mut scope.post_group_filter {
-                            node_picker(ui, "post_group_filter_node", filter, graph);
+                            node_picker_with_policy(
+                                ui,
+                                "post_group_filter_node",
+                                filter,
+                                graph,
+                                policy,
+                            );
                         }
                     });
                 }
             });
         }
 
-        sort_controls::show(ui, scope, graph);
+        let policy = lookup_admission::Policy::for_scope(source_paths, scope, owner.lookup_context);
+        sort_controls::show(ui, scope, graph, policy);
 
-        window_controls::show(ui, scope, graph);
+        window_controls::show(ui, scope, graph, policy);
     }
 
     // Controls can change the owner in this UI frame; check the edited scope
@@ -971,7 +1118,9 @@ pub(crate) fn show_scope_editor(
     let primary_root_binding = owner.primary_root_bindings
         && !owner.nested
         && crate::primary_root_authoring::flat_binding_scope(scope);
-    let first_binding_node = binding_node_ids(graph, primary_root_binding).next();
+    let policy = lookup_admission::Policy::for_scope(source_paths, scope, owner.lookup_context);
+    let first_binding_node =
+        binding_node_ids_with_policy(graph, primary_root_binding, policy).next();
     crate::ui_kit::section(ui, "Bindings", |_| {});
     ui.add_enabled_ui(!whole_group_copy, |ui| {
         if scope.bindings.is_empty() {
@@ -1031,6 +1180,7 @@ pub(crate) fn show_scope_editor(
                                 &mut binding.node,
                                 graph,
                                 primary_root_binding,
+                                policy,
                             );
                         });
                     });
@@ -1080,7 +1230,23 @@ pub(crate) fn node_picker(
     node_id: &mut NodeId,
     graph: &Graph,
 ) {
-    binding_node_picker(ui, id_salt, node_id, graph, false);
+    node_picker_with_policy(
+        ui,
+        id_salt,
+        node_id,
+        graph,
+        lookup_admission::Policy::default(),
+    );
+}
+
+fn node_picker_with_policy(
+    ui: &mut Ui,
+    id_salt: impl std::hash::Hash + std::fmt::Debug,
+    node_id: &mut NodeId,
+    graph: &Graph,
+    policy: lookup_admission::Policy<'_>,
+) {
+    binding_node_picker(ui, id_salt, node_id, graph, false, policy);
 }
 
 fn binding_node_picker(
@@ -1089,11 +1255,17 @@ fn binding_node_picker(
     node_id: &mut NodeId,
     graph: &Graph,
     primary_root_binding: bool,
+    policy: lookup_admission::Policy<'_>,
 ) {
     let current_label = graph.nodes.get(node_id).map_or_else(
         || egui::WidgetText::from("Missing expression"),
         |node| picker_label(ui, node, *node_id),
     );
+    if !policy.allows(graph, *node_id) {
+        ui.label(current_label)
+            .on_hover_text(lookup_admission::READ_ONLY);
+        return;
+    }
     egui::ComboBox::from_id_salt(id_salt)
         .selected_text(current_label)
         .width(ui.available_width().max(80.0))
@@ -1106,7 +1278,7 @@ fn binding_node_picker(
                     continue;
                 }
                 let label = picker_label(ui, node, id);
-                let allowed = unavailable.as_ref().is_none_or(|nodes| !nodes.contains(&id));
+                let allowed = policy.allows(graph, id) && unavailable.as_ref().is_none_or(|nodes| !nodes.contains(&id));
                 let response = ui
                     .add_enabled_ui(allowed, |ui| {
                         ui.selectable_value(node_id, id, label)
@@ -1114,7 +1286,7 @@ fn binding_node_picker(
                     .inner;
                 if !allowed {
                     response.on_disabled_hover_text(
-                        "Primary root expressions can only feed static fields on the flat primary target root",
+                        if !policy.allows(graph, id) { "Owned Lookup expressions require an ungrouped ordinary receiving context." } else { "Primary root expressions can only feed static fields on the flat primary target root" },
                     );
                 }
             }
@@ -1696,6 +1868,7 @@ mod tests {
                 &catalog,
                 &[],
                 ScopeEditorOwner {
+                    lookup_context: true,
                     nested: true,
                     primary_root_bindings: false,
                     target_xml_types: &[],
@@ -1774,6 +1947,7 @@ mod tests {
                 &catalog,
                 &[],
                 ScopeEditorOwner {
+                    lookup_context: true,
                     nested: true,
                     primary_root_bindings: false,
                     target_xml_types: &[],
@@ -1816,6 +1990,7 @@ mod tests {
                 &catalog,
                 &[],
                 ScopeEditorOwner {
+                    lookup_context: true,
                     nested: true,
                     primary_root_bindings: false,
                     target_xml_types: &[],

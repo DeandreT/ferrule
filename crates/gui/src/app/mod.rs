@@ -1820,3 +1820,6 @@ mod keyboard_accessibility_tests;
 
 #[cfg(test)]
 mod exact_decimal_authoring_tests;
+
+#[cfg(test)]
+mod owned_lookup_authoring_tests;
