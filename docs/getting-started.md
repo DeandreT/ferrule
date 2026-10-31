@@ -188,6 +188,40 @@ names and values, locked editing, history, save/reopen, and Preview. Normal
 desktop and broader target-shape coverage remain separate work in the
 [roadmap](../ROADMAP.md#current-priorities).
 
+## Make a target group optional
+
+On the main or a named-target canvas, select a repeating target group in
+**Scopes**, enable **Optional presence**, and choose an existing **Presence
+condition**. A true condition constructs one group item; false constructs none.
+The condition runs in the parent source context without adding an iteration
+frame. It must return a Boolean: a missing or null value is an error, not false.
+
+The selected scope must use ordinary construction and repeated output, with
+no source iteration, filters, grouping, sorting, windows, or computed properties.
+Its existing bindings and child scopes are retained. Turning presence off
+restores the ordinary uniterated scope. Changes support Undo/Redo and persist
+with the project; editing locks also apply to these controls.
+
+The picker offers Boolean constants, ordinary Boolean source fields and
+required Boolean host parameters, conditionals, and Boolean built-in calls over
+available ordinary scalar inputs.
+Private generated items, including sequence-valued join keys, and expressions
+that depend on them are not offered. Owned-source, join, generated-sequence,
+and concatenated-segment routes, other construction modes, isolated functions,
+and embedded stage views are outside this editor's bounded contract.
+
+When a source walk descends into a single group beneath an active repeated
+item, frame-pinned and collection-qualified field reads are not offered: their
+runtime frame association is not proven by this picker. Directly resolvable
+Boolean fields and independent expressions remain available. The picker is
+limited to graphs of 4,096 nodes, expression depth 64, and 256 dependency visits
+per candidate.
+
+Stored conditions outside this subset remain visible and unchanged. Inspecting
+the scope does not repair its expression or alter its content. Save and reopen
+to check persistence, then use **Preview...** with true, false, and missing-value
+cases before running the mapping.
+
 ## Set up a flat workbook table
 
 The New Mapping workbook setup covers one flat worksheet table per boundary.

@@ -498,17 +498,18 @@ pub(crate) fn sequence_item_ids(
         collect_scope_item_ids(target.root, &mut items);
     }
     for expression in graph.nodes.values() {
-        if let Node::SequenceExists { sequence, .. }
-        | Node::SequenceItemAt { sequence, .. }
-        | Node::SequenceAggregate { sequence, .. } = expression
-        {
-            items.extend(sequence.owned_items());
-        }
+        expression.visit_inputs(&mut |input| {
+            if input.role == mapping::NodeInputRole::ItemIdentity {
+                items.insert(input.node);
+            }
+        });
     }
     for rule in project.failure_rules {
-        if let FailureIteration::Sequence { sequence } = &rule.iteration {
-            items.extend(sequence.owned_items());
-        }
+        rule.visit_roots(&mut |root| {
+            if root.role == mapping::ScopeRootRole::GeneratedItem {
+                items.insert(root.node);
+            }
+        });
     }
     items
 }
