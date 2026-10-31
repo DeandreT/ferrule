@@ -11,6 +11,7 @@ They do not change the canonical capability ledger or establish execution suppor
 | `constructors.json` | 43 `xs:` constructor leaves and their shared lexical/type statements |
 | `com-api.json` | Separate public COM API catalog; release binding remains unestablished |
 | `com-name-alignment.json` | Name-only interface, enum and event comparison against the release-bound type library, preserving discrepancies and dump-rendering gaps |
+| `com-enum-values.json` | All 20 release-bound enum tables and 130 signed constants, compared with the pinned online catalog without establishing runtime support |
 | `supporting.json` | Public I/O classes, wrapper-library exceptions and the named installation-artifact requests |
 | `schema-wrappers.json` | Four optional schema-wrapper source profiles, actual schema identities and build/dependency metadata; no compiled or runtime qualification |
 | `external-references.json` | Linked historical DOM algorithm and redirected .NET interface contract, kept separate from vendor claims |
@@ -39,8 +40,19 @@ or behavior to the installed release. It retains the different spellings of
 `HighlightMyConnectionsRecursively` and `HighlightMyConnectionsRecursivly`,
 additional declaration names, and dump-rendering gaps resolved by bounded raw
 name-table reads. Event-source names are compared separately from interface
-members. Signatures and enum values remain unqualified; name matches and
-accessor-record counts are not additive capabilities or ABI proof.
+members. Signatures remain unqualified; name matches and accessor-record counts
+are not additive capabilities or ABI proof.
+
+The separate enum-value inventory retains exact declaration names, signed values,
+record offsets and source hashes. Of 130 constants, 124 match the pinned catalog,
+one differs (`eProjectTypeCount`: 18 in the type library, 16 online), and five are
+type-library-only. The three `-1` sentinels use a referenced signed value, not a
+literal interpretation of their encoded offset. `ENUMViewMode` values come from
+bounded raw records because the pinned dump does not render that table. The
+existing three-value observation in `artifact-observations.json` is preserved.
+These declarations do not establish aliases, accepted runtime options, backend
+applicability, or the online catalog's release binding. The canonical inventory
+remains incomplete, and no execution evidence follows from this comparison.
 
 The public supporting declarations are inventoried. `schema-wrappers.json`
 records bounded source bundles for C#, Java and both C++ DOM options, including
