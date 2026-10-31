@@ -67,3 +67,16 @@ classes form a finite catalog.
 
 Run `cargo test -p mfd-conformance --test source_inventory` to validate finite
 coverage, unique source identities and the separation from execution assessments.
+The `source_contracts` module also loads the original companion: it checks the
+120-page API partition, page/unit cross-references, 752 source units and 789
+identity mappings against the canonical ledger. It preserves the two repeated
+command placements, seven case-normalized IDs and context-only null IDs.
+Mutation controls reject missing/duplicate identities, dangling references,
+misclassified pages and unsupported execution, applicability or completeness
+claims. These are source-consistency checks, not native API or runtime proof.
+Family scopes must match actual source-page placements. Relation edges are checked
+against source-unit/workflow records and pinned page/command-use anchors, not just
+valid endpoint names. COM member endpoints must also belong to the adopted
+`existing_ID_enrichments` set; context-only pages are not member targets.
+A separate 171-command numeric oracle rejects coherent value
+changes across the redundant identity, contract and placement records.
