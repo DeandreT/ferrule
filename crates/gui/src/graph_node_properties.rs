@@ -229,7 +229,14 @@ impl GraphViewer<'_> {
                 Node::Unconnected => {
                     ui.weak("unconnected input");
                 }
-                Node::Const { value } => show_value_editor(ui, value),
+                Node::Const { value } => {
+                    // Scope drafts and TextEdit's own state to this document
+                    // instance, not just a reusable node ID and numeric value.
+                    let owner = crate::canvas_tools::active(ui.ctx());
+                    ui.push_id(("constant_editor", owner), |ui| {
+                        show_value_editor(ui, value)
+                    });
+                }
                 Node::FunctionParameter { parameter } => {
                     ui.label(
                         self.parameter_names
