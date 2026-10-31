@@ -2024,6 +2024,7 @@ dependencies = [
  "mapping",
  "quick-xml 0.41.0",
  "rust_xlsxwriter",
+ "rustix 1.1.4",
  "thiserror 2.0.18",
  "umya-spreadsheet",
  "zip 7.2.0",
@@ -4160,8 +4161,6 @@ dependencies = [
 [[package]]
 name = "rust_xlsxwriter"
 version = "0.96.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dd1746025420e17b5d62528b930e550e016e857038794d74e169018126ef3d14"
 dependencies = [
  "zip 7.2.0",
 ]
