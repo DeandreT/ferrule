@@ -11,6 +11,9 @@ mod com_enum_values;
 #[path = "source_inventory/com_names.rs"]
 mod com_names;
 
+#[path = "source_inventory/source_contracts.rs"]
+mod source_contracts;
+
 #[path = "source_inventory/schema_wrappers.rs"]
 mod schema_wrappers;
 
