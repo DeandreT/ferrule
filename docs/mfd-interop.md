@@ -68,6 +68,24 @@ may be combined. `--require-executable` applies to single-project imports and
 cannot be combined with `--pipeline`. Static admission does not execute the
 mapping or establish behavioral equivalence with another application.
 
+Source-field filters retain their selected true or false branch. Proven singleton
+scalar values use a nullable conditional; supported repeated-field selections use
+collection lookup. Missing, nonboolean, or unsupported predicates never become
+unfiltered bindings: repair-oriented import skips the affected binding and warns,
+and executable import refuses the partial mapping.
+Refusal propagates through dependent functions, defaults, UDFs, and scalar parsers;
+it is not an absent value that a default may replace. Collection-position
+predicates must refer to the selected collection. Repeating filtered-variable
+inputs to scalar UDFs or parsers are refused where the consumer cannot retain
+the active item context.
+Structural serializers also refuse filtered sequences whose selection they cannot preserve.
+Specialized scalar lowering and refusal checks share one producer input contract,
+including structured UDF parameters. Refusal of one projected child does not
+discard supported sibling projections; an invalid filter predicate still refuses
+every projection of that filter branch.
+UDF input admission is per pin: scalar arguments retain scalar handling, while
+structural catalog inputs refuse crossed filters that cannot be preserved.
+
 CSV, JSON and EDI document imports diagnose connected `FileInstance` filename
 inputs and outputs. Their document-loading and output-document behavior is not
 represented by the imported data mapping, so executable import refuses them.
@@ -75,10 +93,52 @@ Ordinary import keeps the partial mapping with that diagnostic. Unconnected
 wrapper ports and static preview/output path metadata do not introduce
 filename-driven document behavior.
 
+For one connected EDI input filename and one connected strict JSON output
+filename, select the explicit document route:
+
+```sh
+ferrule import-mfd --mfd design.mfd --out document.json --filename-document
+ferrule run-document --project document.json --input-root inputs \
+  --param InputFile=input.hl7 --param OutputFile=output.json
+ferrule generate --project document.json --primary-documents --language csharp --out generated
+```
+
+Use the parameter names declared by the design. The import retains both
+filename expressions as graph identities in `DocumentProject`; they are not
+business fields or replacement static paths. Only literal strings and required
+global string parameters are admitted. Saved parameter and instance previews
+never supply execution values. The input host receives the exact filename text
+and the plan's `Direct` selection, and must select exactly one document. The
+mapping runs once and returns one complete strict JSON document. Native and
+generated Rust/C# primary EDI byte entry points use the retained JSON output
+policy for these explicit plans. `evaluate_output_filename` /
+`EvaluateOutputFilename` exposes the output transport separately; library hosts
+own publication. The CLI resolves its connected output relative to the saved
+document project and refuses an `--output` override rather than dropping the
+connection.
+
+This route refuses wildcard selection, empty/wildcard/control-character filename
+text, source-dependent filenames, wrapper controls, connected filename output
+ports, ambiguous declarations, named endpoints, and repeated document roots.
+Unsupported plans and filename values refuse before host calls. Path containment,
+URI policy and physical I/O remain host-owned; the CLI's input host only reads
+beneath its explicit local root. Ordinary import and the repair-oriented CSV
+filename-retention API retain their existing behavior.
+The editor refuses plans with connected output filenames rather than opening or
+saving them with that transport removed. Use the CLI or a generated host.
+
 XML imports retain their supported static connected paths and document-driven
 output scopes. A runtime-connected primary input filename or a target filename
 without a supported document driver produces a diagnostic rather than silently
 qualifying a mapping that uses only its saved preview path.
+
+The reference application reads a component's input instance only in a source
+role; on a target it is a design-time preview. A filename wildcard there does
+not make the target a file set and never becomes its output path in any target
+format. Beside an output instance, any input instance, including a URL or a
+wildcard folder, is ignored, and it does not refuse item-ordered exception
+import.
+Pass-through components keep the wildcard as a file set in their source role.
 
 One bounded filtered filename form is supported: a primary XML root contains
 repeating outer records, each record supplies a string filename expression,
@@ -323,6 +383,20 @@ recognized user-function shapes. Adjacent XSLT extension modules also import
 when a named one-parameter template returns a direct count, sum, average,
 minimum, or maximum over a descendant path; ferrule lowers that template to a
 native aggregate rather than retaining an XSLT runtime dependency.
+
+Collection `item-at` exports use the native two-input form: nodes at position
+0 and the requested index at position 1, without a parent-context input.
+Computed primary-source values must retain the selected collection's repetition
+on every possible branch. Constant or broadcast-only values, nested reductions,
+different repetition owners, computed named-source values and other unproved
+expressions are refused before publication. Other aggregates retain their
+parent-context input.
+
+Direct generated-sequence `SequenceItemAt` uses the supported two-input form.
+The `SequenceAggregate(ItemAt)` representation is refused before publication,
+including plain, transformed and filtered variants: its private item and
+parent-context ownership are not preserved by the current MFD importer.
+Ferrule's interpreter behavior is unchanged.
 
 Nested cloned target groups retain their declared ancestor entry ownership.
 Child branches attach to that exact owner in declaration order, including
@@ -610,6 +684,13 @@ and other scalar kinds; it does not enforce UUID version or variant bits.
 Arity errors precede type and lexical errors in native and generated calls.
 Import/export retain the standard function spelling and `lang` library;
 unrelated namespaces do not acquire this function by name alone.
+The `translate` component maps to the `translate` scalar operation with XPath
+`fn:translate` semantics over Unicode scalar values. Each character of the
+value found in the second input becomes the character at the same position in
+the third input. Characters without a counterpart are removed, and the first
+occurrence of a repeated search character wins. All three inputs use lexical
+text, so absent values read as empty strings. Export writes the `core`
+library, which offers the function in every execution language.
 The exact decimal divide/one-place round UDF pattern fed only by implicit
 Protobuf `float` fields exports with native arithmetic wires. Its internal
 numeric conversions are identities for the finite float32 values accepted by
@@ -670,6 +751,69 @@ Static source, target, named-source, and named-target paths are rebased when
 the generated project is written somewhere other than the design directory.
 HTTP URLs and graph-computed paths are unchanged. Moving or using Save As on a
 project applies the same rebasing rule, including wildcard input paths.
+Existing directory links are resolved before `..` so Save As preserves resource
+identity across linked directories. Document and output directories remain
+literal names; source glob suffixes remain patterns. The final resource entry
+is not dereferenced, and nonexistent output paths remain valid. Retained editor
+history uses the same basis. Offline bundle paths remain purely lexical within
+their separately confined virtual root.
+
+### XML output schema-location hint
+
+An XML document target whose `properties/@AddSchemaLocation` is absent or `"1"`
+writes a schema-location hint on its output root, as the reference application
+does; `"0"` writes none. The reference application writes an absolute
+`file:///` URI of the schema on the machine that runs it. Ferrule writes the
+schema reference the design stores instead, converted to a URI reference:
+Windows extended-length prefixes (`\\?\`) are removed, backslashes become
+`/`, characters that cannot appear in a URI reference are percent-encoded (a
+space becomes `%20`, as does a `%` that starts no escape), and a Windows drive
+or UNC path becomes a `file:` URI.
+
+A relative reference stays relative to the design, as stored; it is not rebased
+to the output document. XML readers resolve it against the output document,
+so it names the schema only when the output is written beside the design. With
+`outputinstance="out/result.xml"` and `schema="target.xsd"`, the hint
+`target.xsd` resolves to `out/target.xsd`, which does not exist. Absolute and
+`file:` references resolve the same from any output location.
+
+The hint is a target-only `xml_schema_hints` policy:
+
+- An unqualified root gets `xsi:noNamespaceSchemaLocation`.
+- A namespaced root gets one `xsi:schemaLocation` pair of the root namespace
+  and the same location, matching the reference application's namespaced
+  output.
+- The stored schema must declare the root's namespace as its own
+  `targetNamespace` (or none, for an unqualified root). A root declared in an
+  imported schema, or a schema that cannot be read, gets no hint, so no pair
+  maps the root namespace to the wrong file.
+- DTD-backed targets, documents without a schema reference, WSDL messages and
+  intermediate XML string serializers get no hint.
+- A target root that declares the same `xsi` attribute keeps its mapped value
+  and gets no automatic hint. So does a target whose mapping feeds the root's
+  attribute wildcard or the whole root, since either can write `xsi`
+  attributes at run time.
+- Pass-through components write the hint in their target role only; their
+  source role reads without schema hints.
+
+Any other `AddSchemaLocation` value imports with a warning and no hint. The
+hint combines with explicit XML scalar output, so cast suppression keeps its
+profile under an absent or `"1"` setting. Generated Rust and C# write the hint
+wherever their XML adapter writes the document. A generated library without an
+XML adapter, such as one fed by CSV or JSON, returns typed output and writes no
+XML document, so the host that serializes the document owns the hint.
+
+The imported hint records its provenance in the project file as
+`xml_schema_hints.derivation.schema_reference`, the stored schema reference it
+was derived from. Hints without a derivation, including those of project files
+written before provenance existed, are explicit. A derivation counts only while
+it still reproduces the hint exactly for the target root: editing a derived
+hint's location, namespace or recorded reference makes it explicit, and so
+does a target schema change that alters the derivation, such as a new root
+namespace or a declared root `xsi` attribute.
+
+Older Ferrule builds that read `xml_schema_hints` but predate the derivation
+refuse such a project file with an unknown-field error for `derivation`.
 
 ### XML root-view interoperability
 
@@ -682,9 +826,10 @@ must agree with the source schema, and every graph node must belong to these
 projections. Shared source fields can feed multiple target attributes.
 
 Import and export retain the type condition, required reads, physical namespace
-identities, and direct base-root selection. Other root-expression graphs,
-additional document boundaries, failure rules, user functions, and explicit
-schema hints remain outside this `.mfd` profile. Unsupported export fails before
+identities, and direct base-root selection. The target's default
+schema-location setting follows the general hint policy above. Other
+root-expression graphs, additional document boundaries, failure rules, user
+functions, and other explicit schema hints remain outside this `.mfd` profile. Unsupported export fails before
 publishing artifacts; unproved import shapes retain actionable diagnostics.
 
 ## Export
@@ -694,14 +839,28 @@ checks file size before reading and bounds the actual read; export checks the
 complete XML, including escaping and embedded metadata, before publishing any
 design or schema sibling. Each connected stage and the combined design must
 fit the same limit.
+Import also refuses a design whose `<entry>` elements nest more than 128
+levels deep (`MAX_MFD_ENTRY_DEPTH`), anywhere in the design, before it reads
+any component. Real designs nest about 20 levels. The limit keeps the
+recursive entry-tree importers, and engine validation of the imported scopes,
+within a default 8 MiB stack. It applies to file, package, pipeline and
+filename-document import, and so to the GUI and to the re-import that package
+export performs.
 MFD entries and generated XSD attributes preserve tabs and line breaks through
 XML character references, including field names, paths, fixed values, and
 defaults.
 
 Physical XML document targets explicitly set `AddSchemaLocation="0"` so the
 reference application's automatic schema URI does not change Ferrule's normal
-no-hint output. This applies to primary and named targets; explicit XML schema
-hints remain outside MFD export. The finite
+no-hint output. This applies to primary and named targets. A target whose hint
+is still derived from the default setting exports with the setting absent, the
+reference application's saved form. Export writes the target schema as its own
+generated sibling (`<design>-target.xsd`), so re-importing the exported design
+derives a hint naming that sibling, not the originally imported schema
+reference. The location changes; the setting and hint form do not. A derived
+hint that no longer matches its target schema is refused with an error saying
+so; source hints and explicit XML schema hints remain outside MFD export. The
+finite
 [schema-reference observation](conformance/xml-schema-reference.md) covers real
 controls, full outputs and a native save/reopen of an actual Ferrule export.
 
@@ -906,9 +1065,84 @@ marks the export incomplete and rejects publication; the generated schema is
 not evidence that the original external schema was recovered.
 JSON string parsers lower connected scalar property outputs. Unconnected object,
 array and item views do not participate in parser admission. Connected structural
-outputs, root arrays, array-crossing property paths and missing schema paths retain
+outputs outside the bounded profiles below, root arrays and missing schema paths retain
 their explicit refusal. Each admitted field still parses and validates the complete
 JSON document against its schema, including properties whose ports are unused.
+
+One array of ordinary records can feed a repeating target group from a uniquely
+declared required global String input and a resolved JSON schema. Direct scalar
+connections below the array select fields of the same item, including scalar
+fields inside ordinary nested objects. A direct array-to-group connection is
+optional; the scalar connections can establish the record driver. Ordered,
+one-based item indices preserve every record, including records with absent
+scalar fields. Empty or absent non-nullable arrays produce no records. Explicit
+JSON scalar null values retain their schema-defined null behavior, distinct from missing
+fields. Malformed JSON, invalid item types and incompatible structures remain
+typed parsing failures, not null or zero fallbacks.
+Absent optional object parents preserve scalar absence or an empty selected
+array only after the descriptor resolves to a declared scalar or array and the
+complete input passes schema validation. Invalid descriptor paths, missing
+required properties, incompatible values and disallowed nulls remain failures.
+
+This adapter validates the complete document before iterating and again for each
+selected field. It materializes the input and is not a streaming or large-array
+performance contract. Nested arrays, scalar arrays, computed or optional parser
+inputs, indirect scalar consumers, mixed record feeds and enclosing target
+iterations, cloned target occurrences, target node controls and nullable containers
+remain outside this profile and produce
+executable-import diagnostics. Schema array constraints and the existing
+generated-sequence item limit still apply.
+There is no shared parsed-input cache: work grows with mapped fields times
+records times document size, which can be quadratic in record count. Existing
+input-size and item-count ceilings do not make large arrays efficient.
+
+A separate bounded scalar lookup accepts a parsed record-array value wired to
+the first input of a core filter, with `equal` comparing a String key from the
+same array to a String field of the current primary-document item. The first
+filter output must connect directly to scalar targets in that item's actual
+iteration frame. The parser requires a uniquely declared required global String
+input and a resolved schema. The equality and connected parser fields must belong
+exclusively to that filter; unconnected declared ports do not change admission.
+An empty, attribute-free second output placeholder retains its unused false
+slot; it never receives an invented output identity. Malformed or shared output
+declarations remain refused.
+The primary document owns output repetition and order, including repeated keys.
+The lookup scans the parsed array in its original order and selects the first
+matching record, even when that record's value is absent or JSON null. Missing
+values remain absent, permitted JSON null remains distinct, and missing/null keys
+do not match. Identifiers are not trimmed, case-folded or converted to numbers.
+
+This lookup uses a private generated index and the existing ItemAt reducer, not
+a physical parsed-array source. Shared predicates, mixed parser ownership,
+additional connected array fields, secondary or scalar-repeating key dependencies,
+inverted filter outputs, indirect consumers, and sibling or nested receiving
+frames outside the primary key's actual frame retain executable-import refusals.
+An ordinary primary-document ancestor chain may contain nested repeating groups,
+including EDI interchange, group, message and detail owners. Every repeated
+prefix must be declared and framed, and the actual receiving anchor must equal
+the key's innermost repeated owner. Ancestor keys are not silently broadcast to
+a different current-item frame, nor are deeper unframed repetitions read as one
+scalar.
+The primary key can also be a bounded pure expression: current-item String
+fields, exact core String constants, core String equality predicates, and core
+`if-else` with two connected String branches. All physical leaves, including
+untaken branches, must share that same actual innermost primary owner. At least
+one physical leaf is required. Raw pins, saved feed identities and unique output
+owners are proved before lowering, with a 16-level depth and 64-visited-node work
+bound and cycle refusal. The complete lowered graph must then match the proved
+fields, constants, operator types and branch order; fallback or cached nodes
+outside that proof are refused. Missing selected values stay absent and allowed
+JSON null remains null, without choosing another branch or inventing a default.
+Other functions, parameter reads, coercions, stateful or recursive expressions,
+aggregates, filters, parser reads and foreign-frame leaves remain outside this
+key-expression profile.
+The complete parser input is validated whenever a lookup is demanded, including
+later duplicates, nonmatching records and unused properties. An empty primary
+iteration does not demand the parser. There is no shared parsing cache; repeated
+lookups can cost primary-item count times lookup-record count times document
+size, in addition to value projections. This is not a large-array performance
+contract; shared parsing and work bounds remain separate work in
+[#1175](https://github.com/DeandreT/ferrule/issues/1175).
 
 A JSON string parser with no declared output ports can retain a directly connected,
 uniquely declared required global String parameter without evaluating that parser.
@@ -1033,6 +1267,65 @@ An X12 variable cannot introduce parser-error ports absent from its selected
 configuration; configured fields whose names begin with `ParserErrors_` remain
 ordinary data.
 
+Import also admits a computed join key: in a two-input join beside one
+repeating source collection, either input may be fed by a constant, a runtime
+input parameter, or a call chain of `uppercase`, `lowercase`, `concat` and
+`add` over those and over non-repeating primary-source fields. The key is
+evaluated in the receiving context of the iteration the join drives, and it is
+`Null`, giving no tuples, whenever a field it reads is absent or nil, as the
+reference application yields nothing there. A `tokenize` of such a string by a
+non-empty string constant may feed the join input directly; each token then
+contributes its own tuples in order, with empty and duplicate tokens kept, and
+an absent or nil input gives no tokens. Calls that could raise stay refused:
+`uppercase` or `lowercase` over a non-string, `add` over a string, boolean or
+integers alone, and `concat` over a decimal. Two computed inputs, computed
+inputs in larger joins, keys read from the tuple, keys feeding a joined
+aggregate, keys over named or dynamic sources, keys that read across an
+inactive repetition, other sequences, sequences inside a key's computation,
+other functions, and a function or constant over a copy-all connection keep the
+join and its driven scopes out with a warning naming the reason. See [computed
+join keys](design/join-computed-keys.md).
+
+Export writes core kind-32 joins whose inputs all come from source ports, each
+fed by a copy-all connection; the reference application refuses an ordinary
+connection on any such input. Root-context joins take their collections from
+the primary source. A join nested inside one ordinary iteration over the primary
+source or a static named source is evaluated again for every iterated item. It
+takes singletons from the active item or from a static named source, at any
+input position and in any number, and needs no singleton. Its repeating inputs
+come from static named sources, each from its own component, and, inside a
+primary iteration, from at most one collection below the active item, such as
+`Line` inside an `Order` loop, which yields only that item's rows. A two-input
+plan may instead pair one singleton with one primary repeating collection
+outside the iteration. Export refuses, atomically under the native profile,
+nested plans of singletons only, more than one repeating input below the
+iteration, repeating inputs below a named-source iteration, primary repeating
+inputs outside the iteration in any other plan, repeating paths that more than
+one enclosing source frame declares, an iteration path that names both a
+primary child and a named source, named inputs that an enclosing frame could
+shadow, and named paths that would change when reimport strips the enclosing
+iteration path.
+
+Export writes a computed join key in exactly the form import admits, so the
+design re-imports to the same plan. The key's constant, runtime parameter or
+`uppercase`, `lowercase`, `concat` and `add` call chain is written as ordinary
+components whose output feeds the join input; a `tokenize` key is written as
+its `tokenize` component with its input and constant delimiter. A function or
+constant feeds an input named `value` through an ordinary connection; a runtime
+parameter feeds an input named after the parameter through a copy-all
+connection, as the reference application requires. The null guard import adds
+around a key that reads source fields is not written: the native functions
+already yield no key for an absent or nil field, and import adds the same guard
+again. The other input is a primary repeating collection: at the root, or, for
+a join nested in a source iteration, outside that iteration. Export refuses,
+before writing any file, every other computed key: keys import would refuse or
+read back differently (a bare source field, a guard that does not cover exactly
+the fields the key reads, a guard other expressions share, a sequence other
+than `tokenize`, or a delimiter that is not a non-empty string constant), keys
+beside a singleton, a named collection or a collection below the iteration,
+keys feeding a joined aggregate, and keys in additional targets, concatenated
+segments or dynamic child scopes.
+
 JSON5 component settings and `.json5` instance paths are retained as a typed
 repair dependency, not executable native JSON5 mode. Legacy filename attributes
 take precedence over nested input/output file roles. Strict import, runtime and
@@ -1093,10 +1386,94 @@ their row and column boundaries; the reference application's raw-emission
 behavior for those values has not been verified. Invalid or ambiguous dialect
 options reject before output publication.
 
-The fixed-per-run current date/time value exports as the corpus-backed native
-`xpath2/current-dateTime` component. Both that component and `lang/now` import
-to the same typed runtime value and round trip under a fixed execution clock.
+The fixed-per-run current date/time value exports as the native `lang/now`
+component, which the built-in execution language provides. Both that component
+and `xpath2/current-dateTime` import to the same typed runtime value and round
+trip under a fixed execution clock. In native runs every `lang/now` read in one
+execution returned the same value, whether it came from separate components, a
+reused component or successive target rows, and even with `lang/sleep` delays
+between the reads. Several date/time uses therefore export without refusal.
 Target-type date/time coercion remains a separate extension dependency.
+
+Exported designs select the built-in execution language, so each function call
+exports only as a function that language provides with the same inputs and
+meaning; otherwise export fails before writing anything and names the function:
+
+- `round_half_ceiling` exports as `core/round` with one input and as
+  `core/round-precision` with two. The native `round` has one input: a design
+  that connects a second one still runs, but the precision is ignored, and
+  saving drops that input. Ferrule's `round` is refused; see below.
+- `format_date` and `format_datetime` export with at most three inputs (value,
+  format, language) and `format_time` with at most two. The native functions have
+  no calendar or place inputs, and `format-time` has no language input; extra
+  connections are ignored when the mapping runs and dropped when it is saved, so
+  export refuses those calls. An empty language selects English natively, as it
+  does in Ferrule. A named language such as `de` gives localized month and day
+  names natively, while Ferrule refuses any language other than the default.
+- The unary-plus `positive`, `trim`, `ends_with`, `matches` and `replace` are
+  refused. The reference application reports `core/trim`, `core/ends-with`,
+  `core/matches`, `core/replace` and `core/positive` as functions it cannot find
+  for the built-in language. The built-in `lang/left-trim`, `lang/right-trim`
+  and `core/normalize-space` keep non-breaking and other non-ASCII spaces that
+  `trim` removes. The built-in `lang/replace` substitutes literal text, so the
+  regular-expression `replace` has no counterpart. `lang/match-pattern` succeeds
+  only when the pattern matches the whole text, whereas `matches` succeeds on a
+  match anywhere.
+
+Native `lang/positive` returns true only for numbers greater than zero; `0` and
+`-0` give false, unlike its vendor description ("equal to or greater than
+zero"). Import reads it as `greater_than(add(value, 0), 0)`: adding
+zero converts numeric text the way its decimal input does, and both functions
+export natively. Non-numeric text fails in both. The `core/positive` spelling
+written by earlier Ferrule exports still imports as unary plus.
+
+Native `lang/replace` replaces every occurrence of its search text, left to
+right and without overlap, with its replacement text. Neither input has pattern
+or escape syntax: `.`, `*`, `(`, `$` and `\` in the search text match
+themselves, and `$0` or `\` in the replacement is inserted as written. Matching
+is case-sensitive, whether the inputs are constants or connected. An empty search
+text, connected or constant, fails execution ("The search string passed to the
+replace function is empty."). Import reads it as `replace_literal`, which keeps
+these semantics and fails on an empty search text, and export writes it back as
+`lang/replace`. The `core/replace` and `xpath2/replace` spellings still import as
+regular-expression `replace`.
+
+Native `core/round` and `core/round-precision` round exact halves toward
+positive infinity (`-2.5` becomes `-2`) and work on decimal values, so `1.005`
+rounds to two places as `1.01`. Ferrule's `round` rounds halves away from zero
+on binary floating-point values, so negative halves, and decimal fractions that
+binary floating point cannot represent exactly, can round differently.
+
+Import therefore maps `round` and `round-precision`, in any library, to the
+separate `round_half_ceiling` function, which follows the native rule. Ferrule's
+own `round` keeps its behavior, so native Ferrule projects are unchanged. Export
+writes `round_half_ceiling` back as `core/round` or `core/round-precision`. It
+refuses Ferrule's `round`, because it can't prove that the inputs avoid the
+cases where the two differ.
+
+`round_half_ceiling` rounds decimal digits, never a scaled binary float:
+
+- Text is rounded on its own digits. A floating-point value is rounded on its
+  shortest round-trip digits, so `1.005` keeps its digits after a numeric
+  conversion. Decimals with at most 15 significant digits survive that
+  conversion exactly.
+- Integers stay integers, including with negative precision, and fail with an
+  integer overflow error beyond the 64-bit range. Other results are the nearest
+  floating-point value to the rounded decimal; a zero result has no negative
+  sign, and a result beyond the floating-point range becomes infinity.
+- NaN and infinities pass through, as they do for `round`.
+- Precision is read like `round`'s: integers directly, floating-point values
+  rounded half away from zero with NaN as zero, and numeric text as `to_number`
+  reads it. Precision beyond the 32-bit range saturates.
+- Non-numeric text fails as an invalid argument; booleans, absent values and
+  `Decimal96` values fail with a type error.
+
+The interpreter, generated Rust and generated C# give the same results. Native
+runs established the half rule and decimal text inputs; the integer, precision
+and non-finite rules above follow Ferrule's numeric conventions and haven't been
+checked against native runs. Arithmetic that feeds a rounding still uses binary
+floating point, so a computed input can differ from the native decimal result
+before it is rounded.
 
 The default `ferrule-extensions` profile preserves the existing Ferrule
 round-trip representation. Export now reports whether the rendered design has
@@ -1127,9 +1504,10 @@ expected to re-import and validate as ferrule projects.
 
 The main remaining gaps are some XML derived-type input shapes beyond compatible
 `complexContent` and scalar-text/attribute-only `simpleContent` hierarchies,
-XSD 1.1 wildcard exclusions, unordered wildcard compositors, unresolved strict
-wildcard declaration sets, heterogeneous or correlated numeric-range scalar
-unions and general heterogeneous arrays,
+XSD 1.1 wildcard exclusions outside the native XSD subset (such as strict
+element wildcards), unordered wildcard compositors, unresolved strict wildcard
+declaration sets, heterogeneous or correlated numeric-range scalar unions and
+general heterogeneous arrays,
 overlapping cross-mode, and incompatible typed-wrapper JSON union composition,
 first-class sequence composition, general SQL and database mutation, broader
 XLSX/PDF/FlexText configuration shapes, taxonomy-level XBRL execution, and
@@ -1259,6 +1637,11 @@ an optional `maxItems`, so export/re-import and generated Rust/C# use the existi
 homogeneous-array path. Draft 2020-12 array-valued `items`, contradictory
 counts, and reachable heterogeneous members or tails produce the actionable
 schema-fallback diagnostic instead of being reinterpreted as `prefixItems`.
+MFD import refuses any referenced JSON Schema that imports with a
+[JSON tuple frame](design/json-tuple-arrays.md), so heterogeneous positional
+arrays keep that diagnostic and the entry tree until MFD entries can address
+tuple positions. The schema descriptors embedded in JSON string parser calls
+never carry tuple frames.
 Referenced JSON objects retain supported `propertyNames` schemas as well.
 Exact false, finite `const`/`enum` names and their finite `not` complements,
 Unicode-scalar length intervals, bounded portable pattern
@@ -1297,6 +1680,15 @@ declarations as typed fields and route only undeclared matching names to the
 generic fallback. Direct or named-attribute-group wildcards preserve namespace
 constraints and processing mode; known declarations remain typed, lax unknowns
 remain generic, and strict unknowns reject at the XML boundary.
+XSD 1.1 `notNamespace` and `notQName` exclusions in an XML component's schema
+import with the component, so its runs refuse excluded names at the XML
+boundary. Export writes them into the generated XSD siblings of XML document
+components as explicit names, and re-import restores the same schema. A
+`<selections>` QName that the wildcard's namespace constraint or excluded names
+reject is refused with a warning and adds no typed port, since a selected port
+would admit an element the schema forbids. Export refuses exclusions anywhere
+else before writing anything: on non-XML or WSDL boundaries, in XML serializer
+schemas, in request contracts, and on nodes that are not valid wildcard groups.
 
 The exact supported surface evolves quickly. The
 [workflow-parity roadmap](../ROADMAP.md) records the strategic gaps, while the

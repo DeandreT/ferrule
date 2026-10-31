@@ -21,7 +21,9 @@ XSD-lite with local import graphs, compatible `complexContent` and
 scalar-text/attribute-only `simpleContent` derivations, and named model and
 attribute groups; `xs:any` and `xs:anyAttribute` wildcards with `##any`,
 `##other`, `##local`, `##targetNamespace`, or listed-namespace constraints under
-`skip`, declaration-aware `lax`, or closed `strict` processing; bounded DTD
+`skip`, declaration-aware `lax`, or closed `strict` processing, plus XSD 1.1
+`notNamespace` and `notQName` exclusions on `skip` and `lax` element wildcards
+and on attribute wildcards; bounded DTD
 import with internal content-model parameter entities; `xsi:nil`, generic
 elements, and ordered mixed content
 """
@@ -30,11 +32,13 @@ evidence = [
     "crates/format-xml/src/dtd.rs",
     "crates/format-xml/tests/xsd_lax_wildcards.rs",
     "crates/format-xml/tests/xsd_qname_wildcards.rs",
+    "crates/format-xml/tests/xsd_wildcard_exclusion_fixtures.rs",
     "crates/format-xml/tests/mixed_content.rs",
 ]
 unsupported = [
-    "XSD 1.1 wildcard exclusions (`notNamespace`, `notQName`) and `xs:any` inside `xs:all`",
-    "Strict wildcards whose matching declaration set is not closed, and same-local-name strict declarations with incompatible typed shapes",
+    "XSD 1.1 wildcard exclusions on strict element wildcards; exclusions beyond 64 `notNamespace` members, 1,024 `notQName` tokens or 256 resolved names; `##defined` when an unresolved include or import, `xs:redefine` or `xs:override` keeps the declaration set from being closed; `##targetNamespace`, namespace-less QNames or `##definedSibling` elements in a chameleon document included from several target namespaces; exclusions on a wildcard that has a `vc:` conditional-inclusion attribute or sits inside an element that has one; and an element whose `xsi:type` alternatives resolve one wildcard to different excluded names",
+    "`xs:any` inside `xs:all`",
+    "Strict wildcards whose matching declaration set is not closed, same-local-name strict declarations with incompatible typed shapes, strict wildcards that follow a single-occurrence declaration of a name they match, and strict wildcards outside a choice whose port shares a local name with a declaration covering only some of its namespaces",
     "Element wildcard occurrences other than `1..1`, `0..1`, or `0..unbounded`, and optional single-occurrence `skip` wildcards",
     "Sibling elements or attributes that differ only by namespace, because mapping paths use local field names",
     "External DTD subsets and external entities, which are never loaded",
@@ -65,7 +69,8 @@ object-property-count, and Unicode string-length intervals, structural
 `uniqueItems`, bounded portable `pattern` assertions, closed homogeneous
 `patternProperties`, property dependencies, dependent-schema predicates,
 single-property-presence conditionals, `propertyNames`, open or closed object
-contracts, heterogeneous scalar type arrays, exact scalar `anyOf`,
+contracts, exact tuple arrays from `prefixItems` or tuple-form `items`,
+heterogeneous scalar type arrays, exact scalar `anyOf`,
 pairwise-disjoint scalar `oneOf`, selected object alternatives, nullable
 scalar/object/array shapes, and typed or unconstrained dynamic properties
 """
@@ -73,11 +78,13 @@ evidence = [
     "crates/format-json/src/json_schema.rs",
     "crates/format-json/src/json_schema/tests/resources.rs",
     "crates/format-json/src/json_schema/tests/patterns.rs",
+    "crates/format-json/src/json_schema/tuple_frames.rs",
+    "crates/format-json/tests/json_tuple_schema.rs",
     "crates/json-pattern/src/lib.rs",
 ]
 unsupported = [
     "General heterogeneous array composition, heterogeneous or correlated numeric-range scalar unions, and mixed structural unions",
-    "Heterogeneous `prefixItems` or legacy tuple members and active `unevaluatedItems`",
+    "Tuple alternatives, per-position `allOf` intersection, `contains` or `uniqueItems` on tuples, nested or recursive tuples, and `unevaluatedItems` beside composition, conditionals, `contains`, `dependentSchemas` or a reference",
     "Required-only schemas without an object shape",
     "External references from in-memory schema import (`json_schema::import_str`)",
     "Enforcement of other shape-neutral validation keywords, which are accepted only for schema recovery",
@@ -176,17 +183,23 @@ target = "yes"
 selection = "`.xlsx`"
 summary = """
 Typed worksheets, flat, transposed, composite, worksheet-set, and grid source
-shapes, flat and hierarchical targets, and update-existing flat writes
+shapes, with one grid per worksheet beside composite tables and records, flat,
+transposed, and hierarchical targets, and update-existing writes for flat and
+hierarchical targets
 """
 evidence = [
     "crates/format-xlsx/src/grid.rs",
     "crates/format-xlsx/src/composite.rs",
     "crates/format-xlsx/src/hierarchical.rs",
+    "crates/format-xlsx/src/transposed.rs",
     "crates/format-xlsx/src/update.rs",
 ]
 unsupported = [
-    "Grid, worksheet-set, composite, and transposed output, which are input-only layouts",
-    "Update-existing writes for hierarchical output",
+    "Grid, worksheet-set, and composite output, which are input-only layouts",
+    "Several grids on one worksheet, and composite sources with grids in generated code",
+    "Update-existing writes for grid, worksheet-set, composite, and transposed layouts",
+    "Update-existing writes on payload, standard-stream, and pipeline-preview runs, in pipeline `.mfd` final targets, and in generated code",
+    "Transposed output on standard-stream and bounded-document runs",
 ]
 
 [[format.qualified]]
@@ -231,9 +244,10 @@ evidence = [
     "crates/format-edi/src/edifact.rs",
     "crates/format-edi/src/validation.rs",
     "crates/cli/tests/edi_output.rs",
+    "crates/cli/tests/x12_line_break_terminators.rs",
 ]
 unsupported = [
-    "Invisible or whitespace explicit X12 output separators, including LF",
+    "X12 CR LF segment terminators, and whitespace or invisible X12 element, component, repetition or release separators",
 ]
 
 [[format.qualified]]
@@ -295,15 +309,20 @@ record = "conformance/primary-edi-documents/README.md"
 [[format]]
 name = "SWIFT MT"
 source = "yes"
-target = "no"
-selection = "`swift_mt` layout"
-summary = "Input through embedded message and field grammars"
+target = "yes"
+selection = "`swift_mt` layout; targets also need `swift_mt_output` headers"
+summary = "Embedded message and field grammars; output takes one configured direction and one header set per message, and is re-read before it is returned"
 evidence = [
     "crates/format-edi/src/swift.rs",
+    "crates/format-edi/src/swift/configured.rs",
     "crates/cli/tests/swift.rs",
+    "crates/cli/tests/swift_output.rs",
 ]
 unsupported = [
-    "SWIFT MT output",
+    "User-header (3) and trailer (5) blocks in output",
+    "Output that interleaves occurrences of different repeating fields",
+    "Primary filename document runs",
+    "`.mfd` export of output headers",
 ]
 
 [[format]]

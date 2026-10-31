@@ -7,8 +7,7 @@ use mapping::{FunctionId, FunctionParameterId, Node, NodeId, Project, UserFuncti
 use crate::MfdError;
 
 use super::function::{
-    constant_parts, function_library, scalar_type_name, unmap_function_name, value_scalar_type,
-    value_text,
+    constant_parts, native_function, scalar_type_name, value_scalar_type, value_text,
 };
 use super::schema::{KeyAlloc, xml_escape};
 
@@ -319,7 +318,7 @@ fn native_protobuf_numeric_aliases(
         return None;
     }
     let nodes = &function.body.nodes;
-    let [rounded, precision] = call_args(nodes, function.output, "round")? else {
+    let [rounded, precision] = call_args(nodes, function.output, "round_half_ceiling")? else {
         return None;
     };
     let (rounded, precision) = (*rounded, *precision);
@@ -514,19 +513,23 @@ fn render_definition(
                 outputs.insert(id, output);
                 render_constant(value, output, uid, &mut components, "\t\t\t\t");
             }
-            Node::Call { function, args } => {
+            Node::Call {
+                function: callee,
+                args,
+            } => {
+                let (name, library) = native_function(callee, args.len()).map_err(|reason| {
+                    unsupported(format!(
+                        "user-defined function `{}` calls `{callee}`, which has no built-in .mfd equivalent: {reason}",
+                        function.name
+                    ))
+                })?;
                 let pins = args.iter().map(|_| keys.next()).collect::<Vec<_>>();
                 let output = keys.next();
                 outputs.insert(id, output);
                 inputs.insert(id, pins.clone());
-                let native_function =
-                    if !numeric_aliases.is_empty() && function == "round" && args.len() == 2 {
-                        "round-precision"
-                    } else {
-                        function
-                    };
                 render_scalar_call(
-                    native_function,
+                    &name,
+                    library,
                     &pins,
                     output,
                     uid,
@@ -708,7 +711,8 @@ fn render_constant(
 }
 
 fn render_scalar_call(
-    function: &str,
+    name: &str,
+    library: &str,
     inputs: &[u32],
     output: u32,
     uid: &mut u32,
@@ -726,8 +730,8 @@ fn render_scalar_call(
          {indent}\t<sources>{pins}</sources>\n\
          {indent}\t<targets><datapoint pos=\"0\" key=\"{output}\"/></targets>\n\
          {indent}</component>\n",
-        xml_escape(&unmap_function_name(function)),
-        function_library(function)
+        xml_escape(name),
+        library
     );
 }
 

@@ -104,7 +104,7 @@ pub fn to_string(
     )?;
     let line_ending = layout.output_line_ending().as_str();
     let rendered = render_command(layout.command(), value, layout.root_name(), 1, line_ending)?;
-    let rendered = normalize_line_endings(&rendered, line_ending)?;
+    let rendered = normalize_line_endings(&rendered, line_ending, layout.root_name())?;
     let mut output = String::new();
     if layout.write_bom() {
         output.push('\u{feff}');
@@ -225,7 +225,8 @@ fn parse_command(
                     total.checked_add(field.width().get() as usize)
                 })
                 .ok_or_else(|| data_error(&command_path, "fixed-width record width overflowed"))?;
-            let records = fixed_width_input_records(input, width, *record_delimiters)?;
+            let records =
+                fixed_width_input_records(input, width, *record_delimiters, &command_path)?;
             state.add_records(records.len())?;
             let mut items = Vec::with_capacity(records.len());
             for (index, record) in records.into_iter().enumerate() {
@@ -498,6 +499,7 @@ fn fixed_width_input_records(
     input: &str,
     width: usize,
     delimited: bool,
+    path: &str,
 ) -> Result<Vec<String>, FlexTextError> {
     if input.is_empty() {
         return Ok(Vec::new());
@@ -509,7 +511,7 @@ fn fixed_width_input_records(
     let characters = input.chars().collect::<Vec<_>>();
     if !characters.len().is_multiple_of(width) {
         return Err(data_error(
-            "document",
+            path,
             format!(
                 "fixed-width input has {} character(s), which is not a multiple of record width {width}",
                 characters.len()
@@ -773,7 +775,7 @@ fn render_split_once(
                     format!("first split has {got} columns, exceeding {width}"),
                 ));
             }
-            let padding = " ".repeat(width - got);
+            let padding = bounded_padding(' ', width - got)?;
             bounded_concat([first_text.as_str(), padding.as_str(), second_text.as_str()])
         }
         OnceSplitter::FixedLines(lines) => {
@@ -827,8 +829,8 @@ fn render_split_many(
         let text = render_command(child, child_value, &item_path, depth + 1, line_ending)?;
         match splitter {
             ManySplitter::Delimiter(delimiter) => {
-                let normalized_text = normalize_line_endings(&text, line_ending)?;
-                let normalized_delimiter = normalize_line_endings(delimiter, line_ending)?;
+                let normalized_text = normalize_line_endings(&text, line_ending, &item_path)?;
+                let normalized_delimiter = normalize_line_endings(delimiter, line_ending, path)?;
                 if normalized_text.contains(&normalized_delimiter) {
                     return Err(data_error(
                         &item_path,
@@ -884,7 +886,9 @@ fn render_fixed_records(
     if items.len() > MAX_RECORDS {
         return Err(FlexTextError::TooManyRecords);
     }
+    let separator = if record_delimiters { "\n" } else { "" };
     let mut records = Vec::with_capacity(items.len());
+    let mut total = 0;
     for (index, item) in items.iter().enumerate() {
         let item_path = indexed_path(path, index);
         let values =
@@ -901,7 +905,7 @@ fn render_fixed_records(
                     format!("value has {got} characters, exceeding field width {width}"),
                 ));
             }
-            let padding = fill_char.to_string().repeat(width - got);
+            let padding = bounded_padding(fill_char, width - got)?;
             if field.ty() == ScalarType::String {
                 push_bounded(&mut record, &raw)?;
                 push_bounded(&mut record, &padding)?;
@@ -910,9 +914,10 @@ fn render_fixed_records(
                 push_bounded(&mut record, &raw)?;
             }
         }
+        total = charge_record(total, &record, separator)?;
         records.push(record);
     }
-    bounded_join(&records, if record_delimiters { "\n" } else { "" })
+    bounded_join(&records, separator)
 }
 
 fn render_delimited_records(
@@ -926,6 +931,7 @@ fn render_delimited_records(
         return Err(FlexTextError::TooManyRecords);
     }
     let mut records = Vec::with_capacity(items.len());
+    let mut total = 0;
     for (index, item) in items.iter().enumerate() {
         let item_path = indexed_path(path, index);
         let values =
@@ -939,7 +945,9 @@ fn render_delimited_records(
             )?;
             encoded.push(quote_field(&raw, dialect)?);
         }
-        records.push(bounded_join(&encoded, dialect.field_separator())?);
+        let record = bounded_join(&encoded, dialect.field_separator())?;
+        total = charge_record(total, &record, dialect.record_separator())?;
+        records.push(record);
     }
     bounded_join(&records, dialect.record_separator())
 }
@@ -1227,12 +1235,22 @@ fn logical_line_count(value: &str) -> usize {
     }
 }
 
-fn normalize_line_endings(input: &str, ending: &str) -> Result<String, FlexTextError> {
+/// Writes every LF or CRLF break with the layout's ending. Under LF output a
+/// carriage return left directly before a break would read back as part of a
+/// CRLF break, so that data is refused rather than silently lost.
+fn normalize_line_endings(input: &str, ending: &str, path: &str) -> Result<String, FlexTextError> {
     let mut output = String::with_capacity(input.len());
     let mut rest = input;
     while let Some(index) = rest.find('\n') {
         let before = &rest[..index];
-        push_bounded(&mut output, before.strip_suffix('\r').unwrap_or(before))?;
+        let line = before.strip_suffix('\r').unwrap_or(before);
+        if ending == "\n" && line.ends_with('\r') {
+            return Err(data_error(
+                path,
+                "a carriage return before a line break cannot be written with LF line endings",
+            ));
+        }
+        push_bounded(&mut output, line)?;
         push_bounded(&mut output, ending)?;
         rest = &rest[index + 1..];
     }
@@ -1265,6 +1283,26 @@ fn bounded_join(values: &[String], separator: &str) -> Result<String, FlexTextEr
         push_bounded(&mut output, value)?;
     }
     Ok(output)
+}
+
+/// Padding is charged before it is allocated, so a wide field cannot
+/// amplify a short value past the output limit.
+fn bounded_padding(fill: char, count: usize) -> Result<String, FlexTextError> {
+    count
+        .checked_mul(fill.len_utf8())
+        .filter(|bytes| *bytes <= MAX_OUTPUT_BYTES)
+        .ok_or(FlexTextError::OutputTooLarge)?;
+    Ok(fill.to_string().repeat(count))
+}
+
+/// Records are joined only after they are all rendered; the running total
+/// keeps their combined size within the output limit while they accumulate.
+fn charge_record(total: usize, record: &str, separator: &str) -> Result<usize, FlexTextError> {
+    total
+        .checked_add(record.len())
+        .and_then(|total| total.checked_add(separator.len()))
+        .filter(|total| *total <= MAX_OUTPUT_BYTES.saturating_add(separator.len()))
+        .ok_or(FlexTextError::OutputTooLarge)
 }
 
 fn push_bounded(output: &mut String, value: &str) -> Result<(), FlexTextError> {

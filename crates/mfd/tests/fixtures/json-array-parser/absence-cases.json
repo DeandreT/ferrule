@@ -1,0 +1,35 @@
+{
+  "schema": {
+    "name": "Payload",
+    "kind": {"kind":"group","children":[
+      {"name":"Envelope","kind":{"kind":"group","children":[
+        {"name":"Rows","repeating":true,"kind":{"kind":"group","children":[
+          {"name":"Qty","kind":{"kind":"scalar","ty":"int"}},
+          {"name":"Detail","kind":{"kind":"group","required":["Label"],"children":[
+            {"name":"Label","kind":{"kind":"scalar","ty":"string"}}
+          ]}}
+        ]}}
+      ]}}
+    ]}
+  },
+  "cases": [
+    {"function":"json_parse_array_length","input":"{}","array":["Envelope","Rows"],"expected":0},
+    {"function":"json_parse_array_length","input":"{\"Envelope\":{}}","array":["Envelope","Rows"],"expected":0},
+    {"function":"json_parse_array_length","input":"{}","array":["Envelope","Rows"],"required":"root","error":"input does not match the JSON schema"},
+    {"function":"json_parse_array_length","input":"{\"Envelope\":{}}","array":["Envelope","Rows"],"required":"rows","error":"input does not match the JSON schema"},
+    {"function":"json_parse_array_length","input":"{\"Envelope\":null}","array":["Envelope","Rows"],"error":"input does not match the JSON schema"},
+    {"function":"json_parse_array_length","input":"{}","array":["Envelope","Missing"],"error":"array path does not resolve to an array"},
+    {"function":"json_parse_array_length","input":"{}","array":["Envelope"],"error":"array path does not resolve to an array"},
+    {"function":"json_parse_array_field","input":"{\"Envelope\":{\"Rows\":[{\"Qty\":2}]}}","array":["Envelope","Rows"],"path":["Detail","Label"],"expected":null},
+    {"function":"json_parse_array_field","input":"{\"Envelope\":{\"Rows\":[{}]}}","array":["Envelope","Rows"],"path":["Qty"],"expected":null},
+    {"function":"json_parse_array_field","input":"{\"Envelope\":{\"Rows\":[{}]}}","array":["Envelope","Rows"],"path":["Detail","Missing"],"error":"field path does not resolve to a scalar"},
+    {"function":"json_parse_array_field","input":"{\"Envelope\":{\"Rows\":[{}]}}","array":["Envelope","Rows"],"path":["Detail"],"error":"field path does not resolve to a scalar"},
+    {"function":"json_parse_array_field","input":"{\"Envelope\":{\"Rows\":[{}]}}","array":["Envelope","Rows"],"path":["Qty","Missing"],"error":"field path does not resolve to a scalar"},
+    {"function":"json_parse_array_field","input":"{\"Envelope\":{\"Rows\":[{\"Detail\":{}}]}}","array":["Envelope","Rows"],"path":["Detail","Label"],"error":"input does not match the JSON schema"},
+    {"function":"json_parse_array_length","input":"{\"Envelope\":{\"Rows\":[{\"Detail\":{}}]}}","array":["Envelope","Rows"],"error":"input does not match the JSON schema"},
+    {"function":"json_parse_array_field","input":"{\"Envelope\":{\"Rows\":[{\"Detail\":null}]}}","array":["Envelope","Rows"],"path":["Detail","Label"],"error":"input does not match the JSON schema"},
+    {"function":"json_parse_array_field","input":"{\"Envelope\":{\"Rows\":[{\"Detail\":7}]}}","array":["Envelope","Rows"],"path":["Detail","Label"],"error":"input does not match the JSON schema"},
+    {"function":"json_parse_array_field","input":"{\"Envelope\":{\"Rows\":[{\"Detail\":{\"Label\":7}}]}}","array":["Envelope","Rows"],"path":["Detail","Label"],"error":"input does not match the JSON schema"},
+    {"function":"json_parse_array_field","input":"{\"Envelope\":{\"Rows\":[{\"Detail\":{\"Label\":\"kept\"}}]}}","array":["Envelope","Rows"],"path":["Detail","Label"],"expected":"kept"}
+  ]
+}

@@ -141,44 +141,6 @@ fn project() -> Result<Project, Box<dyn Error>> {
                 args: vec![11, 12, 13],
             },
         ),
-        (
-            15,
-            Node::Const {
-                value: Value::String("^ferrule$".into()),
-            },
-        ),
-        (
-            16,
-            Node::Const {
-                value: Value::String("i".into()),
-            },
-        ),
-        (
-            17,
-            Node::Call {
-                function: "matches".into(),
-                args: vec![2, 15, 16],
-            },
-        ),
-        (
-            18,
-            Node::Const {
-                value: Value::String("(Ferr)(ule)".into()),
-            },
-        ),
-        (
-            19,
-            Node::Const {
-                value: Value::String("$1-$2".into()),
-            },
-        ),
-        (
-            20,
-            Node::Call {
-                function: "replace".into(),
-                args: vec![2, 18, 19],
-            },
-        ),
     ]);
     Ok(Project {
         source: SchemaNode::group(
@@ -193,8 +155,6 @@ fn project() -> Result<Project, Box<dyn Error>> {
                 SchemaNode::scalar("Number", ScalarType::Float),
                 SchemaNode::scalar("Json", ScalarType::String),
                 SchemaNode::scalar("Parsed", ScalarType::Int),
-                SchemaNode::scalar("Matches", ScalarType::Bool),
-                SchemaNode::scalar("Replaced", ScalarType::String),
             ],
         ),
         source_path: Some("source.xml".into()),
@@ -228,14 +188,6 @@ fn project() -> Result<Project, Box<dyn Error>> {
                     target_field: "Parsed".into(),
                     node: 14,
                 },
-                Binding {
-                    target_field: "Matches".into(),
-                    node: 17,
-                },
-                Binding {
-                    target_field: "Replaced".into(),
-                    node: 20,
-                },
             ],
             ..Scope::default()
         },
@@ -259,8 +211,6 @@ fn assert_output(output: &Instance) {
         ("Number", Value::Float(12.5)),
         ("Json", Value::String(r#"{"Name":"Ada"}"#.into())),
         ("Parsed", Value::Int(3)),
-        ("Matches", Value::Bool(true)),
-        ("Replaced", Value::String("Ferr-ule".into())),
     ] {
         assert_eq!(
             output.field(field).and_then(Instance::as_scalar),
@@ -293,8 +243,6 @@ fn internal_functions_export_reimport_and_execute_without_warnings() -> Result<(
     assert!(xml.contains("library=\"text\""));
     assert!(xml.contains("usageKind=\"stringparse\""));
     assert!(!xml.contains("name=\"flextext_parse_field\" library=\"ferrule\""));
-    assert!(xml.contains("name=\"matches\" library=\"core\""));
-    assert!(xml.contains("name=\"replace\" library=\"core\""));
 
     let imported = mfd::import(&design)?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);

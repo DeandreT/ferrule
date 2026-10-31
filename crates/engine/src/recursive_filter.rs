@@ -282,7 +282,7 @@ fn filter_items<'a>(
     for (index, item) in items.iter().enumerate() {
         let slot = positions.len();
         context.push(item);
-        positions.push(position(plan.items(), index));
+        positions.push(position(plan.items(), index, context.len() - 1));
         let mut in_progress = HashSet::new();
         let keep = match &owned {
             Some((recursion, group)) => {
@@ -342,7 +342,7 @@ fn filter_children<'a>(
     for (index, child) in children.iter().enumerate() {
         let slot = positions.len();
         context.push(child);
-        positions.push(position(plan.children(), index));
+        positions.push(position(plan.children(), index, context.len() - 1));
         let owned = owned.as_ref().map(|(recursion, _)| {
             (
                 *recursion,
@@ -357,8 +357,9 @@ fn filter_children<'a>(
     Ok(Instance::Repeated(output))
 }
 
-fn position(collection: &str, index: usize) -> PositionFrame {
+fn position(collection: &str, index: usize, context_slot: usize) -> PositionFrame {
     PositionFrame {
+        binding: crate::source_iteration::InstanceBinding::ContextSlot(context_slot),
         generated_origin: None,
         collection: vec![collection.to_owned()],
         index: index + 1,

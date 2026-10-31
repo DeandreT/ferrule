@@ -45,18 +45,35 @@ mod export;
 mod groups;
 mod resources;
 mod restriction;
+mod schema_links;
 mod substitution;
 mod substitution_expansion;
 mod type_alternative_profiles;
+mod wildcard_exclusions;
+mod wildcard_ports;
 
 use resources::SchemaReader;
 pub use resources::XmlSchemaByteReader;
+use schema_links::{Follow, LinkedSchema};
 use substitution_expansion::attach_substitution_alternatives;
 use type_alternative_profiles::{incompatible_attribute_use, incompatible_optional_occurrence};
+use wildcard_exclusions::{ExclusionSyntax, Exclusions, NamespaceContext, WildcardKind};
 
 pub use export::{XsdExportArtifact, XsdExportSet, export, export_namespace, export_set};
 
 const MAX_MATERIALIZED_SCHEMA_ELEMENTS: usize = 4_096;
+/// Most nesting and reference levels one XSD import may have open at once.
+/// Each element declaration or reference, named complex type reference
+/// (including a derivation base), complex type content, compositor, and
+/// model or attribute group reference takes one level. That allows about 64
+/// nested elements of named types, 85 of anonymous types, or 128 derivation
+/// or group hops. The import recurses once per level, and the deepest shape
+/// this allows uses about 3 MiB of stack in unoptimized and AddressSanitizer
+/// builds, under half of a default 8 MiB main thread.
+const MAX_IMPORT_DEPTH: usize = 256;
+/// Bounds the iterative discovery of derived types below one base. Resolving
+/// a derivation takes two import levels per hop, so a discovered type more
+/// than about 128 hops below its base fails with the import depth limit.
 const MAX_TYPE_DERIVATION_DEPTH: usize = 256;
 const MAX_SCHEMA_BYTES: u64 = 64 * 1024 * 1024;
 const ALTERNATIVE_VIEW_NAMESPACE: &str = "urn:ferrule:xsd:group-alternatives";
@@ -85,6 +102,8 @@ struct ParseState {
     declaration_paths: BTreeMap<DeclarationQuery, Option<PathBuf>>,
     materialized_elements: usize,
     materialization_limit_reached: bool,
+    depth: usize,
+    depth_limit_reached: bool,
     unsupported_particle: Option<XmlFormatError>,
     unsupported_default: Option<XmlFormatError>,
     unsupported_schema_group: Option<XmlFormatError>,
@@ -94,6 +113,9 @@ struct ParseState {
     unsupported_substitution: Option<XmlFormatError>,
     unsupported_wildcard: Option<XmlFormatError>,
     substitutions: substitution::SubstitutionIndex,
+    /// Local names of element declarations left without a namespace because
+    /// their document is reached through several namespace contexts.
+    ambiguous_unqualified_elements: BTreeSet<String>,
 }
 
 enum ComplexTypeResolution {
@@ -104,7 +126,19 @@ enum ComplexTypeResolution {
 #[derive(Clone)]
 struct CachedComplexType {
     group: ParsedComplexType,
+    /// The content before projected wildcard ports were resolved, for
+    /// derivations that resolve them against their own elements.
+    content: ParsedComplexType,
     anchor: String,
+}
+
+/// How a named complex type is used.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ComplexTypeUse {
+    /// As complete content, with projected wildcard ports resolved.
+    Complete,
+    /// As an extension base, with projected wildcard ports still marked.
+    Base,
 }
 
 #[derive(Clone, Default)]
@@ -168,6 +202,20 @@ impl ParseState {
         true
     }
 
+    /// Runs `parse` one import level deeper, or returns `fallback` past
+    /// [`MAX_IMPORT_DEPTH`]. [`Self::finish`] then refuses the import, so
+    /// every later level falls back at once instead of descending further.
+    fn nested<T>(&mut self, fallback: impl FnOnce() -> T, parse: impl FnOnce(&mut Self) -> T) -> T {
+        if self.depth_limit_reached || self.depth >= MAX_IMPORT_DEPTH {
+            self.depth_limit_reached = true;
+            return fallback();
+        }
+        self.depth += 1;
+        let result = parse(self);
+        self.depth -= 1;
+        result
+    }
+
     fn has_element_capacity(&mut self) -> bool {
         let has_capacity = self.materialized_elements < MAX_MATERIALIZED_SCHEMA_ELEMENTS;
         if !has_capacity {
@@ -196,7 +244,12 @@ impl ParseState {
         path
     }
 
-    fn finish(self, schema: SchemaNode) -> Result<SchemaNode, XmlFormatError> {
+    fn finish(self, mut schema: SchemaNode) -> Result<SchemaNode, XmlFormatError> {
+        // Checked first: the levels past the limit were not imported, so the
+        // other refusals may only describe the truncated schema.
+        if self.depth_limit_reached {
+            return Err(depth_limit_error());
+        }
         if let Some(error) = self.unsupported_particle {
             return Err(error);
         }
@@ -226,6 +279,12 @@ impl ParseState {
                 limit: MAX_MATERIALIZED_SCHEMA_ELEMENTS,
             });
         }
+        if wildcard_exclusions::has_unresolved_mark(&schema) {
+            return Err(unsupported_wildcard(
+                "##definedSibling was not resolved against a complete complex type",
+            ));
+        }
+        qualify_wildcard_siblings(&mut schema);
         if let Some(group) = invalid_repeating_sequence_group(&schema) {
             return Err(XmlFormatError::InvalidRepeatingSequenceSchema {
                 group: group.to_string(),
@@ -262,6 +321,46 @@ impl ParseState {
     fn reject_wildcard(&mut self, error: XmlFormatError) {
         self.unsupported_wildcard.get_or_insert(error);
     }
+}
+
+/// Beside a `lax` or `strict` element wildcard, a qualified element with a
+/// declared local name is a valid wildcard item rather than that declaration.
+/// Element declarations without namespace identity, which only a schema
+/// without a target namespace yields there, therefore take their explicit
+/// unqualified identity. Closed content keeps the legacy local-name match,
+/// since no valid instance has such a look-alike.
+fn qualify_wildcard_siblings(node: &mut SchemaNode) {
+    if is_virtual_wildcard(node) {
+        return;
+    }
+    let SchemaKind::Group {
+        children, dynamic, ..
+    } = &mut node.kind
+    else {
+        return;
+    };
+    let open = children.iter().any(|child| {
+        child.name == XML_ELEMENTS_FIELD
+            && child.xml_wildcard_process_contents != XmlWildcardProcessContents::Skip
+    });
+    for child in children.iter_mut() {
+        if open
+            && !child.attribute
+            && !child.text
+            && !is_virtual_wildcard(child)
+            && child.xml_namespace.is_none()
+        {
+            child.xml_namespace = Some(XmlNamespace::Unqualified);
+        }
+        qualify_wildcard_siblings(child);
+    }
+    if let Some(dynamic) = dynamic {
+        qualify_wildcard_siblings(dynamic);
+    }
+}
+
+fn is_virtual_wildcard(node: &SchemaNode) -> bool {
+    node.name == XML_ELEMENTS_FIELD || node.name == XML_ATTRIBUTES_FIELD
 }
 
 /// Reads one XML Schema document with bounded UTF-8/UTF-16 decoding.
@@ -532,6 +631,7 @@ fn import_type_with_reader(
                     local,
                     &mut state,
                     Some(local),
+                    ComplexTypeUse::Complete,
                 )
             })
         }
@@ -650,6 +750,19 @@ fn parse_element(
         .attribute("name")
         .or_else(|| el.attribute("ref").map(local_name))
         .unwrap_or_default();
+    state.nested(
+        || SchemaNode::scalar(fallback_name, ScalarType::String),
+        |state| parse_element_level(el, schema_el, schema_path, fallback_name, state),
+    )
+}
+
+fn parse_element_level(
+    el: &Node,
+    schema_el: &Node,
+    schema_path: &Path,
+    fallback_name: &str,
+    state: &mut ParseState,
+) -> SchemaNode {
     if !state.reserve_element() {
         return SchemaNode::scalar(fallback_name, ScalarType::String);
     }
@@ -703,6 +816,7 @@ fn parse_element(
         state.substitutions.effective_namespace(schema_path),
         false,
     );
+    record_ambiguous_namespace(&node, schema_el, schema_path, state);
     apply_exported_alternative_view(el, &mut node, schema_el, schema_path, state);
     apply_fixed_value(el, &mut node);
     apply_default_value(el, &mut node, state);
@@ -713,6 +827,24 @@ fn parse_element(
         node.nillable()
     } else {
         node
+    }
+}
+
+/// Records an element declaration whose namespace is unknowable because its
+/// chameleon document is reached through several namespace contexts.
+fn record_ambiguous_namespace(
+    node: &SchemaNode,
+    schema_el: &Node,
+    schema_path: &Path,
+    state: &mut ParseState,
+) {
+    if node.xml_namespace.is_none()
+        && schema_el.attribute("targetNamespace").is_none()
+        && state.substitutions.namespace_contexts(schema_path) > 1
+    {
+        state
+            .ambiguous_unqualified_elements
+            .insert(node.name.clone());
     }
 }
 
@@ -931,14 +1063,7 @@ fn attach_type_alternatives(
     };
     let base_is_abstract = complex_type_is_abstract(schema_el, schema_path, base_qname, state);
     let mut index = DerivedTypeIndex::default();
-    collect_derived_type_declarations(
-        schema_el,
-        schema_path,
-        schema_el.attribute("targetNamespace"),
-        &mut BTreeSet::new(),
-        &mut index,
-        &state.reader,
-    );
+    collect_derived_type_declarations(schema_el, schema_path, &mut index, &state.reader);
     if index.limit_reached {
         state.materialization_limit_reached = true;
         return;
@@ -962,6 +1087,12 @@ fn attach_type_alternatives(
         .map(|child| child.name.clone())
         .collect::<Vec<_>>();
     let original_children = base_children.clone();
+    // One `element()` field serves every alternative, so all must resolve
+    // the shared wildcard to one excluded-name set. Each alternative is
+    // checked first, as every later difference refuses or returns silently.
+    let base_excluded = node
+        .child(XML_ELEMENTS_FIELD)
+        .map(|wildcard| wildcard.xml_wildcard_excluded_names.clone());
     let mut resolved = Vec::new();
     for derived in &derived {
         let Ok(text) = state.reader.read(&derived.path) else {
@@ -981,9 +1112,22 @@ fn attach_type_alternatives(
             &derived.local,
             state,
             None,
+            ComplexTypeUse::Complete,
         ) else {
             return;
         };
+        if let Some(base_excluded) = &base_excluded
+            && group
+                .children
+                .iter()
+                .find(|child| child.name == XML_ELEMENTS_FIELD)
+                .is_some_and(|wildcard| &wildcard.xml_wildcard_excluded_names != base_excluded)
+        {
+            state.reject_wildcard(unsupported_wildcard(
+                "the declared type and an xsi:type alternative resolve one wildcard to different excluded names",
+            ));
+            return;
+        }
         if !group.repeating_sequences.is_empty()
             || group.repeating_choices != node.xml_repeating_choices
         {
@@ -1207,20 +1351,64 @@ fn complex_type_abstractness(
 fn collect_derived_type_declarations(
     schema_el: &Node,
     schema_path: &Path,
+    index: &mut DerivedTypeIndex,
+    reader: &SchemaReader,
+) {
+    let mut visited = BTreeSet::new();
+    let Some(root) = index_derived_type_declarations(
+        schema_el,
+        schema_path,
+        schema_el.attribute("targetNamespace"),
+        &mut visited,
+        index,
+        reader,
+    ) else {
+        return;
+    };
+    schema_links::walk::<()>(root, |schema, link| {
+        let Some(location) = &link.location else {
+            return Follow::Skip;
+        };
+        let Some(dependency) = reader.dependency(&schema.path, location) else {
+            return Follow::Skip;
+        };
+        let Ok(text) = reader.read(&dependency) else {
+            return Follow::Skip;
+        };
+        let Ok(document) = roxmltree::Document::parse(&text) else {
+            return Follow::Skip;
+        };
+        index_derived_type_declarations(
+            &document.root_element(),
+            &dependency,
+            schema.inherited_namespace(link),
+            &mut visited,
+            index,
+            reader,
+        )
+        .map_or(Follow::Skip, Follow::Descend)
+    });
+}
+
+/// Indexes one schema document's derived types, returning the document for
+/// its links unless it was already visited or the index is full.
+fn index_derived_type_declarations(
+    schema_el: &Node,
+    schema_path: &Path,
     inherited_namespace: Option<&str>,
     visited: &mut BTreeSet<(PathBuf, Option<String>)>,
     index: &mut DerivedTypeIndex,
     reader: &SchemaReader,
-) {
+) -> Option<LinkedSchema> {
     if index.limit_reached {
-        return;
+        return None;
     }
     let path = reader.identity(schema_path);
     let effective_namespace = schema_el
         .attribute("targetNamespace")
         .or(inherited_namespace);
     if !visited.insert((path.clone(), effective_namespace.map(str::to_string))) {
-        return;
+        return None;
     }
     for declaration in schema_el
         .children()
@@ -1250,39 +1438,10 @@ fn collect_derived_type_declarations(
             restriction,
         });
         if index.limit_reached {
-            return;
+            return None;
         }
     }
-
-    for link in schema_el
-        .children()
-        .filter(|node| node.is_element() && matches!(node.tag_name().name(), "include" | "import"))
-    {
-        let Some(location) = link.attribute("schemaLocation") else {
-            continue;
-        };
-        let Some(dependency) = reader.dependency(&path, location) else {
-            continue;
-        };
-        let Ok(text) = reader.read(&dependency) else {
-            continue;
-        };
-        let Ok(document) = roxmltree::Document::parse(&text) else {
-            continue;
-        };
-        let dependency_schema = document.root_element();
-        let dependency_inherited = (link.tag_name().name() == "include")
-            .then_some(effective_namespace)
-            .flatten();
-        collect_derived_type_declarations(
-            &dependency_schema,
-            &dependency,
-            dependency_inherited,
-            visited,
-            index,
-            reader,
-        );
-    }
+    Some(LinkedSchema::new(schema_el, path, effective_namespace))
 }
 
 fn expanded_qname_identity(
@@ -1389,6 +1548,7 @@ fn parse_element_declaration_inner(
             state.substitutions.effective_namespace(schema_path),
             false,
         );
+        record_ambiguous_namespace(&node, schema_el, schema_path, state);
         return Some(node);
     }
     let mut node = parse_element(declaration, schema_el, schema_path, state);
@@ -1408,6 +1568,24 @@ fn resolve_complex_type(
     state: &mut ParseState,
     occurrence_anchor: Option<&str>,
 ) -> Option<ComplexTypeResolution> {
+    resolve_complex_type_use(
+        qname,
+        schema_el,
+        schema_path,
+        state,
+        occurrence_anchor,
+        ComplexTypeUse::Complete,
+    )
+}
+
+fn resolve_complex_type_use(
+    qname: &str,
+    schema_el: &Node,
+    schema_path: &Path,
+    state: &mut ParseState,
+    occurrence_anchor: Option<&str>,
+    type_use: ComplexTypeUse,
+) -> Option<ComplexTypeResolution> {
     let local = local_name(qname);
     if is_local_qname(schema_el, qname)
         && let Some(declaration) = top_level(schema_el, "complexType", local)
@@ -1419,6 +1597,7 @@ fn resolve_complex_type(
             local,
             state,
             occurrence_anchor,
+            type_use,
         );
     }
 
@@ -1434,6 +1613,7 @@ fn resolve_complex_type(
         local,
         state,
         occurrence_anchor,
+        type_use,
     )
 }
 
@@ -1444,11 +1624,40 @@ fn parse_complex_type_declaration(
     name: &str,
     state: &mut ParseState,
     occurrence_anchor: Option<&str>,
+    type_use: ComplexTypeUse,
+) -> Option<ComplexTypeResolution> {
+    state.nested(
+        || None,
+        |state| {
+            parse_complex_type_declaration_level(
+                declaration,
+                schema_el,
+                schema_path,
+                name,
+                state,
+                occurrence_anchor,
+                type_use,
+            )
+        },
+    )
+}
+
+fn parse_complex_type_declaration_level(
+    declaration: &Node,
+    schema_el: &Node,
+    schema_path: &Path,
+    name: &str,
+    state: &mut ParseState,
+    occurrence_anchor: Option<&str>,
+    type_use: ComplexTypeUse,
 ) -> Option<ComplexTypeResolution> {
     let identity = state.declaration(schema_path, "complexType", name);
     if let Some(cached) = state.complex_types.get(&identity).cloned() {
         let anchor = occurrence_anchor.unwrap_or(&cached.anchor);
-        let mut group = cached.group;
+        let mut group = match type_use {
+            ComplexTypeUse::Complete => cached.group,
+            ComplexTypeUse::Base => cached.content,
+        };
         rebase_recursive_anchor(&mut group.children, &cached.anchor, anchor);
         return state
             .reserve_elements(group.children.iter().map(schema_node_count).sum())
@@ -1466,17 +1675,24 @@ fn parse_complex_type_declaration(
         .or_else(|| state.complex_type_anchors.last().cloned())
         .unwrap_or_else(|| name.to_string());
     state.complex_type_anchors.push(anchor.clone());
-    let group = parse_complex_type(declaration, schema_el, schema_path, state);
+    let content = parse_complex_type_content(declaration, schema_el, schema_path, state);
+    let mut group = content.clone();
+    wildcard_exclusions::resolve(&mut group, state);
+    wildcard_ports::resolve(&mut group, state);
     state.complex_type_anchors.pop();
     state.leave();
     state.complex_types.insert(
         identity,
         CachedComplexType {
             group: group.clone(),
+            content: content.clone(),
             anchor,
         },
     );
-    Some(ComplexTypeResolution::Group(group))
+    Some(ComplexTypeResolution::Group(match type_use {
+        ComplexTypeUse::Complete => group,
+        ComplexTypeUse::Base => content,
+    }))
 }
 
 fn rebase_recursive_anchor(children: &mut [SchemaNode], from: &str, to: &str) {
@@ -1577,79 +1793,51 @@ fn search_dependencies(
     reader: &SchemaReader,
 ) -> Option<PathBuf> {
     let (wanted_namespace, effective_namespace) = namespaces;
-    for link in schema_el
-        .children()
-        .filter(|node| node.is_element() && matches!(node.tag_name().name(), "include" | "import"))
-    {
-        let is_import = link.tag_name().name() == "import";
-        if is_import {
+    let root = LinkedSchema::new(schema_el, schema_path.to_path_buf(), effective_namespace);
+    schema_links::walk(root, |schema, link| {
+        if !link.include {
             let Some(wanted) = wanted_namespace else {
-                continue;
+                return Follow::Skip;
             };
             if link
-                .attribute("namespace")
+                .namespace
+                .as_deref()
                 .is_some_and(|namespace| namespace != wanted)
             {
-                continue;
+                return Follow::Skip;
             }
         }
-
-        let Some(location) = link.attribute("schemaLocation") else {
-            continue;
+        let Some(location) = &link.location else {
+            return Follow::Skip;
         };
-        let Some(path) = reader.dependency(schema_path, location) else {
-            continue;
+        let Some(dependency) = reader.dependency(&schema.path, location) else {
+            return Follow::Skip;
         };
-        let inherited_namespace = (!is_import).then_some(effective_namespace).flatten();
-        if let Some(found) = search_schema_file(
-            &path,
-            tag,
-            name,
-            wanted_namespace,
-            inherited_namespace,
-            visited,
-            reader,
-        ) {
-            return Some(found);
+        let path = reader.identity(&dependency);
+        if !visited.insert(path.clone()) {
+            return Follow::Skip;
         }
-    }
-    None
-}
-
-fn search_schema_file(
-    schema_path: &Path,
-    tag: &str,
-    name: &str,
-    wanted_namespace: Option<&str>,
-    inherited_namespace: Option<&str>,
-    visited: &mut BTreeSet<PathBuf>,
-    reader: &SchemaReader,
-) -> Option<PathBuf> {
-    let path = reader.identity(schema_path);
-    if !visited.insert(path.clone()) {
-        return None;
-    }
-    let text = reader.read(&path).ok()?;
-    let doc = roxmltree::Document::parse(&text).ok()?;
-    let schema_el = doc.root_element();
-    let declared_namespace = schema_el.attribute("targetNamespace");
-    let effective_namespace = declared_namespace.or(inherited_namespace);
-
-    if wanted_namespace.is_none_or(|wanted| effective_namespace == Some(wanted))
-        && top_level(&schema_el, tag, name).is_some()
-    {
-        return Some(path);
-    }
-
-    search_dependencies(
-        &schema_el,
-        &path,
-        tag,
-        name,
-        (wanted_namespace, effective_namespace),
-        visited,
-        reader,
-    )
+        let Ok(text) = reader.read(&path) else {
+            return Follow::Skip;
+        };
+        let Ok(doc) = roxmltree::Document::parse(&text) else {
+            return Follow::Skip;
+        };
+        let dependency_schema = doc.root_element();
+        let effective_namespace = dependency_schema
+            .attribute("targetNamespace")
+            .or(schema.inherited_namespace(link));
+        if wanted_namespace.is_none_or(|wanted| effective_namespace == Some(wanted))
+            && top_level(&dependency_schema, tag, name).is_some()
+        {
+            return Follow::Found(path);
+        }
+        Follow::Descend(LinkedSchema::new(
+            &dependency_schema,
+            path,
+            effective_namespace,
+        ))
+    })
 }
 
 fn normalized_path(path: &Path) -> PathBuf {
@@ -1672,7 +1860,35 @@ fn parse_complex_type(
     schema_path: &Path,
     state: &mut ParseState,
 ) -> ParsedComplexType {
+    let mut parsed = parse_complex_type_content(complex_type, schema_el, schema_path, state);
+    wildcard_exclusions::resolve(&mut parsed, state);
+    wildcard_ports::resolve(&mut parsed, state);
+    parsed
+}
+
+/// Parses a complex type's content, leaving projected wildcard ports marked
+/// so that an enclosing derivation can resolve them against its base.
+fn parse_complex_type_content(
+    complex_type: &Node,
+    schema_el: &Node,
+    schema_path: &Path,
+    state: &mut ParseState,
+) -> ParsedComplexType {
+    state.nested(ParsedComplexType::default, |state| {
+        parse_complex_type_content_level(complex_type, schema_el, schema_path, state)
+    })
+}
+
+fn parse_complex_type_content_level(
+    complex_type: &Node,
+    schema_el: &Node,
+    schema_path: &Path,
+    state: &mut ParseState,
+) -> ParsedComplexType {
     let mut parsed = ParsedComplexType::default();
+    if let Some(reason) = open_content_refusal(complex_type, schema_el) {
+        state.reject_wildcard(XmlFormatError::UnsupportedXmlOpenContent { reason });
+    }
     if complex_type
         .attribute("mixed")
         .is_some_and(|value| matches!(value, "true" | "1"))
@@ -1750,7 +1966,14 @@ fn parse_complex_type(
                 {
                     if let Some(base) = ext.attribute("base")
                         && let Some(ComplexTypeResolution::Group(base_group)) =
-                            resolve_complex_type(base, schema_el, schema_path, state, None)
+                            resolve_complex_type_use(
+                                base,
+                                schema_el,
+                                schema_path,
+                                state,
+                                None,
+                                ComplexTypeUse::Base,
+                            )
                     {
                         parsed.extend(base_group);
                     }
@@ -1763,7 +1986,12 @@ fn parse_complex_type(
                             .children
                             .push(SchemaNode::scalar(XML_TEXT_FIELD, ScalarType::String).text());
                     }
-                    parsed.extend(parse_complex_type(&ext, schema_el, schema_path, state));
+                    parsed.extend(parse_complex_type_content(
+                        &ext,
+                        schema_el,
+                        schema_path,
+                        state,
+                    ));
                 } else if let Some(restriction) = child
                     .children()
                     .find(|n| n.is_element() && n.tag_name().name() == "restriction")
@@ -1824,7 +2052,12 @@ fn parse_complex_type(
                             .children
                             .push(SchemaNode::scalar(XML_TEXT_FIELD, ScalarType::String).text());
                     }
-                    parsed.extend(parse_complex_type(&content, schema_el, schema_path, state));
+                    parsed.extend(parse_complex_type_content(
+                        &content,
+                        schema_el,
+                        schema_path,
+                        state,
+                    ));
                 }
             }
             "anyAttribute" => match parse_attribute_wildcard(&child, schema_el, schema_path, state)
@@ -2099,6 +2332,10 @@ fn collapse_compatible_xml_names(nodes: &mut Vec<SchemaNode>) {
         alternatives.extend(nodes[index].xml_name_alternatives.iter().cloned());
         nodes[previous].xml_name_alternatives.extend(alternatives);
         if nodes[previous].xml_name_alternatives_are_valid() {
+            // The merged port is declared when either name was declared.
+            if wildcard_ports::is_declared_element(&nodes[index]) {
+                wildcard_ports::unmark(&mut nodes[previous]);
+            }
             nodes.remove(index);
         } else {
             nodes[previous].xml_name_alternatives.truncate(original_len);
@@ -2107,18 +2344,21 @@ fn collapse_compatible_xml_names(nodes: &mut Vec<SchemaNode>) {
     }
 }
 
+// Particle walks like this one keep their own stacks: compositors can nest
+// far deeper than the import depth limit, and the walks run ahead of it.
 fn nested_non_sequence_compositor(particle: &Node<'_, '_>) -> Option<String> {
-    for child in particle.children().filter(|node| node.is_element()) {
-        if is_disabled_particle(&child) {
+    let mut pending = vec![particle.children()];
+    while let Some(children) = pending.last_mut() {
+        let Some(child) = children.next() else {
+            pending.pop();
+            continue;
+        };
+        if !child.is_element() || is_disabled_particle(&child) {
             continue;
         }
         match child.tag_name().name() {
             "choice" | "all" => return Some(child.tag_name().name().to_string()),
-            "sequence" => {
-                if let Some(compositor) = nested_non_sequence_compositor(&child) {
-                    return Some(compositor);
-                }
-            }
+            "sequence" => pending.push(child.children()),
             // Element-local complex types own a separate particle tree.
             "element" => {}
             _ => {}
@@ -2128,8 +2368,16 @@ fn nested_non_sequence_compositor(particle: &Node<'_, '_>) -> Option<String> {
 }
 
 fn nested_repeating_multi_member_sequence(particle: &Node<'_, '_>) -> Option<usize> {
-    for child in particle.children().filter(|node| node.is_element()) {
-        if is_disabled_particle(&child) || child.tag_name().name() == "element" {
+    let mut pending = vec![particle.children()];
+    while let Some(children) = pending.last_mut() {
+        let Some(child) = children.next() else {
+            pending.pop();
+            continue;
+        };
+        if !child.is_element()
+            || is_disabled_particle(&child)
+            || child.tag_name().name() == "element"
+        {
             continue;
         }
         if child.tag_name().name() == "sequence" && is_repeating(&child) {
@@ -2139,9 +2387,7 @@ fn nested_repeating_multi_member_sequence(particle: &Node<'_, '_>) -> Option<usi
                 return Some(members.len());
             }
         }
-        if let Some(count) = nested_repeating_multi_member_sequence(&child) {
-            return Some(count);
-        }
+        pending.push(child.children());
     }
     None
 }
@@ -2165,8 +2411,14 @@ fn collect_sequence_members(
 ) {
     let optional = inherited_optional || (!root && particle.attribute("minOccurs") == Some("0"));
     let repeating = inherited_repeating || (!root && is_repeating(particle));
-    for child in particle.children().filter(|node| node.is_element()) {
-        if is_disabled_particle(&child) {
+    let mut pending = vec![(particle.children(), optional, repeating)];
+    while let Some((children, optional, repeating)) = pending.last_mut() {
+        let (optional, repeating) = (*optional, *repeating);
+        let Some(child) = children.next() else {
+            pending.pop();
+            continue;
+        };
+        if !child.is_element() || is_disabled_particle(&child) {
             continue;
         }
         match child.tag_name().name() {
@@ -2179,9 +2431,11 @@ fn collect_sequence_members(
                 required: !optional && child.attribute("minOccurs") != Some("0"),
                 repeating: repeating || is_repeating(&child),
             }),
-            "sequence" | "choice" | "all" => {
-                collect_sequence_members(&child, false, optional, repeating, out);
-            }
+            "sequence" | "choice" | "all" => pending.push((
+                child.children(),
+                optional || child.attribute("minOccurs") == Some("0"),
+                repeating || is_repeating(&child),
+            )),
             _ => {}
         }
     }
@@ -2192,6 +2446,31 @@ fn collect_sequence_members(
 /// repeating (the "wrap a single element in a repeating sequence" idiom) --
 /// it gets propagated onto that sequence's own element(s).
 fn collect_sequence(
+    sequence: &Node,
+    inherited_repeating: bool,
+    schema_el: &Node,
+    schema_path: &Path,
+    state: &mut ParseState,
+    out: &mut Vec<SchemaNode>,
+    repeating_choices: &mut Vec<XmlRepeatingChoice>,
+) {
+    state.nested(
+        || (),
+        |state| {
+            collect_sequence_level(
+                sequence,
+                inherited_repeating,
+                schema_el,
+                schema_path,
+                state,
+                out,
+                repeating_choices,
+            );
+        },
+    );
+}
+
+fn collect_sequence_level(
     sequence: &Node,
     inherited_repeating: bool,
     schema_el: &Node,
@@ -2270,7 +2549,8 @@ fn collect_sequence(
 /// discarding its redundant optional wrapper. Unknown particles and named
 /// group expansion do not supply evidence for this narrow physical grammar.
 fn sequence_contents_accept_empty(sequence: &Node<'_, '_>, depth: usize) -> bool {
-    if depth >= MAX_TYPE_DERIVATION_DEPTH {
+    // A deeper sequence has already exceeded the import depth limit.
+    if depth >= MAX_IMPORT_DEPTH {
         return false;
     }
     sequence.children().filter(Node::is_element).all(|child| {
@@ -2309,6 +2589,7 @@ fn collect_sequence_contents(
     out: &mut Vec<SchemaNode>,
     repeating_choices: &mut Vec<XmlRepeatingChoice>,
 ) {
+    let start = out.len();
     for child in sequence.children().filter(|n| n.is_element()) {
         if is_disabled_particle(&child) {
             continue;
@@ -2345,11 +2626,38 @@ fn collect_sequence_contents(
                             choice.repeating = true;
                         }
                     }
-                    push_projected_wildcard_children(out, children);
-                    if sequence.tag_name().name() != "choice"
-                        && let Some(choice) = choice
+                    let process = if children
+                        .iter()
+                        .any(|child| child.name == XML_ELEMENTS_FIELD)
                     {
-                        repeating_choices.push(choice);
+                        XmlWildcardProcessContents::Lax
+                    } else {
+                        XmlWildcardProcessContents::Strict
+                    };
+                    let in_choice = sequence.tag_name().name() == "choice";
+                    let absorbed = push_projected_wildcard_children(out, children, process);
+                    // A single-occurrence declared sibling before the wildcard
+                    // leaves its extra occurrences to it; see `wildcard_ports`.
+                    if !in_choice
+                        && process == XmlWildcardProcessContents::Strict
+                        && absorbed.iter().any(|port| !port.repeating)
+                    {
+                        state.reject_wildcard(unsupported_wildcard(
+                            wildcard_ports::STRICT_SIBLING_REASON,
+                        ));
+                    }
+                    if !in_choice && let Some(mut choice) = choice {
+                        // A single-occurrence choice does not own the declared
+                        // sibling; a repeating one keeps its occurrence order.
+                        if !choice.repeating {
+                            choice
+                                .members
+                                .retain(|member| !absorbed.iter().any(|port| &port.name == member));
+                        }
+                        if choice.members.len() > 1 {
+                            wildcard_ports::mark_choice(&mut choice);
+                            repeating_choices.push(choice);
+                        }
                     }
                 }
                 Err(error) => state.reject_wildcard(error),
@@ -2407,19 +2715,40 @@ fn collect_sequence_contents(
             _ => {}
         }
     }
+    if sequence.tag_name().name() == "choice" {
+        wildcard_ports::drop_choice_alternatives(out, start);
+    }
 }
 
-fn push_projected_wildcard_children(out: &mut Vec<SchemaNode>, children: Vec<SchemaNode>) {
-    for child in children {
-        if out.iter().any(|existing| existing == &child) {
+/// Pushes marked projected ports and returns the declared elements that
+/// took the place of equal ones.
+fn push_projected_wildcard_children(
+    out: &mut Vec<SchemaNode>,
+    children: Vec<SchemaNode>,
+    process: XmlWildcardProcessContents,
+) -> Vec<wildcard_ports::AbsorbedPort> {
+    let mut absorbed = Vec::new();
+    for mut child in children {
+        if let Some(existing) = out
+            .iter()
+            .find(|existing| wildcard_ports::same_port(existing, &child))
+        {
             // A declaration already projected explicitly, or by an earlier
             // open extension position, owns one mapping port. The retained
             // ordered-content stream preserves parsed occurrence positions;
             // newly constructed generic values use the first open position.
+            if wildcard_ports::is_declared_element(existing) {
+                absorbed.push(wildcard_ports::AbsorbedPort {
+                    name: child.name,
+                    repeating: existing.repeating,
+                });
+            }
             continue;
         }
+        wildcard_ports::mark(&mut child, process);
         out.push(child);
     }
+    absorbed
 }
 
 fn wildcard_choice_projection(
@@ -2498,30 +2827,35 @@ fn parse_wildcard(
             "unbounded wildcards require minOccurs=\"0\"",
         ));
     }
-    if wildcard
-        .attributes()
-        .any(|attribute| matches!(attribute.name(), "notNamespace" | "notQName"))
+    let syntax = ExclusionSyntax::read(wildcard, WildcardKind::Element)?;
+    let context = NamespaceContext::new(schema, schema_path, state);
+    let namespace = match syntax
+        .as_ref()
+        .and_then(|syntax| syntax.namespace_constraint(&context, WildcardKind::Element))
     {
-        return Err(unsupported_wildcard(
-            "XSD 1.1 wildcard exclusions are not supported",
-        ));
-    }
-    let target_namespace = schema
-        .attribute("targetNamespace")
-        .or_else(|| state.substitutions.effective_namespace(schema_path));
-    let namespace = parse_wildcard_namespace(
-        wildcard.attribute("namespace").unwrap_or("##any"),
-        target_namespace,
-    )?;
+        Some(namespace) => namespace?,
+        None => parse_wildcard_namespace(
+            wildcard.attribute("namespace").unwrap_or("##any"),
+            context.target,
+        )?,
+    };
+    let exclusions = match &syntax {
+        Some(syntax) => {
+            syntax.names(wildcard, &context, &namespace, WildcardKind::Element, state)?
+        }
+        None => Exclusions::default(),
+    };
     match wildcard.attribute("processContents").unwrap_or("strict") {
         "skip" if !occurrence.repeating && !occurrence.required => Err(unsupported_wildcard(
             "optional single-occurrence skip wildcards require explicit occurrence metadata",
         )),
-        "skip" => Ok(ParsedWildcard::Generic(Box::new(
-            generic_wildcard_schema_with(namespace, occurrence.repeating),
-        ))),
+        "skip" => {
+            let mut generic = generic_wildcard_schema_with(namespace, occurrence.repeating);
+            exclusions.apply(&mut generic)?;
+            Ok(ParsedWildcard::Generic(Box::new(generic)))
+        }
         "strict" => parse_strict_wildcard(namespace, occurrence, state),
-        "lax" => parse_lax_wildcard(namespace, occurrence, state),
+        "lax" => parse_lax_wildcard(namespace, occurrence, &exclusions, state),
         _ => Err(unsupported_wildcard(
             "processContents must be skip, strict, or lax",
         )),
@@ -2543,7 +2877,13 @@ fn parse_strict_wildcard(
             "a matching include or import could not be resolved, so the strict wildcard declaration set is not closed",
         ));
     }
-    let children = parse_known_wildcard_declarations(&namespace, occurrence, true, state)?;
+    let children = parse_known_wildcard_declarations(
+        &namespace,
+        occurrence,
+        true,
+        &Exclusions::default(),
+        state,
+    )?;
     if children.is_empty() {
         return Err(unsupported_wildcard(
             "no matching concrete global element declaration could be resolved for a strict wildcard",
@@ -2556,11 +2896,14 @@ fn parse_strict_wildcard(
 fn parse_lax_wildcard(
     namespace: XmlWildcardNamespaceConstraint,
     occurrence: WildcardOccurrence,
+    exclusions: &Exclusions,
     state: &mut ParseState,
 ) -> Result<ParsedWildcard, XmlFormatError> {
-    let mut children = parse_known_wildcard_declarations(&namespace, occurrence, false, state)?;
+    let mut children =
+        parse_known_wildcard_declarations(&namespace, occurrence, false, exclusions, state)?;
     let mut fallback = generic_wildcard_schema_with(namespace, occurrence.repeating);
     fallback.xml_wildcard_process_contents = XmlWildcardProcessContents::Lax;
+    exclusions.apply(&mut fallback)?;
     children.push(fallback);
     let choice = wildcard_projection_choice(&children, occurrence);
     Ok(ParsedWildcard::Projection { children, choice })
@@ -2570,6 +2913,7 @@ fn parse_known_wildcard_declarations(
     namespace: &XmlWildcardNamespaceConstraint,
     occurrence: WildcardOccurrence,
     strict: bool,
+    exclusions: &Exclusions,
     state: &mut ParseState,
 ) -> Result<Vec<SchemaNode>, XmlFormatError> {
     let declarations = state
@@ -2577,7 +2921,9 @@ fn parse_known_wildcard_declarations(
         .concrete_global_elements()?
         .iter()
         .filter(|declaration| {
-            !declaration.abstract_element && namespace.allows(declaration.namespace.as_deref())
+            !declaration.abstract_element
+                && namespace.allows(declaration.namespace.as_deref())
+                && !exclusions.excludes(declaration.namespace.as_deref(), &declaration.local)
         })
         .cloned()
         .collect::<Vec<_>>();
@@ -2661,6 +3007,8 @@ fn same_xml_element_shape(left: &SchemaNode, right: &SchemaNode) -> bool {
     right.xml_namespace = None;
     left.xml_name_alternatives.clear();
     right.xml_name_alternatives.clear();
+    wildcard_ports::unmark(&mut left);
+    wildcard_ports::unmark(&mut right);
     left == right
 }
 
@@ -2755,26 +3103,34 @@ fn parse_attribute_wildcard(
     schema_path: &Path,
     state: &mut ParseState,
 ) -> Result<Vec<SchemaNode>, XmlFormatError> {
-    if wildcard
-        .attributes()
-        .any(|attribute| matches!(attribute.name(), "notNamespace" | "notQName"))
+    let syntax = ExclusionSyntax::read(wildcard, WildcardKind::Attribute)?;
+    let context = NamespaceContext::new(schema, schema_path, state);
+    let namespace = match syntax
+        .as_ref()
+        .and_then(|syntax| syntax.namespace_constraint(&context, WildcardKind::Attribute))
     {
-        return Err(unsupported_attribute_wildcard(
-            "XSD 1.1 wildcard exclusions are not supported",
-        ));
-    }
-    let target_namespace = schema
-        .attribute("targetNamespace")
-        .or_else(|| state.substitutions.effective_namespace(schema_path));
-    let namespace = parse_wildcard_namespace(
-        wildcard.attribute("namespace").unwrap_or("##any"),
-        target_namespace,
-    )
-    .map_err(|_| {
-        unsupported_attribute_wildcard(
-            "the namespace constraint is not a supported XML Schema wildcard predicate",
+        Some(namespace) => namespace?,
+        None => parse_wildcard_namespace(
+            wildcard.attribute("namespace").unwrap_or("##any"),
+            context.target,
         )
-    })?;
+        .map_err(|_| {
+            unsupported_attribute_wildcard(
+                "the namespace constraint is not a supported XML Schema wildcard predicate",
+            )
+        })?,
+    };
+    let exclusions = match &syntax {
+        Some(syntax) => syntax.names(
+            wildcard,
+            &context,
+            &namespace,
+            WildcardKind::Attribute,
+            state,
+        )?,
+        None => Exclusions::default(),
+    };
+    let excluded_names = exclusions.names(WildcardKind::Attribute)?;
     let process = match wildcard.attribute("processContents").unwrap_or("strict") {
         "skip" => XmlWildcardProcessContents::Skip,
         "lax" => XmlWildcardProcessContents::Lax,
@@ -2802,7 +3158,10 @@ fn parse_attribute_wildcard(
             .substitutions
             .concrete_global_attributes()?
             .iter()
-            .filter(|declaration| namespace.allows(declaration.namespace.as_deref()))
+            .filter(|declaration| {
+                namespace.allows(declaration.namespace.as_deref())
+                    && !exclusions.excludes(declaration.namespace.as_deref(), &declaration.local)
+            })
             .cloned()
             .collect::<Vec<_>>();
         for declaration in declarations {
@@ -2827,7 +3186,11 @@ fn parse_attribute_wildcard(
             ));
         }
     }
-    attributes.push(generic_attribute_wildcard_schema_with(namespace, process));
+    attributes.push(generic_attribute_wildcard_schema_with(
+        namespace,
+        process,
+        excluded_names,
+    ));
     Ok(attributes)
 }
 
@@ -2844,16 +3207,23 @@ fn generic_attribute_wildcard_schema() -> SchemaNode {
     attributes
 }
 
+/// A local-only `skip` wildcard keeps the legacy group without
+/// `NamespaceURI`, unless it excludes names.
 fn generic_attribute_wildcard_schema_with(
     namespace: XmlWildcardNamespaceConstraint,
     process: XmlWildcardProcessContents,
+    excluded_names: Option<ir::XmlWildcardExcludedNames>,
 ) -> SchemaNode {
-    if namespace.is_local_only() && process == XmlWildcardProcessContents::Skip {
+    if namespace.is_local_only()
+        && process == XmlWildcardProcessContents::Skip
+        && excluded_names.is_none()
+    {
         return generic_attribute_wildcard_schema();
     }
     let mut attributes = generic_attribute_storage_schema();
     attributes.xml_wildcard_namespace = Some(namespace);
     attributes.xml_wildcard_process_contents = process;
+    attributes.xml_wildcard_excluded_names = excluded_names;
     attributes
 }
 
@@ -2918,14 +3288,17 @@ fn validate_wildcard_ownership(parsed: &mut ParsedComplexType, state: &mut Parse
 }
 
 fn particle_contains_wildcard(particle: &Node<'_, '_>) -> bool {
-    particle
-        .children()
-        .filter(|node| node.is_element())
-        .any(|child| {
-            child.tag_name().name() == "any"
-                || (matches!(child.tag_name().name(), "sequence" | "choice" | "all")
-                    && particle_contains_wildcard(&child))
-        })
+    let mut pending = vec![*particle];
+    while let Some(particle) = pending.pop() {
+        for child in particle.children().filter(|node| node.is_element()) {
+            match child.tag_name().name() {
+                "any" => return true,
+                "sequence" | "choice" | "all" => pending.push(child),
+                _ => {}
+            }
+        }
+    }
+    false
 }
 
 fn is_single_occurrence(particle: &Node<'_, '_>) -> bool {
@@ -2935,6 +3308,44 @@ fn is_single_occurrence(particle: &Node<'_, '_>) -> bool {
         && particle
             .attribute("maxOccurs")
             .is_none_or(|value| value == "1")
+}
+
+/// Open content admits wildcard elements anywhere in a content model. It isn't
+/// represented, so a type it applies to is refused rather than read without it.
+fn open_content_refusal(complex_type: &Node, schema_el: &Node) -> Option<&'static str> {
+    fn child<'a, 'input>(node: &Node<'a, 'input>, names: &[&str]) -> Option<Node<'a, 'input>> {
+        node.children()
+            .find(|child| child.is_element() && names.contains(&child.tag_name().name()))
+    }
+    // Extensions and restrictions carry their own open content.
+    let derivation = child(complex_type, &["complexContent"])
+        .and_then(|content| child(&content, &["extension", "restriction"]));
+    let local = child(complex_type, &["openContent"])
+        .or_else(|| derivation.and_then(|node| child(&node, &["openContent"])));
+    if let Some(open) = local {
+        return (open.attribute("mode") != Some("none"))
+            .then_some("xs:openContent adds wildcard content the schema model does not keep");
+    }
+    let default = child(schema_el, &["defaultOpenContent"])?;
+    if default.attribute("mode") == Some("none")
+        || child(complex_type, &["simpleContent"]).is_some()
+    {
+        return None;
+    }
+    let particles = ["sequence", "choice", "all", "group"];
+    let has_content = child(complex_type, &particles).is_some()
+        || derivation.is_some_and(|node| {
+            child(&node, &particles).is_some() || node.tag_name().name() == "extension"
+        });
+    let applies_to_empty = matches!(default.attribute("appliesToEmpty"), Some("true" | "1"));
+    (has_content || applies_to_empty)
+        .then_some("xs:defaultOpenContent adds wildcard content the schema model does not keep")
+}
+
+fn depth_limit_error() -> XmlFormatError {
+    XmlFormatError::SchemaDepthLimit {
+        limit: MAX_IMPORT_DEPTH,
+    }
 }
 
 fn unsupported_wildcard(reason: &'static str) -> XmlFormatError {

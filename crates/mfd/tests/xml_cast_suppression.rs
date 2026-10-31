@@ -2,6 +2,8 @@ use ir::{ScalarType, SchemaKind, XmlScalarOutputPolicy};
 use std::error::Error;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::mpsc;
+use std::time::{Duration, Instant};
 
 struct Package(PathBuf);
 impl Package {
@@ -144,7 +146,6 @@ fn unsupported_requests_remain_unresolved_and_non_executable() -> Result<(), Box
             "XSLTDefaultOutput=\"1\"",
             "XSLTDefaultOutput=\"1\" UnknownSetting=\"true\"",
         ),
-        ("AddSchemaLocation=\"0\"", "AddSchemaLocation=\"1\""),
     ] {
         let package = Package::new()?;
         package.change(from, to)?;
@@ -179,17 +180,68 @@ fn unsupported_requests_remain_unresolved_and_non_executable() -> Result<(), Box
 }
 
 #[test]
-fn absent_schema_location_setting_keeps_the_flat_profile() -> Result<(), Box<dyn Error>> {
-    // An absent setting is the reference default for every XML target, which
-    // ordinary import already treats as no schema hint.
-    let package = Package::new()?;
-    package.change(" AddSchemaLocation=\"0\"", "")?;
-    let imported = mfd::import(&package.0.join("mapping.mfd"))?;
-    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
-    assert!(matches!(
-        imported.project.target_options.xml_scalar_output,
-        Some(XmlScalarOutputPolicy::SuppressCastInSubtreeV1 { .. })
-    ));
+fn schema_location_settings_keep_the_flat_profile_and_write_the_hint() -> Result<(), Box<dyn Error>>
+{
+    // Absent and "1" both write the reference default schema-location hint.
+    for to in ["", " AddSchemaLocation=\"1\""] {
+        let package = Package::new()?;
+        package.change(" AddSchemaLocation=\"0\"", to)?;
+        let imported = mfd::import_with_profile(
+            &package.0.join("mapping.mfd"),
+            &mfd::ImportOptions::default(),
+            mfd::ImportProfile::Executable,
+        )?
+        .imported;
+        assert!(
+            imported.warnings.is_empty(),
+            "{to}: {:?}",
+            imported.warnings
+        );
+        let project = &imported.project;
+        assert!(matches!(
+            project.target_options.xml_scalar_output,
+            Some(XmlScalarOutputPolicy::SuppressCastInSubtreeV1 { .. })
+        ));
+        assert_eq!(
+            project.target_options.xml_schema_hints,
+            Some(ir::XmlSchemaHints {
+                no_namespace_location: Some("target.xsd".into()),
+                derivation: Some(ir::XmlSchemaHintDerivation {
+                    schema_reference: "target.xsd".into(),
+                }),
+                ..Default::default()
+            })
+        );
+        assert!(engine::validate(project).is_empty(), "{to}");
+        let input = format_xml::from_str(
+            "<Envelope><Numerator>34</Numerator><Denominator>2</Denominator><Text>00029</Text><Label>safe</Label></Envelope>",
+            &project.source,
+        )?;
+        let result = engine::run(project, &input)?;
+        let xml = format_xml::to_string_with_options(
+            &project.target,
+            &result,
+            &format_xml::XmlWriteOptions {
+                scalar_output: project.target_options.xml_scalar_output.clone(),
+                schema_hints: project.target_options.xml_schema_hints.clone(),
+                ..Default::default()
+            },
+        )?;
+        let doc = roxmltree::Document::parse(&xml)?;
+        assert_eq!(
+            doc.root_element().attribute((
+                "http://www.w3.org/2001/XMLSchema-instance",
+                "noNamespaceSchemaLocation"
+            )),
+            Some("target.xsd"),
+            "{xml}"
+        );
+        assert!(codegen::lower(project).is_ok(), "{to}");
+        // Re-export keeps the native default setting.
+        let exported = package.0.join("export/mapping.mfd");
+        mfd::export_with_profile(project, &exported, mfd::ExportProfile::NativeMfd)?;
+        assert!(!std::fs::read_to_string(&exported)?.contains("AddSchemaLocation"));
+    }
     Ok(())
 }
 
@@ -473,5 +525,63 @@ fn document_profile_import_refuses_overrides_and_unretained_schema_settings()
         Some(XmlScalarOutputPolicy::SuppressCastInDocumentV1 {})
     );
     assert_eq!(nested_output(&project)?, NESTED_OUTPUT);
+    Ok(())
+}
+
+/// Foreign annotation content is outside the XSD depth limit, so the plain
+/// schema check must walk it once. The old per-element ancestor search was
+/// quadratic in its depth.
+#[test]
+fn deep_annotation_content_keeps_the_document_profile_promptly() -> Result<(), Box<dyn Error>> {
+    const LEVELS: usize = 60_000;
+    let package = Package::new()?;
+    let output = package.0.join("nested/mapping.mfd");
+    mfd::export_with_profile(&nested_project()?, &output, mfd::ExportProfile::NativeMfd)?;
+    let schema_path = package.0.join("nested/mapping-target.xsd");
+    let schema = std::fs::read_to_string(&schema_path)?;
+    let open = schema.find("<xs:schema").ok_or("no schema element")?;
+    let body = open + schema[open..].find('>').ok_or("unclosed schema element")? + 1;
+    let with = |content: &str| format!("{}{content}{}", &schema[..body], &schema[body..]);
+    // The same foreign content outside an annotation is refused.
+    std::fs::write(&schema_path, with("<n/>"))?;
+    assert!(matches!(
+        mfd::import(&output)?
+            .project
+            .target_options
+            .xml_scalar_output,
+        Some(XmlScalarOutputPolicy::Unresolved { .. })
+    ));
+    std::fs::write(
+        &schema_path,
+        with(&format!(
+            "<xs:annotation><xs:appinfo source=\"notes\">{}{}</xs:appinfo></xs:annotation>",
+            "<n>".repeat(LEVELS),
+            "</n>".repeat(LEVELS)
+        )),
+    )?;
+
+    let (sender, receiver) = mpsc::channel();
+    let started = Instant::now();
+    // Debug frames are large; a big stack keeps any per-level recursion
+    // elsewhere from masking the timing being tested.
+    std::thread::Builder::new()
+        .stack_size(256 << 20)
+        .spawn(move || {
+            let _ = sender.send(
+                mfd::import(&output)
+                    .map(|imported| imported.project.target_options.xml_scalar_output)
+                    .map_err(|error| error.to_string()),
+            );
+        })?;
+    let policy = match receiver.recv_timeout(Duration::from_secs(60)) {
+        Ok(policy) => policy?,
+        Err(mpsc::RecvTimeoutError::Timeout) => panic!("the import did not finish in time"),
+        Err(mpsc::RecvTimeoutError::Disconnected) => panic!("the import panicked"),
+    };
+    eprintln!("deep annotation import took {:?}", started.elapsed());
+    assert_eq!(
+        policy,
+        Some(XmlScalarOutputPolicy::SuppressCastInDocumentV1 {})
+    );
     Ok(())
 }

@@ -131,10 +131,10 @@ pub(super) fn validate_target_options(
             "PDF extraction is valid only for mapping sources",
         ));
     }
-    if options.swift_mt.is_some() {
+    if options.local_xml_file_set {
         issues.push(ValidationIssue::new(
             location,
-            "SWIFT MT layouts are valid only for mapping sources",
+            "local XML file sets are valid only for mapping sources",
         ));
     }
 }
@@ -488,11 +488,11 @@ pub(super) fn validate_xlsx_options(
         ));
     }
     let retained_layout = retained_layouts > 0;
+    // Update-existing is checked against each layout below.
     let legacy_layout = options.xlsx_sheet.is_some()
         || options.xlsx_start_row.is_some()
         || !options.xlsx_columns.is_empty()
         || !options.xlsx_headers.is_empty()
-        || options.xlsx_update_existing
         || !options.xlsx_rows.is_empty()
         || options.has_header_row.is_some();
     if retained_layout && legacy_layout {
@@ -518,17 +518,58 @@ pub(super) fn validate_xlsx_options(
             "`xlsx_update_existing` is valid only for mapping targets",
         ));
     }
-    if options.xlsx_update_existing && non_flat_layout {
-        issues.push(ValidationIssue::new(
-            location,
-            "`xlsx_update_existing` can be used only with a flat XLSX table",
-        ));
+    let has_grid = options.has_xlsx_grid();
+    if options.xlsx_update_existing {
+        let refused_layout = if !options.xlsx_rows.is_empty() {
+            Some("a transposed")
+        } else if has_grid {
+            Some("a grid")
+        } else if options.xlsx_composite.is_some() {
+            Some("a composite")
+        } else if options.xlsx_worksheet_set.is_some() {
+            Some("a worksheet-set")
+        } else {
+            None
+        };
+        if let Some(layout) = refused_layout {
+            issues.push(ValidationIssue::new(
+                location,
+                format!(
+                    "`xlsx_update_existing` cannot update {layout} XLSX layout; only flat tables and hierarchical layouts update existing workbooks"
+                ),
+            ));
+        }
     }
     if options.xlsx_worksheet_set.is_some() && !source_side {
         issues.push(ValidationIssue::new(
             location,
             "`xlsx_worksheet_set` is valid only for mapping sources",
         ));
+    }
+    if let Some(composite) = &options.xlsx_composite {
+        if let Err(message) = composite.validate_regions() {
+            issues.push(ValidationIssue::new(location, message));
+        }
+        let mut grid_sheets = std::collections::BTreeSet::new();
+        if composite
+            .grids
+            .iter()
+            .any(|grid| !grid_sheets.insert(grid.layout.sheet.as_deref()))
+        {
+            issues.push(ValidationIssue::new(
+                location,
+                "several XLSX grids cannot share one worksheet; each grid needs its own worksheet",
+            ));
+        }
+    }
+    if has_grid && !source_side {
+        issues.push(ValidationIssue::new(
+            location,
+            "grid XLSX output is not supported; XLSX grids are valid only for mapping sources",
+        ));
+    }
+    if !options.xlsx_rows.is_empty() && !source_side {
+        validate_transposed_xlsx_target(location, options, schema, issues);
     }
     if !options.xlsx_headers.is_empty() {
         let field_count = match &schema.kind {
@@ -562,6 +603,77 @@ pub(super) fn validate_xlsx_options(
         }
     }
 }
+
+/// A transposed target writes one record per worksheet column: each data
+/// field owns one selected row, and an optional integer `n` field selects the
+/// record's column. It writes no header and has no table start or columns.
+fn validate_transposed_xlsx_target(
+    location: &str,
+    options: &FormatOptions,
+    schema: &SchemaNode,
+    issues: &mut Vec<ValidationIssue>,
+) {
+    let mut refuse = |message: String| issues.push(ValidationIssue::new(location, message));
+    if options.has_header_row == Some(true) {
+        refuse(
+            "a transposed XLSX target writes no header row; leave `has_header_row` unset or false"
+                .into(),
+        );
+    }
+    if options.xlsx_start_row.is_some() || !options.xlsx_columns.is_empty() {
+        refuse("a transposed XLSX target places fields by `xlsx_rows` and records by column; `xlsx_start_row` and `xlsx_columns` cannot be used with it".into());
+    }
+    let mut seen = std::collections::BTreeSet::new();
+    if options
+        .xlsx_rows
+        .iter()
+        .any(|row| !(1..=MAX_XLSX_ROW).contains(row) || !seen.insert(*row))
+    {
+        refuse(format!(
+            "transposed XLSX target rows must be distinct worksheet rows from 1 to {MAX_XLSX_ROW}"
+        ));
+    }
+    let SchemaKind::Group { children, .. } = &schema.kind else {
+        refuse("a transposed XLSX target needs a non-repeating group of scalar fields".into());
+        return;
+    };
+    if schema.repeating
+        || children.iter().any(|child| {
+            child.repeating
+                || child.attribute
+                || child.text
+                || !matches!(child.kind, SchemaKind::Scalar { .. })
+        })
+    {
+        refuse("a transposed XLSX target needs a non-repeating group of scalar fields".into());
+        return;
+    }
+    let positions = children
+        .iter()
+        .filter(|child| child.name == "n")
+        .collect::<Vec<_>>();
+    if positions.len() > 1
+        || positions.iter().any(|child| {
+            !matches!(
+                child.kind,
+                SchemaKind::Scalar {
+                    ty: ir::ScalarType::Int
+                }
+            )
+        })
+    {
+        refuse("a transposed XLSX target's `n` field must be one integer column position".into());
+    }
+    let data_fields = children.len() - positions.len();
+    if data_fields != options.xlsx_rows.len() {
+        refuse(format!(
+            "a transposed XLSX target has {} row selector(s) for {data_fields} data field(s)",
+            options.xlsx_rows.len()
+        ));
+    }
+}
+
+const MAX_XLSX_ROW: u32 = 1_048_576;
 
 pub(super) fn validate_wsdl_options(
     location: &str,

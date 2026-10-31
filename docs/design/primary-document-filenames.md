@@ -15,6 +15,13 @@ The serialized wrapper has three required fields:
 - `primary_source`: an object with a `filename` node ID from that project's
   graph and an optional `selection`.
 
+The optional `output_filename` field retains a second filename graph root for
+the explicit EDI-to-JSON filename-endpoint route. It is omitted for ordinary
+plans, preserving their saved bytes. Older readers refuse the additional field
+rather than discarding output transport. `global_output_filename` and
+`engine::evaluate_output_filename` classify and evaluate it without publication.
+Pruning retains this root and its dependencies alongside the primary filename.
+
 `selection` states how the evaluated filename selects documents:
 
 - Absent or `"direct"`: the filename names one document; `*` and `?` are
@@ -143,6 +150,30 @@ document lowering. The APIs neither read saved preview instances nor replace
 the connected expression with a saved path. Ordinary import, pipeline import
 and `ImportProfile::Executable` keep their existing behavior.
 
+## Importing explicit EDI-to-JSON filename endpoints
+
+`mfd::import_filename_document` and `import_filename_document_with_options`
+require one EDI source and one strict JSON target, each with a connected
+`FileInstance` filename input. Unlike CSV metadata retention, this route refuses
+all import warnings, unresolved runtime dependencies and invalid mappings.
+The raw filename declaration must be a string literal or a required global
+string parameter, with unique pins and no controls or default feed. Supported
+protocol namespace headers and static preview file metadata remain metadata.
+The original mapping file and filename text are not rewritten.
+String parsers, string serializers and variables remain business components,
+admitted by their existing readers rather than counted as file endpoints.
+
+The output filename is not a target data field or a document-producing scope.
+Only direct selection and singular document roots are admitted. Wildcard
+selection, empty/wildcard/control-character filename values, source-dependent
+expressions, named endpoints and wrapper controls refuse before host calls.
+The host still owns path interpretation, acquisition and publication.
+The CLI selects this route with `import-mfd --filename-document`, executes it
+with `run-document`, and generates its primary EDI companion with
+`generate --primary-documents`. Both generated backends expose the output
+filename evaluator separately and return complete strict JSON bytes. The
+editor refuses these plans rather than losing the output root on save.
+
 ## Complete primary documents
 
 Filename evaluation, selection, loading, parsing, mapping and publication are
@@ -175,7 +206,9 @@ document limit, load or input), `Assembly` or `Mapping`.
 
 `DocumentProject::primary_route` classifies the source by its explicit format
 options, else by the extension of its saved source path, which is used only as
-a format identity and never read. The target must name the same format.
+a format identity and never read. Ordinary plans require a matching target
+format. An explicit output-filename plan instead admits a direct EDI input
+and strict JSON output, without extending any existing same-format plan.
 Named sources and targets and incompatible format options are refused before
 filename evaluation or any host call, including when a wildcard would be empty.
 
@@ -207,7 +240,9 @@ the dialect. Strict sources must admit their selected family's opening segment.
 The native CLI and generated Rust use the shared EDI boundary; generated C# uses package-free
 schema-guided codecs. Input is capped at 64 MiB per document and 256 MiB per
 run; output is capped at 64 MiB. IDoc also caps each document at 100,000 records.
-SWIFT MT remains input-only and cannot provide a same-format output.
+SWIFT MT is not a primary document format: the shared EDI document boundary
+and the generated codecs do not implement it, so a SWIFT MT source or target is
+refused before any host call.
 
 EDIFACT syntax is selected by UNB's S001 version component. Versions 1–3 keep
 `*` as literal data; version 4 and later enable typed element repetitions,

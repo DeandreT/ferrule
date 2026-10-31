@@ -879,6 +879,7 @@ pub(crate) fn write_segments_with_encoding(
     opts: &WriteOptions,
     encoding: Option<SegmentEncoding>,
 ) -> Result<String, EdiFormatError> {
+    crate::refuse_json_tuple(schema)?;
     validate_instance_shape(schema, instance)?;
     let mut out = String::new();
     let mut options = *opts;
@@ -1203,7 +1204,9 @@ fn serialize_segment(segment_id: &str, elements: &[String], opts: &WriteOptions,
         }
     }
     out.push(opts.terminator);
-    if !matches!(opts.style, WriteStyle::Hl7 { .. }) {
+    if !matches!(opts.style, WriteStyle::Hl7 { .. })
+        && !crate::x12::is_line_break_terminator(opts.terminator)
+    {
         out.push('\n');
     }
 }

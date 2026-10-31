@@ -21,6 +21,8 @@ mod idoc;
 mod idoc_native_config;
 mod idoc_native_text;
 mod iteration;
+mod join_computed_keys;
+mod json_tuple_arrays;
 mod model;
 mod node_inputs;
 mod owned_join;
@@ -43,6 +45,7 @@ mod sequence_levels;
 mod source_owner;
 mod source_scope;
 mod sqlite_read;
+mod stored_schemas;
 mod swift;
 mod tabular;
 mod wsdl;
@@ -51,9 +54,15 @@ mod xlsx_output;
 mod xml_mixed_content_owned;
 mod xml_scalar_output;
 mod xml_serialize_owned;
+mod xml_wildcard_exclusions;
+pub use join_computed_keys::{
+    JOIN_COMPUTED_KEYS_V1_CAPABILITY, JOIN_COMPUTED_SEQUENCE_KEYS_V1_CAPABILITY,
+};
+pub use json_tuple_arrays::JSON_TUPLE_ARRAYS_V1_CAPABILITY;
 pub use xml_scalar_output::{
     XML_TARGET_SCALAR_OUTPUT_V1_CAPABILITY, XmlScalarOutputAdmissionError,
 };
+pub use xml_wildcard_exclusions::XML_WILDCARD_EXCLUSIONS_V1_CAPABILITY;
 
 pub use adjacency::AdjacencyTreePlan;
 pub use adjacency_owned::OwnedAdjacencyTreePlan;
@@ -107,8 +116,9 @@ pub use idoc_native_text::{
     IdocNativeValidationKind,
 };
 pub use iteration::{
-    JoinConditions, JoinId, JoinKey, JoinPlan, JoinPlanError, JoinSource, JoinSourceCardinality,
-    ScopeIteration, ScopeSequence,
+    CollectionJoinSource, ComputedJoinSource, ComputedJoinSourceId, ComputedJoinValue,
+    JoinConditions, JoinId, JoinKey, JoinKeyLeft, JoinPlan, JoinPlanError, JoinSource,
+    JoinSourceCardinality, ScopeIteration, ScopeSequence,
 };
 pub use json5_interchange::{
     Json5InterchangeDependency, Json5StringComponentKind, Json5StringInterchangeDependency,
@@ -121,8 +131,9 @@ pub use model::{
     OwnedJoinAggregate, OwnedJoinField, OwnedJoinSourcePosition, OwnedLookup, OwnedPosition,
     OwnedRowDocumentPath, OwnedSourceDocumentPath, OwnedSourceField, Project, RuntimeValue, Scope,
     ScopeConstruction, SequenceExpr, SequenceWindow, SortFilterOrder, SortKey, UserFunction,
-    XlsxColumn, XlsxCompositeLayout, XlsxFixedCell, XlsxFixedRecord, XlsxGridLayout, XlsxRow,
-    XlsxTableRegion, XlsxWorksheetSetLayout, XmlMixedContentElement, XmlMixedContentReplacement,
+    XlsxColumn, XlsxCompositeLayout, XlsxFixedCell, XlsxFixedRecord, XlsxGridLayout,
+    XlsxGridRegion, XlsxRow, XlsxTableRegion, XlsxWorksheetSetLayout, XmlMixedContentElement,
+    XmlMixedContentReplacement,
 };
 pub use node_inputs::{NodeInput, NodeInputRole, NodeInputSlot};
 pub use owned_join::{
@@ -165,7 +176,8 @@ pub use sqlite_read::{
     validate_sqlite_read_profile,
 };
 pub use swift::{
-    SwiftCharset, SwiftFieldLayout, SwiftMessageLayout, SwiftMtLayout, SwiftMtLayoutError,
+    SwiftCharset, SwiftFieldLayout, SwiftMessageLayout, SwiftMtDirection, SwiftMtLayout,
+    SwiftMtLayoutError, SwiftMtMessageHeaders, SwiftMtOutputError, SwiftMtOutputOptions,
     SwiftValueExpr,
 };
 pub use tabular::TabularBoundaryKind;
@@ -191,6 +203,10 @@ pub(crate) fn is_false(value: &bool) -> bool {
 #[cfg(test)]
 #[path = "tests/model.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "tests/swift_output.rs"]
+mod swift_output_tests;
 
 #[cfg(test)]
 #[path = "tests/filter_map.rs"]

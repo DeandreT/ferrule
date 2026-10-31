@@ -11,7 +11,7 @@ mod structured;
 pub use soap::{from_wsdl_message_str, read_wsdl_message};
 pub use structured::from_str_structured;
 
-use std::io::{Cursor, Read};
+use std::io::{Cursor, Read, Write};
 use std::path::Path;
 
 use ir::{
@@ -28,7 +28,8 @@ use crate::declaration::validate_schema;
 mod scalar_output;
 
 use generic::{
-    push_generic_attributes, read_generic_element, read_group_fields, write_generic_element,
+    GenericSiblings, push_generic_attributes, read_generic_element, read_group_fields,
+    surplus_wildcard, write_generic_element,
 };
 
 const MAX_XML_RECURSION_DEPTH: usize = 64;
@@ -191,8 +192,12 @@ pub enum XmlFormatError {
     UnsupportedNestedRepeatingSequence { element_count: usize },
     #[error("xs:any wildcard cannot be represented: {reason}")]
     UnsupportedXmlWildcard { reason: &'static str },
+    #[error("XSD 1.1 open content cannot be represented: {reason}")]
+    UnsupportedXmlOpenContent { reason: &'static str },
     #[error("xs:any wildcard does not allow element `{name}` in namespace `{namespace}`")]
     XmlWildcardNamespaceMismatch { name: String, namespace: String },
+    #[error("xs:any wildcard excludes element `{name}` in namespace `{namespace}`")]
+    XmlWildcardExcludedName { name: String, namespace: String },
     #[error(
         "strict xs:any wildcard has no resolved declaration for element `{name}` in namespace `{namespace}`"
     )]
@@ -203,18 +208,30 @@ pub enum XmlFormatError {
     KnownXmlWildcardElementRequiresTypedField { name: String, namespace: String },
     #[error("single-occurrence xs:any wildcard matched more than one child element")]
     XmlWildcardCardinality,
+    #[error(
+        "extra occurrence of declared element `{name}` in namespace `{namespace}` cannot be kept by the xs:any wildcard: {reason}"
+    )]
+    UnrepresentableXmlWildcardSurplusElement {
+        name: String,
+        namespace: String,
+        reason: &'static str,
+    },
     #[error("xs:anyAttribute wildcard cannot be represented: {reason}")]
     UnsupportedXmlAttributeWildcard { reason: &'static str },
     #[error(
         "xs:anyAttribute wildcard does not allow attribute `{name}` in namespace `{namespace}`"
     )]
     XmlAttributeWildcardNamespaceMismatch { name: String, namespace: String },
+    #[error("xs:anyAttribute wildcard excludes attribute `{name}` in namespace `{namespace}`")]
+    XmlAttributeWildcardExcludedName { name: String, namespace: String },
     #[error(
         "strict xs:anyAttribute wildcard has no resolved declaration for attribute `{name}` in namespace `{namespace}`"
     )]
     UndeclaredStrictXmlWildcardAttribute { name: String, namespace: String },
     #[error("XSD expansion exceeds the {limit}-element materialization limit")]
     SchemaMaterializationLimit { limit: usize },
+    #[error("XSD import exceeds the {limit}-level nesting and reference depth limit")]
+    SchemaDepthLimit { limit: usize },
     #[error("named xs:{kind} `{name}` contains a reference cycle")]
     SchemaGroupCycle { kind: &'static str, name: String },
     #[error("named xs:{kind} `{name}` cannot be represented: {reason}")]
@@ -794,6 +811,9 @@ fn resolve_recursive_schema(
         .xml_wildcard_namespace
         .clone_from(&occurrence.xml_wildcard_namespace);
     resolved.xml_wildcard_process_contents = occurrence.xml_wildcard_process_contents;
+    resolved
+        .xml_wildcard_excluded_names
+        .clone_from(&occurrence.xml_wildcard_excluded_names);
     resolved.repeating = occurrence.repeating;
     resolved.xml_optional = occurrence.xml_optional;
     resolved.nillable = occurrence.nillable;
@@ -812,8 +832,32 @@ pub(super) fn element_matches_schema(
             .any(|alternative| alternative.name == identity);
     }
     element.tag_name().name() == schema.name
-        && (schema.xml_namespace.is_none()
-            || schema.xml_namespace_matches(element.tag_name().namespace()))
+        && declared_namespace_matches(schema, element_namespace(element))
+}
+
+/// An element's namespace name. roxmltree reports a name under an `xmlns=""`
+/// undeclaration as `Some("")`, which is no namespace.
+pub(super) fn element_namespace<'a>(element: &roxmltree::Node<'a, '_>) -> Option<&'a str> {
+    element
+        .tag_name()
+        .namespace()
+        .filter(|namespace| !namespace.is_empty())
+}
+
+/// An attribute's namespace name, normalised like [`element_namespace`] for a
+/// prefix bound to the empty string.
+pub(super) fn attribute_namespace<'a>(attribute: &roxmltree::Attribute<'a, '_>) -> Option<&'a str> {
+    attribute
+        .namespace()
+        .filter(|namespace| !namespace.is_empty())
+}
+
+/// Whether an element namespace names this declaration. A declaration without
+/// namespace identity (DTD, entry-tree, and closed XSD content without a target
+/// namespace) matches its local name in any namespace; an explicitly
+/// unqualified one matches only unqualified elements.
+pub(super) fn declared_namespace_matches(schema: &SchemaNode, namespace: Option<&str>) -> bool {
+    schema.xml_namespace.is_none() || schema.xml_namespace_matches(namespace)
 }
 
 pub(super) fn attribute_value<'a>(
@@ -825,7 +869,7 @@ pub(super) fn attribute_value<'a>(
         Some(namespace) => element
             .attributes()
             .find(|attribute| {
-                attribute.name() == schema.name && namespace.matches(attribute.namespace())
+                attribute.name() == schema.name && namespace.matches(attribute_namespace(attribute))
             })
             .map(|attribute| attribute.value()),
     }
@@ -839,7 +883,7 @@ fn schema_xml_name(schema: &SchemaNode) -> String {
 }
 
 fn expanded_node_name(element: &roxmltree::Node<'_, '_>) -> String {
-    expanded_name(element.tag_name().namespace(), element.tag_name().name())
+    expanded_name(element_namespace(element), element.tag_name().name())
 }
 
 fn expanded_name(namespace: Option<&str>, local: &str) -> String {
@@ -1056,11 +1100,11 @@ fn render_with_options(
         let preservation = policy
             .validate_schema(schema)
             .map_err(XmlFormatError::InvalidScalarOutput)?;
+        // Schema hints only annotate the projected document's root.
         if options
             .default_namespace
             .as_ref()
             .is_some_and(|namespace| !namespace.is_empty())
-            || options.schema_hints.is_some()
         {
             return Err(XmlFormatError::InvalidScalarOutput(
                 ir::XmlScalarOutputError::UnsupportedSchema,
@@ -1151,7 +1195,7 @@ fn write_node<W: std::io::Write>(
                 instance,
                 recursion_depth,
                 inherited_namespace,
-                &[],
+                GenericSiblings::default(),
             )?;
             return Ok(());
         }
@@ -1167,7 +1211,7 @@ fn write_node<W: std::io::Write>(
                 item,
                 recursion_depth,
                 inherited_namespace,
-                &[],
+                GenericSiblings::default(),
             )?;
         }
         return Ok(());
@@ -1383,6 +1427,7 @@ fn write_single_node<W: std::io::Write>(
                 fields,
                 recursion_depth,
                 element_namespace,
+                OrderedContentLayout::for_children(children),
             )? {
                 writer.write_event(Event::End(BytesEnd::new(element_name)))?;
                 return Ok(());
@@ -1403,23 +1448,8 @@ fn write_single_node<W: std::io::Write>(
                     }
                 }
             }
-            if schema.xml_repeating_sequences.is_empty() {
-                for child_schema in children
-                    .iter()
-                    .filter(|child| !child.attribute && !child.text)
-                {
-                    write_group_child(
-                        writer,
-                        child_schema,
-                        children,
-                        root_schema,
-                        fields,
-                        recursion_depth,
-                        element_namespace,
-                    )?;
-                }
-            } else {
-                write_repeating_sequence_children(
+            match OrderedContentLayout::for_children(children) {
+                OrderedContentLayout::Indented => write_typed_element_children(
                     writer,
                     schema,
                     children,
@@ -1427,7 +1457,25 @@ fn write_single_node<W: std::io::Write>(
                     fields,
                     recursion_depth,
                     element_namespace,
-                )?;
+                )?,
+                OrderedContentLayout::Verbatim => {
+                    // The reader keeps every text node of a mixed parent, so
+                    // typed children get no added layout, as in its ordered
+                    // content stream.
+                    let output: &mut dyn Write = writer.get_mut();
+                    write_typed_element_children(
+                        &mut Writer::new(output),
+                        schema,
+                        children,
+                        root_schema,
+                        fields,
+                        recursion_depth,
+                        element_namespace,
+                    )?;
+                    // Keep the indentation layer from breaking the line
+                    // before the close tag.
+                    writer.write_event(Event::Text(BytesText::new("")))?;
+                }
             }
             writer.write_event(Event::End(BytesEnd::new(element_name)))?;
             Ok(())
@@ -1435,6 +1483,44 @@ fn write_single_node<W: std::io::Write>(
         (SchemaKind::Scalar { .. }, other) => Err(shape_error(schema, "a scalar", other)),
         (SchemaKind::Group { .. }, other) => Err(shape_error(schema, "an element group", other)),
     }
+}
+
+/// Writes the element children of a group from its typed fields.
+fn write_typed_element_children<W: std::io::Write>(
+    writer: &mut Writer<W>,
+    schema: &SchemaNode,
+    children: &[SchemaNode],
+    root_schema: &SchemaNode,
+    fields: &[(String, Instance)],
+    recursion_depth: usize,
+    inherited_namespace: Option<&str>,
+) -> Result<(), XmlFormatError> {
+    if !schema.xml_repeating_sequences.is_empty() {
+        return write_repeating_sequence_children(
+            writer,
+            schema,
+            children,
+            root_schema,
+            fields,
+            recursion_depth,
+            inherited_namespace,
+        );
+    }
+    for child_schema in children
+        .iter()
+        .filter(|child| !child.attribute && !child.text)
+    {
+        write_group_child(
+            writer,
+            child_schema,
+            children,
+            root_schema,
+            fields,
+            recursion_depth,
+            inherited_namespace,
+        )?;
+    }
+    Ok(())
 }
 
 fn write_group_child<W: std::io::Write>(
@@ -1472,6 +1558,7 @@ fn write_group_child<W: std::io::Write>(
             instance if !child_schema.repeating => std::slice::from_ref(instance),
             other => return Err(shape_error(child_schema, "generic XML elements", other)),
         };
+        let written = GenericSiblings::written_before_wildcard(siblings, fields);
         for item in items {
             write_generic_element(
                 writer,
@@ -1480,7 +1567,10 @@ fn write_group_child<W: std::io::Write>(
                 item,
                 recursion_depth,
                 inherited_namespace,
-                siblings,
+                GenericSiblings {
+                    elements: siblings,
+                    written: &written,
+                },
             )?;
         }
         return Ok(());
@@ -1729,6 +1819,33 @@ fn instance_kind(instance: &Instance) -> &'static str {
     }
 }
 
+/// Whether the writer may indent between the items of an ordered content
+/// stream.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum OrderedContentLayout {
+    /// Element-only content keeps the writer's indentation, which the reader
+    /// discards.
+    Indented,
+    /// Mixed content, declared or generic: the reader keeps every text node,
+    /// including whitespace, so text items are written exactly and no
+    /// indentation is added between or inside the items.
+    Verbatim,
+}
+
+impl OrderedContentLayout {
+    /// The layout for a declared parent. It follows the reader, which keeps
+    /// text in the ordered stream whenever the parent declares a text child
+    /// (XSD `mixed`, DTD mixed `#PCDATA`, or DTD `ANY`).
+    pub(crate) fn for_children(children: &[SchemaNode]) -> Self {
+        if children.iter().any(|child| child.text) {
+            Self::Verbatim
+        } else {
+            Self::Indented
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn write_ordered_mixed_content<W: std::io::Write>(
     writer: &mut Writer<W>,
     schema: &SchemaNode,
@@ -1737,6 +1854,7 @@ pub(crate) fn write_ordered_mixed_content<W: std::io::Write>(
     fields: &[(String, Instance)],
     recursion_depth: usize,
     inherited_namespace: Option<&str>,
+    layout: OrderedContentLayout,
 ) -> Result<bool, XmlFormatError> {
     let Some((_, mixed_content)) = fields
         .iter()
@@ -1751,6 +1869,9 @@ pub(crate) fn write_ordered_mixed_content<W: std::io::Write>(
         ));
     };
     let mut ends_with_element = false;
+    // Single-occurrence children already written; a later item with the same
+    // name is an extra occurrence held by the wildcard, as on read.
+    let mut written = Vec::<&str>::new();
     for (index, item) in items.iter().enumerate() {
         let Instance::Group(item_fields) = item else {
             return Err(invalid_mixed_content(
@@ -1834,6 +1955,19 @@ pub(crate) fn write_ordered_mixed_content<W: std::io::Write>(
                     format!("item {index} names undeclared child `{name}`"),
                 )
             })?;
+        let item_value = item_fields
+            .iter()
+            .find(|(name, _)| name == XML_MIXED_CONTENT_VALUE_FIELD)
+            .map(|(_, instance)| instance);
+        let child_schema = match surplus_wildcard(child_schema, children, &written, item_value)? {
+            Some(wildcard) => wildcard,
+            None => {
+                if child_schema.name != XML_ELEMENTS_FIELD && !child_schema.repeating {
+                    written.push(child_schema.name.as_str());
+                }
+                child_schema
+            }
+        };
         let exact_child;
         let child_schema = if child_schema.xml_name_alternatives.is_empty() {
             child_schema
@@ -1885,26 +2019,38 @@ pub(crate) fn write_ordered_mixed_content<W: std::io::Write>(
         } else {
             child_schema
         };
-        if child_schema.name == XML_ELEMENTS_FIELD {
-            write_generic_element(
+        let siblings = GenericSiblings {
+            elements: children,
+            written: &written,
+        };
+        match layout {
+            OrderedContentLayout::Indented => write_ordered_element(
                 writer,
                 child_schema,
                 root_schema,
                 child_instance,
                 child_depth,
                 inherited_namespace,
-                children,
-            )?;
-        } else {
-            write_single_node(
-                writer,
-                child_schema,
-                root_schema,
-                child_instance,
-                child_depth,
-                inherited_namespace,
-                (None, None),
-            )?;
+                siblings,
+            )?,
+            OrderedContentLayout::Verbatim => {
+                // The reader keeps each element item's string value, so
+                // indentation anywhere in its subtree, even inside
+                // element-only children, would come back as text. Write the
+                // subtree through an unindented writer on the same output,
+                // leaving the outer writer's layout state as it was. The
+                // trait object keeps one writer type at every nesting level.
+                let output: &mut dyn Write = writer.get_mut();
+                write_ordered_element(
+                    &mut Writer::new(output),
+                    child_schema,
+                    root_schema,
+                    child_instance,
+                    child_depth,
+                    inherited_namespace,
+                    siblings,
+                )?;
+            }
         }
         ends_with_element = true;
     }
@@ -1914,6 +2060,39 @@ pub(crate) fn write_ordered_mixed_content<W: std::io::Write>(
         writer.write_event(Event::Text(BytesText::new("")))?;
     }
     Ok(true)
+}
+
+/// Writes one element item of an ordered content stream.
+fn write_ordered_element<W: std::io::Write>(
+    writer: &mut Writer<W>,
+    child_schema: &SchemaNode,
+    root_schema: &SchemaNode,
+    child_instance: &Instance,
+    child_depth: usize,
+    inherited_namespace: Option<&str>,
+    siblings: GenericSiblings<'_>,
+) -> Result<(), XmlFormatError> {
+    if child_schema.name == XML_ELEMENTS_FIELD {
+        write_generic_element(
+            writer,
+            child_schema,
+            root_schema,
+            child_instance,
+            child_depth,
+            inherited_namespace,
+            siblings,
+        )
+    } else {
+        write_single_node(
+            writer,
+            child_schema,
+            root_schema,
+            child_instance,
+            child_depth,
+            inherited_namespace,
+            (None, None),
+        )
+    }
 }
 
 fn invalid_mixed_content(schema: &SchemaNode, reason: impl Into<String>) -> XmlFormatError {

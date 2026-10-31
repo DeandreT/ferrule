@@ -1,0 +1,291 @@
+//! Shared invariants for the MFD byte-package admission fuzz target.
+//!
+//! Every input is a [`program`] that builds a candidate package from a
+//! self-authored [`templates`] entry. The candidate goes through the public
+//! byte-only boundary in `crates/mfd`: `MfdPackage::new` admits or refuses it,
+//! and `import_package` imports an admitted package. Anything other than the
+//! outcomes below, including a panic, is a finding:
+//!
+//! - Admission succeeds exactly when the candidate obeys the documented path,
+//!   alias, entry-count and byte rules ([`admission_violations`]), and a
+//!   refusal names one of the rules the candidate breaks. The result does not
+//!   depend on entry order, and an admitted package returns exactly the
+//!   supplied entries.
+//! - Import returns an imported project or an `MfdError`, makes no host
+//!   filesystem or network system call ([`sandbox`]), and is deterministic.
+
+use std::collections::BTreeSet;
+
+use mfd::{
+    MAX_PACKAGE_BYTES, MAX_PACKAGE_ENTRIES, MAX_PACKAGE_FILE_BYTES, MAX_PACKAGE_PATH_BYTES,
+    MfdError, MfdPackage, PackageError, import_package,
+};
+
+pub mod program;
+pub mod sandbox;
+pub mod seeds;
+pub mod templates;
+
+pub use program::{Candidate, decode};
+
+/// Largest input the fuzz target examines. Larger inputs are ignored so a
+/// run's per-input cost stays proportional to the program limits. The
+/// README's runs pass the same bound as `-max_len=65536`.
+pub const MAX_INPUT_BYTES: usize = 64 * 1024;
+
+/// Result of checking one input.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Outcome {
+    pub admission: Result<usize, PackageError>,
+    /// `None` when admission refused the package.
+    pub import: Option<Import>,
+}
+
+/// How an admitted package imported.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Import {
+    Imported {
+        warnings: Vec<String>,
+    },
+    /// A package refusal, kept apart from other errors because the package
+    /// boundary must report it instead of falling back to host resources.
+    Refused(PackageError),
+    /// Any other `MfdError`, by variant name and message.
+    Failed {
+        variant: String,
+        message: String,
+    },
+}
+
+impl Outcome {
+    /// A short label used by the seed expectations: `refused <error>`,
+    /// `imported`, `imported with warnings`, `package <error>` or
+    /// `error <variant>`.
+    pub fn label(&self) -> String {
+        match (&self.admission, &self.import) {
+            (Err(error), _) => format!("refused {error:?}"),
+            (Ok(_), Some(Import::Imported { warnings })) if warnings.is_empty() => {
+                "imported".into()
+            }
+            (Ok(_), Some(Import::Imported { .. })) => "imported with warnings".into(),
+            (Ok(_), Some(Import::Refused(error))) => format!("package {error:?}"),
+            (Ok(_), Some(Import::Failed { variant, .. })) => format!("error {variant}"),
+            (Ok(_), None) => "admitted".into(),
+        }
+    }
+}
+
+/// Decodes and checks one input.
+pub fn check(bytes: &[u8]) -> Outcome {
+    check_candidate(&decode(bytes))
+}
+
+/// Checks one candidate package. Panics with a descriptive message when an
+/// invariant fails, which is how libFuzzer records a finding.
+pub fn check_candidate(candidate: &Candidate) -> Outcome {
+    let violations = admission_violations(candidate);
+    let admitted = admit(candidate, false);
+    let reversed = admit(candidate, true);
+    assert_eq!(
+        admitted.is_ok(),
+        reversed.is_ok(),
+        "admission depends on entry order: {admitted:?} vs {reversed:?}"
+    );
+    let package = match admitted {
+        Err(error) => {
+            assert!(
+                violations.contains(&error),
+                "admission refused with {error:?}, but the candidate only breaks {violations:?}"
+            );
+            if let Err(again) = reversed {
+                assert!(
+                    violations.contains(&again),
+                    "reversed admission refused with {again:?}, but the candidate only breaks \
+                     {violations:?}"
+                );
+            }
+            return Outcome {
+                admission: Err(error),
+                import: None,
+            };
+        }
+        Ok(package) => package,
+    };
+    assert!(
+        violations.is_empty(),
+        "admission accepted a candidate that breaks {violations:?}"
+    );
+    let Ok(reversed) = reversed else {
+        unreachable!("both admissions succeeded")
+    };
+    check_admitted(candidate, &package);
+    assert_eq!(
+        entries_of(&package),
+        entries_of(&reversed),
+        "admitted entries depend on entry order"
+    );
+
+    let ((first, second), access) =
+        sandbox::monitor(|| (import_package(&package), import_package(&reversed)));
+    assert!(
+        access.none(),
+        "import made {} host system call(s), first {} ({:?})",
+        access.calls,
+        access.first.map_or("unknown", sandbox::syscall_name),
+        access.first
+    );
+    let first = summarize(first);
+    let second = summarize(second);
+    assert_eq!(first, second, "import is not deterministic");
+    Outcome {
+        admission: Ok(package.entries().len()),
+        import: Some(first.0),
+    }
+}
+
+fn admit(candidate: &Candidate, reversed: bool) -> Result<MfdPackage, PackageError> {
+    let entries = candidate
+        .entries
+        .iter()
+        .map(|(path, contents)| (path.as_str(), contents.as_slice()));
+    if reversed {
+        MfdPackage::new(&candidate.design, entries.rev())
+    } else {
+        MfdPackage::new(&candidate.design, entries)
+    }
+}
+
+/// Every admission rule from `docs/mfd-interop.md` the candidate breaks.
+pub fn admission_violations(candidate: &Candidate) -> Vec<PackageError> {
+    let mut violations = Vec::new();
+    let mut insert = |error| violations.push(error);
+    if !documented_path(&candidate.design) {
+        insert(PackageError::InvalidPath);
+    }
+    let mut folded = BTreeSet::new();
+    for (path, contents) in &candidate.entries {
+        if !documented_path(path) {
+            insert(PackageError::InvalidPath);
+        } else if !folded.insert(path.to_ascii_lowercase()) {
+            insert(PackageError::DuplicatePath);
+        }
+        if contents.len() > MAX_PACKAGE_FILE_BYTES {
+            insert(PackageError::LimitExceeded);
+        }
+    }
+    if candidate.entries.len() > MAX_PACKAGE_ENTRIES || candidate.total_bytes() > MAX_PACKAGE_BYTES
+    {
+        insert(PackageError::LimitExceeded);
+    }
+    if !candidate
+        .entries
+        .iter()
+        .any(|(path, _)| *path == candidate.design)
+    {
+        insert(PackageError::MissingEntry);
+    }
+    let mut unique = Vec::new();
+    for error in violations {
+        if !unique.contains(&error) {
+            unique.push(error);
+        }
+    }
+    unique
+}
+
+/// Slash-separated relative paths of at most 256 UTF-8 bytes without empty,
+/// dot or parent segments, drive prefixes or URLs (any `:`), backslashes,
+/// control characters, or segments ending in a space or dot.
+pub fn documented_path(path: &str) -> bool {
+    !path.is_empty()
+        && path.len() <= MAX_PACKAGE_PATH_BYTES
+        && !path.contains(['\\', ':'])
+        && !path.chars().any(char::is_control)
+        && path.split('/').all(|segment| {
+            !segment.is_empty()
+                && segment != "."
+                && segment != ".."
+                && !segment.ends_with([' ', '.'])
+        })
+}
+
+fn entries_of(package: &MfdPackage) -> Vec<(String, Vec<u8>)> {
+    package
+        .entries()
+        .map(|(path, contents)| (path.to_owned(), contents.to_vec()))
+        .collect()
+}
+
+/// An admitted package holds exactly the supplied entries within the limits,
+/// sorted by path, with case-distinct lookup.
+fn check_admitted(candidate: &Candidate, package: &MfdPackage) {
+    assert_eq!(package.design_path(), candidate.design);
+    let mut expected = candidate.entries.clone();
+    expected.sort();
+    assert_eq!(
+        entries_of(package),
+        expected,
+        "admitted entries differ from the supplied entries"
+    );
+    assert!(package.entries().len() <= MAX_PACKAGE_ENTRIES);
+    let mut total = 0;
+    for (path, contents) in package.entries() {
+        assert!(path.len() <= MAX_PACKAGE_PATH_BYTES);
+        assert!(contents.len() <= MAX_PACKAGE_FILE_BYTES);
+        total += contents.len();
+        match package.get(path) {
+            Ok(found) => assert_eq!(&*found, contents, "get({path:?}) returned other bytes"),
+            Err(error) => panic!("get({path:?}) of an admitted entry failed: {error:?}"),
+        }
+        for alias in [path.to_ascii_uppercase(), path.to_ascii_lowercase()] {
+            if alias != path {
+                assert_eq!(
+                    package.get(&alias).err(),
+                    Some(PackageError::MissingEntry),
+                    "case alias {alias:?} of {path:?} resolved"
+                );
+            }
+        }
+    }
+    assert!(total <= MAX_PACKAGE_BYTES);
+    for invalid in ["", "../x", "/x", "a\\b", "C:/x", "a//b"] {
+        assert_eq!(
+            package.get(invalid).err(),
+            Some(PackageError::InvalidPath),
+            "get({invalid:?}) did not refuse the path"
+        );
+    }
+}
+
+/// A comparable import result: the outcome plus the serialized project.
+#[derive(Debug, PartialEq, Eq)]
+struct Summary(Import, Option<Result<String, String>>, Option<String>);
+
+fn summarize(result: Result<mfd::Imported, MfdError>) -> Summary {
+    match result {
+        Ok(imported) => Summary(
+            Import::Imported {
+                warnings: imported.warnings,
+            },
+            Some(serde_json::to_string(&imported.project).map_err(|error| error.to_string())),
+            Some(imported.mapping_path.display().to_string()),
+        ),
+        Err(MfdError::Package(error)) => Summary(Import::Refused(error), None, None),
+        Err(error) => {
+            let debug = format!("{error:?}");
+            let variant = debug
+                .split(|character: char| !character.is_alphanumeric())
+                .next()
+                .unwrap_or_default()
+                .to_owned();
+            Summary(
+                Import::Failed {
+                    variant,
+                    message: error.to_string(),
+                },
+                None,
+                None,
+            )
+        }
+    }
+}

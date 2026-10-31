@@ -111,6 +111,7 @@ pub(super) fn read(
         db_queries: Vec::new(),
         db_xml_columns: BTreeMap::new(),
         dynamic_json: None,
+        target_schema_hints: None,
     })
 }
 

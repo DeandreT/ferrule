@@ -2,6 +2,7 @@ use super::super::*;
 use crate::{from_str, to_string};
 use ir::{Instance, SchemaKind, Value, XML_TYPE_FIELD, XmlNamespace, XmlRepeatingChoice};
 
+mod depth_limit;
 mod effective_declarations;
 
 #[test]
@@ -3774,8 +3775,8 @@ fn rejects_attribute_wildcard_profiles_that_cannot_be_projected()
     let cases = [
         (
             "exclusion",
-            "<xs:anyAttribute namespace=\"##local\" processContents=\"skip\" notQName=\"blocked\"/>",
-            "exclusions",
+            "<xs:anyAttribute namespace=\"##local\" processContents=\"skip\" notQName=\"##definedSibling\"/>",
+            "##definedSibling",
         ),
         (
             "invalid-process",

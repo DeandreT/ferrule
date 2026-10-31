@@ -138,6 +138,7 @@ pub(super) fn render_schema_component(
     component_uid: u32,
     sibling_suffix: &str,
     default_output: bool,
+    schema_hint: bool,
     used_ports: &BTreeSet<u32>,
     file_instance_port: Option<u32>,
     filesystem: bool,
@@ -171,14 +172,17 @@ pub(super) fn render_schema_component(
         Side::Target => (
             "target",
             // Native XML components otherwise default to adding a schema URI.
-            // Ordinary Ferrule XML output has no hint; encode that choice.
-            match (format, default_output) {
-                (SideFormat::Xml, true) => {
+            // Ordinary Ferrule XML output has no hint; encode that choice. A
+            // derived schema-location hint keeps the native default instead.
+            match (format, default_output, schema_hint) {
+                (SideFormat::Xml, true, false) => {
                     "<properties XSLTDefaultOutput=\"1\" AddSchemaLocation=\"0\"/>\n\t\t\t\t\t"
                 }
-                (SideFormat::Xml, false) => "<properties AddSchemaLocation=\"0\"/>\n\t\t\t\t\t",
-                (_, true) => "<properties XSLTDefaultOutput=\"1\"/>\n\t\t\t\t\t",
-                (_, false) => "",
+                (SideFormat::Xml, false, false) => {
+                    "<properties AddSchemaLocation=\"0\"/>\n\t\t\t\t\t"
+                }
+                (_, true, _) => "<properties XSLTDefaultOutput=\"1\"/>\n\t\t\t\t\t",
+                (_, false, _) => "",
             },
             "<view ltx=\"700\" rbx=\"1000\" rby=\"400\"/>",
         ),
@@ -682,12 +686,28 @@ pub(super) fn render_schema_component(
             }
             let retained_source_layout = options.xlsx_grid.is_some()
                 || options.xlsx_composite.is_some()
-                || options.xlsx_worksheet_set.is_some()
-                || !options.xlsx_rows.is_empty();
+                || options.xlsx_worksheet_set.is_some();
             if retained_source_layout && side != Side::Source {
                 return Err(MfdError::Unsupported(format!(
                     "the {side_name} XLSX layout is source-only and cannot be exported as a target"
                 )));
+            }
+            if !options.xlsx_rows.is_empty() && side == Side::Target {
+                let xml = super::xlsx::render_transposed_target(
+                    super::xlsx::RenderArgs {
+                        schema,
+                        ports,
+                        instance_path,
+                        options,
+                        component_name,
+                        component_uid,
+                    },
+                    default_output,
+                )?;
+                return Ok(RenderedSchemaComponent {
+                    xml,
+                    siblings: Vec::new(),
+                });
             }
             if let Some(xml) = super::xlsx::render(super::xlsx::RenderArgs {
                 schema,
@@ -1209,6 +1229,10 @@ impl KeyAlloc {
 pub(super) struct PortTree {
     by_abs: BTreeMap<Vec<String>, u32>,
     by_alternative: BTreeMap<(Vec<String>, String), u32>,
+    /// Extra input ports that receive every connection made to a primary
+    /// port, for one field that the reference component reads in several
+    /// places.
+    fanout: BTreeMap<u32, Vec<u32>>,
 }
 
 // Recursive schemas are represented in the IR by finite references. Entry
@@ -1351,11 +1375,31 @@ impl PortTree {
         Self {
             by_abs,
             by_alternative,
+            fanout: BTreeMap::new(),
         }
+    }
+
+    /// Allocates `count` extra input ports that mirror the port at `abs`.
+    pub(super) fn add_fanout(&mut self, abs: &[String], count: usize, keys: &mut KeyAlloc) {
+        let Some(primary) = self.key_for_abs(abs) else {
+            return;
+        };
+        let extra = (0..count).map(|_| keys.next()).collect::<Vec<_>>();
+        self.fanout.entry(primary).or_default().extend(extra);
+    }
+
+    pub(super) fn fanout_keys(&self, primary: u32) -> &[u32] {
+        self.fanout.get(&primary).map_or(&[], Vec::as_slice)
     }
 
     pub(super) fn key_for_abs(&self, abs: &[String]) -> Option<u32> {
         self.by_abs.get(abs).copied()
+    }
+
+    pub(super) fn path_for_key(&self, port: u32) -> Option<&[String]> {
+        self.by_abs
+            .iter()
+            .find_map(|(path, key)| (*key == port).then_some(path.as_slice()))
     }
 
     pub(super) fn key_for_alternative(&self, abs: &[String], name: &str) -> Option<u32> {
@@ -1824,7 +1868,10 @@ impl PortTree {
 }
 
 fn xml_entry_schema_is_exact(node: &SchemaNode) -> bool {
+    // Entry metadata has no form for exclusions, so a fallback tree would
+    // widen the wildcard.
     if node.json_array_wrapper
+        || node.has_xml_wildcard_exclusions()
         || node.xml_namespace.is_some()
         || node.recursive_ref.is_some()
         || node.nullable

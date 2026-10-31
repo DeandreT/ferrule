@@ -5,6 +5,7 @@ use roxmltree::Node;
 
 use crate::XmlFormatError;
 
+use super::schema_links::{self, Follow, LinkedSchema};
 use super::{
     MAX_MATERIALIZED_SCHEMA_ELEMENTS, SchemaReader, expanded_qname_identity, normalized_path,
     type_identity_in_namespace,
@@ -35,6 +36,7 @@ pub(super) struct SubstitutionIndex {
     global_attribute_by_identity: BTreeMap<String, usize>,
     effective_namespaces: BTreeMap<PathBuf, BTreeSet<Option<String>>>,
     unresolved_namespaces: BTreeSet<Option<String>>,
+    redefinition: bool,
     conflicting_identity: Option<String>,
     conflicting_global_identity: Option<String>,
     conflicting_global_attribute_identity: Option<String>,
@@ -220,6 +222,25 @@ impl SubstitutionIndex {
         &self.unresolved_namespaces
     }
 
+    /// Whether a document in the graph uses `xs:redefine` or `xs:override`,
+    /// whose changed declarations are not indexed.
+    pub(super) fn has_redefinition(&self) -> bool {
+        self.redefinition
+    }
+
+    /// The number of namespace contexts through which this graph reaches a
+    /// physical schema document.
+    pub(super) fn namespace_contexts(&self, path: &Path) -> usize {
+        let path = if self.supplied_identities {
+            super::resources::lexical_path(path)
+        } else {
+            normalized_path(path)
+        };
+        self.effective_namespaces
+            .get(&path)
+            .map_or(0, BTreeSet::len)
+    }
+
     /// Returns a chameleon schema's adopted namespace only when this graph
     /// reaches the physical file through exactly one namespace context.
     pub(super) fn effective_namespace(&self, path: &Path) -> Option<&str> {
@@ -245,17 +266,56 @@ pub(super) fn build(
         supplied_identities: reader.is_supplied(),
         ..SubstitutionIndex::default()
     };
-    collect_declarations(
+    let mut visited = BTreeSet::new();
+    let Some(root) = collect_declarations(
         schema,
         schema_path,
         schema.attribute("targetNamespace"),
-        &mut BTreeSet::new(),
+        &mut visited,
         &mut index,
         reader,
-    );
+    ) else {
+        return index;
+    };
+    schema_links::walk::<()>(root, |linking, link| {
+        let dependency_namespace = if link.include {
+            linking.effective_namespace.as_deref()
+        } else {
+            link.namespace.as_deref()
+        }
+        .filter(|namespace| !namespace.is_empty())
+        .map(str::to_string);
+        let Some(location) = &link.location else {
+            index.unresolved_namespaces.insert(dependency_namespace);
+            return Follow::Skip;
+        };
+        let Some(dependency) = reader.dependency(&linking.path, location) else {
+            index.unresolved_namespaces.insert(dependency_namespace);
+            return Follow::Skip;
+        };
+        let Ok(text) = reader.read(&dependency) else {
+            index.unresolved_namespaces.insert(dependency_namespace);
+            return Follow::Skip;
+        };
+        let Ok(document) = roxmltree::Document::parse(&text) else {
+            index.unresolved_namespaces.insert(dependency_namespace);
+            return Follow::Skip;
+        };
+        collect_declarations(
+            &document.root_element(),
+            &dependency,
+            linking.inherited_namespace(link),
+            &mut visited,
+            &mut index,
+            reader,
+        )
+        .map_or(Follow::Skip, Follow::Descend)
+    });
     index
 }
 
+/// Indexes one schema document's global declarations, returning the document
+/// for its links unless it was already visited or the index is full.
 fn collect_declarations(
     schema: &Node<'_, '_>,
     schema_path: &Path,
@@ -263,9 +323,9 @@ fn collect_declarations(
     visited: &mut BTreeSet<(PathBuf, Option<String>)>,
     index: &mut SubstitutionIndex,
     reader: &SchemaReader,
-) {
+) -> Option<LinkedSchema> {
     if index.limit_reached {
-        return;
+        return None;
     }
     let path = reader.identity(schema_path);
     let effective_namespace = schema.attribute("targetNamespace").or(inherited_namespace);
@@ -275,8 +335,11 @@ fn collect_declarations(
         .or_default()
         .insert(effective_namespace.map(str::to_string));
     if !visited.insert((path.clone(), effective_namespace.map(str::to_string))) {
-        return;
+        return None;
     }
+    index.redefinition |= schema.children().any(|child| {
+        child.is_element() && matches!(child.tag_name().name(), "redefine" | "override")
+    });
 
     for declaration in schema
         .children()
@@ -305,7 +368,7 @@ fn collect_declarations(
             index.insert(IndexedDeclaration { element, head });
         }
         if index.limit_reached {
-            return;
+            return None;
         }
     }
     for declaration in schema
@@ -326,45 +389,5 @@ fn collect_declarations(
             abstract_element: false,
         });
     }
-
-    for link in schema
-        .children()
-        .filter(|node| node.is_element() && matches!(node.tag_name().name(), "include" | "import"))
-    {
-        let dependency_namespace = if link.tag_name().name() == "include" {
-            effective_namespace
-        } else {
-            link.attribute("namespace")
-        }
-        .filter(|namespace| !namespace.is_empty())
-        .map(str::to_string);
-        let Some(location) = link.attribute("schemaLocation") else {
-            index.unresolved_namespaces.insert(dependency_namespace);
-            continue;
-        };
-        let Some(dependency) = reader.dependency(&path, location) else {
-            index.unresolved_namespaces.insert(dependency_namespace);
-            continue;
-        };
-        let Ok(text) = reader.read(&dependency) else {
-            index.unresolved_namespaces.insert(dependency_namespace);
-            continue;
-        };
-        let Ok(document) = roxmltree::Document::parse(&text) else {
-            index.unresolved_namespaces.insert(dependency_namespace);
-            continue;
-        };
-        let dependency_schema = document.root_element();
-        let dependency_inherited = (link.tag_name().name() == "include")
-            .then_some(effective_namespace)
-            .flatten();
-        collect_declarations(
-            &dependency_schema,
-            &dependency,
-            dependency_inherited,
-            visited,
-            index,
-            reader,
-        );
-    }
+    Some(LinkedSchema::new(schema, path, effective_namespace))
 }

@@ -1,0 +1,28 @@
+{
+  "type": "object",
+  "properties": {
+    "Headers": {"type": "integer"},
+    "Parties": {"type": "integer"},
+    "Notes": {"type": "integer"},
+    "Orders": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "Order": {"type": "string"},
+          "Headers": {"type": "integer"},
+          "Parties": {"type": "integer"},
+          "Lines": {"type": "integer"},
+          "Notes": {"type": "integer"},
+          "Details": {
+            "type": "array",
+            "items": {"type": "object", "properties": {
+              "Number": {"type": "string"},
+              "Notes": {"type": "integer"}
+            }}
+          }
+        }
+      }
+    }
+  }
+}

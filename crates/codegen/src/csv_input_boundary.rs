@@ -177,6 +177,7 @@ fn canonical_metadata(node: &SchemaNode) -> bool {
         xml_name_alternatives,
         xml_wildcard_namespace,
         xml_wildcard_process_contents,
+        xml_wildcard_excluded_names,
         recursive_ref,
         attribute,
         text,
@@ -187,6 +188,7 @@ fn canonical_metadata(node: &SchemaNode) -> bool {
         container_nullable,
         json_object_item_nullable,
         json_array_wrapper,
+        json_tuple,
         json_any,
         json_undeclared_property,
         fixed,
@@ -218,6 +220,7 @@ fn canonical_metadata(node: &SchemaNode) -> bool {
         && xml_name_alternatives.is_empty()
         && xml_wildcard_namespace.is_none()
         && *xml_wildcard_process_contents == XmlWildcardProcessContents::Skip
+        && xml_wildcard_excluded_names.is_none()
         && recursive_ref.is_none()
         && !attribute
         && !text
@@ -228,6 +231,7 @@ fn canonical_metadata(node: &SchemaNode) -> bool {
         && !container_nullable
         && json_object_item_nullable.is_none()
         && !json_array_wrapper
+        && json_tuple.is_none()
         && !json_any
         && !json_undeclared_property
         && fixed.is_none()

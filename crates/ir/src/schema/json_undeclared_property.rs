@@ -64,6 +64,9 @@ impl SchemaNode {
         if !is_member_name(name) {
             return Err(JsonUndeclaredPropertyError::InvalidName);
         }
+        if self.json_tuple.is_some() {
+            return Err(JsonUndeclaredPropertyError::NotAnObject);
+        }
         let SchemaKind::Group {
             children,
             alternatives,

@@ -103,7 +103,7 @@ fn nested_array_wrapper_descriptors_preserve_every_level_and_reject_unknown_vers
     assert!(
         matches!(malformed_v3, Err(CodecError::Deserialization(ref message)) if message.starts_with("invalid JSON array-wrapper metadata"))
     );
-    let future = decode("FERRULE-EMBEDDED-SCHEMA/5\n{}", 1024 * 1024);
+    let future = decode("FERRULE-EMBEDDED-SCHEMA/6\n{}", 1024 * 1024);
     std::fs::write(evidence.join("future.txt"), format!("{future:#?}")).unwrap();
     assert!(matches!(future, Err(CodecError::UnsupportedVersion)));
 }

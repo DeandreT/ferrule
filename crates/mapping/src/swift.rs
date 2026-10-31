@@ -183,6 +183,113 @@ pub enum SwiftValueExpr {
     },
 }
 
+/// The application-header direction every written message uses.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SwiftMtDirection {
+    Input,
+    Output,
+}
+
+impl SwiftMtDirection {
+    /// The empty `Application Header` group that selects this direction.
+    pub const fn group_name(self) -> &'static str {
+        match self {
+            Self::Input => "Input",
+            Self::Output => "Output",
+        }
+    }
+}
+
+/// Header values for one written message: the complete block 1 content and
+/// the block 2 content after the direction letter and message type.
+///
+/// Character positions are checked by the SWIFT writer; this type keeps only
+/// the saved text.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SwiftMtMessageHeaders {
+    pub basic_header: String,
+    pub application_header: String,
+}
+
+/// SWIFT MT target settings that a mapped instance does not carry: one
+/// direction for the whole output and one header set per message, in order.
+///
+/// The mapped output must contain exactly as many messages as there are
+/// header sets, because FIN never repeats a basic header (session and
+/// sequence) or an output message input reference within a stream.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SwiftMtOutputOptions {
+    direction: SwiftMtDirection,
+    messages: Vec<SwiftMtMessageHeaders>,
+}
+
+impl SwiftMtOutputOptions {
+    pub const MAX_MESSAGES: usize = 10_000;
+
+    pub fn new(
+        direction: SwiftMtDirection,
+        messages: Vec<SwiftMtMessageHeaders>,
+    ) -> Result<Self, SwiftMtOutputError> {
+        if messages.is_empty() {
+            return Err(SwiftMtOutputError::NoMessages);
+        }
+        if messages.len() > Self::MAX_MESSAGES {
+            return Err(SwiftMtOutputError::TooManyMessages);
+        }
+        Ok(Self {
+            direction,
+            messages,
+        })
+    }
+
+    pub const fn direction(&self) -> SwiftMtDirection {
+        self.direction
+    }
+
+    pub fn messages(&self) -> &[SwiftMtMessageHeaders] {
+        &self.messages
+    }
+}
+
+impl<'de> Deserialize<'de> for SwiftMtOutputOptions {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Repr {
+            direction: SwiftMtDirection,
+            messages: Vec<SwiftMtMessageHeaders>,
+        }
+        let value = Repr::deserialize(deserializer)?;
+        Self::new(value.direction, value.messages).map_err(serde::de::Error::custom)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SwiftMtOutputError {
+    NoMessages,
+    TooManyMessages,
+}
+
+impl std::fmt::Display for SwiftMtOutputError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NoMessages => formatter.write_str("SWIFT MT output has no message headers"),
+            Self::TooManyMessages => write!(
+                formatter,
+                "SWIFT MT output has more than {} message header sets",
+                SwiftMtOutputOptions::MAX_MESSAGES
+            ),
+        }
+    }
+}
+
+impl std::error::Error for SwiftMtOutputError {}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SwiftMtLayoutError {
     EmptyMessages,

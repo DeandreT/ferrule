@@ -12,6 +12,7 @@ use crate::path_picker::SourcePathCatalog;
 pub(crate) mod computed_properties;
 mod copy_controls;
 mod output_controls;
+pub(crate) mod presence_controls;
 mod sort_controls;
 mod source_iteration;
 mod window_controls;
@@ -228,12 +229,69 @@ fn join_summary(id: mapping::JoinId, plan: &mapping::JoinPlan) -> String {
     )
 }
 
+fn join_source_label(source: &mapping::JoinSource) -> String {
+    match source {
+        mapping::JoinSource::Collection(source) if source.collection().is_empty() => {
+            "Current rows".to_string()
+        }
+        mapping::JoinSource::Collection(source) => source.collection().join("/"),
+        mapping::JoinSource::Computed(computed) => match computed.value() {
+            mapping::ComputedJoinValue::Scalar(node) => {
+                format!("computed key {} (node {node})", computed.id())
+            }
+            mapping::ComputedJoinValue::Sequence(sequence) => format!(
+                "computed key {} ({} sequence)",
+                computed.id(),
+                sequence.kind_name()
+            ),
+        },
+    }
+}
+
 fn join_condition_label(source: &mapping::JoinSource, key: &mapping::JoinKey) -> String {
-    let mut left = key.left_collection().to_vec();
-    left.extend(key.left_path().iter().cloned());
-    let mut right = source.collection().to_vec();
-    right.extend(key.right_path().iter().cloned());
-    format!("{} = {}", left.join("/"), right.join("/"))
+    let left = match key.left() {
+        mapping::JoinKeyLeft::Collection { collection, path } => collection
+            .iter()
+            .chain(path)
+            .cloned()
+            .collect::<Vec<_>>()
+            .join("/"),
+        mapping::JoinKeyLeft::Computed(id) => format!("computed key {id}"),
+    };
+    let right = match source {
+        mapping::JoinSource::Collection(source) => source
+            .collection()
+            .iter()
+            .chain(key.right_path())
+            .cloned()
+            .collect::<Vec<_>>()
+            .join("/"),
+        mapping::JoinSource::Computed(computed) => format!("computed key {}", computed.id()),
+    };
+    format!("{left} = {right}")
+}
+
+/// Lines describing a join plan with a computed key source, which the editor
+/// shows read-only until authoring supports computed keys.
+pub(crate) fn computed_join_lines(
+    id: mapping::JoinId,
+    plan: &mapping::JoinPlan,
+) -> Option<Vec<String>> {
+    plan.computed_source()?;
+    let mut lines = vec![join_summary(id, plan)];
+    lines.extend(
+        plan.sources()
+            .enumerate()
+            .map(|(index, source)| format!("input {}: {}", index + 1, join_source_label(source))),
+    );
+    for (source, conditions) in plan.stages() {
+        lines.extend(
+            conditions
+                .iter()
+                .map(|condition| join_condition_label(source, condition)),
+        );
+    }
+    Some(lines)
 }
 
 fn scope_iterates(scope: &Scope) -> bool {
@@ -707,8 +765,18 @@ pub(crate) fn show_scope_editor(
         return None;
     }
     if let Some(condition) = scope.presence() {
-        ui.label("Optional presence is not editable yet; this saved scope is read-only.");
+        ui.label("Constructs zero or one group in the parent item; item controls do not apply.");
         ui.monospace(format!("presence condition node: {condition}"));
+        return None;
+    }
+    if let Some(lines) = scope
+        .join()
+        .and_then(|(id, plan)| computed_join_lines(id, plan))
+    {
+        ui.label("Computed join keys are not editable yet; this saved scope is read-only.");
+        for line in lines {
+            ui.monospace(line);
+        }
         return None;
     }
     if let Some((id, plan)) = scope.iteration.owned_join() {
@@ -759,11 +827,7 @@ pub(crate) fn show_scope_editor(
                 ui.label(join_summary(*id, plan));
             });
             for (index, source) in plan.sources().enumerate() {
-                let collection = if source.collection().is_empty() {
-                    "Current rows".to_string()
-                } else {
-                    source.collection().join("/")
-                };
+                let collection = join_source_label(source);
                 ui.horizontal(|ui| {
                     ui.label(format!("Input {}", index + 1));
                     ui.monospace(collection);
@@ -913,6 +977,11 @@ pub(crate) fn show_scope_editor(
         if scope.bindings.is_empty() {
             crate::ui_kit::help(ui, "Connect a target field to a graph expression.");
         }
+        // A binding added by the keyboard takes focus on its first frame:
+        // its fields are the next thing to set, and Add binding is disabled
+        // once every target field is bound.
+        let focus_new_binding = ui.scope_id().with("focus_new_binding");
+        let focus_binding = ui.data_mut(|data| data.remove_temp::<usize>(focus_new_binding));
         let mut remove_idx = None;
         for (i, binding) in scope.bindings.iter_mut().enumerate() {
             ui.push_id(("binding", i), |ui| {
@@ -934,7 +1003,7 @@ pub(crate) fn show_scope_editor(
                     });
                     crate::ui_kit::form_grid(ui, "binding_fields", |form| {
                         form.row("Target field", |ui| {
-                            egui::ComboBox::from_id_salt(("binding_target", i))
+                            let target = egui::ComboBox::from_id_salt(("binding_target", i))
                                 .selected_text(if binding.target_field.is_empty() {
                                     "Choose field…"
                                 } else {
@@ -951,6 +1020,9 @@ pub(crate) fn show_scope_editor(
                                         );
                                     }
                                 });
+                            if focus_binding == Some(i) {
+                                target.response.request_focus();
+                            }
                         });
                         form.row("Expression", |ui| {
                             binding_node_picker(
@@ -978,7 +1050,7 @@ pub(crate) fn show_scope_editor(
                         .any(|binding| binding.target_field.as_str() == field.as_str())
             })
             .cloned();
-        if ui
+        let add = ui
             .add_enabled(
                 first_binding_node.is_some() && next_target.is_some(),
                 egui::Button::new("Add binding"),
@@ -987,10 +1059,15 @@ pub(crate) fn show_scope_editor(
                 "Add a graph expression available to this target before creating a binding"
             } else {
                 "Every scalar target field already has a binding"
-            })
-            .clicked()
+            });
+        if add.clicked()
             && let (Some(node), Some(target_field)) = (first_binding_node, next_target)
         {
+            if add.has_focus() {
+                let index = scope.bindings.len();
+                ui.data_mut(|data| data.insert_temp(focus_new_binding, index));
+                ui.ctx().request_repaint();
+            }
             scope.bindings.push(Binding { target_field, node });
         }
     });
@@ -1714,7 +1791,7 @@ mod tests {
     }
 
     #[test]
-    fn optional_presence_renders_read_only_and_stays_unchanged() {
+    fn optional_presence_has_no_item_controls_and_stays_unchanged() {
         use crate::test_ui::ContextExt as _;
 
         let original = Scope {

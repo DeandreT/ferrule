@@ -1,0 +1,23 @@
+{
+  "type": "object",
+  "properties": {
+    "Rows": {
+      "type": "array",
+      "maxItems": 4,
+      "items": {
+        "type": "object",
+        "properties": {
+          "Code": { "type": ["string", "null"] },
+          "Qty": { "type": "integer" },
+          "Detail": {
+            "type": "object",
+            "properties": { "Label": { "type": "string" } },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

@@ -196,7 +196,8 @@ fn nested_scalar_join_correlates_and_roundtrips() -> Result<(), Box<dyn Error>> 
     let ScopeIteration::InnerJoin { plan, .. } = &matches.iteration else {
         return Err("Match does not use an inner join".into());
     };
-    let sources = plan.sources().collect::<Vec<_>>();
+    assert_eq!(plan.computed_source(), None);
+    let sources = plan.collection_sources().collect::<Vec<_>>();
     assert_eq!(sources.len(), 2);
     assert_eq!(sources[0].cardinality(), JoinSourceCardinality::Singleton);
     assert_eq!(sources[0].collection(), ["CustomerNumber"]);
@@ -209,11 +210,22 @@ fn nested_scalar_join_correlates_and_roundtrips() -> Result<(), Box<dyn Error>> 
     let roundtrip = directory.0.join("roundtrip.mfd");
     let warnings = mfd::export(&imported.project, &roundtrip)?;
     assert!(warnings.is_empty(), "{warnings:?}");
+    assert_eq!(
+        singleton_edges::source_join_inputs_copy_all(&std::fs::read_to_string(&roundtrip)?)?,
+        [true, true]
+    );
     let reimported = mfd::import(&roundtrip)?;
     assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
     assert!(engine::validate(&reimported.project).is_empty());
     let roundtrip_output = run_fixture(&reimported.project)?;
     assert_eq!(roundtrip_output, output);
+
+    let second = directory.0.join("second.mfd");
+    assert!(mfd::export(&reimported.project, &second)?.is_empty());
+    assert_eq!(
+        singleton_edges::source_join_inputs_copy_all(&std::fs::read_to_string(&second)?)?,
+        [true, true]
+    );
     Ok(())
 }
 
@@ -933,7 +945,7 @@ fn nested_three_input_export_refuses_physical_owner_and_same_component_aliases()
     });
     assert_refused(
         &owner_collision,
-        "singleton and anchor must belong to the primary source component",
+        "anchor `Order` names both a primary source child and a named source",
         0,
     )?;
     let mut same_component = three_project()?;
@@ -1017,60 +1029,7 @@ fn nested_three_input_export_refuses_primary_prefix_shadowing_and_anchor_strippi
 }
 
 #[test]
-fn nested_three_input_export_keeps_named_and_additional_singleton_and_joined_parent_refusals()
--> Result<(), Box<dyn Error>> {
-    let mut named = three_project()?;
-    append_schema_field(
-        &mut named.extra_sources[0].schema,
-        SchemaNode::scalar("CustomerNumber", ScalarType::String),
-    );
-    let collection = vec!["Customers".into(), "CustomerNumber".into()];
-    let plan = JoinPlan::new(
-        JoinSource::singleton(collection.clone()),
-        JoinSource::new(vec!["Customers".into(), "Customer".into()]),
-        JoinConditions::new(JoinKey::new(
-            collection.clone(),
-            vec![],
-            vec!["Number".into()],
-        )),
-    )?
-    .then(
-        JoinSource::new(vec!["Offers".into(), "Offer".into()]),
-        JoinConditions::new(JoinKey::new(
-            vec!["Customers".into(), "Customer".into()],
-            vec!["Region".into()],
-            vec!["Region".into()],
-        ))
-        .and(JoinKey::new(collection, vec![], vec!["Number".into()])),
-    )?;
-    replace_plan(&mut named, plan);
-    assert_refused(
-        &named,
-        "singleton must be a field of the active primary source item",
-        0,
-    )?;
-    let mut four = three_project()?;
-    four.extra_sources.push(NamedSource {
-        name: "Flags".into(),
-        path: "flags.xml".into(),
-        schema: string_fields("Flags", &["Promo"]),
-        options: Default::default(),
-        dynamic_path: None,
-    });
-    let plan = three_plan()?.then(
-        JoinSource::singleton(vec!["Flags".into(), "Promo".into()]),
-        JoinConditions::new(JoinKey::new(
-            vec!["Offers".into(), "Offer".into()],
-            vec!["Promo".into()],
-            vec![],
-        )),
-    )?;
-    replace_plan(&mut four, plan);
-    assert_refused(
-        &four,
-        "nested multi-input join requires a primary singleton followed by static named repeating sources",
-        0,
-    )?;
+fn nested_three_input_export_keeps_joined_parent_refusal() -> Result<(), Box<dyn Error>> {
     let mut joined_parent = three_project()?;
     joined_parent.root.children[0].iteration = ScopeIteration::InnerJoin {
         id: JoinId::new(998),
@@ -1136,5 +1095,11 @@ fn nested_three_input_dynamic_source_is_a_hard_prepublication_refusal() -> Resul
     Ok(())
 }
 
+#[path = "correlated_scalar_join/anchored_shapes.rs"]
+mod anchored_shapes;
 #[path = "correlated_scalar_join/four_plus.rs"]
 mod four_plus;
+#[path = "correlated_scalar_join/singleton_edges.rs"]
+mod singleton_edges;
+#[path = "correlated_scalar_join/singleton_shapes.rs"]
+mod singleton_shapes;

@@ -168,6 +168,7 @@ pub(crate) enum BuiltinId {
     Contains,
     Matches,
     Replace,
+    ReplaceLiteral,
     SqlLike,
     PadStringLeft,
     PadStringRight,
@@ -188,6 +189,7 @@ pub(crate) enum BuiltinId {
     Substring,
     SubstringBefore,
     SubstringAfter,
+    Translate,
     String,
     IsNumeric,
     ToNumber,
@@ -201,6 +203,7 @@ pub(crate) enum BuiltinId {
     FormatNumber,
     Exists,
     Round,
+    RoundHalfCeiling,
     DateFromDatetime,
     YearFromDatetime,
     MonthFromDatetime,
@@ -232,6 +235,8 @@ pub(crate) enum BuiltinId {
     JsonSerializeObject,
     JsonParseField,
     JsonParseObjectExists,
+    JsonParseArrayLength,
+    JsonParseArrayField,
     FlextextParseField,
     DelayPassthrough,
     CoerceDatetime,
@@ -480,6 +485,23 @@ pub(crate) const BUILTINS: &[BuiltinDefinition] = &[
         true,
         Authoring,
         "Performs bounded regular-expression replacement."
+    ),
+    builtin!(
+        ReplaceLiteral,
+        "replace_literal",
+        "Replace Text",
+        String,
+        &[
+            parameter("value", Any),
+            parameter("search", Any),
+            parameter("replacement", Any)
+        ],
+        BuiltinArity::fixed(3),
+        String,
+        true,
+        true,
+        Authoring,
+        "Replaces each occurrence of non-empty search text with the replacement text, without pattern or escape syntax."
     ),
     builtin!(
         SqlLike,
@@ -754,6 +776,23 @@ pub(crate) const BUILTINS: &[BuiltinDefinition] = &[
         "Returns text after a separator."
     ),
     builtin!(
+        Translate,
+        "translate",
+        "Translate",
+        String,
+        &[
+            parameter("value", Any),
+            parameter("search", Any),
+            parameter("replacement", Any)
+        ],
+        BuiltinArity::fixed(3),
+        String,
+        true,
+        true,
+        Authoring,
+        "Replaces each search character with the replacement character at the same position, removing characters that have none."
+    ),
+    builtin!(
         String,
         "string",
         "To String",
@@ -925,7 +964,20 @@ pub(crate) const BUILTINS: &[BuiltinDefinition] = &[
         true,
         true,
         Authoring,
-        "Rounds a number with optional precision."
+        "Rounds a number with optional precision; exact halves round away from zero."
+    ),
+    builtin!(
+        RoundHalfCeiling,
+        "round_half_ceiling",
+        "Round Half Ceiling",
+        Numeric,
+        &[parameter("value", Numeric), parameter("precision", Numeric)],
+        BuiltinArity::range(1, 2),
+        Numeric,
+        true,
+        true,
+        Authoring,
+        "Rounds a decimal with optional precision; exact halves round toward positive infinity."
     ),
     builtin!(
         DateFromDatetime,
@@ -1380,6 +1432,42 @@ pub(crate) const BUILTINS: &[BuiltinDefinition] = &[
         true,
         Internal,
         "Tests ordinary object presence after validating the complete JSON document."
+    ),
+    builtin!(
+        JsonParseArrayLength,
+        "json_parse_array_length",
+        "JSON Array Length",
+        Json,
+        &[
+            parameter("input", JsonText),
+            parameter("schema", JsonText),
+            parameter("array", JsonText)
+        ],
+        BuiltinArity::fixed(3),
+        Integer,
+        true,
+        true,
+        Internal,
+        "Counts array items after validating the complete JSON document."
+    ),
+    builtin!(
+        JsonParseArrayField,
+        "json_parse_array_field",
+        "JSON Array Field",
+        Json,
+        &[
+            parameter("input", JsonText),
+            parameter("schema", JsonText),
+            parameter("array", JsonText),
+            parameter("path", JsonText),
+            parameter("index", Integer)
+        ],
+        BuiltinArity::fixed(5),
+        Any,
+        true,
+        true,
+        Internal,
+        "Projects a typed field from a one-based JSON array item."
     ),
     builtin!(
         FlextextParseField,

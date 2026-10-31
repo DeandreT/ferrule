@@ -30,6 +30,13 @@ pub fn source_instance() -> Instance {
         ("Measure".into(), Instance::Scalar(Value::Float(f64::from_bits(0x3ff4000000000000)))),
     ].into())
 }
+pub fn hinted(location: &str) -> FormatOptions {
+    FormatOptions {
+        xml_document: true,
+        xml_schema_hints: Some(ir::XmlSchemaHints { no_namespace_location: Some(location.into()), derivation: Some(ir::XmlSchemaHintDerivation { schema_reference: location.into() }), ..Default::default() }),
+        ..FormatOptions::default()
+    }
+}
 pub fn expected_project(case: &serde_json::Value) -> Project {
     let ty = match case["type"].as_str().expect("literal type") {
         "String" => ScalarType::String, "Bool" => ScalarType::Bool,
@@ -42,11 +49,16 @@ pub fn expected_project(case: &serde_json::Value) -> Project {
         10..=13 => Node::SourceField { path: vec![match feed { 10 => "Text", 11 => "Flag", 12 => "Count", 13 => "Measure", _ => unreachable!() }.into()], frame: None },
         _ => panic!("unqualified feed"),
     };
+    // Import derives the output schema-location hint from the target schema.
+    let target_schema = match case["name"].as_str() {
+        Some("target-explicit-one") => "cardinality-target-explicit-one.xsd".to_owned(),
+        _ => format!("target-{}.xsd", case["type"].as_str().expect("literal type")),
+    };
     Project {
         source: source_schema(), target: xml_scalar("Output", ty),
         source_path: Some("input.xml".into()), target_path: Some("output.xml".into()),
         source_options: FormatOptions { xml_document: true, ..FormatOptions::default() },
-        target_options: FormatOptions { xml_document: true, ..FormatOptions::default() },
+        target_options: hinted(&target_schema),
         extra_sources: vec![], extra_targets: vec![], failure_rules: vec![], user_functions: BTreeMap::new(),
         graph: Graph { nodes: BTreeMap::from([(0, node)]) },
         root: Scope { construction: ScopeConstruction::Scalar { value: 0 }, ..Scope::default() },
@@ -58,11 +70,11 @@ pub fn expected_named_project() -> Project {
         source: source_schema(), target: xml_scalar("Output", ScalarType::String),
         source_path: Some("input.xml".into()), target_path: Some("output.xml".into()),
         source_options: FormatOptions { xml_document: true, ..FormatOptions::default() },
-        target_options: FormatOptions { xml_document: true, ..FormatOptions::default() },
+        target_options: hinted("target-String.xsd"),
         extra_sources: vec![], extra_targets: vec![mapping::NamedTarget {
             name: "Audit".into(), path: Some("audit.xml".into()),
             schema: xml_scalar("Output", ScalarType::String),
-            options: FormatOptions { xml_document: true, ..FormatOptions::default() },
+            options: hinted("target-String.xsd"),
             root: Scope { construction: ScopeConstruction::Scalar { value: 0 }, ..Scope::default() },
         }], failure_rules: vec![], user_functions: BTreeMap::new(),
         graph: Graph { nodes: BTreeMap::from([(0, Node::SourceField { path: vec!["Text".into()], frame: None })]) },

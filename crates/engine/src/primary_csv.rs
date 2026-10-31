@@ -124,7 +124,22 @@ pub fn run_primary_document<H: PrimarySourceHost, P>(
         return Err(PrimaryDocumentRunError::Invalid(issues));
     }
     let documents = acquire_primary_documents(
-        || evaluate_primary_filename(document, execution),
+        || {
+            let output = crate::evaluate_output_filename(document, execution)?;
+            let input = evaluate_primary_filename(document, execution)?;
+            if let Some(output) = output {
+                for (node, text) in [
+                    (document.primary_source().filename, input.as_str()),
+                    (
+                        document.output_filename().expect("output filename"),
+                        output.as_str(),
+                    ),
+                ] {
+                    DocumentProject::validate_endpoint_text(node, text)?;
+                }
+            }
+            Ok::<_, PrimaryFilenameEvaluationError>(input)
+        },
         document.primary_source().selection,
         host,
         maximum,

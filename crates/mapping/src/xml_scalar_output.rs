@@ -145,11 +145,12 @@ impl FormatOptions {
         let accepted = Self {
             xml_document: true,
             xml_scalar_output: self.xml_scalar_output.clone(),
+            xml_schema_hints: self.xml_schema_hints.clone(),
             ..Default::default()
         };
         if *self != accepted {
             return Err(
-                "XML scalar output v1 requires xml_document and no other format options".into(),
+                "XML scalar output v1 requires xml_document and no other format options except schema hints".into(),
             );
         }
         Ok(())

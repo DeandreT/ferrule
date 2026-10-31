@@ -73,8 +73,14 @@ fn empty_pattern_is_retained_only_on_concrete_string_domains() {
     assert!(dynamic.json_any);
     assert!(dynamic.json_patterns.is_none());
 
-    let unresolved = import_str(r##"{"$ref":"#/$defs/missing","pattern":""}"##);
-    assert!(unresolved.json_patterns.is_none());
+    let unresolved = import_str(
+        r##"{"type":"object","properties":{"Value":{"$ref":"#/$defs/missing","pattern":""}}}"##,
+    );
+    assert!(
+        unresolved
+            .child("Value")
+            .is_some_and(|value| value.json_patterns.is_none())
+    );
 }
 
 #[test]

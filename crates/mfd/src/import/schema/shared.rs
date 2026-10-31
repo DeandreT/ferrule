@@ -11,13 +11,26 @@ pub(super) fn read_json_schema_resource(
     reference: &str,
     description: &str,
 ) -> Result<SchemaNode, String> {
-    match resources {
+    let schema = match resources {
         Some(resources) => resources.import_json_schema(reference),
         None => {
             let path = super::resolve_resource_reference(mfd_path, None, reference, description)?;
             format_json::json_schema::import(&path).map_err(|error| error.to_string())
         }
+    }?;
+    refuse_json_tuple_frames(schema)
+}
+
+/// MFD entries cannot address tuple positions yet, so a schema that imports
+/// with a frame takes the caller's schema-fallback diagnostic and entry tree.
+fn refuse_json_tuple_frames(schema: SchemaNode) -> Result<SchemaNode, String> {
+    if schema.contains_json_tuple() {
+        return Err(format!(
+            "schema `{}` contains a JSON tuple frame; .mfd designs do not support JSON tuple frames until #1230",
+            schema.name
+        ));
     }
+    Ok(schema)
 }
 
 /// Carries request-specific authority; dispatching only by resolved pathname
@@ -468,5 +481,40 @@ mod tests {
         let missing =
             resolve_xml_schema_reference(&dir.0.join("mapping.mfd"), "missing.xsd").unwrap_err();
         assert!(missing.contains("was not found"));
+    }
+
+    #[test]
+    fn json_schemas_with_tuple_frames_are_refused() {
+        use ir::{ItemCountRange, JsonTupleLayout, JsonTupleTail, ScalarType};
+
+        let point = || {
+            SchemaNode::group(
+                "Point",
+                vec![
+                    SchemaNode::scalar("item1", ScalarType::String),
+                    SchemaNode::scalar("item2", ScalarType::Int),
+                ],
+            )
+        };
+        let frame = point()
+            .with_json_tuple(JsonTupleLayout {
+                length: ItemCountRange::new(0, Some(2)),
+                tail: JsonTupleTail::Closed,
+            })
+            .unwrap();
+        let document = |point| {
+            SchemaNode::group(
+                "Document",
+                vec![SchemaNode::scalar("Head", ScalarType::String), point],
+            )
+        };
+
+        for schema in [frame.clone(), document(frame)] {
+            let error = refuse_json_tuple_frames(schema).unwrap_err();
+            assert!(error.contains("JSON tuple frame"), "{error}");
+            assert!(error.contains("#1230"), "{error}");
+        }
+        let ordinary = document(point());
+        assert_eq!(refuse_json_tuple_frames(ordinary.clone()), Ok(ordinary));
     }
 }

@@ -1,0 +1,70 @@
+using System.Text;
+using System.Text.Json.Nodes;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+uint inputNode = uint.Parse(args[0]), outputNode = uint.Parse(args[1]);
+foreach (var (input, output, expected) in new (string?, string?, string?)[] {
+    (" ./input.hl7 ", " ./output.json ", null),
+    (null, "output.json", "InputFile"),
+    ("input.hl7", null, "OutputFile"),
+    ("*.hl7", "output.json", "wildcards"),
+    ("input.hl7", "", "nonempty"),
+    ("input.hl7", "*.json", "wildcards")
+}) {
+    var parameters = new Dictionary<string, FerruleValue>();
+    if (input is not null) parameters["InputFile"] = FerruleValue.FromString(input);
+    if (output is not null) parameters["OutputFile"] = FerruleValue.FromString(output);
+    var execution = FerruleExecutionContext.WithParameters("mapping.json", new FerruleRuntimeParameters(parameters));
+    var host = new Host();
+    try {
+        var bytes = GeneratedMapping.ExecutePrimaryEdiDocumentBytes(execution, host, 1);
+        if (expected is not null) throw new Exception("expected filename refusal");
+        if (!JsonNode.DeepEquals(JsonNode.Parse(bytes), JsonNode.Parse("{\"label\":\"blue widget\",\"units\":\"7\"}"))) throw new Exception("complete output differs");
+        if (GeneratedMapping.EvaluateOutputFilename(execution) != output) throw new Exception("output filename changed");
+        if (!host.Calls.SequenceEqual(new[] { "select:" + input, "load:" + input })) throw new Exception("transport changed");
+    } catch (FerrulePrimaryDocumentException error) when (expected is not null && error.Error == FerruleDocumentAcquisitionError.Filename) {
+        if (host.Calls.Count != 0) throw new Exception("host called before filename refusal");
+        if (error.InnerException is null || !error.InnerException.Message.Contains(expected) || error.Path is not null || error.Count is not null) throw new Exception("wrong filename error details", error);
+        bool missing = expected is "InputFile" or "OutputFile";
+        uint node = expected == "InputFile" || input == "*.hl7" ? inputNode : outputNode;
+        if (missing) {
+            if (error.InnerException is not FerruleRuntimeException runtime || runtime.Error != FerruleRuntimeError.MissingRuntimeParameter || runtime.RuntimeParameter != expected || runtime.Node != node) throw new Exception("wrong missing parameter details", error);
+        } else if (error.InnerException is not GeneratedMapping.FilenameEndpointException invalid || invalid.Node != node) throw new Exception("filename error identity changed", error);
+    }
+}
+
+var valid = FerruleExecutionContext.WithParameters("mapping.json", new FerruleRuntimeParameters(new Dictionary<string, FerruleValue> {
+    ["InputFile"] = FerruleValue.FromString("input.hl7"), ["OutputFile"] = FerruleValue.FromString("output.json")
+}));
+foreach (int count in new[] { 0, 2 }) {
+    var host = new Host { Count = count };
+    try {
+        GeneratedMapping.ExecutePrimaryEdiDocumentBytes(valid, host, 3);
+        throw new Exception("cardinality admitted");
+    } catch (FerrulePrimaryDocumentException error) when (error.Error == FerruleDocumentAcquisitionError.DirectSelection && error.Count == count && error.Path is null && error.InnerException is null) {
+        if (!host.Calls.SequenceEqual(new[] { "select:input.hl7" })) throw new Exception("loaded invalid cardinality");
+    }
+}
+var malformed = new Host { BadInput = true };
+try {
+    GeneratedMapping.ExecutePrimaryEdiDocumentBytes(valid, malformed, 1);
+    throw new Exception("invalid EDI admitted");
+} catch (FerrulePrimaryDocumentException error) when (error.Error == FerruleDocumentAcquisitionError.Input && error.Path == "input.hl7" && error.Count is null && error.InnerException is FerruleEdiException { Code: FerruleEdiError.Format }) {
+    if (!malformed.Calls.SequenceEqual(new[] { "select:input.hl7", "load:input.hl7" })) throw new Exception("input failure transport differs");
+}
+
+sealed class Host : IFerrulePrimarySourceHost {
+    public List<string> Calls { get; } = new();
+    public int Count { get; init; } = 1;
+    public bool BadInput { get; init; }
+    public IReadOnlyList<string> Select(string filename, FerrulePrimaryFileSelection selection) {
+        if (selection != FerrulePrimaryFileSelection.Direct) throw new Exception("selection changed");
+        Calls.Add("select:" + filename);
+        return Enumerable.Repeat(filename, Count).ToArray();
+    }
+    public FerruleCsvSourceData Load(string request) {
+        Calls.Add("load:" + request);
+        return new FerruleCsvSourceData(Encoding.UTF8.GetBytes(BadInput ? "not an HL7 message" : "MSH|^~\\&|\rABC|blue widget|7\r"), null);
+    }
+}

@@ -3,10 +3,13 @@
 //! `properties` (in document order) and `items`, maps `integer`/`number`/
 //! `boolean` to the corresponding scalar types, and resolves document-local
 //! `$ref` pointers (`#/definitions/...`, `#/$defs/...`) plus bounded,
-//! traversal-confined relative local-file reference graphs. Cyclic references
-//! degrade to string scalars. Compatible closed-object `oneOf` and
-//! `anyOf` unions, their required scalar `const` or scalar-`enum`
-//! discriminators, and typed `additionalProperties` schemas are preserved.
+//! traversal-confined relative local-file reference graphs. Nested cyclic
+//! references degrade to string scalars, while a root whose `$ref` chain is
+//! cyclic or unresolved, and any schema position holding a JSON value that is
+//! neither an object nor a boolean, reject as contentless. Compatible
+//! closed-object `oneOf` and `anyOf` unions, their required scalar `const` or
+//! scalar-`enum` discriminators, and typed `additionalProperties` schemas are
+//! preserved.
 //! Ordinary object `required` declarations retain property-presence semantics,
 //! including runtime-named required properties on open objects.
 //! Compatible `allOf` intersections flatten across objects, scalar domains,
@@ -26,12 +29,14 @@
 //! annotations are retained without asserting their vocabulary-specific
 //! semantics. Exact structural `uniqueItems` assertions are enforced on
 //! concrete arrays. Exact `minProperties`/`maxProperties` intervals are
-//! enforced on concrete object shapes. Other shape-neutral validation
+//! enforced on concrete object shapes. Exact `prefixItems` and tuple-form
+//! `items` arrays import as homogeneous arrays or tuple frames and export as
+//! `prefixItems`. Other shape-neutral validation
 //! keywords are accepted but are not enforced by the mapping schema.
 
 use ir::{GroupAlternativeMode, ScalarType, ScalarTypeSet, SchemaKind, SchemaNode};
 
-use crate::JsonFormatError;
+use crate::{ContentlessSchemaReason, JsonFormatError};
 
 mod all_of;
 mod allowed_values;
@@ -55,6 +60,8 @@ mod ranges;
 mod ref_required;
 mod render;
 mod string_lengths;
+mod tuple_frames;
+mod unevaluated_items;
 pub mod unique_items;
 
 use all_of::parse_all_of;
@@ -128,6 +135,9 @@ pub fn import_str(text: &str) -> Result<SchemaNode, JsonFormatError> {
 fn import_value(value: &files::LoadedSchema) -> Result<SchemaNode, JsonFormatError> {
     let name = schema_title(value, value)?.unwrap_or("root");
     let schema = parse(name, value, value, &mut Vec::new())?;
+    reject_contentless_root(name, value)?;
+    tuple_frames::check_tree(&schema)
+        .map_err(|(name, reason)| tuple_frames::unrepresentable(&name, reason))?;
     crate::runtime_constraints::validate_private_unique_items(&schema)?;
     if !schema.json_pattern_budget_is_valid() {
         return Err(unsupported_union(
@@ -166,6 +176,35 @@ fn schema_title<'a>(
         }
         active_refs.push(reference);
         schema = resolved;
+    }
+}
+
+/// Nested cyclic or unresolved references degrade to string scalars, but a
+/// root whose whole `$ref` chain does so has no content of its own; accepting
+/// it would replace the caller's tree with one string. Runs after a successful
+/// parse, so the chain is already within the reference-depth limit.
+fn reject_contentless_root(name: &str, doc: &files::LoadedSchema) -> Result<(), JsonFormatError> {
+    let mut schema: &serde_json::Value = doc;
+    let mut active_refs = Vec::new();
+    while let Some(reference) = schema.get("$ref").and_then(serde_json::Value::as_str) {
+        let reason = if active_refs.contains(&reference) {
+            ContentlessSchemaReason::ReferenceCycle
+        } else if let Some(resolved) = resolve_ref(doc, reference) {
+            active_refs.push(reference);
+            schema = resolved;
+            continue;
+        } else {
+            ContentlessSchemaReason::UnresolvedReference
+        };
+        return Err(contentless(name, reason));
+    }
+    Ok(())
+}
+
+fn contentless(name: &str, reason: ContentlessSchemaReason) -> JsonFormatError {
+    JsonFormatError::ContentlessSchema {
+        name: name.to_string(),
+        reason,
     }
 }
 
@@ -210,6 +249,7 @@ fn parse(
                 }
                 return parse_non_ref(name, &current, doc, active_refs);
             };
+            unevaluated_items::validate_direct(name, &current)?;
             reject_unsupported_dynamic_references(name, &current)?;
             let apply_siblings = files::ref_siblings_apply(&current);
             if apply_siblings {
@@ -274,6 +314,20 @@ fn parse_non_ref(
             "the false schema accepts no JSON value",
         ));
     }
+    let found = match schema {
+        serde_json::Value::Object(_) | serde_json::Value::Bool(_) => None,
+        serde_json::Value::Array(_) => Some("an array"),
+        serde_json::Value::String(_) => Some("a string"),
+        serde_json::Value::Number(_) => Some("a number"),
+        serde_json::Value::Null => Some("null"),
+    };
+    if let Some(found) = found {
+        return Err(contentless(
+            name,
+            ContentlessSchemaReason::NotASchema { found },
+        ));
+    }
+    unevaluated_items::validate_direct(name, schema)?;
     reject_unsupported_dynamic_references(name, schema)?;
     reject_unsupported_object_keywords(name, schema)?;
     contains::validate_ignored(name, schema, doc, active_refs)?;
@@ -648,22 +702,18 @@ fn parse_array_schema(
     active_refs: &mut Vec<String>,
     nullable: bool,
 ) -> Result<SchemaNode, JsonFormatError> {
-    if let Some(mut node) = positional_items::normalize(name, schema, doc, active_refs)? {
-        let object_item_nullable = if matches!(node.kind, SchemaKind::Group { .. })
-            && !node.json_array_wrapper
-            && !node.json_any
-        {
-            Some(crate::null_layers::single_null(&node)?)
-        } else {
-            None
-        };
-        node.container_nullable = nullable;
-        if let Some(item_nullable) = object_item_nullable {
-            node.json_object_item_nullable = (nullable || item_nullable).then_some(item_nullable);
-        }
+    let unevaluated = unevaluated_items::tail(name, schema, doc, active_refs)?;
+    if let Some(mut node) =
+        positional_items::normalize(name, schema, unevaluated, doc, active_refs)?
+    {
+        tuple_frames::set_array_nullability(&mut node, nullable)?;
         ranges::validate_ignored(name, schema)?;
         multiples::validate_ignored(name, schema)?;
-        contains::apply(name, schema, &mut node, doc, active_refs, false)?;
+        if node.repeating {
+            contains::apply(name, schema, &mut node, doc, active_refs, false)?;
+        } else {
+            tuple_frames::reject_cross_position_assertions(name, schema, doc, active_refs)?;
+        }
         conditionals::apply(name, schema, &mut node, doc, active_refs, false)?;
         unique_items::apply(name, schema, &mut node, false)?;
         string_lengths::validate_ignored(name, schema)?;
@@ -671,7 +721,8 @@ fn parse_array_schema(
         formats::validate(name, schema)?;
         return Ok(node);
     }
-    let Some(items) = schema.get("items") else {
+    // Without positional members, `unevaluatedItems` acts as `items`.
+    let Some(items) = schema.get("items").or(unevaluated) else {
         let mut node = arbitrary_json_schema(name)?.repeating();
         node.container_nullable = nullable;
         ranges::validate_ignored(name, schema)?;
@@ -694,7 +745,13 @@ fn parse_array_schema(
     } else {
         name
     };
-    let item = parse(item_name, items, doc, active_refs)?;
+    let mut item = parse(item_name, items, doc, active_refs)?;
+    // An array of tuples is a repeating frame named after the array.
+    let tuple_items = item.json_tuple.is_some();
+    if tuple_items {
+        name.clone_into(&mut item.name);
+        tuple_frames::reject_cross_position_assertions(name, schema, doc, active_refs)?;
+    }
     let object_item_nullable = if !item.repeating && matches!(item.kind, SchemaKind::Group { .. }) {
         Some(crate::null_layers::container_null(&item)?)
     } else {
@@ -716,7 +773,9 @@ fn parse_array_schema(
     };
     node.container_nullable = nullable;
     if let Some(item_nullable) = object_item_nullable {
-        node.json_object_item_nullable = (nullable || item_nullable).then_some(item_nullable);
+        // A repeating frame always states whether each tuple may be null.
+        node.json_object_item_nullable =
+            (nullable || item_nullable || tuple_items).then_some(item_nullable);
     }
     ranges::validate_ignored(name, schema)?;
     multiples::validate_ignored(name, schema)?;
@@ -821,6 +880,7 @@ fn finite_array_items(
     }
     for keyword in [
         "items",
+        "unevaluatedItems",
         "additionalProperties",
         "contains",
         "propertyNames",
@@ -876,7 +936,9 @@ fn apply_known_shape_constraints(
     dependent_schemas::apply(name, schema, node, doc, active_refs, false)?;
     conditionals::apply(name, schema, node, doc, active_refs, false)?;
     property_names::apply(name, schema, node, doc, active_refs, false)?;
-    if node.repeating {
+    if tuple_frames::is_single_frame(node) {
+        tuple_frames::apply_array_constraints(name, schema, node, doc, active_refs)
+    } else if node.repeating {
         ranges::validate_ignored(name, schema)?;
         multiples::validate_ignored(name, schema)?;
         item_counts::apply(name, schema, node, false)?;
@@ -1115,6 +1177,7 @@ fn attach_dynamic_fields(
         }
     };
     let value = parse("*", additional, doc, active_refs)?;
+    tuple_frames::reject_dynamic_value(&group.name, &value, "additionalProperties")?;
     let name = group.name.clone();
     group
         .with_dynamic_fields(value)
@@ -1146,12 +1209,6 @@ fn reject_unsupported_object_keywords(
         return Err(unsupported_union(
             name,
             "`prefixItems` normalization requires a direct concrete array schema",
-        ));
-    }
-    if dialect.supports_unevaluated_items() && object.contains_key("unevaluatedItems") {
-        return Err(unsupported_union(
-            name,
-            "`unevaluatedItems` annotation-dependent validation is not supported",
         ));
     }
     if object.get("items").is_some_and(serde_json::Value::is_array) {
@@ -1319,6 +1376,9 @@ pub fn export(schema: &SchemaNode) -> Result<String, JsonFormatError> {
         return Err(JsonFormatError::InvalidArrayWrapperMetadata {
             name: schema.name.clone(),
         });
+    }
+    if let Err((name, reason)) = tuple_frames::check_tree(schema) {
+        return Err(JsonFormatError::InvalidJsonTupleFrameMetadata { name, reason });
     }
     if !schema.json_allowed_values_tree_is_valid() {
         return Err(JsonFormatError::InvalidAllowedValuesMetadata {
