@@ -265,6 +265,7 @@ impl FerruleApp {
             MappingDocument::Main | MappingDocument::Function(_) => None,
         };
         if page == InspectorPage::Target {
+            let document = self.embedded_canvas_id(self.document_ui_id);
             // Keyed by name rather than position, so reordering targets
             // never hands one target's draft to another.
             let target = match active_target {
@@ -278,7 +279,7 @@ impl FerruleApp {
             if let Some((name, options)) = target.filter(|(_, options)| options.swift_mt.is_some())
             {
                 ui.add_enabled_ui(editing_enabled, |ui| {
-                    crate::app::swift_output::show_fields(ui, options, name);
+                    crate::app::swift_output::show_fields(ui, options, document, name);
                 });
                 ui.separator();
             }

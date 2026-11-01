@@ -1,5 +1,10 @@
 //! SWIFT MT target headers: one direction for the output and one line per
 //! written message, `<basic header> <application header>`.
+//!
+//! Drafts and text-input state belong to the loaded document and target name.
+//! Closing the Inspector, refreshing sources, undoing unrelated edits and Save
+//! As retain them. Replacing a document starts from its saved headers, even
+//! when its path and options are unchanged; embedded stages have separate owners.
 
 use mapping::{FormatOptions, SwiftMtDirection, SwiftMtMessageHeaders, SwiftMtOutputOptions};
 
@@ -76,14 +81,22 @@ pub(super) fn header_issues(output: &SwiftMtOutputOptions) -> Vec<String> {
         .collect()
 }
 
-/// Returns whether the saved options changed. `target` is a stable target
-/// identity: `None` for the primary target, else the named target's name.
+/// Returns whether the saved options changed. `document` is the session-local
+/// project owner; `target` is `None` for primary, else the stable target name.
 pub(super) fn show_fields(
     ui: &mut egui::Ui,
     options: &mut FormatOptions,
+    document: egui::Id,
     target: Option<&str>,
 ) -> bool {
-    let id = ui.make_persistent_id(("swift_mt_output", target));
+    ui.push_id(("swift_mt_output", document, target), |ui| {
+        show_header_fields(ui, options)
+    })
+    .inner
+}
+
+fn show_header_fields(ui: &mut egui::Ui, options: &mut FormatOptions) -> bool {
+    let id = ui.make_persistent_id("draft");
     let mut draft = ui
         .data(|data| data.get_temp::<Draft>(id))
         .filter(|draft| draft.saved == options.swift_mt_output)
@@ -204,7 +217,12 @@ mod tests {
         for _ in 0..2 {
             let _ = context.run_test_ui(egui::RawInput::default(), |ui| {
                 egui::CentralPanel::default().show(ui, |ui| {
-                    assert!(!show_fields(ui, &mut options, Some("test")));
+                    assert!(!show_fields(
+                        ui,
+                        &mut options,
+                        egui::Id::unique("test_document"),
+                        Some("test"),
+                    ));
                 });
             });
         }
