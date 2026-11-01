@@ -1475,6 +1475,7 @@ mod owned_trace_witness {
         let before = context.field(&outer_field).unwrap();
         let positions = [
             PositionFrame {
+                binding: crate::source_iteration::InstanceBinding::LegacyUnspecified,
                 generated_origin: None,
                 collection: vec![project.extra_sources[0].name.clone(), "Rows".into()],
                 index: 9,
@@ -1484,6 +1485,7 @@ mod owned_trace_witness {
                 document_path: None,
             },
             PositionFrame {
+                binding: crate::source_iteration::InstanceBinding::LegacyUnspecified,
                 generated_origin: None,
                 collection: vec![
                     project.extra_sources[0].name.clone(),
@@ -2112,6 +2114,7 @@ mod owned_trace_witness {
     fn legacy_position_fields_and_public_basic_observer_admission_remain_exact() {
         use crate::source_iteration::PositionFrame;
         let position = PositionFrame {
+            binding: crate::source_iteration::InstanceBinding::LegacyUnspecified,
             generated_origin: None,
             collection: vec!["Root".into(), "Rows".into()],
             index: 4,
@@ -2429,6 +2432,7 @@ mod owned_trace_producer {
             .iter()
             .enumerate()
             .map(|(index, name)| PositionFrame {
+                binding: crate::source_iteration::InstanceBinding::LegacyUnspecified,
                 generated_origin: None,
                 collection: vec![(*name).into(), "Rows".into()],
                 index: [9, 2][index],
@@ -3368,6 +3372,7 @@ mod owned_output_trace_producer {
 
     fn position(collection: &[&str], index: usize) -> PositionFrame {
         PositionFrame {
+            binding: crate::source_iteration::InstanceBinding::LegacyUnspecified,
             generated_origin: None,
             collection: collection.iter().map(|part| (*part).into()).collect(),
             index,
@@ -4545,6 +4550,7 @@ mod owned_scope_lifecycle {
     }
     fn position(index: usize) -> PositionFrame {
         PositionFrame {
+            binding: crate::source_iteration::InstanceBinding::LegacyUnspecified,
             generated_origin: None,
             collection: path(&["Rows"]),
             index,

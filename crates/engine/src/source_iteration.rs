@@ -1,8 +1,30 @@
 use ir::Instance;
 use mapping::JoinId;
 
+/// A slot indexes the accompanying instance vector, never the position vector.
+/// Walks use extension-relative slots; appending rebases them into the receiver.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum InstanceBinding {
+    /// Compatibility for hand-built contexts and unvalidated malformed joins.
+    LegacyUnspecified,
+    ContextSlot(usize),
+    ExplicitUnbound,
+}
+
+impl InstanceBinding {
+    pub(crate) fn rebased(self, offset: usize) -> Self {
+        match self {
+            Self::ContextSlot(slot) => slot
+                .checked_add(offset)
+                .map_or(Self::ExplicitUnbound, Self::ContextSlot),
+            other => other,
+        }
+    }
+}
+
 #[derive(Clone)]
 pub(super) struct PositionFrame {
+    pub(crate) binding: InstanceBinding,
     /// Immutable ordinal of the exact generated sequence, before selection.
     pub(super) generated_origin: Option<(mapping::NodeId, usize)>,
     pub(super) collection: Vec<String>,
@@ -22,6 +44,33 @@ pub(super) struct PositionFrame {
 pub(super) struct WalkExtension<'a> {
     pub(super) instances: Vec<&'a Instance>,
     pub(super) positions: Vec<PositionFrame>,
+}
+
+impl<'a> WalkExtension<'a> {
+    pub(crate) fn append_positions_to(
+        &self,
+        context_offset: usize,
+        positions: &mut Vec<PositionFrame>,
+    ) {
+        positions.extend(self.positions.iter().cloned().map(|mut position| {
+            position.binding = match position.binding {
+                InstanceBinding::ContextSlot(slot) if slot >= self.instances.len() => {
+                    InstanceBinding::ExplicitUnbound
+                }
+                binding => binding.rebased(context_offset),
+            };
+            position
+        }));
+    }
+
+    pub(crate) fn append_to(
+        &self,
+        context: &mut Vec<&'a Instance>,
+        positions: &mut Vec<PositionFrame>,
+    ) {
+        self.append_positions_to(context.len(), positions);
+        context.extend(self.instances.iter().copied());
+    }
 }
 
 /// Walks `path` from `base`, branching (and pushing one context frame) each
@@ -48,6 +97,7 @@ pub(super) fn walk<'a>(
                 next_instances.push(item);
                 let mut next_positions = positions.to_vec();
                 next_positions.push(PositionFrame {
+                    binding: InstanceBinding::ContextSlot(next_instances.len() - 1),
                     generated_origin: None,
                     collection: prefix.to_vec(),
                     index: index + 1,
@@ -70,6 +120,7 @@ pub(super) fn walk<'a>(
                     next_instances.push(document.value());
                     let mut next_positions = positions.to_vec();
                     next_positions.push(PositionFrame {
+                        binding: InstanceBinding::ContextSlot(next_instances.len() - 1),
                         generated_origin: None,
                         collection: prefix.to_vec(),
                         index: index + 1,
@@ -92,6 +143,7 @@ pub(super) fn walk<'a>(
                     next_instances.push(item);
                     let mut next_positions = positions.to_vec();
                     next_positions.push(PositionFrame {
+                        binding: InstanceBinding::ContextSlot(next_instances.len() - 1),
                         generated_origin: None,
                         collection: prefix.to_vec(),
                         index: index + 1,
@@ -114,8 +166,7 @@ pub(super) fn walk<'a>(
                 vec![WalkExtension {
                     // An empty path over a non-collection is an identity
                     // iteration. `base` is already the active context frame;
-                    // pushing it again would create an untracked frame and
-                    // misalign outer collection positions in nested scopes.
+                    // pushing it again would create a redundant frame.
                     // A non-empty prefix means a named path was consumed to
                     // reach this terminal value, which must remain available
                     // to singleton joins and copy construction.
@@ -134,6 +185,7 @@ pub(super) fn walk<'a>(
                         next_instances.push(document.value());
                         let mut next_positions = positions.to_vec();
                         next_positions.push(PositionFrame {
+                            binding: InstanceBinding::ContextSlot(next_instances.len() - 1),
                             generated_origin: None,
                             collection: prefix.to_vec(),
                             index: index + 1,
@@ -164,6 +216,7 @@ pub(super) fn walk<'a>(
                         next_instances.push(item);
                         let mut next_positions = positions.to_vec();
                         next_positions.push(PositionFrame {
+                            binding: InstanceBinding::ContextSlot(next_instances.len() - 1),
                             generated_origin: None,
                             collection: collection_path.clone(),
                             index: index + 1,
@@ -194,7 +247,7 @@ pub(super) fn walk<'a>(
     }
 }
 
-/// Candidate ownership metadata is separate from the unchanged legacy frame layout.
+/// Owned-source metadata is separate from instance/position correspondence.
 pub(crate) struct ObservedExtension<'a> {
     pub extension: WalkExtension<'a>,
     pub frames: Vec<crate::owned_context::SourceFrame<'a>>,
@@ -496,6 +549,7 @@ fn observe_walk<'a>(
             next_instances.push(item);
             let mut next_positions = positions.to_vec();
             next_positions.push(PositionFrame {
+                binding: InstanceBinding::ContextSlot(next_instances.len() - 1),
                 generated_origin: None,
                 collection: raw_prefix.to_vec(),
                 index: position,

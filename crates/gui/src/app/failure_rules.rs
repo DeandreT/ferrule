@@ -173,7 +173,11 @@ impl FerruleApp {
             .graph
             .nodes
             .iter()
-            .find(|(_, node)| !matches!(node, mapping::Node::Unconnected))
+            .find(|(id, node)| {
+                !matches!(node, mapping::Node::Unconnected)
+                    && crate::source_ownership::lookup_dependencies(&self.project.graph, **id)
+                        .is_empty()
+            })
             .map(|(&id, _)| id);
         let generated_editable =
             editable_generated_rule(&self.project, &self.project.failure_rules[index]);

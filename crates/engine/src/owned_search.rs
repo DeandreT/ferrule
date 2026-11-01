@@ -101,10 +101,11 @@ pub(crate) fn item_frames<'c>(
     )?;
     let mut item_context = Vec::with_capacity(instances);
     item_context.extend(context.iter().copied());
-    item_context.extend(extension.extension.instances.iter().copied());
     let mut item_positions = Vec::with_capacity(frames);
     item_positions.extend(positions.iter().cloned());
-    item_positions.extend(extension.extension.positions.iter().cloned());
+    extension
+        .extension
+        .append_to(&mut item_context, &mut item_positions);
     Ok((item_context, item_positions))
 }
 

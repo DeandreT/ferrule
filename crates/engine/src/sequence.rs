@@ -458,6 +458,7 @@ pub(super) fn eval_sequence_exists(
         item_context.push(&item);
         let mut item_positions = positions.to_vec();
         item_positions.push(PositionFrame {
+            binding: crate::source_iteration::InstanceBinding::ContextSlot(item_context.len() - 1),
             generated_origin: Some((sequence.item(), index + 1)),
             collection: Vec::new(),
             index: index + 1,
@@ -554,6 +555,7 @@ pub(super) fn eval_sequence_aggregate(
         item_context.push(&item);
         let mut item_positions = positions.to_vec();
         item_positions.push(PositionFrame {
+            binding: crate::source_iteration::InstanceBinding::ContextSlot(item_context.len() - 1),
             generated_origin: Some((sequence.item(), index + 1)),
             collection: Vec::new(),
             index: index + 1,
