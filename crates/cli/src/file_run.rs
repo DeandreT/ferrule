@@ -17,7 +17,7 @@ use crate::route_capability::{HostRoute, InputRole, PlannedPublication, RoutePla
 use crate::sqlite_query::PreparedQuery;
 use crate::{
     ExecutionPolicy, FilesystemPdfReader, FilesystemRunPolicy, ProjectDynamicSourceLoader,
-    TargetSelection, TraceSink, absolute_mapping_path, http_url, load_project,
+    TargetSelection, TraceSink, absolute_mapping_path, http_url, load_project, project_directory,
     read_instance_with_pdf_reader, read_set, require_valid, resolve_run_path, resolve_stored_path,
 };
 
@@ -932,12 +932,11 @@ fn plan_primary_target<'a>(
     output_path: Option<&Path>,
 ) -> anyhow::Result<PlannedProjectTarget<'a>> {
     let destination = if project.root.produces_documents() {
-        OutputDestination::DynamicBase(output_path.map(Path::to_path_buf).unwrap_or_else(|| {
-            project_path
-                .parent()
-                .unwrap_or(Path::new("."))
-                .to_path_buf()
-        }))
+        OutputDestination::DynamicBase(
+            output_path
+                .map(Path::to_path_buf)
+                .unwrap_or_else(|| project_directory(project_path).to_path_buf()),
+        )
     } else {
         OutputDestination::Static(resolve_run_path(
             project_path,
@@ -967,12 +966,11 @@ fn plan_named_target<'a>(
     output_path: Option<&Path>,
 ) -> anyhow::Result<PlannedProjectTarget<'a>> {
     let destination = if target.root.produces_documents() {
-        OutputDestination::DynamicBase(output_path.map(Path::to_path_buf).unwrap_or_else(|| {
-            project_path
-                .parent()
-                .unwrap_or(Path::new("."))
-                .to_path_buf()
-        }))
+        OutputDestination::DynamicBase(
+            output_path
+                .map(Path::to_path_buf)
+                .unwrap_or_else(|| project_directory(project_path).to_path_buf()),
+        )
     } else {
         let path = match output_path {
             Some(path) => path.to_path_buf(),
