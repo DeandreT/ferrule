@@ -1,4 +1,4 @@
-use super::{first_node_id, node_picker};
+use super::{binding_node_ids_with_policy, lookup_admission::Policy, node_picker_with_policy};
 use egui::Ui;
 use mapping::{Graph, NodeId, Scope, SequenceWindow};
 
@@ -9,8 +9,8 @@ enum WindowAction {
     MoveDown(usize),
 }
 
-pub(super) fn show(ui: &mut Ui, scope: &mut Scope, graph: &Graph) {
-    let first_node = first_node_id(graph);
+pub(super) fn show(ui: &mut Ui, scope: &mut Scope, graph: &Graph, policy: Policy<'_>) {
+    let first_node = binding_node_ids_with_policy(graph, false, policy).next();
     crate::ui_kit::section(ui, "Windows", |_| {});
     let count = scope.windows.len();
     let mut action = None;
@@ -66,17 +66,23 @@ pub(super) fn show(ui: &mut Ui, scope: &mut Scope, graph: &Graph) {
                     | SequenceWindow::First { count }
                     | SequenceWindow::Last { count } => {
                         ui.label("Item count");
-                        node_picker(ui, ("window_count", index), count, graph);
+                        node_picker_with_policy(ui, ("window_count", index), count, graph, policy);
                     }
                     SequenceWindow::From { position } => {
                         ui.label("Start position");
-                        node_picker(ui, ("window_position", index), position, graph);
+                        node_picker_with_policy(
+                            ui,
+                            ("window_position", index),
+                            position,
+                            graph,
+                            policy,
+                        );
                     }
                     SequenceWindow::FromTo { first, last } => {
                         ui.label("Start position");
-                        node_picker(ui, ("window_first", index), first, graph);
+                        node_picker_with_policy(ui, ("window_first", index), first, graph, policy);
                         ui.label("End position");
-                        node_picker(ui, ("window_last", index), last, graph);
+                        node_picker_with_policy(ui, ("window_last", index), last, graph, policy);
                     }
                 }
             });

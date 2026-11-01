@@ -261,3 +261,83 @@ fn owned_dynamic_inputs_are_unaddressable_and_keep_their_driver() {
             .all(|choice| choice.source.owner == SourceOwner::Primary)
     );
 }
+
+#[test]
+fn lookup_owners_include_shadowed_static_aliases_but_not_ambiguous_or_dynamic_inputs() {
+    let primary = SchemaNode::group("Root", vec![value_group("Ref")]);
+    let mut dynamic = named("Dynamic", value_group("Doc"));
+    dynamic.dynamic_path = Some(mapping::DynamicSourcePath::legacy(3, vec![]));
+    let sources = vec![
+        named("Ref", value_group("Doc")),
+        dynamic,
+        named("duplicate", value_group("A")),
+        named("duplicate", value_group("B")),
+        named(" ", value_group("Blank")),
+    ];
+    assert_eq!(
+        SourceOwnership::new(&primary, &sources).lookup_owners(),
+        [SourceOwner::Primary, ref_owner()]
+    );
+}
+
+#[test]
+fn lookup_editing_refuses_shared_specialized_contexts_without_changing_nodes() {
+    use mapping::{Binding, Node, Scope, ScopeConstruction};
+    let mut project = project(value_group("Input"), vec![]);
+    project.graph.nodes.insert(
+        3,
+        Node::Lookup {
+            collection: vec![],
+            key: vec!["Value".into()],
+            matches: 4,
+            value: vec!["Value".into()],
+        },
+    );
+    project.graph.nodes.insert(
+        4,
+        Node::Const {
+            value: ir::Value::String("key".into()),
+        },
+    );
+    project.graph.nodes.insert(
+        5,
+        Node::Call {
+            function: "concat".into(),
+            args: vec![3],
+        },
+    );
+    project.root.bindings = vec![Binding {
+        target_field: "Value".into(),
+        node: 3,
+    }];
+    assert!(!lookup_read_only_nodes(&project).contains(&3));
+    project.extra_targets.push(mapping::NamedTarget {
+        name: "Special".into(),
+        path: None,
+        schema: value_group("Output"),
+        options: Default::default(),
+        root: Scope {
+            construction: ScopeConstruction::CopyCurrentSource,
+            bindings: vec![Binding {
+                target_field: "Value".into(),
+                node: 5,
+            }],
+            ..Default::default()
+        },
+    });
+    let before = serde_json::to_value(&project).unwrap();
+    assert!(lookup_read_only_nodes(&project).contains(&3));
+    assert_eq!(serde_json::to_value(&project).unwrap(), before);
+    project.extra_targets.clear();
+    project.graph.nodes.insert(
+        6,
+        Node::Aggregate {
+            function: mapping::AggregateOp::Sum,
+            collection: vec![],
+            value: vec![],
+            expression: Some(5),
+            arg: None,
+        },
+    );
+    assert!(lookup_read_only_nodes(&project).contains(&3));
+}

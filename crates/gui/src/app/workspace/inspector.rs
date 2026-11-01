@@ -436,6 +436,7 @@ impl FerruleApp {
         ui.separator();
         let source_paths =
             SourcePathCatalog::new(&self.project.source, &self.project.extra_sources)
+                .with_primary_source_options(&self.project.source_options)
                 .with_project_ownership(&self.project);
         let primary_root_bindings = crate::primary_root_authoring::available(&self.project);
         let computed_property_owner = self.embedded_stage_namespace.is_none()
@@ -479,6 +480,8 @@ impl FerruleApp {
                                     };
                                     let target_chain =
                                         scope_target_chain(&target.root, &self.selected_scope);
+                                    let lookup_context = source_paths
+                                        .lookup_binding_supported(&target.root, &target_chain);
                                     let target_fields =
                                         binding_target_fields(&target.schema, &target_chain);
                                     let target_xml_types = crate::target_xml_type::schema_at(
@@ -521,32 +524,43 @@ impl FerruleApp {
                                     let scope =
                                         scope_at_mut(&mut target.root, &self.selected_scope);
                                     let before = watch_scope.then(|| ScopeFields::capture(scope));
-                                    crate::scope_editor::presence_controls::show(
-                                        ui,
-                                        scope,
-                                        &self.project.graph,
-                                        &presence_profile,
-                                    );
-                                    type_action = show_scope_editor(
+                                    type_action = crate::scope_editor::lookup_admission::edit(
                                         ui,
                                         scope,
                                         &self.project.graph,
                                         &source_paths,
-                                        &target_fields,
-                                        crate::scope_editor::ScopeEditorOwner {
-                                            nested,
-                                            primary_root_bindings: false,
-                                            target_xml_types: &target_xml_types,
-                                            target_xml_default,
-                                            target_type_editable,
+                                        lookup_context,
+                                        |ui, scope| {
+                                            crate::scope_editor::presence_controls::show(
+                                                ui,
+                                                scope,
+                                                &self.project.graph,
+                                                &presence_profile,
+                                            );
+                                            let action = show_scope_editor(
+                                                ui,
+                                                scope,
+                                                &self.project.graph,
+                                                &source_paths,
+                                                &target_fields,
+                                                crate::scope_editor::ScopeEditorOwner {
+                                                    nested,
+                                                    lookup_context,
+                                                    primary_root_bindings: false,
+                                                    target_xml_types: &target_xml_types,
+                                                    target_xml_default,
+                                                    target_type_editable,
+                                                },
+                                                output_profile,
+                                            );
+                                            crate::scope_editor::computed_properties::show(
+                                                ui,
+                                                scope,
+                                                &self.project.graph,
+                                                computed_property_profile,
+                                            );
+                                            action
                                         },
-                                        output_profile,
-                                    );
-                                    crate::scope_editor::computed_properties::show(
-                                        ui,
-                                        scope,
-                                        &self.project.graph,
-                                        computed_property_profile,
                                     );
                                     scope_edit = before.map(|before| {
                                         let document = GraphDocument::Target(TargetId::Named(
@@ -559,6 +573,10 @@ impl FerruleApp {
                                     let target_chain = scope_target_chain(
                                         &self.project.root,
                                         &self.selected_scope,
+                                    );
+                                    let lookup_context = source_paths.lookup_binding_supported(
+                                        &self.project.root,
+                                        &target_chain,
                                     );
                                     let target_fields =
                                         binding_target_fields(&self.project.target, &target_chain);
@@ -602,32 +620,43 @@ impl FerruleApp {
                                     let scope =
                                         scope_at_mut(&mut self.project.root, &self.selected_scope);
                                     let before = watch_scope.then(|| ScopeFields::capture(scope));
-                                    crate::scope_editor::presence_controls::show(
-                                        ui,
-                                        scope,
-                                        &self.project.graph,
-                                        &presence_profile,
-                                    );
-                                    type_action = show_scope_editor(
+                                    type_action = crate::scope_editor::lookup_admission::edit(
                                         ui,
                                         scope,
                                         &self.project.graph,
                                         &source_paths,
-                                        &target_fields,
-                                        crate::scope_editor::ScopeEditorOwner {
-                                            nested,
-                                            primary_root_bindings,
-                                            target_xml_types: &target_xml_types,
-                                            target_xml_default,
-                                            target_type_editable,
+                                        lookup_context,
+                                        |ui, scope| {
+                                            crate::scope_editor::presence_controls::show(
+                                                ui,
+                                                scope,
+                                                &self.project.graph,
+                                                &presence_profile,
+                                            );
+                                            let action = show_scope_editor(
+                                                ui,
+                                                scope,
+                                                &self.project.graph,
+                                                &source_paths,
+                                                &target_fields,
+                                                crate::scope_editor::ScopeEditorOwner {
+                                                    nested,
+                                                    lookup_context,
+                                                    primary_root_bindings,
+                                                    target_xml_types: &target_xml_types,
+                                                    target_xml_default,
+                                                    target_type_editable,
+                                                },
+                                                output_profile,
+                                            );
+                                            crate::scope_editor::computed_properties::show(
+                                                ui,
+                                                scope,
+                                                &self.project.graph,
+                                                computed_property_profile,
+                                            );
+                                            action
                                         },
-                                        output_profile,
-                                    );
-                                    crate::scope_editor::computed_properties::show(
-                                        ui,
-                                        scope,
-                                        &self.project.graph,
-                                        computed_property_profile,
                                     );
                                     scope_edit = before.map(|before| {
                                         let document = GraphDocument::Target(TargetId::Primary);
