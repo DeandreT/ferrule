@@ -391,7 +391,7 @@ fn create_wired_lookup(app: &mut FerruleApp, ctx: &egui::Context) -> NodeId {
         egui::pos2(1100.0, 850.0),
         egui::PointerButton::Secondary,
     );
-    click_nth(app, ctx, true, "Lookup from one input", 0);
+    creation_menu::click_action(app, ctx, "Lookup from one input");
     let id = app
         .project
         .graph

@@ -756,7 +756,7 @@ fn grouped_canvas_cannot_create_owned_lookups() {
         egui::pos2(1100.0, 850.0),
         egui::PointerButton::Secondary,
     );
-    click_nth(&mut app, &ctx, true, "Lookup from one input", 0);
+    creation_menu::click_action(&mut app, &ctx, "Lookup from one input");
     assert_eq!(observed(&app), before);
     assert_eq!(run(&app, INPUT).primary, original.primary);
 }
