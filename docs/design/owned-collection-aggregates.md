@@ -74,31 +74,39 @@ them closed.
 
 ## Native editor
 
-The canvas offers **Count from one input** and **Sum from one input** on primary
-and named-target canvases. These create an explicit static owner and no scalar
-argument. Count stores an empty value path and offers collections even when
-their group items have no scalar fields. Sum offers only scalar item paths that
-do not cross another repetition. Input and collection changes retain a valid
-local value path or select the first field of that exact owner; they never use
-another owner's fields.
+The **from one input** actions offer **Count**, **Sum**, **Average**, **Minimum**
+and **Maximum** on primary and named-target canvases. These create an explicit
+static owner and no scalar argument. Count stores an empty value path
+and offers collections even when their group items have no scalar fields. The
+numeric reducers offer only scalar item paths that do not cross another
+repetition. Input and collection changes retain a valid local value path or
+select the first field of that exact owner; they never use another owner's
+fields.
 
-The properties editor switches between these two operations and selects the
-input, collection and (for Sum) value path. Legacy aggregates stay legacy until
-**Use an exact input** is clicked. Computed values, arguments, other operations
-and nonempty Count value paths remain read-only. Merely inspecting missing
-owners or invalid saved paths never repairs them.
+The properties editor switches between these operations and selects the
+input, collection and (except for Count) value path. Legacy aggregates stay
+legacy until **Use an exact input** is clicked. Computed values, arguments,
+other operations and nonempty Count value paths remain read-only. Merely
+inspecting missing owners or invalid saved paths never repairs them.
 
-Both forms share the Lookup owned-expression admission gate across conversion,
-wires, Inspector bindings, controls, defaults and indirect dependencies. Grouped
+All five forms share the Lookup owned-expression admission gate across
+conversion, wires, Inspector bindings, controls, defaults and indirect dependencies. Grouped
 subtrees and descendants, generated contexts, isolated functions and dynamic or
 document-set inputs are not authorable. Later grouping changes cannot move an
 existing owned expression into a closed context. Locks, typed history and the
 layout sidecar apply as for other graph edits.
 
-This is ordinary Sum, not decimal-safe addition: Decimal operands produce the
-existing unsupported-scalar error; integer overflow and non-finite results keep
-their existing typed failures. This GUI surface makes no new generation or
-external-runtime claim.
+These are ordinary numeric reducers, not decimal arithmetic: Decimal operands
+produce the existing unsupported-scalar error; integer overflow and non-finite
+results keep their existing typed failures. This GUI surface makes no new
+generation or external-runtime claim.
+
+Average returns a float; Minimum and Maximum retain the selected integer or
+float value. Numeric strings participate, while missing and nonnumeric values
+are skipped. Empty collections or collections without numeric values yield Null
+for Average, Minimum and Maximum, rather than Sum's zero. Operation changes
+retain valid owner-local selections and do not convert saved legacy nodes merely
+by opening their properties.
 
 ## Generation profile
 
