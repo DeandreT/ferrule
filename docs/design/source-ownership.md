@@ -12,8 +12,9 @@ Keep structural validity separate from executable capability. Preserve strict ne
 
 ## Native editor authoring
 
-The native editor authors owned fields, positions, source iterations and bounded
-exact-owner Lookups and Count/direct Sum aggregates; other owned operators stay read-only. A legacy path names its endpoint only by
+The native editor authors owned fields, positions, source iterations, bounded
+exact-owner Lookups, and Count/direct-field Sum, Average, Minimum and Maximum
+aggregates. Other owned operators stay read-only. A legacy path names its endpoint only by
 leading text, so two cases are ambiguous: a named alias that the primary input
 or any input can define (the conservative alias-shadowing check), and a primary
 path whose first segment equals a named alias. Wiring a pin in either case
@@ -51,12 +52,13 @@ Creation and property changes use typed InsertNode/EditNode history commands;
 Undo/Redo and the layout sidecar retain IDs, wires and positions on primary and
 named-target canvases.
 
-**Count from one input** and **Sum from one input** create bounded owner-qualified
-aggregates. Count includes collections of empty groups; Sum selects an item
-scalar without crossing nested repetition. These forms have no argument or
-computed value. Their Input/Collection/Value controls are endpoint-local and
-their legacy conversion is explicit. Other aggregate forms stay read-only;
-ordinary Sum rejects Decimal values. See the [native aggregate editor](owned-collection-aggregates.md#native-editor).
+**Count**, **Sum**, **Average**, **Minimum** and **Maximum from one input** create
+bounded owner-qualified aggregates. Count includes collections of empty groups;
+the other operations select an item scalar without crossing nested repetition.
+These forms have no argument or computed value. Their Input/Collection/Value
+controls are endpoint-local and their legacy conversion is explicit. Other
+aggregate forms stay read-only; Sum, Average, Minimum and Maximum reject Decimal
+values. See the [native aggregate editor](owned-collection-aggregates.md#native-editor).
 
 Blank or duplicate named owners, dynamic inputs, document sets and non-static
 schema choices are not offered. Stored unavailable owners remain read-only.
