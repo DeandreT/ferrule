@@ -4,6 +4,9 @@ use super::*;
 use ir::{Instance, ScalarType, SchemaNode, Value};
 use mapping::{Binding, NamedTarget};
 
+#[path = "typed_value_map_cell_tests/draft_isolation.rs"]
+mod draft_isolation;
+
 const FUNCTION: FunctionId = FunctionId::new(7);
 const DOCUMENTS: [MappingDocument; 3] = [
     MappingDocument::Main,
