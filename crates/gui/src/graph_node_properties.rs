@@ -126,7 +126,6 @@ impl GraphViewer<'_> {
                 | Node::OwnedDynamicSourceField(_)
                 | Node::OwnedCollectionFind(_)
                 | Node::OwnedXmlSerialize(_)
-                | Node::OwnedAggregate(_)
                 | Node::OwnedJoinField(_)
                 | Node::OwnedJoinSourcePosition(_)
                 | Node::OwnedXmlMixedContent(_)
@@ -444,6 +443,20 @@ impl GraphViewer<'_> {
                         ui.weak("Owned lookup editing is unavailable in this context. Stored paths and wiring are unchanged.");
                     }
                 }
+                Node::OwnedAggregate(aggregate) => {
+                    if self.source_paths.aggregate_form_supported(aggregate) {
+                        ui.add_enabled_ui(lookup_editable, |ui| {
+                            self.source_paths.show_owned_aggregate_editor(ui, aggregate);
+                        });
+                    } else if let Some(title) = graph_node_presentation::owned_source_title(
+                        &Node::OwnedAggregate(aggregate.clone()),
+                    ) {
+                        ui.label(title);
+                    }
+                    if !lookup_editable {
+                        ui.weak("Owned aggregate editing is unavailable for this form or context. Stored paths and wiring are unchanged.");
+                    }
+                }
                 Node::DynamicSourceField { object, frame, .. } => {
                     ui.label(format!(
                         "open source object: {}{}",
@@ -707,6 +720,19 @@ impl GraphViewer<'_> {
                     if previous != *function && !node_palette::aggregate_needs_arg(*function) {
                         remove_aggregate_wire = arg.take();
                     }
+                    if ui
+                        .add_enabled(
+                            lookup_editable
+                                && !*calculated
+                                && arg.is_none()
+                                && self.source_paths.first_owned_aggregate(*function).is_some(),
+                            egui::Button::new("Use an exact input"),
+                        )
+                        .clicked()
+                        && let Some(aggregate) = self.source_paths.first_owned_aggregate(*function)
+                    {
+                        *node = Node::OwnedAggregate(aggregate);
+                    }
                 }
                 Node::JoinAggregate {
                     function,
@@ -750,7 +776,7 @@ impl GraphViewer<'_> {
                 (graph, self.root_scope.clone(), property)
             });
         let edit_committed = if let Some(node) = staged_node {
-            let result = if aggregate_before.is_some() {
+            let result = if aggregate_before.is_some() && matches!(node, Node::Aggregate { .. }) {
                 self.commit_aggregate_property_edit(node_id, node, aggregate_calculated)
             } else {
                 self.commit_node_property_edit(

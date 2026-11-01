@@ -72,6 +72,34 @@ failure predicates and messages, legacy aggregate, lookup and find item
 expressions, generated-item contexts and the other specialized contexts keep
 them closed.
 
+## Native editor
+
+The canvas offers **Count from one input** and **Sum from one input** on primary
+and named-target canvases. These create an explicit static owner and no scalar
+argument. Count stores an empty value path and offers collections even when
+their group items have no scalar fields. Sum offers only scalar item paths that
+do not cross another repetition. Input and collection changes retain a valid
+local value path or select the first field of that exact owner; they never use
+another owner's fields.
+
+The properties editor switches between these two operations and selects the
+input, collection and (for Sum) value path. Legacy aggregates stay legacy until
+**Use an exact input** is clicked. Computed values, arguments, other operations
+and nonempty Count value paths remain read-only. Merely inspecting missing
+owners or invalid saved paths never repairs them.
+
+Both forms share the Lookup owned-expression admission gate across conversion,
+wires, Inspector bindings, controls, defaults and indirect dependencies. Grouped
+subtrees and descendants, generated contexts, isolated functions and dynamic or
+document-set inputs are not authorable. Later grouping changes cannot move an
+existing owned expression into a closed context. Locks, typed history and the
+layout sidecar apply as for other graph edits.
+
+This is ordinary Sum, not decimal-safe addition: Decimal operands produce the
+existing unsupported-scalar error; integer overflow and non-finite results keep
+their existing typed failures. This GUI surface makes no new generation or
+external-runtime claim.
+
 ## Generation profile
 
 `codegen::lower_with_basic_owned_collection_aggregates` admits owned aggregates
@@ -85,8 +113,8 @@ Every other profile, including the owned search companion, the [dynamic-field
 companion](owned-dynamic-field.md) and XML-serialization companion built beside
 it and the generated-sequence aggregate companion, refuses owned aggregates with
 its typed `AggregateLookup` diagnostic, and the ordinary emitters, directly
-constructed Program validation, `.mfd` export and GUI authoring keep refusing
-them; the GUI displays saved owned aggregates read-only. Joins, documents,
+constructed Program validation and `.mfd` export keep refusing
+them. Joins, documents,
 dynamic sources, the legacy aggregate and specialized controls remain closed in
 the Basic profiles, and SequenceExists, owned dynamic source fields and owned XML
 serializers stay closed in this profile. An owned aggregate does not make its
