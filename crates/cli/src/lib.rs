@@ -230,11 +230,14 @@ fn resolve_stored_path(
         return Ok(stored_path);
     }
 
-    let project_dir = project_path
+    Ok(project_directory(project_path).join(stored_path))
+}
+
+fn project_directory(project_path: &Path) -> &Path {
+    project_path
         .parent()
         .filter(|path| !path.as_os_str().is_empty())
-        .unwrap_or_else(|| Path::new("."));
-    Ok(project_dir.join(stored_path))
+        .unwrap_or_else(|| Path::new("."))
 }
 
 /// Validates a loaded project without reading any instance data.
