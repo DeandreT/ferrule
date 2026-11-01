@@ -221,6 +221,7 @@ fn show_lines_editor(ui: &mut egui::Ui, project: &mut Project) {
         &catalog,
         &["Value".into(), "Position".into(), "Primary".into()],
         crate::scope_editor::ScopeEditorOwner {
+            lookup_context: true,
             nested: true,
             primary_root_bindings: false,
             target_xml_types: &[],
