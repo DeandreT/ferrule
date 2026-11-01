@@ -63,6 +63,8 @@ mod failure_rules;
 mod file_run_teardown;
 mod graph_commands;
 mod history;
+#[cfg(test)]
+mod swift_draft_tests;
 mod swift_output;
 pub(crate) use file_run_teardown::{SavedFileRunTeardownPort, SavedFileRunTeardownService};
 mod filter_map_authoring;
@@ -468,6 +470,9 @@ impl PartialEq for EditorSnapshot {
 
 pub struct FerruleApp {
     project: Project,
+    /// Owner of transient document editors, independent of canvas and history
+    /// rebuilds. Only replacing the loaded mapping starts a new lifetime.
+    document_ui_id: egui::Id,
     main_canvas: CanvasDocumentState,
     mapping_workspace: MappingWorkspace,
     show_function_navigator: bool,
@@ -670,6 +675,7 @@ impl Default for FerruleApp {
         let saved_state = Some(snapshot.state.clone());
         Self {
             project,
+            document_ui_id: new_document_ui_id(),
             main_canvas,
             mapping_workspace,
             show_function_navigator: false,
@@ -792,6 +798,14 @@ impl Default for FerruleApp {
             snapshot_oracle: false,
         }
     }
+}
+
+fn new_document_ui_id() -> egui::Id {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    egui::Id::unique((
+        "mapping_document_ui",
+        NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+    ))
 }
 
 fn editor_snapshot(
@@ -1117,6 +1131,7 @@ impl FerruleApp {
             DestructiveAction::NewProject => {
                 self.clear_run_report();
                 self.project = blank_project();
+                self.document_ui_id = new_document_ui_id();
                 self.primary_document = None;
                 self.host_parameters = host_parameters::HostParameterEditor::default();
                 self.mapping_workspace.reset();
@@ -1234,6 +1249,7 @@ impl FerruleApp {
                 self.reset_canvas_view();
                 self.clear_run_report();
                 self.project = project;
+                self.document_ui_id = new_document_ui_id();
                 self.host_parameters = host_parameters::HostParameterEditor::default();
                 self.mapping_workspace = mapping_workspace;
                 self.document = DocumentLocation::saved(path);
@@ -1491,6 +1507,7 @@ impl FerruleApp {
                     self.main_canvas = CanvasDocumentState::main(&imported.project);
                     self.reset_canvas_view();
                     self.project = imported.project;
+                    self.document_ui_id = new_document_ui_id();
                     self.primary_document = None;
                     self.host_parameters = host_parameters::HostParameterEditor::default();
                     self.mapping_workspace.reset();
