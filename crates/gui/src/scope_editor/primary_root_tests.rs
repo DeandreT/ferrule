@@ -81,6 +81,7 @@ fn frame(
                 &SourcePathCatalog::new(&crate::primary_root_authoring::test_schema(), &[]),
                 &["value".into(), "other".into()],
                 ScopeEditorOwner {
+                    lookup_context: true,
                     nested: false,
                     primary_root_bindings,
                     target_xml_types: &[],
