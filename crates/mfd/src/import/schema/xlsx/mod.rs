@@ -57,6 +57,11 @@ struct TransposedRow {
     ports: Vec<u32>,
     /// `Cell/@n` ports below this row's open Cell sequence.
     index_ports: Vec<u32>,
+    /// `Cell/@n` ports ferrule's export marks as aligning this row with the
+    /// driver row only; they are not the schema's `n` field.
+    alignment_ports: Vec<u32>,
+    /// Exactly one ordinary attribute declaration owns the row's index.
+    index_valid: bool,
 }
 
 struct FixedRecord {
@@ -249,16 +254,40 @@ pub(super) fn read(
                     "xlsx component `{name}` updates a transposed table in an existing workbook; ferrule writes transposed targets to a new workbook"
                 ));
             }
-            let indexed = rows.iter().any(|row| !row.index_ports.is_empty());
+            // Preserve physical index ownership before normalizing row values
+            // into records. In particular, a later row's unmarked `n` is not
+            // the driver's `n`, and repeated keys cannot prove either role.
+            let mut key_counts = BTreeMap::<u32, usize>::new();
+            for key in rows.iter().flat_map(|row| {
+                row.ports
+                    .iter()
+                    .chain(&row.index_ports)
+                    .chain(&row.alignment_ports)
+            }) {
+                *key_counts.entry(*key).or_default() += 1;
+            }
+            let indexed = if is_source {
+                rows.first().is_some_and(|row| {
+                    row.index_valid
+                        && row
+                            .index_ports
+                            .iter()
+                            .any(|key| key_counts.get(key) == Some(&1))
+                })
+            } else {
+                rows.iter().any(|row| !row.index_ports.is_empty())
+            };
             let mut fields = Vec::with_capacity(rows.len() + usize::from(indexed));
             let mut xlsx_rows = Vec::with_capacity(rows.len());
+            let mut ambiguous_indexes = BTreeSet::new();
             for (position, row) in rows.into_iter().enumerate() {
                 for key in row.ports {
                     ports.insert(key, vec![row.name.clone()]);
                 }
-                // A source reads one physical column per record. A target's
-                // driver row owns `n`; later rows must repeat its feed.
-                let index_path = if is_source || position == 0 {
+                // Only the first physical row can supply the record's `n`.
+                // Later unmarked indexes retain the same provenance as marked
+                // alignment-only indexes; they must not become driver aliases.
+                let index_path = if position == 0 {
                     vec!["n".to_string()]
                 } else {
                     vec![
@@ -266,11 +295,43 @@ pub(super) fn read(
                         (position + 1).to_string(),
                     ]
                 };
-                for key in row.index_ports {
-                    ports.insert(key, index_path.clone());
+                // A source's recognized alignment filters consume these
+                // ports; see `transposed_source`. Targets have none.
+                let alignment_path = if is_source {
+                    vec![
+                        TRANSPOSED_ROW_INDEX_PORT.to_string(),
+                        (position + 1).to_string(),
+                    ]
+                } else {
+                    index_path.clone()
+                };
+                for (keys, path) in [
+                    (row.index_ports, index_path),
+                    (row.alignment_ports, alignment_path),
+                ] {
+                    for key in keys {
+                        let path = if is_source
+                            && (!row.index_valid || key_counts.get(&key) != Some(&1))
+                        {
+                            ambiguous_indexes.insert(key);
+                            vec![
+                                TRANSPOSED_ROW_INDEX_PORT.to_string(),
+                                "ambiguous".to_string(),
+                            ]
+                        } else {
+                            path.clone()
+                        };
+                        ports.insert(key, path);
+                    }
                 }
                 fields.push(SchemaNode::scalar(&row.name, row.ty));
                 xlsx_rows.push(row.row);
+            }
+            for key in ambiguous_indexes {
+                ports.insert(
+                    key,
+                    vec![TRANSPOSED_ROW_INDEX_PORT.to_string(), "ambiguous".into()],
+                );
             }
             if indexed {
                 fields.push(SchemaNode::scalar("n", ScalarType::Int));
@@ -815,11 +876,20 @@ fn read_transposed_row(
             "xlsx component `{component_name}` exposes physical Row/@r ports; those index values were skipped"
         ));
     }
-    let index_ports = cell
+    let indexes = cell
         .children()
         .filter(|node| node.has_tag_name("entry") && node.attribute("name") == Some("n"))
-        .flat_map(port_keys)
-        .collect();
+        .collect::<Vec<_>>();
+    let index_valid = matches!(indexes.as_slice(), [index]
+        if index.attribute("type") == Some("attribute")
+            && matches!(index.attribute("ferrule-row-alignment"), None | Some("1"))
+            && port_keys(*index).len() == 1
+            && !index.children().any(|node| node.has_tag_name("condition")));
+    let (alignment, index): (Vec<_>, Vec<_>) = indexes
+        .into_iter()
+        .partition(|node| node.attribute("ferrule-row-alignment") == Some("1"));
+    let index_ports = index.into_iter().flat_map(port_keys).collect();
+    let alignment_ports = alignment.into_iter().flat_map(port_keys).collect();
     let name = cell
         .attribute("annotation")
         .or_else(|| row.attribute("annotation"))
@@ -829,10 +899,38 @@ fn read_transposed_row(
     Some(TransposedRow {
         name,
         row: physical_row,
-        ty: scalar_type(cell.attribute("datatype")),
+        ty: transposed_cell_type(cell, component_name, warnings),
         ports: port_keys(cell),
         index_ports,
+        alignment_ports,
+        index_valid,
     })
+}
+
+fn transposed_cell_type(
+    cell: roxmltree::Node<'_, '_>,
+    component_name: &str,
+    warnings: &mut Vec<String>,
+) -> ScalarType {
+    let datatype = cell.attribute("datatype");
+    if let Some(marker) = cell.attribute("ferrule-datatype") {
+        // Metadata cannot turn a native double (or any other cell type) into
+        // an exact integer. Accept only redundant canonical annotations.
+        let supported = matches!(
+            (marker, datatype),
+            ("string", Some("string"))
+                | ("integer", Some("integer"))
+                | ("double", Some("double"))
+                | ("boolean", Some("boolean"))
+        );
+        if !supported {
+            warnings.push(format!(
+                "xlsx component `{component_name}` has unsupported ferrule-datatype `{marker}` for Cell datatype `{}`; the annotation was ignored and the declared Cell datatype was retained",
+                datatype.unwrap_or("(missing)")
+            ));
+        }
+    }
+    scalar_type(datatype)
 }
 
 fn read_columns(
