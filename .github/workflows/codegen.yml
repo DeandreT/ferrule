@@ -34,14 +34,17 @@ env:
 
 jobs:
   generated-backends:
-    name: generated-backends (${{ matrix.suite }})
+    name: generated-backends (${{ matrix.suite }} ${{ matrix.shard }}/4)
     runs-on: ${{ fromJSON(vars.OVH_RUNNER_ENABLED == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && ((inputs.runner || vars.CI_RUNNER || 'auto') == 'cleo' && '["self-hosted", "Linux", "X64", "ferrule-cleo"]' || (inputs.runner || vars.CI_RUNNER || 'auto') == 'over' && '["self-hosted", "Linux", "X64", "ferrule-over"]' || (inputs.runner || vars.CI_RUNNER || 'auto') == 'auto' && '["self-hosted", "Linux", "X64", "ferrule-primary"]') || '["ubuntu-latest"]') }}
     # The mappings suite builds generated consumers serially for each case.
-    timeout-minutes: ${{ matrix.suite == 'mappings' && 240 || 120 }}
+    timeout-minutes: ${{ matrix.suite == 'mappings' && 150 || 120 }}
     strategy:
       fail-fast: false
+      # Generated consumers share one build lane per job, so the suites run
+      # serially within each slice. Single-run steps belong to one slice each.
       matrix:
         suite: [crates, mappings]
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v5
         with:
@@ -83,6 +86,7 @@ jobs:
         with:
           shared-key: codegen-${{ matrix.suite }}-bounded-builds
       - name: clippy
+        if: matrix.suite == 'mappings' && matrix.shard == 1
         run: >-
           cargo clippy -p cli --test code_generation
           --features codegen-tests --locked -- -D warnings
@@ -92,17 +96,18 @@ jobs:
           RUSTC_WRAPPER: ${{ runner.environment == 'self-hosted' && '/opt/ferrule-runner-tools/sccache' || '' }}
         run: >-
           cargo nextest run --profile ci --locked
+          --partition slice:${{ matrix.shard }}/4
           -p codegen
           -p codegen-runtime
           -p codegen-rust
           -p codegen-csharp
       - name: codegen doctests
-        if: matrix.suite == 'crates'
+        if: matrix.suite == 'crates' && matrix.shard == 1
         run: >-
           cargo test --doc --locked
           -p codegen -p codegen-runtime -p codegen-rust -p codegen-csharp
       - name: C# runtime smoke tests
-        if: matrix.suite == 'crates'
+        if: matrix.suite == 'crates' && matrix.shard == 2
         run: |
           set -euo pipefail
           artifacts="$RUNNER_TEMP/csharp-runtime-smoke"
@@ -126,9 +131,10 @@ jobs:
         run: >-
           cargo nextest run --profile ci -p cli --test code_generation
           --features codegen-tests --locked
+          --partition slice:${{ matrix.shard }}/4
       - name: compiled string and integral boundary regressions
         id: compiled_boundaries
-        if: matrix.suite == 'mappings'
+        if: matrix.suite == 'mappings' && matrix.shard == 3
         env:
           RUSTC_WRAPPER: ${{ runner.environment == 'self-hosted' && '/opt/ferrule-runner-tools/sccache' || '' }}
           CARGO_BUILD_JOBS: "1"
@@ -188,7 +194,7 @@ jobs:
           done
           exit "$result"
       - name: retain compiled boundary verification originals
-        if: always() && matrix.suite == 'mappings' && steps.compiled_boundaries.outputs.evidence_dir != ''
+        if: always() && matrix.suite == 'mappings' && matrix.shard == 3 && steps.compiled_boundaries.outputs.evidence_dir != ''
         uses: actions/upload-artifact@v4
         with:
           name: compiled-boundaries-${{ github.run_id }}-${{ github.run_attempt }}
@@ -197,7 +203,7 @@ jobs:
           include-hidden-files: true
           retention-days: 7
       - name: compiled portable cohort consumers
-        if: matrix.suite == 'mappings'
+        if: matrix.suite == 'mappings' && matrix.shard == 4
         env:
           RUSTC_WRAPPER: ${{ runner.environment == 'self-hosted' && '/opt/ferrule-runner-tools/sccache' || '' }}
           CARGO_BUILD_JOBS: "1"

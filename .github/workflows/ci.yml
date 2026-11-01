@@ -82,12 +82,15 @@ jobs:
         run: cargo fmt --all --check
       - name: clippy
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      # This subset builds no generated consumers, so it need not keep the
+      # repository profile's single build lane.
       - name: test
         env:
           RUSTC_WRAPPER: ${{ runner.environment == 'self-hosted' && '/opt/ferrule-runner-tools/sccache' || '' }}
         run: >-
           xvfb-run -a env -u WAYLAND_DISPLAY -u WAYLAND_SOCKET LIBGL_ALWAYS_SOFTWARE=1
           cargo nextest run --profile ci --workspace --locked
+          --test-threads "$RUST_TEST_THREADS"
           --exclude codegen
           --exclude codegen-runtime
           --exclude codegen-rust
