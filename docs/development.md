@@ -66,7 +66,11 @@ cargo nextest run --locked -p cli --test csv_row_release
 
 Use cargo-nextest 0.9.150 or newer for ordinary tests. The repository profile
 runs one test process at a time so generated consumers do not start competing
-builds. Doctests still use `cargo test --doc`; nextest does not replace them.
+builds. The CI workspace subset builds no generated consumers, so it passes
+`--test-threads "$RUST_TEST_THREADS"`; the codegen workflow keeps the serial
+profile and instead splits each suite across four jobs with nextest's
+`--partition slice:K/4`. Doctests still use `cargo test --doc`; nextest does
+not replace them.
 The x86_64 Linux GNU target uses `cc` with mold. Install mold before building.
 Windows/MSVC uses Rust's bundled LLVM lld; WebAssembly keeps its existing linker. See
 [Toolchain baselines](toolchains.md) for setup and verification.
@@ -129,10 +133,10 @@ focused tests does not replace them.
   `cargo clippy -p cli --test code_generation --features codegen-tests --locked -- -D warnings`,
   `cargo nextest run --locked -p codegen -p codegen-runtime -p codegen-rust -p codegen-csharp`,
   their `cargo test --doc` run, the C# runtime smoke tests and the CLI generated
-  integration target, as the codegen workflow runs them. Its mappings job also
-  runs the compiled boundary regressions and cohort consumers, which the default
-  run skips, with `--run-ignored only`; use the commands from those workflow
-  steps. The pinned .NET SDK is
+  integration target, as the codegen workflow runs them. One of its mappings
+  jobs also runs the compiled boundary regressions and another the cohort
+  consumers, which the default run skips, with `--run-ignored only`; use the
+  commands from those workflow steps. Locally, run each suite unpartitioned. The pinned .NET SDK is
   in [Toolchain baselines](toolchains.md).
 - [ ] `scripts/ci/`: `bash -n scripts/ci/*.sh` and the `scripts/ci/test-*.py`
   suites the workflows run.
