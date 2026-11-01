@@ -126,6 +126,10 @@ choose **Input conversion**: **unchanged**, **string**, **int**, **float**, or
 Opening the properties or changing this choice preserves existing table values,
 their types, and the Default setting.
 
+Unapplied typed-cell drafts belong to the open canvas instance. Closing the
+editor keeps its draft, but opening or reloading a project starts from that
+project's saved table values; another project's draft is never applied there.
+
 For example, a table key entered as `1` is text. If the arriving value is the
 integer `1`, choose **string** to match that text key. Leave **unchanged** to
 keep its original type. Table cells edited here are text; **int**, **float**, and
