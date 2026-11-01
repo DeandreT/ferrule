@@ -11,6 +11,7 @@ use crate::source_ownership::SourceOwnership;
 
 #[path = "owned_aggregate_editor.rs"]
 mod owned_aggregate_editor;
+pub(crate) use owned_aggregate_editor::OWNED_AGGREGATE_OPS;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct PathChoice {

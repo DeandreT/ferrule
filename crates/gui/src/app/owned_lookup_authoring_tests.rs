@@ -6,6 +6,8 @@ use mapping::{Binding, NamedSource, NamedTarget, OwnedLookup, OwnedSourceRef, So
 
 #[path = "owned_lookup_context_regressions.rs"]
 pub(super) mod context_regressions;
+#[path = "owned_creation_menu_tests.rs"]
+pub(super) mod creation_menu;
 #[path = "owned_lookup_scope_regressions.rs"]
 pub(super) mod scope_regressions;
 
@@ -517,7 +519,7 @@ fn actual_owned_creation_is_explicit_typed_and_legacy_creation_stays_available()
             egui::pos2(1100.0, 850.0),
             egui::PointerButton::Secondary,
         );
-        click_nth(&mut app, &ctx, true, "Lookup from one input", 0);
+        creation_menu::click_action(&mut app, &ctx, "Lookup from one input");
         assert_eq!(app.project.graph.nodes.len(), 4);
         let (&id, Node::OwnedLookup(created)) = app
             .project
