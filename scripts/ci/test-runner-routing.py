@@ -1,15 +1,54 @@
 #!/usr/bin/env python3
-"""Evaluate every actual workflow selector without contacting GitHub."""
+"""Check workflow routing and hosted graphics setup without external services."""
 import ast
 import itertools
 import json
+import os
 from pathlib import Path
 import re
+import subprocess
+import tempfile
+import textwrap
 from types import SimpleNamespace as Context
 import unittest
 
 
 class RoutingTests(unittest.TestCase):
+    def test_hosted_software_graphics_prerequisites(self):
+        root = Path(__file__).resolve().parents[2]
+        source = (root / ".github/workflows/ci.yml").read_text()
+        for name in ("graphics dependencies", "software Vulkan adapter"):
+            self.assertIn(f"- name: {name}\n        if: runner.environment == 'github-hosted'", source)
+        install = next(line for line in source.splitlines() if "apt-get install" in line)
+        for package in ("xvfb", "libvulkan1", "mesa-vulkan-drivers", "vulkan-tools"):
+            self.assertIn(package, install.split())
+        match = re.search(r"      - name: software Vulkan adapter\n"
+                          r"        if: [^\n]+\n        run: \|\n"
+                          r"((?:          [^\n]*\n)+)", source)
+        self.assertIsNotNone(match)
+        script = textwrap.dedent(match.group(1))
+        with tempfile.TemporaryDirectory() as directory:
+            binaries = Path(directory)
+            for name, body in {
+                "xvfb-run": 'shift; exec "$@"',
+                "vulkaninfo": 'printf "%s\\n" "$VULKAN_SUMMARY"; exit "$VULKAN_EXIT"',
+            }.items():
+                binary = binaries / name
+                binary.write_text("#!/bin/sh\n" + body + "\n")
+                binary.chmod(0o700)
+            for summary, code, passes in (
+                ("deviceType = PHYSICAL_DEVICE_TYPE_CPU", "0", True),
+                ("deviceType = PHYSICAL_DEVICE_TYPE_DISCRETE_GPU", "0", False),
+                ("", "0", False),
+                ("deviceType = PHYSICAL_DEVICE_TYPE_CPU", "1", False),
+            ):
+                with self.subTest(summary=summary, code=code):
+                    result = subprocess.run(
+                        ["bash", "-eo", "pipefail", "-c", script], capture_output=True, text=True,
+                        env=dict(os.environ, PATH=f"{binaries}:{os.environ['PATH']}",
+                                 VULKAN_SUMMARY=summary, VULKAN_EXIT=code), timeout=10)
+                    self.assertEqual(result.returncode == 0, passes, result.stderr)
+
     def test_primary_backup_overrides_and_forks(self):
         root = Path(__file__).resolve().parents[2]
         choices = ("", "auto", "cleo", "over", "github-hosted", "unknown", "AUTO", "Over")
