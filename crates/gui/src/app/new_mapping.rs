@@ -367,6 +367,7 @@ impl FerruleApp {
         self.new_mapping_setup = None;
         self.clear_run_report();
         self.project = project;
+        self.document_ui_id = new_document_ui_id();
         self.primary_document = None;
         self.host_parameters = super::host_parameters::HostParameterEditor::default();
         self.input_path.clear();
