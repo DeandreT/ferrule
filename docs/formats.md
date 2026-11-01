@@ -100,6 +100,14 @@ for a complete format standard or another product.
 | PDF | PDF output |
 <!-- END GENERATED formats -->
 
+## SWIFT MT Header Editing
+
+For a target with a SWIFT MT layout, the Inspector's **Schema** page edits one
+direction and one basic/application-header pair per message. Incomplete header
+text stays in a draft without changing saved options. Drafts belong to the open
+document and target; reopening the Inspector keeps them, while loading or
+reloading a project starts from that project's saved headers.
+
 ## Important Boundaries
 
 - MFD import constructs a required, non-null singleton XML scalar document root
