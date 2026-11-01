@@ -42,7 +42,7 @@ impl PdfWorkerPackage {
         }
     }
 
-    #[cfg(test)]
+    #[cfg(all(test, target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
     pub(crate) fn for_test(executable: PathBuf, scratch: PathBuf) -> Self {
         Self {
             executable: Some(executable),
