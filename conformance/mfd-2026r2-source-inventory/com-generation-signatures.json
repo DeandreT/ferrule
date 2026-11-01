@@ -1,0 +1,196 @@
+{
+  "format": "mapforce-enterprise-2026r2-com-generation-signatures",
+  "format_version": 1,
+  "inventory_complete": false,
+  "runtime_proof": false,
+  "status": "unassessed",
+  "applicability": "unknown",
+  "execution_evidence": [],
+  "purpose": "Four IDocument generation-method declarations only; not ABI or execution qualification.",
+  "type_library_source": {
+    "observation": "artifact-observations.json",
+    "member": "MapForce.tlb",
+    "cab_member": "MapForce.tlb_1193",
+    "bytes": 54108,
+    "sha256": "785c484fbaa882cae724a3568b04650300eb18941084ac23eb2d041dfb4a2789",
+    "library": "MapForceLib",
+    "version": "4.1",
+    "platform": "SYS_WIN64",
+    "dump_sha256": "672097183d6a6b0d80f3aa5f92d02172bb3a588609cb743bb82b73c342192bb4",
+    "release_binding": "2026r2"
+  },
+  "catalog_source": {
+    "file": "com-api.json",
+    "sha256": "d9a2fd8a4f8935598fdd2590f837fd6205931ba43c6218dc6b32a29fbe35c16a",
+    "release_binding": "unestablished"
+  },
+  "readback": {
+    "source": "type_library_source",
+    "type_info_table_offset": 624,
+    "type_info_record_bytes": 100,
+    "type_info_records": 75,
+    "name_table_offset": 10804,
+    "name_table_bytes": 13724,
+    "descriptor_table_offset": 30276,
+    "descriptor_table_bytes": 824,
+    "descriptor_record_bytes": 8,
+    "owner": {"name": "IDocument", "type_info_index": 7, "kind": "TKIND_DISPATCH", "name_offset": 1776},
+    "member_block_offset": 36016,
+    "member_data_bytes": 1696,
+    "owner_function_records": 39,
+    "member_id_table_offset": 37716,
+    "member_name_table_offset": 37872,
+    "member_record_table_offset": 38028,
+    "method": [
+      "Verify the selected official-release member size and SHA-256 against artifact-observations.json and the retained acquisition/comparison records before bounded reads; no application or installer is executed.",
+      "Resolve IDocument and referenced type identities from type-info and name records. Read the four member IDs, names and record-relative offsets from the owner's parallel tables, not from online signatures.",
+      "Check each raw function record against the pinned dump, including return type, flags, invocation kind, argument counts and every ordered parameter triple. Follow each bounded descriptor chain to its named enum or interface target; the dump's PTR -> PTR rendering alone does not identify that target.",
+      "record_offset and table offsets are absolute byte offsets in the type library; name_offset and descriptor_offset/descriptor_chain are relative to their respective segments. Function records store parameter triples of type, name and flags in the final 12 bytes per parameter.",
+      "Compare the four pinned HTML snapshots and com-api.json without fetching mutable pages. dump_lines are one-based lines in the hash-pinned declaration dump. This fragment retains declaration metadata, not executable vendor code."
+    ]
+  },
+  "targets": [
+    {"name": "ENUMProgrammingLanguage", "type_info_index": 23, "kind": "TKIND_ENUM", "name_offset": 6592},
+    {"name": "IErrorMarkers", "type_info_index": 24, "kind": "TKIND_DISPATCH", "name_offset": 6796},
+    {"name": "IAppOutputLines", "type_info_index": 14, "kind": "TKIND_DISPATCH", "name_offset": 3428},
+    {"name": "IOutputGenerationResult", "type_info_index": 28, "kind": "TKIND_DISPATCH", "name_offset": 7548},
+    {"name": "ICodeGenerationResult", "type_info_index": 30, "kind": "TKIND_DISPATCH", "name_offset": 8104}
+  ],
+  "descriptors": [
+    {"descriptor_offset": 496, "descriptor_word": "0003001d", "target_word": "000008fc", "vartype": "USERDEFINED", "type_info_index": 23},
+    {"descriptor_offset": 504, "descriptor_word": "7fff001d", "target_word": "00000960", "vartype": "USERDEFINED", "type_info_index": 24},
+    {"descriptor_offset": 512, "descriptor_word": "7fff001a", "target_word": "000001f8", "vartype": "PTR", "target_descriptor_offset": 504},
+    {"descriptor_offset": 520, "descriptor_word": "7fff001a", "target_word": "00000200", "vartype": "PTR", "target_descriptor_offset": 512},
+    {"descriptor_offset": 176, "descriptor_word": "7fff001d", "target_word": "00000578", "vartype": "USERDEFINED", "type_info_index": 14},
+    {"descriptor_offset": 184, "descriptor_word": "7fff001a", "target_word": "000000b0", "vartype": "PTR", "target_descriptor_offset": 176},
+    {"descriptor_offset": 192, "descriptor_word": "7fff001a", "target_word": "000000b8", "vartype": "PTR", "target_descriptor_offset": 184},
+    {"descriptor_offset": 568, "descriptor_word": "7fff001d", "target_word": "00000af0", "vartype": "USERDEFINED", "type_info_index": 28},
+    {"descriptor_offset": 576, "descriptor_word": "7fff001a", "target_word": "00000238", "vartype": "PTR", "target_descriptor_offset": 568},
+    {"descriptor_offset": 584, "descriptor_word": "7fff001a", "target_word": "00000240", "vartype": "PTR", "target_descriptor_offset": 576},
+    {"descriptor_offset": 608, "descriptor_word": "7fff001d", "target_word": "00000bb8", "vartype": "USERDEFINED", "type_info_index": 30},
+    {"descriptor_offset": 616, "descriptor_word": "7fff001a", "target_word": "00000260", "vartype": "PTR", "target_descriptor_offset": 608},
+    {"descriptor_offset": 624, "descriptor_word": "7fff001a", "target_word": "00000268", "vartype": "PTR", "target_descriptor_offset": 616}
+  ],
+  "methods": [
+    {
+      "name": "GenerateCodeEx",
+      "record_index": 25,
+      "dispatch_member_id": 22,
+      "name_offset": 7164,
+      "record_offset": 37000,
+      "record_bytes": 56,
+      "invocation_kind": "function",
+      "invocation_kind_value": 1,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {"vartype": "HRESULT", "encoded": "80190019"},
+      "parameters": [
+        {"index": 0, "name": "i_nLanguage", "name_offset": 7192, "record_offset": 37032, "parameter_flags": 1, "direction": ["in"], "type": {"declared_type": "ENUMProgrammingLanguage", "encoded": "000001f0", "pointer_depth": 0, "descriptor_chain": [496], "target_type_info_index": 23}},
+        {"index": 1, "name": "pVal", "name_offset": 64, "record_offset": 37044, "parameter_flags": 10, "direction": ["out", "retval"], "type": {"declared_type": "IErrorMarkers**", "encoded": "00000208", "pointer_depth": 2, "descriptor_chain": [520, 512, 504], "target_type_info_index": 24}}
+      ],
+      "source_anchor": {"function_dump_lines": [8846, 8868], "member_id_dump_line": 9170, "member_name_dump_line": 9209, "member_offset_dump_line": 9248},
+      "catalog": {
+        "id": "provisional.com.Document.GenerateCodeEx",
+        "source": {"official_url": "https://www.altova.com/manual/en/api/mapforceapi/mfapi_interfaces_document_methods_generatecodeex.html", "raw_sha256": "80b828a023a219dec2a866d1fa260863a17079e3e8cd17b8e5f67caa5ce35c1d", "release_binding": "unestablished", "source_file": "mfapi_interfaces_document_methods_generatecodeex.html"},
+        "displayed_signature": "GenerateCodeEx(in i_nLanguage as ENUMProgrammingLanguage) -> ErrorMarkers",
+        "displayed_return_type": "ErrorMarkers",
+        "parameters": [{"name": "i_nLanguage", "declared_type": "ENUMProgrammingLanguage", "direction": "in"}],
+        "constraints": [],
+        "documented_error_codes": ["1200", "1201", "1205"]
+      }
+    },
+    {
+      "name": "GenerateOutputEx",
+      "record_index": 30,
+      "dispatch_member_id": 27,
+      "name_offset": 7408,
+      "record_offset": 37236,
+      "record_bytes": 44,
+      "invocation_kind": "function",
+      "invocation_kind_value": 1,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {"vartype": "HRESULT", "encoded": "80190019"},
+      "parameters": [
+        {"index": 0, "name": "pVal", "name_offset": 64, "record_offset": 37268, "parameter_flags": 10, "direction": ["out", "retval"], "type": {"declared_type": "IAppOutputLines**", "encoded": "000000c0", "pointer_depth": 2, "descriptor_chain": [192, 184, 176], "target_type_info_index": 14}}
+      ],
+      "source_anchor": {"function_dump_lines": [8944, 8961], "member_id_dump_line": 9175, "member_name_dump_line": 9214, "member_offset_dump_line": 9253},
+      "catalog": {
+        "id": "provisional.com.Document.GenerateOutputEx",
+        "source": {"official_url": "https://www.altova.com/manual/en/api/mapforceapi/mfapi_interfaces_document_methods_generateoutputex.html", "raw_sha256": "40204e16c749cb298ac4be6e2d42f5942c772df744392d0c9ca7b19b8d184a36", "release_binding": "unestablished", "source_file": "mfapi_interfaces_document_methods_generateoutputex.html"},
+        "displayed_signature": "GenerateOutputEx() -> AppOutputLines",
+        "displayed_return_type": "AppOutputLines",
+        "parameters": [],
+        "constraints": ["Output generation requires a visible MapForce UI (the document methods also permit GUI embedding)."],
+        "documented_error_codes": ["1200", "1201", "1206", "1210"]
+      }
+    },
+    {
+      "name": "GenerateOutputEx2",
+      "record_index": 32,
+      "dispatch_member_id": 29,
+      "name_offset": 8024,
+      "record_offset": 37384,
+      "record_bytes": 56,
+      "invocation_kind": "function",
+      "invocation_kind_value": 1,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {"vartype": "HRESULT", "encoded": "80190019"},
+      "parameters": [
+        {"index": 0, "name": "strBaseDirectory", "name_offset": 8056, "record_offset": 37416, "parameter_flags": 1, "direction": ["in"], "type": {"declared_type": "BSTR", "encoded": "80080008", "pointer_depth": 0, "descriptor_chain": [], "target_type_info_index": null}},
+        {"index": 1, "name": "pResult", "name_offset": 8084, "record_offset": 37428, "parameter_flags": 10, "direction": ["out", "retval"], "type": {"declared_type": "IOutputGenerationResult**", "encoded": "00000248", "pointer_depth": 2, "descriptor_chain": [584, 576, 568], "target_type_info_index": 28}}
+      ],
+      "source_anchor": {"function_dump_lines": [9005, 9027], "member_id_dump_line": 9177, "member_name_dump_line": 9216, "member_offset_dump_line": 9255},
+      "catalog": {
+        "id": "provisional.com.Document.GenerateOutputEx2",
+        "source": {"official_url": "https://www.altova.com/manual/en/api/mapforceapi/mfapi_interfaces_document_methods_generateoutputex2.html", "raw_sha256": "5c06bbb6e07eb168471ca9379c24748ca85bd5e3900a51f8a4b8d42204b2917c", "release_binding": "unestablished", "source_file": "mfapi_interfaces_document_methods_generateoutputex2.html"},
+        "displayed_signature": "GenerateOutputEx2(in strBaseDirectory as String) -> OutputGenerationResult",
+        "displayed_return_type": "OutputGenerationResult",
+        "parameters": [{"name": "strBaseDirectory", "declared_type": "String", "direction": "in"}],
+        "constraints": ["strBaseDirectory specifies the base against which output-file paths are resolved. No optional/default argument is declared."],
+        "documented_error_codes": []
+      }
+    },
+    {
+      "name": "GenerateCodeEx2",
+      "record_index": 33,
+      "dispatch_member_id": 30,
+      "name_offset": 8284,
+      "record_offset": 37440,
+      "record_bytes": 56,
+      "invocation_kind": "function",
+      "invocation_kind_value": 1,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {"vartype": "HRESULT", "encoded": "80190019"},
+      "parameters": [
+        {"index": 0, "name": "i_nLanguage", "name_offset": 7192, "record_offset": 37472, "parameter_flags": 1, "direction": ["in"], "type": {"declared_type": "ENUMProgrammingLanguage", "encoded": "000001f0", "pointer_depth": 0, "descriptor_chain": [496], "target_type_info_index": 23}},
+        {"index": 1, "name": "pResult", "name_offset": 8084, "record_offset": 37484, "parameter_flags": 10, "direction": ["out", "retval"], "type": {"declared_type": "ICodeGenerationResult**", "encoded": "00000270", "pointer_depth": 2, "descriptor_chain": [624, 616, 608], "target_type_info_index": 30}}
+      ],
+      "source_anchor": {"function_dump_lines": [9028, 9050], "member_id_dump_line": 9178, "member_name_dump_line": 9217, "member_offset_dump_line": 9256},
+      "catalog": {
+        "id": "provisional.com.Document.GenerateCodeEx2",
+        "source": {"official_url": "https://www.altova.com/manual/en/api/mapforceapi/mfapi_interfaces_document_methods_generatecodeex2.html", "raw_sha256": "78bc29c9db0b9051753f2d204721e44af12fc23f7fa6da6e7a6cef3f82564246", "release_binding": "unestablished", "source_file": "mfapi_interfaces_document_methods_generatecodeex2.html"},
+        "displayed_signature": "GenerateCodeEx2(in i_nLanguage as ENUMProgrammingLanguage) -> CodeGenerationResult",
+        "displayed_return_type": "CodeGenerationResult",
+        "parameters": [{"name": "i_nLanguage", "declared_type": "ENUMProgrammingLanguage", "direction": "in"}],
+        "constraints": [],
+        "documented_error_codes": []
+      }
+    }
+  ],
+  "comparison_boundary": {
+    "return_notation": "The online signatures display the result object as a higher-level return value; the raw declarations return HRESULT and use a separate out/retval parameter. These are different declaration levels, not a contradiction or an ABI equivalence claim.",
+    "input_notation": "The online enum names align with the named raw enum target. The online String parameter is compared with the raw BSTR declaration without claiming marshaling equivalence.",
+    "constraint_scope": "Online constraints and error lists remain release-unbound documentation, not observed behavior. The visible-window or GUI-embedding wording belongs to GenerateOutputEx; do not transfer it to GenerateOutputEx2 or infer that Ex2 works without a visible window.",
+    "optionality": "Zero optional arguments and the recorded parameter flags describe these raw declarations only; no runtime default, nullability, coercion or omission behavior is inferred."
+  },
+  "counts": {"methods": 4, "parameters": 7, "input_parameters": 3, "out_retval_parameters": 4},
+  "remaining": [
+    "Other COM method signatures remain outside this bounded fragment; inventory_complete remains false.",
+    "The pinned online catalog's release binding remains unestablished.",
+    "No ABI, calling convention, marshaling, ownership, lifetime, runtime default, error behavior or backend support is established.",
+    "No activation or execution evidence is supplied; canonical capability assessments are unchanged."
+  ]
+}
