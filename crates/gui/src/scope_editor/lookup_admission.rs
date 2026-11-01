@@ -5,9 +5,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::path_picker::SourcePathCatalog;
 
-pub(crate) const READ_ONLY: &str = "This saved scope uses an owned Lookup in an unsupported context. Its expressions are retained read-only.";
-const REJECTED: &str =
-    "This change would place an owned Lookup in an unsupported context. The scope is unchanged.";
+pub(crate) const READ_ONLY: &str = "This saved scope uses an owned expression in an unsupported context. Its expressions are retained read-only.";
+const REJECTED: &str = "This change would place an owned expression in an unsupported context. The scope is unchanged.";
 
 #[derive(Clone, Copy, Default)]
 pub(super) struct Policy<'a> {

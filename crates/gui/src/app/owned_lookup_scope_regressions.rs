@@ -26,19 +26,19 @@ fn app(document: MappingDocument) -> FerruleApp {
     app
 }
 
-fn root(app: &FerruleApp) -> &Scope {
+pub(in crate::app) fn root(app: &FerruleApp) -> &Scope {
     match app.mapping_workspace.active {
         MappingDocument::Target(index) => &app.project.extra_targets[index].root,
         _ => &app.project.root,
     }
 }
-fn root_mut(app: &mut FerruleApp) -> &mut Scope {
+pub(in crate::app) fn root_mut(app: &mut FerruleApp) -> &mut Scope {
     match app.mapping_workspace.active {
         MappingDocument::Target(index) => &mut app.project.extra_targets[index].root,
         _ => &mut app.project.root,
     }
 }
-fn inspector_frame(
+pub(in crate::app) fn inspector_frame(
     app: &mut FerruleApp,
     ctx: &egui::Context,
     enabled: bool,
@@ -59,14 +59,24 @@ fn inspector_frame(
     app.observe_editor_history(std::time::Instant::now(), false);
     out
 }
-fn settle_inspector(app: &mut FerruleApp, ctx: &egui::Context, enabled: bool) -> egui::FullOutput {
+pub(in crate::app) fn settle_inspector(
+    app: &mut FerruleApp,
+    ctx: &egui::Context,
+    enabled: bool,
+) -> egui::FullOutput {
     let mut out = inspector_frame(app, ctx, enabled, vec![]);
     for _ in 0..4 {
         out = inspector_frame(app, ctx, enabled, vec![]);
     }
     out
 }
-fn click_label(app: &mut FerruleApp, ctx: &egui::Context, enabled: bool, label: &str, last: bool) {
+pub(in crate::app) fn click_label(
+    app: &mut FerruleApp,
+    ctx: &egui::Context,
+    enabled: bool,
+    label: &str,
+    last: bool,
+) {
     let out = settle_inspector(app, ctx, enabled);
     let positions = visible(&out, label);
     let pos = *(if last {
@@ -90,13 +100,13 @@ fn click_label(app: &mut FerruleApp, ctx: &egui::Context, enabled: bool, label: 
         );
     }
 }
-fn label(app: &FerruleApp, id: NodeId) -> String {
+pub(in crate::app) fn label(app: &FerruleApp, id: NodeId) -> String {
     format!(
         "{} · #{id}",
         crate::graph_viewer::readable_node_label(&app.project.graph.nodes[&id])
     )
 }
-fn close(app: &mut FerruleApp, ctx: &egui::Context) {
+pub(in crate::app) fn close(app: &mut FerruleApp, ctx: &egui::Context) {
     inspector_frame(
         app,
         ctx,
