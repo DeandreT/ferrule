@@ -2,7 +2,7 @@
 use super::*;
 use mapping::{AggregateOp, ScopeIteration, SequenceExpr};
 
-pub(super) fn observed(app: &FerruleApp) -> serde_json::Value {
+pub(in crate::app) fn observed(app: &FerruleApp) -> serde_json::Value {
     let wires = [&app.main_canvas, &app.mapping_workspace.target_canvases[&0]].map(|canvas| {
         let mut wires = canvas
             .snarl
@@ -256,7 +256,7 @@ fn legacy_parent_inputs_and_unselected_shared_branches_cannot_convert_to_owned()
     }
 }
 
-pub(super) fn connection_fixture(kind: &str) -> FerruleApp {
+pub(in crate::app) fn connection_fixture(kind: &str) -> FerruleApp {
     let mut app = fixture(MappingDocument::Main);
     app.project.graph.nodes.remove(&7);
     app.project.graph.nodes.insert(10, call(3));

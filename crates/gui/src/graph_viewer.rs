@@ -57,18 +57,20 @@ fn complete_node_title(node: Option<&Node>, fallback: String) -> String {
 }
 
 fn has_node_properties(node: &Node) -> bool {
-    matches!(node, Node::OwnedLookup(_)) || graph_node_presentation::has_properties(node)
+    matches!(node, Node::OwnedLookup(_) | Node::OwnedAggregate(_))
+        || graph_node_presentation::has_properties(node)
 }
 
-fn show_owned_lookup_header(
+fn show_owned_expression_header(
     ui: &mut Ui,
     node: SnarlNodeId,
     id: NodeId,
     label: &str,
+    edit_label: &str,
 ) -> egui::Response {
     ui.horizontal(|ui| {
         let response = ui.strong(label);
-        let edit = crate::ui_kit::icon_button(ui, lucide_icons::Icon::Pencil, "Edit lookup", None);
+        let edit = crate::ui_kit::icon_button(ui, lucide_icons::Icon::Pencil, edit_label, None);
         focus::record_control(ui, edit.id, node);
         let popup = ui.layer_id().id.with(("node_properties", id));
         if edit.clicked() || crate::canvas_tools::take_edit(ui.ctx(), CanvasNode::Graph(id)) {
@@ -712,6 +714,39 @@ impl GraphViewer<'_> {
         )
     }
 
+    fn insert_owned_aggregate(
+        &mut self,
+        snarl: &mut Snarl<CanvasNode>,
+        pos: egui::Pos2,
+        op: AggregateOp,
+    ) -> Result<(NodeId, SnarlNodeId), String> {
+        if self.function_output.is_some()
+            || !self
+                .source_paths
+                .lookup_binding_supported(self.root_scope, &[])
+        {
+            return Err("Owned aggregates require an ungrouped ordinary target context outside isolated functions.".into());
+        }
+        let aggregate = self
+            .source_paths
+            .first_owned_aggregate(op)
+            .ok_or_else(|| "No supported static input collection is available.".to_owned())?;
+        self.plan_edit(
+            |viewer| {
+                viewer.insert_with_unconnected_inputs(snarl, pos, 0, |_| {
+                    Node::OwnedAggregate(aggregate)
+                })
+            },
+            |_, inserted| {
+                let &(node, _) = inserted.as_ref().ok()?;
+                Some(GraphAction::InsertNode {
+                    node,
+                    position: editor_ui::CanvasPosition { x: pos.x, y: pos.y },
+                })
+            },
+        )
+    }
+
     pub(crate) fn source_block_connection_error(&self, block: usize) -> Option<String> {
         let index = block.checked_sub(1)?;
         let source = self.project_references.named_source(index)?;
@@ -1158,6 +1193,11 @@ impl GraphViewer<'_> {
     }
 
     fn read_only_inputs(&self, id: NodeId, node: &Node) -> bool {
+        // The authored Count/direct Sum subset has no inputs. Every retained
+        // aggregate input therefore belongs to a read-only expression or arg.
+        if matches!(node, Node::OwnedAggregate(_)) {
+            return true;
+        }
         if let Node::OwnedLookup(lookup) = node {
             return self.function_output.is_some()
                 || !self.source_paths.lookup_editable(self.graph, id)
@@ -1169,7 +1209,9 @@ impl GraphViewer<'_> {
     }
 
     fn read_only_input_message(&self, id: NodeId) -> &'static str {
-        if matches!(self.graph.nodes.get(&id), Some(Node::OwnedLookup(_))) {
+        if matches!(self.graph.nodes.get(&id), Some(Node::OwnedAggregate(_))) {
+            "Saved owned aggregate expression and argument inputs are read-only."
+        } else if matches!(self.graph.nodes.get(&id), Some(Node::OwnedLookup(_))) {
             "This owned Lookup is read-only in its current source or evaluation context."
         } else {
             graph_sequence::READ_ONLY_INPUTS_MESSAGE
@@ -1232,7 +1274,7 @@ impl GraphViewer<'_> {
             return Ok(());
         }
         let refused = || {
-            "Owned Lookup values require an ungrouped ordinary receiving context; this connection would change their source ownership context.".to_owned()
+            "Owned Lookup and aggregate values require an ungrouped ordinary receiving context; this connection would change their source ownership context.".to_owned()
         };
         if self.function_output.is_some()
             || !crate::source_ownership::lookup_assignment_allowed(
@@ -1499,6 +1541,11 @@ impl GraphViewer<'_> {
         };
         if !self.graph.nodes.contains_key(&node) {
             self.error = Some(format!("function output node {node} no longer exists"));
+            return false;
+        }
+        if !crate::source_ownership::lookup_assignment_allowed(self.graph, node, false, |_| false) {
+            self.error =
+                Some("Owned expressions cannot be selected as an isolated function output.".into());
             return false;
         }
         **output = node;
@@ -2211,7 +2258,23 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                 } else if let (Some(id), Some(lookup @ Node::OwnedLookup(_))) =
                     (Self::mapping_id(canvas_node), graph_node)
                 {
-                    show_owned_lookup_header(ui, node, id, &readable_node_label(lookup))
+                    show_owned_expression_header(
+                        ui,
+                        node,
+                        id,
+                        &readable_node_label(lookup),
+                        "Edit lookup",
+                    )
+                } else if let (Some(id), Some(aggregate @ Node::OwnedAggregate(_))) =
+                    (Self::mapping_id(canvas_node), graph_node)
+                {
+                    show_owned_expression_header(
+                        ui,
+                        node,
+                        id,
+                        &readable_node_label(aggregate),
+                        "Edit aggregate",
+                    )
                 } else {
                     ui.label(&full_title)
                 }
@@ -2984,6 +3047,27 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
             self.error = self.insert_owned_lookup(snarl, pos).err();
             ui.close();
             return;
+        }
+        ui.separator();
+        for (op, label) in [
+            (AggregateOp::Count, "Count from one input"),
+            (AggregateOp::Sum, "Sum from one input"),
+        ] {
+            if ui
+                .add_enabled(
+                    self.function_output.is_none()
+                        && self
+                            .source_paths
+                            .lookup_binding_supported(self.root_scope, &[])
+                        && self.source_paths.first_owned_aggregate(op).is_some(),
+                    egui::Button::new(label),
+                )
+                .clicked()
+            {
+                self.error = self.insert_owned_aggregate(snarl, pos, op).err();
+                ui.close();
+                return;
+            }
         }
         ui.separator();
         if let Some(template) = node_palette::show_available(

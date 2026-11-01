@@ -128,7 +128,8 @@ pub(crate) fn parent_error(
 ) -> Option<String> {
     if !crate::source_ownership::lookup_assignment_allowed(graph, root, false, |_| false) {
         return Some(
-            "Owned Lookup expressions are unavailable in filter/map input contexts.".into(),
+            "Owned Lookup and aggregate expressions are unavailable in filter/map input contexts."
+                .into(),
         );
     }
     let mut complete = BTreeSet::new();
