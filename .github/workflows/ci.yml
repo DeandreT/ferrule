@@ -65,11 +65,17 @@ jobs:
         if: runner.environment == 'github-hosted'
         with:
           shared-key: workspace-bounded-builds
-      - name: virtual display
+      - name: graphics dependencies
         if: runner.environment == 'github-hosted'
         run: |
           sudo apt-get update
-          sudo apt-get install -y xvfb
+          sudo apt-get install -y xvfb libvulkan1 mesa-vulkan-drivers vulkan-tools
+      - name: software Vulkan adapter
+        if: runner.environment == 'github-hosted'
+        run: |
+          summary="$(xvfb-run -a vulkaninfo --summary)"
+          printf '%s\n' "$summary"
+          grep -Eq 'deviceType[[:space:]]*=[[:space:]]*PHYSICAL_DEVICE_TYPE_CPU' <<< "$summary"
       - name: linker
         run: mold --version
       - name: fmt
