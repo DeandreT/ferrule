@@ -3,21 +3,28 @@
 use super::*;
 use mapping::{AggregateOp, OwnedAggregate, OwnedAggregateValue};
 
+/// The complete authorable subset, shared by creation, properties and admission.
+pub(crate) const OWNED_AGGREGATE_OPS: [(AggregateOp, &str); 5] = [
+    (AggregateOp::Count, "Count"),
+    (AggregateOp::Sum, "Sum"),
+    (AggregateOp::Avg, "Average"),
+    (AggregateOp::Min, "Minimum"),
+    (AggregateOp::Max, "Maximum"),
+];
+
 impl SourcePathCatalog {
     pub(crate) fn aggregate_form_supported(&self, aggregate: &OwnedAggregate) -> bool {
         if aggregate.arg.is_some() {
             return false;
         }
-        match (&aggregate.function, &aggregate.value) {
-            (AggregateOp::Count, OwnedAggregateValue::Path(path)) => path.is_empty(),
-            (AggregateOp::Sum, OwnedAggregateValue::Path(_)) => true,
-            _ => false,
-        }
+        matches!(&aggregate.value, OwnedAggregateValue::Path(path)
+            if authorable(aggregate.function)
+                && (aggregate.function != AggregateOp::Count || path.is_empty()))
     }
 
     fn aggregate_choices(&self, op: AggregateOp) -> impl Iterator<Item = &OwnedLookupChoice> {
         self.aggregate_choices.iter().filter(move |choice| {
-            op == AggregateOp::Count || op == AggregateOp::Sum && !choice.values.is_empty()
+            authorable(op) && (op == AggregateOp::Count || !choice.values.is_empty())
         })
     }
 
@@ -53,15 +60,11 @@ impl SourcePathCatalog {
             egui::ComboBox::from_id_salt(ui.scope_id().with("owned_aggregate_op"))
                 .selected_text(operation_label(previous))
                 .show_ui(ui, |ui| {
-                    for op in [AggregateOp::Count, AggregateOp::Sum] {
+                    for (op, label) in OWNED_AGGREGATE_OPS {
                         ui.add_enabled_ui(
                             self.aggregate_owner_available(&aggregate.collection.owner, op),
                             |ui| {
-                                ui.selectable_value(
-                                    &mut aggregate.function,
-                                    op,
-                                    operation_label(op),
-                                );
+                                ui.selectable_value(&mut aggregate.function, op, label);
                             },
                         );
                     }
@@ -112,7 +115,7 @@ impl SourcePathCatalog {
                     });
                 if let Some(choice) = choice {
                     aggregate.collection = choice.source.clone();
-                    if aggregate.function == AggregateOp::Sum {
+                    if aggregate.function != AggregateOp::Count {
                         reset_value(value, choice);
                     }
                 }
@@ -138,13 +141,13 @@ impl SourcePathCatalog {
                 .aggregate_choices(aggregate.function)
                 .find(|choice| choice.source == aggregate.collection);
             if previous != aggregate.collection.path
-                && aggregate.function == AggregateOp::Sum
+                && aggregate.function != AggregateOp::Count
                 && let Some(choice) = choice
             {
                 reset_value(value, choice);
             }
             ui.end_row();
-            if aggregate.function == AggregateOp::Sum {
+            if aggregate.function != AggregateOp::Count {
                 ui.label("Value");
                 let fields = choice.map_or_else(Vec::new, |choice| choice.values.iter().collect());
                 show_path_picker(
@@ -157,18 +160,23 @@ impl SourcePathCatalog {
                 ui.end_row();
             }
         });
-        if aggregate.function == AggregateOp::Sum {
-            ui.weak("Ordinary numeric Sum; Decimal values are not supported.");
+        if aggregate.function != AggregateOp::Count {
+            ui.weak("Ordinary numeric reduction; Decimal values are not supported.");
         }
     }
 }
 
 fn operation_label(op: AggregateOp) -> &'static str {
-    match op {
-        AggregateOp::Count => "Count",
-        AggregateOp::Sum => "Sum",
-        _ => "Unsupported aggregate",
-    }
+    OWNED_AGGREGATE_OPS
+        .iter()
+        .find(|(candidate, _)| *candidate == op)
+        .map_or("Unsupported aggregate", |(_, label)| *label)
+}
+
+fn authorable(op: AggregateOp) -> bool {
+    OWNED_AGGREGATE_OPS
+        .iter()
+        .any(|(candidate, _)| *candidate == op)
 }
 
 fn reset_value(value: &mut Vec<String>, choice: &OwnedLookupChoice) {
@@ -261,6 +269,47 @@ mod tests {
                 .iter()
                 .any(|choice| choice.source.path == ["Empty"])
         );
+        for (op, _) in OWNED_AGGREGATE_OPS {
+            let first = paths.first_owned_aggregate(op).unwrap();
+            assert_eq!(first.function, op);
+            assert!(first.arg.is_none());
+            for owner in [
+                SourceOwner::Primary,
+                SourceOwner::Named { name: "Ref".into() },
+            ] {
+                let choices = paths
+                    .aggregate_choices(op)
+                    .filter(|choice| choice.source.owner == owner)
+                    .collect::<Vec<_>>();
+                assert!(!choices.is_empty());
+                if op != AggregateOp::Count {
+                    assert!(choices.iter().all(|choice| !choice.values.is_empty()));
+                    assert!(!choices.iter().any(|choice| choice.source.path == ["Empty"]));
+                }
+            }
+            for value in [OwnedAggregateValue::Expression(2), first.value.clone()] {
+                let unsupported = OwnedAggregate {
+                    value,
+                    arg: Some(2),
+                    ..first.clone()
+                };
+                assert!(!paths.aggregate_form_supported(&unsupported));
+            }
+            assert!(!paths.aggregate_form_supported(&OwnedAggregate {
+                value: OwnedAggregateValue::Expression(2),
+                ..first
+            }));
+        }
+        for op in [
+            AggregateOp::DecimalSum,
+            AggregateOp::Join,
+            AggregateOp::ItemAt,
+            AggregateOp::LastPresentText,
+            AggregateOp::LastDistinctText,
+        ] {
+            assert!(paths.first_owned_aggregate(op).is_none());
+            assert!(!paths.aggregate_owner_available(&SourceOwner::Primary, op));
+        }
     }
 
     #[test]
@@ -318,7 +367,19 @@ mod tests {
                 AggregateOp::Avg,
                 OwnedAggregateValue::Path(vec![]),
                 None,
-                false,
+                true,
+            ),
+            (
+                AggregateOp::Min,
+                OwnedAggregateValue::Path(vec![]),
+                None,
+                true,
+            ),
+            (
+                AggregateOp::Max,
+                OwnedAggregateValue::Path(vec![]),
+                None,
+                true,
             ),
             (
                 AggregateOp::DecimalSum,

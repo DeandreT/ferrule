@@ -112,7 +112,7 @@ pub(crate) fn node_label(node: &Node) -> String {
         .map_or(fallback, |header| header.summary)
 }
 
-fn aggregate_label(function: AggregateOp) -> &'static str {
+pub(super) fn aggregate_label(function: AggregateOp) -> &'static str {
     match function {
         AggregateOp::Count => "Count",
         AggregateOp::Sum => "Sum",
@@ -187,8 +187,8 @@ pub(super) fn owned_source_title(node: &Node) -> Option<String> {
             serializer.schema.name,
         )),
         Node::OwnedAggregate(aggregate) => Some(format!(
-            "Owned aggregate {:?}: {}\nCollection: {:?}\nValue: {}\nOnly Count and direct-field Sum without arguments are editable in supported contexts",
-            aggregate.function,
+            "Owned aggregate {}: {}\nCollection: {:?}\nValue: {}\nOnly Count and direct-field Sum, Average, Minimum and Maximum without arguments are editable in supported contexts",
+            aggregate_label(aggregate.function),
             owner(&aggregate.collection.owner),
             aggregate.collection.path,
             match &aggregate.value {
