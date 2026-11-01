@@ -12,6 +12,7 @@ They do not change the canonical capability ledger or establish execution suppor
 | `com-api.json` | Separate public COM API catalog; release binding remains unestablished |
 | `com-name-alignment.json` | Name-only interface, enum and event comparison against the release-bound type library, preserving discrepancies and dump-rendering gaps |
 | `com-enum-values.json` | All 20 release-bound enum tables and 130 signed constants, compared with the pinned online catalog without establishing runtime support |
+| `com-generation-signatures.json` | Four release-bound `IDocument` generation methods and seven ordered parameters, with raw descriptor targets and a separate release-unbound online comparison |
 | `supporting.json` | Public I/O classes, wrapper-library exceptions and the named installation-artifact requests |
 | `schema-wrappers.json` | Four optional schema-wrapper source profiles, actual schema identities and build/dependency metadata; no compiled or runtime qualification |
 | `external-references.json` | Linked historical DOM algorithm and redirected .NET interface contract, kept separate from vendor claims |
@@ -53,6 +54,17 @@ existing three-value observation in `artifact-observations.json` is preserved.
 These declarations do not establish aliases, accepted runtime options, backend
 applicability, or the online catalog's release binding. The canonical inventory
 remains incomplete, and no execution evidence follows from this comparison.
+
+The generation-signature fragment records `GenerateCodeEx`, `GenerateOutputEx`,
+`GenerateOutputEx2` and `GenerateCodeEx2` only. It pins the HRESULT declarations,
+member IDs, ordered parameter names, flags and descriptor chains to the retained
+type library and dump. The online pages display the result objects as higher-level
+returns, rather than raw HRESULT/out-retval signatures; that difference is not a
+contradiction. Their constraints and error lists remain release-unbound, including
+the visible-window wording for `GenerateOutputEx`, which is not transferred to
+`GenerateOutputEx2`. The fragment does not establish ABI, calling convention,
+marshaling, ownership, lifetime, runtime defaults or backend support. Independent
+expected declarations and mutation controls run without vendor files or activation.
 
 The public supporting declarations are inventoried. `schema-wrappers.json`
 records bounded source bundles for C#, Java and both C++ DOM options, including
