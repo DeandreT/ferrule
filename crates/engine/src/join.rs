@@ -13,7 +13,7 @@ use super::frame_view::{FrameKind, FrameOrigin, FrameView};
 use super::policy::BudgetMeter;
 use super::resolve::field_scalar;
 use super::sequence::eval_sequence_in_progress;
-use super::source_iteration::{PositionFrame, WalkExtension, walk};
+use super::source_iteration::{InstanceBinding, PositionFrame, WalkExtension, walk};
 
 pub(super) struct JoinedRow<'a> {
     instances: Vec<&'a Instance>,
@@ -109,19 +109,34 @@ pub(super) fn execute<'a>(
                 if conditions_match(&left_frames, left_computed, right_member, conditions)? {
                     let mut instances = left.instances.clone();
                     instances.extend(right.instances.iter().copied());
+                    let exact = left.exact && right.exact;
                     let frames = left
                         .frames
                         .iter()
-                        .chain(&right.frames)
-                        .map(|frame| RowFrame {
-                            position: frame.position.clone(),
-                            origin: frame.origin,
+                        .map(|frame| (frame, 0))
+                        .chain(
+                            right
+                                .frames
+                                .iter()
+                                .map(|frame| (frame, left.instances.len())),
+                        )
+                        .map(|(frame, offset)| {
+                            let mut position = frame.position.clone();
+                            position.binding = if exact {
+                                position.binding.rebased(offset)
+                            } else {
+                                InstanceBinding::LegacyUnspecified
+                            };
+                            RowFrame {
+                                position,
+                                origin: frame.origin,
+                            }
                         })
                         .collect();
                     joined.push(JoinedRow {
                         instances,
                         frames,
-                        exact: left.exact && right.exact,
+                        exact,
                         computed: left.computed.or(right.computed),
                     });
                 }
@@ -230,9 +245,8 @@ pub(super) fn eval_aggregate(
         let value = match input.expression {
             Some(expression) => {
                 let mut item_context = context.to_vec();
-                item_context.extend(extension.instances.iter().copied());
                 let mut item_positions = positions.to_vec();
-                item_positions.extend(extension.positions.iter().cloned());
+                extension.append_to(&mut item_context, &mut item_positions);
                 eval_node_input(
                     program,
                     input.consumer,
@@ -266,9 +280,9 @@ pub(super) fn eval_aggregate(
 
 /// Rows of one join source. The latest ungrouped receiving frame of the
 /// source's exact collection that this join did not contribute correlates
-/// the source to that one row. When that frame has no instance, or no frame
-/// matches, the source is walked from the innermost context frame holding
-/// its first segment, falling back to the innermost frame.
+/// the source to that one row. An explicitly unbound frame yields no rows.
+/// When no frame matches (or an unbound legacy frame matches), the source is
+/// walked from the innermost context holding its first segment.
 fn source_rows<'a>(
     context: &[&'a Instance],
     receiving: &FrameView<'_, 'a>,
@@ -280,9 +294,15 @@ fn source_rows<'a>(
         frame.kind != FrameKind::GroupMembers
             && frame.origin != FrameOrigin::Joined(join)
             && frame.collection == collection
-    }) && let Some(instance) = receiving.instance(frame)
-    {
+    }) {
+        let Some(instance) = receiving.instance(frame) else {
+            if frame.position.binding != InstanceBinding::LegacyUnspecified {
+                return Vec::new();
+            }
+            return walked_source_rows(context, join, source);
+        };
         let mut correlated = frame.position.clone();
+        correlated.binding = InstanceBinding::ContextSlot(0);
         correlated.join = Some(join);
         correlated.join_position = None;
         return vec![JoinedRow {
@@ -295,6 +315,15 @@ fn source_rows<'a>(
             computed: None,
         }];
     }
+    walked_source_rows(context, join, source)
+}
+
+fn walked_source_rows<'a>(
+    context: &[&'a Instance],
+    join: JoinId,
+    source: &CollectionJoinSource,
+) -> Vec<JoinedRow<'a>> {
+    let collection = source.collection();
     context
         .iter()
         .rev()
@@ -312,6 +341,10 @@ fn source_rows<'a>(
                     let mut positions = extension.positions;
                     let origin = if positions.is_empty() {
                         positions.push(PositionFrame {
+                            binding: extension.instances.len().checked_sub(1).map_or(
+                                InstanceBinding::ExplicitUnbound,
+                                InstanceBinding::ContextSlot,
+                            ),
                             generated_origin: None,
                             collection: collection.to_vec(),
                             index: index + 1,
@@ -327,9 +360,17 @@ fn source_rows<'a>(
                         }
                         FrameOrigin::Walked
                     };
+                    let exact = extension.instances.len() == positions.len();
+                    // Malformed unvalidated rows retain their historical index
+                    // pairing, including shifts caused by unpositioned members.
+                    if !exact {
+                        for position in &mut positions {
+                            position.binding = InstanceBinding::LegacyUnspecified;
+                        }
+                    }
                     JoinedRow {
                         computed: None,
-                        exact: extension.instances.len() == positions.len(),
+                        exact,
                         instances: extension.instances,
                         frames: positions
                             .into_iter()

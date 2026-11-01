@@ -88,6 +88,12 @@ cargo test --workspace --doc --locked \
 Removing `WAYLAND_DISPLAY` and `WAYLAND_SOCKET` keeps the run off an ambient
 Wayland session, as the [CI workflow](../.github/workflows/ci.yml) does.
 
+Pixel-rendering tests also need a graphics adapter; Xvfb alone does not provide
+one. On Ubuntu, install `libvulkan1`, `mesa-vulkan-drivers` and `vulkan-tools`
+alongside `xvfb`. `xvfb-run -a vulkaninfo --summary` should list a CPU device
+(Mesa's software Vulkan renderer). Hosted CI checks this prerequisite before
+building; a missing adapter is a setup failure, not a reason to skip rendering.
+
 Those exclusions are not generated-backend qualification. Changes to lowering,
 runtime primitives, emitters, or public adapters need their focused Rust and
 C# checks and actual compiled-host calls as applicable. See

@@ -80,8 +80,11 @@ owned failure walks.
 Every earlier profile, including the path-hierarchy, adjacency-tree, IntoBlocks,
 recursive-collect, SequenceExists and recursive-filter companions, refuses owned
 search with its typed `AggregateLookup` diagnostic, and the ordinary emitters,
-directly constructed Program validation, `.mfd` export and GUI authoring keep
-refusing it; the GUI displays saved owned searches read-only. Joins and legacy
+directly constructed Program validation and `.mfd` export keep refusing it.
+The native GUI authors bounded owner-qualified Lookup nodes for Primary and
+addressable static named inputs; CollectionFind and unsupported contexts remain
+read-only. Opening properties does not convert legacy searches or repair saved
+owner/path metadata. Joins and legacy
 Lookup or CollectionFind remain closed in the Basic profiles, and owned
 aggregates stay closed in this profile; the
 [owned aggregate companion](owned-collection-aggregates.md) extends it.

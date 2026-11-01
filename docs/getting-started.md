@@ -126,6 +126,10 @@ choose **Input conversion**: **unchanged**, **string**, **int**, **float**, or
 Opening the properties or changing this choice preserves existing table values,
 their types, and the Default setting.
 
+Unapplied typed-cell drafts belong to the open canvas instance. Closing the
+editor keeps its draft, but opening or reloading a project starts from that
+project's saved table values; another project's draft is never applied there.
+
 For example, a table key entered as `1` is text. If the arriving value is the
 integer `1`, choose **string** to match that text key. Leave **unchanged** to
 keep its original type. Table cells edited here are text; **int**, **float**, and
@@ -211,11 +215,11 @@ and concatenated-segment routes, other construction modes, isolated functions,
 and embedded stage views are outside this editor's bounded contract.
 
 When a source walk descends into a single group beneath an active repeated
-item, frame-pinned and collection-qualified field reads are not offered: their
-runtime frame association is not proven by this picker. Directly resolvable
-Boolean fields and independent expressions remain available. The picker is
-limited to graphs of 4,096 nodes, expression depth 64, and 256 dependency visits
-per candidate.
+item, frame-pinned and collection-qualified Boolean ancestor fields remain
+available, including in Boolean expressions. Separate and multi-hop singleton
+walks preserve the ancestor's collection identity and position; ordinary local
+fields still use the innermost matching scalar type. The picker is limited to
+graphs of 4,096 nodes, expression depth 64, and 256 dependency visits per candidate.
 
 Stored conditions outside this subset remain visible and unchanged. Inspecting
 the scope does not repair its expression or alter its content. Save and reopen

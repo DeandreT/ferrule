@@ -922,9 +922,8 @@ fn eval_expr_inner(
                 let terminal = item.instances.last().copied();
                 let item_value = if let Some(expression) = expression {
                     let mut item_context = context.to_vec();
-                    item_context.extend(item.instances.iter().copied());
                     let mut item_positions = positions.to_vec();
-                    item_positions.extend(item.positions.iter().cloned());
+                    item.append_to(&mut item_context, &mut item_positions);
                     eval_node_input(
                         program,
                         node_id,
@@ -1084,6 +1083,9 @@ fn eval_xml_mixed_content(
             *index += 1;
             item_context.push(value);
             item_positions.push(PositionFrame {
+                binding: crate::source_iteration::InstanceBinding::ContextSlot(
+                    item_context.len() - 1,
+                ),
                 generated_origin: None,
                 collection: replacement.collection.clone(),
                 index: *index,
@@ -1197,6 +1199,7 @@ fn visit_collection_find<'a>(
         for (item_index, item) in items.iter().enumerate() {
             context.push(item);
             positions.push(PositionFrame {
+                binding: crate::source_iteration::InstanceBinding::ContextSlot(context.len() - 1),
                 generated_origin: None,
                 collection: collection[..consumed].to_vec(),
                 index: item_index + 1,

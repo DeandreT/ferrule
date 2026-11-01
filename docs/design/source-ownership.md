@@ -12,8 +12,8 @@ Keep structural validity separate from executable capability. Preserve strict ne
 
 ## Native editor authoring
 
-The native editor authors owned fields, positions and source iterations; every
-other owned operator stays read-only. A legacy path names its endpoint only by
+The native editor authors owned fields, positions, source iterations and bounded
+exact-owner Lookups and Count/direct Sum aggregates; other owned operators stay read-only. A legacy path names its endpoint only by
 leading text, so two cases are ambiguous: a named alias that the primary input
 or any input can define (the conservative alias-shadowing check), and a primary
 path whose first segment equals a named alias. Wiring a pin in either case
@@ -33,6 +33,64 @@ choose an owner and collection, and the palette inserts an owned position once
 the project uses ownership. A legacy scope or position converts only on that
 explicit choice. Wires record as typed connect commands; scope and property
 choices record as snapshots.
+
+The canvas menu's **Lookup from one input** action creates an explicit-owner
+Lookup with one disconnected needle input and valid fields from the selected
+static endpoint. The **Input**, **Collection**, **Key** and **Return field**
+controls use endpoint-local paths, including nested repeating collections and
+scalar fields below non-repeating wrappers. Primary and named inputs with the
+same path remain distinct, including a named alias shadowed by a primary field.
+Changing the owner or collection keeps fields that still exist and selects the
+first valid local field for those that do not. The needle node and wires do not
+change. A missing match returns Null; another input cannot supply the match.
+
+The ordinary **Lookup** palette entry and its legacy path form remain available.
+A saved legacy Lookup converts only through **Use an exact input**. Rendering,
+opening settings and invalid saved paths do not trigger conversion or repair.
+Creation and property changes use typed InsertNode/EditNode history commands;
+Undo/Redo and the layout sidecar retain IDs, wires and positions on primary and
+named-target canvases.
+
+**Count from one input** and **Sum from one input** create bounded owner-qualified
+aggregates. Count includes collections of empty groups; Sum selects an item
+scalar without crossing nested repetition. These forms have no argument or
+computed value. Their Input/Collection/Value controls are endpoint-local and
+their legacy conversion is explicit. Other aggregate forms stay read-only;
+ordinary Sum rejects Decimal values. See the [native aggregate editor](owned-collection-aggregates.md#native-editor).
+
+Blank or duplicate named owners, dynamic inputs, document sets and non-static
+schema choices are not offered. Stored unavailable owners remain read-only.
+Lookup and bounded aggregate authoring is confined to ungrouped ordinary target scopes and excludes isolated
+functions and expressions shared with specialized item, failure, dynamic-output
+or construction contexts. The picker admits at most 4096 schema nodes and 64
+levels per endpoint. CollectionFind and other owned operators remain unchanged.
+
+The same closed, typed-input policy protects conversion and needle edits: even
+parent inputs of legacy Lookup, Aggregate and dynamic-field operators inherit
+those operators' excluded contexts. Every potential branch is inspected, not
+only the branch selected by the current input. Output wires are checked against
+the actual receiving scope and its ancestry; an excluded child does not prevent
+creation or connections in an ordinary sibling. Rejected wire actions leave the
+graph, existing wires, orphan-field state and history unchanged.
+
+Inspector expression selectors use that same admission boundary for bindings,
+filters, grouping, sort keys and window bounds, including indirect Lookup and aggregate
+dependencies. Computed-property, filter/map and failure expressions stay outside this
+owned-expression authoring subset; presence conditions retain their separate scalar
+admission policy. Saved unsupported scope expressions are displayed read-only.
+Scope edits also check newly excluded expression placements before recording
+history, without validating or repairing unrelated incomplete project content.
+
+Grouped scopes and their descendants keep owned Lookups and aggregates read-only, even if an
+individual expression would execute there. Introducing an owned expression can
+activate owned admission for the whole group and invalidate existing legacy
+siblings. Creation, assignment, conversion and needle edits use this same
+boundary; adding grouping to a subtree that already uses a Lookup or aggregate is refused.
+Nongrouped siblings remain independently authorable.
+Prospective scope changes compare the complete grouping ancestry of every
+reachable descendant owned expression, including already read-only grouped descendants.
+Grouping defaults are chosen in the proposed grouped context, skipping owned-expression
+dependencies and leaving the control unset when no ordinary candidate exists.
 
 Generated admission is one explicit capability set per entry point; each
 generation companion below is a named preset of independent capabilities. See

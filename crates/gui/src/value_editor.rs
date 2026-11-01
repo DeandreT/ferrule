@@ -257,6 +257,20 @@ pub fn show_value_map_editor(
     default: &mut Option<Value>,
     wheel_delta_y: Option<f32>,
 ) {
+    // Node and row IDs can be reused after a document is replaced. Scope both
+    // our cell drafts and TextEdit's own state to the actual canvas instance.
+    let owner = crate::canvas_tools::active(ui.ctx());
+    ui.push_id(("value_map_editor", owner), |ui| {
+        show_value_map_table(ui, table, default, wheel_delta_y);
+    });
+}
+
+fn show_value_map_table(
+    ui: &mut Ui,
+    table: &mut Vec<(Value, Value)>,
+    default: &mut Option<Value>,
+    wheel_delta_y: Option<f32>,
+) {
     ui.vertical(|ui| {
         // Leave room for the solid scrollbar without reserving a second
         // entry column for an empty or single-entry table.

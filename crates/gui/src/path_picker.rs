@@ -5,9 +5,12 @@ use std::path::Path;
 
 use egui::Ui;
 use ir::{SchemaKind, SchemaNode};
-use mapping::{NamedSource, OwnedSourceRef};
+use mapping::{NamedSource, OwnedLookup, OwnedSourceRef, SourceOwner};
 
 use crate::source_ownership::SourceOwnership;
+
+#[path = "owned_aggregate_editor.rs"]
+mod owned_aggregate_editor;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct PathChoice {
@@ -26,6 +29,12 @@ struct CollectionChoice {
     values: Vec<PathChoice>,
 }
 
+#[derive(Debug, Clone)]
+struct OwnedLookupChoice {
+    source: OwnedSourceRef,
+    values: Vec<PathChoice>,
+}
+
 /// Repeating source paths and their per-item scalar paths. Relative paths
 /// are included for every schema node that can become an iteration frame.
 #[derive(Debug, Clone)]
@@ -39,10 +48,20 @@ pub struct SourcePathCatalog {
     primary_source_document_path: bool,
     xml_source_elements: Vec<XmlSourceElement>,
     ownership: SourceOwnership,
+    lookup_choices: Vec<OwnedLookupChoice>,
+    aggregate_choices: Vec<OwnedLookupChoice>,
+    lookup_excluded_roots: BTreeSet<mapping::NodeId>,
 }
 
 impl SourcePathCatalog {
     pub fn new(source: &SchemaNode, extras: &[NamedSource]) -> Self {
+        let ownership = SourceOwnership::new(source, extras);
+        let aggregate_choices = owned_collection_choices(source, extras, &ownership);
+        let lookup_choices = aggregate_choices
+            .iter()
+            .filter(|choice| !choice.values.is_empty())
+            .cloned()
+            .collect();
         let mut entries = BTreeMap::new();
         let mut root_scope_paths = BTreeSet::new();
         let mut scope_paths = BTreeSet::new();
@@ -126,13 +145,17 @@ impl SourcePathCatalog {
             open_scalar_objects,
             primary_source_document_path: false,
             xml_source_elements,
-            ownership: SourceOwnership::new(source, extras),
+            ownership,
+            lookup_choices,
+            aggregate_choices,
+            lookup_excluded_roots: BTreeSet::new(),
         }
     }
 
     /// Records whether the project already holds owned forms, so every new
     /// read stays owner-qualified once ownership is in use.
     pub(crate) fn with_project_ownership(mut self, project: &mapping::Project) -> Self {
+        self.lookup_excluded_roots = crate::source_ownership::lookup_excluded_roots(project);
         self.ownership = std::mem::take(&mut self.ownership)
             .with_project_usage(crate::source_ownership::project_uses_ownership(project));
         self
@@ -140,6 +163,145 @@ impl SourcePathCatalog {
 
     pub(crate) fn ownership(&self) -> &SourceOwnership {
         &self.ownership
+    }
+
+    pub(crate) fn lookup_editable(&self, graph: &mapping::Graph, node: mapping::NodeId) -> bool {
+        !matches!(graph.nodes.get(&node), Some(mapping::Node::OwnedLookup(lookup))
+            if !self.lookup_owner_available(&lookup.collection.owner))
+            && !matches!(graph.nodes.get(&node), Some(mapping::Node::OwnedAggregate(aggregate))
+                if !self.aggregate_form_supported(aggregate)
+                    || !self.aggregate_owner_available(&aggregate.collection.owner, aggregate.function))
+            && !crate::source_ownership::lookup_read_only_in_graph(
+                graph,
+                &self.lookup_excluded_roots,
+            )
+            .contains(&node)
+    }
+
+    pub(crate) fn lookup_binding_supported(&self, root: &mapping::Scope, chain: &[String]) -> bool {
+        crate::source_ownership::lookup_binding_supported(root, chain, &self.ownership)
+    }
+
+    pub(crate) fn first_owned_lookup(&self, matches: mapping::NodeId) -> Option<OwnedLookup> {
+        let choice = self.lookup_choices.first()?;
+        let path = choice.values.first()?.path.clone();
+        Some(OwnedLookup {
+            collection: choice.source.clone(),
+            key: path.clone(),
+            matches,
+            value: path,
+        })
+    }
+
+    pub(crate) fn lookup_owner_available(&self, owner: &SourceOwner) -> bool {
+        self.lookup_choices
+            .iter()
+            .any(|choice| &choice.source.owner == owner)
+    }
+
+    /// All three pickers share one exact endpoint-local catalogue. Saved paths
+    /// are never repaired during inspection, even when they are no longer offered.
+    pub(crate) fn show_owned_lookup_editor(&self, ui: &mut Ui, lookup: &mut OwnedLookup) {
+        // Snarl gives inline editors an unbounded measuring Ui. Bound the
+        // first combo before it computes its text position inside the grid.
+        ui.set_max_width(crate::theme::editor_size::TYPE_PATH_PICKER);
+        let owners = self.ownership.lookup_owners();
+        let owner_available = self.lookup_owner_available(&lookup.collection.owner);
+        if !owner_available {
+            ui.label(crate::source_ownership::collection_label(
+                &lookup.collection.owner,
+                &lookup.collection.path,
+            ));
+            ui.label(format!("Key: {}", value_label(&lookup.key)));
+            ui.label(format!("Return field: {}", value_label(&lookup.value)));
+            ui.weak("This lookup owner is unavailable. Stored paths and wiring are unchanged.");
+            return;
+        }
+        egui::Grid::new(ui.scope_id().with("owned_lookup_paths")).show(ui, |ui| {
+            ui.label("Input");
+            let mut owner = lookup.collection.owner.clone();
+            egui::ComboBox::from_id_salt(ui.scope_id().with("lookup_owner"))
+                .selected_text(lookup_owner_label(&owner))
+                .width(crate::theme::editor_size::PATH_PICKER)
+                .show_ui(ui, |ui| {
+                    for candidate in &owners {
+                        if self
+                            .lookup_choices
+                            .iter()
+                            .any(|choice| &choice.source.owner == candidate)
+                        {
+                            ui.selectable_value(
+                                &mut owner,
+                                candidate.clone(),
+                                lookup_owner_label(candidate),
+                            );
+                        }
+                    }
+                });
+            if owner != lookup.collection.owner {
+                let choice = self
+                    .lookup_choices
+                    .iter()
+                    .find(|choice| {
+                        choice.source.owner == owner && choice.source.path == lookup.collection.path
+                    })
+                    .or_else(|| {
+                        self.lookup_choices
+                            .iter()
+                            .find(|choice| choice.source.owner == owner)
+                    });
+                if let Some(choice) = choice {
+                    lookup.collection = choice.source.clone();
+                    reset_lookup_fields(lookup, choice);
+                }
+            }
+            ui.end_row();
+            ui.label("Collection");
+            let previous = lookup.collection.path.clone();
+            egui::ComboBox::from_id_salt(ui.scope_id().with("lookup_owned_collection"))
+                .selected_text(collection_label(&previous))
+                .width(crate::theme::editor_size::PATH_PICKER)
+                .show_ui(ui, |ui| {
+                    for choice in &self.lookup_choices {
+                        if choice.source.owner == lookup.collection.owner {
+                            ui.selectable_value(
+                                &mut lookup.collection.path,
+                                choice.source.path.clone(),
+                                collection_label(&choice.source.path),
+                            );
+                        }
+                    }
+                });
+            let choice = self
+                .lookup_choices
+                .iter()
+                .find(|choice| choice.source == lookup.collection);
+            if previous != lookup.collection.path
+                && let Some(choice) = choice
+            {
+                reset_lookup_fields(lookup, choice);
+            }
+            ui.end_row();
+            let fields = choice.map_or_else(Vec::new, |choice| choice.values.iter().collect());
+            ui.label("Key");
+            show_path_picker(
+                ui,
+                ui.scope_id().with("lookup_owned_key"),
+                &mut lookup.key,
+                &fields,
+                value_label,
+            );
+            ui.end_row();
+            ui.label("Return field");
+            show_path_picker(
+                ui,
+                ui.scope_id().with("lookup_owned_value"),
+                &mut lookup.value,
+                &fields,
+                value_label,
+            );
+            ui.end_row();
+        });
     }
 
     /// Offers owner-qualified collections. Returns a selector only after an
@@ -171,6 +333,12 @@ impl SourcePathCatalog {
 
     pub(crate) fn with_primary_source_options(mut self, options: &mapping::FormatOptions) -> Self {
         self.primary_source_document_path = options.local_xml_file_set;
+        if options.local_xml_file_set {
+            self.lookup_choices
+                .retain(|choice| choice.source.owner != SourceOwner::Primary);
+            self.aggregate_choices
+                .retain(|choice| choice.source.owner != SourceOwner::Primary);
+        }
         self
     }
 
@@ -340,6 +508,112 @@ impl SourcePathCatalog {
             .map_or_else(Vec::new, |choice| choice.values.iter().collect());
         show_path_picker(ui, id_salt, path, &choices, value_label);
     }
+}
+
+fn lookup_owner_label(owner: &SourceOwner) -> String {
+    match owner {
+        SourceOwner::Primary => "Primary input".into(),
+        SourceOwner::Named { name } => format!("Named input: {name}"),
+    }
+}
+
+fn reset_lookup_fields(lookup: &mut OwnedLookup, choice: &OwnedLookupChoice) {
+    let Some(first) = choice.values.first() else {
+        return;
+    };
+    for path in [&mut lookup.key, &mut lookup.value] {
+        if !choice.values.iter().any(|value| value.path == *path) {
+            *path = first.path.clone();
+        }
+    }
+}
+
+/// Unlike the legacy catalogue, these paths never merge aliases or iteration
+/// contexts. A nested repeating path remains absolute within its selected owner.
+fn owned_collection_choices(
+    primary: &SchemaNode,
+    extras: &[NamedSource],
+    ownership: &SourceOwnership,
+) -> Vec<OwnedLookupChoice> {
+    let mut choices = Vec::new();
+    for owner in ownership.lookup_owners() {
+        let schema = match &owner {
+            SourceOwner::Primary => primary,
+            SourceOwner::Named { name } => {
+                let Some(source) = extras.iter().find(|source| &source.name == name) else {
+                    continue;
+                };
+                if source.options.local_xml_file_set {
+                    continue;
+                }
+                &source.schema
+            }
+        };
+        if !lookup_tree_supported(schema) {
+            continue;
+        }
+        let mut pending = vec![(schema, Vec::new())];
+        let mut endpoint = Vec::new();
+        while let Some((node, path)) = pending.pop() {
+            if path.is_empty() || node.repeating {
+                let mut fields = BTreeSet::new();
+                add_scalar_paths(node, &mut Vec::new(), &mut fields);
+                endpoint.push(OwnedLookupChoice {
+                    source: OwnedSourceRef {
+                        owner: owner.clone(),
+                        path: path.clone(),
+                    },
+                    values: fields
+                        .into_iter()
+                        .map(|path| PathChoice {
+                            label: value_label(&path),
+                            path,
+                        })
+                        .collect(),
+                });
+            }
+            if let SchemaKind::Group { children, .. } = &node.kind {
+                for child in children.iter().rev() {
+                    let mut child_path = path.clone();
+                    child_path.push(child.name.clone());
+                    pending.push((child, child_path));
+                }
+            }
+        }
+        choices.extend(endpoint);
+    }
+    choices
+}
+
+fn lookup_tree_supported(schema: &SchemaNode) -> bool {
+    let mut pending = vec![(schema, 0)];
+    let mut visited = 0;
+    while let Some((node, depth)) = pending.pop() {
+        visited += 1;
+        if visited > 4096 || depth > 64 || node.recursive_ref.is_some() {
+            return false;
+        }
+        if let SchemaKind::Group {
+            children,
+            alternatives,
+            dynamic,
+            ..
+        } = &node.kind
+        {
+            if !alternatives.is_empty()
+                || dynamic.is_some()
+                || children.len() + pending.len() > 4096
+            {
+                return false;
+            }
+            let mut names = BTreeSet::new();
+            if children.iter().any(|child| !names.insert(&child.name)) {
+                return false;
+            }
+            pending.extend(children.iter().map(|child| (child, depth + 1)));
+        }
+    }
+    true
 }
 
 #[derive(Debug, Clone)]
@@ -823,6 +1097,86 @@ mod tests {
 
         assert!(has_collection(&catalog, &["rows"]));
         assert!(has_value(&catalog, &["rows"], &["value"]));
+    }
+
+    #[test]
+    fn owned_lookup_catalog_never_merges_aliases_fields_or_nested_contexts() {
+        let row = |field: &str| {
+            SchemaNode::group("Rows", vec![SchemaNode::scalar(field, ScalarType::String)])
+                .repeating()
+        };
+        let primary = SchemaNode::group(
+            "Root",
+            vec![
+                row("primary"),
+                SchemaNode::group("Ref", vec![row("shadow")]),
+            ],
+        );
+        let named = NamedSource {
+            name: "Ref".into(),
+            path: "reference.json".into(),
+            schema: SchemaNode::group("Root", vec![row("named")]),
+            options: Default::default(),
+            dynamic_path: None,
+        };
+        let catalog = SourcePathCatalog::new(&primary, &[named]);
+        for (owner, path, expected) in [
+            (SourceOwner::Primary, vec!["Rows"], "primary"),
+            (SourceOwner::Primary, vec!["Ref", "Rows"], "shadow"),
+            (
+                SourceOwner::Named { name: "Ref".into() },
+                vec!["Rows"],
+                "named",
+            ),
+        ] {
+            let choice = catalog
+                .lookup_choices
+                .iter()
+                .find(|choice| {
+                    choice.source.owner == owner
+                        && choice
+                            .source
+                            .path
+                            .iter()
+                            .map(String::as_str)
+                            .eq(path.iter().copied())
+                })
+                .unwrap();
+            assert_eq!(
+                choice
+                    .values
+                    .iter()
+                    .map(|value| value.label.as_str())
+                    .collect::<Vec<_>>(),
+                [expected]
+            );
+        }
+    }
+
+    #[test]
+    fn owned_lookup_catalog_refuses_unbounded_and_document_set_endpoints() {
+        let mut source = SchemaNode::scalar("Value", ScalarType::String);
+        for _ in 0..66 {
+            source = SchemaNode::group("Nested", vec![source]);
+        }
+        assert!(
+            SourcePathCatalog::new(&source, &[])
+                .first_owned_lookup(1)
+                .is_none()
+        );
+        let ordinary = SchemaNode::group(
+            "Root",
+            vec![SchemaNode::scalar("Value", ScalarType::String)],
+        );
+        assert!(
+            SourcePathCatalog::new(&ordinary, &[])
+                .with_primary_source_options(&mapping::FormatOptions {
+                    local_xml_file_set: true,
+                    ..Default::default()
+                })
+                .first_owned_lookup(1)
+                .is_none()
+        );
     }
 }
 

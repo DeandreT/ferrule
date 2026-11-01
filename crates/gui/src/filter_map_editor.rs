@@ -126,6 +126,12 @@ pub(crate) fn parent_error(
     forbidden: &BTreeSet<NodeId>,
     consumer: Option<NodeId>,
 ) -> Option<String> {
+    if !crate::source_ownership::lookup_assignment_allowed(graph, root, false, |_| false) {
+        return Some(
+            "Owned Lookup and aggregate expressions are unavailable in filter/map input contexts."
+                .into(),
+        );
+    }
     let mut complete = BTreeSet::new();
     let mut active = BTreeSet::new();
     let mut pending = vec![(root, false)];

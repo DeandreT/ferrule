@@ -623,50 +623,73 @@ fn presence_sequence_join_keys_reserve_private_items_in_scopes_and_aggregates() 
     }
 }
 
-#[test]
-fn presence_singleton_walk_does_not_offer_unproved_retained_frame_fields() {
+fn singleton_app(walks: &[&[&str]], document: MappingDocument) -> FerruleApp {
+    // A shifted ancestor pin would read this string instead of Rows' Boolean.
+    let detail = SchemaNode::group(
+        "Detail",
+        vec![
+            SchemaNode::scalar("Flag", ScalarType::String),
+            SchemaNode::scalar("Ready", ScalarType::Bool),
+        ],
+    );
+    let nested = walks
+        .iter()
+        .flat_map(|walk| walk.iter())
+        .any(|segment| *segment == "Wrapper");
+    let child = if nested {
+        SchemaNode::group("Wrapper", vec![detail])
+    } else {
+        detail
+    };
+    let mut schema = SchemaNode::group(
+        "Item",
+        vec![
+            SchemaNode::scalar("Value", ScalarType::Bool),
+            SchemaNode::scalar("Absolute", ScalarType::Bool),
+            SchemaNode::scalar("Child", ScalarType::String),
+            SchemaNode::scalar("Ready", ScalarType::Bool),
+            SchemaNode::scalar("Position", ScalarType::Int),
+        ],
+    )
+    .repeating();
+    let mut scope = Scope {
+        bindings: vec![
+            bind("Value", 2),
+            bind("Absolute", 4),
+            bind("Child", 10),
+            bind("Ready", 6),
+            bind("Position", 7),
+        ],
+        ..item_scope()
+    };
+    for walk in walks.iter().rev() {
+        let name = walk.last().unwrap();
+        schema = SchemaNode::group(*name, vec![schema]).repeating();
+        scope = Scope {
+            target_field: (*name).into(),
+            iteration: ScopeIteration::Source(
+                walk.iter().map(|segment| (*segment).into()).collect(),
+            ),
+            children: vec![scope],
+            ..Default::default()
+        };
+    }
     let mut app = app(
         SchemaNode::group(
             "Input",
             vec![
                 SchemaNode::group(
                     "Rows",
-                    vec![
-                        SchemaNode::scalar("Flag", ScalarType::Bool),
-                        SchemaNode::group(
-                            "Detail",
-                            vec![
-                                SchemaNode::scalar("Flag", ScalarType::String),
-                                SchemaNode::scalar("Ready", ScalarType::Bool),
-                            ],
-                        ),
-                    ],
+                    vec![SchemaNode::scalar("Flag", ScalarType::Bool), child],
                 )
                 .repeating(),
+                SchemaNode::group("Other", vec![SchemaNode::scalar("Flag", ScalarType::Bool)])
+                    .repeating(),
             ],
         ),
-        SchemaNode::group(
-            "Output",
-            vec![
-                SchemaNode::group(
-                    "Rows",
-                    vec![SchemaNode::group("Detail", vec![item_schema()]).repeating()],
-                )
-                .repeating(),
-            ],
-        ),
+        SchemaNode::group("Output", vec![schema]),
         Scope {
-            children: vec![Scope {
-                target_field: "Rows".into(),
-                iteration: ScopeIteration::Source(vec!["Rows".into()]),
-                children: vec![Scope {
-                    target_field: "Detail".into(),
-                    iteration: ScopeIteration::Source(vec!["Detail".into()]),
-                    children: vec![item_scope()],
-                    ..Default::default()
-                }],
-                ..Default::default()
-            }],
+            children: vec![scope],
             ..Default::default()
         },
         &[
@@ -684,49 +707,174 @@ fn presence_singleton_walk_does_not_offer_unproved_retained_frame_fields() {
             ),
             (8, call("equal", &[7, 9])),
             (9, integer(1)),
+            (10, field(&["Flag"], None)),
+            (11, field(&["Flag"], Some(&["Other"]))),
+            (12, field(&["Ready"], Some(&["Detail"]))),
+            (
+                13,
+                Node::Position {
+                    collection: vec!["Detail".into()],
+                },
+            ),
+            (14, call("equal", &[13, 9])),
         ],
-        &[0, 0, 0],
+        &vec![0; walks.len() + 1],
     );
-    let offered = candidates(&app);
-    for id in [2, 3, 4, 5] {
-        assert!(!offered.contains(&id), "unproved frame field #{id}");
+    if document == MappingDocument::Target(0) {
+        app.project.extra_targets.push(NamedTarget {
+            name: "Other".into(),
+            path: Some("other.json".into()),
+            schema: app.project.target.clone(),
+            options: app.project.target_options.clone(),
+            root: app.project.root.clone(),
+        });
+        app.open_target_tab(0);
+        assert!(app.ensure_target_canvas(0));
     }
-    assert!(
-        offered.contains(&6) && offered.contains(&8),
-        "ordinary fields and raw positions remain usable"
-    );
-    let input = r#"{"Rows":[{"Flag":true,"Detail":{"Flag":"first","Ready":true}},{"Flag":false,"Detail":{"Flag":"second","Ready":false}}]}"#;
-    let context = context();
-    choose(&mut app, &context, 0, 6);
-    assert_output_and_preview(
-        &mut app,
-        input,
-        serde_json::json!({"Rows":[{"Detail":[{"Item":[{"Value":true}]}]},{"Detail":[{"Item":[]}]}]}),
-    );
+    app.mapping_workspace.active = document;
+    app.mapping_workspace.focused = document;
+    app.selected_scope = vec![0; walks.len() + 1];
+    app.mark_clean();
+    app.rebase_history();
+    app
+}
 
-    app.project.root.children[0].children[0].children[0].iteration =
-        ScopeIteration::OptionalPresence { condition: 2 };
-    let source = format_json::from_str(input, &app.project.source).unwrap();
-    assert!(matches!(
-        engine::run(&app.project, &source),
-        Err(engine::EngineError::NotABool {
-            node: 2,
-            found: "string"
-        })
-    ));
-    let retained = key(&app);
-    frame(&mut app, &context, true, vec![]);
-    assert_eq!(
-        key(&app),
-        retained,
-        "viewing the saved condition does not repair it"
-    );
-    let scratch = Scratch::new();
-    assert!(preview(&mut app, &context, input, &scratch.0.join("unwritten.json")).is_none());
-    assert!(
-        app.diagnostics
-            .items()
+fn singleton_input(walks: &[&[&str]]) -> String {
+    let rows: Vec<_> = [
+        (true, false, "first"),
+        (false, true, "second"),
+        (true, true, "third"),
+    ]
+    .into_iter()
+    .map(|(flag, ready, child)| {
+        let detail = serde_json::json!({"Flag":child,"Ready":ready});
+        if walks
             .iter()
-            .any(|item| format!("{item:?}").contains("string"))
-    );
+            .flat_map(|walk| walk.iter())
+            .any(|segment| *segment == "Wrapper")
+        {
+            serde_json::json!({"Flag":flag,"Wrapper":{"Detail":detail}})
+        } else {
+            serde_json::json!({"Flag":flag,"Detail":detail})
+        }
+    })
+    .collect();
+    serde_json::json!({"Rows":rows,"Other":[{"Flag":false}]}).to_string()
+}
+
+fn singleton_expected(walks: &[&[&str]], condition: NodeId) -> serde_json::Value {
+    let rows: Vec<_> = [
+        (true, false, "first"),
+        (false, true, "second"),
+        (true, true, "third"),
+    ]
+    .into_iter()
+    .enumerate()
+    .map(|(index, (flag, ready, child))| {
+        let present = match condition {
+            0 => true,
+            2 | 4 => flag,
+            3 | 5 => !flag,
+            6 => ready,
+            8 => index == 0,
+            _ => panic!("unexpected condition {condition}"),
+        };
+        let items = if present {
+            vec![serde_json::json!({
+                "Value":flag,"Absolute":flag,"Child":child,"Ready":ready,"Position":index + 1
+            })]
+        } else {
+            vec![]
+        };
+        let mut row = serde_json::json!({"Item":items});
+        for walk in walks.iter().skip(1).rev() {
+            row = serde_json::json!({(*walk.last().unwrap()):[row]});
+        }
+        row
+    })
+    .collect();
+    serde_json::json!({(*walks[0].last().unwrap()):rows})
+}
+
+#[test]
+fn presence_singleton_walk_offers_retained_frames_with_real_controls_and_durable_history()
+-> anyhow::Result<()> {
+    let walks: &[&[&[&str]]] = &[
+        &[&["Rows"], &["Detail"]],
+        &[&["Rows"], &["Wrapper"], &["Detail"]],
+        &[&["Rows"], &["Wrapper", "Detail"]],
+        &[&["Rows", "Wrapper", "Detail"]],
+    ];
+    for walks in walks {
+        for document in [MappingDocument::Main, MappingDocument::Target(0)] {
+            let mut app = singleton_app(walks, document);
+            let offered = candidates(&app);
+            assert_eq!(offered, vec![0, 2, 3, 4, 5, 6, 8]);
+            let selected_path = app.selected_scope.clone();
+            let original_layout = layout(&app);
+            let original_content =
+                crate::scope_editor::scope_at_mut(&mut app.project.root, &selected_path).clone();
+            let input = singleton_input(walks);
+            let context = context();
+            let locked = key(&app);
+            click(&mut app, &context, false, "Optional presence", false);
+            click(&mut app, &context, false, "0: expression", false);
+            assert_eq!(key(&app), locked);
+            assert!(!app.is_dirty() && !app.can_undo() && !app.history.can_redo());
+            let scratch = Scratch::new();
+            let mut previous = 0;
+            for condition in [2, 3, 4, 5, 6, 8] {
+                let before = key(&app);
+                choose(&mut app, &context, previous, condition);
+                let root = match document {
+                    MappingDocument::Target(_) => &mut app.project.extra_targets[0].root,
+                    _ => &mut app.project.root,
+                };
+                let selected = crate::scope_editor::scope_at_mut(root, &selected_path);
+                assert_eq!(selected.presence(), Some(condition));
+                assert_eq!(selected.bindings, original_content.bindings);
+                assert_eq!(selected.children, original_content.children);
+                assert_eq!(layout(&app), original_layout);
+                assert!(matches!(
+                    app.history.next_undo(),
+                    Some(HistoryRecord::Command(_))
+                ));
+                let edited = key(&app);
+                app.undo_project();
+                assert_eq!(key(&app), before);
+                app.redo_project();
+                assert_eq!(key(&app), edited);
+                app.selected_scope = selected_path.clone();
+                let expected = singleton_expected(walks, condition);
+                assert_output_and_preview(&mut app, &input, expected.clone());
+
+                let path = scratch.0.join(format!("project-{condition}.json"));
+                let outcome = app.save_document_to(&path)?;
+                assert!(outcome.validation_issues.is_empty() && outcome.layout_warning.is_none());
+                let saved = key(&app);
+                let project_bytes = std::fs::read(&path)?;
+                let layout_path = crate::layout_store::layout_path(&path);
+                let layout_bytes = std::fs::read(&layout_path)?;
+                let mut reopened = FerruleApp::default();
+                reopened.load_project_from(&path);
+                if document == MappingDocument::Target(0) {
+                    reopened.open_target_tab(0);
+                    assert!(reopened.ensure_target_canvas(0));
+                }
+                reopened.mapping_workspace.active = document;
+                reopened.mapping_workspace.focused = document;
+                reopened.selected_scope = selected_path.clone();
+                assert_eq!(key(&reopened), saved);
+                assert_eq!(layout(&reopened), original_layout);
+                assert_eq!(candidates(&reopened), offered);
+                frame(&mut reopened, &context, true, vec![]);
+                assert_eq!(key(&reopened), saved, "inspection is read-only");
+                assert_output_and_preview(&mut reopened, &input, expected);
+                assert_eq!(std::fs::read(&path)?, project_bytes);
+                assert_eq!(std::fs::read(&layout_path)?, layout_bytes);
+                previous = condition;
+            }
+        }
+    }
+    Ok(())
 }
