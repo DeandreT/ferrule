@@ -187,7 +187,7 @@ pub(super) fn owned_source_title(node: &Node) -> Option<String> {
             serializer.schema.name,
         )),
         Node::OwnedAggregate(aggregate) => Some(format!(
-            "Owned aggregate {:?}: {}\nCollection: {:?}\nValue: {}\nRead-only; owned aggregate authoring is unavailable",
+            "Owned aggregate {:?}: {}\nCollection: {:?}\nValue: {}\nOnly Count and direct-field Sum without arguments are editable in supported contexts",
             aggregate.function,
             owner(&aggregate.collection.owner),
             aggregate.collection.path,

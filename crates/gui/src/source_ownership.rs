@@ -80,7 +80,7 @@ pub(crate) fn project_uses_ownership(project: &Project) -> bool {
             .any(|rule| rule.iteration.owned_source().is_some())
 }
 
-/// The editor deliberately offers lookups only in ungrouped ordinary target
+/// The editor offers owned Lookup and bounded Count/direct Sum only in ungrouped ordinary target
 /// contexts. Introducing an owned read in a group changes admission for the
 /// entire grouped subtree, including otherwise valid legacy sibling expressions.
 pub(crate) fn lookup_scope_supported(scope: &mapping::Scope) -> bool {
@@ -139,7 +139,7 @@ pub(crate) fn lookup_binding_supported(
     true
 }
 
-/// Roots evaluated outside the bounded Lookup authoring contexts. Kept separate
+/// Roots evaluated outside the common owned-expression authoring contexts. Kept separate
 /// from graph traversal so wire guards can inspect the current, edited graph.
 pub(crate) fn lookup_excluded_roots(project: &Project) -> BTreeSet<mapping::NodeId> {
     let mut pending = Vec::new();
@@ -185,7 +185,7 @@ pub(crate) fn lookup_excluded_roots(project: &Project) -> BTreeSet<mapping::Node
 
 /// Closed GUI capability policy, not a list of exceptional legacy operators.
 /// Only ordinary receiving-context scalar inputs and an owned Lookup's needle
-/// admit a Lookup dependency. In particular, a legacy operator's *parent*
+/// admit owned Lookup or Count/direct Sum dependencies. In particular, a legacy operator's *parent*
 /// inputs still inherit its engine capability context: a legacy Lookup needle,
 /// Aggregate argument and DynamicSourceField key are not Basic scalar contexts.
 pub(crate) fn lookup_input_supported(node: &mapping::Node, input: mapping::NodeInput) -> bool {
@@ -245,7 +245,13 @@ pub(crate) fn lookup_dependencies(
         if seen.insert(id)
             && let Some(node) = graph.nodes.get(&id)
         {
-            if matches!(node, mapping::Node::OwnedLookup(_)) {
+            // Include unsupported aggregate forms too: importing one must not
+            // bypass the common wire/Inspector/context gates merely because its
+            // properties are read-only. Eligibility is checked by the caller.
+            if matches!(
+                node,
+                mapping::Node::OwnedLookup(_) | mapping::Node::OwnedAggregate(_)
+            ) {
                 lookups.insert(id);
             }
             node.visit_inputs(&mut |input| pending.push(input.node));
@@ -255,7 +261,9 @@ pub(crate) fn lookup_dependencies(
 }
 
 /// Common admission for assigning a complete potential expression closure.
-/// Callers supply the receiving context and current graph's lookup eligibility.
+/// The historical `lookup_*` entry points also cover owned aggregates; every
+/// assignment path must use this gate, including unsupported saved forms.
+/// Callers supply the receiving context and current graph's edit eligibility.
 pub(crate) fn lookup_assignment_allowed(
     graph: &mapping::Graph,
     node: mapping::NodeId,
