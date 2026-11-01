@@ -5,9 +5,9 @@ use ir::{ScalarType, SchemaNode, Value};
 use mapping::{Binding, NamedSource, NamedTarget, OwnedLookup, OwnedSourceRef, SourceOwner};
 
 #[path = "owned_lookup_context_regressions.rs"]
-mod context_regressions;
+pub(super) mod context_regressions;
 #[path = "owned_lookup_scope_regressions.rs"]
-mod scope_regressions;
+pub(super) mod scope_regressions;
 
 const INPUT: &str = r#"{"Rows":[{"Code":"hit","PrimaryValue":"primary-first"},{"Code":"hit","PrimaryValue":"primary-later"},{"Code":"only-primary","PrimaryValue":"primary-only"}],"Alt":[{"AltKey":"hit","AltValue":"primary-alt"}],"Ref":{"Rows":[{"Code":"hit","PrimaryValue":"alias-shadow"}]}}"#;
 const NAMED: &str = r#"{"Rows":[{"Code":"hit","NamedValue":"named-first"},{"Code":"hit","NamedValue":"named-later"},{"Code":"only-named","NamedValue":"named-only"}],"Alt":[{"OtherKey":"hit","OtherValue":"named-alt"}]}"#;
@@ -31,7 +31,7 @@ fn source(owner: SourceOwner, path: &str) -> OwnedSourceRef {
 fn named_owner() -> SourceOwner {
     SourceOwner::Named { name: "Ref".into() }
 }
-fn fixture(document: MappingDocument) -> FerruleApp {
+pub(super) fn fixture(document: MappingDocument) -> FerruleApp {
     let mut app = FerruleApp::default();
     app.project.source = SchemaNode::group(
         "Input",
@@ -101,7 +101,7 @@ fn fixture(document: MappingDocument) -> FerruleApp {
     rebuild(&mut app, document);
     app
 }
-fn rebuild(app: &mut FerruleApp, document: MappingDocument) {
+pub(super) fn rebuild(app: &mut FerruleApp, document: MappingDocument) {
     app.main_canvas = CanvasDocumentState::main(&app.project);
     app.mapping_workspace = Default::default();
     app.open_target_tab(0);
@@ -129,7 +129,10 @@ fn rebuild(app: &mut FerruleApp, document: MappingDocument) {
     app.mark_clean();
     app.rebase_history();
 }
-fn canvas_mut(app: &mut FerruleApp, document: MappingDocument) -> &mut CanvasDocumentState {
+pub(super) fn canvas_mut(
+    app: &mut FerruleApp,
+    document: MappingDocument,
+) -> &mut CanvasDocumentState {
     match document {
         MappingDocument::Main => &mut app.main_canvas,
         MappingDocument::Target(index) => app
@@ -140,13 +143,13 @@ fn canvas_mut(app: &mut FerruleApp, document: MappingDocument) -> &mut CanvasDoc
         _ => panic!("mapping canvas"),
     }
 }
-fn snapshot(app: &FerruleApp) -> serde_json::Value {
+pub(super) fn snapshot(app: &FerruleApp) -> serde_json::Value {
     let mut layout =
         editor_state(&app.project, &app.main_canvas.snarl, &app.mapping_workspace).layout;
     layout.project_fingerprint = None;
     serde_json::json!({"project": app.project, "layout": layout})
 }
-fn creation_snapshot(app: &FerruleApp, document: MappingDocument) -> serde_json::Value {
+pub(super) fn creation_snapshot(app: &FerruleApp, document: MappingDocument) -> serde_json::Value {
     let state = snapshot(app);
     // An unbound new node has no position on an inactive canvas until that
     // canvas is rebuilt. Its authored position belongs to the active canvas.
@@ -163,12 +166,12 @@ fn lookup(app: &FerruleApp) -> &OwnedLookup {
     };
     lookup
 }
-fn context() -> egui::Context {
+pub(super) fn context() -> egui::Context {
     let context = egui::Context::default();
     crate::icons::install(&context);
     context
 }
-fn frame(
+pub(super) fn frame(
     app: &mut FerruleApp,
     ctx: &egui::Context,
     enabled: bool,
@@ -189,14 +192,14 @@ fn frame(
     app.observe_editor_history(std::time::Instant::now(), false);
     output
 }
-fn settle(app: &mut FerruleApp, ctx: &egui::Context, enabled: bool) -> egui::FullOutput {
+pub(super) fn settle(app: &mut FerruleApp, ctx: &egui::Context, enabled: bool) -> egui::FullOutput {
     let mut output = frame(app, ctx, enabled, vec![]);
     for _ in 0..4 {
         output = frame(app, ctx, enabled, vec![]);
     }
     output
 }
-fn settle_all(app: &mut FerruleApp, ctx: &egui::Context) {
+pub(super) fn settle_all(app: &mut FerruleApp, ctx: &egui::Context) {
     let active = app.mapping_workspace.active;
     for document in [MappingDocument::Main, MappingDocument::Target(0)] {
         app.mapping_workspace.active = document;
@@ -205,7 +208,7 @@ fn settle_all(app: &mut FerruleApp, ctx: &egui::Context) {
     app.mapping_workspace.active = active;
     settle(app, ctx, true);
 }
-fn visible(output: &egui::FullOutput, label: &str) -> Vec<egui::Pos2> {
+pub(super) fn visible(output: &egui::FullOutput, label: &str) -> Vec<egui::Pos2> {
     fn visit(
         shape: &egui::epaint::Shape,
         clip: egui::Rect,
@@ -233,7 +236,7 @@ fn visible(output: &egui::FullOutput, label: &str) -> Vec<egui::Pos2> {
     }
     found
 }
-fn pointer(
+pub(super) fn pointer(
     app: &mut FerruleApp,
     ctx: &egui::Context,
     enabled: bool,
@@ -255,7 +258,13 @@ fn pointer(
         );
     }
 }
-fn click_nth(app: &mut FerruleApp, ctx: &egui::Context, enabled: bool, label: &str, index: usize) {
+pub(super) fn click_nth(
+    app: &mut FerruleApp,
+    ctx: &egui::Context,
+    enabled: bool,
+    label: &str,
+    index: usize,
+) {
     let output = settle(app, ctx, enabled);
     let found = visible(&output, label);
     assert!(
@@ -284,7 +293,7 @@ fn choose(app: &mut FerruleApp, ctx: &egui::Context, current: &str, selected: &s
         pointer(app, ctx, true, pos, egui::PointerButton::Primary);
     }
 }
-fn open_lookup(app: &mut FerruleApp, ctx: &egui::Context) {
+pub(super) fn open_lookup(app: &mut FerruleApp, ctx: &egui::Context) {
     let label = crate::graph_viewer::readable_node_label(&app.project.graph.nodes[&7]);
     let output = settle(app, ctx, true);
     let title = visible(&output, &label)[0];
@@ -296,7 +305,7 @@ fn open_lookup(app: &mut FerruleApp, ctx: &egui::Context) {
     pointer(app, ctx, true, pos, egui::PointerButton::Primary);
     settle(app, ctx, true);
 }
-fn assert_typed_edit(app: &FerruleApp) {
+pub(super) fn assert_typed_edit(app: &FerruleApp) {
     let Some(HistoryRecord::Command(record)) = app.history.next_undo() else {
         panic!("typed command")
     };
@@ -326,7 +335,7 @@ fn connect_needle(app: &mut FerruleApp, node: NodeId) {
     .unwrap();
 }
 
-fn wire_action(
+pub(super) fn wire_action(
     app: &mut FerruleApp,
     from_node: CanvasNode,
     output: usize,

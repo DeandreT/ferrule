@@ -175,6 +175,40 @@ fn assert_result(project: &Project, input_value: &str, expected: &str) {
 }
 
 #[test]
+fn owned_aggregate_cannot_be_selected_as_an_isolated_function_output() {
+    let (mut app, function) = function_app("owned_output");
+    let definition = app.project.user_functions.get_mut(&function).unwrap();
+    definition.body.nodes.insert(
+        99,
+        Node::OwnedAggregate(mapping::OwnedAggregate {
+            function: mapping::AggregateOp::Count,
+            collection: mapping::OwnedSourceRef {
+                owner: mapping::SourceOwner::Primary,
+                path: vec![],
+            },
+            value: mapping::OwnedAggregateValue::Path(vec![]),
+            arg: None,
+        }),
+    );
+    definition.body.nodes.insert(
+        100,
+        Node::Call {
+            function: "concat".into(),
+            args: vec![99],
+        },
+    );
+    let original = definition.output;
+    for candidate in [99, 100] {
+        with_function_viewer(&mut app, function, |viewer, _| {
+            assert!(!viewer.select_function_output(candidate));
+            assert_eq!(viewer.protected_output, Some(original));
+            assert!(viewer.error.is_some());
+        });
+        assert_eq!(app.project.user_functions[&function].output, original);
+    }
+}
+
+#[test]
 fn selected_computed_function_output_executes_and_survives_history_save_and_reopen()
 -> anyhow::Result<()> {
     let directory = TestDirectory::new()?;

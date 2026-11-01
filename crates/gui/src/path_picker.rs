@@ -9,6 +9,9 @@ use mapping::{NamedSource, OwnedLookup, OwnedSourceRef, SourceOwner};
 
 use crate::source_ownership::SourceOwnership;
 
+#[path = "owned_aggregate_editor.rs"]
+mod owned_aggregate_editor;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct PathChoice {
     path: Vec<String>,
@@ -46,13 +49,19 @@ pub struct SourcePathCatalog {
     xml_source_elements: Vec<XmlSourceElement>,
     ownership: SourceOwnership,
     lookup_choices: Vec<OwnedLookupChoice>,
+    aggregate_choices: Vec<OwnedLookupChoice>,
     lookup_excluded_roots: BTreeSet<mapping::NodeId>,
 }
 
 impl SourcePathCatalog {
     pub fn new(source: &SchemaNode, extras: &[NamedSource]) -> Self {
         let ownership = SourceOwnership::new(source, extras);
-        let lookup_choices = owned_lookup_choices(source, extras, &ownership);
+        let aggregate_choices = owned_collection_choices(source, extras, &ownership);
+        let lookup_choices = aggregate_choices
+            .iter()
+            .filter(|choice| !choice.values.is_empty())
+            .cloned()
+            .collect();
         let mut entries = BTreeMap::new();
         let mut root_scope_paths = BTreeSet::new();
         let mut scope_paths = BTreeSet::new();
@@ -138,6 +147,7 @@ impl SourcePathCatalog {
             xml_source_elements,
             ownership,
             lookup_choices,
+            aggregate_choices,
             lookup_excluded_roots: BTreeSet::new(),
         }
     }
@@ -158,6 +168,9 @@ impl SourcePathCatalog {
     pub(crate) fn lookup_editable(&self, graph: &mapping::Graph, node: mapping::NodeId) -> bool {
         !matches!(graph.nodes.get(&node), Some(mapping::Node::OwnedLookup(lookup))
             if !self.lookup_owner_available(&lookup.collection.owner))
+            && !matches!(graph.nodes.get(&node), Some(mapping::Node::OwnedAggregate(aggregate))
+                if !self.aggregate_form_supported(aggregate)
+                    || !self.aggregate_owner_available(&aggregate.collection.owner, aggregate.function))
             && !crate::source_ownership::lookup_read_only_in_graph(
                 graph,
                 &self.lookup_excluded_roots,
@@ -322,6 +335,8 @@ impl SourcePathCatalog {
         self.primary_source_document_path = options.local_xml_file_set;
         if options.local_xml_file_set {
             self.lookup_choices
+                .retain(|choice| choice.source.owner != SourceOwner::Primary);
+            self.aggregate_choices
                 .retain(|choice| choice.source.owner != SourceOwner::Primary);
         }
         self
@@ -515,7 +530,7 @@ fn reset_lookup_fields(lookup: &mut OwnedLookup, choice: &OwnedLookupChoice) {
 
 /// Unlike the legacy catalogue, these paths never merge aliases or iteration
 /// contexts. A nested repeating path remains absolute within its selected owner.
-fn owned_lookup_choices(
+fn owned_collection_choices(
     primary: &SchemaNode,
     extras: &[NamedSource],
     ownership: &SourceOwnership,
@@ -543,21 +558,19 @@ fn owned_lookup_choices(
             if path.is_empty() || node.repeating {
                 let mut fields = BTreeSet::new();
                 add_scalar_paths(node, &mut Vec::new(), &mut fields);
-                if !fields.is_empty() {
-                    endpoint.push(OwnedLookupChoice {
-                        source: OwnedSourceRef {
-                            owner: owner.clone(),
-                            path: path.clone(),
-                        },
-                        values: fields
-                            .into_iter()
-                            .map(|path| PathChoice {
-                                label: value_label(&path),
-                                path,
-                            })
-                            .collect(),
-                    });
-                }
+                endpoint.push(OwnedLookupChoice {
+                    source: OwnedSourceRef {
+                        owner: owner.clone(),
+                        path: path.clone(),
+                    },
+                    values: fields
+                        .into_iter()
+                        .map(|path| PathChoice {
+                            label: value_label(&path),
+                            path,
+                        })
+                        .collect(),
+                });
             }
             if let SchemaKind::Group { children, .. } = &node.kind {
                 for child in children.iter().rev() {
