@@ -176,12 +176,23 @@ fn assert_result(project: &Project, input_value: &str, expected: &str) {
 
 #[test]
 fn owned_aggregate_cannot_be_selected_as_an_isolated_function_output() {
+    for op in [
+        mapping::AggregateOp::Count,
+        mapping::AggregateOp::Avg,
+        mapping::AggregateOp::Min,
+        mapping::AggregateOp::Max,
+    ] {
+        assert_owned_aggregate_not_function_output(op);
+    }
+}
+
+fn assert_owned_aggregate_not_function_output(op: mapping::AggregateOp) {
     let (mut app, function) = function_app("owned_output");
     let definition = app.project.user_functions.get_mut(&function).unwrap();
     definition.body.nodes.insert(
         99,
         Node::OwnedAggregate(mapping::OwnedAggregate {
-            function: mapping::AggregateOp::Count,
+            function: op,
             collection: mapping::OwnedSourceRef {
                 owner: mapping::SourceOwner::Primary,
                 path: vec![],

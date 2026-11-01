@@ -1880,8 +1880,8 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                     Some(Node::OwnedDynamicSourceField(_)) => "Owned dynamic field".into(),
                     Some(Node::OwnedXmlSerialize(_)) => "Owned XML serializer".into(),
                     Some(Node::OwnedAggregate(aggregate)) => format!(
-                        "Owned {:?}: {}",
-                        aggregate.function,
+                        "Owned {}: {}",
+                        graph_node_presentation::aggregate_label(aggregate.function),
                         aggregate.collection.path.join("/")
                     ),
                     Some(Node::OwnedJoinField(field)) => format!(
@@ -3049,10 +3049,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
             return;
         }
         ui.separator();
-        for (op, label) in [
-            (AggregateOp::Count, "Count from one input"),
-            (AggregateOp::Sum, "Sum from one input"),
-        ] {
+        for (op, label) in crate::path_picker::OWNED_AGGREGATE_OPS {
             if ui
                 .add_enabled(
                     self.function_output.is_none()
@@ -3060,7 +3057,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                             .source_paths
                             .lookup_binding_supported(self.root_scope, &[])
                         && self.source_paths.first_owned_aggregate(op).is_some(),
-                    egui::Button::new(label),
+                    egui::Button::new(format!("{label} from one input")),
                 )
                 .clicked()
             {

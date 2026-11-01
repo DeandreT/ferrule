@@ -6,6 +6,9 @@ use mapping::{AggregateOp, OwnedAggregate, OwnedAggregateValue, OwnedSourceRef, 
 use support::context_regressions::{connection_fixture, observed};
 use support::scope_regressions::{click_label, close, label, root, root_mut, settle_inspector};
 
+#[path = "owned_direct_aggregate_tests.rs"]
+mod direct_reducers;
+
 const INPUT: &str = r#"{"Rows":[{"PrimaryAmount":4,"Other":10},{"PrimaryAmount":9,"Other":20}],"Empty":[{},{}],"Ref":{"Rows":[{"PrimaryAmount":1000}]}}"#;
 const NAMED: &str = r#"{"Rows":[{"NamedAmount":30,"Other":50},{"NamedAmount":60,"Other":70},{"NamedAmount":90,"Other":80}],"Empty":[]}"#;
 
@@ -152,6 +155,7 @@ fn assert_complete_public_result(
     let expected_json = match &value {
         Value::Int(number) => serde_json::json!({"Result": number}),
         Value::Float(number) => serde_json::json!({"Result": number}),
+        Value::Null => serde_json::json!({}),
         _ => panic!("numeric aggregate result"),
     };
     let expected = ir::Instance::Group(vec![("Result".into(), ir::Instance::Scalar(value))].into());
@@ -445,8 +449,22 @@ fn changing_operation_never_falls_back_to_another_owner() {
     let ctx = context();
     open_lookup(&mut app, &ctx);
     let before = observed(&app);
-    choose(&mut app, &ctx, "Count", "Sum");
-    assert_eq!(observed(&app), before);
+    for operation in ["Sum", "Average", "Minimum", "Maximum"] {
+        choose(&mut app, &ctx, "Count", operation);
+        assert_eq!(observed(&app), before);
+        frame(
+            &mut app,
+            &ctx,
+            true,
+            vec![egui::Event::Key {
+                key: egui::Key::Escape,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::NONE,
+            }],
+        );
+    }
     assert_eq!(aggregate(&app).function, AggregateOp::Count);
     assert_eq!(
         aggregate(&app).collection.owner,
@@ -460,6 +478,9 @@ fn explicit_creation_and_legacy_conversion_preserve_typed_history() {
         for (op, label) in [
             (AggregateOp::Count, "Count from one input"),
             (AggregateOp::Sum, "Sum from one input"),
+            (AggregateOp::Avg, "Average from one input"),
+            (AggregateOp::Min, "Minimum from one input"),
+            (AggregateOp::Max, "Maximum from one input"),
         ] {
             let mut app = aggregate_fixture(document);
             let ctx = context();
@@ -474,7 +495,7 @@ fn explicit_creation_and_legacy_conversion_preserve_typed_history() {
                 egui::pos2(1100.0, 850.0),
                 egui::PointerButton::Secondary,
             );
-            click_nth(&mut app, &ctx, true, label, 0);
+            support::creation_menu::click_action(&mut app, &ctx, label);
             let (&id, _) = app
                 .project
                 .graph
@@ -483,7 +504,9 @@ fn explicit_creation_and_legacy_conversion_preserve_typed_history() {
                 .find(|(id, node)| **id != 7 && matches!(node, Node::OwnedAggregate(_)))
                 .unwrap();
             assert!(
-                matches!(&app.project.graph.nodes[&id], Node::OwnedAggregate(a) if a.function == op && a.arg.is_none())
+                matches!(&app.project.graph.nodes[&id], Node::OwnedAggregate(a) if a.function == op && a.arg.is_none()),
+                "{document:?}: {label}: {:?}",
+                app.project.graph.nodes[&id]
             );
             assert!(matches!(
                 app.history.next_undo(),
@@ -556,7 +579,7 @@ fn unsupported_forms_contexts_and_locks_remain_noops() {
             }
             "other-op" => {
                 if let Node::OwnedAggregate(a) = app.project.graph.nodes.get_mut(&7).unwrap() {
-                    a.function = AggregateOp::Avg;
+                    a.function = AggregateOp::Join;
                 }
             }
             "count-value" => {
@@ -623,6 +646,17 @@ fn unsupported_forms_contexts_and_locks_remain_noops() {
 
 #[test]
 fn wires_and_indirect_consumers_share_admission_and_retained_forms_cannot_bypass() {
+    for op in [
+        AggregateOp::Count,
+        AggregateOp::Avg,
+        AggregateOp::Min,
+        AggregateOp::Max,
+    ] {
+        assert_wire_admission(op);
+    }
+}
+
+fn assert_wire_admission(op: AggregateOp) {
     for kind in [
         "generated",
         "concatenate",
@@ -636,7 +670,16 @@ fn wires_and_indirect_consumers_share_admission_and_retained_forms_cannot_bypass
             let mut app = connection(kind);
             app.project.graph.nodes.insert(
                 7,
-                owned(AggregateOp::Count, SourceOwner::Primary, "Rows", &[]),
+                owned(
+                    op,
+                    SourceOwner::Primary,
+                    "Rows",
+                    if op == AggregateOp::Count {
+                        &[]
+                    } else {
+                        &["Code"]
+                    },
+                ),
             );
             app.project.graph.nodes.insert(
                 12,
@@ -678,6 +721,19 @@ fn wires_and_indirect_consumers_share_admission_and_retained_forms_cannot_bypass
         "sequence",
     ] {
         let mut app = aggregate_fixture(MappingDocument::Main);
+        app.project.graph.nodes.insert(
+            7,
+            owned(
+                op,
+                SourceOwner::Primary,
+                "Rows",
+                if op == AggregateOp::Count {
+                    &[]
+                } else {
+                    &["PrimaryAmount"]
+                },
+            ),
+        );
         let node = match consumer {
             "call" => Node::Call {
                 function: "add".into(),
@@ -785,6 +841,17 @@ fn saved_computed_and_argument_inputs_keep_wires_and_orphan_state_readonly() {
 
 #[test]
 fn inspector_bindings_controls_and_reverse_grouping_use_common_gate() {
+    for op in [
+        AggregateOp::Count,
+        AggregateOp::Avg,
+        AggregateOp::Min,
+        AggregateOp::Max,
+    ] {
+        assert_inspector_admission(op);
+    }
+}
+
+fn assert_inspector_admission(op: AggregateOp) {
     for document in [MappingDocument::Main, MappingDocument::Target(0)] {
         for control in [
             "binding",
@@ -799,7 +866,16 @@ fn inspector_bindings_controls_and_reverse_grouping_use_common_gate() {
             let mut app = connection_fixture("generated");
             app.project.graph.nodes.insert(
                 7,
-                owned(AggregateOp::Count, SourceOwner::Primary, "Rows", &[]),
+                owned(
+                    op,
+                    SourceOwner::Primary,
+                    "Rows",
+                    if op == AggregateOp::Count {
+                        &[]
+                    } else {
+                        &["Code"]
+                    },
+                ),
             );
             app.project.graph.nodes.insert(
                 12,
@@ -862,7 +938,16 @@ fn inspector_bindings_controls_and_reverse_grouping_use_common_gate() {
         let mut app = connection("ordinary");
         app.project.graph.nodes.insert(
             7,
-            owned(AggregateOp::Count, SourceOwner::Primary, "Rows", &[]),
+            owned(
+                op,
+                SourceOwner::Primary,
+                "Rows",
+                if op == AggregateOp::Count {
+                    &[]
+                } else {
+                    &["Code"]
+                },
+            ),
         );
         app.project.graph.nodes.insert(
             12,
