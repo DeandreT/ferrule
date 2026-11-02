@@ -134,7 +134,11 @@ fn native_pin(
     let response = responses
         .iter()
         .find_map(|pin| {
-            context.read_response(pin.layer_id.id.with(("snarl-node", node)).with("frame"))
+            context.read_response(
+                crate::graph_draft_ui::widget_canvas(context, pin.layer_id.id)
+                    .with(("snarl-node", node))
+                    .with("frame"),
+            )
         })
         .expect("registered native node frame");
     let bounds = context

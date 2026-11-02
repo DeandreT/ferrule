@@ -172,7 +172,11 @@ fn pin(
     let frame = responses
         .iter()
         .find_map(|pin| {
-            context.read_response(pin.layer_id.id.with(("snarl-node", node)).with("frame"))
+            context.read_response(
+                crate::graph_draft_ui::widget_canvas(context, pin.layer_id.id)
+                    .with(("snarl-node", node))
+                    .with("frame"),
+            )
         })
         .expect("the node frame is rendered");
     let bounds = context

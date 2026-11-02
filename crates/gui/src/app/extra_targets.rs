@@ -455,6 +455,10 @@ impl FerruleApp {
         let action = editor_ui::GraphAction::RemoveNamedTarget {
             name: target.name.clone(),
         };
+        self.graph_drafts
+            .retire_canvas(&editor_ui::GraphDocument::Target(
+                editor_ui::TargetId::Named(target.name.clone()),
+            ));
         self.queue_project_edit(&before, action);
         self.mapping_workspace.remove_target(index);
         self.selected_scope.clear();

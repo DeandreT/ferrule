@@ -62,6 +62,7 @@ mod extra_target_ui;
 mod failure_rules;
 mod file_run_teardown;
 mod graph_commands;
+mod graph_drafts;
 mod history;
 #[cfg(test)]
 mod swift_draft_tests;
@@ -473,6 +474,7 @@ pub struct FerruleApp {
     /// Owner of transient document editors, independent of canvas and history
     /// rebuilds. Only replacing the loaded mapping starts a new lifetime.
     document_ui_id: egui::Id,
+    graph_drafts: graph_drafts::GraphDraftLifetimes,
     main_canvas: CanvasDocumentState,
     mapping_workspace: MappingWorkspace,
     show_function_navigator: bool,
@@ -676,6 +678,7 @@ impl Default for FerruleApp {
         Self {
             project,
             document_ui_id: new_document_ui_id(),
+            graph_drafts: Default::default(),
             main_canvas,
             mapping_workspace,
             show_function_navigator: false,

@@ -55,6 +55,7 @@ pub fn show(
     ui: &mut egui::Ui,
 ) -> CanvasInteraction {
     let canvas_id = egui::Id::unique((CANVAS_ID, options.id_salt, options.view_generation));
+    crate::graph_draft_ui::canvas_widget(ui.ctx(), canvas_id, options.tools_id);
     let generation_id = options.tools_id.with("camera_generation");
     let previous_generation = ui.ctx().data(|data| data.get_temp::<u64>(generation_id));
     let owner_id = canvas_id.with("camera_owner");
@@ -249,6 +250,7 @@ pub fn show(
             options.density.apply(ui);
             SnarlWidget::new()
                 .id(canvas_id)
+                .paint_layer_id(crate::graph_draft_ui::canvas_layer(ui.ctx()).unwrap_or(canvas_id))
                 .style(style)
                 .show(snarl, viewer, ui)
         })
@@ -374,7 +376,10 @@ fn show_navigation(
             ),
         egui::vec2(240.0, crate::ui_kit::METRICS.control_height),
     );
-    let layer = egui::LayerId::new(ui.layer_id().order, id.with("navigation_layer"));
+    let layer = egui::LayerId::new(
+        ui.layer_id().order,
+        crate::graph_draft_ui::paint_canvas(ui.ctx(), id).with("navigation_layer"),
+    );
     ui.ctx().set_sublayer(ui.layer_id(), layer);
     let mut child = ui.new_child(
         egui::UiBuilder::new()

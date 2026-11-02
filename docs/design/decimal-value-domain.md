@@ -55,9 +55,36 @@ named-target and function canvases use the same control and existing edit locks,
 typed constant commands, Undo/Redo and lossless project persistence. An external
 value change, including Undo/Redo, resets an obsolete draft. Drafts are UI state,
 not saved project data; ValueMap-cell authoring is unchanged.
-Constant controls also use the current canvas instance identity, so replacing
-or reloading a project cannot inherit drafts or text-edit state from another
-instance, even when the project contents, node IDs and values are identical.
+Constant and ValueMap controls use private document, semantic canvas, and node
+incarnation identities, independent of rebuildable canvas geometry. Source
+refreshes and unrelated Undo/Redo retain surviving nodes' drafts; named-target
+reordering retains ownership by target rather than tab position. Node deletion,
+target/function replacement, document replacement, and new stage-edit sessions
+retire ownership even when reusable IDs and saved values are equal. Cell value
+changes invalidate stale drafts without changing serialized projects or history.
+Output-path, format-option, and scope edits retain the existing named-target
+canvas; removal/recreation and schema replacement retire it. Each property
+editor registers its exact typed draft, text-edit, and table-scroll state keys
+under its private owner. Retiring a cell, node, canvas, document, or stage editor
+removes those keys and the ownership registry, without clearing unrelated egui
+state. A control's own saved edit keeps its current cursor and undo state.
+Private egui temporary keys created inside a property scope (such as Grid
+state) are registered by raw key; nested editor registrations keep precedence
+and preexisting context entries are excluded. Nested controls share the outer
+capture baseline and skip temporary-key discovery when changes consist only of
+already registered keys; table/container state is discovered by the outer scope.
+Shared egui timing metadata is not claimed by editor scopes. New rows/defaults
+rendered before their cell lifetime is published register first-frame state
+with the enclosing node, so node disposal also cleans those controls.
+Rendering-container identities use reusable slots independent of the logical
+draft owners. Retiring an owner closes only its registered popups, surrenders
+its text-field focus, and returns its slots for reuse; retained egui Areas and
+paint layers are bounded by the peak simultaneously leased containers rather
+than edit history. Canvas paint layers are separate from generation-specific
+camera, selection, and interaction state. A newly claimed editing-state key is
+cleared before rendering, including state restored from egui persistence.
+Published cell owners share an immutable hash map, so per-cell lookups do not
+copy the table and identity bookkeeping is linear in its cell count.
 
 Decimal constants can feed the explicit `string` conversion for exact text
 output. This does not admit Decimal directly at an existing typed output or
