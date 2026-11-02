@@ -1,11 +1,16 @@
 //! Closed saved metadata forms, separate from reader/cast compatibility.
+#[path = "../../codegen/tests/fixtures/dotnet_temp.rs"]
+mod dotnet_temp;
+
 use document_source::{PrimarySourceHost, SourceData};
+use dotnet_temp::DotnetTemp;
 use ir::Value;
 use mapping::{GlobalFilename, PrimaryFileSelection};
 use std::{
     cell::RefCell,
     collections::BTreeMap,
     error::Error,
+    ffi::OsStr,
     path::{Path, PathBuf},
     process::Command,
     sync::atomic::{AtomicUsize, Ordering},
@@ -607,6 +612,11 @@ fn checked(root: &Path, label: &str, command: &mut Command) -> Result {
             "command": command.get_program().to_string_lossy(),
             "arguments": command.get_args().map(|arg| arg.to_string_lossy().into_owned()).collect::<Vec<_>>(),
             "cwd": command.get_current_dir(),
+            "environment": command.get_envs().filter(|(name, _)| matches!(name.to_str(), Some(
+                "TMPDIR" | "TMP" | "TEMP" | "DOTNET_CLI_HOME" | "DOTNET_ADD_GLOBAL_TOOLS_TO_PATH"
+                | "DOTNET_NOLOGO" | "DOTNET_SKIP_FIRST_TIME_EXPERIENCE" | "DOTNET_CLI_USE_MSBUILD_SERVER"
+                | "MSBUILDDISABLENODEREUSE" | "UseSharedCompilation"
+            ))).map(|(name, value)| (name.to_string_lossy(), value.map(|value| value.to_string_lossy()))).collect::<BTreeMap<_, _>>(),
         }))?,
     )?;
     let output = command.output()?;
@@ -624,6 +634,141 @@ fn checked(root: &Path, label: &str, command: &mut Command) -> Result {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
+    Ok(())
+}
+
+const CSHARP_HOST_PROJECT: &str = r#"<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors><NuGetAudit>false</NuGetAudit>
+    <DisableTransitiveFrameworkReferenceDownloads>true</DisableTransitiveFrameworkReferenceDownloads>
+    <AutomaticallyUseReferenceAssemblyPackages>false</AutomaticallyUseReferenceAssemblyPackages>
+  </PropertyGroup>
+  <ItemGroup><ProjectReference Include="../Ferrule.Generated.csproj"/></ItemGroup>
+</Project>
+"#;
+
+fn prepare_csharp_host(root: &Path) -> Result {
+    let host = root.join("csharp/Harness");
+    std::fs::create_dir_all(&host)?;
+    // SDK resolution starts at the command's working directory, not --project.
+    std::fs::copy(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../global.json"),
+        root.join("global.json"),
+    )?;
+    std::fs::write(
+        host.join("Program.cs"),
+        include_str!("fixtures/filename-metadata/Host.cs.txt"),
+    )?;
+    std::fs::write(host.join("Harness.csproj"), CSHARP_HOST_PROJECT)?;
+    Ok(())
+}
+
+fn csharp_commands(
+    root: &Path,
+    executable: &OsStr,
+    input_node: mapping::NodeId,
+    output_node: mapping::NodeId,
+) -> (Command, Command) {
+    let command = || {
+        let mut command = Command::new(executable);
+        command
+            .dotnet_temp(root)
+            .env("DOTNET_CLI_HOME", root.join("dotnet-home"))
+            .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
+            .env("DOTNET_NOLOGO", "1")
+            .env("DOTNET_SKIP_FIRST_TIME_EXPERIENCE", "1")
+            .env("DOTNET_CLI_USE_MSBUILD_SERVER", "0")
+            .env("MSBUILDDISABLENODEREUSE", "1")
+            .current_dir(root);
+        command
+    };
+    let mut sdk = command();
+    sdk.arg("--version");
+    let mut host = command();
+    host.args([
+        "run",
+        "--configuration",
+        "Release",
+        "--disable-build-servers",
+        "-p:UseSharedCompilation=false",
+        "-p:BuildInParallel=false",
+        "-p:NuGetAudit=false",
+        "-p:DisableTransitiveFrameworkReferenceDownloads=true",
+        "-p:AutomaticallyUseReferenceAssemblyPackages=false",
+        "--project",
+    ])
+    .arg(root.join("csharp/Harness/Harness.csproj"))
+    .arg("--")
+    .arg(input_node.to_string())
+    .arg(output_node.to_string());
+    (sdk, host)
+}
+
+#[test]
+fn csharp_host_copies_exact_sdk_policy_and_constructs_matching_offline_commands() -> Result {
+    let fixture = Fixture::new()?;
+    let policy = std::fs::read(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../global.json"))?;
+    let policy_path = fixture.0.join("global.json");
+    assert!(!policy_path.exists());
+    // A stale or unpinned sandbox policy must be replaced, not preserved.
+    std::fs::write(&policy_path, b"{}\n")?;
+    assert_ne!(std::fs::read(&policy_path)?, policy);
+    prepare_csharp_host(&fixture.0)?;
+    assert_eq!(std::fs::read(&policy_path)?, policy);
+    let project = std::fs::read_to_string(fixture.0.join("csharp/Harness/Harness.csproj"))?;
+    for property in [
+        "<DisableTransitiveFrameworkReferenceDownloads>true</DisableTransitiveFrameworkReferenceDownloads>",
+        "<AutomaticallyUseReferenceAssemblyPackages>false</AutomaticallyUseReferenceAssemblyPackages>",
+    ] {
+        assert!(project.contains(property));
+    }
+    // Construction only: this path is deliberately never executed as an SDK.
+    let executable = fixture.0.join("construction-only-dotnet");
+    let (sdk, host) = csharp_commands(&fixture.0, executable.as_os_str(), 101, 102);
+    assert_eq!(sdk.get_program(), executable.as_os_str());
+    assert_eq!(host.get_program(), sdk.get_program());
+    assert_eq!(sdk.get_current_dir(), Some(fixture.0.as_path()));
+    assert_eq!(host.get_current_dir(), sdk.get_current_dir());
+    assert_eq!(
+        sdk.get_envs().collect::<Vec<_>>(),
+        host.get_envs().collect::<Vec<_>>()
+    );
+    let env = host.get_envs().collect::<BTreeMap<_, _>>();
+    for (key, value) in [
+        ("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false"),
+        ("DOTNET_CLI_USE_MSBUILD_SERVER", "0"),
+        ("MSBUILDDISABLENODEREUSE", "1"),
+        ("UseSharedCompilation", "false"),
+    ] {
+        assert_eq!(env[OsStr::new(key)], Some(OsStr::new(value)));
+    }
+    for key in ["TMPDIR", "TMP", "TEMP"] {
+        assert_eq!(
+            env[OsStr::new(key)],
+            Some(fixture.0.join(".tmp").as_os_str())
+        );
+    }
+    assert_eq!(
+        env[OsStr::new("DOTNET_CLI_HOME")],
+        Some(fixture.0.join("dotnet-home").as_os_str())
+    );
+    assert_eq!(
+        sdk.get_args().collect::<Vec<_>>(),
+        [OsStr::new("--version")]
+    );
+    let args = host.get_args().collect::<Vec<_>>();
+    for required in [
+        "--disable-build-servers",
+        "-p:UseSharedCompilation=false",
+        "-p:BuildInParallel=false",
+        "-p:DisableTransitiveFrameworkReferenceDownloads=true",
+        "-p:AutomaticallyUseReferenceAssemblyPackages=false",
+    ] {
+        assert!(args.contains(&OsStr::new(required)));
+    }
+    assert!(fixture.0.join(".tmp").is_dir());
     Ok(())
 }
 
@@ -686,38 +831,15 @@ fn composed_metadata_generated_release_hosts_preserve_values_errors_and_filename
     .env_remove("RUSTFLAGS")
     .env_remove("CARGO_ENCODED_RUSTFLAGS");
     checked(&fixture.0, "rust-release", &mut rust)?;
-    let host = fixture.0.join("csharp/Harness");
-    std::fs::create_dir_all(&host)?;
-    std::fs::write(
-        host.join("Program.cs"),
-        include_str!("fixtures/filename-metadata/Host.cs.txt"),
-    )?;
-    std::fs::write(
-        host.join("Harness.csproj"),
-        r#"<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><TreatWarningsAsErrors>true</TreatWarningsAsErrors><NuGetAudit>false</NuGetAudit></PropertyGroup><ItemGroup><ProjectReference Include="../Ferrule.Generated.csproj"/></ItemGroup></Project>"#,
-    )?;
-    let mut dotnet =
-        Command::new(std::env::var_os("FERRULE_DOTNET_EXE").unwrap_or_else(|| "dotnet".into()));
-    dotnet
-        .env("DOTNET_CLI_HOME", fixture.0.join("dotnet-home"))
-        .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
-        .env("DOTNET_NOLOGO", "1")
-        .env("DOTNET_CLI_USE_MSBUILD_SERVER", "0")
-        .env("MSBUILDDISABLENODEREUSE", "1")
-        .args([
-            "run",
-            "--configuration",
-            "Release",
-            "--disable-build-servers",
-            "-p:UseSharedCompilation=false",
-            "-p:BuildInParallel=false",
-            "--project",
-        ])
-        .arg(host.join("Harness.csproj"))
-        .arg("--")
-        .arg(document.primary_source().filename.to_string())
-        .arg(document.output_filename().unwrap().to_string())
-        .current_dir(&fixture.0);
+    prepare_csharp_host(&fixture.0)?;
+    let executable = std::env::var_os("FERRULE_DOTNET_EXE").unwrap_or_else(|| "dotnet".into());
+    let (mut sdk, mut dotnet) = csharp_commands(
+        &fixture.0,
+        &executable,
+        document.primary_source().filename,
+        document.output_filename().unwrap(),
+    );
+    checked(&fixture.0, "csharp-sdk", &mut sdk)?;
     checked(&fixture.0, "csharp-release", &mut dotnet)?;
     Ok(())
 }
