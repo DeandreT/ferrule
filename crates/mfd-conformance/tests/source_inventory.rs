@@ -5,6 +5,9 @@ use std::path::Path;
 
 use serde_json::Value;
 
+#[path = "source_inventory/com_collection_getters.rs"]
+mod com_collection_getters;
+
 #[path = "source_inventory/com_enum_values.rs"]
 mod com_enum_values;
 
