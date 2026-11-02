@@ -133,7 +133,7 @@ fn subjects() -> TestResult<Vec<Subject>> {
             options.idoc = Some(layout([4, 5, 4, 8])?);
             target_options.idoc = Some(layout([4, 5, 8, 8])?);
         }
-        let project = Project {
+        let mut project = Project {
             source: schema.clone(),
             target: schema,
             source_path: None,
@@ -150,21 +150,13 @@ fn subjects() -> TestResult<Vec<Subject>> {
                 ..Default::default()
             },
         };
-        let document = mapping::DocumentProject::new(
-            project,
-            mapping::PrimarySourcePlan {
-                filename: 90,
-                selection: mapping::PrimaryFileSelection::Direct,
-            },
-        );
-        let mut project = document.project().clone();
         project.graph.nodes.insert(
             90,
             Node::Const {
                 value: Value::String("input.edi".into()),
             },
         );
-        let document = mapping::DocumentProject::new(project, document.primary_source().clone());
+        let document = mapping::DocumentProject::new(project, mapping::PrimarySourcePlan::new(90));
         let wire = format!("{header}{row}");
         let invalid = format!("{header}{row}{}", row.replace("0001", "0002"));
         // Issue columns: location, kind, schema field, minimum, maximum,
@@ -269,6 +261,32 @@ fn subjects() -> TestResult<Vec<Subject>> {
             json!({"id":"qualified-valid", "wire":"UNB+UNOC:4'DTL+Z+SKIPPED'DTL+A+IGNORED'DTL+B+OK*OK'", "output":"ACK+OK'\n"}),
             json!({"id":"qualified-invalid", "wire":"UNB+UNOC:4'DTL+A+IGNORED'DTL+B+OK*OK'DTL+A+IGNORED'DTL+B+OK*BAD'", "issues":[["Rows[2]/DTL_2/Code[2]", "TooLong", "Rows/DTL_2/Code", null, 2, 3, null],["Rows[2]/DTL_2/Code[2]", "NotAllowed", "Rows/DTL_2/Code", null, null, null, 1]]}),
             json!({"id":"qualified-valid-after-failure", "wire":"UNB+UNOC:4'DTL+A+IGNORED'DTL+B+OK'", "output":"ACK+OK'\n"}),
+        ],
+    });
+    let base = &result[5];
+    let mut project = base.document.project().clone();
+    project.source = SchemaNode::group(
+        "Document",
+        vec![SchemaNode::group(
+            "DTL",
+            vec![int("Unconstrained"), int("Code")],
+        )],
+    );
+    project.source_options.edi_implied_decimals.clear();
+    project.source_options.edi_lexical_formats.clear();
+    project.source_options.edi_value_constraints = vec![
+        EdiValueConstraint::new(vec!["DTL".into(), "Code".into()], 4, 4, vec!["0001".into()])
+            .unwrap(),
+    ];
+    result.push(Subject {
+        name: "conversion-priority".into(),
+        document: mapping::DocumentProject::new(project, base.document.primary_source().clone()),
+        cases: vec![
+            json!({"id":"priority-valid", "wire":"UNH+1'DTL+1+0001'", "output":"ACK+OK'\n"}),
+            json!({"id":"earlier-value-error", "wire":"UNH+1'DTL+bad+0002'", "value_error":true}),
+            json!({"id":"priority-valid-after-value-error", "wire":"UNH+1'DTL+1+0001'", "output":"ACK+OK'\n"}),
+            json!({"id":"same-field-constraint-before-overflow", "wire":"UNH+1'DTL+1+99999999999999999999999999'", "issues":[["DTL/Code", "TooLong", "DTL/Code", null, 4, 26, null],["DTL/Code", "NotAllowed", "DTL/Code", null, null, null, 1]]}),
+            json!({"id":"priority-valid-after-constraint", "wire":"UNH+1'DTL+1+0001'", "output":"ACK+OK'\n"}),
         ],
     });
     Ok(result)
