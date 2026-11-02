@@ -1,4 +1,4 @@
-use super::{load, validate};
+use super::{ORACLE, declaration_rows, load, schema::Inventory, validate};
 use serde_json::{Value, json};
 
 fn candidate() -> Value {
@@ -26,6 +26,124 @@ fn member<'a>(value: &'a mut Value, name: &str, method: &str) -> &'a mut Value {
 fn frozen_rejects(value: Value) {
     let error = validate(value).unwrap_err();
     assert!(error.contains("independent source oracle"), "{error}");
+}
+
+fn refresh_derived_counts(value: &mut Value) {
+    let owners = value["owners"].as_array().unwrap();
+    let mut counts = json!({"constructor":0,"method":0,"property":0,"field":0,"constant":0});
+    let mut members = 0;
+    let mut nested = 0;
+    let mut constants = 0;
+    for owner in owners {
+        for member in owner["members"].as_array().unwrap() {
+            let kind = member["kind"].as_str().unwrap();
+            counts[kind] = json!(counts[kind].as_u64().unwrap() + 1);
+            members += 1;
+        }
+        for ty in owner["nested_types"].as_array().unwrap() {
+            nested += 1;
+            constants += ty["constants"].as_array().unwrap().len();
+        }
+    }
+    let owner_count = owners.len();
+    let source_count = value["sources"].as_array().unwrap().len();
+    let scope = &mut value["scope"];
+    scope["owner_count"] = json!(owner_count);
+    scope["source_count"] = json!(source_count);
+    scope["direct_member_count"] = json!(members);
+    scope["nested_type_count"] = json!(nested);
+    scope["enum_constant_count"] = json!(constants);
+    scope["member_counts"] = counts;
+}
+
+fn closed_cohort_rejects(value: Value, missing_rows: usize) {
+    let inventory: Inventory = serde_json::from_value(value.clone()).unwrap();
+    let expected: Vec<Value> = ORACLE
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    let actual = declaration_rows(&inventory);
+    assert_eq!(actual.len() + missing_rows, expected.len());
+    assert_ne!(actual, expected);
+    // Derived totals describe the smaller candidate accurately. The closed
+    // source cohort must still reject it, before downstream signature checks.
+    assert_eq!(validate(value).unwrap_err(), "finite scope");
+}
+
+#[test]
+fn deleting_a_leaf_owner_and_its_source_cannot_shrink_the_closed_cohort() {
+    let mut value = candidate();
+    let owners = value["owners"].as_array_mut().unwrap();
+    let removed = owners.pop().unwrap();
+    assert_eq!(removed["name"], "com.altova.io.DocumentOutput");
+    assert_eq!(removed["source_index"], 12);
+    let source = value["sources"].as_array_mut().unwrap().pop().unwrap();
+    assert_eq!(source["index"], 12);
+    assert_eq!(source["path"], "com/altova/io/DocumentOutput.java");
+    for owner in value["owners"].as_array().unwrap() {
+        assert!(owner["source_index"].as_u64().unwrap() < 12);
+        for relation in ["extends", "implements"] {
+            assert!(
+                owner[relation]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .all(|base| base["resolved"] != removed["name"])
+            );
+        }
+    }
+    refresh_derived_counts(&mut value);
+    assert_eq!(value["scope"]["owner_count"], 23);
+    assert_eq!(value["scope"]["source_count"], 12);
+    assert_eq!(value["scope"]["direct_member_count"], 97);
+    assert_eq!(value["scope"]["member_counts"]["constructor"], 25);
+    assert_eq!(value["scope"]["member_counts"]["method"], 34);
+    // One source row, one owner row and its two direct member rows are absent.
+    closed_cohort_rejects(value, 4);
+}
+
+#[test]
+fn deleting_one_constructor_overload_cannot_redefine_the_frozen_surface() {
+    let mut value = candidate();
+    let members = owner(&mut value, "Altova.IO.FileOutput")["members"]
+        .as_array_mut()
+        .unwrap();
+    let removed = members.remove(1);
+    assert_eq!(removed["kind"], "constructor");
+    assert_eq!(removed["name"], "FileOutput");
+    assert_eq!(removed["parameters"].as_array().unwrap().len(), 2);
+    for (index, member) in members.iter_mut().enumerate() {
+        member["index"] = json!(index);
+    }
+    assert_eq!(members[0]["parameters"].as_array().unwrap().len(), 1);
+    assert_eq!(members[1]["name"], "Fielname");
+    refresh_derived_counts(&mut value);
+    assert_eq!(value["scope"]["direct_member_count"], 98);
+    assert_eq!(value["scope"]["member_counts"]["constructor"], 25);
+    closed_cohort_rejects(value, 1);
+}
+
+#[test]
+fn reordering_complete_constructor_parameters_fails_the_signature_oracle() {
+    let mut value = candidate();
+    let constructor = &mut owner(&mut value, "Altova.IO.FileOutput")["members"][1];
+    assert_eq!(constructor["kind"], "constructor");
+    let parameters = constructor["parameters"].as_array_mut().unwrap();
+    let original = parameters.clone();
+    assert_eq!(original.len(), 2);
+    parameters.swap(0, 1);
+    assert_eq!(parameters[0], original[1]);
+    assert_eq!(parameters[1], original[0]);
+    // Names, types and all other metadata travel together. Reindex the swapped
+    // records so rejection tests declaration order, not malformed ordinals.
+    for (index, parameter) in parameters.iter_mut().enumerate() {
+        parameter["index"] = json!(index);
+    }
+    assert_eq!(parameters[0]["name"], "fm");
+    assert_eq!(parameters[0]["type"]["resolved"], "System.IO.FileMode");
+    assert_eq!(parameters[1]["name"], "f");
+    assert_eq!(parameters[1]["type"]["resolved"], "System.String");
+    frozen_rejects(value);
 }
 
 #[test]
