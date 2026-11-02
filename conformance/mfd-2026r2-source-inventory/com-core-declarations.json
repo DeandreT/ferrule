@@ -1,0 +1,7229 @@
+{
+  "format": "mapforce-enterprise-2026r2-com-declarations",
+  "format_version": 1,
+  "cohort": "core",
+  "assessment": {
+    "inventory_complete": false,
+    "runtime_proof": false,
+    "status": "unassessed",
+    "applicability": "unknown",
+    "execution_evidence": []
+  },
+  "sources": {
+    "observation": "artifact-observations.json",
+    "member": "MapForce.tlb",
+    "cab_member": "MapForce.tlb_1193",
+    "bytes": 54108,
+    "sha256": "785c484fbaa882cae724a3568b04650300eb18941084ac23eb2d041dfb4a2789",
+    "library": "MapForceLib",
+    "version": "4.1",
+    "platform": "SYS_WIN64",
+    "dump_sha256": "672097183d6a6b0d80f3aa5f92d02172bb3a588609cb743bb82b73c342192bb4",
+    "release_binding": "2026r2",
+    "catalog_file": "com-api.json",
+    "catalog_sha256": "d9a2fd8a4f8935598fdd2590f837fd6205931ba43c6218dc6b32a29fbe35c16a",
+    "catalog_release_binding": "unestablished",
+    "type_info_table_offset": 624,
+    "type_info_record_bytes": 100,
+    "type_info_records": 75,
+    "name_table_offset": 10804,
+    "name_table_bytes": 13724,
+    "descriptor_table_offset": 30276,
+    "descriptor_table_bytes": 824,
+    "descriptor_record_bytes": 8
+  },
+  "types": [
+    {
+      "type_info_index": 0,
+      "name": "IApplication",
+      "kind": "TKIND_DISPATCH",
+      "name_offset": 24,
+      "header_dump_lines": [
+        194,
+        221
+      ]
+    },
+    {
+      "type_info_index": 1,
+      "name": "IOptions",
+      "kind": "TKIND_DISPATCH",
+      "name_offset": 144,
+      "header_dump_lines": [
+        222,
+        249
+      ]
+    },
+    {
+      "type_info_index": 2,
+      "name": "ENUMDOMType",
+      "kind": "TKIND_ENUM",
+      "name_offset": 376,
+      "header_dump_lines": [
+        250,
+        277
+      ]
+    },
+    {
+      "type_info_index": 3,
+      "name": "ENUMLibType",
+      "kind": "TKIND_ENUM",
+      "name_offset": 516,
+      "header_dump_lines": [
+        278,
+        305
+      ]
+    },
+    {
+      "type_info_index": 4,
+      "name": "ENUMProjectType",
+      "kind": "TKIND_ENUM",
+      "name_offset": 660,
+      "header_dump_lines": [
+        306,
+        333
+      ]
+    },
+    {
+      "type_info_index": 5,
+      "name": "ENUMWrapperClassesVersion",
+      "kind": "TKIND_ENUM",
+      "name_offset": 1264,
+      "header_dump_lines": [
+        334,
+        361
+      ]
+    },
+    {
+      "type_info_index": 6,
+      "name": "ENUMApacheAxisVersion",
+      "kind": "TKIND_ENUM",
+      "name_offset": 1544,
+      "header_dump_lines": [
+        362,
+        389
+      ]
+    },
+    {
+      "type_info_index": 7,
+      "name": "IDocument",
+      "kind": "TKIND_DISPATCH",
+      "name_offset": 1776,
+      "header_dump_lines": [
+        390,
+        417
+      ]
+    },
+    {
+      "type_info_index": 8,
+      "name": "IMapForceView",
+      "kind": "TKIND_DISPATCH",
+      "name_offset": 2040,
+      "header_dump_lines": [
+        418,
+        445
+      ]
+    },
+    {
+      "type_info_index": 9,
+      "name": "IMapping",
+      "kind": "TKIND_DISPATCH",
+      "name_offset": 2484,
+      "header_dump_lines": [
+        446,
+        473
+      ]
+    },
+    {
+      "type_info_index": 11,
+      "name": "IComponent",
+      "kind": "TKIND_DISPATCH",
+      "name_offset": 2612,
+      "header_dump_lines": [
+        502,
+        529
+      ]
+    },
+    {
+      "type_info_index": 14,
+      "name": "IAppOutputLines",
+      "kind": "TKIND_DISPATCH",
+      "name_offset": 3428,
+      "header_dump_lines": [
+        586,
+        613
+      ]
+    },
+    {
+      "type_info_index": 27,
+      "name": "IMappings",
+      "kind": "TKIND_DISPATCH",
+      "name_offset": 7292,
+      "header_dump_lines": [
+        950,
+        977
+      ]
+    },
+    {
+      "type_info_index": 28,
+      "name": "IOutputGenerationResult",
+      "kind": "TKIND_DISPATCH",
+      "name_offset": 7548,
+      "header_dump_lines": [
+        978,
+        1005
+      ]
+    },
+    {
+      "type_info_index": 32,
+      "name": "ILibraryImports",
+      "kind": "TKIND_DISPATCH",
+      "name_offset": 8352,
+      "header_dump_lines": [
+        1090,
+        1117
+      ]
+    },
+    {
+      "type_info_index": 34,
+      "name": "IProject",
+      "kind": "TKIND_DISPATCH",
+      "name_offset": 8708,
+      "header_dump_lines": [
+        1146,
+        1173
+      ]
+    },
+    {
+      "type_info_index": 37,
+      "name": "IDocuments",
+      "kind": "TKIND_DISPATCH",
+      "name_offset": 10240,
+      "header_dump_lines": [
+        1230,
+        1257
+      ]
+    },
+    {
+      "type_info_index": 38,
+      "name": "ENUMApplicationStatus",
+      "kind": "TKIND_ENUM",
+      "name_offset": 10456,
+      "header_dump_lines": [
+        1258,
+        1285
+      ]
+    }
+  ],
+  "descriptors": [
+    {
+      "descriptor_offset": 0,
+      "descriptor_word": "4008001a",
+      "target_word": "80080008"
+    },
+    {
+      "descriptor_offset": 8,
+      "descriptor_word": "4009001a",
+      "target_word": "80090009"
+    },
+    {
+      "descriptor_offset": 16,
+      "descriptor_word": "400b001a",
+      "target_word": "800b000b"
+    },
+    {
+      "descriptor_offset": 24,
+      "descriptor_word": "0003001d",
+      "target_word": "000000c8"
+    },
+    {
+      "descriptor_offset": 32,
+      "descriptor_word": "4003001a",
+      "target_word": "00000018"
+    },
+    {
+      "descriptor_offset": 40,
+      "descriptor_word": "0003001d",
+      "target_word": "0000012c"
+    },
+    {
+      "descriptor_offset": 48,
+      "descriptor_word": "4003001a",
+      "target_word": "00000028"
+    },
+    {
+      "descriptor_offset": 56,
+      "descriptor_word": "0003001d",
+      "target_word": "00000190"
+    },
+    {
+      "descriptor_offset": 64,
+      "descriptor_word": "4003001a",
+      "target_word": "00000038"
+    },
+    {
+      "descriptor_offset": 72,
+      "descriptor_word": "0003001d",
+      "target_word": "000001f4"
+    },
+    {
+      "descriptor_offset": 80,
+      "descriptor_word": "4003001a",
+      "target_word": "00000048"
+    },
+    {
+      "descriptor_offset": 88,
+      "descriptor_word": "0003001d",
+      "target_word": "00000258"
+    },
+    {
+      "descriptor_offset": 96,
+      "descriptor_word": "4003001a",
+      "target_word": "00000058"
+    },
+    {
+      "descriptor_offset": 104,
+      "descriptor_word": "7fff001d",
+      "target_word": "00000064"
+    },
+    {
+      "descriptor_offset": 112,
+      "descriptor_word": "7fff001a",
+      "target_word": "00000068"
+    },
+    {
+      "descriptor_offset": 120,
+      "descriptor_word": "7fff001a",
+      "target_word": "00000070"
+    },
+    {
+      "descriptor_offset": 128,
+      "descriptor_word": "4003001a",
+      "target_word": "80030003"
+    },
+    {
+      "descriptor_offset": 176,
+      "descriptor_word": "7fff001d",
+      "target_word": "00000578"
+    },
+    {
+      "descriptor_offset": 184,
+      "descriptor_word": "7fff001a",
+      "target_word": "000000b0"
+    },
+    {
+      "descriptor_offset": 192,
+      "descriptor_word": "7fff001a",
+      "target_word": "000000b8"
+    },
+    {
+      "descriptor_offset": 248,
+      "descriptor_word": "400d001a",
+      "target_word": "800d000d"
+    },
+    {
+      "descriptor_offset": 320,
+      "descriptor_word": "7fff001d",
+      "target_word": "0000044c"
+    },
+    {
+      "descriptor_offset": 328,
+      "descriptor_word": "7fff001a",
+      "target_word": "00000140"
+    },
+    {
+      "descriptor_offset": 336,
+      "descriptor_word": "7fff001a",
+      "target_word": "00000148"
+    },
+    {
+      "descriptor_offset": 408,
+      "descriptor_word": "7fff001d",
+      "target_word": "00000384"
+    },
+    {
+      "descriptor_offset": 416,
+      "descriptor_word": "7fff001a",
+      "target_word": "00000198"
+    },
+    {
+      "descriptor_offset": 424,
+      "descriptor_word": "7fff001a",
+      "target_word": "000001a0"
+    },
+    {
+      "descriptor_offset": 432,
+      "descriptor_word": "7fff001d",
+      "target_word": "00000320"
+    },
+    {
+      "descriptor_offset": 440,
+      "descriptor_word": "7fff001a",
+      "target_word": "000001b0"
+    },
+    {
+      "descriptor_offset": 448,
+      "descriptor_word": "7fff001a",
+      "target_word": "000001b8"
+    },
+    {
+      "descriptor_offset": 528,
+      "descriptor_word": "7fff001d",
+      "target_word": "00000a8c"
+    },
+    {
+      "descriptor_offset": 536,
+      "descriptor_word": "7fff001a",
+      "target_word": "00000210"
+    },
+    {
+      "descriptor_offset": 544,
+      "descriptor_word": "7fff001a",
+      "target_word": "00000218"
+    },
+    {
+      "descriptor_offset": 568,
+      "descriptor_word": "7fff001d",
+      "target_word": "00000af0"
+    },
+    {
+      "descriptor_offset": 576,
+      "descriptor_word": "7fff001a",
+      "target_word": "00000238"
+    },
+    {
+      "descriptor_offset": 584,
+      "descriptor_word": "7fff001a",
+      "target_word": "00000240"
+    },
+    {
+      "descriptor_offset": 656,
+      "descriptor_word": "7fff001d",
+      "target_word": "00000c80"
+    },
+    {
+      "descriptor_offset": 664,
+      "descriptor_word": "7fff001a",
+      "target_word": "00000290"
+    },
+    {
+      "descriptor_offset": 672,
+      "descriptor_word": "7fff001a",
+      "target_word": "00000298"
+    },
+    {
+      "descriptor_offset": 680,
+      "descriptor_word": "7fff001d",
+      "target_word": "000002bc"
+    },
+    {
+      "descriptor_offset": 688,
+      "descriptor_word": "7fff001a",
+      "target_word": "000002a8"
+    },
+    {
+      "descriptor_offset": 696,
+      "descriptor_word": "7fff001a",
+      "target_word": "000002b0"
+    },
+    {
+      "descriptor_offset": 752,
+      "descriptor_word": "7fff001d",
+      "target_word": "00000d48"
+    },
+    {
+      "descriptor_offset": 760,
+      "descriptor_word": "7fff001a",
+      "target_word": "000002f0"
+    },
+    {
+      "descriptor_offset": 768,
+      "descriptor_word": "7fff001a",
+      "target_word": "000002f8"
+    },
+    {
+      "descriptor_offset": 776,
+      "descriptor_word": "7fff001d",
+      "target_word": "00000e74"
+    },
+    {
+      "descriptor_offset": 784,
+      "descriptor_word": "7fff001a",
+      "target_word": "00000308"
+    },
+    {
+      "descriptor_offset": 792,
+      "descriptor_word": "7fff001a",
+      "target_word": "00000310"
+    },
+    {
+      "descriptor_offset": 800,
+      "descriptor_word": "0003001d",
+      "target_word": "00000ed8"
+    },
+    {
+      "descriptor_offset": 808,
+      "descriptor_word": "4003001a",
+      "target_word": "00000320"
+    },
+    {
+      "descriptor_offset": 816,
+      "descriptor_word": "4003001a",
+      "target_word": "80030016"
+    }
+  ],
+  "owners": [
+    {
+      "name": "IApplication",
+      "type_info_index": 0,
+      "type_flags": 4416,
+      "member_block_offset": 31248,
+      "member_data_bytes": 1424,
+      "function_records": 31,
+      "member_id_table_offset": 32676,
+      "member_name_table_offset": 32800,
+      "member_record_table_offset": 32924
+    },
+    {
+      "name": "IOptions",
+      "type_info_index": 1,
+      "type_flags": 4416,
+      "member_block_offset": 33048,
+      "member_data_bytes": 1760,
+      "function_records": 40,
+      "member_id_table_offset": 34812,
+      "member_name_table_offset": 34972,
+      "member_record_table_offset": 35132
+    },
+    {
+      "name": "IDocument",
+      "type_info_index": 7,
+      "type_flags": 4416,
+      "member_block_offset": 36016,
+      "member_data_bytes": 1696,
+      "function_records": 39,
+      "member_id_table_offset": 37716,
+      "member_name_table_offset": 37872,
+      "member_record_table_offset": 38028
+    },
+    {
+      "name": "IDocuments",
+      "type_info_index": 37,
+      "type_flags": 4416,
+      "member_block_offset": 51652,
+      "member_data_bytes": 352,
+      "function_records": 8,
+      "member_id_table_offset": 52008,
+      "member_name_table_offset": 52040,
+      "member_record_table_offset": 52072
+    }
+  ],
+  "records": [
+    {
+      "owner": "IApplication",
+      "type_info_index": 0,
+      "name": "Name",
+      "record_index": 0,
+      "dispatch_member_id": 0,
+      "raw_member_id": "00000000",
+      "name_offset": 48,
+      "record_offset": 31252,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 31284,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000000",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BSTR"
+            },
+            "descriptor_chain": [
+              0
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          6667,
+          6684
+        ],
+        "member_id_dump_line": 7250,
+        "member_name_dump_line": 7281,
+        "member_offset_dump_line": 7312
+      },
+      "catalog_id": "provisional.com.Application.Name"
+    },
+    {
+      "owner": "IApplication",
+      "type_info_index": 0,
+      "name": "Application",
+      "record_index": 1,
+      "dispatch_member_id": 1,
+      "raw_member_id": "00000001",
+      "name_offset": 80,
+      "record_offset": 31296,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 31328,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000008",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "primitive",
+              "name": "DISPATCH"
+            },
+            "descriptor_chain": [
+              8
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          6685,
+          6702
+        ],
+        "member_id_dump_line": 7251,
+        "member_name_dump_line": 7282,
+        "member_offset_dump_line": 7313
+      },
+      "catalog_id": "provisional.com.Application.Application"
+    },
+    {
+      "owner": "IApplication",
+      "type_info_index": 0,
+      "name": "Parent",
+      "record_index": 2,
+      "dispatch_member_id": 2,
+      "raw_member_id": "00000002",
+      "name_offset": 104,
+      "record_offset": 31340,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 31372,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000008",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "primitive",
+              "name": "DISPATCH"
+            },
+            "descriptor_chain": [
+              8
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          6703,
+          6720
+        ],
+        "member_id_dump_line": 7252,
+        "member_name_dump_line": 7283,
+        "member_offset_dump_line": 7314
+      },
+      "catalog_id": "provisional.com.Application.Parent"
+    },
+    {
+      "owner": "IApplication",
+      "type_info_index": 0,
+      "name": "Visible",
+      "record_index": 3,
+      "dispatch_member_id": 3,
+      "raw_member_id": "00000003",
+      "name_offset": 124,
+      "record_offset": 31384,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 31416,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000010",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BOOL"
+            },
+            "descriptor_chain": [
+              16
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          6721,
+          6738
+        ],
+        "member_id_dump_line": 7253,
+        "member_name_dump_line": 7284,
+        "member_offset_dump_line": 7315
+      },
+      "catalog_id": "provisional.com.Application.Visible"
+    },
+    {
+      "owner": "IApplication",
+      "type_info_index": 0,
+      "name": "Visible",
+      "record_index": 4,
+      "dispatch_member_id": 3,
+      "raw_member_id": "00000003",
+      "name_offset": 124,
+      "record_offset": 31428,
+      "record_bytes": 44,
+      "invocation_kind": "property_put",
+      "invocation_kind_value": 4,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": null,
+          "name_offset": 4294967295,
+          "record_offset": 31460,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "800b000b",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BOOL"
+            },
+            "descriptor_chain": []
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          6739,
+          6756
+        ],
+        "member_id_dump_line": 7254,
+        "member_name_dump_line": 7285,
+        "member_offset_dump_line": 7316
+      },
+      "catalog_id": "provisional.com.Application.Visible"
+    },
+    {
+      "owner": "IApplication",
+      "type_info_index": 0,
+      "name": "Options",
+      "record_index": 5,
+      "dispatch_member_id": 4,
+      "raw_member_id": "00000004",
+      "name_offset": 1732,
+      "record_offset": 31472,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "o_ipOptions",
+          "name_offset": 1752,
+          "record_offset": 31504,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000078",
+            "pointer_depth": 2,
+            "leaf": {
+              "kind": "user_defined",
+              "name": "IOptions",
+              "type_info_index": 1,
+              "type_kind": "TKIND_DISPATCH"
+            },
+            "descriptor_chain": [
+              120,
+              112,
+              104
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          6757,
+          6774
+        ],
+        "member_id_dump_line": 7255,
+        "member_name_dump_line": 7286,
+        "member_offset_dump_line": 7317
+      },
+      "catalog_id": "provisional.com.Application.Options"
+    },
+    {
+      "owner": "IApplication",
+      "type_info_index": 0,
+      "name": "ActiveDocument",
+      "record_index": 6,
+      "dispatch_member_id": 5,
+      "raw_member_id": "00000005",
+      "name_offset": 8568,
+      "record_offset": 31516,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "o_ipDocument",
+          "name_offset": 8596,
+          "record_offset": 31548,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "000002b8",
+            "pointer_depth": 2,
+            "leaf": {
+              "kind": "user_defined",
+              "name": "IDocument",
+              "type_info_index": 7,
+              "type_kind": "TKIND_DISPATCH"
+            },
+            "descriptor_chain": [
+              696,
+              688,
+              680
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          6775,
+          6792
+        ],
+        "member_id_dump_line": 7256,
+        "member_name_dump_line": 7287,
+        "member_offset_dump_line": 7318
+      },
+      "catalog_id": "provisional.com.Application.ActiveDocument"
+    },
+    {
+      "owner": "IApplication",
+      "type_info_index": 0,
+      "name": "Quit",
+      "record_index": 7,
+      "dispatch_member_id": 6,
+      "raw_member_id": "00000006",
+      "name_offset": 8620,
+      "record_offset": 31560,
+      "record_bytes": 32,
+      "invocation_kind": "function",
+      "invocation_kind_value": 1,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [],
+      "source_anchor": {
+        "function_dump_lines": [
+          6793,
+          6805
+        ],
+        "member_id_dump_line": 7257,
+        "member_name_dump_line": 7288,
+        "member_offset_dump_line": 7319
+      },
+      "catalog_id": "provisional.com.Application.Quit"
+    },
+    {
+      "owner": "IApplication",
+      "type_info_index": 0,
+      "name": "OpenDocument",
+      "record_index": 8,
+      "dispatch_member_id": 7,
+      "raw_member_id": "00000007",
+      "name_offset": 8636,
+      "record_offset": 31592,
+      "record_bytes": 56,
+      "invocation_kind": "function",
+      "invocation_kind_value": 1,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "i_strFileName",
+          "name_offset": 1892,
+          "record_offset": 31624,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "80080008",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BSTR"
+            },
+            "descriptor_chain": []
+          }
+        },
+        {
+          "index": 1,
+          "name": "o_ipDocument",
+          "name_offset": 8596,
+          "record_offset": 31636,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "000002b8",
+            "pointer_depth": 2,
+            "leaf": {
+              "kind": "user_defined",
+              "name": "IDocument",
+              "type_info_index": 7,
+              "type_kind": "TKIND_DISPATCH"
+            },
+            "descriptor_chain": [
+              696,
+              688,
+              680
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          6806,
+          6828
+        ],
+        "member_id_dump_line": 7258,
+        "member_name_dump_line": 7289,
+        "member_offset_dump_line": 7320
+      },
+      "catalog_id": "provisional.com.Application.OpenDocument"
+    },
+    {
+      "owner": "IApplication",
+      "type_info_index": 0,
+      "name": "NewDocument",
+      "record_index": 9,
+      "dispatch_member_id": 8,
+      "raw_member_id": "00000008",
+      "name_offset": 8660,
+      "record_offset": 31648,
+      "record_bytes": 44,
+      "invocation_kind": "function",
+      "invocation_kind_value": 1,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "o_ipDocument",
+          "name_offset": 8596,
+          "record_offset": 31680,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "000002b8",
+            "pointer_depth": 2,
+            "leaf": {
+              "kind": "user_defined",
+              "name": "IDocument",
+              "type_info_index": 7,
+              "type_kind": "TKIND_DISPATCH"
+            },
+            "descriptor_chain": [
+              696,
+              688,
+              680
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          6829,
+          6846
+        ],
+        "member_id_dump_line": 7259,
+        "member_name_dump_line": 7290,
+        "member_offset_dump_line": 7321
+      },
+      "catalog_id": "provisional.com.Application.NewDocument"
+    },
+    {
+      "owner": "IApplication",
+      "type_info_index": 0,
+      "name": "WindowHandle",
+      "record_index": 10,
+      "dispatch_member_id": 9,
+      "raw_member_id": "00000009",
+      "name_offset": 8684,
+      "record_offset": 31692,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 31724,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000080",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "primitive",
+              "name": "I4"
+            },
+            "descriptor_chain": [
+              128
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          6847,
+          6864
+        ],
+        "member_id_dump_line": 7260,
+        "member_name_dump_line": 7291,
+        "member_offset_dump_line": 7322
+      },
+      "catalog_id": "provisional.com.Application.WindowHandle"
+    },
+    {
+      "owner": "IApplication",
+      "type_info_index": 0,
+      "name": "OpenProject",
+      "record_index": 11,
+      "dispatch_member_id": 10,
+      "raw_member_id": "0000000a",
+      "name_offset": 10068,
+      "record_offset": 31736,
+      "record_bytes": 56,
+      "invocation_kind": "function",
+      "invocation_kind_value": 1,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "i_strFileName",
+          "name_offset": 1892,
+          "record_offset": 31768,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "80080008",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BSTR"
+            },
+            "descriptor_chain": []
+          }
+        },
+        {
+          "index": 1,
+          "name": "o_ipProject",
+          "name_offset": 10092,
+          "record_offset": 31780,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000300",
+            "pointer_depth": 2,
+            "leaf": {
+              "kind": "user_defined",
+              "name": "IProject",
+              "type_info_index": 34,
+              "type_kind": "TKIND_DISPATCH"
+            },
+            "descriptor_chain": [
+              768,
+              760,
+              752
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          6865,
+          6887
+        ],
+        "member_id_dump_line": 7261,
+        "member_name_dump_line": 7292,
+        "member_offset_dump_line": 7323
+      },
+      "catalog_id": "provisional.com.Application.OpenProject"
+    },
+    {
+      "owner": "IApplication",
+      "type_info_index": 0,
+      "name": "NewProject",
+      "record_index": 12,
+      "dispatch_member_id": 11,
+      "raw_member_id": "0000000b",
+      "name_offset": 10116,
+      "record_offset": 31792,
+      "record_bytes": 56,
+      "invocation_kind": "function",
+      "invocation_kind_value": 1,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "i_strFileName",
+          "name_offset": 1892,
+          "record_offset": 31824,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "80080008",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BSTR"
+            },
+            "descriptor_chain": []
+          }
+        },
+        {
+          "index": 1,
+          "name": "o_ipProject",
+          "name_offset": 10092,
+          "record_offset": 31836,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000300",
+            "pointer_depth": 2,
+            "leaf": {
+              "kind": "user_defined",
+              "name": "IProject",
+              "type_info_index": 34,
+              "type_kind": "TKIND_DISPATCH"
+            },
+            "descriptor_chain": [
+              768,
+              760,
+              752
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          6888,
+          6910
+        ],
+        "member_id_dump_line": 7262,
+        "member_name_dump_line": 7293,
+        "member_offset_dump_line": 7324
+      },
+      "catalog_id": "provisional.com.Application.NewProject"
+    },
+    {
+      "owner": "IApplication",
+      "type_info_index": 0,
+      "name": "OpenMapping",
+      "record_index": 13,
+      "dispatch_member_id": 12,
+      "raw_member_id": "0000000c",
+      "name_offset": 10140,
+      "record_offset": 31848,
+      "record_bytes": 56,
+      "invocation_kind": "function",
+      "invocation_kind_value": 1,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "i_strFileName",
+          "name_offset": 1892,
+          "record_offset": 31880,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "80080008",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BSTR"
+            },
+            "descriptor_chain": []
+          }
+        },
+        {
+          "index": 1,
+          "name": "o_ipMapping",
+          "name_offset": 10164,
+          "record_offset": 31892,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "000002b8",
+            "pointer_depth": 2,
+            "leaf": {
+              "kind": "user_defined",
+              "name": "IDocument",
+              "type_info_index": 7,
+              "type_kind": "TKIND_DISPATCH"
+            },
+            "descriptor_chain": [
+              696,
+              688,
+              680
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          6911,
+          6933
+        ],
+        "member_id_dump_line": 7263,
+        "member_name_dump_line": 7294,
+        "member_offset_dump_line": 7325
+      },
+      "catalog_id": null
+    },
+    {
+      "owner": "IApplication",
+      "type_info_index": 0,
+      "name": "NewMapping",
+      "record_index": 14,
+      "dispatch_member_id": 13,
+      "raw_member_id": "0000000d",
+      "name_offset": 10188,
+      "record_offset": 31904,
+      "record_bytes": 44,
+      "invocation_kind": "function",
+      "invocation_kind_value": 1,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "o_ipMapping",
+          "name_offset": 10164,
+          "record_offset": 31936,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "000002b8",
+            "pointer_depth": 2,
+            "leaf": {
+              "kind": "user_defined",
+              "name": "IDocument",
+              "type_info_index": 7,
+              "type_kind": "TKIND_DISPATCH"
+            },
+            "descriptor_chain": [
+              696,
+              688,
+              680
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          6934,
+          6951
+        ],
+        "member_id_dump_line": 7264,
+        "member_name_dump_line": 7295,
+        "member_offset_dump_line": 7326
+      },
+      "catalog_id": null
+    },
+    {
+      "owner": "IApplication",
+      "type_info_index": 0,
+      "name": "ActiveProject",
+      "record_index": 15,
+      "dispatch_member_id": 14,
+      "raw_member_id": "0000000e",
+      "name_offset": 10212,
+      "record_offset": 31948,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "o_ipProject",
+          "name_offset": 10092,
+          "record_offset": 31980,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000300",
+            "pointer_depth": 2,
+            "leaf": {
+              "kind": "user_defined",
+              "name": "IProject",
+              "type_info_index": 34,
+              "type_kind": "TKIND_DISPATCH"
+            },
+            "descriptor_chain": [
+              768,
+              760,
+              752
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          6952,
+          6969
+        ],
+        "member_id_dump_line": 7265,
+        "member_name_dump_line": 7296,
+        "member_offset_dump_line": 7327
+      },
+      "catalog_id": "provisional.com.Application.ActiveProject"
+    },
+    {
+      "owner": "IApplication",
+      "type_info_index": 0,
+      "name": "Documents",
+      "record_index": 16,
+      "dispatch_member_id": 15,
+      "raw_member_id": "0000000f",
+      "name_offset": 10284,
+      "record_offset": 31992,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 32024,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000318",
+            "pointer_depth": 2,
+            "leaf": {
+              "kind": "user_defined",
+              "name": "IDocuments",
+              "type_info_index": 37,
+              "type_kind": "TKIND_DISPATCH"
+            },
+            "descriptor_chain": [
+              792,
+              784,
+              776
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          6970,
+          6987
+        ],
+        "member_id_dump_line": 7266,
+        "member_name_dump_line": 7297,
+        "member_offset_dump_line": 7328
+      },
+      "catalog_id": "provisional.com.Application.Documents"
+    },
+    {
+      "owner": "IApplication",
+      "type_info_index": 0,
+      "name": "OpenURL",
+      "record_index": 17,
+      "dispatch_member_id": 16,
+      "raw_member_id": "00000010",
+      "name_offset": 10308,
+      "record_offset": 32036,
+      "record_bytes": 68,
+      "invocation_kind": "function",
+      "invocation_kind_value": 1,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "strURL",
+          "name_offset": 10328,
+          "record_offset": 32068,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "80080008",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BSTR"
+            },
+            "descriptor_chain": []
+          }
+        },
+        {
+          "index": 1,
+          "name": "strUser",
+          "name_offset": 10348,
+          "record_offset": 32080,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "80080008",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BSTR"
+            },
+            "descriptor_chain": []
+          }
+        },
+        {
+          "index": 2,
+          "name": "strPassword",
+          "name_offset": 10368,
+          "record_offset": 32092,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "80080008",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BSTR"
+            },
+            "descriptor_chain": []
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          6988,
+          7015
+        ],
+        "member_id_dump_line": 7267,
+        "member_name_dump_line": 7298,
+        "member_offset_dump_line": 7329
+      },
+      "catalog_id": "provisional.com.Application.OpenURL"
+    },
+    {
+      "owner": "IApplication",
+      "type_info_index": 0,
+      "name": "HighlightSerializedMarker",
+      "record_index": 18,
+      "dispatch_member_id": 17,
+      "raw_member_id": "00000011",
+      "name_offset": 7216,
+      "record_offset": 32104,
+      "record_bytes": 44,
+      "invocation_kind": "function",
+      "invocation_kind_value": 1,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "i_strSerializedMarker",
+          "name_offset": 7256,
+          "record_offset": 32136,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "80080008",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BSTR"
+            },
+            "descriptor_chain": []
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          7016,
+          7033
+        ],
+        "member_id_dump_line": 7268,
+        "member_name_dump_line": 7299,
+        "member_offset_dump_line": 7330
+      },
+      "catalog_id": "provisional.com.Application.HighlightSerializedMarker"
+    },
+    {
+      "owner": "IApplication",
+      "type_info_index": 0,
+      "name": "GlobalResourceConfig",
+      "record_index": 19,
+      "dispatch_member_id": 18,
+      "raw_member_id": "00000012",
+      "name_offset": 10392,
+      "record_offset": 32148,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 32180,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000000",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BSTR"
+            },
+            "descriptor_chain": [
+              0
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          7034,
+          7051
+        ],
+        "member_id_dump_line": 7269,
+        "member_name_dump_line": 7300,
+        "member_offset_dump_line": 7331
+      },
+      "catalog_id": "provisional.com.Application.GlobalResourceConfig"
+    },
+    {
+      "owner": "IApplication",
+      "type_info_index": 0,
+      "name": "GlobalResourceConfig",
+      "record_index": 20,
+      "dispatch_member_id": 18,
+      "raw_member_id": "00000012",
+      "name_offset": 10392,
+      "record_offset": 32192,
+      "record_bytes": 44,
+      "invocation_kind": "property_put",
+      "invocation_kind_value": 4,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": null,
+          "name_offset": 4294967295,
+          "record_offset": 32224,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "80080008",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BSTR"
+            },
+            "descriptor_chain": []
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          7052,
+          7069
+        ],
+        "member_id_dump_line": 7270,
+        "member_name_dump_line": 7301,
+        "member_offset_dump_line": 7332
+      },
+      "catalog_id": "provisional.com.Application.GlobalResourceConfig"
+    },
+    {
+      "owner": "IApplication",
+      "type_info_index": 0,
+      "name": "GlobalResourceFile",
+      "record_index": 21,
+      "dispatch_member_id": 19,
+      "raw_member_id": "00000013",
+      "name_offset": 10424,
+      "record_offset": 32236,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 32268,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000000",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BSTR"
+            },
+            "descriptor_chain": [
+              0
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          7070,
+          7087
+        ],
+        "member_id_dump_line": 7271,
+        "member_name_dump_line": 7302,
+        "member_offset_dump_line": 7333
+      },
+      "catalog_id": "provisional.com.Application.GlobalResourceFile"
+    },
+    {
+      "owner": "IApplication",
+      "type_info_index": 0,
+      "name": "GlobalResourceFile",
+      "record_index": 22,
+      "dispatch_member_id": 19,
+      "raw_member_id": "00000013",
+      "name_offset": 10424,
+      "record_offset": 32280,
+      "record_bytes": 44,
+      "invocation_kind": "property_put",
+      "invocation_kind_value": 4,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": null,
+          "name_offset": 4294967295,
+          "record_offset": 32312,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "80080008",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BSTR"
+            },
+            "descriptor_chain": []
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          7088,
+          7105
+        ],
+        "member_id_dump_line": 7272,
+        "member_name_dump_line": 7303,
+        "member_offset_dump_line": 7334
+      },
+      "catalog_id": "provisional.com.Application.GlobalResourceFile"
+    },
+    {
+      "owner": "IApplication",
+      "type_info_index": 0,
+      "name": "Status",
+      "record_index": 23,
+      "dispatch_member_id": 20,
+      "raw_member_id": "00000014",
+      "name_offset": 10712,
+      "record_offset": 32324,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "o_peVal",
+          "name_offset": 10732,
+          "record_offset": 32356,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000328",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "user_defined",
+              "name": "ENUMApplicationStatus",
+              "type_info_index": 38,
+              "type_kind": "TKIND_ENUM"
+            },
+            "descriptor_chain": [
+              808,
+              800
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          7106,
+          7123
+        ],
+        "member_id_dump_line": 7273,
+        "member_name_dump_line": 7304,
+        "member_offset_dump_line": 7335
+      },
+      "catalog_id": "provisional.com.Application.Status"
+    },
+    {
+      "owner": "IApplication",
+      "type_info_index": 0,
+      "name": "MajorVersion",
+      "record_index": 24,
+      "dispatch_member_id": 21,
+      "raw_member_id": "00000015",
+      "name_offset": 10752,
+      "record_offset": 32368,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "o_peVal",
+          "name_offset": 10732,
+          "record_offset": 32400,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000330",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "primitive",
+              "name": "INT"
+            },
+            "descriptor_chain": [
+              816
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          7124,
+          7141
+        ],
+        "member_id_dump_line": 7274,
+        "member_name_dump_line": 7305,
+        "member_offset_dump_line": 7336
+      },
+      "catalog_id": "provisional.com.Application.MajorVersion"
+    },
+    {
+      "owner": "IApplication",
+      "type_info_index": 0,
+      "name": "MinorVersion",
+      "record_index": 25,
+      "dispatch_member_id": 22,
+      "raw_member_id": "00000016",
+      "name_offset": 10776,
+      "record_offset": 32412,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "o_peVal",
+          "name_offset": 10732,
+          "record_offset": 32444,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000330",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "primitive",
+              "name": "INT"
+            },
+            "descriptor_chain": [
+              816
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          7142,
+          7159
+        ],
+        "member_id_dump_line": 7275,
+        "member_name_dump_line": 7306,
+        "member_offset_dump_line": 7337
+      },
+      "catalog_id": "provisional.com.Application.MinorVersion"
+    },
+    {
+      "owner": "IApplication",
+      "type_info_index": 0,
+      "name": "Edition",
+      "record_index": 26,
+      "dispatch_member_id": 23,
+      "raw_member_id": "00000017",
+      "name_offset": 10800,
+      "record_offset": 32456,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "o_pstrVal",
+          "name_offset": 10820,
+          "record_offset": 32488,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000000",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BSTR"
+            },
+            "descriptor_chain": [
+              0
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          7160,
+          7177
+        ],
+        "member_id_dump_line": 7276,
+        "member_name_dump_line": 7307,
+        "member_offset_dump_line": 7338
+      },
+      "catalog_id": "provisional.com.Application.Edition"
+    },
+    {
+      "owner": "IApplication",
+      "type_info_index": 0,
+      "name": "IsAPISupported",
+      "record_index": 27,
+      "dispatch_member_id": 24,
+      "raw_member_id": "00000018",
+      "name_offset": 10844,
+      "record_offset": 32500,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "o_pbVal",
+          "name_offset": 10872,
+          "record_offset": 32532,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000010",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BOOL"
+            },
+            "descriptor_chain": [
+              16
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          7178,
+          7195
+        ],
+        "member_id_dump_line": 7277,
+        "member_name_dump_line": 7308,
+        "member_offset_dump_line": 7339
+      },
+      "catalog_id": "provisional.com.Application.IsAPISupported"
+    },
+    {
+      "owner": "IApplication",
+      "type_info_index": 0,
+      "name": "NewWebServiceProject",
+      "record_index": 28,
+      "dispatch_member_id": 25,
+      "raw_member_id": "00000019",
+      "name_offset": 10892,
+      "record_offset": 32544,
+      "record_bytes": 44,
+      "invocation_kind": "function",
+      "invocation_kind_value": 1,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "o_ipProject",
+          "name_offset": 10092,
+          "record_offset": 32576,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000300",
+            "pointer_depth": 2,
+            "leaf": {
+              "kind": "user_defined",
+              "name": "IProject",
+              "type_info_index": 34,
+              "type_kind": "TKIND_DISPATCH"
+            },
+            "descriptor_chain": [
+              768,
+              760,
+              752
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          7196,
+          7213
+        ],
+        "member_id_dump_line": 7278,
+        "member_name_dump_line": 7309,
+        "member_offset_dump_line": 7340
+      },
+      "catalog_id": "provisional.com.Application.NewWebServiceProject"
+    },
+    {
+      "owner": "IApplication",
+      "type_info_index": 0,
+      "name": "ServicePackVersion",
+      "record_index": 29,
+      "dispatch_member_id": 26,
+      "raw_member_id": "0000001a",
+      "name_offset": 10924,
+      "record_offset": 32588,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pnVal",
+          "name_offset": 10956,
+          "record_offset": 32620,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000080",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "primitive",
+              "name": "I4"
+            },
+            "descriptor_chain": [
+              128
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          7214,
+          7231
+        ],
+        "member_id_dump_line": 7279,
+        "member_name_dump_line": 7310,
+        "member_offset_dump_line": 7341
+      },
+      "catalog_id": "provisional.com.Application.ServicePackVersion"
+    },
+    {
+      "owner": "IApplication",
+      "type_info_index": 0,
+      "name": "LibraryImports",
+      "record_index": 30,
+      "dispatch_member_id": 27,
+      "raw_member_id": "0000001b",
+      "name_offset": 8512,
+      "record_offset": 32632,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 32664,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "000002a0",
+            "pointer_depth": 2,
+            "leaf": {
+              "kind": "user_defined",
+              "name": "ILibraryImports",
+              "type_info_index": 32,
+              "type_kind": "TKIND_DISPATCH"
+            },
+            "descriptor_chain": [
+              672,
+              664,
+              656
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          7232,
+          7249
+        ],
+        "member_id_dump_line": 7280,
+        "member_name_dump_line": 7311,
+        "member_offset_dump_line": 7342
+      },
+      "catalog_id": "provisional.com.Application.LibraryImports"
+    },
+    {
+      "owner": "IOptions",
+      "type_info_index": 1,
+      "name": "Application",
+      "record_index": 0,
+      "dispatch_member_id": 1,
+      "raw_member_id": "00000001",
+      "name_offset": 80,
+      "record_offset": 33052,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 33084,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000008",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "primitive",
+              "name": "DISPATCH"
+            },
+            "descriptor_chain": [
+              8
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          7346,
+          7363
+        ],
+        "member_id_dump_line": 8066,
+        "member_name_dump_line": 8106,
+        "member_offset_dump_line": 8146
+      },
+      "catalog_id": "provisional.com.Options.Application"
+    },
+    {
+      "owner": "IOptions",
+      "type_info_index": 1,
+      "name": "Parent",
+      "record_index": 1,
+      "dispatch_member_id": 2,
+      "raw_member_id": "00000002",
+      "name_offset": 104,
+      "record_offset": 33096,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 33128,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000008",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "primitive",
+              "name": "DISPATCH"
+            },
+            "descriptor_chain": [
+              8
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          7364,
+          7381
+        ],
+        "member_id_dump_line": 8067,
+        "member_name_dump_line": 8107,
+        "member_offset_dump_line": 8147
+      },
+      "catalog_id": "provisional.com.Options.Parent"
+    },
+    {
+      "owner": "IOptions",
+      "type_info_index": 1,
+      "name": "ShowLogoOnStartup",
+      "record_index": 2,
+      "dispatch_member_id": 3,
+      "raw_member_id": "00000003",
+      "name_offset": 164,
+      "record_offset": 33140,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 33172,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000010",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BOOL"
+            },
+            "descriptor_chain": [
+              16
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          7382,
+          7399
+        ],
+        "member_id_dump_line": 8068,
+        "member_name_dump_line": 8108,
+        "member_offset_dump_line": 8148
+      },
+      "catalog_id": "provisional.com.Options.ShowLogoOnStartup"
+    },
+    {
+      "owner": "IOptions",
+      "type_info_index": 1,
+      "name": "ShowLogoOnStartup",
+      "record_index": 3,
+      "dispatch_member_id": 3,
+      "raw_member_id": "00000003",
+      "name_offset": 164,
+      "record_offset": 33184,
+      "record_bytes": 44,
+      "invocation_kind": "property_put",
+      "invocation_kind_value": 4,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": null,
+          "name_offset": 4294967295,
+          "record_offset": 33216,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "800b000b",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BOOL"
+            },
+            "descriptor_chain": []
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          7400,
+          7417
+        ],
+        "member_id_dump_line": 8069,
+        "member_name_dump_line": 8109,
+        "member_offset_dump_line": 8149
+      },
+      "catalog_id": "provisional.com.Options.ShowLogoOnStartup"
+    },
+    {
+      "owner": "IOptions",
+      "type_info_index": 1,
+      "name": "ShowLogoOnPrint",
+      "record_index": 4,
+      "dispatch_member_id": 4,
+      "raw_member_id": "00000004",
+      "name_offset": 196,
+      "record_offset": 33228,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 33260,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000010",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BOOL"
+            },
+            "descriptor_chain": [
+              16
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          7418,
+          7435
+        ],
+        "member_id_dump_line": 8070,
+        "member_name_dump_line": 8110,
+        "member_offset_dump_line": 8150
+      },
+      "catalog_id": "provisional.com.Options.ShowLogoOnPrint"
+    },
+    {
+      "owner": "IOptions",
+      "type_info_index": 1,
+      "name": "ShowLogoOnPrint",
+      "record_index": 5,
+      "dispatch_member_id": 4,
+      "raw_member_id": "00000004",
+      "name_offset": 196,
+      "record_offset": 33272,
+      "record_bytes": 44,
+      "invocation_kind": "property_put",
+      "invocation_kind_value": 4,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": null,
+          "name_offset": 4294967295,
+          "record_offset": 33304,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "800b000b",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BOOL"
+            },
+            "descriptor_chain": []
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          7436,
+          7453
+        ],
+        "member_id_dump_line": 8071,
+        "member_name_dump_line": 8111,
+        "member_offset_dump_line": 8151
+      },
+      "catalog_id": "provisional.com.Options.ShowLogoOnPrint"
+    },
+    {
+      "owner": "IOptions",
+      "type_info_index": 1,
+      "name": "DefaultOutputEncoding",
+      "record_index": 6,
+      "dispatch_member_id": 5,
+      "raw_member_id": "00000005",
+      "name_offset": 224,
+      "record_offset": 33316,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 33348,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000000",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BSTR"
+            },
+            "descriptor_chain": [
+              0
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          7454,
+          7471
+        ],
+        "member_id_dump_line": 8072,
+        "member_name_dump_line": 8112,
+        "member_offset_dump_line": 8152
+      },
+      "catalog_id": "provisional.com.Options.DefaultOutputEncoding"
+    },
+    {
+      "owner": "IOptions",
+      "type_info_index": 1,
+      "name": "DefaultOutputEncoding",
+      "record_index": 7,
+      "dispatch_member_id": 5,
+      "raw_member_id": "00000005",
+      "name_offset": 224,
+      "record_offset": 33360,
+      "record_bytes": 44,
+      "invocation_kind": "property_put",
+      "invocation_kind_value": 4,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": null,
+          "name_offset": 4294967295,
+          "record_offset": 33392,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "80080008",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BSTR"
+            },
+            "descriptor_chain": []
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          7472,
+          7489
+        ],
+        "member_id_dump_line": 8073,
+        "member_name_dump_line": 8113,
+        "member_offset_dump_line": 8153
+      },
+      "catalog_id": "provisional.com.Options.DefaultOutputEncoding"
+    },
+    {
+      "owner": "IOptions",
+      "type_info_index": 1,
+      "name": "UseGradientBackground",
+      "record_index": 8,
+      "dispatch_member_id": 6,
+      "raw_member_id": "00000006",
+      "name_offset": 260,
+      "record_offset": 33404,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 33436,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000010",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BOOL"
+            },
+            "descriptor_chain": [
+              16
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          7490,
+          7507
+        ],
+        "member_id_dump_line": 8074,
+        "member_name_dump_line": 8114,
+        "member_offset_dump_line": 8154
+      },
+      "catalog_id": "provisional.com.Options.UseGradientBackground"
+    },
+    {
+      "owner": "IOptions",
+      "type_info_index": 1,
+      "name": "UseGradientBackground",
+      "record_index": 9,
+      "dispatch_member_id": 6,
+      "raw_member_id": "00000006",
+      "name_offset": 260,
+      "record_offset": 33448,
+      "record_bytes": 44,
+      "invocation_kind": "property_put",
+      "invocation_kind_value": 4,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": null,
+          "name_offset": 4294967295,
+          "record_offset": 33480,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "800b000b",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BOOL"
+            },
+            "descriptor_chain": []
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          7508,
+          7525
+        ],
+        "member_id_dump_line": 8075,
+        "member_name_dump_line": 8115,
+        "member_offset_dump_line": 8155
+      },
+      "catalog_id": "provisional.com.Options.UseGradientBackground"
+    },
+    {
+      "owner": "IOptions",
+      "type_info_index": 1,
+      "name": "XSLTDefaultOutputDirectory",
+      "record_index": 10,
+      "dispatch_member_id": 7,
+      "raw_member_id": "00000007",
+      "name_offset": 296,
+      "record_offset": 33492,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 33524,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000000",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BSTR"
+            },
+            "descriptor_chain": [
+              0
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          7526,
+          7543
+        ],
+        "member_id_dump_line": 8076,
+        "member_name_dump_line": 8116,
+        "member_offset_dump_line": 8156
+      },
+      "catalog_id": "provisional.com.Options.XSLTDefaultOutputDirectory"
+    },
+    {
+      "owner": "IOptions",
+      "type_info_index": 1,
+      "name": "XSLTDefaultOutputDirectory",
+      "record_index": 11,
+      "dispatch_member_id": 7,
+      "raw_member_id": "00000007",
+      "name_offset": 296,
+      "record_offset": 33536,
+      "record_bytes": 44,
+      "invocation_kind": "property_put",
+      "invocation_kind_value": 4,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": null,
+          "name_offset": 4294967295,
+          "record_offset": 33568,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "80080008",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BSTR"
+            },
+            "descriptor_chain": []
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          7544,
+          7561
+        ],
+        "member_id_dump_line": 8077,
+        "member_name_dump_line": 8117,
+        "member_offset_dump_line": 8157
+      },
+      "catalog_id": "provisional.com.Options.XSLTDefaultOutputDirectory"
+    },
+    {
+      "owner": "IOptions",
+      "type_info_index": 1,
+      "name": "CodeDefaultOutputDirectory",
+      "record_index": 12,
+      "dispatch_member_id": 8,
+      "raw_member_id": "00000008",
+      "name_offset": 336,
+      "record_offset": 33580,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 33612,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000000",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BSTR"
+            },
+            "descriptor_chain": [
+              0
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          7562,
+          7579
+        ],
+        "member_id_dump_line": 8078,
+        "member_name_dump_line": 8118,
+        "member_offset_dump_line": 8158
+      },
+      "catalog_id": "provisional.com.Options.CodeDefaultOutputDirectory"
+    },
+    {
+      "owner": "IOptions",
+      "type_info_index": 1,
+      "name": "CodeDefaultOutputDirectory",
+      "record_index": 13,
+      "dispatch_member_id": 8,
+      "raw_member_id": "00000008",
+      "name_offset": 336,
+      "record_offset": 33624,
+      "record_bytes": 44,
+      "invocation_kind": "property_put",
+      "invocation_kind_value": 4,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": null,
+          "name_offset": 4294967295,
+          "record_offset": 33656,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "80080008",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BSTR"
+            },
+            "descriptor_chain": []
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          7580,
+          7597
+        ],
+        "member_id_dump_line": 8079,
+        "member_name_dump_line": 8119,
+        "member_offset_dump_line": 8159
+      },
+      "catalog_id": "provisional.com.Options.CodeDefaultOutputDirectory"
+    },
+    {
+      "owner": "IOptions",
+      "type_info_index": 1,
+      "name": "CPPSettings_DOMType",
+      "record_index": 14,
+      "dispatch_member_id": 9,
+      "raw_member_id": "00000009",
+      "name_offset": 484,
+      "record_offset": 33668,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 33700,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000020",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "user_defined",
+              "name": "ENUMDOMType",
+              "type_info_index": 2,
+              "type_kind": "TKIND_ENUM"
+            },
+            "descriptor_chain": [
+              32,
+              24
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          7598,
+          7615
+        ],
+        "member_id_dump_line": 8080,
+        "member_name_dump_line": 8120,
+        "member_offset_dump_line": 8160
+      },
+      "catalog_id": "provisional.com.Options.CPPSettings_DOMType"
+    },
+    {
+      "owner": "IOptions",
+      "type_info_index": 1,
+      "name": "CPPSettings_DOMType",
+      "record_index": 15,
+      "dispatch_member_id": 9,
+      "raw_member_id": "00000009",
+      "name_offset": 484,
+      "record_offset": 33712,
+      "record_bytes": 44,
+      "invocation_kind": "property_put",
+      "invocation_kind_value": 4,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": null,
+          "name_offset": 4294967295,
+          "record_offset": 33744,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "00000018",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "user_defined",
+              "name": "ENUMDOMType",
+              "type_info_index": 2,
+              "type_kind": "TKIND_ENUM"
+            },
+            "descriptor_chain": [
+              24
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          7616,
+          7633
+        ],
+        "member_id_dump_line": 8081,
+        "member_name_dump_line": 8121,
+        "member_offset_dump_line": 8161
+      },
+      "catalog_id": "provisional.com.Options.CPPSettings_DOMType"
+    },
+    {
+      "owner": "IOptions",
+      "type_info_index": 1,
+      "name": "CPPSettings_LibraryType",
+      "record_index": 16,
+      "dispatch_member_id": 10,
+      "raw_member_id": "0000000a",
+      "name_offset": 592,
+      "record_offset": 33756,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 33788,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000030",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "user_defined",
+              "name": "ENUMLibType",
+              "type_info_index": 3,
+              "type_kind": "TKIND_ENUM"
+            },
+            "descriptor_chain": [
+              48,
+              40
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          7634,
+          7651
+        ],
+        "member_id_dump_line": 8082,
+        "member_name_dump_line": 8122,
+        "member_offset_dump_line": 8162
+      },
+      "catalog_id": "provisional.com.Options.CPPSettings_LibraryType"
+    },
+    {
+      "owner": "IOptions",
+      "type_info_index": 1,
+      "name": "CPPSettings_LibraryType",
+      "record_index": 17,
+      "dispatch_member_id": 10,
+      "raw_member_id": "0000000a",
+      "name_offset": 592,
+      "record_offset": 33800,
+      "record_bytes": 44,
+      "invocation_kind": "property_put",
+      "invocation_kind_value": 4,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": null,
+          "name_offset": 4294967295,
+          "record_offset": 33832,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "00000028",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "user_defined",
+              "name": "ENUMLibType",
+              "type_info_index": 3,
+              "type_kind": "TKIND_ENUM"
+            },
+            "descriptor_chain": [
+              40
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          7652,
+          7669
+        ],
+        "member_id_dump_line": 8083,
+        "member_name_dump_line": 8123,
+        "member_offset_dump_line": 8163
+      },
+      "catalog_id": "provisional.com.Options.CPPSettings_LibraryType"
+    },
+    {
+      "owner": "IOptions",
+      "type_info_index": 1,
+      "name": "CPPSettings_UseMFC",
+      "record_index": 18,
+      "dispatch_member_id": 11,
+      "raw_member_id": "0000000b",
+      "name_offset": 628,
+      "record_offset": 33844,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 33876,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000010",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BOOL"
+            },
+            "descriptor_chain": [
+              16
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          7670,
+          7687
+        ],
+        "member_id_dump_line": 8084,
+        "member_name_dump_line": 8124,
+        "member_offset_dump_line": 8164
+      },
+      "catalog_id": "provisional.com.Options.CPPSettings_UseMFC"
+    },
+    {
+      "owner": "IOptions",
+      "type_info_index": 1,
+      "name": "CPPSettings_UseMFC",
+      "record_index": 19,
+      "dispatch_member_id": 11,
+      "raw_member_id": "0000000b",
+      "name_offset": 628,
+      "record_offset": 33888,
+      "record_bytes": 44,
+      "invocation_kind": "property_put",
+      "invocation_kind_value": 4,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": null,
+          "name_offset": 4294967295,
+          "record_offset": 33920,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "800b000b",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BOOL"
+            },
+            "descriptor_chain": []
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          7688,
+          7705
+        ],
+        "member_id_dump_line": 8085,
+        "member_name_dump_line": 8125,
+        "member_offset_dump_line": 8165
+      },
+      "catalog_id": "provisional.com.Options.CPPSettings_UseMFC"
+    },
+    {
+      "owner": "IOptions",
+      "type_info_index": 1,
+      "name": "CSharpSettings_ProjectType",
+      "record_index": 20,
+      "dispatch_member_id": 12,
+      "raw_member_id": "0000000c",
+      "name_offset": 1060,
+      "record_offset": 33932,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 33964,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000040",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "user_defined",
+              "name": "ENUMProjectType",
+              "type_info_index": 4,
+              "type_kind": "TKIND_ENUM"
+            },
+            "descriptor_chain": [
+              64,
+              56
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          7706,
+          7723
+        ],
+        "member_id_dump_line": 8086,
+        "member_name_dump_line": 8126,
+        "member_offset_dump_line": 8166
+      },
+      "catalog_id": "provisional.com.Options.CSharpSettings_ProjectType"
+    },
+    {
+      "owner": "IOptions",
+      "type_info_index": 1,
+      "name": "CSharpSettings_ProjectType",
+      "record_index": 21,
+      "dispatch_member_id": 12,
+      "raw_member_id": "0000000c",
+      "name_offset": 1060,
+      "record_offset": 33976,
+      "record_bytes": 44,
+      "invocation_kind": "property_put",
+      "invocation_kind_value": 4,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": null,
+          "name_offset": 4294967295,
+          "record_offset": 34008,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "00000038",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "user_defined",
+              "name": "ENUMProjectType",
+              "type_info_index": 4,
+              "type_kind": "TKIND_ENUM"
+            },
+            "descriptor_chain": [
+              56
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          7724,
+          7741
+        ],
+        "member_id_dump_line": 8087,
+        "member_name_dump_line": 8127,
+        "member_offset_dump_line": 8167
+      },
+      "catalog_id": "provisional.com.Options.CSharpSettings_ProjectType"
+    },
+    {
+      "owner": "IOptions",
+      "type_info_index": 1,
+      "name": "CPPSettings_GenerateVC6ProjectFile",
+      "record_index": 22,
+      "dispatch_member_id": 13,
+      "raw_member_id": "0000000d",
+      "name_offset": 1100,
+      "record_offset": 34020,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 34052,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000010",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BOOL"
+            },
+            "descriptor_chain": [
+              16
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          7742,
+          7759
+        ],
+        "member_id_dump_line": 8088,
+        "member_name_dump_line": 8128,
+        "member_offset_dump_line": 8168
+      },
+      "catalog_id": "provisional.com.Options.CPPSettings_GenerateVC6ProjectFile"
+    },
+    {
+      "owner": "IOptions",
+      "type_info_index": 1,
+      "name": "CPPSettings_GenerateVC6ProjectFile",
+      "record_index": 23,
+      "dispatch_member_id": 13,
+      "raw_member_id": "0000000d",
+      "name_offset": 1100,
+      "record_offset": 34064,
+      "record_bytes": 44,
+      "invocation_kind": "property_put",
+      "invocation_kind_value": 4,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": null,
+          "name_offset": 4294967295,
+          "record_offset": 34096,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "800b000b",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BOOL"
+            },
+            "descriptor_chain": []
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          7760,
+          7777
+        ],
+        "member_id_dump_line": 8089,
+        "member_name_dump_line": 8129,
+        "member_offset_dump_line": 8169
+      },
+      "catalog_id": "provisional.com.Options.CPPSettings_GenerateVC6ProjectFile"
+    },
+    {
+      "owner": "IOptions",
+      "type_info_index": 1,
+      "name": "CppSettings_GenerateVSProjectFile",
+      "record_index": 24,
+      "dispatch_member_id": 14,
+      "raw_member_id": "0000000e",
+      "name_offset": 1148,
+      "record_offset": 34108,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 34140,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000040",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "user_defined",
+              "name": "ENUMProjectType",
+              "type_info_index": 4,
+              "type_kind": "TKIND_ENUM"
+            },
+            "descriptor_chain": [
+              64,
+              56
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          7778,
+          7795
+        ],
+        "member_id_dump_line": 8090,
+        "member_name_dump_line": 8130,
+        "member_offset_dump_line": 8170
+      },
+      "catalog_id": "provisional.com.Options.CppSettings_GenerateVSProjectFile"
+    },
+    {
+      "owner": "IOptions",
+      "type_info_index": 1,
+      "name": "CppSettings_GenerateVSProjectFile",
+      "record_index": 25,
+      "dispatch_member_id": 14,
+      "raw_member_id": "0000000e",
+      "name_offset": 1148,
+      "record_offset": 34152,
+      "record_bytes": 44,
+      "invocation_kind": "property_put",
+      "invocation_kind_value": 4,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": null,
+          "name_offset": 4294967295,
+          "record_offset": 34184,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "00000038",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "user_defined",
+              "name": "ENUMProjectType",
+              "type_info_index": 4,
+              "type_kind": "TKIND_ENUM"
+            },
+            "descriptor_chain": [
+              56
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          7796,
+          7813
+        ],
+        "member_id_dump_line": 8091,
+        "member_name_dump_line": 8131,
+        "member_offset_dump_line": 8171
+      },
+      "catalog_id": "provisional.com.Options.CppSettings_GenerateVSProjectFile"
+    },
+    {
+      "owner": "IOptions",
+      "type_info_index": 1,
+      "name": "CompatibilityMode",
+      "record_index": 26,
+      "dispatch_member_id": 15,
+      "raw_member_id": "0000000f",
+      "name_offset": 1196,
+      "record_offset": 34196,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 34228,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000010",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BOOL"
+            },
+            "descriptor_chain": [
+              16
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          7814,
+          7831
+        ],
+        "member_id_dump_line": 8092,
+        "member_name_dump_line": 8132,
+        "member_offset_dump_line": 8172
+      },
+      "catalog_id": null
+    },
+    {
+      "owner": "IOptions",
+      "type_info_index": 1,
+      "name": "CompatibilityMode",
+      "record_index": 27,
+      "dispatch_member_id": 15,
+      "raw_member_id": "0000000f",
+      "name_offset": 1196,
+      "record_offset": 34240,
+      "record_bytes": 44,
+      "invocation_kind": "property_put",
+      "invocation_kind_value": 4,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": null,
+          "name_offset": 4294967295,
+          "record_offset": 34272,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "800b000b",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BOOL"
+            },
+            "descriptor_chain": []
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          7832,
+          7849
+        ],
+        "member_id_dump_line": 8093,
+        "member_name_dump_line": 8133,
+        "member_offset_dump_line": 8173
+      },
+      "catalog_id": null
+    },
+    {
+      "owner": "IOptions",
+      "type_info_index": 1,
+      "name": "GenerateWrapperClasses",
+      "record_index": 28,
+      "dispatch_member_id": 16,
+      "raw_member_id": "00000010",
+      "name_offset": 1228,
+      "record_offset": 34284,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 34316,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000010",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BOOL"
+            },
+            "descriptor_chain": [
+              16
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          7850,
+          7867
+        ],
+        "member_id_dump_line": 8094,
+        "member_name_dump_line": 8134,
+        "member_offset_dump_line": 8174
+      },
+      "catalog_id": "provisional.com.Options.GenerateWrapperClasses"
+    },
+    {
+      "owner": "IOptions",
+      "type_info_index": 1,
+      "name": "GenerateWrapperClasses",
+      "record_index": 29,
+      "dispatch_member_id": 16,
+      "raw_member_id": "00000010",
+      "name_offset": 1228,
+      "record_offset": 34328,
+      "record_bytes": 44,
+      "invocation_kind": "property_put",
+      "invocation_kind_value": 4,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": null,
+          "name_offset": 4294967295,
+          "record_offset": 34360,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "800b000b",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BOOL"
+            },
+            "descriptor_chain": []
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          7868,
+          7885
+        ],
+        "member_id_dump_line": 8095,
+        "member_name_dump_line": 8135,
+        "member_offset_dump_line": 8175
+      },
+      "catalog_id": "provisional.com.Options.GenerateWrapperClasses"
+    },
+    {
+      "owner": "IOptions",
+      "type_info_index": 1,
+      "name": "WrapperClassesVersion",
+      "record_index": 30,
+      "dispatch_member_id": 17,
+      "raw_member_id": "00000011",
+      "name_offset": 1432,
+      "record_offset": 34372,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 34404,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000050",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "user_defined",
+              "name": "ENUMWrapperClassesVersion",
+              "type_info_index": 5,
+              "type_kind": "TKIND_ENUM"
+            },
+            "descriptor_chain": [
+              80,
+              72
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          7886,
+          7903
+        ],
+        "member_id_dump_line": 8096,
+        "member_name_dump_line": 8136,
+        "member_offset_dump_line": 8176
+      },
+      "catalog_id": "provisional.com.Options.WrapperClassesVersion"
+    },
+    {
+      "owner": "IOptions",
+      "type_info_index": 1,
+      "name": "WrapperClassesVersion",
+      "record_index": 31,
+      "dispatch_member_id": 17,
+      "raw_member_id": "00000011",
+      "name_offset": 1432,
+      "record_offset": 34416,
+      "record_bytes": 44,
+      "invocation_kind": "property_put",
+      "invocation_kind_value": 4,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": null,
+          "name_offset": 4294967295,
+          "record_offset": 34448,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "00000048",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "user_defined",
+              "name": "ENUMWrapperClassesVersion",
+              "type_info_index": 5,
+              "type_kind": "TKIND_ENUM"
+            },
+            "descriptor_chain": [
+              72
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          7904,
+          7921
+        ],
+        "member_id_dump_line": 8097,
+        "member_name_dump_line": 8137,
+        "member_offset_dump_line": 8177
+      },
+      "catalog_id": "provisional.com.Options.WrapperClassesVersion"
+    },
+    {
+      "owner": "IOptions",
+      "type_info_index": 1,
+      "name": "DefaultOutputByteOrder",
+      "record_index": 32,
+      "dispatch_member_id": 18,
+      "raw_member_id": "00000012",
+      "name_offset": 1468,
+      "record_offset": 34460,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 34492,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000000",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BSTR"
+            },
+            "descriptor_chain": [
+              0
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          7922,
+          7939
+        ],
+        "member_id_dump_line": 8098,
+        "member_name_dump_line": 8138,
+        "member_offset_dump_line": 8178
+      },
+      "catalog_id": "provisional.com.Options.DefaultOutputByteOrder"
+    },
+    {
+      "owner": "IOptions",
+      "type_info_index": 1,
+      "name": "DefaultOutputByteOrder",
+      "record_index": 33,
+      "dispatch_member_id": 18,
+      "raw_member_id": "00000012",
+      "name_offset": 1468,
+      "record_offset": 34504,
+      "record_bytes": 44,
+      "invocation_kind": "property_put",
+      "invocation_kind_value": 4,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": null,
+          "name_offset": 4294967295,
+          "record_offset": 34536,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "80080008",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BSTR"
+            },
+            "descriptor_chain": []
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          7940,
+          7957
+        ],
+        "member_id_dump_line": 8099,
+        "member_name_dump_line": 8139,
+        "member_offset_dump_line": 8179
+      },
+      "catalog_id": "provisional.com.Options.DefaultOutputByteOrder"
+    },
+    {
+      "owner": "IOptions",
+      "type_info_index": 1,
+      "name": "DefaultOutputByteOrderMark",
+      "record_index": 34,
+      "dispatch_member_id": 19,
+      "raw_member_id": "00000013",
+      "name_offset": 1504,
+      "record_offset": 34548,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 34580,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000010",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BOOL"
+            },
+            "descriptor_chain": [
+              16
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          7958,
+          7975
+        ],
+        "member_id_dump_line": 8100,
+        "member_name_dump_line": 8140,
+        "member_offset_dump_line": 8180
+      },
+      "catalog_id": "provisional.com.Options.DefaultOutputByteOrderMark"
+    },
+    {
+      "owner": "IOptions",
+      "type_info_index": 1,
+      "name": "DefaultOutputByteOrderMark",
+      "record_index": 35,
+      "dispatch_member_id": 19,
+      "raw_member_id": "00000013",
+      "name_offset": 1504,
+      "record_offset": 34592,
+      "record_bytes": 44,
+      "invocation_kind": "property_put",
+      "invocation_kind_value": 4,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": null,
+          "name_offset": 4294967295,
+          "record_offset": 34624,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "800b000b",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BOOL"
+            },
+            "descriptor_chain": []
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          7976,
+          7993
+        ],
+        "member_id_dump_line": 8101,
+        "member_name_dump_line": 8141,
+        "member_offset_dump_line": 8181
+      },
+      "catalog_id": "provisional.com.Options.DefaultOutputByteOrderMark"
+    },
+    {
+      "owner": "IOptions",
+      "type_info_index": 1,
+      "name": "JavaSettings_ApacheAxisVersion",
+      "record_index": 36,
+      "dispatch_member_id": 20,
+      "raw_member_id": "00000014",
+      "name_offset": 1652,
+      "record_offset": 34636,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 34668,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000060",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "user_defined",
+              "name": "ENUMApacheAxisVersion",
+              "type_info_index": 6,
+              "type_kind": "TKIND_ENUM"
+            },
+            "descriptor_chain": [
+              96,
+              88
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          7994,
+          8011
+        ],
+        "member_id_dump_line": 8102,
+        "member_name_dump_line": 8142,
+        "member_offset_dump_line": 8182
+      },
+      "catalog_id": "provisional.com.Options.JavaSettings_ApacheAxisVersion"
+    },
+    {
+      "owner": "IOptions",
+      "type_info_index": 1,
+      "name": "JavaSettings_ApacheAxisVersion",
+      "record_index": 37,
+      "dispatch_member_id": 20,
+      "raw_member_id": "00000014",
+      "name_offset": 1652,
+      "record_offset": 34680,
+      "record_bytes": 44,
+      "invocation_kind": "property_put",
+      "invocation_kind_value": 4,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": null,
+          "name_offset": 4294967295,
+          "record_offset": 34712,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "00000058",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "user_defined",
+              "name": "ENUMApacheAxisVersion",
+              "type_info_index": 6,
+              "type_kind": "TKIND_ENUM"
+            },
+            "descriptor_chain": [
+              88
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          8012,
+          8029
+        ],
+        "member_id_dump_line": 8103,
+        "member_name_dump_line": 8143,
+        "member_offset_dump_line": 8183
+      },
+      "catalog_id": "provisional.com.Options.JavaSettings_ApacheAxisVersion"
+    },
+    {
+      "owner": "IOptions",
+      "type_info_index": 1,
+      "name": "EnableComponentDocking",
+      "record_index": 38,
+      "dispatch_member_id": 21,
+      "raw_member_id": "00000015",
+      "name_offset": 1696,
+      "record_offset": 34724,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 34756,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000010",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BOOL"
+            },
+            "descriptor_chain": [
+              16
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          8030,
+          8047
+        ],
+        "member_id_dump_line": 8104,
+        "member_name_dump_line": 8144,
+        "member_offset_dump_line": 8184
+      },
+      "catalog_id": "provisional.com.Options.EnableComponentDocking"
+    },
+    {
+      "owner": "IOptions",
+      "type_info_index": 1,
+      "name": "EnableComponentDocking",
+      "record_index": 39,
+      "dispatch_member_id": 21,
+      "raw_member_id": "00000015",
+      "name_offset": 1696,
+      "record_offset": 34768,
+      "record_bytes": 44,
+      "invocation_kind": "property_put",
+      "invocation_kind_value": 4,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": null,
+          "name_offset": 4294967295,
+          "record_offset": 34800,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "800b000b",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BOOL"
+            },
+            "descriptor_chain": []
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          8048,
+          8065
+        ],
+        "member_id_dump_line": 8105,
+        "member_name_dump_line": 8145,
+        "member_offset_dump_line": 8185
+      },
+      "catalog_id": "provisional.com.Options.EnableComponentDocking"
+    },
+    {
+      "owner": "IDocument",
+      "type_info_index": 7,
+      "name": "Application",
+      "record_index": 0,
+      "dispatch_member_id": 1,
+      "raw_member_id": "00000001",
+      "name_offset": 80,
+      "record_offset": 36020,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 36052,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000008",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "primitive",
+              "name": "DISPATCH"
+            },
+            "descriptor_chain": [
+              8
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          8446,
+          8463
+        ],
+        "member_id_dump_line": 9145,
+        "member_name_dump_line": 9184,
+        "member_offset_dump_line": 9223
+      },
+      "catalog_id": "provisional.com.Document.Application"
+    },
+    {
+      "owner": "IDocument",
+      "type_info_index": 7,
+      "name": "Parent",
+      "record_index": 1,
+      "dispatch_member_id": 2,
+      "raw_member_id": "00000002",
+      "name_offset": 104,
+      "record_offset": 36064,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 36096,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000008",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "primitive",
+              "name": "DISPATCH"
+            },
+            "descriptor_chain": [
+              8
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          8464,
+          8481
+        ],
+        "member_id_dump_line": 9146,
+        "member_name_dump_line": 9185,
+        "member_offset_dump_line": 9224
+      },
+      "catalog_id": "provisional.com.Document.Parent"
+    },
+    {
+      "owner": "IDocument",
+      "type_info_index": 7,
+      "name": "FullName",
+      "record_index": 2,
+      "dispatch_member_id": 3,
+      "raw_member_id": "00000003",
+      "name_offset": 1800,
+      "record_offset": 36108,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 36140,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000000",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BSTR"
+            },
+            "descriptor_chain": [
+              0
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          8482,
+          8499
+        ],
+        "member_id_dump_line": 9147,
+        "member_name_dump_line": 9186,
+        "member_offset_dump_line": 9225
+      },
+      "catalog_id": "provisional.com.Document.FullName"
+    },
+    {
+      "owner": "IDocument",
+      "type_info_index": 7,
+      "name": "FullName",
+      "record_index": 3,
+      "dispatch_member_id": 3,
+      "raw_member_id": "00000003",
+      "name_offset": 1800,
+      "record_offset": 36152,
+      "record_bytes": 44,
+      "invocation_kind": "property_put",
+      "invocation_kind_value": 4,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": null,
+          "name_offset": 4294967295,
+          "record_offset": 36184,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "80080008",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BSTR"
+            },
+            "descriptor_chain": []
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          8500,
+          8517
+        ],
+        "member_id_dump_line": 9148,
+        "member_name_dump_line": 9187,
+        "member_offset_dump_line": 9226
+      },
+      "catalog_id": "provisional.com.Document.FullName"
+    },
+    {
+      "owner": "IDocument",
+      "type_info_index": 7,
+      "name": "Name",
+      "record_index": 4,
+      "dispatch_member_id": 4,
+      "raw_member_id": "00000004",
+      "name_offset": 48,
+      "record_offset": 36196,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 36228,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000000",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BSTR"
+            },
+            "descriptor_chain": [
+              0
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          8518,
+          8535
+        ],
+        "member_id_dump_line": 9149,
+        "member_name_dump_line": 9188,
+        "member_offset_dump_line": 9227
+      },
+      "catalog_id": "provisional.com.Document.Name"
+    },
+    {
+      "owner": "IDocument",
+      "type_info_index": 7,
+      "name": "Path",
+      "record_index": 5,
+      "dispatch_member_id": 5,
+      "raw_member_id": "00000005",
+      "name_offset": 1820,
+      "record_offset": 36240,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 36272,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000000",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BSTR"
+            },
+            "descriptor_chain": [
+              0
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          8536,
+          8553
+        ],
+        "member_id_dump_line": 9150,
+        "member_name_dump_line": 9189,
+        "member_offset_dump_line": 9228
+      },
+      "catalog_id": "provisional.com.Document.Path"
+    },
+    {
+      "owner": "IDocument",
+      "type_info_index": 7,
+      "name": "Saved",
+      "record_index": 6,
+      "dispatch_member_id": 6,
+      "raw_member_id": "00000006",
+      "name_offset": 1836,
+      "record_offset": 36284,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 36316,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000010",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BOOL"
+            },
+            "descriptor_chain": [
+              16
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          8554,
+          8571
+        ],
+        "member_id_dump_line": 9151,
+        "member_name_dump_line": 9190,
+        "member_offset_dump_line": 9229
+      },
+      "catalog_id": "provisional.com.Document.Saved"
+    },
+    {
+      "owner": "IDocument",
+      "type_info_index": 7,
+      "name": "Save",
+      "record_index": 7,
+      "dispatch_member_id": 7,
+      "raw_member_id": "00000007",
+      "name_offset": 1856,
+      "record_offset": 36328,
+      "record_bytes": 32,
+      "invocation_kind": "function",
+      "invocation_kind_value": 1,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [],
+      "source_anchor": {
+        "function_dump_lines": [
+          8572,
+          8584
+        ],
+        "member_id_dump_line": 9152,
+        "member_name_dump_line": 9191,
+        "member_offset_dump_line": 9230
+      },
+      "catalog_id": "provisional.com.Document.Save"
+    },
+    {
+      "owner": "IDocument",
+      "type_info_index": 7,
+      "name": "SaveAs",
+      "record_index": 8,
+      "dispatch_member_id": 8,
+      "raw_member_id": "00000008",
+      "name_offset": 1872,
+      "record_offset": 36360,
+      "record_bytes": 44,
+      "invocation_kind": "function",
+      "invocation_kind_value": 1,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "i_strFileName",
+          "name_offset": 1892,
+          "record_offset": 36392,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "80080008",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BSTR"
+            },
+            "descriptor_chain": []
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          8585,
+          8602
+        ],
+        "member_id_dump_line": 9153,
+        "member_name_dump_line": 9192,
+        "member_offset_dump_line": 9231
+      },
+      "catalog_id": "provisional.com.Document.SaveAs"
+    },
+    {
+      "owner": "IDocument",
+      "type_info_index": 7,
+      "name": "OutputSettings_Encoding",
+      "record_index": 9,
+      "dispatch_member_id": 9,
+      "raw_member_id": "00000009",
+      "name_offset": 1920,
+      "record_offset": 36404,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 36436,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000000",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BSTR"
+            },
+            "descriptor_chain": [
+              0
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          8603,
+          8620
+        ],
+        "member_id_dump_line": 9154,
+        "member_name_dump_line": 9193,
+        "member_offset_dump_line": 9232
+      },
+      "catalog_id": "provisional.com.Document.OutputSettings_Encoding"
+    },
+    {
+      "owner": "IDocument",
+      "type_info_index": 7,
+      "name": "OutputSettings_Encoding",
+      "record_index": 10,
+      "dispatch_member_id": 9,
+      "raw_member_id": "00000009",
+      "name_offset": 1920,
+      "record_offset": 36448,
+      "record_bytes": 44,
+      "invocation_kind": "property_put",
+      "invocation_kind_value": 4,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": null,
+          "name_offset": 4294967295,
+          "record_offset": 36480,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "80080008",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BSTR"
+            },
+            "descriptor_chain": []
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          8621,
+          8638
+        ],
+        "member_id_dump_line": 9155,
+        "member_name_dump_line": 9194,
+        "member_offset_dump_line": 9233
+      },
+      "catalog_id": "provisional.com.Document.OutputSettings_Encoding"
+    },
+    {
+      "owner": "IDocument",
+      "type_info_index": 7,
+      "name": "OutputSettings_ApplicationName",
+      "record_index": 11,
+      "dispatch_member_id": 10,
+      "raw_member_id": "0000000a",
+      "name_offset": 1956,
+      "record_offset": 36492,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 36524,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000000",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BSTR"
+            },
+            "descriptor_chain": [
+              0
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          8639,
+          8656
+        ],
+        "member_id_dump_line": 9156,
+        "member_name_dump_line": 9195,
+        "member_offset_dump_line": 9234
+      },
+      "catalog_id": "provisional.com.Document.OutputSettings_ApplicationName"
+    },
+    {
+      "owner": "IDocument",
+      "type_info_index": 7,
+      "name": "OutputSettings_ApplicationName",
+      "record_index": 12,
+      "dispatch_member_id": 10,
+      "raw_member_id": "0000000a",
+      "name_offset": 1956,
+      "record_offset": 36536,
+      "record_bytes": 44,
+      "invocation_kind": "property_put",
+      "invocation_kind_value": 4,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": null,
+          "name_offset": 4294967295,
+          "record_offset": 36568,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "80080008",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BSTR"
+            },
+            "descriptor_chain": []
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          8657,
+          8674
+        ],
+        "member_id_dump_line": 9157,
+        "member_name_dump_line": 9196,
+        "member_offset_dump_line": 9235
+      },
+      "catalog_id": "provisional.com.Document.OutputSettings_ApplicationName"
+    },
+    {
+      "owner": "IDocument",
+      "type_info_index": 7,
+      "name": "JavaSettings_BasePackageName",
+      "record_index": 13,
+      "dispatch_member_id": 11,
+      "raw_member_id": "0000000b",
+      "name_offset": 2000,
+      "record_offset": 36580,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 36612,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000000",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BSTR"
+            },
+            "descriptor_chain": [
+              0
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          8675,
+          8692
+        ],
+        "member_id_dump_line": 9158,
+        "member_name_dump_line": 9197,
+        "member_offset_dump_line": 9236
+      },
+      "catalog_id": "provisional.com.Document.JavaSettings_BasePackageName"
+    },
+    {
+      "owner": "IDocument",
+      "type_info_index": 7,
+      "name": "JavaSettings_BasePackageName",
+      "record_index": 14,
+      "dispatch_member_id": 11,
+      "raw_member_id": "0000000b",
+      "name_offset": 2000,
+      "record_offset": 36624,
+      "record_bytes": 44,
+      "invocation_kind": "property_put",
+      "invocation_kind_value": 4,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": null,
+          "name_offset": 4294967295,
+          "record_offset": 36656,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "80080008",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BSTR"
+            },
+            "descriptor_chain": []
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          8693,
+          8710
+        ],
+        "member_id_dump_line": 9159,
+        "member_name_dump_line": 9198,
+        "member_offset_dump_line": 9237
+      },
+      "catalog_id": "provisional.com.Document.JavaSettings_BasePackageName"
+    },
+    {
+      "owner": "IDocument",
+      "type_info_index": 7,
+      "name": "MapForceView",
+      "record_index": 15,
+      "dispatch_member_id": 12,
+      "raw_member_id": "0000000c",
+      "name_offset": 6360,
+      "record_offset": 36668,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 36700,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "000001c0",
+            "pointer_depth": 2,
+            "leaf": {
+              "kind": "user_defined",
+              "name": "IMapForceView",
+              "type_info_index": 8,
+              "type_kind": "TKIND_DISPATCH"
+            },
+            "descriptor_chain": [
+              448,
+              440,
+              432
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          8711,
+          8728
+        ],
+        "member_id_dump_line": 9160,
+        "member_name_dump_line": 9199,
+        "member_offset_dump_line": 9238
+      },
+      "catalog_id": "provisional.com.Document.MapForceView"
+    },
+    {
+      "owner": "IDocument",
+      "type_info_index": 7,
+      "name": "GenerateXSLT",
+      "record_index": 16,
+      "dispatch_member_id": 13,
+      "raw_member_id": "0000000d",
+      "name_offset": 6384,
+      "record_offset": 36712,
+      "record_bytes": 32,
+      "invocation_kind": "function",
+      "invocation_kind_value": 1,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [],
+      "source_anchor": {
+        "function_dump_lines": [
+          8729,
+          8741
+        ],
+        "member_id_dump_line": 9161,
+        "member_name_dump_line": 9200,
+        "member_offset_dump_line": 9239
+      },
+      "catalog_id": "provisional.com.Document.GenerateXSLT"
+    },
+    {
+      "owner": "IDocument",
+      "type_info_index": 7,
+      "name": "GenerateJavaCode",
+      "record_index": 17,
+      "dispatch_member_id": 14,
+      "raw_member_id": "0000000e",
+      "name_offset": 6408,
+      "record_offset": 36744,
+      "record_bytes": 32,
+      "invocation_kind": "function",
+      "invocation_kind_value": 1,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [],
+      "source_anchor": {
+        "function_dump_lines": [
+          8742,
+          8754
+        ],
+        "member_id_dump_line": 9162,
+        "member_name_dump_line": 9201,
+        "member_offset_dump_line": 9240
+      },
+      "catalog_id": "provisional.com.Document.GenerateJavaCode"
+    },
+    {
+      "owner": "IDocument",
+      "type_info_index": 7,
+      "name": "GenerateCppCode",
+      "record_index": 18,
+      "dispatch_member_id": 15,
+      "raw_member_id": "0000000f",
+      "name_offset": 6436,
+      "record_offset": 36776,
+      "record_bytes": 32,
+      "invocation_kind": "function",
+      "invocation_kind_value": 1,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [],
+      "source_anchor": {
+        "function_dump_lines": [
+          8755,
+          8767
+        ],
+        "member_id_dump_line": 9163,
+        "member_name_dump_line": 9202,
+        "member_offset_dump_line": 9241
+      },
+      "catalog_id": "provisional.com.Document.GenerateCppCode"
+    },
+    {
+      "owner": "IDocument",
+      "type_info_index": 7,
+      "name": "GenerateCHashCode",
+      "record_index": 19,
+      "dispatch_member_id": 16,
+      "raw_member_id": "00000010",
+      "name_offset": 6464,
+      "record_offset": 36808,
+      "record_bytes": 32,
+      "invocation_kind": "function",
+      "invocation_kind_value": 1,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [],
+      "source_anchor": {
+        "function_dump_lines": [
+          8768,
+          8780
+        ],
+        "member_id_dump_line": 9164,
+        "member_name_dump_line": 9203,
+        "member_offset_dump_line": 9242
+      },
+      "catalog_id": "provisional.com.Document.GenerateCHashCode"
+    },
+    {
+      "owner": "IDocument",
+      "type_info_index": 7,
+      "name": "Close",
+      "record_index": 20,
+      "dispatch_member_id": 17,
+      "raw_member_id": "00000011",
+      "name_offset": 6496,
+      "record_offset": 36840,
+      "record_bytes": 32,
+      "invocation_kind": "function",
+      "invocation_kind_value": 1,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [],
+      "source_anchor": {
+        "function_dump_lines": [
+          8781,
+          8793
+        ],
+        "member_id_dump_line": 9165,
+        "member_name_dump_line": 9204,
+        "member_offset_dump_line": 9243
+      },
+      "catalog_id": "provisional.com.Document.Close"
+    },
+    {
+      "owner": "IDocument",
+      "type_info_index": 7,
+      "name": "Activate",
+      "record_index": 21,
+      "dispatch_member_id": 18,
+      "raw_member_id": "00000012",
+      "name_offset": 6516,
+      "record_offset": 36872,
+      "record_bytes": 32,
+      "invocation_kind": "function",
+      "invocation_kind_value": 1,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [],
+      "source_anchor": {
+        "function_dump_lines": [
+          8794,
+          8806
+        ],
+        "member_id_dump_line": 9166,
+        "member_name_dump_line": 9205,
+        "member_offset_dump_line": 9244
+      },
+      "catalog_id": "provisional.com.Document.Activate"
+    },
+    {
+      "owner": "IDocument",
+      "type_info_index": 7,
+      "name": "GenerateXSLT2",
+      "record_index": 22,
+      "dispatch_member_id": 19,
+      "raw_member_id": "00000013",
+      "name_offset": 6536,
+      "record_offset": 36904,
+      "record_bytes": 32,
+      "invocation_kind": "function",
+      "invocation_kind_value": 1,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [],
+      "source_anchor": {
+        "function_dump_lines": [
+          8807,
+          8819
+        ],
+        "member_id_dump_line": 9167,
+        "member_name_dump_line": 9206,
+        "member_offset_dump_line": 9245
+      },
+      "catalog_id": "provisional.com.Document.GenerateXSLT2"
+    },
+    {
+      "owner": "IDocument",
+      "type_info_index": 7,
+      "name": "GenerateXQuery",
+      "record_index": 23,
+      "dispatch_member_id": 20,
+      "raw_member_id": "00000014",
+      "name_offset": 6564,
+      "record_offset": 36936,
+      "record_bytes": 32,
+      "invocation_kind": "function",
+      "invocation_kind_value": 1,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [],
+      "source_anchor": {
+        "function_dump_lines": [
+          8820,
+          8832
+        ],
+        "member_id_dump_line": 9168,
+        "member_name_dump_line": 9207,
+        "member_offset_dump_line": 9246
+      },
+      "catalog_id": "provisional.com.Document.GenerateXQuery"
+    },
+    {
+      "owner": "IDocument",
+      "type_info_index": 7,
+      "name": "GenerateOutput",
+      "record_index": 24,
+      "dispatch_member_id": 21,
+      "raw_member_id": "00000015",
+      "name_offset": 4356,
+      "record_offset": 36968,
+      "record_bytes": 32,
+      "invocation_kind": "function",
+      "invocation_kind_value": 1,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [],
+      "source_anchor": {
+        "function_dump_lines": [
+          8833,
+          8845
+        ],
+        "member_id_dump_line": 9169,
+        "member_name_dump_line": 9208,
+        "member_offset_dump_line": 9247
+      },
+      "catalog_id": "provisional.com.Document.GenerateOutput"
+    },
+    {
+      "owner": "IDocument",
+      "type_info_index": 7,
+      "name": "HighlightSerializedMarker",
+      "record_index": 26,
+      "dispatch_member_id": 23,
+      "raw_member_id": "00000017",
+      "name_offset": 7216,
+      "record_offset": 37056,
+      "record_bytes": 44,
+      "invocation_kind": "function",
+      "invocation_kind_value": 1,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "i_strSerializedMarker",
+          "name_offset": 7256,
+          "record_offset": 37088,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "80080008",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BSTR"
+            },
+            "descriptor_chain": []
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          8869,
+          8886
+        ],
+        "member_id_dump_line": 9171,
+        "member_name_dump_line": 9210,
+        "member_offset_dump_line": 9249
+      },
+      "catalog_id": "provisional.com.Document.HighlightSerializedMarker"
+    },
+    {
+      "owner": "IDocument",
+      "type_info_index": 7,
+      "name": "Mappings",
+      "record_index": 27,
+      "dispatch_member_id": 24,
+      "raw_member_id": "00000018",
+      "name_offset": 7316,
+      "record_offset": 37100,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pp",
+          "name_offset": 5612,
+          "record_offset": 37132,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000220",
+            "pointer_depth": 2,
+            "leaf": {
+              "kind": "user_defined",
+              "name": "IMappings",
+              "type_info_index": 27,
+              "type_kind": "TKIND_DISPATCH"
+            },
+            "descriptor_chain": [
+              544,
+              536,
+              528
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          8887,
+          8904
+        ],
+        "member_id_dump_line": 9172,
+        "member_name_dump_line": 9211,
+        "member_offset_dump_line": 9250
+      },
+      "catalog_id": "provisional.com.Document.Mappings"
+    },
+    {
+      "owner": "IDocument",
+      "type_info_index": 7,
+      "name": "MainMapping",
+      "record_index": 28,
+      "dispatch_member_id": 25,
+      "raw_member_id": "00000019",
+      "name_offset": 7336,
+      "record_offset": 37144,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pp",
+          "name_offset": 5612,
+          "record_offset": 37176,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "000001a8",
+            "pointer_depth": 2,
+            "leaf": {
+              "kind": "user_defined",
+              "name": "IMapping",
+              "type_info_index": 9,
+              "type_kind": "TKIND_DISPATCH"
+            },
+            "descriptor_chain": [
+              424,
+              416,
+              408
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          8905,
+          8922
+        ],
+        "member_id_dump_line": 9173,
+        "member_name_dump_line": 9212,
+        "member_offset_dump_line": 9251
+      },
+      "catalog_id": "provisional.com.Document.MainMapping"
+    },
+    {
+      "owner": "IDocument",
+      "type_info_index": 7,
+      "name": "FindComponentByID",
+      "record_index": 29,
+      "dispatch_member_id": 26,
+      "raw_member_id": "0000001a",
+      "name_offset": 7360,
+      "record_offset": 37188,
+      "record_bytes": 48,
+      "invocation_kind": "function",
+      "invocation_kind_value": 1,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "nID",
+          "name_offset": 7392,
+          "record_offset": 37212,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "80130017",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "primitive",
+              "name": "UINT"
+            },
+            "descriptor_chain": []
+          }
+        },
+        {
+          "index": 1,
+          "name": "pRes",
+          "name_offset": 2532,
+          "record_offset": 37224,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000150",
+            "pointer_depth": 2,
+            "leaf": {
+              "kind": "user_defined",
+              "name": "IComponent",
+              "type_info_index": 11,
+              "type_kind": "TKIND_DISPATCH"
+            },
+            "descriptor_chain": [
+              336,
+              328,
+              320
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          8923,
+          8943
+        ],
+        "member_id_dump_line": 9174,
+        "member_name_dump_line": 9213,
+        "member_offset_dump_line": 9252
+      },
+      "catalog_id": "provisional.com.Document.FindComponentByID"
+    },
+    {
+      "owner": "IDocument",
+      "type_info_index": 7,
+      "name": "CreateUserDefinedFunction",
+      "record_index": 31,
+      "dispatch_member_id": 28,
+      "raw_member_id": "0000001c",
+      "name_offset": 7436,
+      "record_offset": 37280,
+      "record_bytes": 104,
+      "invocation_kind": "function",
+      "invocation_kind_value": 1,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "strFunctionName",
+          "name_offset": 6016,
+          "record_offset": 37312,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "80080008",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BSTR"
+            },
+            "descriptor_chain": []
+          }
+        },
+        {
+          "index": 1,
+          "name": "strLibraryName",
+          "name_offset": 6044,
+          "record_offset": 37324,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "80080008",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BSTR"
+            },
+            "descriptor_chain": []
+          }
+        },
+        {
+          "index": 2,
+          "name": "strSyntax",
+          "name_offset": 7476,
+          "record_offset": 37336,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "80080008",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BSTR"
+            },
+            "descriptor_chain": []
+          }
+        },
+        {
+          "index": 3,
+          "name": "strDetails",
+          "name_offset": 7500,
+          "record_offset": 37348,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "80080008",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BSTR"
+            },
+            "descriptor_chain": []
+          }
+        },
+        {
+          "index": 4,
+          "name": "bInlinedUse",
+          "name_offset": 7524,
+          "record_offset": 37360,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "800b000b",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BOOL"
+            },
+            "descriptor_chain": []
+          }
+        },
+        {
+          "index": 5,
+          "name": "ppIMapping",
+          "name_offset": 6280,
+          "record_offset": 37372,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "000001a8",
+            "pointer_depth": 2,
+            "leaf": {
+              "kind": "user_defined",
+              "name": "IMapping",
+              "type_info_index": 9,
+              "type_kind": "TKIND_DISPATCH"
+            },
+            "descriptor_chain": [
+              424,
+              416,
+              408
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          8962,
+          9004
+        ],
+        "member_id_dump_line": 9176,
+        "member_name_dump_line": 9215,
+        "member_offset_dump_line": 9254
+      },
+      "catalog_id": "provisional.com.Document.CreateUserDefinedFunction"
+    },
+    {
+      "owner": "IDocument",
+      "type_info_index": 7,
+      "name": "Test1",
+      "record_index": 34,
+      "dispatch_member_id": 31,
+      "raw_member_id": "0000001f",
+      "name_offset": 5572,
+      "record_offset": 37496,
+      "record_bytes": 36,
+      "invocation_kind": "function",
+      "invocation_kind_value": 1,
+      "function_flags": 64,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "strTest",
+          "name_offset": 5592,
+          "record_offset": 37520,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "80080008",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BSTR"
+            },
+            "descriptor_chain": []
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          9051,
+          9066
+        ],
+        "member_id_dump_line": 9179,
+        "member_name_dump_line": 9218,
+        "member_offset_dump_line": 9257
+      },
+      "catalog_id": null
+    },
+    {
+      "owner": "IDocument",
+      "type_info_index": 7,
+      "name": "Test2",
+      "record_index": 35,
+      "dispatch_member_id": 32,
+      "raw_member_id": "00000020",
+      "name_offset": 8312,
+      "record_offset": 37532,
+      "record_bytes": 48,
+      "invocation_kind": "function",
+      "invocation_kind_value": 1,
+      "function_flags": 64,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "strTest",
+          "name_offset": 5592,
+          "record_offset": 37556,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "80080008",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BSTR"
+            },
+            "descriptor_chain": []
+          }
+        },
+        {
+          "index": 1,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 37568,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "000000c0",
+            "pointer_depth": 2,
+            "leaf": {
+              "kind": "user_defined",
+              "name": "IAppOutputLines",
+              "type_info_index": 14,
+              "type_kind": "TKIND_DISPATCH"
+            },
+            "descriptor_chain": [
+              192,
+              184,
+              176
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          9067,
+          9087
+        ],
+        "member_id_dump_line": 9180,
+        "member_name_dump_line": 9219,
+        "member_offset_dump_line": 9258
+      },
+      "catalog_id": null
+    },
+    {
+      "owner": "IDocument",
+      "type_info_index": 7,
+      "name": "Test3",
+      "record_index": 36,
+      "dispatch_member_id": 33,
+      "raw_member_id": "00000021",
+      "name_offset": 8332,
+      "record_offset": 37580,
+      "record_bytes": 60,
+      "invocation_kind": "function",
+      "invocation_kind_value": 1,
+      "function_flags": 64,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "strTest",
+          "name_offset": 5592,
+          "record_offset": 37604,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "80080008",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BSTR"
+            },
+            "descriptor_chain": []
+          }
+        },
+        {
+          "index": 1,
+          "name": "strBaseDirectory",
+          "name_offset": 8056,
+          "record_offset": 37616,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "80080008",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BSTR"
+            },
+            "descriptor_chain": []
+          }
+        },
+        {
+          "index": 2,
+          "name": "pResult",
+          "name_offset": 8084,
+          "record_offset": 37628,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000248",
+            "pointer_depth": 2,
+            "leaf": {
+              "kind": "user_defined",
+              "name": "IOutputGenerationResult",
+              "type_info_index": 28,
+              "type_kind": "TKIND_DISPATCH"
+            },
+            "descriptor_chain": [
+              584,
+              576,
+              568
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          9088,
+          9113
+        ],
+        "member_id_dump_line": 9181,
+        "member_name_dump_line": 9220,
+        "member_offset_dump_line": 9259
+      },
+      "catalog_id": null
+    },
+    {
+      "owner": "IDocument",
+      "type_info_index": 7,
+      "name": "LibraryImports",
+      "record_index": 37,
+      "dispatch_member_id": 34,
+      "raw_member_id": "00000022",
+      "name_offset": 8512,
+      "record_offset": 37640,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 37672,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "000002a0",
+            "pointer_depth": 2,
+            "leaf": {
+              "kind": "user_defined",
+              "name": "ILibraryImports",
+              "type_info_index": 32,
+              "type_kind": "TKIND_DISPATCH"
+            },
+            "descriptor_chain": [
+              672,
+              664,
+              656
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          9114,
+          9131
+        ],
+        "member_id_dump_line": 9182,
+        "member_name_dump_line": 9221,
+        "member_offset_dump_line": 9260
+      },
+      "catalog_id": "provisional.com.Document.LibraryImports"
+    },
+    {
+      "owner": "IDocument",
+      "type_info_index": 7,
+      "name": "GenerateXSLT3",
+      "record_index": 38,
+      "dispatch_member_id": 35,
+      "raw_member_id": "00000023",
+      "name_offset": 8540,
+      "record_offset": 37684,
+      "record_bytes": 32,
+      "invocation_kind": "function",
+      "invocation_kind_value": 1,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [],
+      "source_anchor": {
+        "function_dump_lines": [
+          9132,
+          9144
+        ],
+        "member_id_dump_line": 9183,
+        "member_name_dump_line": 9222,
+        "member_offset_dump_line": 9261
+      },
+      "catalog_id": "provisional.com.Document.GenerateXSLT3"
+    },
+    {
+      "owner": "IDocuments",
+      "type_info_index": 37,
+      "name": "Count",
+      "record_index": 0,
+      "dispatch_member_id": 1610743808,
+      "raw_member_id": "60020000",
+      "name_offset": 2572,
+      "record_offset": 51656,
+      "record_bytes": 36,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pnCount",
+          "name_offset": 2592,
+          "record_offset": 51680,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000080",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "primitive",
+              "name": "I4"
+            },
+            "descriptor_chain": [
+              128
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          14383,
+          14398
+        ],
+        "member_id_dump_line": 14531,
+        "member_name_dump_line": 14539,
+        "member_offset_dump_line": 14547
+      },
+      "catalog_id": "provisional.com.Documents.Count"
+    },
+    {
+      "owner": "IDocuments",
+      "type_info_index": 37,
+      "name": "Item",
+      "record_index": 1,
+      "dispatch_member_id": 0,
+      "raw_member_id": "00000000",
+      "name_offset": 4284,
+      "record_offset": 51692,
+      "record_bytes": 48,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "n",
+          "name_offset": 4300,
+          "record_offset": 51716,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "80030003",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "primitive",
+              "name": "I4"
+            },
+            "descriptor_chain": []
+          }
+        },
+        {
+          "index": 1,
+          "name": "o_ipDocument",
+          "name_offset": 8596,
+          "record_offset": 51728,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "000002b8",
+            "pointer_depth": 2,
+            "leaf": {
+              "kind": "user_defined",
+              "name": "IDocument",
+              "type_info_index": 7,
+              "type_kind": "TKIND_DISPATCH"
+            },
+            "descriptor_chain": [
+              696,
+              688,
+              680
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          14399,
+          14419
+        ],
+        "member_id_dump_line": 14532,
+        "member_name_dump_line": 14540,
+        "member_offset_dump_line": 14548
+      },
+      "catalog_id": "provisional.com.Documents.Item"
+    },
+    {
+      "owner": "IDocuments",
+      "type_info_index": 37,
+      "name": "_NewEnum",
+      "record_index": 2,
+      "dispatch_member_id": -4,
+      "raw_member_id": "fffffffc",
+      "name_offset": 4316,
+      "record_offset": 51740,
+      "record_bytes": 36,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "ppEnum",
+          "name_offset": 4336,
+          "record_offset": 51764,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "000000f8",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "primitive",
+              "name": "UNKNOWN"
+            },
+            "descriptor_chain": [
+              248
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          14420,
+          14435
+        ],
+        "member_id_dump_line": 14533,
+        "member_name_dump_line": 14541,
+        "member_offset_dump_line": 14549
+      },
+      "catalog_id": null
+    },
+    {
+      "owner": "IDocuments",
+      "type_info_index": 37,
+      "name": "Application",
+      "record_index": 3,
+      "dispatch_member_id": 1,
+      "raw_member_id": "00000001",
+      "name_offset": 80,
+      "record_offset": 51776,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 51808,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000008",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "primitive",
+              "name": "DISPATCH"
+            },
+            "descriptor_chain": [
+              8
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          14436,
+          14453
+        ],
+        "member_id_dump_line": 14534,
+        "member_name_dump_line": 14542,
+        "member_offset_dump_line": 14550
+      },
+      "catalog_id": "provisional.com.Documents.Application"
+    },
+    {
+      "owner": "IDocuments",
+      "type_info_index": 37,
+      "name": "Parent",
+      "record_index": 4,
+      "dispatch_member_id": 2,
+      "raw_member_id": "00000002",
+      "name_offset": 104,
+      "record_offset": 51820,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 51852,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000008",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "primitive",
+              "name": "DISPATCH"
+            },
+            "descriptor_chain": [
+              8
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          14454,
+          14471
+        ],
+        "member_id_dump_line": 14535,
+        "member_name_dump_line": 14543,
+        "member_offset_dump_line": 14551
+      },
+      "catalog_id": "provisional.com.Documents.Parent"
+    },
+    {
+      "owner": "IDocuments",
+      "type_info_index": 37,
+      "name": "OpenDocument",
+      "record_index": 5,
+      "dispatch_member_id": 3,
+      "raw_member_id": "00000003",
+      "name_offset": 8636,
+      "record_offset": 51864,
+      "record_bytes": 56,
+      "invocation_kind": "function",
+      "invocation_kind_value": 1,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "strPath",
+          "name_offset": 10264,
+          "record_offset": 51896,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "80080008",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BSTR"
+            },
+            "descriptor_chain": []
+          }
+        },
+        {
+          "index": 1,
+          "name": "o_ipDocument",
+          "name_offset": 8596,
+          "record_offset": 51908,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "000002b8",
+            "pointer_depth": 2,
+            "leaf": {
+              "kind": "user_defined",
+              "name": "IDocument",
+              "type_info_index": 7,
+              "type_kind": "TKIND_DISPATCH"
+            },
+            "descriptor_chain": [
+              696,
+              688,
+              680
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          14472,
+          14494
+        ],
+        "member_id_dump_line": 14536,
+        "member_name_dump_line": 14544,
+        "member_offset_dump_line": 14552
+      },
+      "catalog_id": "provisional.com.Documents.OpenDocument"
+    },
+    {
+      "owner": "IDocuments",
+      "type_info_index": 37,
+      "name": "NewDocument",
+      "record_index": 6,
+      "dispatch_member_id": 4,
+      "raw_member_id": "00000004",
+      "name_offset": 8660,
+      "record_offset": 51920,
+      "record_bytes": 44,
+      "invocation_kind": "function",
+      "invocation_kind_value": 1,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "o_ipDocument",
+          "name_offset": 8596,
+          "record_offset": 51952,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "000002b8",
+            "pointer_depth": 2,
+            "leaf": {
+              "kind": "user_defined",
+              "name": "IDocument",
+              "type_info_index": 7,
+              "type_kind": "TKIND_DISPATCH"
+            },
+            "descriptor_chain": [
+              696,
+              688,
+              680
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          14495,
+          14512
+        ],
+        "member_id_dump_line": 14537,
+        "member_name_dump_line": 14545,
+        "member_offset_dump_line": 14553
+      },
+      "catalog_id": "provisional.com.Documents.NewDocument"
+    },
+    {
+      "owner": "IDocuments",
+      "type_info_index": 37,
+      "name": "ActiveDocument",
+      "record_index": 7,
+      "dispatch_member_id": 5,
+      "raw_member_id": "00000005",
+      "name_offset": 8568,
+      "record_offset": 51964,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "o_ipDocument",
+          "name_offset": 8596,
+          "record_offset": 51996,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "000002b8",
+            "pointer_depth": 2,
+            "leaf": {
+              "kind": "user_defined",
+              "name": "IDocument",
+              "type_info_index": 7,
+              "type_kind": "TKIND_DISPATCH"
+            },
+            "descriptor_chain": [
+              696,
+              688,
+              680
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          14513,
+          14530
+        ],
+        "member_id_dump_line": 14538,
+        "member_name_dump_line": 14546,
+        "member_offset_dump_line": 14554
+      },
+      "catalog_id": "provisional.com.Documents.ActiveDocument"
+    }
+  ]
+}

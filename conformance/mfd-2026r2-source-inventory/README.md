@@ -15,6 +15,8 @@ They do not change the canonical capability ledger or establish execution suppor
 | `com-generation-signatures.json` | Four release-bound `IDocument` generation methods and seven ordered parameters, with raw descriptor targets and a separate release-unbound online comparison |
 | `com-result-getters.json` | Fourteen release-bound property getters on the two generation-result interfaces, with independent raw targets and release-unbound online property declarations |
 | `com-collection-getters.json` | Ten release-bound property getters on `IAppOutputLines` and `IErrorMarkers`, twelve ordered parameters and eight release-unbound online properties |
+| `com-core-declarations.json` | 114 release-bound callable records and 119 ordered parameters on `IApplication`, `IOptions`, `IDocument` and `IDocuments`, using shared typed source validation |
+| `com-callable-coverage.json` | Finite, disjoint membership of all 325 callable records; declaration adoption remains separate from runtime support |
 | `supporting.json` | Public I/O classes, wrapper-library exceptions and the named installation-artifact requests |
 | `schema-wrappers.json` | Four optional schema-wrapper source profiles, actual schema identities and build/dependency metadata; no compiled or runtime qualification |
 | `external-references.json` | Linked historical DOM algorithm and redirected .NET interface contract, kept separate from vendor claims |
@@ -91,6 +93,68 @@ read-only labels come from pinned interface summaries. The two type-library-only
 does not establish an enumeration protocol, traversal order, ownership, lifetime,
 null/error behavior, runtime defaults, ABI or backend support. Frozen independent
 declarations and coherent mutation controls require no vendor files or execution.
+
+The core declaration cohort retains 58 getters, 26 setters and 30 functions.
+The four previously adopted `IDocument` generation methods are referenced by the
+coverage registry, not duplicated. Raw names, spelling and order are literal,
+including `GenerateCHashCode`, the unnamed setter parameters and the three
+`Test` methods with function flags `0x40`. Eight records have explicitly null
+online links: `IApplication.OpenMapping`/`NewMapping`, both
+`IOptions.CompatibilityMode` accessors, `IDocument.Test1`/`Test2`/`Test3` and
+`IDocuments._NewEnum`. An unmatched name is not an alias or a public-use promise.
+
+`catalog_id` joins the pinned `com-api.json` member without copying its page
+contract. Its displayed signature, return/property notation, parameters, access,
+constraints and errors, together with catalog global constraints and source
+uncertainties, remain separate release-unbound documentation claims. Generic raw
+`DISPATCH` is not replaced by a concrete online class; HRESULT/out-retval is not
+the same declaration level as an online result. In particular, the online return
+of `Application.Quit` is unstated, not inferred as Void. Zero optional-argument
+counts and absent parameter optional/default bits are observed declaration bits;
+the catalog's null defaults are documentation silence, not runtime defaults.
+
+The shared schema and validator live under
+`crates/mfd-conformance/tests/source_inventory/com_declarations/`. They reject
+unknown fields and require explicit nulls, exact finite set/order and identities,
+owner/table arithmetic, contiguous extents, parameter-tail offsets, signed IDs,
+invocation/flag values and bounded acyclic descriptor chains with typed enum or
+interface targets. Existing fragments keep their own schemas and independent
+checks. The registry verifies their actual record membership and anchors.
+
+The compact JSONL oracles in the neighboring `oracles/` directory are independent
+of the candidate JSON and binary reader: core owner/type/descriptor/record tuples
+and available coverage identities were transcribed from the retained dump
+(`672097183d6a6b0d80f3aa5f92d02172bb3a588609cb743bb82b73c342192bb4`).
+The candidate was read separately from the official-release 54,108-byte TLB
+(`785c484fbaa882cae724a3568b04650300eb18941084ac23eb2d041dfb4a2789`).
+Neither path uses the scout's candidate JSON as an oracle. JSONL rows are ordered
+`T` type identities, `D` descriptor words, `O` owner tables and `R` callable
+tuples; coverage `T` rows instead retain callable/variable counts. The Rust
+projection defines each tuple's field order. Parameter tuples retain index,
+nullable name, name/record offsets, flags, encoding, pointer depth, leaf target
+and descriptor chain. Record tuples retain their source anchors and nullable
+catalog identity. These are declaration facts, not copied vendor implementation.
+
+The coverage denominator is 317 ordinary records plus eight event-source records.
+The disjoint adopted cohorts are generation (4), results (14), collections (10)
+and core (114); remaining cohorts are graph (79), projects (68), diagnostics (28)
+and events (8). Remaining records have membership metadata, not adopted complete
+signatures. `IComponent.GenerateOutput` stays in graph: its existing `pbError`
+observation does not complete the function. Five late event records have no dump
+function body; their coverage identities/extents are independently retained from
+bounded raw readback and their dump anchors remain null, never invented. The 75
+type-info declarations also include 20 enum tables/130 variable records and 29
+zero-function/zero-variable types (23 coclasses, five empty event sources and
+`_IDummy`). These are separate metadata, not additional capabilities or proof of
+coclass/default-interface/activation coverage.
+
+Scalar, unknown-field and coherent mutation controls run with repository files
+only; they do not require vendor artifacts, network access or activation. Every
+record inherits its fragment's source-only assessment: unassessed, unknown
+applicability, empty execution evidence and incomplete inventory. HTTPS acquisition
+and byte identity do not verify Authenticode trust. No calling convention, ABI,
+marshaling, ownership, lifetime, coercion, defaults, runtime errors, activation or
+backend support is qualified by declaration adoption.
 
 The public supporting declarations are inventoried. `schema-wrappers.json`
 records bounded source bundles for C#, Java and both C++ DOM options, including
