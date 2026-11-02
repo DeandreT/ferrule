@@ -233,6 +233,19 @@ logical output-path override to the selected named target. SQLite and
 update-existing XLSX, flat or hierarchical, stay on the filesystem runner
 because their behavior depends on persistent prior state.
 
+Payload output paths are logical identities, not publication instructions.
+Stored static paths resolve relative to the project directory; an explicit
+output override is used as supplied, for the primary target in an all-target
+run or for the selected target. Returned artifacts retain those path spellings.
+Collision checks alone normalize host-native path components lexically: `.` is
+ignored, `name/..` cancels, unmatched relative `..` remains, and parents cannot
+climb above a root. Thus `../result.json` and `result.json` are distinct, while
+`../x/../result.json` and `../result.json` collide. Duplicate identities and
+file/directory overlaps reject the complete artifact set. These checks neither
+canonicalize filesystem paths nor make identities absolute against the current
+directory. Static parent paths remain valid; dynamically produced document names
+still reject `.` and `..` segments.
+
 `PayloadRunOptions::with_bounded_tabular()` explicitly opts into bounded native
 CSV (including tab-delimited CSV) and fixed-width admission: 8 MiB per input,
 1 MiB per cell, 100,000 records, 256 columns and 1,000,000 instance nodes.
