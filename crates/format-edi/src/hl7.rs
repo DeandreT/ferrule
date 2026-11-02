@@ -190,6 +190,15 @@ pub fn from_str(
     schema: &SchemaNode,
     lenient: bool,
 ) -> Result<Instance, EdiFormatError> {
+    from_str_with_constraints(text, schema, lenient, &[])
+}
+
+pub(crate) fn from_str_with_constraints(
+    text: &str,
+    schema: &SchemaNode,
+    lenient: bool,
+    constraints: &[mapping::EdiValueConstraint],
+) -> Result<Instance, EdiFormatError> {
     crate::refuse_json_tuple(schema)?;
     let (segments, separators) = tokenize_with_separators(text)?;
     read_segments_with_subcomponent_escape(
@@ -199,6 +208,7 @@ pub fn from_str(
         separators.subcomponent,
         separators.escape,
         lenient,
+        constraints,
     )
 }
 

@@ -171,6 +171,18 @@ impl<'a> PreparedStreamRun<'a> {
             request.observers,
         )?;
         let named_sources = static_extra_source_paths(project_path, project, request.target)?;
+        // Unsupported retained source metadata is known before stream
+        // acquisition; do not consume stdin only to refuse during decoding.
+        crate::format_selection::reject_unsupported_edi_source_constraints(
+            &project.source_options,
+        )?;
+        for source in &project.extra_sources {
+            if named_sources.iter().any(|(name, _)| *name == source.name) {
+                crate::format_selection::reject_unsupported_edi_source_constraints(
+                    &source.options,
+                )?;
+            }
+        }
 
         let mut plan = RoutePlan::new(HostRoute::StandardStreams, project_path);
         if input_from_stdin {
