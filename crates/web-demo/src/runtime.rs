@@ -5,6 +5,10 @@ use std::fmt;
 use ir::Instance;
 use mapping::Project;
 
+mod admission;
+pub use admission::UnsupportedContractFamily;
+use admission::admit_boundary;
+
 /// Instance document formats supported by the browser runtime.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DataFormat {
@@ -47,6 +51,10 @@ pub enum RuntimeError {
     FixedWidthNotExecutable {
         side: DataSide,
     },
+    UnsupportedBoundaryContract {
+        side: DataSide,
+        family: UnsupportedContractFamily,
+    },
     XbrlFormatRequired {
         side: DataSide,
     },
@@ -86,6 +94,10 @@ impl fmt::Display for RuntimeError {
             Self::FixedWidthNotExecutable { side } => write!(
                 formatter,
                 "the project {side} has a fixed-width layout, which the browser demo cannot execute; run this project with native Ferrule instead"
+            ),
+            Self::UnsupportedBoundaryContract { side, family } => write!(
+                formatter,
+                "the project {side} declares an unsupported browser contract ({family}); run this project with native Ferrule instead"
             ),
             Self::InvalidProject(issues) => {
                 write!(
@@ -145,19 +157,7 @@ pub fn parse_source(
     text: &str,
     format: DataFormat,
 ) -> Result<Instance, RuntimeError> {
-    if let Some(dependency) = project.source_options.json5_interchange_blocker() {
-        return Err(RuntimeError::Json5InterchangeDependency {
-            side: DataSide::Source,
-            dependency: dependency.clone(),
-        });
-    }
-    if let Some(dependency) = project.source_options.csv_text_repair_dependency {
-        return Err(RuntimeError::CsvRepairDependency {
-            side: DataSide::Source,
-            dependency,
-        });
-    }
-    reject_fixed_width(&project.source_options, DataSide::Source)?;
+    admit_boundary(&project.source_options, DataSide::Source)?;
     if (project.source_options.csv_preserve_empty_strings || project.source_options.csv_utf8_bom)
         && format != DataFormat::Csv
     {
@@ -233,19 +233,7 @@ pub fn serialize_target(
     target: &Instance,
     format: DataFormat,
 ) -> Result<String, RuntimeError> {
-    if let Some(dependency) = project.target_options.json5_interchange_blocker() {
-        return Err(RuntimeError::Json5InterchangeDependency {
-            side: DataSide::Target,
-            dependency: dependency.clone(),
-        });
-    }
-    if let Some(dependency) = project.target_options.csv_text_repair_dependency {
-        return Err(RuntimeError::CsvRepairDependency {
-            side: DataSide::Target,
-            dependency,
-        });
-    }
-    reject_fixed_width(&project.target_options, DataSide::Target)?;
+    admit_boundary(&project.target_options, DataSide::Target)?;
     if (project.target_options.csv_preserve_empty_strings || project.target_options.csv_utf8_bom)
         && format != DataFormat::Csv
     {
@@ -347,8 +335,8 @@ pub fn run(
     reject_xbrl_extra_sources(project)?;
     // Admit both boundaries before parsing or executing: even a valid source
     // must not hide an unsupported target behind a parse or mapping failure.
-    reject_fixed_width(&project.source_options, DataSide::Source)?;
-    reject_fixed_width(&project.target_options, DataSide::Target)?;
+    admit_boundary(&project.source_options, DataSide::Source)?;
+    admit_boundary(&project.target_options, DataSide::Target)?;
     validate_xbrl_format(
         project.source_options.xbrl.is_some(),
         source_format,
@@ -371,16 +359,6 @@ pub fn run(
     let target =
         engine::run(project, &source).map_err(|error| RuntimeError::Execute(error.to_string()))?;
     serialize_target(project, &target, target_format)
-}
-
-fn reject_fixed_width(
-    options: &mapping::FormatOptions,
-    side: DataSide,
-) -> Result<(), RuntimeError> {
-    if options.fixed_width.is_some() {
-        return Err(RuntimeError::FixedWidthNotExecutable { side });
-    }
-    Ok(())
 }
 
 fn xml_read_options(

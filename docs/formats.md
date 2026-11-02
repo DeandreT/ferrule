@@ -803,6 +803,35 @@ both are fixed-width). Direct source parsing and target serialization apply the
 same refusal to their respective side. Ordinary browser CSV and native
 fixed-width execution are unchanged.
 
+### Browser execution limits
+
+The browser's XML, JSON, CSV and XBRL selectors choose the syntax of
+host-supplied text; they do not replace an embedded executable contract. The
+browser refuses primary source or target FlexText, PDF extraction, Protocol
+Buffers, IDoc, SWIFT MT, XLSX worksheet layouts/settings, and EDI runtime
+policies. Declared SQLite reads, local XML file sets and unresolved EDI
+configuration also require native execution. This includes policies saved
+without a family discriminator: choosing JSON or CSV cannot silently discard
+their behavior. Open/save retains the metadata; admission does not strip or
+convert it.
+
+The public browser run admits both primary boundaries before input parsing,
+graph validation or evaluation, source before target. Direct source parsing and
+target serialization apply the same check to their own side for every selector.
+Within a side, existing JSON5 interchange and CSV repair dependency diagnostics
+take precedence, followed by fixed-width, FlexText, PDF, Protocol Buffers, IDoc,
+SWIFT MT, XLSX, EDI policies, SQLite reads, XML file sets and unresolved EDI
+configuration. The existing XBRL extra-source preflight remains first.
+
+Identity-only XML/JSON flags, tabular/EDI family tags and saved filename suffixes
+remain overridable by manual selection. Original JSON Schema references,
+interchange input names and certified IDoc text settings are provenance, not
+new runtime behavior; IDoc certification still requires its matching schema
+and executable layout under normal project validation. HTTP GET and captured
+external-source metadata do not trigger network acquisition when the host
+supplies text. Supported XML read/output policies and WSDL input, JSON/JSON5/
+JSON Lines, CSV dialects and XBRL retain their existing validation rules.
+
 ### Creating FlexText mappings
 
 In the native editor's new mapping form, choose a `.mft` layout for either
