@@ -21,6 +21,7 @@ public sealed partial class ScopeContext
     private readonly FerruleExecutionContext? _executionContext;
     private readonly IFerruleDynamicSourceLoader? _dynamicSourceLoader;
     private readonly FerruleInvocationCounters? _invocationCounters;
+    private readonly FerruleFunctions.JsonArrayProjectionState _jsonProjections;
 
     private ScopeContext(
         FerruleInstance primarySource,
@@ -31,9 +32,11 @@ public sealed partial class ScopeContext
         FerruleFilterMapRunState? filterMapRunState = null,
         FerruleFilterMapBoundary? filterMapBoundary = null,
         int filterMapCallDepth = 0,
-        FerruleInvocationCounters? invocationCounters = null)
+        FerruleInvocationCounters? invocationCounters = null,
+        FerruleFunctions.JsonArrayProjectionState? jsonProjections = null)
     {
         _primarySource = primarySource;
+        _jsonProjections = jsonProjections ?? new FerruleFunctions.JsonArrayProjectionState();
         _frames = frames;
         _collections = collections;
         _executionContext = executionContext;
@@ -51,6 +54,11 @@ public sealed partial class ScopeContext
             throw new FerruleRuntimeException(FerruleRuntimeError.MissingInvocationCounters,
                 "invocation counters require explicit host limits", node: node);
     }
+
+    /// <summary>Shares validated array documents within this main-graph invocation only.</summary>
+    public FerruleValue CallJsonArrayProjection(uint source, string function,
+        IReadOnlyList<FerruleValue> arguments) =>
+        FerruleFunctions.CallJsonArrayProjection(_jsonProjections, source, function, arguments);
 
     public FerruleValue NextInvocationCounter(uint node, string key, long start, long step, string? restart)
     {
@@ -72,7 +80,7 @@ public sealed partial class ScopeContext
     {
         ArgumentNullException.ThrowIfNull(loader);
         return new ScopeContext(_primarySource, _frames, _collections, _executionContext, loader,
-            _filterMapRunState, _filterMapBoundary, _filterMapCallDepth, _invocationCounters);
+            _filterMapRunState, _filterMapBoundary, _filterMapCallDepth, _invocationCounters, _jsonProjections);
     }
 
     public static ScopeContext FromSource(
@@ -694,7 +702,7 @@ public sealed partial class ScopeContext
             _frames,
             new ReadOnlyCollection<CollectionIdentity>(collections),
             _executionContext,
-            _dynamicSourceLoader, _filterMapRunState, _filterMapBoundary, _filterMapCallDepth, _invocationCounters);
+            _dynamicSourceLoader, _filterMapRunState, _filterMapBoundary, _filterMapCallDepth, _invocationCounters, _jsonProjections);
     }
 
     /// <summary>Copies exactly the innermost flat row block, without outward fallback.</summary>
@@ -806,7 +814,7 @@ public sealed partial class ScopeContext
             new ReadOnlyCollection<FerruleInstance>(frames),
             new ReadOnlyCollection<CollectionIdentity>(collections),
             _executionContext,
-            _dynamicSourceLoader, _filterMapRunState, _filterMapBoundary, _filterMapCallDepth, _invocationCounters);
+            _dynamicSourceLoader, _filterMapRunState, _filterMapBoundary, _filterMapCallDepth, _invocationCounters, _jsonProjections);
     }
 
     private FerruleInstance? FindAggregateBase(IReadOnlyList<string> path)
@@ -1017,7 +1025,7 @@ public sealed partial class ScopeContext
             new ReadOnlyCollection<FerruleInstance>(allFrames),
             new ReadOnlyCollection<CollectionIdentity>(allCollections),
             _executionContext,
-            _dynamicSourceLoader, _filterMapRunState, _filterMapBoundary, _filterMapCallDepth, _invocationCounters);
+            _dynamicSourceLoader, _filterMapRunState, _filterMapBoundary, _filterMapCallDepth, _invocationCounters, _jsonProjections);
         output.Add(candidate);
         observed?.Candidate(candidate, frames.Count, collections.Count);
     }
@@ -2432,7 +2440,7 @@ public sealed partial class ScopeContext
         if (slot.HasValue) collections[slot.Value] = collections[slot.Value] with { Index = index };
         return new ScopeContext(_primarySource, new ReadOnlyCollection<FerruleInstance>(frames),
             new ReadOnlyCollection<CollectionIdentity>(collections), _executionContext,
-            _dynamicSourceLoader, _filterMapRunState, _filterMapBoundary, _filterMapCallDepth, _invocationCounters);
+            _dynamicSourceLoader, _filterMapRunState, _filterMapBoundary, _filterMapCallDepth, _invocationCounters, _jsonProjections);
     }
     internal ScopeContext ProjectBasicOwned(FerruleOwnedScopeContext observed, int inheritedOwnedFrames,
         FerruleInstance terminal, IReadOnlyList<string> canonical, bool identity, BasicSourceBudget budget)
@@ -2476,7 +2484,7 @@ public sealed partial class ScopeContext
         if (plain) frames[^1] = terminal;
         return new ScopeContext(_primarySource, new ReadOnlyCollection<FerruleInstance>(frames),
             new ReadOnlyCollection<CollectionIdentity>(collections), _executionContext,
-            _dynamicSourceLoader, _filterMapRunState, _filterMapBoundary, _filterMapCallDepth, _invocationCounters);
+            _dynamicSourceLoader, _filterMapRunState, _filterMapBoundary, _filterMapCallDepth, _invocationCounters, _jsonProjections);
     }
 }
 
