@@ -11,21 +11,28 @@ foreach (var test in cases.RootElement.EnumerateArray())
     try
     {
         output = GeneratedMapping.ExecutePrimaryEdiDocumentBytes(new FerruleExecutionContext("authored.mapping"), host, 1);
-        if (test.TryGetProperty("issues", out _)) throw new Exception($"Wrong success: {test}");
+        if (test.TryGetProperty("issues", out _) || test.TryGetProperty("value_error", out _)) throw new Exception($"Wrong success: {test}");
         if (!output.SequenceEqual(Encoding.UTF8.GetBytes(test.GetProperty("output").GetString()!))) throw new Exception($"Whole output differs: {test}; actual {Encoding.UTF8.GetString(output)}");
     }
     catch (FerrulePrimaryDocumentException error) when (error.Error == FerruleDocumentAcquisitionError.Input)
     {
-        if (output is not null || !test.TryGetProperty("issues", out var expected) || error.Path != "input.edi") throw;
-        if (error.InnerException is not FerruleEdiException { Code: FerruleEdiError.Constraint, ValidationReport: { } report } edi) throw;
-        if (report.Truncated || report.Issues.Count != expected.GetArrayLength()) throw new Exception($"Issue count differs: {test}", error);
-        for (int at = 0; at < report.Issues.Count; at++)
+        if (output is not null || error.Path != "input.edi") throw;
+        if (test.TryGetProperty("value_error", out _))
         {
-            var issue = report.Issues[at];
-            var actual = JsonSerializer.SerializeToElement(new object?[] { issue.Location, issue.Violation.ToString(), issue.Field, issue.Minimum, issue.Maximum, issue.Actual, issue.AllowedCount });
-            if (!JsonElement.DeepEquals(actual, expected[at])) throw new Exception($"Typed source issue differs: {test}; actual {actual}", error);
+            if (error.InnerException is not FerruleEdiException { Code: FerruleEdiError.Value, ValidationReport: null, Field: null }) throw;
         }
-        if (edi.Field != report.Issues[0].Field || edi.Location != report.Issues[0].Location) throw new Exception("First issue projection");
+        else
+        {
+            if (!test.TryGetProperty("issues", out var expected) || error.InnerException is not FerruleEdiException { Code: FerruleEdiError.Constraint, ValidationReport: { } report } edi) throw;
+            if (report.Truncated || report.Issues.Count != expected.GetArrayLength()) throw new Exception($"Issue count differs: {test}", error);
+            for (int at = 0; at < report.Issues.Count; at++)
+            {
+                var issue = report.Issues[at];
+                var actual = JsonSerializer.SerializeToElement(new object?[] { issue.Location, issue.Violation.ToString(), issue.Field, issue.Minimum, issue.Maximum, issue.Actual, issue.AllowedCount });
+                if (!JsonElement.DeepEquals(actual, expected[at])) throw new Exception($"Typed source issue differs: {test}; actual {actual}", error);
+            }
+            if (edi.Field != report.Issues[0].Field || edi.Location != report.Issues[0].Location) throw new Exception("First issue projection");
+        }
     }
     if (!host.Calls.SequenceEqual(new[] { "select:input.edi", "load:input.edi" })) throw new Exception("Acquisition changed");
 }
