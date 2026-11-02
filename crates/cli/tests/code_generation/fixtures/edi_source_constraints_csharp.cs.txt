@@ -1,0 +1,39 @@
+using System.Text;
+using System.Text.Json;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+using var cases = JsonDocument.Parse(File.ReadAllText("cases.json"));
+foreach (var test in cases.RootElement.EnumerateArray())
+{
+    var host = new Source(Encoding.UTF8.GetBytes(test.GetProperty("wire").GetString()!));
+    byte[]? output = null;
+    try
+    {
+        output = GeneratedMapping.ExecutePrimaryEdiDocumentBytes(new FerruleExecutionContext("authored.mapping"), host, 1);
+        if (test.TryGetProperty("issues", out _)) throw new Exception($"Wrong success: {test}");
+        if (!output.SequenceEqual(Encoding.UTF8.GetBytes(test.GetProperty("output").GetString()!))) throw new Exception($"Whole output differs: {test}; actual {Encoding.UTF8.GetString(output)}");
+    }
+    catch (FerrulePrimaryDocumentException error) when (error.Error == FerruleDocumentAcquisitionError.Input)
+    {
+        if (output is not null || !test.TryGetProperty("issues", out var expected) || error.Path != "input.edi") throw;
+        if (error.InnerException is not FerruleEdiException { Code: FerruleEdiError.Constraint, ValidationReport: { } report } edi) throw;
+        if (report.Truncated || report.Issues.Count != expected.GetArrayLength()) throw new Exception($"Issue count differs: {test}", error);
+        for (int at = 0; at < report.Issues.Count; at++)
+        {
+            var issue = report.Issues[at];
+            var actual = JsonSerializer.SerializeToElement(new object?[] { issue.Location, issue.Violation.ToString(), issue.Field, issue.Minimum, issue.Maximum, issue.Actual, issue.AllowedCount });
+            if (!JsonElement.DeepEquals(actual, expected[at])) throw new Exception($"Typed source issue differs: {test}; actual {actual}", error);
+        }
+        if (edi.Field != report.Issues[0].Field || edi.Location != report.Issues[0].Location) throw new Exception("First issue projection");
+    }
+    if (!host.Calls.SequenceEqual(new[] { "select:input.edi", "load:input.edi" })) throw new Exception("Acquisition changed");
+}
+Console.WriteLine("verified emitted primary EDI source constraints");
+
+sealed class Source(byte[] bytes) : IFerrulePrimarySourceHost
+{
+    public List<string> Calls { get; } = [];
+    public IReadOnlyList<string> Select(string filename, FerrulePrimaryFileSelection selection) { Calls.Add("select:" + filename); return [filename]; }
+    public FerruleCsvSourceData Load(string request) { Calls.Add("load:" + request); return new FerruleCsvSourceData(bytes, request); }
+}
