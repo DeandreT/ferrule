@@ -1,0 +1,145 @@
+{
+  "format": "mapforce-enterprise-2026r2-mapping-entry-declarations",
+  "format_version": 1,
+  "inventory_complete": false,
+  "runtime_proof": false,
+  "status": "unassessed",
+  "applicability": "unknown",
+  "execution_evidence": [],
+  "execution_receipts": [],
+  "assessment_boundary": {
+    "runtime_proof": false,
+    "status": "unassessed",
+    "applicability": "unknown",
+    "execution_evidence": [],
+    "execution_receipts": []
+  },
+  "scope": {
+    "profile_count": 2,
+    "source_count": 4,
+    "owner_count": 2,
+    "direct_member_count": 7,
+    "parameter_count": 9,
+    "accessor_count": 2,
+    "throws_clause_count": 2,
+    "explicit_constructor_count": 0,
+    "api_shape": "retained_one_input_one_output_profiles_only",
+    "inherited_members": "excluded",
+    "implicit_members": "excluded",
+    "implementation_copied": false,
+    "excluded": ["inherited TraceProvider APIs", "nested nonpublic implementation types and their members", "business-schema members", "bodies", "private initializers", "comments and examples"],
+    "unqualified": ["universal generated API shape", "close defaults", "ownership and lifetime", "close-on-error and error behavior", "exact Java and CLR versions", "dependency availability", "Authenticode trust", "ABI", "backend applicability", "runtime behavior"]
+  },
+  "provenance": {
+    "observation": "artifact-observations.json",
+    "wrapper_observation": "schema-wrappers.json",
+    "generator_version": "28.2.0.0",
+    "generator_sha256": "4dc5b2bf1fb9644ba8224a9df19b7f92cb014d7bad1f8a2a217541e0a69ddd55",
+    "ordinary_manifest_sha256": "db01c723a234bf515ddbeb2930f9ddb00277960eea80ade4fff28a6407d4da04",
+    "wrapper_manifest_sha256": "1101c782bb8056df2a82cbba777af11de0aeebc813c889deb49ad25687d5f69d",
+    "release_comparison_sha256": "d67383470c8781e7997f3eb765b6b43bd69aea5925e3c044b5d8847328c53cfe",
+    "source_binding": "selected_generator_and_four_inputs_only",
+    "historical_manifest_caveat": "earlier_unestablished_provenance_wording_retained_separate_later_selected_release_binding",
+    "signature_trust": "unverified",
+    "profile_byte_identity": false,
+    "profile_integration_signatures_equal": true,
+    "vendor_generation": false,
+    "vendor_compilation": false,
+    "vendor_execution": false,
+    "inputs": [
+      {"name":"ConvertProducts.mfd","role":"design","bytes":3688,"sha256":"f36889cd8ed91b57ef66923fd56960de396db136ba4968352ad212796a34bd67"},
+      {"name":"Products.xsd","role":"source schema","bytes":633,"sha256":"aaceb86a93fc2cb254974ea57728ab2e9de67a4ec0c482de48afb303ad425b78"},
+      {"name":"Products.xml","role":"source instance","bytes":413,"sha256":"45a93f80ae4406c079148d0a006195df50d2bd68e82d3803756b06940e7799dc"},
+      {"name":"ProductValuePairs.xsd","role":"target schema","bytes":744,"sha256":"4c0e3a8b7595e10fe9a05a5a72fb2cb8d030ad3f15892f662bcc18320c488a75"}
+    ]
+  },
+  "oracle": {
+    "path": "oracles/mapping-entry-declarations.jsonl",
+    "method": "Independent manual transcription frozen before candidate extraction; numbered retained source declarations and separate hash readback, not candidate JSON, lexer output or cached outlines."
+  },
+  "profiles": [
+    {"id":"ordinary","manifest_sha256":"db01c723a234bf515ddbeb2930f9ddb00277960eea80ade4fff28a6407d4da04","generator_version":"28.2.0.0","settings":"loaded tutorial inherited settings","static_input_count":1,"output_count":1,"api_scope":"retained_snapshot_only"},
+    {"id":"schema-wrapper","manifest_sha256":"1101c782bb8056df2a82cbba777af11de0aeebc813c889deb49ad25687d5f69d","generator_version":"28.2.0.0","settings":"generate_wrapper_classes=true","static_input_count":1,"output_count":1,"api_scope":"retained_snapshot_only"}
+  ],
+  "contract_enrichments": [
+    {"file":"supporting.json","pointer":"/source_usage_contracts/0","identity_field":"research_id","identity":"enterprise2026r2.supporting.io-substitution-workflow","member_refs":["#/owners/0/members/1","#/owners/0/members/2","#/owners/1/members/2","#/owners/1/members/3"],"relationship":"declarations_only_not_behavior"},
+    {"file":"supporting.json","pointer":"/source_usage_contracts/3","identity_field":"research_id","identity":"enterprise2026r2.supporting.io-default-close","member_refs":["#/owners/0/members/0","#/owners/1/members/0","#/owners/1/members/1"],"relationship":"manual_usage_claim_separate_unqualified"},
+    {"file":"supporting.json","pointer":"/unresolved_contracts/4","identity_field":"id","identity":"mapping-entry-contract","member_refs":["#/owners/0/members/1","#/owners/0/members/2","#/owners/1/members/2","#/owners/1/members/3"],"relationship":"retained_profiles_not_universal_api_or_error_contract"}
+  ],
+  "io_base_joins": [
+    {"owner":"Altova.IO.Input","research_id":"enterprise2026r2.supporting.Altova.IO.Input","file":"supporting-io-declarations.json","pointer":"/owners/0","relationship":"declaration_fact_not_dependency_availability"},
+    {"owner":"Altova.IO.Output","research_id":"enterprise2026r2.supporting.Altova.IO.Output","file":"supporting-io-declarations.json","pointer":"/owners/6","relationship":"declaration_fact_not_dependency_availability"},
+    {"owner":"com.altova.io.Input","research_id":"enterprise2026r2.supporting.com.altova.io.Input","file":"supporting-io-declarations.json","pointer":"/owners/12","relationship":"declaration_fact_not_dependency_availability"},
+    {"owner":"com.altova.io.Output","research_id":"enterprise2026r2.supporting.com.altova.io.Output","file":"supporting-io-declarations.json","pointer":"/owners/13","relationship":"declaration_fact_not_dependency_availability"}
+  ],
+  "sources": [
+    {
+      "index":0,"profile":"ordinary","language":"C#","path":"Mapping/MappingMapToProductValuePairs.cs","bytes":11254,"sha256":"82fb78af400b9debc554cb7d460e30fc05224e714f3c40dadcbbd9c9aef8327b","lf_lines":398,"namespace":"Mapping","namespace_lines":[27,27],
+      "imports":[{"name":"System","declaration_lines":[15,15]},{"name":"System.Collections","declaration_lines":[16,16]},{"name":"System.Collections.Generic","declaration_lines":[17,17]},{"name":"System.Data","declaration_lines":[18,18]},{"name":"System.Data.Common","declaration_lines":[19,19]},{"name":"System.Xml","declaration_lines":[20,20]},{"name":"Altova.Types","declaration_lines":[21,21]},{"name":"Altova.Xml","declaration_lines":[22,22]},{"name":"Altova.Functions","declaration_lines":[23,23]}],"conditions":[]
+    },
+    {
+      "index":1,"profile":"ordinary","language":"Java","path":"com/mapforce/MappingMapToProductValuePairs.java","bytes":11698,"sha256":"765ebaecaec9060b867f6c32c33ec35cad34a310621746829b60530f25d32691","lf_lines":384,"namespace":"com.mapforce","namespace_lines":[12,12],
+      "imports":[{"name":"com.altova.mapforce.*","declaration_lines":[13,13]},{"name":"com.altova.types.*","declaration_lines":[14,14]},{"name":"com.altova.xml.*","declaration_lines":[15,15]},{"name":"java.util.*","declaration_lines":[16,16]}],"conditions":[]
+    },
+    {
+      "index":2,"profile":"schema-wrapper","language":"C#","path":"Mapping/MappingMapToProductValuePairs.cs","bytes":11358,"sha256":"af19ddcc274a41f74fdf46e8320c9837d26f980458e3d29d5005fecf019bb6f3","lf_lines":400,"namespace":"Mapping","namespace_lines":[29,29],
+      "imports":[{"name":"System","declaration_lines":[15,15]},{"name":"System.Collections","declaration_lines":[16,16]},{"name":"System.Collections.Generic","declaration_lines":[17,17]},{"name":"System.Data","declaration_lines":[18,18]},{"name":"System.Data.Common","declaration_lines":[19,19]},{"name":"System.Xml","declaration_lines":[20,20]},{"name":"Altova.Types","declaration_lines":[21,21]},{"name":"Altova.Xml","declaration_lines":[22,22]},{"name":"Altova.Functions","declaration_lines":[23,23]},{"name":"Products","declaration_lines":[26,26]},{"name":"ProductValuePairs","declaration_lines":[27,27]}],"conditions":[]
+    },
+    {
+      "index":3,"profile":"schema-wrapper","language":"Java","path":"com/mapforce/MappingMapToProductValuePairs.java","bytes":11709,"sha256":"d0d831b3509ac42fd7ae35fd54e3893da3bb6018522bba07048d7aa251b926b2","lf_lines":384,"namespace":"com.mapforce","namespace_lines":[12,12],
+      "imports":[{"name":"com.altova.mapforce.*","declaration_lines":[13,13]},{"name":"com.altova.types.*","declaration_lines":[14,14]},{"name":"com.altova.xml.*","declaration_lines":[15,15]},{"name":"java.util.*","declaration_lines":[16,16]}],"conditions":[]
+    }
+  ],
+  "owners": [
+    {
+      "name":"Mapping.MappingMapToProductValuePairs","language":"C#","kind":"class","modifiers":["public"],
+      "extends":[{"spelling":"Altova.TraceProvider","resolved":"Altova.TraceProvider","binding":"explicit_qualified"}],"implements":[],
+      "anchors":[{"source_index":0,"declaration_lines":[30,30],"closing_line":396},{"source_index":2,"declaration_lines":[32,32],"closing_line":398}],
+      "explicit_constructors":[],"conditions":[],"assessment_ref":"#/assessment_boundary",
+      "members": [
+        {
+          "index":0,"kind":"property","name":"CloseObjectsAfterRun","type":{"spelling":"bool","resolved":"System.Boolean","binding":"language_keyword"},"modifiers":["public"],"parameters":[],"throws":[],
+          "accessors":[{"name":"get","visibility":"public","explicit_visibility":null,"anchors":[{"source_index":0,"declaration_lines":[33,33]},{"source_index":2,"declaration_lines":[35,35]}]},{"name":"set","visibility":"public","explicit_visibility":null,"anchors":[{"source_index":0,"declaration_lines":[33,33]},{"source_index":2,"declaration_lines":[35,35]}]}],
+          "anchors":[{"source_index":0,"declaration_lines":[33,33]},{"source_index":2,"declaration_lines":[35,35]}],"directly_declared":true,"conditions":[]
+        },
+        {
+          "index":1,"kind":"method","name":"Run","type":{"spelling":"void","resolved":"System.Void","binding":"language_keyword"},"modifiers":["public"],
+          "parameters":[{"index":0,"name":"Products2SourceFilename","type":{"spelling":"String","resolved":null,"binding":"unresolved_unqualified"},"direction":"value","default":null},{"index":1,"name":"ProductValuePairs2TargetFilename","type":{"spelling":"string","resolved":"System.String","binding":"language_keyword"},"direction":"value","default":null}],"throws":[],"accessors":[],
+          "anchors":[{"source_index":0,"declaration_lines":[43,43]},{"source_index":2,"declaration_lines":[45,45]}],"directly_declared":true,"conditions":[]
+        },
+        {
+          "index":2,"kind":"method","name":"Run","type":{"spelling":"void","resolved":"System.Void","binding":"language_keyword"},"modifiers":["public"],
+          "parameters":[{"index":0,"name":"Products2Source","type":{"spelling":"Altova.IO.Input","resolved":"Altova.IO.Input","binding":"explicit_qualified"},"direction":"value","default":null},{"index":1,"name":"ProductValuePairs2Target","type":{"spelling":"Altova.IO.Output","resolved":"Altova.IO.Output","binding":"explicit_qualified"},"direction":"value","default":null}],"throws":[],"accessors":[],
+          "anchors":[{"source_index":0,"declaration_lines":[55,55]},{"source_index":2,"declaration_lines":[57,57]}],"directly_declared":true,"conditions":[]
+        }
+      ]
+    },
+    {
+      "name":"com.mapforce.MappingMapToProductValuePairs","language":"Java","kind":"class","modifiers":["public"],
+      "extends":[{"spelling":"com.altova.TraceProvider","resolved":"com.altova.TraceProvider","binding":"explicit_qualified"}],"implements":[],
+      "anchors":[{"source_index":1,"declaration_lines":[18,18],"closing_line":383},{"source_index":3,"declaration_lines":[18,18],"closing_line":383}],
+      "explicit_constructors":[],"conditions":[],"assessment_ref":"#/assessment_boundary",
+      "members": [
+        {
+          "index":0,"kind":"method","name":"setCloseObjectsAfterRun","type":{"spelling":"void","resolved":"void","binding":"language_keyword"},"modifiers":["public"],
+          "parameters":[{"index":0,"name":"c","type":{"spelling":"boolean","resolved":"boolean","binding":"language_keyword"},"direction":"value","default":null}],"throws":[],"accessors":[],
+          "anchors":[{"source_index":1,"declaration_lines":[20,20]},{"source_index":3,"declaration_lines":[20,20]}],"directly_declared":true,"conditions":[]
+        },
+        {
+          "index":1,"kind":"method","name":"getCloseObjectsAfterRun","type":{"spelling":"boolean","resolved":"boolean","binding":"language_keyword"},"modifiers":["public"],"parameters":[],"throws":[],"accessors":[],
+          "anchors":[{"source_index":1,"declaration_lines":[21,21]},{"source_index":3,"declaration_lines":[21,21]}],"directly_declared":true,"conditions":[]
+        },
+        {
+          "index":2,"kind":"method","name":"run","type":{"spelling":"void","resolved":"void","binding":"language_keyword"},"modifiers":["public"],
+          "parameters":[{"index":0,"name":"Products2SourceFilename","type":{"spelling":"String","resolved":null,"binding":"unresolved_unqualified"},"direction":"value","default":null},{"index":1,"name":"ProductValuePairs2TargetFilename","type":{"spelling":"String","resolved":null,"binding":"unresolved_unqualified"},"direction":"value","default":null}],"throws":[{"spelling":"Exception","resolved":null,"binding":"unresolved_unqualified"}],"accessors":[],
+          "anchors":[{"source_index":1,"declaration_lines":[333,333]},{"source_index":3,"declaration_lines":[333,333]}],"directly_declared":true,"conditions":[]
+        },
+        {
+          "index":3,"kind":"method","name":"run","type":{"spelling":"void","resolved":"void","binding":"language_keyword"},"modifiers":["public"],
+          "parameters":[{"index":0,"name":"Products2Source","type":{"spelling":"com.altova.io.Input","resolved":"com.altova.io.Input","binding":"explicit_qualified"},"direction":"value","default":null},{"index":1,"name":"ProductValuePairs2Target","type":{"spelling":"com.altova.io.Output","resolved":"com.altova.io.Output","binding":"explicit_qualified"},"direction":"value","default":null}],"throws":[{"spelling":"Exception","resolved":null,"binding":"unresolved_unqualified"}],"accessors":[],
+          "anchors":[{"source_index":1,"declaration_lines":[350,350]},{"source_index":3,"declaration_lines":[350,350]}],"directly_declared":true,"conditions":[]
+        }
+      ]
+    }
+  ]
+}
