@@ -863,6 +863,14 @@ fn read_instance_with_pdf_reader(
     }
 
     if let SelectedFormat::Idoc(layout) = selected {
+        if !options.edi_value_constraints.is_empty() {
+            let mut instance =
+                format_edi::document::read_source(path, schema, options, EdiBoundaryKind::Idoc)
+                    .with_context(|| format!("reading SAP IDoc input {}", path.display()))?;
+            format_edi::apply_implied_decimals(&mut instance, &options.edi_implied_decimals)
+                .with_context(|| format!("applying EDI numeric formats to {}", path.display()))?;
+            return Ok(instance);
+        }
         let mut instance = format_edi::idoc::read(path, schema, layout, options.lenient_segments)
             .with_context(|| format!("reading SAP IDoc input {}", path.display()))?;
         format_edi::apply_implied_decimals(&mut instance, &options.edi_implied_decimals)
@@ -1064,6 +1072,15 @@ fn read_instance_with_pdf_reader(
         SelectedFormat::Sqlite => format_db::read_instance(path, schema)
             .with_context(|| format!("reading input {}", path.display()))?,
         SelectedFormat::Edi(None) => {
+            if !options.edi_value_constraints.is_empty() {
+                return format_edi::document::read_source(
+                    path,
+                    schema,
+                    options,
+                    inferred_edi_kind(schema)?,
+                )
+                .with_context(|| format!("reading input {}", path.display()));
+            }
             let read = match format_edi::dialect_of(schema)? {
                 format_edi::Dialect::X12 => format_edi::x12::read,
                 format_edi::Dialect::Edifact => format_edi::edifact::read,
@@ -1504,7 +1521,23 @@ mod format_selection {
         Ok(())
     }
 
+    pub(super) fn reject_unsupported_edi_source_constraints(
+        options: &FormatOptions,
+    ) -> anyhow::Result<()> {
+        if (options.swift_mt.is_some() || options.edi_kind == Some(EdiBoundaryKind::SwiftMt))
+            && !options.edi_value_constraints.is_empty()
+        {
+            bail!(
+                "SWIFT MT input uses its embedded field grammar and does not support `edi_value_constraints`"
+            );
+        }
+        Ok(())
+    }
+
     fn reject_swift_conflicts(options: &FormatOptions, side: &str) -> anyhow::Result<()> {
+        if side == "input" {
+            reject_unsupported_edi_source_constraints(options)?;
+        }
         if options
             .edi_kind
             .is_some_and(|kind| kind != EdiBoundaryKind::SwiftMt)
@@ -1865,6 +1898,13 @@ fn read_edi_input(
     options: &FormatOptions,
     kind: EdiBoundaryKind,
 ) -> anyhow::Result<Instance> {
+    if !options.edi_value_constraints.is_empty() {
+        let mut instance = format_edi::document::read_source(path, schema, options, kind)
+            .with_context(|| format!("reading input {}", path.display()))?;
+        format_edi::apply_implied_decimals(&mut instance, &options.edi_implied_decimals)
+            .with_context(|| format!("applying EDI numeric formats to {}", path.display()))?;
+        return Ok(instance);
+    }
     let mut instance = match kind {
         EdiBoundaryKind::X12 => format_edi::x12::read_with_separators(
             path,
@@ -1887,6 +1927,15 @@ fn read_edi_input(
     format_edi::apply_implied_decimals(&mut instance, &options.edi_implied_decimals)
         .with_context(|| format!("applying EDI numeric formats to {}", path.display()))?;
     Ok(instance)
+}
+
+fn inferred_edi_kind(schema: &SchemaNode) -> Result<EdiBoundaryKind, format_edi::EdiFormatError> {
+    Ok(match format_edi::dialect_of(schema)? {
+        format_edi::Dialect::X12 => EdiBoundaryKind::X12,
+        format_edi::Dialect::Edifact => EdiBoundaryKind::Edifact,
+        format_edi::Dialect::Hl7 => EdiBoundaryKind::Hl7,
+        format_edi::Dialect::Tradacoms => EdiBoundaryKind::Tradacoms,
+    })
 }
 
 fn write_edi_output(
