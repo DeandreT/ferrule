@@ -365,6 +365,7 @@ impl FerruleApp {
         ui: &mut egui::Ui,
         editing_enabled: bool,
     ) {
+        self.begin_graph_drafts(MappingDocument::Target(target_index), ui.ctx());
         let canvas_id =
             self.embedded_canvas_id(egui::Id::unique(("named_target_canvas", target_index)));
         if !self.ensure_target_canvas(target_index) {
@@ -525,6 +526,7 @@ impl FerruleApp {
         ui: &mut egui::Ui,
         editing_enabled: bool,
     ) {
+        self.begin_graph_drafts(MappingDocument::Function(function_id), ui.ctx());
         let canvas_id = self.embedded_canvas_id(egui::Id::unique((
             "function_mapping_canvas",
             function_id.get(),
