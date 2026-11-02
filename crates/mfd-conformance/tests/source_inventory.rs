@@ -44,6 +44,9 @@ mod mapping_entry_declarations;
 #[path = "source_inventory/installer_java_api_docs.rs"]
 mod installer_java_api_docs;
 
+#[path = "source_inventory/documentation_pages.rs"]
+mod documentation_pages;
+
 fn load(name: &str) -> Value {
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../conformance/mfd-2026r2-source-inventory")
