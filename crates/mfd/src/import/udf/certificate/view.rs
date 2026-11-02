@@ -1,5 +1,9 @@
 use std::collections::BTreeMap;
 
+#[path = "context.rs"]
+mod context;
+pub(in crate::import) use context::ContextSeal;
+
 use super::super::{Call, Registry, limits::ConstructionBudget};
 use super::{Origin, Profile, RawOutput, RegisteredVec};
 use crate::import::{
@@ -11,6 +15,7 @@ use crate::import::{
 pub(in crate::import) struct Normalized<'a> {
     pub(in crate::import) schemas: &'a RegisteredVec<SchemaComponent>,
     pub(in crate::import) sources: &'a [&'a SchemaComponent],
+    pub(in crate::import) source_names: &'a [String],
     pub(in crate::import) intermediates: &'a [&'a SchemaComponent],
     pub(in crate::import) targets: &'a [&'a SchemaComponent],
     pub(in crate::import) functions: &'a RegisteredVec<function::FnComponent>,
@@ -227,7 +232,7 @@ impl<'a> MainProducerView<'a> {
         key: u32,
         raw: &RawOutput,
         role: &str,
-        closure: &super::ArgumentClosure,
+        _closure: &super::ArgumentClosure,
         budget: &ConstructionBudget,
     ) -> Result<(), String> {
         let refuse = |detail: &str| {
@@ -257,7 +262,13 @@ impl<'a> MainProducerView<'a> {
         }
         let supported = match (&claim.kind, &raw.profile) {
             (Kind::DeclaredCall, Profile::DeclaredCall) => true,
-            (Kind::Source(source, path), Profile::XmlField { path: expected, attribute }) => {
+            (
+                Kind::Source(source, path),
+                Profile::XmlField {
+                    path: expected,
+                    attribute,
+                },
+            ) => {
                 source.format == ComponentFormat::Xml
                     && source.is_source
                     && !source.schema.repeating
@@ -266,30 +277,48 @@ impl<'a> MainProducerView<'a> {
                     && source.options.external_source.is_none()
                     && !source.options.local_xml_file_set
                     && source.compute_when_key.is_none()
-                    && !source.ports.values().any(|path| path.iter().any(|segment|
-                        matches!(segment.as_str(), schema::SOURCE_DOCUMENT_PATH_PORT | schema::SOURCE_INPUT_DOCUMENT_PATH_PORT)))
+                    && !source.ports.values().any(|path| {
+                        path.iter().any(|segment| {
+                            matches!(
+                                segment.as_str(),
+                                schema::SOURCE_DOCUMENT_PATH_PORT
+                                    | schema::SOURCE_INPUT_DOCUMENT_PATH_PORT
+                            )
+                        })
+                    })
                     && source.db_queries.is_empty()
                     && source.dynamic_json.is_none()
                     && *path == expected
                     && source.unambiguous_declared_output(key)
                     && exact_path(&source.schema, path).is_some_and(|node| {
-                         node.attribute == *attribute && if role == "scope driver" { matches!(node.kind, ir::SchemaKind::Group { .. }) }
-                         else { !node.repeating && matches!(node.kind, ir::SchemaKind::Scalar { .. }) }
+                        node.attribute == *attribute
+                            && if role == "scope driver" {
+                                matches!(node.kind, ir::SchemaKind::Group { .. })
+                            } else {
+                                !node.repeating
+                                    && matches!(node.kind, ir::SchemaKind::Scalar { .. })
+                            }
                     })
-                    && (role == "scope driver" || (1..path.len()).all(|length| {
-                        let prefix = &path[..length];
-                        !exact_path(&source.schema, prefix).is_some_and(|node| node.repeating)
-                            || closure.drivers.values().any(|driver| driver.pin.owner == raw.pin.owner
-                                && matches!(&driver.profile, Profile::XmlField { path, .. } if path == prefix))
-                    }))
             }
             (Kind::Function(function), Profile::Function { inputs, outputs }) => {
                 // Reserve checked materializer slots/text, not unrelated values
                 // elsewhere in the mapping. Ownership never compares values.
-                budget.claim(function.inputs.len().saturating_mul(4).saturating_add(16),
-                    function.name.len().saturating_add(function.inputs.len().saturating_mul(16)).saturating_add(
-                        function.constant.as_ref().map_or(0, |(value, ty)| value.len().saturating_add(ty.len()))), 0)?;
-                role != "scope driver" && function.inputs == *inputs
+                budget.claim(
+                    function.inputs.len().saturating_mul(4).saturating_add(16),
+                    function
+                        .name
+                        .len()
+                        .saturating_add(function.inputs.len().saturating_mul(16))
+                        .saturating_add(
+                            function
+                                .constant
+                                .as_ref()
+                                .map_or(0, |(value, ty)| value.len().saturating_add(ty.len())),
+                        ),
+                    0,
+                )?;
+                role != "scope driver"
+                    && function.inputs == *inputs
                     && function.outputs == *outputs
                     && function.raw_single_output_valid
                     && function.db_where.is_none()
@@ -315,11 +344,11 @@ impl<'a> MainProducerView<'a> {
 }
 
 impl MainProducerView<'_> {
-    fn boundary(
-        n: &Normalized<'_>,
+    fn boundary<'a>(
+        n: &Normalized<'a>,
         boundary: &super::Boundary,
         budget: &ConstructionBudget,
-    ) -> Result<(), String> {
+    ) -> Result<&'a SchemaComponent, String> {
         let refuse = || {
             format!(
                 "declared-library post-normalization ownership certificate refused declared output `{}` receiving target `{}`: unproved scalar boundary or scope driver",
@@ -361,7 +390,7 @@ impl MainProducerView<'_> {
                 return Err(refuse());
             }
         }
-        Ok(())
+        Ok(target)
     }
 }
 
@@ -369,9 +398,10 @@ pub(in crate::import) fn certify(
     registry: &Registry,
     calls: &[Call],
     normalized: Normalized<'_>,
-) -> Result<(), String> {
+    structure: roxmltree::Node<'_, '_>,
+) -> Result<ContextSeal, String> {
     if !calls.iter().any(|call| call.certificate.is_some()) {
-        return Ok(());
+        return Ok(ContextSeal::default());
     }
     let budget = registry
         .construction
@@ -391,11 +421,8 @@ pub(in crate::import) fn certify(
         for (&key, raw) in &closure.outputs {
             view.check(key, raw, "declared output", closure, budget)?;
         }
-        for boundary in &closure.boundaries {
-            MainProducerView::boundary(&normalized, boundary, budget)?;
-        }
     }
-    Ok(())
+    context::build(&view, &normalized, calls, budget, structure)
 }
 
 #[cfg(test)]
