@@ -50,8 +50,28 @@ pub fn read_lines(path: &Path, schema: &SchemaNode) -> Result<Instance, JsonForm
 pub fn from_str(text: &str, schema: &SchemaNode) -> Result<Instance, JsonFormatError> {
     let text = strip_utf8_bom(text);
     runtime_constraints::validate_raw_json_unique_items(schema, text)?;
+    #[cfg(feature = "document-dom-instrumentation")]
+    DOCUMENT_DOM_DECODE_ATTEMPTS.with(|count| count.set(count.get() + 1));
     let value: serde_json::Value = serde_json::from_str(text)?;
     from_value(&value, schema)
+}
+
+#[cfg(feature = "document-dom-instrumentation")]
+thread_local! {
+    static DOCUMENT_DOM_DECODE_ATTEMPTS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// Opt-in test instrumentation at the input-document DOM decoder. Counts
+/// current-thread attempts, excluding schema decoding and raw keyword prepasses.
+#[cfg(feature = "document-dom-instrumentation")]
+pub fn document_dom_decode_attempt_count() -> usize {
+    DOCUMENT_DOM_DECODE_ATTEMPTS.with(std::cell::Cell::get)
+}
+
+/// Clears the calling thread's test counter; retains no document data.
+#[cfg(feature = "document-dom-instrumentation")]
+pub fn reset_document_dom_decode_attempt_count() {
+    DOCUMENT_DOM_DECODE_ATTEMPTS.with(|count| count.set(0));
 }
 
 /// Reads JSON5 text into an [`Instance`] tree. JSON5 comments are syntax only;

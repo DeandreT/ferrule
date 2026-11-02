@@ -81,6 +81,14 @@ public static partial class FerruleJson
     internal static FerruleInstance ParseFunctionInput(string schemaJson, string document)
         => ParseCore(schemaJson, document, enforceHostLimits: false, embedded: false);
 
+#if FERRULE_JSON_PROJECTION_INSTRUMENTATION
+    // Test-only, per-thread input DOM attempts. Schema decoders and raw
+    // keyword-validation prepasses are deliberately not included.
+    [ThreadStatic] private static int _documentDomDecodeAttempts;
+    public static int DocumentDomDecodeAttemptCount => _documentDomDecodeAttempts;
+    public static void ResetDocumentDomDecodeAttemptCount() => _documentDomDecodeAttempts = 0;
+#endif
+
     private static FerruleInstance ParseCore(
         string schemaJson,
         string document,
@@ -100,6 +108,9 @@ public static partial class FerruleJson
             var input = document.Length > 0 && document[0] == '\uFEFF'
                 ? document[1..]
                 : document;
+#if FERRULE_JSON_PROJECTION_INSTRUMENTATION
+            Interlocked.Increment(ref _documentDomDecodeAttempts);
+#endif
             using var parsed = JsonDocument.Parse(
                 input,
                 new JsonDocumentOptions

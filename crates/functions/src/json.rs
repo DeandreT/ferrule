@@ -2,54 +2,59 @@ use ir::{Instance, SchemaKind, SchemaNode, Value};
 
 use crate::FunctionError;
 
+pub(crate) mod projection;
+
 const FUNCTION: &str = "json_serialize_object";
 const PARSE_FUNCTION: &str = "json_parse_field";
 const OBJECT_FUNCTION: &str = "json_parse_object_exists";
 
 pub(super) fn array_length(args: &[Value]) -> Result<Value, FunctionError> {
-    const FUNCTION: &str = "json_parse_array_length";
-    if args.len() != 3 {
-        return Err(FunctionError::ArityMismatch {
-            function: FUNCTION,
-            expected: 3,
-            got: args.len(),
-        });
-    }
-    let array = parse_array(args, FUNCTION)?;
-    i64::try_from(array.items.len())
-        .map(Value::Int)
-        .map_err(|_| FunctionError::InvalidArgument {
-            function: FUNCTION,
-            message: "array length exceeds the supported range",
-        })
+    projection::JsonArrayProjections::default().call(
+        projection::JsonProjectionOwner { source: 0 },
+        "json_parse_array_length",
+        args,
+    )
 }
 
 pub(super) fn array_field(args: &[Value]) -> Result<Value, FunctionError> {
-    const FUNCTION: &str = "json_parse_array_field";
-    if args.len() != 5 {
-        return Err(FunctionError::ArityMismatch {
-            function: FUNCTION,
-            expected: 5,
-            got: args.len(),
-        });
-    }
-    let array = parse_array(args, FUNCTION)?;
+    projection::JsonArrayProjections::default().call(
+        projection::JsonProjectionOwner { source: 0 },
+        "json_parse_array_field",
+        args,
+    )
+}
+
+fn select_array_field(
+    array: ParsedArray<'_>,
+    args: &[Value],
+    function: &'static str,
+) -> Result<Value, FunctionError> {
     let Value::String(path) = &args[3] else {
         return Err(FunctionError::TypeMismatch {
-            function: FUNCTION,
+            function,
             got: args[3].type_name(),
         });
     };
     let path: Vec<String> =
         serde_json::from_str(path).map_err(|_| FunctionError::InvalidArgument {
-            function: FUNCTION,
+            function,
             message: "field path descriptor is invalid",
         })?;
-    if !declared_path(&array.item_schema, &path)
-        .is_some_and(|node| node.is_scalar() && !node.repeating)
-    {
+    let scalar = if path.is_empty() {
+        array.item_schema.is_scalar()
+    } else {
+        path.split_first()
+            .and_then(|(first, rest)| {
+                array
+                    .item_schema
+                    .child(first)
+                    .and_then(|node| declared_path(node, rest))
+            })
+            .is_some_and(|node| node.is_scalar() && !node.repeating)
+    };
+    if !scalar {
         return Err(FunctionError::InvalidArgument {
-            function: FUNCTION,
+            function,
             message: "field path does not resolve to a scalar",
         });
     }
@@ -59,7 +64,7 @@ pub(super) fn array_field(args: &[Value]) -> Result<Value, FunctionError> {
             .and_then(|index| usize::try_from(index).ok()),
         _ => {
             return Err(FunctionError::TypeMismatch {
-                function: FUNCTION,
+                function,
                 got: args[4].type_name(),
             });
         }
@@ -68,11 +73,11 @@ pub(super) fn array_field(args: &[Value]) -> Result<Value, FunctionError> {
         index
             .and_then(|index| array.items.get(index))
             .ok_or(FunctionError::InvalidArgument {
-                function: FUNCTION,
+                function,
                 message: "array index is out of range",
             })?;
     let error = || FunctionError::InvalidArgument {
-        function: FUNCTION,
+        function,
         message: "field path does not resolve to a scalar",
     };
     let mut current = item;
@@ -109,9 +114,9 @@ fn parse_schema(text: &str, function: &'static str) -> Result<SchemaNode, Functi
     Ok(schema)
 }
 
-struct ParsedArray {
-    item_schema: SchemaNode,
-    items: Vec<Instance>,
+struct ParsedArray<'a> {
+    item_schema: &'a SchemaNode,
+    items: &'a [Instance],
 }
 
 fn declared_path<'a>(schema: &'a SchemaNode, path: &[String]) -> Option<&'a SchemaNode> {
@@ -125,44 +130,26 @@ fn declared_path<'a>(schema: &'a SchemaNode, path: &[String]) -> Option<&'a Sche
     Some(current)
 }
 
-fn parse_array(args: &[Value], function: &'static str) -> Result<ParsedArray, FunctionError> {
-    let mut text = Vec::with_capacity(3);
-    for value in &args[..3] {
-        let Value::String(value) = value else {
-            return Err(FunctionError::TypeMismatch {
-                function,
-                got: value.type_name(),
-            });
-        };
-        text.push(value);
-    }
-    let schema = parse_schema(text[1], function)?;
-    let path: Vec<String> =
-        serde_json::from_str(text[2]).map_err(|_| FunctionError::InvalidArgument {
-            function,
-            message: "array path descriptor is invalid",
-        })?;
-    let mut current =
-        format_json::from_str(text[0], &schema).map_err(|_| FunctionError::InvalidArgument {
-            function,
-            message: "input does not match the JSON schema",
-        })?;
+fn select_array<'a>(
+    mut current: &'a Instance,
+    schema: &'a SchemaNode,
+    path: &[String],
+    function: &'static str,
+) -> Result<ParsedArray<'a>, FunctionError> {
     let error = || FunctionError::InvalidArgument {
         function,
         message: "array path does not resolve to an array",
     };
-    let mut item_schema = declared_path(&schema, &path)
+    let item_schema = declared_path(schema, path)
         .filter(|node| node.repeating)
-        .cloned()
         .ok_or_else(error)?;
-    item_schema.repeating = false;
     for segment in path {
         match current {
             Instance::Group(fields) => {
-                let Some((_, child)) = fields.into_iter().find(|(name, _)| name == &segment) else {
+                let Some((_, child)) = fields.iter().find(|(name, _)| name == segment) else {
                     return Ok(ParsedArray {
                         item_schema,
-                        items: Vec::new(),
+                        items: &[],
                     });
                 };
                 current = child;
@@ -170,7 +157,7 @@ fn parse_array(args: &[Value], function: &'static str) -> Result<ParsedArray, Fu
             Instance::Scalar(Value::Null) => {
                 return Ok(ParsedArray {
                     item_schema,
-                    items: Vec::new(),
+                    items: &[],
                 });
             }
             _ => return Err(error()),
@@ -180,13 +167,25 @@ fn parse_array(args: &[Value], function: &'static str) -> Result<ParsedArray, Fu
         Instance::Repeated(items) => Ok(ParsedArray { item_schema, items }),
         Instance::Scalar(Value::Null) => Ok(ParsedArray {
             item_schema,
-            items: Vec::new(),
+            items: &[],
         }),
         _ => Err(error()),
     }
 }
 
 pub(super) fn object_exists(args: &[Value]) -> Result<Value, FunctionError> {
+    object_exists_in(
+        args,
+        &mut projection::JsonArrayProjections::default(),
+        projection::JsonProjectionOwner { source: 0 },
+    )
+}
+
+fn object_exists_in(
+    args: &[Value],
+    projections: &mut projection::JsonArrayProjections,
+    owner: projection::JsonProjectionOwner,
+) -> Result<Value, FunctionError> {
     let [input, schema, path] = args else {
         return Err(FunctionError::ArityMismatch {
             function: OBJECT_FUNCTION,
@@ -215,7 +214,8 @@ pub(super) fn object_exists(args: &[Value]) -> Result<Value, FunctionError> {
             got: input.type_name(),
         });
     };
-    let schema = parse_schema(schema, OBJECT_FUNCTION)?;
+    let descriptor = schema;
+    let schema = parse_schema(descriptor, OBJECT_FUNCTION)?;
     let path: Vec<String> =
         serde_json::from_str(path).map_err(|_| FunctionError::InvalidArgument {
             function: OBJECT_FUNCTION,
@@ -235,18 +235,14 @@ pub(super) fn object_exists(args: &[Value]) -> Result<Value, FunctionError> {
     if !ordinary_object(selected) {
         return Err(object_path_error());
     }
-    let parsed =
-        format_json::from_str(input, &schema).map_err(|_| FunctionError::InvalidArgument {
-            function: OBJECT_FUNCTION,
-            message: "input does not match the JSON schema",
-        })?;
+    let parsed = projections.input(owner, input, descriptor, schema, OBJECT_FUNCTION)?;
     if matches!(parsed, Instance::Repeated(_) | Instance::DocumentSet(_)) {
         return Err(FunctionError::InvalidArgument {
             function: OBJECT_FUNCTION,
             message: "input does not match the JSON schema",
         });
     }
-    let mut current = &parsed;
+    let mut current = parsed;
     for segment in &path {
         let Some(child) = current.field(segment) else {
             return Ok(Value::Bool(false));
@@ -270,6 +266,18 @@ fn ordinary_object(schema: &SchemaNode) -> bool {
 }
 
 pub(super) fn parse_field(args: &[Value]) -> Result<Value, FunctionError> {
+    parse_field_in(
+        args,
+        &mut projection::JsonArrayProjections::default(),
+        projection::JsonProjectionOwner { source: 0 },
+    )
+}
+
+fn parse_field_in(
+    args: &[Value],
+    projections: &mut projection::JsonArrayProjections,
+    owner: projection::JsonProjectionOwner,
+) -> Result<Value, FunctionError> {
     let [input, schema, path] = args else {
         return Err(FunctionError::ArityMismatch {
             function: PARSE_FUNCTION,
@@ -298,18 +306,15 @@ pub(super) fn parse_field(args: &[Value]) -> Result<Value, FunctionError> {
             got: input.type_name(),
         });
     };
-    let schema = parse_schema(schema, PARSE_FUNCTION)?;
+    let descriptor = schema;
+    let schema = parse_schema(descriptor, PARSE_FUNCTION)?;
     let path: Vec<String> =
         serde_json::from_str(path).map_err(|_| FunctionError::InvalidArgument {
             function: PARSE_FUNCTION,
             message: "field path descriptor is invalid",
         })?;
-    let parsed =
-        format_json::from_str(input, &schema).map_err(|_| FunctionError::InvalidArgument {
-            function: PARSE_FUNCTION,
-            message: "input does not match the JSON schema",
-        })?;
-    scalar_at(&parsed, &path)
+    let parsed = projections.input(owner, input, descriptor, schema, PARSE_FUNCTION)?;
+    scalar_at(parsed, &path)
         .cloned()
         .ok_or(FunctionError::InvalidArgument {
             function: PARSE_FUNCTION,

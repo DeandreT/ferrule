@@ -1280,10 +1280,24 @@ fn render_expression_in_context_with_scalar_item_at(
                         call_expression(*arg, "context")
                     ));
                 }
-                body.push_str(&format!(
-                    "        ];\n        call({}, &args)\n    }}",
-                    rust_string(function.as_str())
-                ));
+                let call = if owner_function.is_none()
+                    && matches!(
+                        function.as_str(),
+                        "json_parse_array_length"
+                            | "json_parse_array_field"
+                            | "json_parse_field"
+                            | "json_parse_object_exists"
+                    )
+                    && let [source, ..] = args.as_slice()
+                {
+                    format!(
+                        "{legacy_context}.call_json_array_projection({source}, {}, &args)",
+                        rust_string(function.as_str())
+                    )
+                } else {
+                    format!("call({}, &args)", rust_string(function.as_str()))
+                };
+                body.push_str(&format!("        ];\n        {call}\n    }}"));
                 body
             }
             Expression::DelimitedTextField { input, parser } => format!(
