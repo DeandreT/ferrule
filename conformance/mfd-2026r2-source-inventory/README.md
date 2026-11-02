@@ -25,6 +25,7 @@ They do not change the canonical capability ledger or establish execution suppor
 | `supporting.json` | Public I/O classes, wrapper-library exceptions and the named installation-artifact requests |
 | `supporting-io-declarations.json` | Direct public source declarations on the existing 24 documented C#/Java I/O owners, with nested C# enums and an independent offline oracle |
 | `supporting-exception-declarations.json` | Direct-public source declarations for the same 16 documented exception owners; 28 new callables and two referenced existing declarations |
+| `mapping-entry-declarations.json` | Two retained C#/Java mapping-entry owners, seven direct public members and profile-specific anchors, enriching existing supporting contracts |
 | `schema-wrappers.json` | Four optional schema-wrapper source profiles, actual schema identities and build/dependency metadata; no compiled or runtime qualification |
 | `external-references.json` | Linked historical DOM algorithm and redirected .NET interface contract, kept separate from vendor claims |
 
@@ -355,6 +356,52 @@ parameters, defaults, qualifiers, attributes, imports, conditions, hashes, ancho
 and reference joins without vendor files, network access or execution. Every record
 inherits the companion's unassessed status, unknown applicability, empty execution
 evidence/receipts and incomplete inventory.
+
+The mapping-entry fragment covers only the retained one-input/one-output ordinary
+and wrapper-enabled C#/Java profiles. It joins the existing
+`io-substitution-workflow`, `io-default-close` and `mapping-entry-contract`
+identities through exact `supporting.json` pointers; it creates no research or
+capability identity. Its mapping class names identify source owners, not copied
+business-schema shapes. The four mapping files have different ordinary/wrapper
+bytes but matching scoped public integration signatures. Each source keeps its
+own hash, imports, namespace/package, LF extent, class header/closing brace and
+member/accessor declaration-token anchors. LF extents include the final empty
+split item. C# region directives are layout, not conditional-availability claims.
+The older ordinary manifest retains its earlier unestablished-provenance wording;
+the later selected-release byte comparisons are a separate joined source, not a
+rewritten manifest or product-wide provenance finding.
+
+There are two C# `Run` overloads and a `bool CloseObjectsAfterRun` property with
+separate public `get`/`set` metadata; Java has two `run` overloads plus close
+getter/setter methods. Together they retain nine ordered parameters and two literal
+Java `throws Exception` clauses. The explicitly declared constructor lists are
+empty: this does not claim that compiled constructors are absent. Inherited
+TraceProvider APIs and public members inside nested nonpublic implementation
+classes are excluded. No bodies, private initializers, comments, examples or
+business-schema members are retained. The property name does not establish a
+close default, ownership, lifetime or close-on-error behavior. The manual's close
+usage/default claims remain separate and unqualified.
+
+Literal type spellings and import context are preserved. Language keywords and
+explicitly qualified names have declaration-level bindings; unqualified `String`
+and `Exception` retain explicit null bindings rather than resolving potentially
+ambiguous lookup without compilation. Fully qualified I/O parameter types join
+the existing four public base-owner records as facts, not proof that dependencies
+are available. Exact Java/CLR versions, ABI, Authenticode trust, dependencies,
+backend applicability and runtime behavior remain unknown.
+
+`oracles/mapping-entry-declarations.jsonl` was manually transcribed and frozen
+before the separate brace-aware private candidate lexer was written. It uses no
+candidate JSON, lexer output or cached outlines. `P` rows pin finite profiles and
+manifest/version/settings joins; `S` rows pin each source and import context; `O`
+rows pin class ownership, profile headers/closures, explicit inheritance and empty
+constructor lists; `M` rows pin direct members, parameters, types/bindings, accessors,
+throws and per-profile anchors. The Rust projection defines tuple order. Strict
+schema, source-oracle and coherent mutation checks use repository files only,
+without vendor files, network access, generation, compilation, activation or
+execution. Status stays unassessed, applicability unknown, execution evidence and
+receipts empty, and inventory completeness false. This finite source snapshot
+does not establish all possible generated mapping APIs or a multi-target contract.
 
 `schema-wrappers.json`
 records bounded source bundles for C#, Java and both C++ DOM options, including
