@@ -16,17 +16,12 @@ fn read(text: &str) -> Vec<Value> {
         .collect()
 }
 
-pub fn core_expected() -> &'static Vec<Value> {
-    static ROWS: OnceLock<Vec<Value>> = OnceLock::new();
-    ROWS.get_or_init(|| read(include_str!("../oracles/com-core-declarations.jsonl")))
-}
-
 pub fn coverage_expected() -> &'static Vec<Value> {
     static ROWS: OnceLock<Vec<Value>> = OnceLock::new();
     ROWS.get_or_init(|| read(include_str!("../oracles/com-callable-coverage.jsonl")))
 }
 
-pub fn core_tuples(value: &Declarations) -> Vec<Value> {
+pub fn declaration_tuples(value: &Declarations) -> Vec<Value> {
     let mut rows = Vec::new();
     for t in &value.types {
         rows.push(json!([
@@ -97,8 +92,8 @@ pub fn core_tuples(value: &Declarations) -> Vec<Value> {
             r.return_type.encoded,
             params,
             [
-                a.function_dump_lines[0],
-                a.function_dump_lines[1],
+                a.function_dump_lines.map(|lines| lines[0]),
+                a.function_dump_lines.map(|lines| lines[1]),
                 a.member_id_dump_line,
                 a.member_name_dump_line,
                 a.member_offset_dump_line
