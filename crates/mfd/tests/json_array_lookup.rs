@@ -3,6 +3,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use ir::{Instance, Value};
 
+#[path = "json_array_lookup/root_scalars.rs"]
+mod root_scalars;
+
 struct TempDir(PathBuf);
 impl TempDir {
     fn new() -> Self {
@@ -773,7 +776,13 @@ fn generated_hosts(profile: &str) {
     let dir = TempDir::new();
     emit(&dir.0, profile);
     let shared = fixtures();
-    let hosts = shared.join(if profile.ends_with("edi") { "edi" } else { "" });
+    let hosts = shared.join(if profile.ends_with("edi") {
+        "edi"
+    } else if profile == "root-scalars" {
+        profile
+    } else {
+        ""
+    });
     let fixtures = shared.join(profile);
     let rust = dir.0.join("rust");
     let manifest = rust.join("Cargo.toml");
@@ -788,7 +797,18 @@ fn generated_hosts(profile: &str) {
     std::fs::copy(hosts.join("rust_host.rs"), rust.join("host.rs")).unwrap();
     checked(
         std::process::Command::new("cargo")
-            .args(["run", "--release", "--offline", "--manifest-path"])
+            .args([
+                "run",
+                "--release",
+                "--offline",
+                "-j",
+                "1",
+                "--config",
+                "profile.release.incremental=false",
+                "--config",
+                "profile.release.strip=\"symbols\"",
+                "--manifest-path",
+            ])
             .env_remove("CARGO_ENCODED_RUSTFLAGS")
             .env("RUSTFLAGS", "-D warnings")
             .arg(manifest)
