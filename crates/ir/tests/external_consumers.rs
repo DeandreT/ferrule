@@ -54,7 +54,7 @@ fn schema_metadata_in_default_and_arbitrary_precision_consumers() -> Result<(), 
         let mut command = Command::new(env!("CARGO"));
         command
             .current_dir(&consumer)
-            .args(["test", "--offline", "-j2"])
+            .args(["test", "--offline", "-j1"])
             .arg("--target-dir")
             .arg(consumer.join("target"))
             .args([

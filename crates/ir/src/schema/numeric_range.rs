@@ -258,6 +258,7 @@ impl<'de> Deserialize<'de> for NumericRange {
         #[derive(Deserialize)]
         #[serde(
             remote = "NumericRange",
+            rename = "NumericRange",
             tag = "kind",
             content = "bounds",
             rename_all = "snake_case"

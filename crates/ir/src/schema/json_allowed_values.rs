@@ -29,6 +29,7 @@ impl<'de> Deserialize<'de> for JsonAllowedValue {
         #[derive(Deserialize)]
         #[serde(
             remote = "JsonAllowedValue",
+            rename = "JsonAllowedValue",
             tag = "type",
             content = "value",
             rename_all = "snake_case",
