@@ -792,6 +792,17 @@ format untouched until Add/Save, and can be abandoned. Saved layouts survive
 name and path edits, including filenames with other format extensions.
 Replacing their ordered schema requires explicitly changing format first.
 
+The browser demo does not author or execute fixed-width boundaries. Saved
+projects can still be opened, edited, and saved with their layouts preserved,
+but execution refuses a configured fixed-width source or target regardless of
+the selected XML, JSON, CSV, or XBRL format. The diagnostic identifies the side
+and directs you to native Ferrule execution; selecting CSV does not convert a
+fixed-width layout into delimited data. The public browser run checks both
+boundaries before parsing input or evaluating the mapping (source first when
+both are fixed-width). Direct source parsing and target serialization apply the
+same refusal to their respective side. Ordinary browser CSV and native
+fixed-width execution are unchanged.
+
 ### Creating FlexText mappings
 
 In the native editor's new mapping form, choose a `.mft` layout for either
