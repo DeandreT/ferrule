@@ -24,6 +24,7 @@ They do not change the canonical capability ledger or establish execution suppor
 | `com-type-relationships.json` | GUID/header enrichment of the same 75 type identities and all 32 ordered coclass references, including nine default sources; no new capabilities or activation proof |
 | `supporting.json` | Public I/O classes, wrapper-library exceptions and the named installation-artifact requests |
 | `supporting-io-declarations.json` | Direct public source declarations on the existing 24 documented C#/Java I/O owners, with nested C# enums and an independent offline oracle |
+| `supporting-exception-declarations.json` | Direct-public source declarations for the same 16 documented exception owners; 28 new callables and two referenced existing declarations |
 | `schema-wrappers.json` | Four optional schema-wrapper source profiles, actual schema identities and build/dependency metadata; no compiled or runtime qualification |
 | `external-references.json` | Linked historical DOM algorithm and redirected .NET interface contract, kept separate from vendor claims |
 
@@ -299,6 +300,61 @@ applicability remain unqualified. All owners inherit unassessed status, unknown
 applicability and empty execution evidence/receipts; the inventory remains incomplete.
 These checks need only repository metadata, not vendor files, network access or
 vendor generation, compilation, activation or execution.
+
+The exception-declaration companion enriches the existing ten C++, four C# and
+two Java research IDs. Its finite direct-public cohort has 24 constructors, two
+destructors and four methods, with 43 ordered parameters and nine literal `0`
+default arguments. The two C++ `inner` declarations reference
+`installed.cpp.exception-inner`; the Java source-instance class references
+`installed.java.source-instance-unavailable`. These existing observations are not
+adopted again. Empty fields, properties, accessors, nested types, member conditions
+and Java `throws` lists are explicit. Inherited and compiler-implicit members are
+excluded, as are the nine platform references. Other public source exceptions
+(`altova::TargetUpdateFailureException`, `altova::UserException` and
+`Altova.Types.TargetUpdateFailureException`) are outside this documented cohort,
+not absent or private.
+
+Six name correspondences are not aliases: documented C++
+`InvalidArgumentsException` corresponds to source `InvalidArgumentException`, the
+four documented C# `Altova` owners are declared in `Altova.Types`, and documented
+Java `SourceInstanceUnvailableException` corresponds to source
+`SourceInstanceUnavailableException`. Manual names and shared-method claims remain
+unchanged and separate. C# bases and parameters retain literal `Exception` with
+their `using System;` / `using Altova;` context, not inferred fully qualified
+bindings. Java retains literal `RuntimeException` bases and no declared `throws`;
+this does not prove runtime error absence. Four base-literal differences remain
+explicit: both C# DataSource/DataTargetUnavailableException manual bases say
+`System.Exception` while the source says `Exception`; both Java manual bases say
+`Exception` while the source says `RuntimeException`. Neither spelling comparison
+establishes name binding or equivalence. C++ `throw()` and `const` are literal
+qualifiers, not platform guarantees. The global `string_type` typedef retains both
+`std::wstring` under `defined(UNICODE) || defined(_UNICODE)` and the `std::string`
+alternative, their inclusion guard and LF line anchors. No compiled configuration
+or ABI is selected.
+
+The companion pins generated-source hashes to the retained schema-wrapper
+manifest, four unchanged generation inputs and the selected official-release
+installer templates. The two C++ DOM-profile exception headers are byte-identical;
+installed-template comparisons preserve the generated prologue and C# template
+bracket-unescaping distinctions. HTTPS acquisition and byte identity do not verify
+Authenticode integrity or trust. No vendor implementation, constructor initializer,
+comment example or vendor source file is included. Returned messages, inner-object
+ownership, lifetime, errors, defaults, dependency availability and language versions
+remain unqualified.
+
+`oracles/supporting-exception-declarations.jsonl` was manually transcribed from the
+actual retained exception sources and `Altova/Altova.h` before the separate private
+candidate extractor. Readiness outlines were discovery aids, not expected data.
+The repository-only projection uses `S` source/context tuples, `O` owner/class
+tuples, `M` ordered new declarations, `R` existing-declaration references and `A`
+conditional typedef tuples. Nullable class payloads reference the existing Java
+observation; referenced C++ methods carry no second declaration payload. Strict
+key checks require every field, including explicit nulls, and reject unknown keys.
+Independent exact-set/order checks and coherent mutations freeze overloads,
+parameters, defaults, qualifiers, attributes, imports, conditions, hashes, anchors
+and reference joins without vendor files, network access or execution. Every record
+inherits the companion's unassessed status, unknown applicability, empty execution
+evidence/receipts and incomplete inventory.
 
 `schema-wrappers.json`
 records bounded source bundles for C#, Java and both C++ DOM options, including
