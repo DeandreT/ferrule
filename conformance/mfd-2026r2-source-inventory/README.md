@@ -13,6 +13,7 @@ They do not change the canonical capability ledger or establish execution suppor
 | `com-name-alignment.json` | Name-only interface, enum and event comparison against the release-bound type library, preserving discrepancies and dump-rendering gaps |
 | `com-enum-values.json` | All 20 release-bound enum tables and 130 signed constants, compared with the pinned online catalog without establishing runtime support |
 | `com-generation-signatures.json` | Four release-bound `IDocument` generation methods and seven ordered parameters, with raw descriptor targets and a separate release-unbound online comparison |
+| `com-result-getters.json` | Fourteen release-bound property getters on the two generation-result interfaces, with independent raw targets and release-unbound online property declarations |
 | `supporting.json` | Public I/O classes, wrapper-library exceptions and the named installation-artifact requests |
 | `schema-wrappers.json` | Four optional schema-wrapper source profiles, actual schema identities and build/dependency metadata; no compiled or runtime qualification |
 | `external-references.json` | Linked historical DOM algorithm and redirected .NET interface contract, kept separate from vendor claims |
@@ -65,6 +66,17 @@ the visible-window wording for `GenerateOutputEx`, which is not transferred to
 `GenerateOutputEx2`. The fragment does not establish ABI, calling convention,
 marshaling, ownership, lifetime, runtime defaults or backend support. Independent
 expected declarations and mutation controls run without vendor files or activation.
+
+The result-getter fragment covers seven properties each on
+`IOutputGenerationResult` and `ICodeGenerationResult`. Raw `Application` and
+`Parent` parameters retain generic `PTR(DISPATCH)` separately from the online
+`Application` type. Getter-only raw records do not rewrite the online access
+labels. The message-tree and line-break descriptions do not establish runtime
+ordering or lifetime, and the success/failure declarations do not establish
+complementarity or a relationship to HRESULT. Enum constants remain in the existing
+enum inventory, not a new cohort. Source binding rests on HTTPS acquisition and
+byte identity; Authenticode integrity and trust remain unverified. No activation,
+execution, ABI, default, error, ownership, coercion or marshaling claim follows.
 
 The public supporting declarations are inventoried. `schema-wrappers.json`
 records bounded source bundles for C#, Java and both C++ DOM options, including
