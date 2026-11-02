@@ -1034,7 +1034,7 @@ pub struct XmlSequenceMember {
     pub repeating: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum SchemaKind {
     Scalar {
@@ -1106,7 +1106,7 @@ pub struct GroupAlternativeConstraint {
 
 /// A JSON-compatible scalar discriminator whose value can survive the IR
 /// without losing its declared type.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "type", content = "value", rename_all = "snake_case")]
 pub enum GroupAlternativeConstraintValue {
     String(String),
