@@ -20,6 +20,7 @@ impl<'de> Deserialize<'de> for JsonSchemaPredicate {
         #[derive(Deserialize)]
         #[serde(
             remote = "JsonSchemaPredicate",
+            rename = "JsonSchemaPredicate",
             tag = "kind",
             rename_all = "snake_case",
             deny_unknown_fields
