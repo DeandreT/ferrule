@@ -290,6 +290,68 @@ fn checked(command: &mut std::process::Command, directory: &Path, label: &str) {
     );
 }
 
+fn csharp_release_command(root: &Path) -> std::process::Command {
+    let mut command = std::process::Command::new(
+        std::env::var_os("FERRULE_DOTNET_EXE").unwrap_or_else(|| "dotnet".into()),
+    );
+    command
+        .current_dir(root)
+        .env("DOTNET_CLI_HOME", root.join(".dotnet-home"))
+        .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
+        .env("DOTNET_SKIP_FIRST_TIME_EXPERIENCE", "1")
+        .env("DOTNET_NOLOGO", "1")
+        .env("DOTNET_CLI_TELEMETRY_OPTOUT", "1")
+        .env("DOTNET_CLI_USE_MSBUILD_SERVER", "0")
+        .dotnet_temp(root)
+        .args([
+            "run",
+            "--project",
+            "csharp/Host/Host.csproj",
+            "--configuration",
+            "Release",
+            "--disable-build-servers",
+            "-p:BuildInParallel=false",
+            "-p:UseSharedCompilation=false",
+            "--",
+            "cases.json",
+            "source-schema.json",
+            "target-schema.json",
+        ]);
+    command
+}
+
+#[test]
+fn csharp_release_command_passes_only_the_expected_host_arguments() {
+    use std::ffi::OsStr;
+
+    let directory = TempDir::new("command").unwrap();
+    let command = csharp_release_command(&directory.0);
+    let arguments: Vec<_> = command.get_args().collect();
+    assert_eq!(arguments[0], "run");
+    let separator = arguments.iter().position(|arg| *arg == "--").unwrap();
+    assert_eq!(
+        &arguments[separator + 1..],
+        ["cases.json", "source-schema.json", "target-schema.json"].map(OsStr::new)
+    );
+    assert_eq!(
+        arguments.iter().filter(|arg| **arg == "cases.json").count(),
+        1
+    );
+    // dotnet run does not accept this MSBuild switch: it can become an app
+    // argument before the cases path. DotnetTemp already disables node reuse.
+    assert!(arguments.iter().all(|arg| {
+        !arg.to_string_lossy()
+            .to_ascii_lowercase()
+            .contains("nodereuse")
+    }));
+    assert_eq!(
+        command
+            .get_envs()
+            .find(|(key, _)| *key == "MSBUILDDISABLENODEREUSE"),
+        Some((OsStr::new("MSBUILDDISABLENODEREUSE"), Some(OsStr::new("1"))))
+    );
+}
+
 #[cfg(windows)]
 fn saved_user_path() -> Vec<u8> {
     let output = std::process::Command::new("reg.exe")
@@ -392,34 +454,7 @@ fn generated_release_hosts_match_complete_documents_and_fresh_invocations() {
     .unwrap();
     #[cfg(windows)]
     let before = saved_user_path();
-    let mut command = std::process::Command::new(
-        std::env::var_os("FERRULE_DOTNET_EXE").unwrap_or_else(|| "dotnet".into()),
-    );
-    command
-        .current_dir(&root)
-        .env("DOTNET_CLI_HOME", root.join(".dotnet-home"))
-        .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
-        .env("DOTNET_SKIP_FIRST_TIME_EXPERIENCE", "1")
-        .env("DOTNET_NOLOGO", "1")
-        .env("DOTNET_CLI_TELEMETRY_OPTOUT", "1")
-        .env("DOTNET_CLI_USE_MSBUILD_SERVER", "0")
-        .dotnet_temp(&root)
-        .args([
-            "run",
-            "--project",
-            "csharp/Host/Host.csproj",
-            "--configuration",
-            "Release",
-            "--disable-build-servers",
-            "-p:BuildInParallel=false",
-            "-p:UseSharedCompilation=false",
-            "-nodeReuse:false",
-            "--",
-            "cases.json",
-            "source-schema.json",
-            "target-schema.json",
-        ]);
-    checked(&mut command, &root, "csharp-release");
+    checked(&mut csharp_release_command(&root), &root, "csharp-release");
     #[cfg(windows)]
     assert_eq!(
         before,
