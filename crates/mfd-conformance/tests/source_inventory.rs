@@ -38,6 +38,9 @@ mod supporting_exception_declarations;
 #[path = "source_inventory/supporting_io_declarations.rs"]
 mod supporting_io_declarations;
 
+#[path = "source_inventory/mapping_entry_declarations.rs"]
+mod mapping_entry_declarations;
+
 fn load(name: &str) -> Value {
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../conformance/mfd-2026r2-source-inventory")
