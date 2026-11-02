@@ -72,12 +72,13 @@ fn show_owned_expression_header(
         let response = ui.strong(label);
         let edit = crate::ui_kit::icon_button(ui, lucide_icons::Icon::Pencil, edit_label, None);
         focus::record_control(ui, edit.id, node);
-        let popup = ui.layer_id().id.with(("node_properties", id));
+        let popup = crate::graph_draft_ui::property_canvas(ui).with(("node_properties", id));
         if edit.clicked() || crate::canvas_tools::take_edit(ui.ctx(), CanvasNode::Graph(id)) {
             ui.ctx().data_mut(|data| data.insert_temp(popup, true));
         }
+        let anchor = crate::graph_draft_ui::property_canvas(ui).with(("node_edit_anchor", id));
         ui.ctx().data_mut(|data| {
-            data.insert_temp(ui.layer_id().id.with(("node_edit_anchor", id)), edit);
+            data.insert_temp(anchor, edit);
         });
         response
     })
@@ -2211,14 +2212,23 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                     if let Some(id) = Self::mapping_id(canvas_node)
                         && graph_node.is_some_and(has_node_properties)
                     {
-                        let anchor = ui.layer_id().id.with(("node_edit_anchor", id));
-                        let popup = ui.layer_id().id.with(("node_properties", id));
+                        let (anchor, popup) = crate::graph_draft_ui::node_controls(ui.ctx(), id)
+                            .unwrap_or_else(|| {
+                                (
+                                    crate::graph_draft_ui::property_canvas(ui)
+                                        .with(("node_edit_anchor", id)),
+                                    crate::graph_draft_ui::property_canvas(ui)
+                                        .with(("node_properties", id)),
+                                )
+                            });
                         let requested = crate::canvas_tools::take_edit(ui.ctx(), canvas_node);
                         let reveal = requested
                             || ui
                                 .ctx()
                                 .read_response(
-                                    ui.layer_id().id.with(("snarl-node", node)).with("frame"),
+                                    crate::graph_draft_ui::property_canvas(ui)
+                                        .with(("snarl-node", node))
+                                        .with("frame"),
                                 )
                                 .is_some_and(|response| response.contains_pointer())
                             || crate::canvas_tools::selected_node(ui.ctx(), canvas_node)
@@ -2226,14 +2236,24 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                             || ui
                                 .ctx()
                                 .data(|data| data.get_temp::<bool>(popup).unwrap_or(false));
-                        let (response, edit) = graph_node_presentation::show_header_with_edit(
-                            ui,
-                            header,
-                            &full_title,
-                            manual,
-                            reveal,
-                            true,
-                        );
+                        let header_scope =
+                            crate::graph_draft_ui::node_container(ui.ctx(), id, "header");
+                        let show = |ui: &mut Ui| {
+                            graph_node_presentation::show_header_with_edit(
+                                ui,
+                                header,
+                                &full_title,
+                                manual,
+                                reveal,
+                                true,
+                            )
+                        };
+                        let (response, edit) = if let Some(id) = header_scope {
+                            ui.scope_builder(egui::UiBuilder::new().scope_id(id), show)
+                                .inner
+                        } else {
+                            show(ui)
+                        };
                         focus::record_control(ui, edit.id, node);
                         if edit.clicked() || requested {
                             ui.ctx().data_mut(|data| data.insert_temp(popup, true));
@@ -2420,7 +2440,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
         // egui-snarl's node frame already participates in transformed, clipped
         // widget hit-testing. Area-only rectangle checks miss its child layer.
         // Reuse its response without adding a click/drag target or an auto ID.
-        let frame_id = focus::frame_id(ui.layer_id().id, node);
+        let frame_id = focus::frame_id(crate::graph_draft_ui::property_canvas(ui), node);
         let canvas_node = snarl[node];
         if let Some(frame) = ui.ctx().read_response(frame_id) {
             if frame.contains_pointer() {
@@ -2536,7 +2556,9 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
             _ => None,
         };
         if let Some(Node::ValueMap { table, default, .. }) = self.graph.nodes.get_mut(&node_id) {
-            show_value_map_editor(ui, table, default, value_map_wheel);
+            crate::graph_draft_ui::node(ui, node_id, "value_map", |ui| {
+                show_value_map_editor(ui, table, default, value_map_wheel);
+            });
         }
     }
 
@@ -2889,12 +2911,19 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
             .get(&node_id)
             .is_some_and(has_node_properties)
         {
-            let anchor = ui.layer_id().id.with(("node_edit_anchor", node_id));
+            let (anchor, popup_id) = crate::graph_draft_ui::node_controls(ui.ctx(), node_id)
+                .unwrap_or_else(|| {
+                    (
+                        crate::graph_draft_ui::property_canvas(ui)
+                            .with(("node_edit_anchor", node_id)),
+                        crate::graph_draft_ui::property_canvas(ui)
+                            .with(("node_properties", node_id)),
+                    )
+                });
             let edit = ui
                 .ctx()
                 .data(|data| data.get_temp::<egui::Response>(anchor))
                 .unwrap_or_else(|| ui.allocate_response(egui::Vec2::ZERO, egui::Sense::hover()));
-            let popup_id = ui.layer_id().id.with(("node_properties", node_id));
             // Keep the editor open independently of the single shared popup
             // slot used by its nested type and function selectors.
             let mut open = ui

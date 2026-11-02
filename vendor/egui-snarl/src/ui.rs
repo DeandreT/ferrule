@@ -824,6 +824,7 @@ struct PinResponse {
 pub struct SnarlWidget {
     id_salt: Id,
     id: Option<Id>,
+    paint_layer_id: Option<Id>,
     style: SnarlStyle,
     min_size: Vec2,
     max_size: Vec2,
@@ -844,6 +845,7 @@ impl SnarlWidget {
         SnarlWidget {
             id_salt: Id::unique(":snarl:"),
             id: None,
+            paint_layer_id: None,
             style: SnarlStyle::new(),
             min_size: Vec2::ZERO,
             max_size: Vec2::INFINITY,
@@ -860,6 +862,15 @@ impl SnarlWidget {
     #[must_use]
     pub const fn id(mut self, id: Id) -> Self {
         self.id = Some(id);
+        self
+    }
+
+    /// Override the paint sublayer identity without changing widget state IDs.
+    /// The layer must be unique among simultaneously rendered canvases.
+    #[inline]
+    #[must_use]
+    pub const fn paint_layer_id(mut self, id: Id) -> Self {
+        self.paint_layer_id = Some(id);
         self
     }
 
@@ -913,7 +924,7 @@ impl SnarlWidget {
         let snarl_id = self.get_id(ui.scope_id());
 
         show_snarl(
-            snarl_id,
+            (snarl_id, self.paint_layer_id.unwrap_or(snarl_id)),
             self.style,
             self.min_size,
             self.max_size,
@@ -926,7 +937,7 @@ impl SnarlWidget {
 
 #[inline(never)]
 fn show_snarl<T, V>(
-    snarl_id: Id,
+    (snarl_id, paint_layer_id): (Id, Id),
     mut style: SnarlStyle,
     min_size: Vec2,
     max_size: Vec2,
@@ -955,7 +966,7 @@ where
     content_rect.max.x = content_rect.max.x.max(content_rect.min.x);
     content_rect.max.y = content_rect.max.y.max(content_rect.min.y);
 
-    let snarl_layer_id = LayerId::new(ui.layer_id().order, snarl_id);
+    let snarl_layer_id = LayerId::new(ui.layer_id().order, paint_layer_id);
 
     ui.ctx().set_sublayer(ui.layer_id(), snarl_layer_id);
 
@@ -2651,8 +2662,9 @@ impl<T> Snarl<T> {
     ) where
         V: SnarlViewer<T>,
     {
+        let id = ui.make_persistent_id(id_salt);
         show_snarl(
-            ui.make_persistent_id(id_salt),
+            (id, id),
             *style,
             Vec2::ZERO,
             Vec2::INFINITY,

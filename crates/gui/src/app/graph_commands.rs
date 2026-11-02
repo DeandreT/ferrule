@@ -194,6 +194,9 @@ impl FerruleApp {
         let Some(graph) = self.graph_document(document) else {
             return;
         };
+        for edit in &edits {
+            self.graph_drafts.record_patch(&graph, &edit.patch, true);
+        }
         self.frame_commands.extend(
             edits
                 .into_iter()
@@ -249,6 +252,8 @@ impl FerruleApp {
             patch = with_settings;
         }
         if let Ok(command) = GraphCommand::new(graph, action, patch) {
+            self.graph_drafts
+                .record_patch(command.document(), command.patch(), false);
             self.frame_commands.push(command);
         }
     }
@@ -269,6 +274,8 @@ impl FerruleApp {
         };
         let patch = GraphPatch::of_nodes(before, after, same_node);
         if let Ok(command) = GraphCommand::new(graph, action, patch) {
+            self.graph_drafts
+                .record_patch(command.document(), command.patch(), false);
             self.frame_commands.push(command);
         }
     }
@@ -279,6 +286,8 @@ impl FerruleApp {
         let patch = GraphPatch::of_nodes(&before.graph, &self.project.graph, same_node)
             .with_project_parts(ProjectParts::between(before, &self.project, same_node));
         if let Ok(command) = GraphCommand::new(GraphDocument::Project, action, patch) {
+            self.graph_drafts
+                .record_patch(command.document(), command.patch(), false);
             self.frame_commands.push(command);
         }
     }
@@ -384,6 +393,10 @@ impl FerruleApp {
                 .commands
                 .iter()
                 .try_for_each(|command| command.apply_to_matching(&mut project, same_node))?,
+        }
+        for command in &record.commands {
+            self.graph_drafts
+                .record_patch(command.document(), command.patch(), false);
         }
         let mut layout = std::mem::replace(
             &mut record.layout,

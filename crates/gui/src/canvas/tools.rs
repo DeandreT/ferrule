@@ -940,7 +940,10 @@ pub(crate) fn preview_actions(
         viewport.left_top() + egui::vec2(crate::ui_kit::space::MD, crate::ui_kit::space::MD),
         egui::vec2((viewport.width() - 16.0).min(640.0), 64.0),
     );
-    let layer = egui::LayerId::new(ui.layer_id().order, id.with("preview_actions"));
+    let layer = egui::LayerId::new(
+        ui.layer_id().order,
+        crate::graph_draft_ui::paint_canvas(ui.ctx(), id).with("preview_actions"),
+    );
     ui.ctx().set_sublayer(ui.layer_id(), layer);
     let mut child = ui.new_child(
         egui::UiBuilder::new()

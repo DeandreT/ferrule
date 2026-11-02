@@ -593,7 +593,13 @@ fn actual_pin(
         .collect::<Vec<_>>();
     let bounds = responses
         .iter()
-        .find_map(|pin| ctx.read_response(pin.layer_id.id.with(("snarl-node", id)).with("frame")))
+        .find_map(|pin| {
+            ctx.read_response(
+                crate::graph_draft_ui::widget_canvas(ctx, pin.layer_id.id)
+                    .with(("snarl-node", id))
+                    .with("frame"),
+            )
+        })
         .unwrap();
     let bounds = ctx
         .layer_transform_to_global(bounds.layer_id)

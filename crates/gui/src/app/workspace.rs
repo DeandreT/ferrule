@@ -132,6 +132,7 @@ impl FerruleApp {
     }
 
     pub(super) fn show_main_canvas(&mut self, ui: &mut egui::Ui, editing_enabled: bool) {
+        self.begin_graph_drafts(MappingDocument::Main, ui.ctx());
         let function_names = self.function_names();
         let function_inputs = self.function_inputs();
         let parameter_names = std::collections::BTreeMap::new();

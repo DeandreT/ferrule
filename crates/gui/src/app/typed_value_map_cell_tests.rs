@@ -6,6 +6,7 @@ use mapping::{Binding, NamedTarget};
 
 #[path = "typed_value_map_cell_tests/draft_isolation.rs"]
 mod draft_isolation;
+mod lifetime;
 
 const FUNCTION: FunctionId = FunctionId::new(7);
 const DOCUMENTS: [MappingDocument; 3] = [
@@ -270,6 +271,7 @@ fn frame(
         |ui| {
             app.handle_history_shortcuts(ui.ctx(), editing);
             app.show_mapping_workspace_canvas(ui, editing);
+            app.show_extra_target_setup(ui.ctx());
         },
     );
     app.observe_editor_history(std::time::Instant::now(), false);
@@ -460,7 +462,11 @@ fn bounds(app: &FerruleApp, context: &egui::Context) -> egui::Rect {
         .into_iter()
         .find_map(|id| {
             context.read_response(id).and_then(|pin| {
-                context.read_response(pin.layer_id.id.with(("snarl-node", node)).with("frame"))
+                context.read_response(
+                    crate::graph_draft_ui::widget_canvas(context, pin.layer_id.id)
+                        .with(("snarl-node", node))
+                        .with("frame"),
+                )
             })
         })
         .expect("actual Value map frame");

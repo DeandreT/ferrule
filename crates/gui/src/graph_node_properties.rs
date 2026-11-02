@@ -230,11 +230,14 @@ impl GraphViewer<'_> {
                     ui.weak("unconnected input");
                 }
                 Node::Const { value } => {
-                    // Scope drafts and TextEdit's own state to this document
-                    // instance, not just a reusable node ID and numeric value.
-                    let owner = crate::canvas_tools::active(ui.ctx());
-                    ui.push_id(("constant_editor", owner), |ui| {
-                        show_value_editor(ui, value)
+                    // Both draft and TextEdit state follow this node incarnation,
+                    // not the rebuildable snarl or a reusable mapping node ID.
+                    crate::graph_draft_ui::node(ui, node_id, "constant", |ui| {
+                        crate::graph_draft_ui::cell(
+                            ui,
+                            crate::graph_draft_ui::Cell::Constant,
+                            |ui| show_value_editor(ui, value),
+                        );
                     });
                 }
                 Node::FunctionParameter { parameter } => {
@@ -384,28 +387,31 @@ impl GraphViewer<'_> {
                 } => {
                     ui.horizontal(|ui| {
                         let label = ui.label("Input conversion");
-                        egui::ComboBox::from_id_salt(ui.scope_id().with("value_map_input_type"))
-                            .selected_text(input_type.map_or_else(
-                                || "unchanged".to_owned(),
-                                |ty| format!("{ty:?}").to_lowercase(),
-                            ))
-                            .show_ui(ui, |ui| {
-                                ui.selectable_value(input_type, None, "unchanged");
-                                for candidate in [
-                                    ScalarType::String,
-                                    ScalarType::Int,
-                                    ScalarType::Float,
-                                    ScalarType::Bool,
-                                ] {
-                                    ui.selectable_value(
-                                        input_type,
-                                        Some(candidate),
-                                        format!("{candidate:?}").to_lowercase(),
-                                    );
-                                }
-                            })
-                            .response
-                            .labelled_by(label.id);
+                        let conversion = egui::ComboBox::from_id_salt(
+                            ui.scope_id().with("value_map_input_type"),
+                        )
+                        .selected_text(input_type.map_or_else(
+                            || "unchanged".to_owned(),
+                            |ty| format!("{ty:?}").to_lowercase(),
+                        ))
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(input_type, None, "unchanged");
+                            for candidate in [
+                                ScalarType::String,
+                                ScalarType::Int,
+                                ScalarType::Float,
+                                ScalarType::Bool,
+                            ] {
+                                ui.selectable_value(
+                                    input_type,
+                                    Some(candidate),
+                                    format!("{candidate:?}").to_lowercase(),
+                                );
+                            }
+                        })
+                        .response
+                        .labelled_by(label.id);
+                        crate::graph_draft_ui::track_node_popup(ui.ctx(), node_id, &conversion);
                     });
                     ui.add(
                         egui::Label::new(
@@ -413,7 +419,9 @@ impl GraphViewer<'_> {
                         )
                         .wrap(),
                     );
-                    show_value_map_editor(ui, table, default, None);
+                    crate::graph_draft_ui::node(ui, node_id, "value_map", |ui| {
+                        show_value_map_editor(ui, table, default, None);
+                    });
                 }
                 Node::Lookup {
                     collection,
