@@ -1,0 +1,5469 @@
+{
+  "format": "mapforce-enterprise-2026r2-com-callable-coverage",
+  "format_version": 1,
+  "assessment": {
+    "inventory_complete": false,
+    "runtime_proof": false,
+    "status": "unassessed",
+    "applicability": "unknown",
+    "execution_evidence": []
+  },
+  "source": "com-core-declarations.json#sources",
+  "counts": {
+    "type_infos": 75,
+    "ordinary_records": 317,
+    "event_records": 8,
+    "adopted_records": 142,
+    "remaining_records": 183,
+    "enum_types": 20,
+    "enum_variables": 130,
+    "zero_callable_types": 29
+  },
+  "cohorts": [
+    {
+      "id": "generation",
+      "state": "adopted",
+      "fragment": "com-generation-signatures.json",
+      "record_field": "methods",
+      "record_count": 4
+    },
+    {
+      "id": "results",
+      "state": "adopted",
+      "fragment": "com-result-getters.json",
+      "record_field": "getters",
+      "record_count": 14
+    },
+    {
+      "id": "collections",
+      "state": "adopted",
+      "fragment": "com-collection-getters.json",
+      "record_field": "getters",
+      "record_count": 10
+    },
+    {
+      "id": "core",
+      "state": "adopted",
+      "fragment": "com-core-declarations.json",
+      "record_field": "records",
+      "record_count": 114
+    },
+    {
+      "id": "graph",
+      "state": "remaining",
+      "fragment": null,
+      "record_field": null,
+      "record_count": 79
+    },
+    {
+      "id": "projects",
+      "state": "remaining",
+      "fragment": null,
+      "record_field": null,
+      "record_count": 68
+    },
+    {
+      "id": "diagnostics",
+      "state": "remaining",
+      "fragment": null,
+      "record_field": null,
+      "record_count": 28
+    },
+    {
+      "id": "events",
+      "state": "remaining",
+      "fragment": null,
+      "record_field": null,
+      "record_count": 8
+    }
+  ],
+  "declarations": [
+    {
+      "type_info_index": 0,
+      "name": "IApplication",
+      "kind": "TKIND_DISPATCH",
+      "function_records": 31,
+      "variable_records": 0
+    },
+    {
+      "type_info_index": 1,
+      "name": "IOptions",
+      "kind": "TKIND_DISPATCH",
+      "function_records": 40,
+      "variable_records": 0
+    },
+    {
+      "type_info_index": 2,
+      "name": "ENUMDOMType",
+      "kind": "TKIND_ENUM",
+      "function_records": 0,
+      "variable_records": 3
+    },
+    {
+      "type_info_index": 3,
+      "name": "ENUMLibType",
+      "kind": "TKIND_ENUM",
+      "function_records": 0,
+      "variable_records": 2
+    },
+    {
+      "type_info_index": 4,
+      "name": "ENUMProjectType",
+      "kind": "TKIND_ENUM",
+      "function_records": 0,
+      "variable_records": 12
+    },
+    {
+      "type_info_index": 5,
+      "name": "ENUMWrapperClassesVersion",
+      "kind": "TKIND_ENUM",
+      "function_records": 0,
+      "variable_records": 3
+    },
+    {
+      "type_info_index": 6,
+      "name": "ENUMApacheAxisVersion",
+      "kind": "TKIND_ENUM",
+      "function_records": 0,
+      "variable_records": 2
+    },
+    {
+      "type_info_index": 7,
+      "name": "IDocument",
+      "kind": "TKIND_DISPATCH",
+      "function_records": 39,
+      "variable_records": 0
+    },
+    {
+      "type_info_index": 8,
+      "name": "IMapForceView",
+      "kind": "TKIND_DISPATCH",
+      "function_records": 20,
+      "variable_records": 0
+    },
+    {
+      "type_info_index": 9,
+      "name": "IMapping",
+      "kind": "TKIND_DISPATCH",
+      "function_records": 11,
+      "variable_records": 0
+    },
+    {
+      "type_info_index": 10,
+      "name": "IComponents",
+      "kind": "TKIND_DISPATCH",
+      "function_records": 5,
+      "variable_records": 0
+    },
+    {
+      "type_info_index": 11,
+      "name": "IComponent",
+      "kind": "TKIND_DISPATCH",
+      "function_records": 31,
+      "variable_records": 0
+    },
+    {
+      "type_info_index": 12,
+      "name": "ENUMComponentType",
+      "kind": "TKIND_ENUM",
+      "function_records": 0,
+      "variable_records": 11
+    },
+    {
+      "type_info_index": 13,
+      "name": "ENUMComponentSubType",
+      "kind": "TKIND_ENUM",
+      "function_records": 0,
+      "variable_records": 4
+    },
+    {
+      "type_info_index": 14,
+      "name": "IAppOutputLines",
+      "kind": "TKIND_DISPATCH",
+      "function_records": 5,
+      "variable_records": 0
+    },
+    {
+      "type_info_index": 15,
+      "name": "IAppOutputLine",
+      "kind": "TKIND_DISPATCH",
+      "function_records": 16,
+      "variable_records": 0
+    },
+    {
+      "type_info_index": 16,
+      "name": "IAppOutputLineSymbol",
+      "kind": "TKIND_DISPATCH",
+      "function_records": 5,
+      "variable_records": 0
+    },
+    {
+      "type_info_index": 17,
+      "name": "ENUMComponentUsageKind",
+      "kind": "TKIND_ENUM",
+      "function_records": 0,
+      "variable_records": 6
+    },
+    {
+      "type_info_index": 18,
+      "name": "ENUMComponentDatapointSide",
+      "kind": "TKIND_ENUM",
+      "function_records": 0,
+      "variable_records": 2
+    },
+    {
+      "type_info_index": 19,
+      "name": "IDatapoint",
+      "kind": "TKIND_DISPATCH",
+      "function_records": 3,
+      "variable_records": 0
+    },
+    {
+      "type_info_index": 20,
+      "name": "ENUMSearchDatapointFlags",
+      "kind": "TKIND_ENUM",
+      "function_records": 0,
+      "variable_records": 2
+    },
+    {
+      "type_info_index": 21,
+      "name": "IConnection",
+      "kind": "TKIND_DISPATCH",
+      "function_records": 4,
+      "variable_records": 0
+    },
+    {
+      "type_info_index": 22,
+      "name": "ENUMConnectionType",
+      "kind": "TKIND_ENUM",
+      "function_records": 0,
+      "variable_records": 3
+    },
+    {
+      "type_info_index": 23,
+      "name": "ENUMProgrammingLanguage",
+      "kind": "TKIND_ENUM",
+      "function_records": 0,
+      "variable_records": 8
+    },
+    {
+      "type_info_index": 24,
+      "name": "IErrorMarkers",
+      "kind": "TKIND_DISPATCH",
+      "function_records": 5,
+      "variable_records": 0
+    },
+    {
+      "type_info_index": 25,
+      "name": "IErrorMarker",
+      "kind": "TKIND_DISPATCH",
+      "function_records": 7,
+      "variable_records": 0
+    },
+    {
+      "type_info_index": 26,
+      "name": "ENUMCodeGenErrorLevel",
+      "kind": "TKIND_ENUM",
+      "function_records": 0,
+      "variable_records": 4
+    },
+    {
+      "type_info_index": 27,
+      "name": "IMappings",
+      "kind": "TKIND_DISPATCH",
+      "function_records": 5,
+      "variable_records": 0
+    },
+    {
+      "type_info_index": 28,
+      "name": "IOutputGenerationResult",
+      "kind": "TKIND_DISPATCH",
+      "function_records": 7,
+      "variable_records": 0
+    },
+    {
+      "type_info_index": 29,
+      "name": "ENUMOutputGenerationResultCode",
+      "kind": "TKIND_ENUM",
+      "function_records": 0,
+      "variable_records": 5
+    },
+    {
+      "type_info_index": 30,
+      "name": "ICodeGenerationResult",
+      "kind": "TKIND_DISPATCH",
+      "function_records": 7,
+      "variable_records": 0
+    },
+    {
+      "type_info_index": 31,
+      "name": "ENUMCodeGenerationResultCode",
+      "kind": "TKIND_ENUM",
+      "function_records": 0,
+      "variable_records": 2
+    },
+    {
+      "type_info_index": 32,
+      "name": "ILibraryImports",
+      "kind": "TKIND_DISPATCH",
+      "function_records": 8,
+      "variable_records": 0
+    },
+    {
+      "type_info_index": 33,
+      "name": "ILibraryImport",
+      "kind": "TKIND_DISPATCH",
+      "function_records": 5,
+      "variable_records": 0
+    },
+    {
+      "type_info_index": 34,
+      "name": "IProject",
+      "kind": "TKIND_DISPATCH",
+      "function_records": 29,
+      "variable_records": 0
+    },
+    {
+      "type_info_index": 35,
+      "name": "IProjectItem",
+      "kind": "TKIND_DISPATCH",
+      "function_records": 26,
+      "variable_records": 0
+    },
+    {
+      "type_info_index": 36,
+      "name": "ENUMProjectItemType",
+      "kind": "TKIND_ENUM",
+      "function_records": 0,
+      "variable_records": 13
+    },
+    {
+      "type_info_index": 37,
+      "name": "IDocuments",
+      "kind": "TKIND_DISPATCH",
+      "function_records": 8,
+      "variable_records": 0
+    },
+    {
+      "type_info_index": 38,
+      "name": "ENUMApplicationStatus",
+      "kind": "TKIND_ENUM",
+      "function_records": 0,
+      "variable_records": 5
+    },
+    {
+      "type_info_index": 39,
+      "name": "ENUMAppOutputLine_Severity",
+      "kind": "TKIND_ENUM",
+      "function_records": 0,
+      "variable_records": 27
+    },
+    {
+      "type_info_index": 40,
+      "name": "ENUMAppOutputLine_TextDecoration",
+      "kind": "TKIND_ENUM",
+      "function_records": 0,
+      "variable_records": 13
+    },
+    {
+      "type_info_index": 41,
+      "name": "_IAppOutputLineSymbolEvents",
+      "kind": "TKIND_DISPATCH",
+      "function_records": 0,
+      "variable_records": 0
+    },
+    {
+      "type_info_index": 42,
+      "name": "AppOutputLineSymbol",
+      "kind": "TKIND_COCLASS",
+      "function_records": 0,
+      "variable_records": 0
+    },
+    {
+      "type_info_index": 43,
+      "name": "_IAppOutputLinesEvents",
+      "kind": "TKIND_DISPATCH",
+      "function_records": 0,
+      "variable_records": 0
+    },
+    {
+      "type_info_index": 44,
+      "name": "AppOutputLines",
+      "kind": "TKIND_COCLASS",
+      "function_records": 0,
+      "variable_records": 0
+    },
+    {
+      "type_info_index": 45,
+      "name": "_IAppOutputLineEvents",
+      "kind": "TKIND_DISPATCH",
+      "function_records": 0,
+      "variable_records": 0
+    },
+    {
+      "type_info_index": 46,
+      "name": "AppOutputLine",
+      "kind": "TKIND_COCLASS",
+      "function_records": 0,
+      "variable_records": 0
+    },
+    {
+      "type_info_index": 47,
+      "name": "ENUMViewMode",
+      "kind": "TKIND_ENUM",
+      "function_records": 0,
+      "variable_records": 3
+    },
+    {
+      "type_info_index": 48,
+      "name": "_IApplicationEvents",
+      "kind": "TKIND_DISPATCH",
+      "function_records": 3,
+      "variable_records": 0
+    },
+    {
+      "type_info_index": 49,
+      "name": "Application",
+      "kind": "TKIND_COCLASS",
+      "function_records": 0,
+      "variable_records": 0
+    },
+    {
+      "type_info_index": 50,
+      "name": "Options",
+      "kind": "TKIND_COCLASS",
+      "function_records": 0,
+      "variable_records": 0
+    },
+    {
+      "type_info_index": 51,
+      "name": "Documents",
+      "kind": "TKIND_COCLASS",
+      "function_records": 0,
+      "variable_records": 0
+    },
+    {
+      "type_info_index": 52,
+      "name": "_IDocumentEvents",
+      "kind": "TKIND_DISPATCH",
+      "function_records": 2,
+      "variable_records": 0
+    },
+    {
+      "type_info_index": 53,
+      "name": "Document",
+      "kind": "TKIND_COCLASS",
+      "function_records": 0,
+      "variable_records": 0
+    },
+    {
+      "type_info_index": 54,
+      "name": "MapForceView",
+      "kind": "TKIND_COCLASS",
+      "function_records": 0,
+      "variable_records": 0
+    },
+    {
+      "type_info_index": 55,
+      "name": "_IProjectEvents",
+      "kind": "TKIND_DISPATCH",
+      "function_records": 1,
+      "variable_records": 0
+    },
+    {
+      "type_info_index": 56,
+      "name": "Project",
+      "kind": "TKIND_COCLASS",
+      "function_records": 0,
+      "variable_records": 0
+    },
+    {
+      "type_info_index": 57,
+      "name": "_IProjectItemEvents",
+      "kind": "TKIND_DISPATCH",
+      "function_records": 2,
+      "variable_records": 0
+    },
+    {
+      "type_info_index": 58,
+      "name": "ProjectItem",
+      "kind": "TKIND_COCLASS",
+      "function_records": 0,
+      "variable_records": 0
+    },
+    {
+      "type_info_index": 59,
+      "name": "_IErrorMarkersEvents",
+      "kind": "TKIND_DISPATCH",
+      "function_records": 0,
+      "variable_records": 0
+    },
+    {
+      "type_info_index": 60,
+      "name": "ErrorMarkers",
+      "kind": "TKIND_COCLASS",
+      "function_records": 0,
+      "variable_records": 0
+    },
+    {
+      "type_info_index": 61,
+      "name": "_IErrorMarkerEvents",
+      "kind": "TKIND_DISPATCH",
+      "function_records": 0,
+      "variable_records": 0
+    },
+    {
+      "type_info_index": 62,
+      "name": "ErrorMarker",
+      "kind": "TKIND_COCLASS",
+      "function_records": 0,
+      "variable_records": 0
+    },
+    {
+      "type_info_index": 63,
+      "name": "OutputGenerationResult",
+      "kind": "TKIND_COCLASS",
+      "function_records": 0,
+      "variable_records": 0
+    },
+    {
+      "type_info_index": 64,
+      "name": "CodeGenerationResult",
+      "kind": "TKIND_COCLASS",
+      "function_records": 0,
+      "variable_records": 0
+    },
+    {
+      "type_info_index": 65,
+      "name": "Mappings",
+      "kind": "TKIND_COCLASS",
+      "function_records": 0,
+      "variable_records": 0
+    },
+    {
+      "type_info_index": 66,
+      "name": "Mapping",
+      "kind": "TKIND_COCLASS",
+      "function_records": 0,
+      "variable_records": 0
+    },
+    {
+      "type_info_index": 67,
+      "name": "Components",
+      "kind": "TKIND_COCLASS",
+      "function_records": 0,
+      "variable_records": 0
+    },
+    {
+      "type_info_index": 68,
+      "name": "Component",
+      "kind": "TKIND_COCLASS",
+      "function_records": 0,
+      "variable_records": 0
+    },
+    {
+      "type_info_index": 69,
+      "name": "Datapoint",
+      "kind": "TKIND_COCLASS",
+      "function_records": 0,
+      "variable_records": 0
+    },
+    {
+      "type_info_index": 70,
+      "name": "Connection",
+      "kind": "TKIND_COCLASS",
+      "function_records": 0,
+      "variable_records": 0
+    },
+    {
+      "type_info_index": 71,
+      "name": "LibraryImports",
+      "kind": "TKIND_COCLASS",
+      "function_records": 0,
+      "variable_records": 0
+    },
+    {
+      "type_info_index": 72,
+      "name": "LibraryImport",
+      "kind": "TKIND_COCLASS",
+      "function_records": 0,
+      "variable_records": 0
+    },
+    {
+      "type_info_index": 73,
+      "name": "_IDummy",
+      "kind": "TKIND_DISPATCH",
+      "function_records": 0,
+      "variable_records": 0
+    },
+    {
+      "type_info_index": 74,
+      "name": "_Dummy",
+      "kind": "TKIND_COCLASS",
+      "function_records": 0,
+      "variable_records": 0
+    }
+  ],
+  "records": [
+    {
+      "type_info_index": 0,
+      "owner": "IApplication",
+      "record_index": 0,
+      "name": "Name",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 0,
+      "record_offset": 31252,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        6667,
+        6684
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 0,
+      "owner": "IApplication",
+      "record_index": 1,
+      "name": "Application",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 1,
+      "record_offset": 31296,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        6685,
+        6702
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 0,
+      "owner": "IApplication",
+      "record_index": 2,
+      "name": "Parent",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 2,
+      "record_offset": 31340,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        6703,
+        6720
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 0,
+      "owner": "IApplication",
+      "record_index": 3,
+      "name": "Visible",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 3,
+      "record_offset": 31384,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        6721,
+        6738
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 0,
+      "owner": "IApplication",
+      "record_index": 4,
+      "name": "Visible",
+      "invocation_kind": "property_put",
+      "dispatch_member_id": 3,
+      "record_offset": 31428,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        6739,
+        6756
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 0,
+      "owner": "IApplication",
+      "record_index": 5,
+      "name": "Options",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 4,
+      "record_offset": 31472,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        6757,
+        6774
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 0,
+      "owner": "IApplication",
+      "record_index": 6,
+      "name": "ActiveDocument",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 5,
+      "record_offset": 31516,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        6775,
+        6792
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 0,
+      "owner": "IApplication",
+      "record_index": 7,
+      "name": "Quit",
+      "invocation_kind": "function",
+      "dispatch_member_id": 6,
+      "record_offset": 31560,
+      "record_bytes": 32,
+      "function_dump_lines": [
+        6793,
+        6805
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 0,
+      "owner": "IApplication",
+      "record_index": 8,
+      "name": "OpenDocument",
+      "invocation_kind": "function",
+      "dispatch_member_id": 7,
+      "record_offset": 31592,
+      "record_bytes": 56,
+      "function_dump_lines": [
+        6806,
+        6828
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 0,
+      "owner": "IApplication",
+      "record_index": 9,
+      "name": "NewDocument",
+      "invocation_kind": "function",
+      "dispatch_member_id": 8,
+      "record_offset": 31648,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        6829,
+        6846
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 0,
+      "owner": "IApplication",
+      "record_index": 10,
+      "name": "WindowHandle",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 9,
+      "record_offset": 31692,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        6847,
+        6864
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 0,
+      "owner": "IApplication",
+      "record_index": 11,
+      "name": "OpenProject",
+      "invocation_kind": "function",
+      "dispatch_member_id": 10,
+      "record_offset": 31736,
+      "record_bytes": 56,
+      "function_dump_lines": [
+        6865,
+        6887
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 0,
+      "owner": "IApplication",
+      "record_index": 12,
+      "name": "NewProject",
+      "invocation_kind": "function",
+      "dispatch_member_id": 11,
+      "record_offset": 31792,
+      "record_bytes": 56,
+      "function_dump_lines": [
+        6888,
+        6910
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 0,
+      "owner": "IApplication",
+      "record_index": 13,
+      "name": "OpenMapping",
+      "invocation_kind": "function",
+      "dispatch_member_id": 12,
+      "record_offset": 31848,
+      "record_bytes": 56,
+      "function_dump_lines": [
+        6911,
+        6933
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 0,
+      "owner": "IApplication",
+      "record_index": 14,
+      "name": "NewMapping",
+      "invocation_kind": "function",
+      "dispatch_member_id": 13,
+      "record_offset": 31904,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        6934,
+        6951
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 0,
+      "owner": "IApplication",
+      "record_index": 15,
+      "name": "ActiveProject",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 14,
+      "record_offset": 31948,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        6952,
+        6969
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 0,
+      "owner": "IApplication",
+      "record_index": 16,
+      "name": "Documents",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 15,
+      "record_offset": 31992,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        6970,
+        6987
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 0,
+      "owner": "IApplication",
+      "record_index": 17,
+      "name": "OpenURL",
+      "invocation_kind": "function",
+      "dispatch_member_id": 16,
+      "record_offset": 32036,
+      "record_bytes": 68,
+      "function_dump_lines": [
+        6988,
+        7015
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 0,
+      "owner": "IApplication",
+      "record_index": 18,
+      "name": "HighlightSerializedMarker",
+      "invocation_kind": "function",
+      "dispatch_member_id": 17,
+      "record_offset": 32104,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        7016,
+        7033
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 0,
+      "owner": "IApplication",
+      "record_index": 19,
+      "name": "GlobalResourceConfig",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 18,
+      "record_offset": 32148,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        7034,
+        7051
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 0,
+      "owner": "IApplication",
+      "record_index": 20,
+      "name": "GlobalResourceConfig",
+      "invocation_kind": "property_put",
+      "dispatch_member_id": 18,
+      "record_offset": 32192,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        7052,
+        7069
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 0,
+      "owner": "IApplication",
+      "record_index": 21,
+      "name": "GlobalResourceFile",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 19,
+      "record_offset": 32236,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        7070,
+        7087
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 0,
+      "owner": "IApplication",
+      "record_index": 22,
+      "name": "GlobalResourceFile",
+      "invocation_kind": "property_put",
+      "dispatch_member_id": 19,
+      "record_offset": 32280,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        7088,
+        7105
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 0,
+      "owner": "IApplication",
+      "record_index": 23,
+      "name": "Status",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 20,
+      "record_offset": 32324,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        7106,
+        7123
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 0,
+      "owner": "IApplication",
+      "record_index": 24,
+      "name": "MajorVersion",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 21,
+      "record_offset": 32368,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        7124,
+        7141
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 0,
+      "owner": "IApplication",
+      "record_index": 25,
+      "name": "MinorVersion",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 22,
+      "record_offset": 32412,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        7142,
+        7159
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 0,
+      "owner": "IApplication",
+      "record_index": 26,
+      "name": "Edition",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 23,
+      "record_offset": 32456,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        7160,
+        7177
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 0,
+      "owner": "IApplication",
+      "record_index": 27,
+      "name": "IsAPISupported",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 24,
+      "record_offset": 32500,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        7178,
+        7195
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 0,
+      "owner": "IApplication",
+      "record_index": 28,
+      "name": "NewWebServiceProject",
+      "invocation_kind": "function",
+      "dispatch_member_id": 25,
+      "record_offset": 32544,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        7196,
+        7213
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 0,
+      "owner": "IApplication",
+      "record_index": 29,
+      "name": "ServicePackVersion",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 26,
+      "record_offset": 32588,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        7214,
+        7231
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 0,
+      "owner": "IApplication",
+      "record_index": 30,
+      "name": "LibraryImports",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 27,
+      "record_offset": 32632,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        7232,
+        7249
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 1,
+      "owner": "IOptions",
+      "record_index": 0,
+      "name": "Application",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 1,
+      "record_offset": 33052,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        7346,
+        7363
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 1,
+      "owner": "IOptions",
+      "record_index": 1,
+      "name": "Parent",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 2,
+      "record_offset": 33096,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        7364,
+        7381
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 1,
+      "owner": "IOptions",
+      "record_index": 2,
+      "name": "ShowLogoOnStartup",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 3,
+      "record_offset": 33140,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        7382,
+        7399
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 1,
+      "owner": "IOptions",
+      "record_index": 3,
+      "name": "ShowLogoOnStartup",
+      "invocation_kind": "property_put",
+      "dispatch_member_id": 3,
+      "record_offset": 33184,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        7400,
+        7417
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 1,
+      "owner": "IOptions",
+      "record_index": 4,
+      "name": "ShowLogoOnPrint",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 4,
+      "record_offset": 33228,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        7418,
+        7435
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 1,
+      "owner": "IOptions",
+      "record_index": 5,
+      "name": "ShowLogoOnPrint",
+      "invocation_kind": "property_put",
+      "dispatch_member_id": 4,
+      "record_offset": 33272,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        7436,
+        7453
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 1,
+      "owner": "IOptions",
+      "record_index": 6,
+      "name": "DefaultOutputEncoding",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 5,
+      "record_offset": 33316,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        7454,
+        7471
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 1,
+      "owner": "IOptions",
+      "record_index": 7,
+      "name": "DefaultOutputEncoding",
+      "invocation_kind": "property_put",
+      "dispatch_member_id": 5,
+      "record_offset": 33360,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        7472,
+        7489
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 1,
+      "owner": "IOptions",
+      "record_index": 8,
+      "name": "UseGradientBackground",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 6,
+      "record_offset": 33404,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        7490,
+        7507
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 1,
+      "owner": "IOptions",
+      "record_index": 9,
+      "name": "UseGradientBackground",
+      "invocation_kind": "property_put",
+      "dispatch_member_id": 6,
+      "record_offset": 33448,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        7508,
+        7525
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 1,
+      "owner": "IOptions",
+      "record_index": 10,
+      "name": "XSLTDefaultOutputDirectory",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 7,
+      "record_offset": 33492,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        7526,
+        7543
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 1,
+      "owner": "IOptions",
+      "record_index": 11,
+      "name": "XSLTDefaultOutputDirectory",
+      "invocation_kind": "property_put",
+      "dispatch_member_id": 7,
+      "record_offset": 33536,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        7544,
+        7561
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 1,
+      "owner": "IOptions",
+      "record_index": 12,
+      "name": "CodeDefaultOutputDirectory",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 8,
+      "record_offset": 33580,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        7562,
+        7579
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 1,
+      "owner": "IOptions",
+      "record_index": 13,
+      "name": "CodeDefaultOutputDirectory",
+      "invocation_kind": "property_put",
+      "dispatch_member_id": 8,
+      "record_offset": 33624,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        7580,
+        7597
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 1,
+      "owner": "IOptions",
+      "record_index": 14,
+      "name": "CPPSettings_DOMType",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 9,
+      "record_offset": 33668,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        7598,
+        7615
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 1,
+      "owner": "IOptions",
+      "record_index": 15,
+      "name": "CPPSettings_DOMType",
+      "invocation_kind": "property_put",
+      "dispatch_member_id": 9,
+      "record_offset": 33712,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        7616,
+        7633
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 1,
+      "owner": "IOptions",
+      "record_index": 16,
+      "name": "CPPSettings_LibraryType",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 10,
+      "record_offset": 33756,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        7634,
+        7651
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 1,
+      "owner": "IOptions",
+      "record_index": 17,
+      "name": "CPPSettings_LibraryType",
+      "invocation_kind": "property_put",
+      "dispatch_member_id": 10,
+      "record_offset": 33800,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        7652,
+        7669
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 1,
+      "owner": "IOptions",
+      "record_index": 18,
+      "name": "CPPSettings_UseMFC",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 11,
+      "record_offset": 33844,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        7670,
+        7687
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 1,
+      "owner": "IOptions",
+      "record_index": 19,
+      "name": "CPPSettings_UseMFC",
+      "invocation_kind": "property_put",
+      "dispatch_member_id": 11,
+      "record_offset": 33888,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        7688,
+        7705
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 1,
+      "owner": "IOptions",
+      "record_index": 20,
+      "name": "CSharpSettings_ProjectType",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 12,
+      "record_offset": 33932,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        7706,
+        7723
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 1,
+      "owner": "IOptions",
+      "record_index": 21,
+      "name": "CSharpSettings_ProjectType",
+      "invocation_kind": "property_put",
+      "dispatch_member_id": 12,
+      "record_offset": 33976,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        7724,
+        7741
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 1,
+      "owner": "IOptions",
+      "record_index": 22,
+      "name": "CPPSettings_GenerateVC6ProjectFile",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 13,
+      "record_offset": 34020,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        7742,
+        7759
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 1,
+      "owner": "IOptions",
+      "record_index": 23,
+      "name": "CPPSettings_GenerateVC6ProjectFile",
+      "invocation_kind": "property_put",
+      "dispatch_member_id": 13,
+      "record_offset": 34064,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        7760,
+        7777
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 1,
+      "owner": "IOptions",
+      "record_index": 24,
+      "name": "CppSettings_GenerateVSProjectFile",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 14,
+      "record_offset": 34108,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        7778,
+        7795
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 1,
+      "owner": "IOptions",
+      "record_index": 25,
+      "name": "CppSettings_GenerateVSProjectFile",
+      "invocation_kind": "property_put",
+      "dispatch_member_id": 14,
+      "record_offset": 34152,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        7796,
+        7813
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 1,
+      "owner": "IOptions",
+      "record_index": 26,
+      "name": "CompatibilityMode",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 15,
+      "record_offset": 34196,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        7814,
+        7831
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 1,
+      "owner": "IOptions",
+      "record_index": 27,
+      "name": "CompatibilityMode",
+      "invocation_kind": "property_put",
+      "dispatch_member_id": 15,
+      "record_offset": 34240,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        7832,
+        7849
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 1,
+      "owner": "IOptions",
+      "record_index": 28,
+      "name": "GenerateWrapperClasses",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 16,
+      "record_offset": 34284,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        7850,
+        7867
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 1,
+      "owner": "IOptions",
+      "record_index": 29,
+      "name": "GenerateWrapperClasses",
+      "invocation_kind": "property_put",
+      "dispatch_member_id": 16,
+      "record_offset": 34328,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        7868,
+        7885
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 1,
+      "owner": "IOptions",
+      "record_index": 30,
+      "name": "WrapperClassesVersion",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 17,
+      "record_offset": 34372,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        7886,
+        7903
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 1,
+      "owner": "IOptions",
+      "record_index": 31,
+      "name": "WrapperClassesVersion",
+      "invocation_kind": "property_put",
+      "dispatch_member_id": 17,
+      "record_offset": 34416,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        7904,
+        7921
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 1,
+      "owner": "IOptions",
+      "record_index": 32,
+      "name": "DefaultOutputByteOrder",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 18,
+      "record_offset": 34460,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        7922,
+        7939
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 1,
+      "owner": "IOptions",
+      "record_index": 33,
+      "name": "DefaultOutputByteOrder",
+      "invocation_kind": "property_put",
+      "dispatch_member_id": 18,
+      "record_offset": 34504,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        7940,
+        7957
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 1,
+      "owner": "IOptions",
+      "record_index": 34,
+      "name": "DefaultOutputByteOrderMark",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 19,
+      "record_offset": 34548,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        7958,
+        7975
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 1,
+      "owner": "IOptions",
+      "record_index": 35,
+      "name": "DefaultOutputByteOrderMark",
+      "invocation_kind": "property_put",
+      "dispatch_member_id": 19,
+      "record_offset": 34592,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        7976,
+        7993
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 1,
+      "owner": "IOptions",
+      "record_index": 36,
+      "name": "JavaSettings_ApacheAxisVersion",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 20,
+      "record_offset": 34636,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        7994,
+        8011
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 1,
+      "owner": "IOptions",
+      "record_index": 37,
+      "name": "JavaSettings_ApacheAxisVersion",
+      "invocation_kind": "property_put",
+      "dispatch_member_id": 20,
+      "record_offset": 34680,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        8012,
+        8029
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 1,
+      "owner": "IOptions",
+      "record_index": 38,
+      "name": "EnableComponentDocking",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 21,
+      "record_offset": 34724,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        8030,
+        8047
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 1,
+      "owner": "IOptions",
+      "record_index": 39,
+      "name": "EnableComponentDocking",
+      "invocation_kind": "property_put",
+      "dispatch_member_id": 21,
+      "record_offset": 34768,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        8048,
+        8065
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 7,
+      "owner": "IDocument",
+      "record_index": 0,
+      "name": "Application",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 1,
+      "record_offset": 36020,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        8446,
+        8463
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 7,
+      "owner": "IDocument",
+      "record_index": 1,
+      "name": "Parent",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 2,
+      "record_offset": 36064,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        8464,
+        8481
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 7,
+      "owner": "IDocument",
+      "record_index": 2,
+      "name": "FullName",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 3,
+      "record_offset": 36108,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        8482,
+        8499
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 7,
+      "owner": "IDocument",
+      "record_index": 3,
+      "name": "FullName",
+      "invocation_kind": "property_put",
+      "dispatch_member_id": 3,
+      "record_offset": 36152,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        8500,
+        8517
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 7,
+      "owner": "IDocument",
+      "record_index": 4,
+      "name": "Name",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 4,
+      "record_offset": 36196,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        8518,
+        8535
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 7,
+      "owner": "IDocument",
+      "record_index": 5,
+      "name": "Path",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 5,
+      "record_offset": 36240,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        8536,
+        8553
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 7,
+      "owner": "IDocument",
+      "record_index": 6,
+      "name": "Saved",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 6,
+      "record_offset": 36284,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        8554,
+        8571
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 7,
+      "owner": "IDocument",
+      "record_index": 7,
+      "name": "Save",
+      "invocation_kind": "function",
+      "dispatch_member_id": 7,
+      "record_offset": 36328,
+      "record_bytes": 32,
+      "function_dump_lines": [
+        8572,
+        8584
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 7,
+      "owner": "IDocument",
+      "record_index": 8,
+      "name": "SaveAs",
+      "invocation_kind": "function",
+      "dispatch_member_id": 8,
+      "record_offset": 36360,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        8585,
+        8602
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 7,
+      "owner": "IDocument",
+      "record_index": 9,
+      "name": "OutputSettings_Encoding",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 9,
+      "record_offset": 36404,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        8603,
+        8620
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 7,
+      "owner": "IDocument",
+      "record_index": 10,
+      "name": "OutputSettings_Encoding",
+      "invocation_kind": "property_put",
+      "dispatch_member_id": 9,
+      "record_offset": 36448,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        8621,
+        8638
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 7,
+      "owner": "IDocument",
+      "record_index": 11,
+      "name": "OutputSettings_ApplicationName",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 10,
+      "record_offset": 36492,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        8639,
+        8656
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 7,
+      "owner": "IDocument",
+      "record_index": 12,
+      "name": "OutputSettings_ApplicationName",
+      "invocation_kind": "property_put",
+      "dispatch_member_id": 10,
+      "record_offset": 36536,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        8657,
+        8674
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 7,
+      "owner": "IDocument",
+      "record_index": 13,
+      "name": "JavaSettings_BasePackageName",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 11,
+      "record_offset": 36580,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        8675,
+        8692
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 7,
+      "owner": "IDocument",
+      "record_index": 14,
+      "name": "JavaSettings_BasePackageName",
+      "invocation_kind": "property_put",
+      "dispatch_member_id": 11,
+      "record_offset": 36624,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        8693,
+        8710
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 7,
+      "owner": "IDocument",
+      "record_index": 15,
+      "name": "MapForceView",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 12,
+      "record_offset": 36668,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        8711,
+        8728
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 7,
+      "owner": "IDocument",
+      "record_index": 16,
+      "name": "GenerateXSLT",
+      "invocation_kind": "function",
+      "dispatch_member_id": 13,
+      "record_offset": 36712,
+      "record_bytes": 32,
+      "function_dump_lines": [
+        8729,
+        8741
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 7,
+      "owner": "IDocument",
+      "record_index": 17,
+      "name": "GenerateJavaCode",
+      "invocation_kind": "function",
+      "dispatch_member_id": 14,
+      "record_offset": 36744,
+      "record_bytes": 32,
+      "function_dump_lines": [
+        8742,
+        8754
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 7,
+      "owner": "IDocument",
+      "record_index": 18,
+      "name": "GenerateCppCode",
+      "invocation_kind": "function",
+      "dispatch_member_id": 15,
+      "record_offset": 36776,
+      "record_bytes": 32,
+      "function_dump_lines": [
+        8755,
+        8767
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 7,
+      "owner": "IDocument",
+      "record_index": 19,
+      "name": "GenerateCHashCode",
+      "invocation_kind": "function",
+      "dispatch_member_id": 16,
+      "record_offset": 36808,
+      "record_bytes": 32,
+      "function_dump_lines": [
+        8768,
+        8780
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 7,
+      "owner": "IDocument",
+      "record_index": 20,
+      "name": "Close",
+      "invocation_kind": "function",
+      "dispatch_member_id": 17,
+      "record_offset": 36840,
+      "record_bytes": 32,
+      "function_dump_lines": [
+        8781,
+        8793
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 7,
+      "owner": "IDocument",
+      "record_index": 21,
+      "name": "Activate",
+      "invocation_kind": "function",
+      "dispatch_member_id": 18,
+      "record_offset": 36872,
+      "record_bytes": 32,
+      "function_dump_lines": [
+        8794,
+        8806
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 7,
+      "owner": "IDocument",
+      "record_index": 22,
+      "name": "GenerateXSLT2",
+      "invocation_kind": "function",
+      "dispatch_member_id": 19,
+      "record_offset": 36904,
+      "record_bytes": 32,
+      "function_dump_lines": [
+        8807,
+        8819
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 7,
+      "owner": "IDocument",
+      "record_index": 23,
+      "name": "GenerateXQuery",
+      "invocation_kind": "function",
+      "dispatch_member_id": 20,
+      "record_offset": 36936,
+      "record_bytes": 32,
+      "function_dump_lines": [
+        8820,
+        8832
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 7,
+      "owner": "IDocument",
+      "record_index": 24,
+      "name": "GenerateOutput",
+      "invocation_kind": "function",
+      "dispatch_member_id": 21,
+      "record_offset": 36968,
+      "record_bytes": 32,
+      "function_dump_lines": [
+        8833,
+        8845
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 7,
+      "owner": "IDocument",
+      "record_index": 25,
+      "name": "GenerateCodeEx",
+      "invocation_kind": "function",
+      "dispatch_member_id": 22,
+      "record_offset": 37000,
+      "record_bytes": 56,
+      "function_dump_lines": [
+        8846,
+        8868
+      ],
+      "cohort": "generation"
+    },
+    {
+      "type_info_index": 7,
+      "owner": "IDocument",
+      "record_index": 26,
+      "name": "HighlightSerializedMarker",
+      "invocation_kind": "function",
+      "dispatch_member_id": 23,
+      "record_offset": 37056,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        8869,
+        8886
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 7,
+      "owner": "IDocument",
+      "record_index": 27,
+      "name": "Mappings",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 24,
+      "record_offset": 37100,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        8887,
+        8904
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 7,
+      "owner": "IDocument",
+      "record_index": 28,
+      "name": "MainMapping",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 25,
+      "record_offset": 37144,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        8905,
+        8922
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 7,
+      "owner": "IDocument",
+      "record_index": 29,
+      "name": "FindComponentByID",
+      "invocation_kind": "function",
+      "dispatch_member_id": 26,
+      "record_offset": 37188,
+      "record_bytes": 48,
+      "function_dump_lines": [
+        8923,
+        8943
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 7,
+      "owner": "IDocument",
+      "record_index": 30,
+      "name": "GenerateOutputEx",
+      "invocation_kind": "function",
+      "dispatch_member_id": 27,
+      "record_offset": 37236,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        8944,
+        8961
+      ],
+      "cohort": "generation"
+    },
+    {
+      "type_info_index": 7,
+      "owner": "IDocument",
+      "record_index": 31,
+      "name": "CreateUserDefinedFunction",
+      "invocation_kind": "function",
+      "dispatch_member_id": 28,
+      "record_offset": 37280,
+      "record_bytes": 104,
+      "function_dump_lines": [
+        8962,
+        9004
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 7,
+      "owner": "IDocument",
+      "record_index": 32,
+      "name": "GenerateOutputEx2",
+      "invocation_kind": "function",
+      "dispatch_member_id": 29,
+      "record_offset": 37384,
+      "record_bytes": 56,
+      "function_dump_lines": [
+        9005,
+        9027
+      ],
+      "cohort": "generation"
+    },
+    {
+      "type_info_index": 7,
+      "owner": "IDocument",
+      "record_index": 33,
+      "name": "GenerateCodeEx2",
+      "invocation_kind": "function",
+      "dispatch_member_id": 30,
+      "record_offset": 37440,
+      "record_bytes": 56,
+      "function_dump_lines": [
+        9028,
+        9050
+      ],
+      "cohort": "generation"
+    },
+    {
+      "type_info_index": 7,
+      "owner": "IDocument",
+      "record_index": 34,
+      "name": "Test1",
+      "invocation_kind": "function",
+      "dispatch_member_id": 31,
+      "record_offset": 37496,
+      "record_bytes": 36,
+      "function_dump_lines": [
+        9051,
+        9066
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 7,
+      "owner": "IDocument",
+      "record_index": 35,
+      "name": "Test2",
+      "invocation_kind": "function",
+      "dispatch_member_id": 32,
+      "record_offset": 37532,
+      "record_bytes": 48,
+      "function_dump_lines": [
+        9067,
+        9087
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 7,
+      "owner": "IDocument",
+      "record_index": 36,
+      "name": "Test3",
+      "invocation_kind": "function",
+      "dispatch_member_id": 33,
+      "record_offset": 37580,
+      "record_bytes": 60,
+      "function_dump_lines": [
+        9088,
+        9113
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 7,
+      "owner": "IDocument",
+      "record_index": 37,
+      "name": "LibraryImports",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 34,
+      "record_offset": 37640,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        9114,
+        9131
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 7,
+      "owner": "IDocument",
+      "record_index": 38,
+      "name": "GenerateXSLT3",
+      "invocation_kind": "function",
+      "dispatch_member_id": 35,
+      "record_offset": 37684,
+      "record_bytes": 32,
+      "function_dump_lines": [
+        9132,
+        9144
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 8,
+      "owner": "IMapForceView",
+      "record_index": 0,
+      "name": "Application",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 1,
+      "record_offset": 38188,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        9265,
+        9282
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 8,
+      "owner": "IMapForceView",
+      "record_index": 1,
+      "name": "Parent",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 2,
+      "record_offset": 38232,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        9283,
+        9300
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 8,
+      "owner": "IMapForceView",
+      "record_index": 2,
+      "name": "Active",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 3,
+      "record_offset": 38276,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        9301,
+        9318
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 8,
+      "owner": "IMapForceView",
+      "record_index": 3,
+      "name": "Active",
+      "invocation_kind": "property_put",
+      "dispatch_member_id": 3,
+      "record_offset": 38320,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        9319,
+        9336
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 8,
+      "owner": "IMapForceView",
+      "record_index": 4,
+      "name": "ShowLibraryInFunctionHeader",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 4,
+      "record_offset": 38364,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        9337,
+        9354
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 8,
+      "owner": "IMapForceView",
+      "record_index": 5,
+      "name": "ShowLibraryInFunctionHeader",
+      "invocation_kind": "property_put",
+      "dispatch_member_id": 4,
+      "record_offset": 38408,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        9355,
+        9372
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 8,
+      "owner": "IMapForceView",
+      "record_index": 6,
+      "name": "ShowItemTypes",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 5,
+      "record_offset": 38452,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        9373,
+        9390
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 8,
+      "owner": "IMapForceView",
+      "record_index": 7,
+      "name": "ShowItemTypes",
+      "invocation_kind": "property_put",
+      "dispatch_member_id": 5,
+      "record_offset": 38496,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        9391,
+        9408
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 8,
+      "owner": "IMapForceView",
+      "record_index": 8,
+      "name": "HighlightMyConnections",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 6,
+      "record_offset": 38540,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        9409,
+        9426
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 8,
+      "owner": "IMapForceView",
+      "record_index": 9,
+      "name": "HighlightMyConnections",
+      "invocation_kind": "property_put",
+      "dispatch_member_id": 6,
+      "record_offset": 38584,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        9427,
+        9444
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 8,
+      "owner": "IMapForceView",
+      "record_index": 10,
+      "name": "HighlightMyConnectionsRecursivly",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 7,
+      "record_offset": 38628,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        9445,
+        9462
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 8,
+      "owner": "IMapForceView",
+      "record_index": 11,
+      "name": "HighlightMyConnectionsRecursivly",
+      "invocation_kind": "property_put",
+      "dispatch_member_id": 7,
+      "record_offset": 38672,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        9463,
+        9480
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 8,
+      "owner": "IMapForceView",
+      "record_index": 12,
+      "name": "InsertXMLFile",
+      "invocation_kind": "function",
+      "dispatch_member_id": 8,
+      "record_offset": 38716,
+      "record_bytes": 56,
+      "function_dump_lines": [
+        9481,
+        9503
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 8,
+      "owner": "IMapForceView",
+      "record_index": 13,
+      "name": "InsertXMLSchema",
+      "invocation_kind": "function",
+      "dispatch_member_id": 9,
+      "record_offset": 38772,
+      "record_bytes": 56,
+      "function_dump_lines": [
+        9504,
+        9526
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 8,
+      "owner": "IMapForceView",
+      "record_index": 14,
+      "name": "InsertXMLSchemaWithSample",
+      "invocation_kind": "function",
+      "dispatch_member_id": 10,
+      "record_offset": 38828,
+      "record_bytes": 68,
+      "function_dump_lines": [
+        9527,
+        9554
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 8,
+      "owner": "IMapForceView",
+      "record_index": 15,
+      "name": "InsertWSDLCall",
+      "invocation_kind": "function",
+      "dispatch_member_id": 11,
+      "record_offset": 38896,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        9555,
+        9572
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 8,
+      "owner": "IMapForceView",
+      "record_index": 16,
+      "name": "ActiveMapping",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 12,
+      "record_offset": 38940,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        9573,
+        9590
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 8,
+      "owner": "IMapForceView",
+      "record_index": 17,
+      "name": "ActiveMapping",
+      "invocation_kind": "property_put",
+      "dispatch_member_id": 12,
+      "record_offset": 38984,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        9591,
+        9608
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 8,
+      "owner": "IMapForceView",
+      "record_index": 18,
+      "name": "ActiveMappingName",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 13,
+      "record_offset": 39028,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        9609,
+        9626
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 8,
+      "owner": "IMapForceView",
+      "record_index": 19,
+      "name": "ActiveMappingName",
+      "invocation_kind": "property_put",
+      "dispatch_member_id": 13,
+      "record_offset": 39072,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        9627,
+        9644
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 9,
+      "owner": "IMapping",
+      "record_index": 0,
+      "name": "IsMainMapping",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 1,
+      "record_offset": 39360,
+      "record_bytes": 36,
+      "function_dump_lines": [
+        9708,
+        9723
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 9,
+      "owner": "IMapping",
+      "record_index": 1,
+      "name": "Components",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 2,
+      "record_offset": 39396,
+      "record_bytes": 36,
+      "function_dump_lines": [
+        9724,
+        9739
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 9,
+      "owner": "IMapping",
+      "record_index": 2,
+      "name": "Name",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 3,
+      "record_offset": 39432,
+      "record_bytes": 36,
+      "function_dump_lines": [
+        9740,
+        9755
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 9,
+      "owner": "IMapping",
+      "record_index": 3,
+      "name": "Application",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 4,
+      "record_offset": 39468,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        9756,
+        9773
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 9,
+      "owner": "IMapping",
+      "record_index": 4,
+      "name": "Parent",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 5,
+      "record_offset": 39512,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        9774,
+        9791
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 9,
+      "owner": "IMapping",
+      "record_index": 5,
+      "name": "InsertXMLFile",
+      "invocation_kind": "function",
+      "dispatch_member_id": 6,
+      "record_offset": 39556,
+      "record_bytes": 68,
+      "function_dump_lines": [
+        9792,
+        9819
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 9,
+      "owner": "IMapping",
+      "record_index": 6,
+      "name": "InsertXMLSchema",
+      "invocation_kind": "function",
+      "dispatch_member_id": 7,
+      "record_offset": 39624,
+      "record_bytes": 68,
+      "function_dump_lines": [
+        9820,
+        9847
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 9,
+      "owner": "IMapping",
+      "record_index": 7,
+      "name": "CreateConnection",
+      "invocation_kind": "function",
+      "dispatch_member_id": 8,
+      "record_offset": 39692,
+      "record_bytes": 68,
+      "function_dump_lines": [
+        9848,
+        9875
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 9,
+      "owner": "IMapping",
+      "record_index": 8,
+      "name": "InsertFunctionCall",
+      "invocation_kind": "function",
+      "dispatch_member_id": 9,
+      "record_offset": 39760,
+      "record_bytes": 68,
+      "function_dump_lines": [
+        9876,
+        9903
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 9,
+      "owner": "IMapping",
+      "record_index": 9,
+      "name": "InsertXMLSchemaInputParameter",
+      "invocation_kind": "function",
+      "dispatch_member_id": 10,
+      "record_offset": 39828,
+      "record_bytes": 80,
+      "function_dump_lines": [
+        9904,
+        9936
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 9,
+      "owner": "IMapping",
+      "record_index": 10,
+      "name": "InsertXMLSchemaOutputParameter",
+      "invocation_kind": "function",
+      "dispatch_member_id": 11,
+      "record_offset": 39908,
+      "record_bytes": 80,
+      "function_dump_lines": [
+        9937,
+        9969
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 10,
+      "owner": "IComponents",
+      "record_index": 0,
+      "name": "Count",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 1610743808,
+      "record_offset": 40124,
+      "record_bytes": 36,
+      "function_dump_lines": [
+        10006,
+        10021
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 10,
+      "owner": "IComponents",
+      "record_index": 1,
+      "name": "Item",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 0,
+      "record_offset": 40160,
+      "record_bytes": 48,
+      "function_dump_lines": [
+        10022,
+        10042
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 10,
+      "owner": "IComponents",
+      "record_index": 2,
+      "name": "_NewEnum",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": -4,
+      "record_offset": 40208,
+      "record_bytes": 36,
+      "function_dump_lines": [
+        10043,
+        10058
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 10,
+      "owner": "IComponents",
+      "record_index": 3,
+      "name": "Application",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 1,
+      "record_offset": 40244,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        10059,
+        10076
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 10,
+      "owner": "IComponents",
+      "record_index": 4,
+      "name": "Parent",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 2,
+      "record_offset": 40288,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        10077,
+        10094
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 11,
+      "owner": "IComponent",
+      "record_index": 0,
+      "name": "HasIncomingConnections",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 1,
+      "record_offset": 40396,
+      "record_bytes": 36,
+      "function_dump_lines": [
+        10113,
+        10128
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 11,
+      "owner": "IComponent",
+      "record_index": 1,
+      "name": "HasOutgoingConnections",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 2,
+      "record_offset": 40432,
+      "record_bytes": 36,
+      "function_dump_lines": [
+        10129,
+        10144
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 11,
+      "owner": "IComponent",
+      "record_index": 2,
+      "name": "ID",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 3,
+      "record_offset": 40468,
+      "record_bytes": 36,
+      "function_dump_lines": [
+        10145,
+        10160
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 11,
+      "owner": "IComponent",
+      "record_index": 3,
+      "name": "Type",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 4,
+      "record_offset": 40504,
+      "record_bytes": 36,
+      "function_dump_lines": [
+        10161,
+        10176
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 11,
+      "owner": "IComponent",
+      "record_index": 4,
+      "name": "SubType",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 5,
+      "record_offset": 40540,
+      "record_bytes": 36,
+      "function_dump_lines": [
+        10177,
+        10192
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 11,
+      "owner": "IComponent",
+      "record_index": 5,
+      "name": "InputInstanceFile",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 6,
+      "record_offset": 40576,
+      "record_bytes": 36,
+      "function_dump_lines": [
+        10193,
+        10208
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 11,
+      "owner": "IComponent",
+      "record_index": 6,
+      "name": "InputInstanceFile",
+      "invocation_kind": "property_put",
+      "dispatch_member_id": 6,
+      "record_offset": 40612,
+      "record_bytes": 36,
+      "function_dump_lines": [
+        10209,
+        10224
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 11,
+      "owner": "IComponent",
+      "record_index": 7,
+      "name": "OutputInstanceFile",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 7,
+      "record_offset": 40648,
+      "record_bytes": 36,
+      "function_dump_lines": [
+        10225,
+        10240
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 11,
+      "owner": "IComponent",
+      "record_index": 8,
+      "name": "OutputInstanceFile",
+      "invocation_kind": "property_put",
+      "dispatch_member_id": 7,
+      "record_offset": 40684,
+      "record_bytes": 36,
+      "function_dump_lines": [
+        10241,
+        10256
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 11,
+      "owner": "IComponent",
+      "record_index": 9,
+      "name": "Schema",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 8,
+      "record_offset": 40720,
+      "record_bytes": 36,
+      "function_dump_lines": [
+        10257,
+        10272
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 11,
+      "owner": "IComponent",
+      "record_index": 10,
+      "name": "GenerateOutput",
+      "invocation_kind": "function",
+      "dispatch_member_id": 9,
+      "record_offset": 40756,
+      "record_bytes": 48,
+      "function_dump_lines": [
+        10273,
+        10293
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 11,
+      "owner": "IComponent",
+      "record_index": 11,
+      "name": "Name",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 10,
+      "record_offset": 40804,
+      "record_bytes": 36,
+      "function_dump_lines": [
+        10294,
+        10309
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 11,
+      "owner": "IComponent",
+      "record_index": 12,
+      "name": "Application",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 11,
+      "record_offset": 40840,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        10310,
+        10327
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 11,
+      "owner": "IComponent",
+      "record_index": 13,
+      "name": "Parent",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 12,
+      "record_offset": 40884,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        10328,
+        10345
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 11,
+      "owner": "IComponent",
+      "record_index": 14,
+      "name": "SetInputParameterValue",
+      "invocation_kind": "function",
+      "dispatch_member_id": 13,
+      "record_offset": 40928,
+      "record_bytes": 56,
+      "function_dump_lines": [
+        10346,
+        10368
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 11,
+      "owner": "IComponent",
+      "record_index": 15,
+      "name": "ClearInputParameterValue",
+      "invocation_kind": "function",
+      "dispatch_member_id": 14,
+      "record_offset": 40984,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        10369,
+        10386
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 11,
+      "owner": "IComponent",
+      "record_index": 16,
+      "name": "UsageKind",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 15,
+      "record_offset": 41028,
+      "record_bytes": 36,
+      "function_dump_lines": [
+        10387,
+        10402
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 11,
+      "owner": "IComponent",
+      "record_index": 17,
+      "name": "GetRootDatapoint",
+      "invocation_kind": "function",
+      "dispatch_member_id": 16,
+      "record_offset": 41064,
+      "record_bytes": 92,
+      "function_dump_lines": [
+        10403,
+        10440
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 11,
+      "owner": "IComponent",
+      "record_index": 18,
+      "name": "CanChangeInputInstanceFile",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 17,
+      "record_offset": 41156,
+      "record_bytes": 36,
+      "function_dump_lines": [
+        10441,
+        10456
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 11,
+      "owner": "IComponent",
+      "record_index": 19,
+      "name": "CanChangeOutputInstanceFile",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 18,
+      "record_offset": 41192,
+      "record_bytes": 36,
+      "function_dump_lines": [
+        10457,
+        10472
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 11,
+      "owner": "IComponent",
+      "record_index": 20,
+      "name": "IsParameterInputRequired",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 19,
+      "record_offset": 41228,
+      "record_bytes": 36,
+      "function_dump_lines": [
+        10473,
+        10488
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 11,
+      "owner": "IComponent",
+      "record_index": 21,
+      "name": "IsParameterInputRequired",
+      "invocation_kind": "property_put",
+      "dispatch_member_id": 19,
+      "record_offset": 41264,
+      "record_bytes": 36,
+      "function_dump_lines": [
+        10489,
+        10504
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 11,
+      "owner": "IComponent",
+      "record_index": 22,
+      "name": "IsParameterSequence",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 20,
+      "record_offset": 41300,
+      "record_bytes": 36,
+      "function_dump_lines": [
+        10505,
+        10520
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 11,
+      "owner": "IComponent",
+      "record_index": 23,
+      "name": "IsParameterSequence",
+      "invocation_kind": "property_put",
+      "dispatch_member_id": 20,
+      "record_offset": 41336,
+      "record_bytes": 36,
+      "function_dump_lines": [
+        10521,
+        10536
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 11,
+      "owner": "IComponent",
+      "record_index": 24,
+      "name": "Preview",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 21,
+      "record_offset": 41372,
+      "record_bytes": 36,
+      "function_dump_lines": [
+        10537,
+        10552
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 11,
+      "owner": "IComponent",
+      "record_index": 25,
+      "name": "Preview",
+      "invocation_kind": "property_put",
+      "dispatch_member_id": 21,
+      "record_offset": 41408,
+      "record_bytes": 36,
+      "function_dump_lines": [
+        10553,
+        10568
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 11,
+      "owner": "IComponent",
+      "record_index": 26,
+      "name": "IsPassthrough",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 22,
+      "record_offset": 41444,
+      "record_bytes": 36,
+      "function_dump_lines": [
+        10569,
+        10584
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 11,
+      "owner": "IComponent",
+      "record_index": 27,
+      "name": "IsPassthrough",
+      "invocation_kind": "property_put",
+      "dispatch_member_id": 22,
+      "record_offset": 41480,
+      "record_bytes": 36,
+      "function_dump_lines": [
+        10585,
+        10600
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 11,
+      "owner": "IComponent",
+      "record_index": 28,
+      "name": "ComponentName",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 23,
+      "record_offset": 41516,
+      "record_bytes": 36,
+      "function_dump_lines": [
+        10601,
+        10616
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 11,
+      "owner": "IComponent",
+      "record_index": 29,
+      "name": "ComponentName",
+      "invocation_kind": "property_put",
+      "dispatch_member_id": 23,
+      "record_offset": 41552,
+      "record_bytes": 36,
+      "function_dump_lines": [
+        10617,
+        10632
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 11,
+      "owner": "IComponent",
+      "record_index": 30,
+      "name": "Test1",
+      "invocation_kind": "function",
+      "dispatch_member_id": 24,
+      "record_offset": 41588,
+      "record_bytes": 60,
+      "function_dump_lines": [
+        10633,
+        10658
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 14,
+      "owner": "IAppOutputLines",
+      "record_index": 0,
+      "name": "Application",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 1,
+      "record_offset": 42512,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        10926,
+        10943
+      ],
+      "cohort": "collections"
+    },
+    {
+      "type_info_index": 14,
+      "owner": "IAppOutputLines",
+      "record_index": 1,
+      "name": "Parent",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 2,
+      "record_offset": 42556,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        10944,
+        10961
+      ],
+      "cohort": "collections"
+    },
+    {
+      "type_info_index": 14,
+      "owner": "IAppOutputLines",
+      "record_index": 2,
+      "name": "Count",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 1610743810,
+      "record_offset": 42600,
+      "record_bytes": 36,
+      "function_dump_lines": [
+        10962,
+        10977
+      ],
+      "cohort": "collections"
+    },
+    {
+      "type_info_index": 14,
+      "owner": "IAppOutputLines",
+      "record_index": 3,
+      "name": "Item",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 0,
+      "record_offset": 42636,
+      "record_bytes": 48,
+      "function_dump_lines": [
+        10978,
+        10998
+      ],
+      "cohort": "collections"
+    },
+    {
+      "type_info_index": 14,
+      "owner": "IAppOutputLines",
+      "record_index": 4,
+      "name": "_NewEnum",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": -4,
+      "record_offset": 42684,
+      "record_bytes": 36,
+      "function_dump_lines": [
+        10999,
+        11014
+      ],
+      "cohort": "collections"
+    },
+    {
+      "type_info_index": 15,
+      "owner": "IAppOutputLine",
+      "record_index": 0,
+      "name": "Application",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 1,
+      "record_offset": 42784,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        11033,
+        11050
+      ],
+      "cohort": "diagnostics"
+    },
+    {
+      "type_info_index": 15,
+      "owner": "IAppOutputLine",
+      "record_index": 1,
+      "name": "Parent",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 2,
+      "record_offset": 42828,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        11051,
+        11068
+      ],
+      "cohort": "diagnostics"
+    },
+    {
+      "type_info_index": 15,
+      "owner": "IAppOutputLine",
+      "record_index": 2,
+      "name": "ChildLines",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 3,
+      "record_offset": 42872,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        11069,
+        11086
+      ],
+      "cohort": "diagnostics"
+    },
+    {
+      "type_info_index": 15,
+      "owner": "IAppOutputLine",
+      "record_index": 3,
+      "name": "GetLineText",
+      "invocation_kind": "function",
+      "dispatch_member_id": 4,
+      "record_offset": 42916,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        11087,
+        11104
+      ],
+      "cohort": "diagnostics"
+    },
+    {
+      "type_info_index": 15,
+      "owner": "IAppOutputLine",
+      "record_index": 4,
+      "name": "GetLineTextEx",
+      "invocation_kind": "function",
+      "dispatch_member_id": 5,
+      "record_offset": 42960,
+      "record_bytes": 68,
+      "function_dump_lines": [
+        11105,
+        11132
+      ],
+      "cohort": "diagnostics"
+    },
+    {
+      "type_info_index": 15,
+      "owner": "IAppOutputLine",
+      "record_index": 5,
+      "name": "GetLineTextWithChildren",
+      "invocation_kind": "function",
+      "dispatch_member_id": 6,
+      "record_offset": 43028,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        11133,
+        11150
+      ],
+      "cohort": "diagnostics"
+    },
+    {
+      "type_info_index": 15,
+      "owner": "IAppOutputLine",
+      "record_index": 6,
+      "name": "GetLineTextWithChildrenEx",
+      "invocation_kind": "function",
+      "dispatch_member_id": 7,
+      "record_offset": 43072,
+      "record_bytes": 92,
+      "function_dump_lines": [
+        11151,
+        11188
+      ],
+      "cohort": "diagnostics"
+    },
+    {
+      "type_info_index": 15,
+      "owner": "IAppOutputLine",
+      "record_index": 7,
+      "name": "GetLineSeverity",
+      "invocation_kind": "function",
+      "dispatch_member_id": 8,
+      "record_offset": 43164,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        11189,
+        11206
+      ],
+      "cohort": "diagnostics"
+    },
+    {
+      "type_info_index": 15,
+      "owner": "IAppOutputLine",
+      "record_index": 8,
+      "name": "GetLineSymbol",
+      "invocation_kind": "function",
+      "dispatch_member_id": 9,
+      "record_offset": 43208,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        11207,
+        11224
+      ],
+      "cohort": "diagnostics"
+    },
+    {
+      "type_info_index": 15,
+      "owner": "IAppOutputLine",
+      "record_index": 9,
+      "name": "GetLineCount",
+      "invocation_kind": "function",
+      "dispatch_member_id": 10,
+      "record_offset": 43252,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        11225,
+        11242
+      ],
+      "cohort": "diagnostics"
+    },
+    {
+      "type_info_index": 15,
+      "owner": "IAppOutputLine",
+      "record_index": 10,
+      "name": "GetCellCountInLine",
+      "invocation_kind": "function",
+      "dispatch_member_id": 11,
+      "record_offset": 43296,
+      "record_bytes": 56,
+      "function_dump_lines": [
+        11243,
+        11265
+      ],
+      "cohort": "diagnostics"
+    },
+    {
+      "type_info_index": 15,
+      "owner": "IAppOutputLine",
+      "record_index": 11,
+      "name": "GetIsCellText",
+      "invocation_kind": "function",
+      "dispatch_member_id": 12,
+      "record_offset": 43352,
+      "record_bytes": 68,
+      "function_dump_lines": [
+        11266,
+        11293
+      ],
+      "cohort": "diagnostics"
+    },
+    {
+      "type_info_index": 15,
+      "owner": "IAppOutputLine",
+      "record_index": 12,
+      "name": "GetCellText",
+      "invocation_kind": "function",
+      "dispatch_member_id": 13,
+      "record_offset": 43420,
+      "record_bytes": 68,
+      "function_dump_lines": [
+        11294,
+        11321
+      ],
+      "cohort": "diagnostics"
+    },
+    {
+      "type_info_index": 15,
+      "owner": "IAppOutputLine",
+      "record_index": 13,
+      "name": "GetCellTextDecoration",
+      "invocation_kind": "function",
+      "dispatch_member_id": 14,
+      "record_offset": 43488,
+      "record_bytes": 68,
+      "function_dump_lines": [
+        11322,
+        11349
+      ],
+      "cohort": "diagnostics"
+    },
+    {
+      "type_info_index": 15,
+      "owner": "IAppOutputLine",
+      "record_index": 14,
+      "name": "GetCellIcon",
+      "invocation_kind": "function",
+      "dispatch_member_id": 15,
+      "record_offset": 43556,
+      "record_bytes": 68,
+      "function_dump_lines": [
+        11350,
+        11377
+      ],
+      "cohort": "diagnostics"
+    },
+    {
+      "type_info_index": 15,
+      "owner": "IAppOutputLine",
+      "record_index": 15,
+      "name": "GetCellSymbol",
+      "invocation_kind": "function",
+      "dispatch_member_id": 16,
+      "record_offset": 43624,
+      "record_bytes": 68,
+      "function_dump_lines": [
+        11378,
+        11405
+      ],
+      "cohort": "diagnostics"
+    },
+    {
+      "type_info_index": 16,
+      "owner": "IAppOutputLineSymbol",
+      "record_index": 0,
+      "name": "Application",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 1,
+      "record_offset": 43888,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        11457,
+        11474
+      ],
+      "cohort": "diagnostics"
+    },
+    {
+      "type_info_index": 16,
+      "owner": "IAppOutputLineSymbol",
+      "record_index": 1,
+      "name": "Parent",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 2,
+      "record_offset": 43932,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        11475,
+        11492
+      ],
+      "cohort": "diagnostics"
+    },
+    {
+      "type_info_index": 16,
+      "owner": "IAppOutputLineSymbol",
+      "record_index": 2,
+      "name": "IsSymbolHREF",
+      "invocation_kind": "function",
+      "dispatch_member_id": 3,
+      "record_offset": 43976,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        11493,
+        11510
+      ],
+      "cohort": "diagnostics"
+    },
+    {
+      "type_info_index": 16,
+      "owner": "IAppOutputLineSymbol",
+      "record_index": 3,
+      "name": "GetSymbolHREF",
+      "invocation_kind": "function",
+      "dispatch_member_id": 4,
+      "record_offset": 44020,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        11511,
+        11528
+      ],
+      "cohort": "diagnostics"
+    },
+    {
+      "type_info_index": 16,
+      "owner": "IAppOutputLineSymbol",
+      "record_index": 4,
+      "name": "GetSymbolID",
+      "invocation_kind": "function",
+      "dispatch_member_id": 5,
+      "record_offset": 44064,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        11529,
+        11546
+      ],
+      "cohort": "diagnostics"
+    },
+    {
+      "type_info_index": 19,
+      "owner": "IDatapoint",
+      "record_index": 0,
+      "name": "Application",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 1,
+      "record_offset": 44436,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        11659,
+        11676
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 19,
+      "owner": "IDatapoint",
+      "record_index": 1,
+      "name": "Parent",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 2,
+      "record_offset": 44480,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        11677,
+        11694
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 19,
+      "owner": "IDatapoint",
+      "record_index": 2,
+      "name": "GetChild",
+      "invocation_kind": "function",
+      "dispatch_member_id": 3,
+      "record_offset": 44524,
+      "record_bytes": 80,
+      "function_dump_lines": [
+        11695,
+        11727
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 21,
+      "owner": "IConnection",
+      "record_index": 0,
+      "name": "Application",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 1,
+      "record_offset": 44712,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        11765,
+        11782
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 21,
+      "owner": "IConnection",
+      "record_index": 1,
+      "name": "Parent",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 2,
+      "record_offset": 44756,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        11783,
+        11800
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 21,
+      "owner": "IConnection",
+      "record_index": 2,
+      "name": "ConnectionType",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 3,
+      "record_offset": 44800,
+      "record_bytes": 36,
+      "function_dump_lines": [
+        11801,
+        11816
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 21,
+      "owner": "IConnection",
+      "record_index": 3,
+      "name": "ConnectionType",
+      "invocation_kind": "property_put",
+      "dispatch_member_id": 3,
+      "record_offset": 44836,
+      "record_bytes": 36,
+      "function_dump_lines": [
+        11817,
+        11832
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 24,
+      "owner": "IErrorMarkers",
+      "record_index": 0,
+      "name": "Count",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 1610743808,
+      "record_offset": 45284,
+      "record_bytes": 36,
+      "function_dump_lines": [
+        11975,
+        11990
+      ],
+      "cohort": "collections"
+    },
+    {
+      "type_info_index": 24,
+      "owner": "IErrorMarkers",
+      "record_index": 1,
+      "name": "Item",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 0,
+      "record_offset": 45320,
+      "record_bytes": 48,
+      "function_dump_lines": [
+        11991,
+        12011
+      ],
+      "cohort": "collections"
+    },
+    {
+      "type_info_index": 24,
+      "owner": "IErrorMarkers",
+      "record_index": 2,
+      "name": "_NewEnum",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": -4,
+      "record_offset": 45368,
+      "record_bytes": 36,
+      "function_dump_lines": [
+        12012,
+        12027
+      ],
+      "cohort": "collections"
+    },
+    {
+      "type_info_index": 24,
+      "owner": "IErrorMarkers",
+      "record_index": 3,
+      "name": "Application",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 1,
+      "record_offset": 45404,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        12028,
+        12045
+      ],
+      "cohort": "collections"
+    },
+    {
+      "type_info_index": 24,
+      "owner": "IErrorMarkers",
+      "record_index": 4,
+      "name": "Parent",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 2,
+      "record_offset": 45448,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        12046,
+        12063
+      ],
+      "cohort": "collections"
+    },
+    {
+      "type_info_index": 25,
+      "owner": "IErrorMarker",
+      "record_index": 0,
+      "name": "Application",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 1,
+      "record_offset": 45556,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        12082,
+        12099
+      ],
+      "cohort": "diagnostics"
+    },
+    {
+      "type_info_index": 25,
+      "owner": "IErrorMarker",
+      "record_index": 1,
+      "name": "Parent",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 2,
+      "record_offset": 45600,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        12100,
+        12117
+      ],
+      "cohort": "diagnostics"
+    },
+    {
+      "type_info_index": 25,
+      "owner": "IErrorMarker",
+      "record_index": 2,
+      "name": "ErrorLevel",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 3,
+      "record_offset": 45644,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        12118,
+        12135
+      ],
+      "cohort": "diagnostics"
+    },
+    {
+      "type_info_index": 25,
+      "owner": "IErrorMarker",
+      "record_index": 3,
+      "name": "Text",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 4,
+      "record_offset": 45688,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        12136,
+        12153
+      ],
+      "cohort": "diagnostics"
+    },
+    {
+      "type_info_index": 25,
+      "owner": "IErrorMarker",
+      "record_index": 4,
+      "name": "DocumentFileName",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 5,
+      "record_offset": 45732,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        12154,
+        12171
+      ],
+      "cohort": "diagnostics"
+    },
+    {
+      "type_info_index": 25,
+      "owner": "IErrorMarker",
+      "record_index": 5,
+      "name": "Serialization",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 6,
+      "record_offset": 45776,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        12172,
+        12189
+      ],
+      "cohort": "diagnostics"
+    },
+    {
+      "type_info_index": 25,
+      "owner": "IErrorMarker",
+      "record_index": 6,
+      "name": "Highlight",
+      "invocation_kind": "function",
+      "dispatch_member_id": 7,
+      "record_offset": 45820,
+      "record_bytes": 32,
+      "function_dump_lines": [
+        12190,
+        12202
+      ],
+      "cohort": "diagnostics"
+    },
+    {
+      "type_info_index": 27,
+      "owner": "IMappings",
+      "record_index": 0,
+      "name": "Count",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 1610743808,
+      "record_offset": 46072,
+      "record_bytes": 36,
+      "function_dump_lines": [
+        12274,
+        12289
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 27,
+      "owner": "IMappings",
+      "record_index": 1,
+      "name": "Item",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 0,
+      "record_offset": 46108,
+      "record_bytes": 48,
+      "function_dump_lines": [
+        12290,
+        12310
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 27,
+      "owner": "IMappings",
+      "record_index": 2,
+      "name": "_NewEnum",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": -4,
+      "record_offset": 46156,
+      "record_bytes": 36,
+      "function_dump_lines": [
+        12311,
+        12326
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 27,
+      "owner": "IMappings",
+      "record_index": 3,
+      "name": "Application",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 1,
+      "record_offset": 46192,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        12327,
+        12344
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 27,
+      "owner": "IMappings",
+      "record_index": 4,
+      "name": "Parent",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 2,
+      "record_offset": 46236,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        12345,
+        12362
+      ],
+      "cohort": "graph"
+    },
+    {
+      "type_info_index": 28,
+      "owner": "IOutputGenerationResult",
+      "record_index": 0,
+      "name": "Application",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 1,
+      "record_offset": 46344,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        12381,
+        12398
+      ],
+      "cohort": "results"
+    },
+    {
+      "type_info_index": 28,
+      "owner": "IOutputGenerationResult",
+      "record_index": 1,
+      "name": "Parent",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 2,
+      "record_offset": 46388,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        12399,
+        12416
+      ],
+      "cohort": "results"
+    },
+    {
+      "type_info_index": 28,
+      "owner": "IOutputGenerationResult",
+      "record_index": 2,
+      "name": "Succeeded",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 3,
+      "record_offset": 46432,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        12417,
+        12434
+      ],
+      "cohort": "results"
+    },
+    {
+      "type_info_index": 28,
+      "owner": "IOutputGenerationResult",
+      "record_index": 3,
+      "name": "Failed",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 4,
+      "record_offset": 46476,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        12435,
+        12452
+      ],
+      "cohort": "results"
+    },
+    {
+      "type_info_index": 28,
+      "owner": "IOutputGenerationResult",
+      "record_index": 4,
+      "name": "ResultCode",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 5,
+      "record_offset": 46520,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        12453,
+        12470
+      ],
+      "cohort": "results"
+    },
+    {
+      "type_info_index": 28,
+      "owner": "IOutputGenerationResult",
+      "record_index": 5,
+      "name": "Messages",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 6,
+      "record_offset": 46564,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        12471,
+        12488
+      ],
+      "cohort": "results"
+    },
+    {
+      "type_info_index": 28,
+      "owner": "IOutputGenerationResult",
+      "record_index": 6,
+      "name": "MessageText",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 7,
+      "record_offset": 46608,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        12489,
+        12506
+      ],
+      "cohort": "results"
+    },
+    {
+      "type_info_index": 30,
+      "owner": "ICodeGenerationResult",
+      "record_index": 0,
+      "name": "Application",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 1,
+      "record_offset": 46904,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        12589,
+        12606
+      ],
+      "cohort": "results"
+    },
+    {
+      "type_info_index": 30,
+      "owner": "ICodeGenerationResult",
+      "record_index": 1,
+      "name": "Parent",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 2,
+      "record_offset": 46948,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        12607,
+        12624
+      ],
+      "cohort": "results"
+    },
+    {
+      "type_info_index": 30,
+      "owner": "ICodeGenerationResult",
+      "record_index": 2,
+      "name": "Succeeded",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 3,
+      "record_offset": 46992,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        12625,
+        12642
+      ],
+      "cohort": "results"
+    },
+    {
+      "type_info_index": 30,
+      "owner": "ICodeGenerationResult",
+      "record_index": 3,
+      "name": "Failed",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 4,
+      "record_offset": 47036,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        12643,
+        12660
+      ],
+      "cohort": "results"
+    },
+    {
+      "type_info_index": 30,
+      "owner": "ICodeGenerationResult",
+      "record_index": 4,
+      "name": "ResultCode",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 5,
+      "record_offset": 47080,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        12661,
+        12678
+      ],
+      "cohort": "results"
+    },
+    {
+      "type_info_index": 30,
+      "owner": "ICodeGenerationResult",
+      "record_index": 5,
+      "name": "Messages",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 6,
+      "record_offset": 47124,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        12679,
+        12696
+      ],
+      "cohort": "results"
+    },
+    {
+      "type_info_index": 30,
+      "owner": "ICodeGenerationResult",
+      "record_index": 6,
+      "name": "MessageText",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 7,
+      "record_offset": 47168,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        12697,
+        12714
+      ],
+      "cohort": "results"
+    },
+    {
+      "type_info_index": 32,
+      "owner": "ILibraryImports",
+      "record_index": 0,
+      "name": "Count",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 1610743808,
+      "record_offset": 47368,
+      "record_bytes": 36,
+      "function_dump_lines": [
+        12764,
+        12779
+      ],
+      "cohort": "projects"
+    },
+    {
+      "type_info_index": 32,
+      "owner": "ILibraryImports",
+      "record_index": 1,
+      "name": "Item",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 0,
+      "record_offset": 47404,
+      "record_bytes": 48,
+      "function_dump_lines": [
+        12780,
+        12800
+      ],
+      "cohort": "projects"
+    },
+    {
+      "type_info_index": 32,
+      "owner": "ILibraryImports",
+      "record_index": 2,
+      "name": "_NewEnum",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": -4,
+      "record_offset": 47452,
+      "record_bytes": 36,
+      "function_dump_lines": [
+        12801,
+        12816
+      ],
+      "cohort": "projects"
+    },
+    {
+      "type_info_index": 32,
+      "owner": "ILibraryImports",
+      "record_index": 3,
+      "name": "Application",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 1,
+      "record_offset": 47488,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        12817,
+        12834
+      ],
+      "cohort": "projects"
+    },
+    {
+      "type_info_index": 32,
+      "owner": "ILibraryImports",
+      "record_index": 4,
+      "name": "Parent",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 2,
+      "record_offset": 47532,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        12835,
+        12852
+      ],
+      "cohort": "projects"
+    },
+    {
+      "type_info_index": 32,
+      "owner": "ILibraryImports",
+      "record_index": 5,
+      "name": "Add",
+      "invocation_kind": "function",
+      "dispatch_member_id": 3,
+      "record_offset": 47576,
+      "record_bytes": 56,
+      "function_dump_lines": [
+        12853,
+        12875
+      ],
+      "cohort": "projects"
+    },
+    {
+      "type_info_index": 32,
+      "owner": "ILibraryImports",
+      "record_index": 6,
+      "name": "Remove",
+      "invocation_kind": "function",
+      "dispatch_member_id": 4,
+      "record_offset": 47632,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        12876,
+        12893
+      ],
+      "cohort": "projects"
+    },
+    {
+      "type_info_index": 32,
+      "owner": "ILibraryImports",
+      "record_index": 7,
+      "name": "Find",
+      "invocation_kind": "function",
+      "dispatch_member_id": 5,
+      "record_offset": 47676,
+      "record_bytes": 56,
+      "function_dump_lines": [
+        12894,
+        12916
+      ],
+      "cohort": "projects"
+    },
+    {
+      "type_info_index": 33,
+      "owner": "ILibraryImport",
+      "record_index": 0,
+      "name": "Application",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 1,
+      "record_offset": 47832,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        12944,
+        12961
+      ],
+      "cohort": "projects"
+    },
+    {
+      "type_info_index": 33,
+      "owner": "ILibraryImport",
+      "record_index": 1,
+      "name": "Parent",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 2,
+      "record_offset": 47876,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        12962,
+        12979
+      ],
+      "cohort": "projects"
+    },
+    {
+      "type_info_index": 33,
+      "owner": "ILibraryImport",
+      "record_index": 2,
+      "name": "Path",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 3,
+      "record_offset": 47920,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        12980,
+        12997
+      ],
+      "cohort": "projects"
+    },
+    {
+      "type_info_index": 33,
+      "owner": "ILibraryImport",
+      "record_index": 3,
+      "name": "SaveRelativePath",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 4,
+      "record_offset": 47964,
+      "record_bytes": 36,
+      "function_dump_lines": [
+        12998,
+        13013
+      ],
+      "cohort": "projects"
+    },
+    {
+      "type_info_index": 33,
+      "owner": "ILibraryImport",
+      "record_index": 4,
+      "name": "SaveRelativePath",
+      "invocation_kind": "property_put",
+      "dispatch_member_id": 4,
+      "record_offset": 48000,
+      "record_bytes": 36,
+      "function_dump_lines": [
+        13014,
+        13029
+      ],
+      "cohort": "projects"
+    },
+    {
+      "type_info_index": 34,
+      "owner": "IProject",
+      "record_index": 0,
+      "name": "Count",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 1610743808,
+      "record_offset": 48100,
+      "record_bytes": 36,
+      "function_dump_lines": [
+        13048,
+        13063
+      ],
+      "cohort": "projects"
+    },
+    {
+      "type_info_index": 34,
+      "owner": "IProject",
+      "record_index": 1,
+      "name": "Item",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 0,
+      "record_offset": 48136,
+      "record_bytes": 48,
+      "function_dump_lines": [
+        13064,
+        13084
+      ],
+      "cohort": "projects"
+    },
+    {
+      "type_info_index": 34,
+      "owner": "IProject",
+      "record_index": 2,
+      "name": "_NewEnum",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": -4,
+      "record_offset": 48184,
+      "record_bytes": 36,
+      "function_dump_lines": [
+        13085,
+        13100
+      ],
+      "cohort": "projects"
+    },
+    {
+      "type_info_index": 34,
+      "owner": "IProject",
+      "record_index": 3,
+      "name": "Application",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 1,
+      "record_offset": 48220,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        13101,
+        13118
+      ],
+      "cohort": "projects"
+    },
+    {
+      "type_info_index": 34,
+      "owner": "IProject",
+      "record_index": 4,
+      "name": "Parent",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 2,
+      "record_offset": 48264,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        13119,
+        13136
+      ],
+      "cohort": "projects"
+    },
+    {
+      "type_info_index": 34,
+      "owner": "IProject",
+      "record_index": 5,
+      "name": "FullName",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 3,
+      "record_offset": 48308,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        13137,
+        13154
+      ],
+      "cohort": "projects"
+    },
+    {
+      "type_info_index": 34,
+      "owner": "IProject",
+      "record_index": 6,
+      "name": "FullName",
+      "invocation_kind": "property_put",
+      "dispatch_member_id": 3,
+      "record_offset": 48352,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        13155,
+        13172
+      ],
+      "cohort": "projects"
+    },
+    {
+      "type_info_index": 34,
+      "owner": "IProject",
+      "record_index": 7,
+      "name": "Name",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 4,
+      "record_offset": 48396,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        13173,
+        13190
+      ],
+      "cohort": "projects"
+    },
+    {
+      "type_info_index": 34,
+      "owner": "IProject",
+      "record_index": 8,
+      "name": "Path",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 5,
+      "record_offset": 48440,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        13191,
+        13208
+      ],
+      "cohort": "projects"
+    },
+    {
+      "type_info_index": 34,
+      "owner": "IProject",
+      "record_index": 9,
+      "name": "Saved",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 6,
+      "record_offset": 48484,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        13209,
+        13226
+      ],
+      "cohort": "projects"
+    },
+    {
+      "type_info_index": 34,
+      "owner": "IProject",
+      "record_index": 10,
+      "name": "Save",
+      "invocation_kind": "function",
+      "dispatch_member_id": 7,
+      "record_offset": 48528,
+      "record_bytes": 32,
+      "function_dump_lines": [
+        13227,
+        13239
+      ],
+      "cohort": "projects"
+    },
+    {
+      "type_info_index": 34,
+      "owner": "IProject",
+      "record_index": 11,
+      "name": "SaveAs",
+      "invocation_kind": "function",
+      "dispatch_member_id": 8,
+      "record_offset": 48560,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        13240,
+        13257
+      ],
+      "cohort": "projects"
+    },
+    {
+      "type_info_index": 34,
+      "owner": "IProject",
+      "record_index": 12,
+      "name": "Close",
+      "invocation_kind": "function",
+      "dispatch_member_id": 9,
+      "record_offset": 48604,
+      "record_bytes": 32,
+      "function_dump_lines": [
+        13258,
+        13270
+      ],
+      "cohort": "projects"
+    },
+    {
+      "type_info_index": 34,
+      "owner": "IProject",
+      "record_index": 13,
+      "name": "Output_Folder",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 10,
+      "record_offset": 48636,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        13271,
+        13288
+      ],
+      "cohort": "projects"
+    },
+    {
+      "type_info_index": 34,
+      "owner": "IProject",
+      "record_index": 14,
+      "name": "Output_Folder",
+      "invocation_kind": "property_put",
+      "dispatch_member_id": 10,
+      "record_offset": 48680,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        13289,
+        13306
+      ],
+      "cohort": "projects"
+    },
+    {
+      "type_info_index": 34,
+      "owner": "IProject",
+      "record_index": 15,
+      "name": "Output_TextEncoding",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 11,
+      "record_offset": 48724,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        13307,
+        13324
+      ],
+      "cohort": "projects"
+    },
+    {
+      "type_info_index": 34,
+      "owner": "IProject",
+      "record_index": 16,
+      "name": "Output_TextEncoding",
+      "invocation_kind": "property_put",
+      "dispatch_member_id": 11,
+      "record_offset": 48768,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        13325,
+        13342
+      ],
+      "cohort": "projects"
+    },
+    {
+      "type_info_index": 34,
+      "owner": "IProject",
+      "record_index": 17,
+      "name": "Output_Language",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 12,
+      "record_offset": 48812,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        13343,
+        13360
+      ],
+      "cohort": "projects"
+    },
+    {
+      "type_info_index": 34,
+      "owner": "IProject",
+      "record_index": 18,
+      "name": "Output_Language",
+      "invocation_kind": "property_put",
+      "dispatch_member_id": 12,
+      "record_offset": 48856,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        13361,
+        13378
+      ],
+      "cohort": "projects"
+    },
+    {
+      "type_info_index": 34,
+      "owner": "IProject",
+      "record_index": 19,
+      "name": "Java_BasePackageName",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 13,
+      "record_offset": 48900,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        13379,
+        13396
+      ],
+      "cohort": "projects"
+    },
+    {
+      "type_info_index": 34,
+      "owner": "IProject",
+      "record_index": 20,
+      "name": "Java_BasePackageName",
+      "invocation_kind": "property_put",
+      "dispatch_member_id": 13,
+      "record_offset": 48944,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        13397,
+        13414
+      ],
+      "cohort": "projects"
+    },
+    {
+      "type_info_index": 34,
+      "owner": "IProject",
+      "record_index": 21,
+      "name": "AddFile",
+      "invocation_kind": "function",
+      "dispatch_member_id": 14,
+      "record_offset": 48988,
+      "record_bytes": 56,
+      "function_dump_lines": [
+        13415,
+        13437
+      ],
+      "cohort": "projects"
+    },
+    {
+      "type_info_index": 34,
+      "owner": "IProject",
+      "record_index": 22,
+      "name": "AddActiveFile",
+      "invocation_kind": "function",
+      "dispatch_member_id": 15,
+      "record_offset": 49044,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        13438,
+        13455
+      ],
+      "cohort": "projects"
+    },
+    {
+      "type_info_index": 34,
+      "owner": "IProject",
+      "record_index": 23,
+      "name": "GenerateCode",
+      "invocation_kind": "function",
+      "dispatch_member_id": 16,
+      "record_offset": 49088,
+      "record_bytes": 32,
+      "function_dump_lines": [
+        13456,
+        13468
+      ],
+      "cohort": "projects"
+    },
+    {
+      "type_info_index": 34,
+      "owner": "IProject",
+      "record_index": 24,
+      "name": "GenerateCodeIn",
+      "invocation_kind": "function",
+      "dispatch_member_id": 17,
+      "record_offset": 49120,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        13469,
+        13486
+      ],
+      "cohort": "projects"
+    },
+    {
+      "type_info_index": 34,
+      "owner": "IProject",
+      "record_index": 25,
+      "name": "InsertWebService",
+      "invocation_kind": "function",
+      "dispatch_member_id": 18,
+      "record_offset": 49164,
+      "record_bytes": 92,
+      "function_dump_lines": [
+        13487,
+        13524
+      ],
+      "cohort": "projects"
+    },
+    {
+      "type_info_index": 34,
+      "owner": "IProject",
+      "record_index": 26,
+      "name": "CreateFolder",
+      "invocation_kind": "function",
+      "dispatch_member_id": 19,
+      "record_offset": 49256,
+      "record_bytes": 56,
+      "function_dump_lines": [
+        13525,
+        13547
+      ],
+      "cohort": "projects"
+    },
+    {
+      "type_info_index": 34,
+      "owner": "IProject",
+      "record_index": 27,
+      "name": "GenerateCodeEx",
+      "invocation_kind": "function",
+      "dispatch_member_id": 20,
+      "record_offset": 49312,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        13548,
+        13565
+      ],
+      "cohort": "projects"
+    },
+    {
+      "type_info_index": 34,
+      "owner": "IProject",
+      "record_index": 28,
+      "name": "GenerateCodeInEx",
+      "invocation_kind": "function",
+      "dispatch_member_id": 21,
+      "record_offset": 49356,
+      "record_bytes": 56,
+      "function_dump_lines": [
+        13566,
+        13588
+      ],
+      "cohort": "projects"
+    },
+    {
+      "type_info_index": 35,
+      "owner": "IProjectItem",
+      "record_index": 0,
+      "name": "Count",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 1610743808,
+      "record_offset": 49764,
+      "record_bytes": 36,
+      "function_dump_lines": [
+        13679,
+        13694
+      ],
+      "cohort": "projects"
+    },
+    {
+      "type_info_index": 35,
+      "owner": "IProjectItem",
+      "record_index": 1,
+      "name": "Item",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 0,
+      "record_offset": 49800,
+      "record_bytes": 48,
+      "function_dump_lines": [
+        13695,
+        13715
+      ],
+      "cohort": "projects"
+    },
+    {
+      "type_info_index": 35,
+      "owner": "IProjectItem",
+      "record_index": 2,
+      "name": "_NewEnum",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": -4,
+      "record_offset": 49848,
+      "record_bytes": 36,
+      "function_dump_lines": [
+        13716,
+        13731
+      ],
+      "cohort": "projects"
+    },
+    {
+      "type_info_index": 35,
+      "owner": "IProjectItem",
+      "record_index": 3,
+      "name": "Application",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 1,
+      "record_offset": 49884,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        13732,
+        13749
+      ],
+      "cohort": "projects"
+    },
+    {
+      "type_info_index": 35,
+      "owner": "IProjectItem",
+      "record_index": 4,
+      "name": "Parent",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 2,
+      "record_offset": 49928,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        13750,
+        13767
+      ],
+      "cohort": "projects"
+    },
+    {
+      "type_info_index": 35,
+      "owner": "IProjectItem",
+      "record_index": 5,
+      "name": "Kind",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 3,
+      "record_offset": 49972,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        13768,
+        13785
+      ],
+      "cohort": "projects"
+    },
+    {
+      "type_info_index": 35,
+      "owner": "IProjectItem",
+      "record_index": 6,
+      "name": "Name",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 4,
+      "record_offset": 50016,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        13786,
+        13803
+      ],
+      "cohort": "projects"
+    },
+    {
+      "type_info_index": 35,
+      "owner": "IProjectItem",
+      "record_index": 7,
+      "name": "Name",
+      "invocation_kind": "property_put",
+      "dispatch_member_id": 4,
+      "record_offset": 50060,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        13804,
+        13821
+      ],
+      "cohort": "projects"
+    },
+    {
+      "type_info_index": 35,
+      "owner": "IProjectItem",
+      "record_index": 8,
+      "name": "CodeGenSettings_UseDefault",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 5,
+      "record_offset": 50104,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        13822,
+        13839
+      ],
+      "cohort": "projects"
+    },
+    {
+      "type_info_index": 35,
+      "owner": "IProjectItem",
+      "record_index": 9,
+      "name": "CodeGenSettings_UseDefault",
+      "invocation_kind": "property_put",
+      "dispatch_member_id": 5,
+      "record_offset": 50148,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        13840,
+        13857
+      ],
+      "cohort": "projects"
+    },
+    {
+      "type_info_index": 35,
+      "owner": "IProjectItem",
+      "record_index": 10,
+      "name": "CodeGenSettings_OutputFolder",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 6,
+      "record_offset": 50192,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        13858,
+        13875
+      ],
+      "cohort": "projects"
+    },
+    {
+      "type_info_index": 35,
+      "owner": "IProjectItem",
+      "record_index": 11,
+      "name": "CodeGenSettings_OutputFolder",
+      "invocation_kind": "property_put",
+      "dispatch_member_id": 6,
+      "record_offset": 50236,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        13876,
+        13893
+      ],
+      "cohort": "projects"
+    },
+    {
+      "type_info_index": 35,
+      "owner": "IProjectItem",
+      "record_index": 12,
+      "name": "CodeGenSettings_Language",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 7,
+      "record_offset": 50280,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        13894,
+        13911
+      ],
+      "cohort": "projects"
+    },
+    {
+      "type_info_index": 35,
+      "owner": "IProjectItem",
+      "record_index": 13,
+      "name": "CodeGenSettings_Language",
+      "invocation_kind": "property_put",
+      "dispatch_member_id": 7,
+      "record_offset": 50324,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        13912,
+        13929
+      ],
+      "cohort": "projects"
+    },
+    {
+      "type_info_index": 35,
+      "owner": "IProjectItem",
+      "record_index": 14,
+      "name": "WSDLFile",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 8,
+      "record_offset": 50368,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        13930,
+        13947
+      ],
+      "cohort": "projects"
+    },
+    {
+      "type_info_index": 35,
+      "owner": "IProjectItem",
+      "record_index": 15,
+      "name": "QualifiedName",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 9,
+      "record_offset": 50412,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        13948,
+        13965
+      ],
+      "cohort": "projects"
+    },
+    {
+      "type_info_index": 35,
+      "owner": "IProjectItem",
+      "record_index": 16,
+      "name": "Open",
+      "invocation_kind": "function",
+      "dispatch_member_id": 10,
+      "record_offset": 50456,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        13966,
+        13983
+      ],
+      "cohort": "projects"
+    },
+    {
+      "type_info_index": 35,
+      "owner": "IProjectItem",
+      "record_index": 17,
+      "name": "Remove",
+      "invocation_kind": "function",
+      "dispatch_member_id": 11,
+      "record_offset": 50500,
+      "record_bytes": 32,
+      "function_dump_lines": [
+        13984,
+        13996
+      ],
+      "cohort": "projects"
+    },
+    {
+      "type_info_index": 35,
+      "owner": "IProjectItem",
+      "record_index": 18,
+      "name": "CreateMappingForProject",
+      "invocation_kind": "function",
+      "dispatch_member_id": 12,
+      "record_offset": 50532,
+      "record_bytes": 56,
+      "function_dump_lines": [
+        13997,
+        14019
+      ],
+      "cohort": "projects"
+    },
+    {
+      "type_info_index": 35,
+      "owner": "IProjectItem",
+      "record_index": 19,
+      "name": "AddActiveFile",
+      "invocation_kind": "function",
+      "dispatch_member_id": 13,
+      "record_offset": 50588,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        14020,
+        14037
+      ],
+      "cohort": "projects"
+    },
+    {
+      "type_info_index": 35,
+      "owner": "IProjectItem",
+      "record_index": 20,
+      "name": "AddFile",
+      "invocation_kind": "function",
+      "dispatch_member_id": 14,
+      "record_offset": 50632,
+      "record_bytes": 56,
+      "function_dump_lines": [
+        14038,
+        14060
+      ],
+      "cohort": "projects"
+    },
+    {
+      "type_info_index": 35,
+      "owner": "IProjectItem",
+      "record_index": 21,
+      "name": "CreateFolder",
+      "invocation_kind": "function",
+      "dispatch_member_id": 15,
+      "record_offset": 50688,
+      "record_bytes": 56,
+      "function_dump_lines": [
+        14061,
+        14083
+      ],
+      "cohort": "projects"
+    },
+    {
+      "type_info_index": 35,
+      "owner": "IProjectItem",
+      "record_index": 22,
+      "name": "GenerateCode",
+      "invocation_kind": "function",
+      "dispatch_member_id": 16,
+      "record_offset": 50744,
+      "record_bytes": 32,
+      "function_dump_lines": [
+        14084,
+        14096
+      ],
+      "cohort": "projects"
+    },
+    {
+      "type_info_index": 35,
+      "owner": "IProjectItem",
+      "record_index": 23,
+      "name": "GenerateCodeIn",
+      "invocation_kind": "function",
+      "dispatch_member_id": 17,
+      "record_offset": 50776,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        14097,
+        14114
+      ],
+      "cohort": "projects"
+    },
+    {
+      "type_info_index": 35,
+      "owner": "IProjectItem",
+      "record_index": 24,
+      "name": "GenerateCodeEx",
+      "invocation_kind": "function",
+      "dispatch_member_id": 18,
+      "record_offset": 50820,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        14115,
+        14132
+      ],
+      "cohort": "projects"
+    },
+    {
+      "type_info_index": 35,
+      "owner": "IProjectItem",
+      "record_index": 25,
+      "name": "GenerateCodeInEx",
+      "invocation_kind": "function",
+      "dispatch_member_id": 19,
+      "record_offset": 50864,
+      "record_bytes": 56,
+      "function_dump_lines": [
+        14133,
+        14155
+      ],
+      "cohort": "projects"
+    },
+    {
+      "type_info_index": 37,
+      "owner": "IDocuments",
+      "record_index": 0,
+      "name": "Count",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 1610743808,
+      "record_offset": 51656,
+      "record_bytes": 36,
+      "function_dump_lines": [
+        14383,
+        14398
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 37,
+      "owner": "IDocuments",
+      "record_index": 1,
+      "name": "Item",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 0,
+      "record_offset": 51692,
+      "record_bytes": 48,
+      "function_dump_lines": [
+        14399,
+        14419
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 37,
+      "owner": "IDocuments",
+      "record_index": 2,
+      "name": "_NewEnum",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": -4,
+      "record_offset": 51740,
+      "record_bytes": 36,
+      "function_dump_lines": [
+        14420,
+        14435
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 37,
+      "owner": "IDocuments",
+      "record_index": 3,
+      "name": "Application",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 1,
+      "record_offset": 51776,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        14436,
+        14453
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 37,
+      "owner": "IDocuments",
+      "record_index": 4,
+      "name": "Parent",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 2,
+      "record_offset": 51820,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        14454,
+        14471
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 37,
+      "owner": "IDocuments",
+      "record_index": 5,
+      "name": "OpenDocument",
+      "invocation_kind": "function",
+      "dispatch_member_id": 3,
+      "record_offset": 51864,
+      "record_bytes": 56,
+      "function_dump_lines": [
+        14472,
+        14494
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 37,
+      "owner": "IDocuments",
+      "record_index": 6,
+      "name": "NewDocument",
+      "invocation_kind": "function",
+      "dispatch_member_id": 4,
+      "record_offset": 51920,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        14495,
+        14512
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 37,
+      "owner": "IDocuments",
+      "record_index": 7,
+      "name": "ActiveDocument",
+      "invocation_kind": "property_get",
+      "dispatch_member_id": 5,
+      "record_offset": 51964,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        14513,
+        14530
+      ],
+      "cohort": "core"
+    },
+    {
+      "type_info_index": 48,
+      "owner": "_IApplicationEvents",
+      "record_index": 0,
+      "name": "OnShutdown",
+      "invocation_kind": "function",
+      "dispatch_member_id": 1,
+      "record_offset": 53660,
+      "record_bytes": 32,
+      "function_dump_lines": [
+        15089,
+        15101
+      ],
+      "cohort": "events"
+    },
+    {
+      "type_info_index": 48,
+      "owner": "_IApplicationEvents",
+      "record_index": 1,
+      "name": "OnProjectOpened",
+      "invocation_kind": "function",
+      "dispatch_member_id": 2,
+      "record_offset": 53692,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        15102,
+        15119
+      ],
+      "cohort": "events"
+    },
+    {
+      "type_info_index": 48,
+      "owner": "_IApplicationEvents",
+      "record_index": 2,
+      "name": "OnDocumentOpened",
+      "invocation_kind": "function",
+      "dispatch_member_id": 3,
+      "record_offset": 53736,
+      "record_bytes": 44,
+      "function_dump_lines": [
+        15120,
+        15137
+      ],
+      "cohort": "events"
+    },
+    {
+      "type_info_index": 52,
+      "owner": "_IDocumentEvents",
+      "record_index": 0,
+      "name": "OnDocumentClosed",
+      "invocation_kind": "function",
+      "dispatch_member_id": 1,
+      "record_offset": 53820,
+      "record_bytes": 44,
+      "function_dump_lines": null,
+      "cohort": "events"
+    },
+    {
+      "type_info_index": 52,
+      "owner": "_IDocumentEvents",
+      "record_index": 1,
+      "name": "OnModifiedFlagChanged",
+      "invocation_kind": "function",
+      "dispatch_member_id": 2,
+      "record_offset": 53864,
+      "record_bytes": 44,
+      "function_dump_lines": null,
+      "cohort": "events"
+    },
+    {
+      "type_info_index": 55,
+      "owner": "_IProjectEvents",
+      "record_index": 0,
+      "name": "OnProjectClosed",
+      "invocation_kind": "function",
+      "dispatch_member_id": 1,
+      "record_offset": 53936,
+      "record_bytes": 44,
+      "function_dump_lines": null,
+      "cohort": "events"
+    },
+    {
+      "type_info_index": 57,
+      "owner": "_IProjectItemEvents",
+      "record_index": 0,
+      "name": "OnProjectClosed",
+      "invocation_kind": "function",
+      "dispatch_member_id": 1,
+      "record_offset": 53996,
+      "record_bytes": 44,
+      "function_dump_lines": null,
+      "cohort": "events"
+    },
+    {
+      "type_info_index": 57,
+      "owner": "_IProjectItemEvents",
+      "record_index": 1,
+      "name": "OnModifiedFlagChanged",
+      "invocation_kind": "function",
+      "dispatch_member_id": 2,
+      "record_offset": 54040,
+      "record_bytes": 44,
+      "function_dump_lines": null,
+      "cohort": "events"
+    }
+  ]
+}
