@@ -26,6 +26,8 @@ They do not change the canonical capability ledger or establish execution suppor
 | `supporting-io-declarations.json` | Direct public source declarations on the existing 24 documented C#/Java I/O owners, with nested C# enums and an independent offline oracle |
 | `supporting-exception-declarations.json` | Direct-public source declarations for the same 16 documented exception owners; 28 new callables and two referenced existing declarations |
 | `mapping-entry-declarations.json` | Two retained C#/Java mapping-entry owners, seven direct public members and profile-specific anchors, enriching existing supporting contracts |
+| `installer-java-api-docs.json` | Installer-bound Java automation documentation: 75 documented types, 655 selected direct members, 40 explicitly excluded enum helpers and authored documentation claims |
+| `installer-java-api-docs-sources.json` | All 141 members of the exact Javadoc ZIP, including hashes of excluded assets; no vendor files are included |
 | `schema-wrappers.json` | Four optional schema-wrapper source profiles, actual schema identities and build/dependency metadata; no compiled or runtime qualification |
 | `external-references.json` | Linked historical DOM algorithm and redirected .NET interface contract, kept separate from vendor claims |
 
@@ -402,6 +404,103 @@ without vendor files, network access, generation, compilation, activation or
 execution. Status stays unassessed, applicability unknown, execution evidence and
 receipts empty, and inventory completeness false. This finite source snapshot
 does not establish all possible generated mapping APIs or a multi-target contract.
+
+The installer Java documentation is a distinct source, not a release binding of
+the historical online COM catalog and not Java source, bytecode or implemented
+API/ABI proof. The 686,127-byte `MapForceAPI_JavaDoc.zip_524` member is pinned by
+SHA-256 `5858d5668512eb1009a5da4b9ebfac820051e37ed13a0bc7a7ede30eabdacc88`
+and the existing official-release container chain. Its source manifest accounts
+for all 141 archive members, including directories and excluded assets, by raw
+hash and byte length. Static type pages, class index and both package indexes
+close reciprocally over exactly the same 75 documented types. Archive completeness
+means only this finite corpus, not SDK or product completeness.
+
+The selected direct documentation cohort is 29 constructors, 467 methods, 29
+fields and 130 enum names. `com.altova.automation.libs` contributes 24 types,
+23 constructors, 71 methods and 29 fields; `com.altova.automation.MapForce`
+contributes 51 types, six constructors, 396 methods and 130 enum names. The 48
+classes, seven interfaces and 20 enums include 31 nested types. All 695 original
+member details have a local summary link: 655 `M` rows plus 40 `X` rows for the
+two standard enum helper methods on each of 20 enum types. Inherited expansions,
+examples, implementation, serialization internals and external linked material
+are excluded. A directly documented override or internal-use declaration is
+retained, not silently discarded because of its name or restriction.
+
+The `columns` legend defines compact `T`, `M` and `X` tuples and their nested
+parameter/reference tuples. A source identity is scoped to this documentation
+fragment and a qualified owner plus case-sensitive anchor, not a new capability.
+Member indexes count all original direct details, including excluded helpers.
+One-based signature, summary, note and label lines join the owner's page and its
+raw hash in the source manifest. Alternate generic anchors remain distinct.
+Declarations retain documented modifiers, generic bounds, inheritance, return
+types, parameter name/type/order, throws and linked type ownership. Interface
+members do not receive invented modifier tokens. Only layout whitespace and
+spacing around signature punctuation are normalized; case, generics and array/
+varargs notation are not rewritten. Missing names and values remain explicit
+null metadata, not inferred Java semantics.
+
+The 28 numeric helper-field literals come from `constant-values.html`; `GUID_NULL`
+has no documented literal. That page supplies **no MapForce enum numbers**. All
+130 enum owner/name pairs match the already-adopted TLB names, but numeric values
+remain null/`not_documented` here. Names, `getValue()` declarations and source
+order establish neither ordinal/value bindings, aliases nor capabilities. The
+separate comparison keeps the historical online `eProjectTypeCount` 16 versus
+TLB 18 discrepancy unresolved and online release binding unestablished. Prior
+COM inventories and canonical assessments are unchanged.
+
+Authored claim paraphrases preserve internal-use/native-creation restrictions,
+the compatibility accessors' removed-since-v2014 notes, index-1 iterator wording
+and **typically** one-based COM lists. Literal `generateCHashCode` and
+`HighlightMyConnectionsRecursivly` spellings remain. The prose-only
+`Constructor(COMIUnknownObject object)` mention does not add a constructor;
+`JVariant.SetByRefFlag` in prose is not an alias for documented `setByRefFlag()`.
+JNI, native-bridge, AWT and Windows COM registration/IDispatch requirements are
+documentation claims, not available dependencies. Javadoc 14.0.1 and its
+2026-05-20 timestamp identify the documentation tool/artifact, not a consumer
+Java requirement. Historical version examples are not current queried values.
+The release/shutdown and COM NULL notes remain claims, not ownership or error
+qualification. In particular, `generateOutput(JVariant pbError)` establishes no
+initialization, mutation, coercion or accepted runtime type. Other omitted null,
+default, threading, lifetime and error clauses remain documentation silence,
+not negative guarantees. Method/property labels are not full behavior contracts.
+
+There are 165 standalone `property NAME` notes across 124 owner/name pairs;
+ordinary prose mentioning a property value or property access is not a label.
+`documentation_tensions` keeps five iterator `Specified by`/`Overrides`
+annotation fingerprints separate from the actual generic type declarations:
+annotations print `LIST extends ...` where the declared iterator uses `ELEMENT`
+or extends `COMIDispatchConstIterator<LIST,ELEMENT>`. These annotations do not
+rewrite the bases. The pointer wrapper's prose says `int`, while its constructor
+parameter and pointer accessor are `long`; no native width follows. Both
+`addNotify()` declarations return `void` despite prose describing an IDispatch
+pointer return. These source discrepancies remain unresolved, not repaired
+declarations. The separate `oracles/installer-java-api-docs-tensions.json` pins
+the note/annotation ranges, normalized-text hashes and declaration joins without
+altering the original declaration, metadata or claim oracles.
+
+`oracles/installer-java-api-docs.jsonl` was frozen before candidate production
+using an independent regex summary-cell path for names, returns and ordered
+parameters, with separate detail reads for facts absent from summaries
+(modifiers, throws, type/enum declarations, links and anchors). This automated
+expected path reconstructed and compared signatures; it is not a claim of manual
+transcription of 655 members. The candidate instead used HTMLParser detail
+signature spans. Neither expected path nor candidate used the discovery
+`normalized-readiness.json`. The separate metadata oracle freezes source hashes,
+indexes and the editorial profile. The claim oracle contains authored paraphrases
+from a separate numbered note/label readback; it is an anchored editorial review,
+not an independently automated interpretation of prose. Note/label ranges also
+retain the locations of labels not paraphrased as behavioral claims.
+
+The focused Rust checks require only repository metadata. Exact row-wise oracles
+reject unknown fields, omitted nulls, coherent owner/overload removal, reordered
+parameters, signature/type/modifier/throws/constant changes, invented enum values,
+promoted prose references, changed exclusions, source hashes/anchors and unsupported
+qualification claims. Failure messages identify a bounded row, never dump the whole
+inventory. Every source, owner, member, claim and comparison inherits unassessed
+status, unknown applicability, `runtime_proof=false`, empty execution evidence and
+receipts, and `inventory_complete=false`. No vendor compilation, generation,
+execution, COM activation, HTML/JavaScript rendering, Java-version, ABI, native
+dependency or Authenticode qualification follows from these documentation checks.
 
 `schema-wrappers.json`
 records bounded source bundles for C#, Java and both C++ DOM options, including
