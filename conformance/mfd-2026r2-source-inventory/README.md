@@ -7,6 +7,7 @@ They do not change the canonical capability ledger or establish execution suppor
 | File | Source coverage |
 | --- | --- |
 | `nonleaf.json` | 191 parent-topic bodies, including additional operations and existing-context refinements |
+| `documentation-pages.json` | Complete frozen TOC page accounting, compared-registry pointers, review-level questions and 24 scoped dispositions; page units are metadata, not capabilities |
 | `functions.json` | 319 named function leaves, parameter tables, language declarations and unresolved contract facets |
 | `constructors.json` | 43 `xs:` constructor leaves and their shared lexical/type statements |
 | `com-api.json` | Separate public COM API catalog; release binding remains unestablished |
@@ -42,6 +43,107 @@ explicit. An editorial signature summary is not a literal API declaration.
 Language badges describe vendor documentation, not Ferrule support or independently
 verified backend applicability. These overlapping sets are not an additive parity
 denominator.
+
+## Frozen documentation page accounting
+
+`documentation-pages.json` accounts for the 1,132 unique official TOC pages in
+source order: 936 leaves, 196 parents and 20 top-level chapters. This closes only
+the finite **page-identity accounting** question. `inventory_complete` and
+`semantic_itemization_complete` remain false; page coverage is not a product-parity
+percentage, proof of exhaustive operation contracts, or a new capability cohort.
+The canonical ledger, source contexts, identities and assessments are unchanged.
+
+The companion pins the exact retained official TOC, public PDF and layout-text
+hashes and joins their source headers to `mfd-2026r2.source-contracts.json`.
+One-based LF heading/body ranges and physical PDF page numbers refer to that public
+extraction only, not the different installer manual. TOC positions are a one-based
+HTML line plus zero-based column. A parent's own body stops before its first
+numbered child; a leaf stops before the next numbered topic. The final packaging
+page ends before the back-of-book Index at layout line 75077, rather than extending
+through the index or being treated as empty.
+
+The compared registries are explicit, not a claim about every possible review:
+
+| Prior representation | Pages | Current accounting |
+| --- | ---: | --- |
+| Existing body/scoped/decomposition entry | 646 | Links the exact reviewed record; semantic exhaustiveness remains unestablished |
+| Existing context/control representation only in the compared registries | 462 | Preserves an explicit review-level question, not proof of unreviewed, uncovered or complete content |
+| Existing source/evidence references only | 3 | Retains those references and adds a scoped disposition |
+| No prior catalog or source/evidence reference | 21 | Adds a scoped disposition, not a capability |
+
+The first two groups are the same 1,108 represented pages. References overlap:
+multiple research contexts, body reviews, decompositions and evidence pointers on
+one page are views of that page, never additive capabilities. `prior_representation`
+describes the compared records before the new disposition; `review_level` and
+`review_question` distinguish the current accounting. Every join is a registry key
+and valid JSON pointer to the existing record, with independently recomputed exact
+page membership. No null canonical ID is promoted merely because a page is present.
+
+The 24 authored dispositions review the introduction and its sixteen descendants,
+both support matrices, and the five license-information pages. Release-history
+claims retain their revision: the 2026 page distinguishes initial 2026 from Release
+2, and 2022–2025 history is not current eligibility proof. Mapping/format/edition
+overviews retain qualifiers, including PDF source-only wording and vendor BUILT-IN
+preview being separate from generated Java/C#/C++ execution and Ferrule execution.
+The GUI pages describe actual customization, docking, Guide Bar, search, window,
+message and pane actions; their operation-level decomposition stays open.
+
+The matrix layout contains row/column text but **not graphical checkmark cells**.
+No yes/no cells are reconstructed from blanks. Anchored paraphrases retain the
+explicit footnotes: XML/XBRL digital-signature processing only in vendor BUILT-IN;
+Strict XLSX as source only; database/environment restrictions; calling services
+versus generating them; SOAP client-certificate, preemptive-authentication and
+WS-Security restrictions in generated C#/Java; engine-specific wildcard
+`fn:collection`; additional Java/C# JSON parsing/serialization; and driver/language
+conditions on database exception handling. Exact operation/backend and future
+eligibility remain unknown, with no blanket `not_applicable` adoption.
+
+The licensing parent and external EULA/privacy links are contextual, not copied
+legal terms or a product-scope decision. Distribution/evaluation, activation/LAN
+metering/certificate and silent-MSI license-packaging descriptions remain distinct
+workflow claims. No installation, activation, licensing, firewall or certificate
+operation follows. The packaging page delegates details to an external ZIP/PDF;
+that procedure and external legal bodies are not reviewed or represented as
+complete. Owner policy decisions remain open rather than invented exclusions.
+
+`oracles/documentation-pages.jsonl` freezes source-only tuples from an independent
+read-only audit completed before this candidate: an HTMLParser TOC traversal,
+corroborating LI/anchor census, and unique section/title matches in the pinned
+layout. The candidate used a separate static LI-token/level-stack path and fresh
+layout-heading matches before joining repository records. The source oracle does
+not supply candidate prose or joins. Its tuple order is index, file, normalized
+path, section, leaf, nullable parent index, TOC position, heading range, physical
+page and own-body range. The independently read final Index boundary completes the
+audit's deliberately unresolved final extent.
+
+`oracles/documentation-dispositions.jsonl` is a separate editorial readback of the
+24 pinned text bodies, frozen before candidate production. Its tuples retain page
+index, disposition role, temporal scope, ordered fact-name/start/end triples and
+open review gates. These fact names are local metadata, not canonical IDs. This
+is manual interpretation of numbered source reads, not an automated semantic
+oracle for prose; the candidate's authored paraphrases require editorial review.
+`oracles/documentation-editorial-sha256.jsonl` separately freezes the reviewed
+candidate's purpose, limitations, reasons and paraphrases as length-prefixed UTF-8
+SHA-256 regression fingerprints (null index for the header, otherwise page index).
+It deliberately derives from the candidate after source readback, **not** from an
+independent source path, and supplies no extra source or semantic evidence. It
+rejects prose-only eligibility/history promotions that leave structural facets
+unchanged; legitimate wording changes require another editorial readback.
+Only identities, headings, anchors and authored paraphrases are included, not
+vendor bodies, examples, legal terms or whole vendor files.
+
+The `documentation_pages` source-inventory tests use repository metadata only.
+Strict typed shapes require explicit nullable fields and reject unknown fields.
+Independent whole-universe/order/anchor checks, source-header joins and actual
+record-pointer membership checks also reject coherent omission/count refresh,
+duplicates, reorderings, stale joins, incorrect review levels, historical/current
+reclassification, dropped restrictions and unsupported applicability/runtime or
+completeness promotion. Existing selected-partition controls remain independent.
+Semantic itemization, canonical applicability/adoption, language/dependency/native/
+ABI qualification and runtime evidence remain separate gates; the historical
+online COM release binding and universal schema-wrapper coverage are not resolved.
+
+## COM and supporting source boundaries
 
 The COM catalog has its own per-page hashes and explicitly provisional identities.
 Its documented installation and visible-window requirements do not prove a working
