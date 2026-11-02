@@ -236,7 +236,8 @@ pub struct Parameter {
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Anchor {
-    pub function_dump_lines: [u32; 2],
+    #[serde(deserialize_with = "required_nullable")]
+    pub function_dump_lines: Option<[u32; 2]>,
     pub member_id_dump_line: u32,
     pub member_name_dump_line: u32,
     pub member_offset_dump_line: u32,

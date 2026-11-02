@@ -8,6 +8,7 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
 use super::super::load;
+use super::cohorts::DeclaredCohort;
 use super::oracle;
 use super::schema::*;
 
@@ -145,13 +146,13 @@ fn datatype(ty: &DataType, inventory: &Declarations, used: &mut BTreeSet<u32>) {
     assert_eq!(ty.leaf, leaf);
 }
 
-fn catalog_join(record: &Record, online: &Value) {
+fn catalog_join(record: &Record, online: &Value, cohort: &DeclaredCohort) {
     let matches: Vec<_> = online["members"]
         .as_array()
         .unwrap()
         .iter()
         .filter(|m| {
-            m["member_identity"]["owner"] == record.owner.strip_prefix('I').unwrap()
+            m["member_identity"]["owner"] == cohort.catalog_owner(record.type_info_index)
                 && m["member_identity"]["name"] == record.name
         })
         .collect();
@@ -165,7 +166,9 @@ fn catalog_join(record: &Record, online: &Value) {
             let member = matches[0];
             assert_eq!(member["id"], *id);
             assert_eq!(member["source"]["release_binding"], "unestablished");
-            let expected_kind = if record.invocation_kind == Invocation::Function {
+            let expected_kind = if cohort.events {
+                "event"
+            } else if record.invocation_kind == Invocation::Function {
                 "method"
             } else {
                 "property"
@@ -182,20 +185,29 @@ fn catalog_join(record: &Record, online: &Value) {
     }
 }
 
-pub fn declarations(value: &Value, cohort: &str, expected: &[Value]) -> Declarations {
+pub fn declarations(value: &Value, cohort: &DeclaredCohort) -> Declarations {
     let inventory: Declarations = serde_json::from_value(value.clone()).unwrap();
     assert_eq!(
         inventory.format,
         "mapforce-enterprise-2026r2-com-declarations"
     );
     assert_eq!(inventory.format_version, 1);
-    assert_eq!(inventory.cohort, cohort);
+    assert_eq!(inventory.cohort, cohort.id);
     inventory.assessment.check();
     assert!(
-        oracle::core_tuples(&inventory) == expected,
+        oracle::declaration_tuples(&inventory) == cohort.expected(),
         "declaration tuples changed"
     );
     sources(&inventory.sources);
+    assert_eq!(inventory.records.len(), cohort.records as usize);
+    assert_eq!(
+        inventory
+            .records
+            .iter()
+            .map(|r| r.parameters.len())
+            .sum::<usize>(),
+        cohort.parameters
+    );
     let mut used = BTreeSet::new();
     for t in &inventory.types {
         assert!(t.type_info_index < inventory.sources.type_info_records);
@@ -208,6 +220,7 @@ pub fn declarations(value: &Value, cohort: &str, expected: &[Value]) -> Declarat
         .map(|o| (o.type_info_index, o))
         .collect();
     assert_eq!(owners.len(), inventory.owners.len());
+    assert!(owners.keys().copied().eq(cohort.owners.iter().map(|o| o.0)));
     for o in &inventory.owners {
         let t = inventory
             .types
@@ -216,6 +229,16 @@ pub fn declarations(value: &Value, cohort: &str, expected: &[Value]) -> Declarat
             .unwrap();
         assert_eq!(o.name, t.name);
         assert_eq!(t.kind, TypeKind::Dispatch);
+        let public_owner = cohort.catalog_owner(o.type_info_index);
+        assert_eq!(
+            o.name,
+            if cohort.events {
+                format!("_I{public_owner}Events")
+            } else {
+                format!("I{public_owner}")
+            }
+        );
+        assert_eq!(o.type_flags, if cohort.events { 0x1000 } else { 0x1140 });
         assert_eq!(
             o.member_block_offset + 4 + o.member_data_bytes,
             o.member_id_table_offset
@@ -246,9 +269,13 @@ pub fn declarations(value: &Value, cohort: &str, expected: &[Value]) -> Declarat
         assert_eq!(
             r.return_type.leaf,
             Leaf::Primitive {
-                name: Primitive::Hresult
+                name: cohort.return_family()
             }
         );
+        assert_eq!(r.return_type.pointer_depth, 0);
+        if cohort.events {
+            assert_eq!(r.invocation_kind, Invocation::Function);
+        }
         assert!(r.record_bytes >= 24 + 12 * r.parameters.len() as u32);
         for (i, p) in r.parameters.iter().enumerate() {
             assert_eq!(p.index as usize, i);
@@ -273,13 +300,18 @@ pub fn declarations(value: &Value, cohort: &str, expected: &[Value]) -> Declarat
             datatype(&p.datatype, &inventory, &mut used);
         }
         let a = &r.source_anchor;
-        assert!(
-            a.function_dump_lines[0] > 0 && a.function_dump_lines[0] < a.function_dump_lines[1]
+        assert_eq!(
+            a.function_dump_lines.is_some(),
+            cohort.has_function_dump(r.type_info_index, r.record_index)
         );
-        assert!(a.function_dump_lines[1] < a.member_id_dump_line);
+        if let Some(lines) = a.function_dump_lines {
+            assert!(lines[0] > 0 && lines[0] < lines[1]);
+            assert!(lines[1] < a.member_id_dump_line);
+        }
+        assert!(a.member_id_dump_line > 0);
         assert!(a.member_id_dump_line < a.member_name_dump_line);
         assert!(a.member_name_dump_line < a.member_offset_dump_line);
-        catalog_join(r, catalog());
+        catalog_join(r, catalog(), cohort);
     }
     assert_eq!(
         used,

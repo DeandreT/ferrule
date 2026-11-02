@@ -16,6 +16,10 @@ They do not change the canonical capability ledger or establish execution suppor
 | `com-result-getters.json` | Fourteen release-bound property getters on the two generation-result interfaces, with independent raw targets and release-unbound online property declarations |
 | `com-collection-getters.json` | Ten release-bound property getters on `IAppOutputLines` and `IErrorMarkers`, twelve ordered parameters and eight release-unbound online properties |
 | `com-core-declarations.json` | 114 release-bound callable records and 119 ordered parameters on `IApplication`, `IOptions`, `IDocument` and `IDocuments`, using shared typed source validation |
+| `com-graph-declarations.json` | 79 release-bound mapping, component, graph and view declarations with 110 ordered parameters |
+| `com-projects-declarations.json` | 68 release-bound project, project-item and library-import declarations with 79 ordered parameters |
+| `com-diagnostics-declarations.json` | 28 release-bound output-line, symbol and error-marker declarations with 44 ordered parameters |
+| `com-events-declarations.json` | Eight release-bound event-source declarations with seven ordered parameters; five function-body dump anchors are explicitly null |
 | `com-callable-coverage.json` | Finite, disjoint membership of all 325 callable records; declaration adoption remains separate from runtime support |
 | `supporting.json` | Public I/O classes, wrapper-library exceptions and the named installation-artifact requests |
 | `schema-wrappers.json` | Four optional schema-wrapper source profiles, actual schema identities and build/dependency metadata; no compiled or runtime qualification |
@@ -120,14 +124,51 @@ owner/table arithmetic, contiguous extents, parameter-tail offsets, signed IDs,
 invocation/flag values and bounded acyclic descriptor chains with typed enum or
 interface targets. Existing fragments keep their own schemas and independent
 checks. The registry verifies their actual record membership and anchors.
+Explicit cohort descriptors register the owners, ordinary/event return families,
+online owner names and exact five unavailable event bodies. Event handling does
+not relax ordinary HRESULT or rendered-body requirements.
+
+The graph cohort retains both in/out `VARIANT* pbError` declarations:
+`IComponent.GenerateOutput` parameter 0 and `IComponent.Test1` parameter 1.
+`Test1` has function flags `0x40`; the online `GenerateOutput` page instead
+displays an out Boolean parameter. The existing partial discrepancy observation
+in `artifact-observations.json` is preserved alongside the now-adopted whole
+function, not counted again. Raw `Component.ID` is `UINT*`, separately from the
+online Long notation. Six new records have no exact online join: both literal
+`HighlightMyConnectionsRecursivly` accessors, the `_NewEnum` getters on
+`IComponents`, `IMappings` and `ILibraryImports`, and `IComponent.Test1`.
+The differently spelled online `HighlightMyConnectionsRecursively` is not an alias.
+
+Project/library collections retain signed `_NewEnum` ID -4 and generic
+`UNKNOWN*`, while raw `Application`/`Parent` results remain generic `DISPATCH*`.
+All 25 unnamed setter parameters across the four new cohorts remain literal null
+names. Diagnostic `GetLineSeverity` returns raw `I4*`, not a named enum target
+inferred from prose. Displayed collection indexing, diagnostic separators,
+null-delimiter behavior, errors and defaults remain documentation claims or
+unstated behavior, not runtime contracts.
+
+The event cohort belongs to `_IApplicationEvents`, `_IDocumentEvents`,
+`_IProjectEvents` and `_IProjectItemEvents`, not the owning public dispatch
+interfaces. All eight return raw `VOID`, unlike the 317 ordinary HRESULT
+declarations. The five document/project/project-item function bodies are absent
+from the retained dump. Their required `function_dump_lines` values are null;
+header, name and member-table anchors do not substitute for function-body anchors.
+The dump renders some of their table words as `unknown`; their line anchors are
+joined to independently checked raw table coordinates, not labeled function bodies.
 
 The compact JSONL oracles in the neighboring `oracles/` directory are independent
-of the candidate JSON and binary reader: core owner/type/descriptor/record tuples
+of the candidate JSON and binary reader: owner/type/descriptor/record tuples
 and available coverage identities were transcribed from the retained dump
 (`672097183d6a6b0d80f3aa5f92d02172bb3a588609cb743bb82b73c342192bb4`).
 The candidate was read separately from the official-release 54,108-byte TLB
 (`785c484fbaa882cae724a3568b04650300eb18941084ac23eb2d041dfb4a2789`).
-Neither path uses the scout's candidate JSON as an oracle. JSONL rows are ordered
+For the five unrendered event bodies only, full literal record words and member
+tables were deliberately read a second time directly from the pinned TLB, checked
+against the three rendered application-event patterns, and combined with the
+dump-transcribed names, descriptors and type headers. This second-read expected
+path does not use the candidate decoder or its JSON. Null function anchors are
+preserved in both paths. Neither path uses planning coverage JSON as an oracle.
+JSONL rows are ordered
 `T` type identities, `D` descriptor words, `O` owner tables and `R` callable
 tuples; coverage `T` rows instead retain callable/variable counts. The Rust
 projection defines each tuple's field order. Parameter tuples retain index,
@@ -136,17 +177,17 @@ and descriptor chain. Record tuples retain their source anchors and nullable
 catalog identity. These are declaration facts, not copied vendor implementation.
 
 The coverage denominator is 317 ordinary records plus eight event-source records.
-The disjoint adopted cohorts are generation (4), results (14), collections (10)
-and core (114); remaining cohorts are graph (79), projects (68), diagnostics (28)
-and events (8). Remaining records have membership metadata, not adopted complete
-signatures. `IComponent.GenerateOutput` stays in graph: its existing `pbError`
-observation does not complete the function. Five late event records have no dump
-function body; their coverage identities/extents are independently retained from
-bounded raw readback and their dump anchors remain null, never invented. The 75
+The disjoint adopted cohorts are generation (4), results (14), collections (10),
+core (114), graph (79), projects (68), diagnostics (28) and events (8). Together
+they cover these 325 callable declarations and 392 ordered parameters exactly
+once. This closes only the finite function-declaration partition, not the COM
+type inventory, product scope or parity. The 75
 type-info declarations also include 20 enum tables/130 variable records and 29
 zero-function/zero-variable types (23 coclasses, five empty event sources and
 `_IDummy`). These are separate metadata, not additional capabilities or proof of
-coclass/default-interface/activation coverage.
+coclass/default-interface/event-source relationship or activation coverage.
+Owner TYPEFLAGS are retained declaration bits, not complete owner-type metadata.
+Those metadata layers and all platform/ABI/runtime qualification remain separate.
 
 Scalar, unknown-field and coherent mutation controls run with repository files
 only; they do not require vendor artifacts, network access or activation. Every
