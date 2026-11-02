@@ -171,6 +171,16 @@ primary-then-extra target order. `RunOptions::with_target` can instead evaluate
 one primary or named target; unselected target scopes are not evaluated or
 published, while the default all-target mode keeps its collision checks.
 
+Stored relative input and static output paths resolve from the project directory.
+Dynamic primary and named targets use that same directory as their default output
+base. A basename such as `project.json` uses `.` just like `./project.json`;
+nested and absolute project paths retain their own directories. An explicit
+output path overrides only the primary or selected target. Relative overrides
+are not rebased to the project directory.
+Explicit empty paths are not replaced with defaults. Payload execution returns
+these paths as logical artifact identities without publishing files; filesystem
+execution validates and atomically publishes the complete selected output set.
+
 Every host route (`run`, standard streams, `run-pipeline`, payload execution,
 `run-rest-json`, and generation) prepares an immutable request before it
 acquires anything. Preparation resolves the known input and output identities
