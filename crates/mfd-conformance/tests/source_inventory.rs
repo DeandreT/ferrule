@@ -32,6 +32,9 @@ mod source_contracts;
 #[path = "source_inventory/schema_wrappers.rs"]
 mod schema_wrappers;
 
+#[path = "source_inventory/supporting_exception_declarations.rs"]
+mod supporting_exception_declarations;
+
 #[path = "source_inventory/supporting_io_declarations.rs"]
 mod supporting_io_declarations;
 
