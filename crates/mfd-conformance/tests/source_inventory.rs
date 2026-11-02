@@ -11,6 +11,9 @@ mod com_enum_values;
 #[path = "source_inventory/com_generation_signatures.rs"]
 mod com_generation_signatures;
 
+#[path = "source_inventory/com_result_getters.rs"]
+mod com_result_getters;
+
 #[path = "source_inventory/com_names.rs"]
 mod com_names;
 
