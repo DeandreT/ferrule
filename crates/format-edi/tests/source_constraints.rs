@@ -58,6 +58,14 @@ fn first(instance: &Instance) -> &Value {
         .unwrap()
 }
 
+fn issue_values(report: &format_edi::EdiValidationReport) -> Vec<(String, EdiConstraintViolation)> {
+    report
+        .issues()
+        .iter()
+        .map(|issue| (issue.location().to_string(), issue.violation()))
+        .collect()
+}
+
 #[test]
 fn integer_leading_zeros_and_code_lists_use_the_wire_spelling() {
     let opts = options(vec![constraint(
@@ -178,6 +186,64 @@ fn reports_are_bounded_and_display_omits_excess_issues() {
     assert!(report.truncated());
     assert!(report.to_string().contains("additional issues omitted"));
     assert!(!report.to_string().contains("Rows[9]"));
+}
+
+#[test]
+fn exactly_ten_thousand_violations_followed_by_valid_fields_are_not_truncated() {
+    let opts = options(vec![constraint(&["Rows", "G62", "Value"], 2, 2, &[])]);
+    let body = format!("{}G62*AA~G62*BB~", "G62*X~".repeat(10_000));
+    let EdiFormatError::Validation(report) = parse(ScalarType::String, &opts, &body).unwrap_err()
+    else {
+        panic!("typed validation error")
+    };
+    let expected = (1..=10_000)
+        .map(|occurrence| {
+            (
+                format!("Rows[{occurrence}]/G62/Value"),
+                EdiConstraintViolation::TooShort {
+                    minimum: 2,
+                    actual: 1,
+                },
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(issue_values(&report), expected);
+    assert!(
+        !report.truncated(),
+        "later valid fields do not omit an issue"
+    );
+}
+
+#[test]
+fn two_independent_violations_in_one_field_cross_the_issue_cap_in_order() {
+    let opts = options(vec![constraint(&["Rows", "G62", "Value"], 2, 2, &["AA"])]);
+    // Each BB violates only its code list. X then adds a length violation
+    // before its separate code-list violation crosses the report's cap.
+    let body = format!("{}G62*X~", "G62*BB~".repeat(9_999));
+    let EdiFormatError::Validation(report) = parse(ScalarType::String, &opts, &body).unwrap_err()
+    else {
+        panic!("typed validation error")
+    };
+    let mut expected = (1..=9_999)
+        .map(|occurrence| {
+            (
+                format!("Rows[{occurrence}]/G62/Value"),
+                EdiConstraintViolation::NotAllowed { allowed_count: 1 },
+            )
+        })
+        .collect::<Vec<_>>();
+    expected.push((
+        "Rows[10000]/G62/Value".into(),
+        EdiConstraintViolation::TooShort {
+            minimum: 2,
+            actual: 1,
+        },
+    ));
+    assert_eq!(issue_values(&report), expected);
+    assert!(
+        report.truncated(),
+        "the same field's code violation is omitted"
+    );
 }
 
 #[test]
@@ -557,6 +623,217 @@ fn renamed_schema_nodes_and_active_interchange_syntax_are_not_wire_tag_paths() {
         report.issues()[0].location(),
         "Interchange[2]/SG1[1]/MF_NAD_2/Joined"
     );
+}
+
+#[test]
+fn fixed_qualifiers_select_distinct_constraint_paths_for_the_same_wire_tag() {
+    let branch = |name: &str, fixed: &str| {
+        let mut qualifier = SchemaNode::scalar("Qualifier", ScalarType::String);
+        qualifier.fixed = Some(fixed.into());
+        SchemaNode::group(
+            name,
+            vec![qualifier, SchemaNode::scalar("Value", ScalarType::String)],
+        )
+        .repeating()
+    };
+    let schema = SchemaNode::group(
+        "Input",
+        vec![
+            SchemaNode::group(
+                "Rows",
+                vec![branch("MF_NAD_1", "BY"), branch("MF_NAD_2", "SU")],
+            )
+            .repeating(),
+        ],
+    );
+    let opts = options(vec![
+        constraint(&["Rows", "MF_NAD_1", "Value"], 2, 2, &["AA"]),
+        constraint(&["Rows", "MF_NAD_2", "Value"], 3, 3, &["BBB"]),
+    ]);
+    let read = |body: &str| {
+        document::parse(
+            &schema,
+            &opts,
+            EdiBoundaryKind::X12,
+            format!("{ISA}{body}").as_bytes(),
+        )
+    };
+    let parsed = read("NAD*BY*AA~NAD*SU*BBB~NAD*BY*AA~NAD*SU*BBB~").unwrap();
+    let expected_branch = |qualifier: &str, value: &str| {
+        Instance::Repeated(vec![Instance::Group(
+            vec![
+                (
+                    "Qualifier".into(),
+                    Instance::Scalar(Value::String(qualifier.into())),
+                ),
+                (
+                    "Value".into(),
+                    Instance::Scalar(Value::String(value.into())),
+                ),
+            ]
+            .into(),
+        )])
+    };
+    let expected_row = Instance::Group(
+        vec![
+            ("MF_NAD_1".into(), expected_branch("BY", "AA")),
+            ("MF_NAD_2".into(), expected_branch("SU", "BBB")),
+        ]
+        .into(),
+    );
+    assert_eq!(
+        parsed,
+        Instance::Group(
+            vec![(
+                "Rows".into(),
+                Instance::Repeated(vec![expected_row.clone(), expected_row])
+            )]
+            .into(),
+        )
+    );
+    let EdiFormatError::Validation(report) =
+        read("NAD*BY*BBB~NAD*SU*AA~NAD*BY*AA~NAD*SU*BBB~").unwrap_err()
+    else {
+        panic!("typed validation error")
+    };
+    assert_eq!(
+        issue_values(&report),
+        vec![
+            (
+                "Rows[1]/MF_NAD_1[1]/Value".into(),
+                EdiConstraintViolation::TooLong {
+                    maximum: 2,
+                    actual: 3
+                }
+            ),
+            (
+                "Rows[1]/MF_NAD_1[1]/Value".into(),
+                EdiConstraintViolation::NotAllowed { allowed_count: 1 }
+            ),
+            (
+                "Rows[1]/MF_NAD_2[1]/Value".into(),
+                EdiConstraintViolation::TooShort {
+                    minimum: 3,
+                    actual: 2
+                }
+            ),
+            (
+                "Rows[1]/MF_NAD_2[1]/Value".into(),
+                EdiConstraintViolation::NotAllowed { allowed_count: 1 }
+            ),
+        ]
+    );
+    assert!(!report.truncated());
+}
+
+#[test]
+fn edifact_service_changes_reconstruct_and_constrain_each_interchanges_scalar() {
+    const DEFAULT: &str = "UNA:+.? 'UNB+UNOC:3+S+R+D+A'UNH+M'BGM+A:B'UNT+3+M'UNZ+1+A'";
+    const CUSTOM: &str = "UNA;|.! $UNB|UNOC;3|S|R|D|B$UNH|N$BGM|A;B$UNT|3|N$UNZ|1|B$";
+    let schema = SchemaNode::group(
+        "Input",
+        vec![
+            SchemaNode::group(
+                "Interchanges",
+                vec![
+                    SchemaNode::group("UNB", vec![]),
+                    SchemaNode::group("UNH", vec![]),
+                    SchemaNode::group(
+                        "BGM",
+                        vec![SchemaNode::scalar("Joined", ScalarType::String)],
+                    ),
+                    SchemaNode::group("UNT", vec![]),
+                    SchemaNode::group("UNZ", vec![]),
+                ],
+            )
+            .repeating(),
+        ],
+    );
+    let mut opts = options(vec![constraint(
+        &["Interchanges", "BGM", "Joined"],
+        3,
+        3,
+        &["A:B", "A;B"],
+    )]);
+    opts.lenient_segments = false;
+    for (wire, expected_values, colon_refusal, semicolon_refusal) in [
+        (
+            format!("{DEFAULT}\n{CUSTOM}"),
+            ["A:B", "A;B"],
+            "Interchanges[2]/BGM/Joined",
+            "Interchanges[1]/BGM/Joined",
+        ),
+        (
+            format!("{CUSTOM}\n{DEFAULT}"),
+            ["A;B", "A:B"],
+            "Interchanges[1]/BGM/Joined",
+            "Interchanges[2]/BGM/Joined",
+        ),
+    ] {
+        let parsed =
+            document::parse(&schema, &opts, EdiBoundaryKind::Edifact, wire.as_bytes()).unwrap();
+        let expected_interchanges = expected_values
+            .into_iter()
+            .map(|value| {
+                let empty = || Instance::Group(Vec::new().into());
+                Instance::Group(
+                    vec![
+                        ("UNB".into(), empty()),
+                        ("UNH".into(), empty()),
+                        (
+                            "BGM".into(),
+                            Instance::Group(
+                                vec![(
+                                    "Joined".into(),
+                                    Instance::Scalar(Value::String(value.into())),
+                                )]
+                                .into(),
+                            ),
+                        ),
+                        ("UNT".into(), empty()),
+                        ("UNZ".into(), empty()),
+                    ]
+                    .into(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            parsed,
+            Instance::Group(
+                vec![(
+                    "Interchanges".into(),
+                    Instance::Repeated(expected_interchanges)
+                )]
+                .into()
+            )
+        );
+        for (allowed, location) in [("A:B", colon_refusal), ("A;B", semicolon_refusal)] {
+            let mut only_one_spelling = opts.clone();
+            only_one_spelling.edi_value_constraints = vec![constraint(
+                &["Interchanges", "BGM", "Joined"],
+                3,
+                3,
+                &[allowed],
+            )];
+            let EdiFormatError::Validation(report) = document::parse(
+                &schema,
+                &only_one_spelling,
+                EdiBoundaryKind::Edifact,
+                wire.as_bytes(),
+            )
+            .unwrap_err() else {
+                panic!("typed validation error")
+            };
+            assert_eq!(
+                issue_values(&report),
+                vec![(
+                    location.into(),
+                    EdiConstraintViolation::NotAllowed { allowed_count: 1 }
+                )]
+            );
+            assert!(!report.truncated());
+        }
+    }
 }
 
 #[test]
