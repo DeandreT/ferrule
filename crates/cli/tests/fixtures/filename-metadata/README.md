@@ -16,3 +16,8 @@ because the baseline String fields happen to produce an expected document.
 
 The opt-in Release host test compiles Rust and C# consumers without invoking a
 vendor application. It is not external-reference qualification of these forms.
+The C# sandbox copies the repository's exact `global.json` into its working
+directory. SDK selection is recorded with `dotnet --version` before building,
+using the same executable, working directory and isolated environment as the
+host. The host disables shared build servers and automatic framework/reference
+package downloads; installed SDKs are never changed by the fixture.
