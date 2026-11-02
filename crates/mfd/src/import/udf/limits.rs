@@ -19,6 +19,10 @@ impl Default for ConstructionBudget {
 }
 
 impl ConstructionBudget {
+    #[cfg(test)]
+    pub(super) fn for_test(work: usize, text: usize) -> Self {
+        Self::with_limits(work, text)
+    }
     fn with_limits(work: usize, text: usize) -> Self {
         Self(Rc::new(RefCell::new(State {
             work,

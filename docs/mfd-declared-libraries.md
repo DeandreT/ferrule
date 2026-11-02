@@ -58,6 +58,45 @@ direction claims are refused regardless of owner/order or whether the colliding
 input is connected. Nested function graph namespaces stay independent. Graph
 edges do not add pin declarations: one producer may feed multiple consumers.
 
+Raw wiring is necessary but not sufficient. A separate import-only ownership
+certificate runs once after local catalog promotion, source-role refinement,
+primary-source ordering and join resolution, before main graph materialization.
+Reader registrations retain the immutable XML document/structure/component
+identity beside their normalized records. Promoted local catalogs retain their
+own origin; synthetic or unproved records cannot acquire a main-graph identity
+through matching names, UIDs, keys, paths or values. Origins and certificates
+are never serialized into a Project and do not change the execution model.
+
+The certificate inspects the original producer collections, before keyed
+builder maps can overwrite competing records. Every argument dependency,
+explicit receiving-scope driver and declared-call output must have exactly one
+normalized producer matching its proved raw owner and port. All normalized
+source ports participate, including input aliases. Competing claims refuse even
+when the expected main source would currently win or both producers have the
+same value. The producer collections remain frozen through lowering.
+
+The initial certified profile is ordinary unqualified XML scalar source ports,
+regular declared-call boundaries, literal constants and ordinary scalar
+functions with exact, complete reader-backed pin correspondence. Element versus
+attribute identity and unique schema paths must agree. Repeated receiving
+groups require explicit, certified source-group drivers. Implicit or projected
+scope construction, qualified/alternative paths, transparent intermediates,
+dynamic properties, filenames, local UDF dependencies, joins and database
+computed projections remain unproved profiles. External scalar/XSLT recipes,
+parsers and serializers remain blocking producer claims, not invisible routes.
+Source-node rules affecting a checked argument, driver or output also refuse
+until their provenance and consumption profile are proved.
+
+Independent local function namespaces and parameter catalogs remain local.
+An unused catalog becomes relevant only if its actually promoted ports compete
+on the checked closure; unrelated collisions do not become a whole-graph gate.
+Ordinary imports without declared-library calls retain their existing behavior.
+Certificate failure is a hard `UnsupportedImport` before a project is returned,
+not a skipped call followed by source fallback. The certificate performs no
+resource reads or evaluation. Earlier declaration/schema processing may already
+have acquired metadata, including an unused catalog's schema; its readset is
+evidence of delivery, not evidence of successful admission.
+
 Only direct ordinary XML scalar target consumers are admitted. Their selected
 content root, explicit unqualified `document/@instanceroot`, nonempty schema
 reference, and raw port declarations must agree with the XML reader. The
