@@ -10,6 +10,9 @@ use super::load;
 #[path = "installer_java_api_docs/mutations.rs"]
 mod mutations;
 
+#[path = "installer_java_api_docs/tensions.rs"]
+mod tensions;
+
 const DECLARATIONS: &str = include_str!(
     "../../../../conformance/mfd-2026r2-source-inventory/oracles/installer-java-api-docs.jsonl"
 );
@@ -88,7 +91,13 @@ fn validate(value: Value, manifest: Value) -> Result<(), String> {
 
     let mut metadata = value.clone();
     let fields = metadata.as_object_mut().ok_or("root object")?;
-    for key in ["declarations", "claims", "indices", "source_manifest"] {
+    for key in [
+        "declarations",
+        "claims",
+        "indices",
+        "source_manifest",
+        "documentation_tensions",
+    ] {
         require(fields.remove(key).is_some(), "required root field")?;
     }
     // The frozen metadata is also the strict schema for the finite editorial
@@ -370,6 +379,7 @@ fn validate(value: Value, manifest: Value) -> Result<(), String> {
         }
     }
     validate_comparisons(&value, &members)?;
+    tensions::validate(&value, &types, &members, &sources)?;
     Ok(())
 }
 

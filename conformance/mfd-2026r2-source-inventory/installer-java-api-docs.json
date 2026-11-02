@@ -202,6 +202,129 @@
     },
     "pbError_relationship": "The JVariant declaration is a separate source-level notation; the prior online Boolean/out versus raw TLB VARIANT*/in,out observation remains unchanged and unqualified."
   },
+  "documentation_tensions": {
+    "format": "installer-java-api-documentation-tensions",
+    "oracle": "oracles/installer-java-api-docs-tensions.json",
+    "interpretation": "These are unresolved differences between documented prose/annotations and documented declarators, not corrections to either source, aliases, compiled availability or ABI/runtime proof. Root source-only assessment applies.",
+    "property_labels": {
+      "standalone_occurrences": 165,
+      "distinct_owner_name_pairs": 124,
+      "classification": "Only standalone property NAME notes; ordinary prose mentions are not property labels."
+    },
+    "pointer_storage": {
+      "owner": "com.altova.automation.libs.JVariant.JIDispatchVariant",
+      "prose_lines": [
+        103,
+        103
+      ],
+      "normalized_text_sha256": "9115d92c6a229a9c2655f22d8ec2ee4a15a842b4f76ee9fc6ba772544892c272",
+      "prose_storage_type": "int",
+      "constructor_fragment": "<init>(long)",
+      "constructor_parameter_type": "long",
+      "accessor_fragment": "getIDispatchPointer()",
+      "accessor_return_type": "long",
+      "native_width": null
+    },
+    "iterator_annotations": [
+      {
+        "owner": "com.altova.automation.libs.COMIDispatchConstIterator",
+        "fragment": "hasNext()",
+        "declared_owner_route": "implements java.util.Iterator<ELEMENT>",
+        "annotations": [
+          {
+            "label": "Specified by:",
+            "lines": [
+              230,
+              230
+            ],
+            "normalized_text_sha256": "967c99726431b52505dd7d3b0b10dcea0b4e2ebded0b061b830a23db649e4ffd",
+            "printed_target": "java.util.Iterator<LIST extends COMIDispatchConstList<ELEMENT>>"
+          }
+        ]
+      },
+      {
+        "owner": "com.altova.automation.libs.COMIDispatchConstIterator",
+        "fragment": "next()",
+        "declared_owner_route": "implements java.util.Iterator<ELEMENT>",
+        "annotations": [
+          {
+            "label": "Specified by:",
+            "lines": [
+              240,
+              240
+            ],
+            "normalized_text_sha256": "aed73d76a2c8d6eefa0dc0ec65c37b963bb0de1a4e25632aff798fd56f2d3da9",
+            "printed_target": "java.util.Iterator<LIST extends COMIDispatchConstList<ELEMENT>>"
+          }
+        ]
+      },
+      {
+        "owner": "com.altova.automation.libs.COMIDispatchConstIterator",
+        "fragment": "remove()",
+        "declared_owner_route": "implements java.util.Iterator<ELEMENT>",
+        "annotations": [
+          {
+            "label": "Specified by:",
+            "lines": [
+              251,
+              251
+            ],
+            "normalized_text_sha256": "fc6d24cf21d6bda57ba496c404e74e953b9c5461315de4a1071e6ac31d4fda71",
+            "printed_target": "java.util.Iterator<LIST extends COMIDispatchConstList<ELEMENT>>"
+          }
+        ]
+      },
+      {
+        "owner": "com.altova.automation.libs.COMIDispatchIterator",
+        "fragment": "remove()",
+        "declared_owner_route": "extends COMIDispatchConstIterator<LIST,ELEMENT>",
+        "annotations": [
+          {
+            "label": "Specified by:",
+            "lines": [
+              222,
+              222
+            ],
+            "normalized_text_sha256": "a93a5ea8c4d1b19a5c71589012149dc55e130efdd56a2c0ea76e4da0cbc5b9c5",
+            "printed_target": "java.util.Iterator<LIST extends COMIDispatchList<ELEMENT>>"
+          },
+          {
+            "label": "Overrides:",
+            "lines": [
+              224,
+              224
+            ],
+            "normalized_text_sha256": "f9a214fea67b81f0219f623034023e7fdf71303e1d1bd0fa9a1e70c1d42196e7",
+            "printed_target": "COMIDispatchConstIterator<LIST extends COMIDispatchList<ELEMENT>,ELEMENT>"
+          }
+        ]
+      }
+    ],
+    "add_notify": [
+      {
+        "owner": "com.altova.automation.libs.ActiveXContainer",
+        "fragment": "addNotify()",
+        "prose_lines": [
+          423,
+          425
+        ],
+        "normalized_text_sha256": "9153011daa51c4a3c5fea5d5e4173586a4555f0d20b77b228ff626e1c58179dc",
+        "prose_return_description": "IDispatch pointer",
+        "declared_return_type": "void"
+      },
+      {
+        "owner": "com.altova.automation.libs.ActiveXMultiDocCtrl",
+        "fragment": "addNotify()",
+        "prose_lines": [
+          287,
+          289
+        ],
+        "normalized_text_sha256": "9153011daa51c4a3c5fea5d5e4173586a4555f0d20b77b228ff626e1c58179dc",
+        "prose_return_description": "IDispatch pointer",
+        "declared_return_type": "void"
+      }
+    ]
+  },
   "source_manifest": "installer-java-api-docs-sources.json",
   "declarations": [
     ["T","com.altova.automation.MapForce.AppOutputLine","com/altova/automation/MapForce/AppOutputLine.html","class",null,"public class AppOutputLine extends COMIDispatchObject",[99,100],[["COMIDispatchObject","com.altova.automation.libs.COMIDispatchObject","class"]],[],[]],
