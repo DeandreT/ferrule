@@ -375,6 +375,20 @@ pub(in crate::import::udf) fn validate_call(
                 {
                     attributes(node, &[])?;
                 }
+                "view"
+                    if node.parent() == Some(*component)
+                        && !node.children().any(|child| child.is_element()) =>
+                {
+                    // The owned exporter emits only bounded cosmetic geometry;
+                    // none of these fields participates in invocation context.
+                    attributes(node, &["ltx", "lty", "rbx", "rby"])?;
+                    if node
+                        .attributes()
+                        .any(|attribute| attribute.value().parse::<i32>().is_err())
+                    {
+                        return Err("unproved call view metadata".into());
+                    }
+                }
                 "root" if node.parent().is_some_and(|n| n.has_tag_name("data")) => {
                     attributes(node, &["rootindex"])?;
                     let index = node.attribute("rootindex").unwrap_or("0");
