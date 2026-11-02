@@ -20,8 +20,8 @@ use mapping::{EdiBoundaryKind, ExternalPayloadFormat, FormatOptions};
 
 use super::format_selection::{self, Direction, JsonMode, Origin, SelectedFormat};
 use super::{
-    TraceSink, absolute_mapping_path, has_legacy_xlsx_layout, protobuf_layout, require_valid,
-    resolve_run_path, x12_separators,
+    TraceSink, absolute_mapping_path, has_legacy_xlsx_layout, project_directory, protobuf_layout,
+    require_valid, resolve_run_path, x12_separators,
 };
 
 pub const MAX_PAYLOAD_DOCUMENT_BYTES: usize = 64 * 1024 * 1024;
@@ -783,12 +783,9 @@ fn target_destination(
     label: &str,
 ) -> anyhow::Result<PayloadDestination> {
     if dynamic {
-        let base = explicit.map(Path::to_path_buf).unwrap_or_else(|| {
-            project_path
-                .parent()
-                .unwrap_or_else(|| Path::new("."))
-                .to_path_buf()
-        });
+        let base = explicit
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| project_directory(project_path).to_path_buf());
         validate_logical_path(&base, label)?;
         return Ok(PayloadDestination::DynamicBase(base));
     }
