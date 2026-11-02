@@ -16,6 +16,7 @@ pub mod edifact;
 pub mod hl7;
 pub mod idoc;
 mod segments;
+mod source_validation;
 pub mod swift;
 #[cfg(test)]
 mod test_support;
