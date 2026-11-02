@@ -47,6 +47,11 @@ invalidate an otherwise complete protobuf graph.
 
 ## Import
 
+Document-local declarative `.mfd` function imports have a deliberately bounded
+[library contract](mfd-declared-libraries.md), with exact symbol ownership,
+resource limits and explicit refusals for unproved signatures or call roles.
+Immutable byte packages currently refuse this profile without filesystem fallback.
+
 ```sh
 cargo run -p cli -- import-mfd --mfd design.mfd --out project.json
 ```

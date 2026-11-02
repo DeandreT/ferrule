@@ -1635,6 +1635,12 @@ fn import_resolved(
     let mut flextext_parsers = Vec::new();
     let mut output_parameters = Vec::new();
     let mut udf_registry = UdfRegistry::read_in_package(&mapping_el, resources, &mut warnings);
+    if resources.package().is_some() && udf_registry.has_declared_mapping_libraries() {
+        return Err(MfdError::UnsupportedImport("declared mapping libraries are unsupported in immutable byte packages; no filesystem fallback".into()));
+    }
+    udf_registry
+        .finish_construction()
+        .map_err(MfdError::Resource)?;
     let mut udf_calls = Vec::new();
     let mut external_udf_candidates = Vec::new();
     let mut external_scalar_recipes = Vec::new();
@@ -1658,6 +1664,7 @@ fn import_resolved(
             .descendants()
             .any(|node| xml_scalar_output::xml_request_owner(node).is_some())
         && matches!(selection, StageSelection::Ordinary)
+        && !udf_registry.has_declared_mapping_libraries()
         && edges.conflicts.is_empty()
         && !(item_ordered_exceptions && exception::item_ordered::has_exception(structure))
         && let Some((project, key)) =
@@ -1695,8 +1702,15 @@ fn import_resolved(
             .children()
             .filter(|n| n.is_element() && n.tag_name().name() == "component")
         {
+            udf_registry
+                .finish_construction()
+                .map_err(MfdError::Resource)?;
             let library = component.attribute("library").unwrap_or_default();
             let name = component.attribute("name").unwrap_or_default().to_string();
+            if udf_registry.refuses_reserved_call(library, component.attribute("kind")) {
+                warnings.push(format!("declared kind-19 function `{name}` has reserved owner `{library}`; refused before built-in/schema/HTTP dispatch"));
+                continue;
+            }
             match library {
                 "xml" => {
                     let root_view_findings = root_view_inventory.inspect(component);
@@ -2135,6 +2149,10 @@ fn import_resolved(
                                 )),
                             }
                         }
+                    } else if component.attribute("kind") == Some("19")
+                        && udf_registry.has_declared_mapping_libraries()
+                    {
+                        warnings.push(format!("unresolved declared user-defined function `{name}` ({other}): {}; no module discovery or name fallback is permitted", udf_registry.unsupported_reason(other, &name).unwrap_or("required declaring library resource/producer is unavailable or symbol is not directly exported")));
                     } else {
                         match external_scalar::read(&component, path, &selected_language, resources)
                         {
@@ -2182,6 +2200,9 @@ fn import_resolved(
         )));
     }
     let user_functions = udf_registry.user_functions();
+    udf_registry
+        .finish_construction()
+        .map_err(MfdError::Resource)?;
     // UDF-owned static catalogs are secondary to ordinary mapping sources.
     // Keeping them last also preserves the document source as the default in
     // scalar-only mappings, where repetition-based primary scoring is tied.
