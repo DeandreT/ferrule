@@ -186,7 +186,11 @@ fn node_rect(
     let response = registered
         .iter()
         .find_map(|pin| {
-            context.read_response(pin.layer_id.id.with(("snarl-node", snarl_id)).with("frame"))
+            context.read_response(
+                crate::graph_draft_ui::widget_canvas(context, pin.layer_id.id)
+                    .with(("snarl-node", snarl_id))
+                    .with("frame"),
+            )
         })
         .expect("existing registered Snarl node frame");
     let transform = context

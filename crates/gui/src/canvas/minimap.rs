@@ -68,7 +68,10 @@ pub fn show(
         size,
     );
     // A canvas sublayer stays above its nodes, but below windows and modals.
-    let layer_id = egui::LayerId::new(ui.layer_id().order, id.with("minimap_layer"));
+    let layer_id = egui::LayerId::new(
+        ui.layer_id().order,
+        crate::graph_draft_ui::paint_canvas(ui.ctx(), id).with("minimap_layer"),
+    );
     ui.ctx().set_sublayer(ui.layer_id(), layer_id);
     let mut overlay_ui = ui.new_child(
         egui::UiBuilder::new()

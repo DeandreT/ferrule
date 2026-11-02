@@ -121,7 +121,7 @@ pub fn show(
     let position = egui::pos2(viewport.center().x - width / 2.0, viewport.top() + 12.0);
     let mut close = false;
     let mut move_match = 0_isize;
-    egui::Area::new(id.with("field_search"))
+    egui::Area::new(crate::graph_draft_ui::paint_canvas(ctx, id).with("field_search"))
         .order(egui::Order::Foreground)
         .fixed_pos(position)
         .show(ctx, |ui| {
@@ -130,7 +130,9 @@ pub fn show(
                 ui.horizontal(|ui| {
                     let response = ui.add_sized(
                         [(width - 142.0).max(120.0), ui.spacing().interact_size.y],
-                        egui::TextEdit::singleline(&mut state.query).hint_text("Find field"),
+                        egui::TextEdit::singleline(&mut state.query)
+                            .id(id.with("query"))
+                            .hint_text("Find field"),
                     );
                     if state.request_focus {
                         response.request_focus();

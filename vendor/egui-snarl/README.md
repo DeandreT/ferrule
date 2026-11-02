@@ -36,3 +36,8 @@ The canvas accessibility subtree carries the graph-to-parent transform so its
 widget bounds match the painted and pointer-interactive controls after pan/zoom.
 The application uses the default and serde features; the optional probe UI is
 not part of that integration.
+
+`SnarlWidget::paint_layer_id` optionally separates the paint sublayer identity
+from the widget state identity. Ferrule reuses bounded canvas layer slots while
+retaining generation-specific camera, selection, and interaction state IDs.
+The default retains upstream behavior when no override is supplied.

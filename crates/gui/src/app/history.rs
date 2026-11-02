@@ -168,6 +168,7 @@ impl FerruleApp {
         now: std::time::Instant,
         coalesce_change: bool,
     ) -> Option<std::time::Duration> {
+        self.reconcile_graph_drafts();
         let current_state = self.live_state();
         if current_state != self.observed_editor.state {
             let current = EditorSnapshot {
@@ -237,6 +238,7 @@ impl FerruleApp {
     pub(super) fn restore_editor(&mut self, project: Project, layout: &CanvasLayout) {
         self.clear_diagnostic_navigation();
         self.project = project;
+        self.reconcile_graph_drafts();
         self.mapping_workspace = MappingWorkspace::from_layout(&self.project, Some(layout));
         self.main_canvas =
             CanvasDocumentState::with_snarl(build_snarl_with_layout(&self.project, Some(layout)));
