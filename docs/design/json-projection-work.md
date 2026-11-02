@@ -38,6 +38,15 @@ single-threaded shared-context model; C# synchronizes document-state access
 when callers share a context across threads. Independent executions never share
 that state.
 
+C# context construction requires an explicit state argument, including
+target-typed constructors. Only the three actual root factories allocate it;
+sorting/grouping selection views, completed group targets, and filter/map
+callback boundaries forward it like other descendant views. Rust context
+literals require the state field and context clones retain its shared owner.
+Construction guards and generated sorted-grouping consumers cover these paths.
+Filter/map callback-boundary controls also exercise the actual runtime directly;
+they are not a claim of generated-graph filter/map conformance.
+
 ## Validation and demand
 
 Reuse is of the complete validated representation, not a selected field or an
