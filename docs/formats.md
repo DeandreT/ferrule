@@ -631,9 +631,18 @@ reloading a project starts from that project's saved headers.
   feed. `n` must be connected to every row from the same value; the reference
   application positions only the rows whose `n` is connected. Export writes
   every row's `n` input from the record's `n` binding.
-- EDI output validates every present configured field after wire lexical
-  formatting. The bounded report includes all length and code-list violations
-  it finds, and validation failures do not replace the destination.
+- Native EDI input validates configured length and code-list constraints against
+  each present decoded wire field, before numeric conversion and any
+  route-selected implied-decimal scaling. Leading zeros remain significant.
+  This applies to X12, EDIFACT, HL7, TRADACOMS and fixed-record IDoc reads,
+  including file and payload/standard-input routes. Empty or absent fields
+  remain governed by the existing segment rules.
+  SWIFT MT uses its separate embedded field grammar and refuses generic EDI
+  source value constraints rather than ignoring them.
+  EDI output validates after wire lexical formatting. Both use bounded reports
+  with occurrence-qualified schema paths; input refusal prevents mapping and
+  output publication, and output validation failures do not replace the
+  destination.
 
 The [workflow-parity roadmap](../ROADMAP.md) tracks the remaining format and
 connector work.
