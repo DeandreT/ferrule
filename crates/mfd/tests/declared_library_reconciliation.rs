@@ -8,6 +8,8 @@ use ir::{Instance, Value};
 mod authority;
 #[path = "declared_library_reconciliation/lifetimes.rs"]
 mod lifetimes;
+#[path = "declared_library_reconciliation/security.rs"]
+mod security;
 
 struct Fixture(PathBuf);
 impl Fixture {

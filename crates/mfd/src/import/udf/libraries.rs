@@ -12,6 +12,7 @@ use crate::resource::{
 };
 
 mod consumers;
+mod producers;
 #[cfg(test)]
 mod tests;
 mod validation;
