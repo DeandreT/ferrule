@@ -8,7 +8,7 @@ use serialization::{Limits, RenderedArtifact, TargetSerialization, render_target
 
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 
 use crate::route_capability::{
@@ -895,9 +895,19 @@ fn lexical_normalize(path: &Path) -> PathBuf {
     let mut normalized = PathBuf::new();
     for component in path.components() {
         match component {
-            std::path::Component::CurDir => {}
-            std::path::Component::ParentDir => {
-                normalized.pop();
+            Component::CurDir => {}
+            Component::ParentDir => {
+                // Only a normal component can absorb a parent. Keep unmatched
+                // relative parents (also after a rootless drive prefix), but
+                // never traverse above a root.
+                if matches!(
+                    normalized.components().next_back(),
+                    Some(Component::Normal(_))
+                ) {
+                    normalized.pop();
+                } else if !normalized.has_root() {
+                    normalized.push(component.as_os_str());
+                }
             }
             _ => normalized.push(component.as_os_str()),
         }
