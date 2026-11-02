@@ -6,6 +6,8 @@ use ir::{Instance, Value};
 
 #[path = "declared_library_reconciliation/authority.rs"]
 mod authority;
+#[path = "declared_library_reconciliation/certification.rs"]
+mod certification;
 #[path = "declared_library_reconciliation/lifetimes.rs"]
 mod lifetimes;
 #[path = "declared_library_reconciliation/security.rs"]

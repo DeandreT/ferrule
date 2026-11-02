@@ -336,7 +336,7 @@ pub(in crate::import::udf) fn required_parameters(
 pub(in crate::import::udf) fn validate_call(
     component: &roxmltree::Node<'_, '_>,
     budget: &limits::ConstructionBudget,
-) -> Result<(), String> {
+) -> Result<super::super::certificate::ArgumentClosure, String> {
     let result = (|| {
         attributes(*component, &["name", "library", "kind", "uid"])?;
         if component.attribute("kind") != Some("19") {
@@ -441,19 +441,22 @@ pub(in crate::import::udf) fn validate_call(
             .filter(|n| n.has_tag_name("component"))
             .any(|n| {
                 n.attribute("library") == Some("core")
-                    && matches!(n.attribute("kind"), Some("6" | "7"))
+                    && matches!(parse_u32(n.attribute("kind")), Some(6 | 7))
                     || n.descendants().any(|p| {
-                        p.has_tag_name("properties") && p.attribute("UsageKind").is_some()
-                            || p.has_tag_name("parameter") && p.attribute("usageKind").is_some()
+                        p.has_tag_name("properties")
+                            && matches!(p.attribute("UsageKind"), Some("input" | "output"))
+                            || p.has_tag_name("parameter")
+                                && matches!(p.attribute("usageKind"), Some("input" | "output"))
                     })
             })
         {
             return Err("RootFunctionABI/variable parameter consumption is unsupported".into());
         }
         let feeds = crate::import::graph::read_edges(&structure, Some(&owner));
-        super::producers::validate(*component, children, &feeds, budget)?;
+        let closure = super::producers::prove(*component, children, &feeds, budget)?;
         consumers::validate(component, children, &feeds)
-            .map_err(|reason| reason.message().to_string())
+            .map_err(|reason| reason.message().to_string())?;
+        Ok(closure)
     })();
     result.map_err(|reason: String| format!("imported call consumption refused: {reason}"))
 }

@@ -14,6 +14,7 @@ use super::graph::{GraphBuilder, read_edge_inputs, read_edges};
 use super::schema::{parse_u32, read_schema_component_with_resources, schema_node_at};
 use crate::resource::ResourceResolver;
 
+pub(super) mod certificate;
 mod libraries;
 mod limits;
 mod scalar;
@@ -223,7 +224,7 @@ pub(super) struct Registry {
     definitions: Vec<Definition>,
     supported: BTreeMap<(String, String), usize>,
     unsupported: BTreeMap<(String, String), String>,
-    sources: Vec<super::schema::SchemaComponent>,
+    sources: Vec<certificate::CatalogSource>,
     external_owner: bool,
     construction: Option<limits::ConstructionBudget>,
     declared_mapping_libraries: bool,
@@ -320,7 +321,7 @@ impl Registry {
             self.unsupported.insert(key, reason);
         }
         for (key, _) in &declarations {
-            if self.external_owner && self.finish_construction().is_err() {
+            if self.finish_construction().is_err() {
                 break;
             }
             let _ = self.resolve(
@@ -464,6 +465,9 @@ impl Registry {
 
         match result {
             Ok((definition, source, source_warnings)) => {
+                if let Some(budget) = &self.construction {
+                    budget.claim(1 + usize::from(source.is_some()), 0, 0)?;
+                }
                 let idx = self.definitions.len();
                 self.definitions.push(definition);
                 self.sources.extend(source);
@@ -542,7 +546,7 @@ impl Registry {
             .then(|| (definition.parameters.clone(), expression.clone()))
     }
 
-    pub(super) fn take_sources(&mut self) -> Vec<super::schema::SchemaComponent> {
+    pub(super) fn take_sources(&mut self) -> Vec<certificate::CatalogSource> {
         std::mem::take(&mut self.sources)
     }
 
@@ -742,6 +746,7 @@ fn nested_definition_keys(component: roxmltree::Node<'_, '_>) -> Vec<(String, St
 }
 
 pub(super) struct Call {
+    certificate: Option<certificate::ArgumentClosure>,
     pub(super) definition: usize,
     pub(super) inputs: BTreeMap<u32, u32>,
     structured_inputs: BTreeMap<u32, Vec<(Vec<String>, u32)>>,
@@ -770,14 +775,16 @@ impl Call {
         definition: usize,
         shape: &Definition,
     ) -> Result<Self, String> {
-        if shape.is_external() {
+        let certificate = if shape.is_external() {
             let budget = shape
                 .scalar_interface
                 .as_ref()
                 .and_then(|i| i.construction.as_ref())
                 .ok_or("imported call has no construction authority")?;
-            libraries::validate_call(component, budget)?;
-        }
+            Some(libraries::validate_call(component, budget)?)
+        } else {
+            None
+        };
         let mut inputs = BTreeMap::new();
         let mut outputs = BTreeMap::new();
         let mut structured_inputs = BTreeMap::new();
@@ -874,6 +881,7 @@ impl Call {
             }
         }
         Ok(Self {
+            certificate,
             definition,
             inputs,
             structured_inputs,
@@ -970,14 +978,7 @@ fn read_definition(
     mfd_path: &std::path::Path,
     resources: Option<&ResourceResolver>,
     registry: &Registry,
-) -> Result<
-    (
-        Definition,
-        Option<super::schema::SchemaComponent>,
-        Vec<String>,
-    ),
-    String,
-> {
+) -> Result<(Definition, Option<certificate::CatalogSource>, Vec<String>), String> {
     if let Some(reason) = unsupported_value_map_input_mode_in_definition(component) {
         return Err(reason.to_string());
     }
@@ -1010,14 +1011,7 @@ fn read_lookup_definition(
     component: &roxmltree::Node<'_, '_>,
     mfd_path: &std::path::Path,
     resources: Option<&ResourceResolver>,
-) -> Result<
-    (
-        Definition,
-        Option<super::schema::SchemaComponent>,
-        Vec<String>,
-    ),
-    String,
-> {
+) -> Result<(Definition, Option<certificate::CatalogSource>, Vec<String>), String> {
     let structure = component
         .children()
         .find(|node| node.has_tag_name("structure"))
@@ -1179,7 +1173,7 @@ fn read_lookup_definition(
                 OutputExpr::Lookup(LookupExpr { source, matches }),
             )]),
         },
-        catalog,
+        catalog.map(|catalog| certificate::CatalogSource::new(catalog, document)),
         schema_warnings,
     ))
 }

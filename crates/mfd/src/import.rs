@@ -1627,24 +1627,25 @@ fn import_resolved(
     };
     let csv_occurrence_raw_authority =
         edges.complete && target_iteration::csv_raw_authority(&structure, &edges.feeds);
-    let mut schema_components = Vec::new();
-    let mut fn_components = Vec::new();
-    let mut json_serializers = Vec::new();
-    let mut xml_serializers = Vec::new();
-    let mut json_parsers = Vec::new();
-    let mut flextext_parsers = Vec::new();
-    let mut output_parameters = Vec::new();
     let mut udf_registry = UdfRegistry::read_in_package(&mapping_el, resources, &mut warnings);
+    use udf::certificate::RegisteredVec;
+    let mut schema_components = RegisteredVec::new(&udf_registry);
+    let mut fn_components = RegisteredVec::new(&udf_registry);
+    let mut json_serializers = RegisteredVec::new(&udf_registry);
+    let mut xml_serializers = RegisteredVec::new(&udf_registry);
+    let mut json_parsers = RegisteredVec::new(&udf_registry);
+    let mut flextext_parsers = RegisteredVec::new(&udf_registry);
+    let mut output_parameters = Vec::new();
     if resources.package().is_some() && udf_registry.has_declared_mapping_libraries() {
         return Err(MfdError::UnsupportedImport("declared mapping libraries are unsupported in immutable byte packages; no filesystem fallback".into()));
     }
     udf_registry
         .finish_construction()
         .map_err(MfdError::Resource)?;
-    let mut udf_calls = Vec::new();
+    let mut udf_calls = RegisteredVec::new(&udf_registry);
     let mut external_udf_candidates = Vec::new();
-    let mut external_scalar_recipes = Vec::new();
-    let mut external_xslt_aggregates = Vec::new();
+    let mut external_scalar_recipes = RegisteredVec::new(&udf_registry);
+    let mut external_xslt_aggregates = RegisteredVec::new(&udf_registry);
     let pipeline_exceptions = if matches!(selection, StageSelection::Ordinary) {
         None
     } else {
@@ -1707,6 +1708,15 @@ fn import_resolved(
                 .map_err(MfdError::Resource)?;
             let library = component.attribute("library").unwrap_or_default();
             let name = component.attribute("name").unwrap_or_default().to_string();
+            schema_components.set_active(component);
+            fn_components.set_active(component);
+            json_serializers.set_active(component);
+            xml_serializers.set_active(component);
+            json_parsers.set_active(component);
+            flextext_parsers.set_active(component);
+            udf_calls.set_active(component);
+            external_scalar_recipes.set_active(component);
+            external_xslt_aggregates.set_active(component);
             if udf_registry.refuses_noncanonical_call(component.attribute("kind")) {
                 let kind = component.attribute("kind").unwrap_or_default();
                 warnings.push(format!("declared kind-19 function `{name}` uses noncanonical kind `{kind}`; refused before built-in/schema/HTTP/module dispatch"));
@@ -2209,7 +2219,12 @@ fn import_resolved(
     // UDF-owned static catalogs are secondary to ordinary mapping sources.
     // Keeping them last also preserves the document source as the default in
     // scalar-only mappings, where repetition-based primary scoring is tied.
-    schema_components.extend(udf_registry.take_sources());
+    for source in udf_registry.take_sources() {
+        schema_components.push_origin(source.component, source.origin);
+    }
+    udf_registry
+        .finish_construction()
+        .map_err(MfdError::Resource)?;
 
     match selection {
         StageSelection::Ordinary => {}
@@ -2361,6 +2376,9 @@ fn import_resolved(
         &fn_components,
         &mut warnings,
     );
+    udf_registry
+        .finish_construction()
+        .map_err(MfdError::Resource)?;
 
     let mut sources: Vec<&SchemaComponent> = schema_components
         .iter()
@@ -2496,6 +2514,42 @@ fn import_resolved(
         },
         &mut warnings,
     );
+
+    // The complete normalized producer inventory is now fixed. Certify before
+    // any graph value is materialized or keyed lookup can select a winner.
+    let sources = sources;
+    let fn_components = fn_components;
+    let udf_calls = udf_calls;
+    let external_scalar_recipes = external_scalar_recipes;
+    let external_xslt_aggregates = external_xslt_aggregates;
+    let json_serializers = json_serializers;
+    let xml_serializers = xml_serializers;
+    let json_parsers = json_parsers;
+    let flextext_parsers = flextext_parsers;
+    let certificate = udf::certificate::certify(
+        &udf_registry,
+        &udf_calls,
+        udf::certificate::Normalized {
+            schemas: &schema_components,
+            sources: &sources,
+            intermediates: &intermediates,
+            targets: &targets,
+            functions: &fn_components,
+            calls: &udf_calls,
+            external_scalar: &external_scalar_recipes,
+            external_xslt: &external_xslt_aggregates,
+            json_serializers: &json_serializers,
+            xml_serializers: &xml_serializers,
+            json_parsers: &json_parsers,
+            flextext_parsers: &flextext_parsers,
+            joins: &joins,
+            rules: &source_node_functions,
+        },
+    );
+    udf_registry
+        .finish_construction()
+        .map_err(MfdError::Resource)?;
+    certificate.map_err(MfdError::UnsupportedImport)?;
 
     let xml_type_conditions = alternatives::conditioned_port_types(&structure);
     let xml_condition_ports = structure
