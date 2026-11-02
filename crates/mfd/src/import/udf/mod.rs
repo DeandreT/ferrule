@@ -501,7 +501,15 @@ impl Registry {
     }
 
     pub(super) fn refuses_reserved_call(&self, library: &str, kind: Option<&str>) -> bool {
-        self.declared_mapping_libraries && kind == Some("19") && libraries::reserved_owner(library)
+        self.is_declared_call(kind) && libraries::reserved_owner(library)
+    }
+
+    pub(super) fn is_declared_call(&self, kind: Option<&str>) -> bool {
+        self.declared_mapping_libraries && parse_u32(kind) == Some(19)
+    }
+
+    pub(super) fn refuses_noncanonical_call(&self, kind: Option<&str>) -> bool {
+        self.is_declared_call(kind) && kind != Some("19")
     }
 
     pub(super) fn finish_construction(&self) -> Result<(), String> {

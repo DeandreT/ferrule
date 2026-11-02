@@ -451,6 +451,7 @@ pub(in crate::import::udf) fn validate_call(
             return Err("RootFunctionABI/variable parameter consumption is unsupported".into());
         }
         let feeds = crate::import::graph::read_edges(&structure, Some(&owner));
+        super::producers::validate(*component, children, &feeds, budget)?;
         consumers::validate(component, children, &feeds)
             .map_err(|reason| reason.message().to_string())
     })();

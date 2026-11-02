@@ -1707,6 +1707,11 @@ fn import_resolved(
                 .map_err(MfdError::Resource)?;
             let library = component.attribute("library").unwrap_or_default();
             let name = component.attribute("name").unwrap_or_default().to_string();
+            if udf_registry.refuses_noncanonical_call(component.attribute("kind")) {
+                let kind = component.attribute("kind").unwrap_or_default();
+                warnings.push(format!("declared kind-19 function `{name}` uses noncanonical kind `{kind}`; refused before built-in/schema/HTTP/module dispatch"));
+                continue;
+            }
             if udf_registry.refuses_reserved_call(library, component.attribute("kind")) {
                 warnings.push(format!("declared kind-19 function `{name}` has reserved owner `{library}`; refused before built-in/schema/HTTP dispatch"));
                 continue;
@@ -2149,9 +2154,7 @@ fn import_resolved(
                                 )),
                             }
                         }
-                    } else if component.attribute("kind") == Some("19")
-                        && udf_registry.has_declared_mapping_libraries()
-                    {
+                    } else if udf_registry.is_declared_call(component.attribute("kind")) {
                         warnings.push(format!("unresolved declared user-defined function `{name}` ({other}): {}; no module discovery or name fallback is permitted", udf_registry.unsupported_reason(other, &name).unwrap_or("required declaring library resource/producer is unavailable or symbol is not directly exported")));
                     } else {
                         match external_scalar::read(&component, path, &selected_language, resources)

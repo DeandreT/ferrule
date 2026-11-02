@@ -49,6 +49,12 @@ and output type adapters and eager argument consumption, including unused typed
 arguments. Supported conditional branches inside the function remain lazy.
 Owned helper graphs do not reopen libraries during execution or export.
 
+Every connected argument feed must have one raw producer declaration before
+call admission; normalized schema/function maps do not prove ownership.
+This includes unused typed arguments and
+the connected inputs of intermediate producers. Duplicate producer declarations
+are refused regardless of order; one producer may still feed multiple consumers.
+
 Only direct ordinary XML scalar target consumers are admitted. Their selected
 content root, explicit unqualified `document/@instanceroot`, nonempty schema
 reference, and raw port declarations must agree with the XML reader. The
@@ -66,6 +72,9 @@ clock, delay and origin-sensitive bodies are not pruned or stubbed into support.
 Built-in, schema, node-function and web-service owners cannot be claimed by a
 declared kind-19 call. Unsupported `.mff`, DLL or XSLT imports are not interpreted
 as MFD declarations. Existing embedded UDF behavior remains separate.
+In declared-library mode, numeric aliases of kind 19 such as `019` and `+19`
+are refused before builtin, schema, HTTP or module dispatch. Other kinds and
+ordinary imports without declared libraries keep their existing admission.
 
 ## Limits and private evidence
 
