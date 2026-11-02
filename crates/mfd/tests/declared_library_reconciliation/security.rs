@@ -375,3 +375,212 @@ fn other_builtin_numeric_kinds_remain_admitted_in_both_profiles() {
         }
     }
 }
+
+const OPPOSITE_DIRECTION_REFUSAL: &str = "imported argument feed `10` has conflicting raw pin authority (1 output, 1 input declarations); no normalized-map winner is selected";
+
+#[test]
+fn all_raw_input_claim_roles_and_numeric_aliases_remain_in_authority_census() {
+    for alias in ["10", "010", "+10"] {
+        for role in ["same-entry", "same-owner", "other-owner", "namespaced-pins"] {
+            let fixture = Fixture::new();
+            let main = match role {
+                "same-entry" => MAIN.replace(
+                    r#"<entry name="Text" outkey="10"/>"#,
+                    &format!(r#"<entry name="Text" outkey="10" inpkey="{alias}"/>"#),
+                ),
+                "same-owner" => source_fields(&fixture, false).replace(
+                    r#"<entry name="Other" outkey="10"/>"#,
+                    &format!(r#"<entry name="Other" inpkey="{alias}"/>"#),
+                ),
+                _ => {
+                    let input = if role == "namespaced-pins" {
+                        format!(
+                            r#"<p:sources xmlns:p="urn:raw-pins"><p:datapoint key="{alias}"/></p:sources>"#
+                        )
+                    } else {
+                        format!(r#"<sources><datapoint key="{alias}"/></sources>"#)
+                    };
+                    let owner = format!(
+                        r#"<component name="uppercase" library="core" uid="5" kind="5">{input}<targets><datapoint key="60"/></targets></component>"#
+                    );
+                    MAIN.replace("</children>", &format!("{owner}</children>"))
+                }
+            };
+            fixture.write("mapping.mfd", &main);
+            refused(&fixture, OPPOSITE_DIRECTION_REFUSAL);
+        }
+    }
+}
+
+#[test]
+fn pure_input_claim_cannot_supply_argument_authority() {
+    let fixture = Fixture::new();
+    let main = MAIN
+        .replace(
+            r#"<entry name="Input">"#,
+            r#"<entry name="Input" outkey="11">"#,
+        )
+        .replace(
+            r#"<entry name="Text" outkey="10"/>"#,
+            r#"<entry name="Text" inpkey="10"/>"#,
+        );
+    fixture.write("mapping.mfd", &main);
+    refused(
+        &fixture,
+        "imported argument feed `10` has conflicting raw pin authority (0 output, 1 input declarations); no normalized-map winner is selected",
+    );
+}
+
+#[test]
+fn local_function_pin_namespaces_and_unrelated_claims_do_not_pollute_argument_closure() {
+    let fixture = Fixture::new();
+    // These local definition ports intentionally reuse active graph keys. They
+    // do not belong to that graph's census, even when their function is unused.
+    let local = IDENTITY
+        .replace("generic", "local")
+        .replace("Identity", "Unused")
+        .replace("1000", "10")
+        .replace("1001", "20");
+    // An unrelated input/output collision must not become a whole-graph gate.
+    let unrelated = r#"<component name="uppercase" library="core" uid="5" kind="5"><sources><datapoint key="99"/></sources><targets><datapoint key="60"/></targets></component><component name="constant" library="core" uid="6" kind="2"><targets><datapoint key="99"/></targets><data><constant value="unused" datatype="string"/></data></component>"#;
+    fixture.write(
+        "mapping.mfd",
+        &MAIN
+            .replace("</children>", &format!("{unrelated}</children>"))
+            .replace(
+                r#"<edge vertexkey="20"/>"#,
+                r#"<edge vertexkey="20"/><edge vertexkey="99"/>"#,
+            )
+            .replace("</mapping>", &format!("{local}</mapping>")),
+    );
+    let actual = imported(&fixture);
+    assert!(actual.warnings.is_empty(), "{:?}", actual.warnings);
+    let input = format_xml::from_str(
+        "<Input><Text>independent</Text></Input>",
+        &actual.project.source,
+    )
+    .unwrap();
+    let expected = Instance::Group(
+        vec![(
+            "Result".into(),
+            Instance::Scalar(Value::String("independent".into())),
+        )]
+        .into(),
+    );
+    assert_eq!(engine::run(&actual.project, &input).unwrap(), expected);
+}
+
+#[test]
+fn opposite_direction_schema_claim_cannot_shadow_a_unique_constant_producer() {
+    let mut failures = Vec::new();
+    for constant_first in [false, true] {
+        for route in ["direct", "known-function", "unused-typed"] {
+            let fixture = Fixture::new();
+            let mut main = MAIN
+                .replace(
+                    r#"<entry name="Input">"#,
+                    r#"<entry name="Input" outkey="11">"#,
+                )
+                .replace(
+                    r#"<entry name="Text" outkey="10"/>"#,
+                    r#"<entry name="Text" inpkey="10"/>"#,
+                );
+            let literal = if route == "unused-typed" {
+                "17"
+            } else {
+                "constant-choice"
+            };
+            let constant = format!(
+                r#"<component name="constant" library="core" uid="5" kind="2"><targets><datapoint key="10"/></targets><data><constant value="{literal}" datatype="string"/></data></component>"#
+            );
+            main = if constant_first {
+                main.replace(
+                    "<structure><children>",
+                    &format!("<structure><children>{constant}"),
+                )
+            } else {
+                main.replace("</children>", &format!("{constant}</children>"))
+            };
+            if route == "known-function" {
+                main = through_uppercase(&main);
+            }
+            if route == "unused-typed" {
+                fixture.write(
+                    "helpers.mfd",
+                    &format!("<mapping>{}</mapping>", unused_typed_definition()),
+                );
+            }
+            fixture.write("mapping.mfd", &main);
+            let actual = imported(&fixture);
+            let text = if route == "unused-typed" {
+                "bad"
+            } else {
+                "source-choice"
+            };
+            let input = format_xml::from_str(
+                &format!("<Input><Text>{text}</Text></Input>"),
+                &actual.project.source,
+            )
+            .unwrap();
+            let output = engine::run(&actual.project, &input);
+            let has_call = actual
+                .project
+                .graph
+                .nodes
+                .values()
+                .any(|n| matches!(n, mapping::Node::UserFunctionCall { .. }));
+            let source_field_selected =
+                actual.project.graph.nodes.values().any(
+                    |n| matches!(n, mapping::Node::SourceField { path, .. } if path == &["Text"]),
+                );
+            let constant_selected = actual.project.graph.nodes.values().any(|n| matches!(n, mapping::Node::Const { value: Value::String(value) } if value == literal));
+            if has_call && actual.warnings.is_empty() {
+                // Capture the pre-fix whole outcome, not just a static guess
+                // about which owner a normalized source-port map selects.
+                assert!(source_field_selected && !constant_selected);
+                if route == "unused-typed" {
+                    assert!(matches!(
+                        output,
+                        Err(engine::EngineError::UserFunctionParameterType { .. })
+                    ));
+                } else {
+                    let expected = Instance::Group(
+                        vec![(
+                            "Result".into(),
+                            Instance::Scalar(Value::String(
+                                if route == "known-function" {
+                                    "SOURCE-CHOICE"
+                                } else {
+                                    "source-choice"
+                                }
+                                .into(),
+                            )),
+                        )]
+                        .into(),
+                    );
+                    assert_eq!(output.as_ref().unwrap(), &expected);
+                }
+            }
+            let strict_refuses = mfd::import_with_profile(
+                &fixture.0.join("mapping.mfd"),
+                &ImportOptions::default(),
+                mfd::ImportProfile::Executable,
+            )
+            .is_err();
+            if !actual
+                .warnings
+                .iter()
+                .any(|w| w.contains(OPPOSITE_DIRECTION_REFUSAL))
+                || has_call
+                || !strict_refuses
+            {
+                failures.push(format!("constant_first={constant_first}, route={route}, warnings={:?}, has_call={has_call}, strict_refuses={strict_refuses}, output={output:?}, source_field_selected={source_field_selected}, constant_selected={constant_selected}, source_schema={}, graph={}", actual.warnings, serde_json::to_string(&actual.project.source).unwrap(), serde_json::to_string(&actual.project.graph).unwrap()));
+            }
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "opposite-direction authority failures:\n{}",
+        failures.join("\n")
+    );
+}
