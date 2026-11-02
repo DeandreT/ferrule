@@ -96,8 +96,10 @@ It supports only a singular closed local XML document with explicit namespaces,
 rejects targets, remote inputs, and other format-option combinations. Unknown or
 malformed type annotations and ordinary scalar validation remain errors; absent
 annotations retain their absence. Required-value failures are controlled by the
-mapping's reads rather than this input policy. File and payload entry points
-apply the same policy. A bounded flat String-attribute root-view pattern
+mapping's reads rather than this input policy. File, payload and browser XML
+entry points apply the same policy. Browser parsing requires XML selection and
+the same bounded source schema/options; selecting another format cannot silently
+ignore the policy. A bounded flat String-attribute root-view pattern
 supports `.mfd` import and export; other root expression graphs remain
 unsupported. See [XML root-view interoperability](mfd-interop.md#xml-root-view-interoperability).
 
