@@ -14,6 +14,7 @@ They do not change the canonical capability ledger or establish execution suppor
 | `com-enum-values.json` | All 20 release-bound enum tables and 130 signed constants, compared with the pinned online catalog without establishing runtime support |
 | `com-generation-signatures.json` | Four release-bound `IDocument` generation methods and seven ordered parameters, with raw descriptor targets and a separate release-unbound online comparison |
 | `com-result-getters.json` | Fourteen release-bound property getters on the two generation-result interfaces, with independent raw targets and release-unbound online property declarations |
+| `com-collection-getters.json` | Ten release-bound property getters on `IAppOutputLines` and `IErrorMarkers`, twelve ordered parameters and eight release-unbound online properties |
 | `supporting.json` | Public I/O classes, wrapper-library exceptions and the named installation-artifact requests |
 | `schema-wrappers.json` | Four optional schema-wrapper source profiles, actual schema identities and build/dependency metadata; no compiled or runtime qualification |
 | `external-references.json` | Linked historical DOM algorithm and redirected .NET interface contract, kept separate from vendor claims |
@@ -77,6 +78,19 @@ complementarity or a relationship to HRESULT. Enum constants remain in the exist
 enum inventory, not a new cohort. Source binding rests on HTTPS acquisition and
 byte identity; Authenticode integrity and trust remain unverified. No activation,
 execution, ABI, default, error, ownership, coercion or marshaling claim follows.
+
+The collection-getter fragment preserves the different declaration order and
+Count member IDs on `IAppOutputLines` and `IErrorMarkers`. Item targets are
+independently resolved as `IAppOutputLine` and `IErrorMarker`; its online
+one-based index, Integer notation and error lists remain source claims. Both
+online Parent types are retained: AppOutputLine for AppOutputLines, Application
+for ErrorMarkers, separately from raw generic `PTR(DISPATCH)`. The eight
+read-only labels come from pinned interface summaries. The two type-library-only
+`_NewEnum` records have signed ID -4, zero function flags and one explicit
+`PTR(UNKNOWN)` layer, not an inferred extra pointer or IEnumVARIANT target. This
+does not establish an enumeration protocol, traversal order, ownership, lifetime,
+null/error behavior, runtime defaults, ABI or backend support. Frozen independent
+declarations and coherent mutation controls require no vendor files or execution.
 
 The public supporting declarations are inventoried. `schema-wrappers.json`
 records bounded source bundles for C#, Java and both C++ DOM options, including
