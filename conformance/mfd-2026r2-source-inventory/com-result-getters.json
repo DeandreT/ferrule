@@ -1,0 +1,675 @@
+{
+  "format": "mapforce-enterprise-2026r2-com-result-getters",
+  "format_version": 1,
+  "inventory_complete": false,
+  "runtime_proof": false,
+  "status": "unassessed",
+  "applicability": "unknown",
+  "execution_evidence": [],
+  "purpose": "Fourteen property-get declarations on two generation-result interfaces only; not ABI or execution qualification.",
+  "type_library_source": {
+    "observation": "artifact-observations.json",
+    "member": "MapForce.tlb",
+    "cab_member": "MapForce.tlb_1193",
+    "bytes": 54108,
+    "sha256": "785c484fbaa882cae724a3568b04650300eb18941084ac23eb2d041dfb4a2789",
+    "library": "MapForceLib",
+    "version": "4.1",
+    "platform": "SYS_WIN64",
+    "dump_sha256": "672097183d6a6b0d80f3aa5f92d02172bb3a588609cb743bb82b73c342192bb4",
+    "release_binding": "2026r2"
+  },
+  "catalog_source": {"file": "com-api.json", "sha256": "d9a2fd8a4f8935598fdd2590f837fd6205931ba43c6218dc6b32a29fbe35c16a", "release_binding": "unestablished"},
+  "readback": {
+    "source": "type_library_source",
+    "type_info_table_offset": 624,
+    "type_info_record_bytes": 100,
+    "type_info_records": 75,
+    "name_table_offset": 10804,
+    "name_table_bytes": 13724,
+    "descriptor_table_offset": 30276,
+    "descriptor_table_bytes": 824,
+    "descriptor_record_bytes": 8,
+    "owners": [
+      {
+        "name": "IOutputGenerationResult",
+        "type_info_index": 28,
+        "kind": "TKIND_DISPATCH",
+        "name_offset": 7548,
+        "member_block_offset": 46340,
+        "member_data_bytes": 308,
+        "owner_function_records": 7,
+        "member_id_table_offset": 46652,
+        "member_name_table_offset": 46680,
+        "member_record_table_offset": 46708
+      },
+      {
+        "name": "ICodeGenerationResult",
+        "type_info_index": 30,
+        "kind": "TKIND_DISPATCH",
+        "name_offset": 8104,
+        "member_block_offset": 46900,
+        "member_data_bytes": 308,
+        "owner_function_records": 7,
+        "member_id_table_offset": 47212,
+        "member_name_table_offset": 47240,
+        "member_record_table_offset": 47268
+      }
+    ],
+    "method": [
+      "Verify the official-release selected member and retained acquisition/comparison records by size and SHA-256 before bounded reads. HTTPS acquisition and byte identity are the asserted provenance; Authenticode integrity, timestamp and certificate-chain trust remain unverified.",
+      "Resolve both owner identities and referenced enum/interface identities from raw type-info and name records. Read member IDs, names and offsets from each owner's parallel tables; compare all fourteen function records and ordered parameter triples with the pinned dump.",
+      "Follow bounded descriptor chains, including the USERDEFINED target hidden by the dump's PTR -> PTR rendering for Messages. Absolute record/table offsets and segment-relative name/descriptor offsets remain distinct.",
+      "Compare all fourteen hash-pinned HTML snapshots with com-api.json without fetching mutable pages. One-based dump anchors refer to the hash-pinned dump. Retain online types and access labels separately from raw getter records.",
+      "Only declaration metadata is retained. No application, installer, native library or COM object is loaded or executed."
+    ]
+  },
+  "targets": [
+    {"name": "IAppOutputLines", "type_info_index": 14, "kind": "TKIND_DISPATCH", "name_offset": 3428},
+    {"name": "ENUMOutputGenerationResultCode", "type_info_index": 29, "kind": "TKIND_ENUM", "name_offset": 7628},
+    {"name": "ENUMCodeGenerationResultCode", "type_info_index": 31, "kind": "TKIND_ENUM", "name_offset": 8140}
+  ],
+  "descriptors": [
+    {"descriptor_offset": 0, "descriptor_word": "4008001a", "target_word": "80080008", "vartype": "PTR", "target_encoded": "80080008"},
+    {"descriptor_offset": 8, "descriptor_word": "4009001a", "target_word": "80090009", "vartype": "PTR", "target_encoded": "80090009"},
+    {"descriptor_offset": 16, "descriptor_word": "400b001a", "target_word": "800b000b", "vartype": "PTR", "target_encoded": "800b000b"},
+    {"descriptor_offset": 176, "descriptor_word": "7fff001d", "target_word": "00000578", "vartype": "USERDEFINED", "type_info_index": 14},
+    {"descriptor_offset": 184, "descriptor_word": "7fff001a", "target_word": "000000b0", "vartype": "PTR", "target_descriptor_offset": 176},
+    {"descriptor_offset": 192, "descriptor_word": "7fff001a", "target_word": "000000b8", "vartype": "PTR", "target_descriptor_offset": 184},
+    {"descriptor_offset": 552, "descriptor_word": "0003001d", "target_word": "00000b54", "vartype": "USERDEFINED", "type_info_index": 29},
+    {"descriptor_offset": 560, "descriptor_word": "4003001a", "target_word": "00000228", "vartype": "PTR", "target_descriptor_offset": 552},
+    {"descriptor_offset": 592, "descriptor_word": "0003001d", "target_word": "00000c1c", "vartype": "USERDEFINED", "type_info_index": 31},
+    {"descriptor_offset": 600, "descriptor_word": "4003001a", "target_word": "00000250", "vartype": "PTR", "target_descriptor_offset": 592}
+  ],
+  "getters": [
+    {
+      "owner": "IOutputGenerationResult",
+      "name": "Application",
+      "record_index": 0,
+      "dispatch_member_id": 1,
+      "name_offset": 80,
+      "record_offset": 46344,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {"vartype": "HRESULT", "encoded": "80190019"},
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 46376,
+          "parameter_flags": 10,
+          "direction": ["out", "retval"],
+          "type": {"declared_type": "IDispatch*", "encoded": "00000008", "pointer_depth": 1, "descriptor_chain": [8], "target_type_info_index": null}
+        }
+      ],
+      "source_anchor": {"function_dump_lines": [12381, 12398], "member_id_dump_line": 12507, "member_name_dump_line": 12514, "member_offset_dump_line": 12521},
+      "catalog": {
+        "id": "provisional.com.OutputGenerationResult.Application",
+        "source": {
+          "official_url": "https://www.altova.com/manual/en/api/mapforceapi/mfapi_interfaces_outputgenerationresult_properties_application.html",
+          "raw_sha256": "29423ad51f0e0572a28c9e515270b810bc6ce0900148735c274ec816b4f43f47",
+          "release_binding": "unestablished",
+          "source_file": "mfapi_interfaces_outputgenerationresult_properties_application.html"
+        },
+        "displayed_signature": "Application as Application",
+        "displayed_property_type": "Application",
+        "property_access": "not_explicitly_read_only_in_summary",
+        "parameters": [],
+        "constraints": [],
+        "documented_error_codes": []
+      }
+    },
+    {
+      "owner": "IOutputGenerationResult",
+      "name": "Parent",
+      "record_index": 1,
+      "dispatch_member_id": 2,
+      "name_offset": 104,
+      "record_offset": 46388,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {"vartype": "HRESULT", "encoded": "80190019"},
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 46420,
+          "parameter_flags": 10,
+          "direction": ["out", "retval"],
+          "type": {"declared_type": "IDispatch*", "encoded": "00000008", "pointer_depth": 1, "descriptor_chain": [8], "target_type_info_index": null}
+        }
+      ],
+      "source_anchor": {"function_dump_lines": [12399, 12416], "member_id_dump_line": 12508, "member_name_dump_line": 12515, "member_offset_dump_line": 12522},
+      "catalog": {
+        "id": "provisional.com.OutputGenerationResult.Parent",
+        "source": {
+          "official_url": "https://www.altova.com/manual/en/api/mapforceapi/mfapi_interfaces_outputgenerationresult_properties_parent.html",
+          "raw_sha256": "806bc9afc199189255a093609fb02ca0985d818a81ee1ae746a5cbc5c243583a",
+          "release_binding": "unestablished",
+          "source_file": "mfapi_interfaces_outputgenerationresult_properties_parent.html"
+        },
+        "displayed_signature": "Parent as Application",
+        "displayed_property_type": "Application",
+        "property_access": "not_explicitly_read_only_in_summary",
+        "parameters": [],
+        "constraints": [],
+        "documented_error_codes": []
+      }
+    },
+    {
+      "owner": "IOutputGenerationResult",
+      "name": "Succeeded",
+      "record_index": 2,
+      "dispatch_member_id": 3,
+      "name_offset": 7584,
+      "record_offset": 46432,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {"vartype": "HRESULT", "encoded": "80190019"},
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 46464,
+          "parameter_flags": 10,
+          "direction": ["out", "retval"],
+          "type": {"declared_type": "BOOL*", "encoded": "00000010", "pointer_depth": 1, "descriptor_chain": [16], "target_type_info_index": null}
+        }
+      ],
+      "source_anchor": {"function_dump_lines": [12417, 12434], "member_id_dump_line": 12509, "member_name_dump_line": 12516, "member_offset_dump_line": 12523},
+      "catalog": {
+        "id": "provisional.com.OutputGenerationResult.Succeeded",
+        "source": {
+          "official_url": "https://www.altova.com/manual/en/api/mapforceapi/mfapi_interfaces_outputgenerationresult_properties_succeeded.html",
+          "raw_sha256": "780b67b6cf4aefa2aea7b01233669c96014c3e8daffa2efe67e2aaf72f6b0cdd",
+          "release_binding": "unestablished",
+          "source_file": "mfapi_interfaces_outputgenerationresult_properties_succeeded.html"
+        },
+        "displayed_signature": "Succeeded as Boolean",
+        "displayed_property_type": "Boolean",
+        "property_access": "not_explicitly_read_only_in_summary",
+        "parameters": [],
+        "constraints": [],
+        "documented_error_codes": []
+      }
+    },
+    {
+      "owner": "IOutputGenerationResult",
+      "name": "Failed",
+      "record_index": 3,
+      "dispatch_member_id": 4,
+      "name_offset": 7608,
+      "record_offset": 46476,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {"vartype": "HRESULT", "encoded": "80190019"},
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 46508,
+          "parameter_flags": 10,
+          "direction": ["out", "retval"],
+          "type": {"declared_type": "BOOL*", "encoded": "00000010", "pointer_depth": 1, "descriptor_chain": [16], "target_type_info_index": null}
+        }
+      ],
+      "source_anchor": {"function_dump_lines": [12435, 12452], "member_id_dump_line": 12510, "member_name_dump_line": 12517, "member_offset_dump_line": 12524},
+      "catalog": {
+        "id": "provisional.com.OutputGenerationResult.Failed",
+        "source": {
+          "official_url": "https://www.altova.com/manual/en/api/mapforceapi/mfapi_interfaces_outputgenerationresult_properties_failed.html",
+          "raw_sha256": "ccc50686a653ed5c34cb84efd4c4eb301bafb9a7b593414d641850af89c21981",
+          "release_binding": "unestablished",
+          "source_file": "mfapi_interfaces_outputgenerationresult_properties_failed.html"
+        },
+        "displayed_signature": "Failed as Boolean",
+        "displayed_property_type": "Boolean",
+        "property_access": "not_explicitly_read_only_in_summary",
+        "parameters": [],
+        "constraints": [],
+        "documented_error_codes": []
+      }
+    },
+    {
+      "owner": "IOutputGenerationResult",
+      "name": "ResultCode",
+      "record_index": 4,
+      "dispatch_member_id": 5,
+      "name_offset": 7956,
+      "record_offset": 46520,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {"vartype": "HRESULT", "encoded": "80190019"},
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 46552,
+          "parameter_flags": 10,
+          "direction": ["out", "retval"],
+          "type": {"declared_type": "ENUMOutputGenerationResultCode*", "encoded": "00000230", "pointer_depth": 1, "descriptor_chain": [560, 552], "target_type_info_index": 29}
+        }
+      ],
+      "source_anchor": {"function_dump_lines": [12453, 12470], "member_id_dump_line": 12511, "member_name_dump_line": 12518, "member_offset_dump_line": 12525},
+      "catalog": {
+        "id": "provisional.com.OutputGenerationResult.ResultCode",
+        "source": {
+          "official_url": "https://www.altova.com/manual/en/api/mapforceapi/mfapi_interfaces_outputgenerationresult_properties_resultcode.html",
+          "raw_sha256": "880b38bdb3fdbf31af5fa4d31686d8a490c6b1d6afd9ad929df6b2a72e3d2f73",
+          "release_binding": "unestablished",
+          "source_file": "mfapi_interfaces_outputgenerationresult_properties_resultcode.html"
+        },
+        "displayed_signature": "ResultCode as ENUMOutputGenerationResultCode",
+        "displayed_property_type": "ENUMOutputGenerationResultCode",
+        "property_access": "not_explicitly_read_only_in_summary",
+        "parameters": [],
+        "constraints": [],
+        "documented_error_codes": []
+      }
+    },
+    {
+      "owner": "IOutputGenerationResult",
+      "name": "Messages",
+      "record_index": 5,
+      "dispatch_member_id": 6,
+      "name_offset": 7980,
+      "record_offset": 46564,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {"vartype": "HRESULT", "encoded": "80190019"},
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 46596,
+          "parameter_flags": 10,
+          "direction": ["out", "retval"],
+          "type": {"declared_type": "IAppOutputLines**", "encoded": "000000c0", "pointer_depth": 2, "descriptor_chain": [192, 184, 176], "target_type_info_index": 14}
+        }
+      ],
+      "source_anchor": {"function_dump_lines": [12471, 12488], "member_id_dump_line": 12512, "member_name_dump_line": 12519, "member_offset_dump_line": 12526},
+      "catalog": {
+        "id": "provisional.com.OutputGenerationResult.Messages",
+        "source": {
+          "official_url": "https://www.altova.com/manual/en/api/mapforceapi/mfapi_interfaces_outputgenerationresult_properties_messages.html",
+          "raw_sha256": "1280ff6508c66288983bf182d6ed565770be449ae91bfc0c24bae8ae76ed006f",
+          "release_binding": "unestablished",
+          "source_file": "mfapi_interfaces_outputgenerationresult_properties_messages.html"
+        },
+        "displayed_signature": "Messages as AppOutputLines",
+        "displayed_property_type": "AppOutputLines",
+        "property_access": "not_explicitly_read_only_in_summary",
+        "parameters": [],
+        "constraints": [],
+        "documented_error_codes": []
+      }
+    },
+    {
+      "owner": "IOutputGenerationResult",
+      "name": "MessageText",
+      "record_index": 6,
+      "dispatch_member_id": 7,
+      "name_offset": 8000,
+      "record_offset": 46608,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {"vartype": "HRESULT", "encoded": "80190019"},
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 46640,
+          "parameter_flags": 10,
+          "direction": ["out", "retval"],
+          "type": {"declared_type": "BSTR*", "encoded": "00000000", "pointer_depth": 1, "descriptor_chain": [0], "target_type_info_index": null}
+        }
+      ],
+      "source_anchor": {"function_dump_lines": [12489, 12506], "member_id_dump_line": 12513, "member_name_dump_line": 12520, "member_offset_dump_line": 12527},
+      "catalog": {
+        "id": "provisional.com.OutputGenerationResult.MessageText",
+        "source": {
+          "official_url": "https://www.altova.com/manual/en/api/mapforceapi/mfapi_interfaces_outputgenerationresult_properties_messagetext.html",
+          "raw_sha256": "e95c68c24b072eb630a5adbc523f49c6a40f2da21fc405741025a32a3e06d4c5",
+          "release_binding": "unestablished",
+          "source_file": "mfapi_interfaces_outputgenerationresult_properties_messagetext.html"
+        },
+        "displayed_signature": "MessageText as String",
+        "displayed_property_type": "String",
+        "property_access": "not_explicitly_read_only_in_summary",
+        "parameters": [],
+        "constraints": [],
+        "documented_error_codes": []
+      }
+    },
+    {
+      "owner": "ICodeGenerationResult",
+      "name": "Application",
+      "record_index": 0,
+      "dispatch_member_id": 1,
+      "name_offset": 80,
+      "record_offset": 46904,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {"vartype": "HRESULT", "encoded": "80190019"},
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 46936,
+          "parameter_flags": 10,
+          "direction": ["out", "retval"],
+          "type": {"declared_type": "IDispatch*", "encoded": "00000008", "pointer_depth": 1, "descriptor_chain": [8], "target_type_info_index": null}
+        }
+      ],
+      "source_anchor": {"function_dump_lines": [12589, 12606], "member_id_dump_line": 12715, "member_name_dump_line": 12722, "member_offset_dump_line": 12729},
+      "catalog": {
+        "id": "provisional.com.CodeGenerationResult.Application",
+        "source": {
+          "official_url": "https://www.altova.com/manual/en/api/mapforceapi/mfapi_interfaces_codegenerationresult_properties_application.html",
+          "raw_sha256": "7e77a504647082a9bd08c8cb6ef1d59dbb792dce820cf3ecd3946c7672504e2d",
+          "release_binding": "unestablished",
+          "source_file": "mfapi_interfaces_codegenerationresult_properties_application.html"
+        },
+        "displayed_signature": "Application as Application",
+        "displayed_property_type": "Application",
+        "property_access": "not_explicitly_read_only_in_summary",
+        "parameters": [],
+        "constraints": [],
+        "documented_error_codes": []
+      }
+    },
+    {
+      "owner": "ICodeGenerationResult",
+      "name": "Parent",
+      "record_index": 1,
+      "dispatch_member_id": 2,
+      "name_offset": 104,
+      "record_offset": 46948,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {"vartype": "HRESULT", "encoded": "80190019"},
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 46980,
+          "parameter_flags": 10,
+          "direction": ["out", "retval"],
+          "type": {"declared_type": "IDispatch*", "encoded": "00000008", "pointer_depth": 1, "descriptor_chain": [8], "target_type_info_index": null}
+        }
+      ],
+      "source_anchor": {"function_dump_lines": [12607, 12624], "member_id_dump_line": 12716, "member_name_dump_line": 12723, "member_offset_dump_line": 12730},
+      "catalog": {
+        "id": "provisional.com.CodeGenerationResult.Parent",
+        "source": {
+          "official_url": "https://www.altova.com/manual/en/api/mapforceapi/mfapi_interfaces_codegenerationresult_properties_parent.html",
+          "raw_sha256": "7d34b2cd45c73059d3ab6ced50e365c2e4895cb046329c201b90c4d1da0c4946",
+          "release_binding": "unestablished",
+          "source_file": "mfapi_interfaces_codegenerationresult_properties_parent.html"
+        },
+        "displayed_signature": "Parent as Application",
+        "displayed_property_type": "Application",
+        "property_access": "not_explicitly_read_only_in_summary",
+        "parameters": [],
+        "constraints": [],
+        "documented_error_codes": []
+      }
+    },
+    {
+      "owner": "ICodeGenerationResult",
+      "name": "Succeeded",
+      "record_index": 2,
+      "dispatch_member_id": 3,
+      "name_offset": 7584,
+      "record_offset": 46992,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {"vartype": "HRESULT", "encoded": "80190019"},
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 47024,
+          "parameter_flags": 10,
+          "direction": ["out", "retval"],
+          "type": {"declared_type": "BOOL*", "encoded": "00000010", "pointer_depth": 1, "descriptor_chain": [16], "target_type_info_index": null}
+        }
+      ],
+      "source_anchor": {"function_dump_lines": [12625, 12642], "member_id_dump_line": 12717, "member_name_dump_line": 12724, "member_offset_dump_line": 12731},
+      "catalog": {
+        "id": "provisional.com.CodeGenerationResult.Succeeded",
+        "source": {
+          "official_url": "https://www.altova.com/manual/en/api/mapforceapi/mfapi_interfaces_codegenerationresult_properties_succeeded.html",
+          "raw_sha256": "ce1bfb102ece31652f0027b291536678dfadae823f5a808247a93ca315cd6023",
+          "release_binding": "unestablished",
+          "source_file": "mfapi_interfaces_codegenerationresult_properties_succeeded.html"
+        },
+        "displayed_signature": "Succeeded as Boolean",
+        "displayed_property_type": "Boolean",
+        "property_access": "not_explicitly_read_only_in_summary",
+        "parameters": [],
+        "constraints": [],
+        "documented_error_codes": []
+      }
+    },
+    {
+      "owner": "ICodeGenerationResult",
+      "name": "Failed",
+      "record_index": 3,
+      "dispatch_member_id": 4,
+      "name_offset": 7608,
+      "record_offset": 47036,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {"vartype": "HRESULT", "encoded": "80190019"},
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 47068,
+          "parameter_flags": 10,
+          "direction": ["out", "retval"],
+          "type": {"declared_type": "BOOL*", "encoded": "00000010", "pointer_depth": 1, "descriptor_chain": [16], "target_type_info_index": null}
+        }
+      ],
+      "source_anchor": {"function_dump_lines": [12643, 12660], "member_id_dump_line": 12718, "member_name_dump_line": 12725, "member_offset_dump_line": 12732},
+      "catalog": {
+        "id": "provisional.com.CodeGenerationResult.Failed",
+        "source": {
+          "official_url": "https://www.altova.com/manual/en/api/mapforceapi/mfapi_interfaces_codegenerationresult_properties_failed.html",
+          "raw_sha256": "ae93ce3df294dba2a0f836644d564a402db64427c96f3d30e32f527458e579de",
+          "release_binding": "unestablished",
+          "source_file": "mfapi_interfaces_codegenerationresult_properties_failed.html"
+        },
+        "displayed_signature": "Failed as Boolean",
+        "displayed_property_type": "Boolean",
+        "property_access": "not_explicitly_read_only_in_summary",
+        "parameters": [],
+        "constraints": [],
+        "documented_error_codes": []
+      }
+    },
+    {
+      "owner": "ICodeGenerationResult",
+      "name": "ResultCode",
+      "record_index": 4,
+      "dispatch_member_id": 5,
+      "name_offset": 7956,
+      "record_offset": 47080,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {"vartype": "HRESULT", "encoded": "80190019"},
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 47112,
+          "parameter_flags": 10,
+          "direction": ["out", "retval"],
+          "type": {"declared_type": "ENUMCodeGenerationResultCode*", "encoded": "00000258", "pointer_depth": 1, "descriptor_chain": [600, 592], "target_type_info_index": 31}
+        }
+      ],
+      "source_anchor": {"function_dump_lines": [12661, 12678], "member_id_dump_line": 12719, "member_name_dump_line": 12726, "member_offset_dump_line": 12733},
+      "catalog": {
+        "id": "provisional.com.CodeGenerationResult.ResultCode",
+        "source": {
+          "official_url": "https://www.altova.com/manual/en/api/mapforceapi/mfapi_interfaces_codegenerationresult_properties_resultcode.html",
+          "raw_sha256": "0bb08da0cdfaef0708f3e4873aae8d8931682877815ea60de246e29c0ead0a18",
+          "release_binding": "unestablished",
+          "source_file": "mfapi_interfaces_codegenerationresult_properties_resultcode.html"
+        },
+        "displayed_signature": "ResultCode as ENUMCodeGenerationResultCode",
+        "displayed_property_type": "ENUMCodeGenerationResultCode",
+        "property_access": "not_explicitly_read_only_in_summary",
+        "parameters": [],
+        "constraints": [],
+        "documented_error_codes": []
+      }
+    },
+    {
+      "owner": "ICodeGenerationResult",
+      "name": "Messages",
+      "record_index": 5,
+      "dispatch_member_id": 6,
+      "name_offset": 7980,
+      "record_offset": 47124,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {"vartype": "HRESULT", "encoded": "80190019"},
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 47156,
+          "parameter_flags": 10,
+          "direction": ["out", "retval"],
+          "type": {"declared_type": "IAppOutputLines**", "encoded": "000000c0", "pointer_depth": 2, "descriptor_chain": [192, 184, 176], "target_type_info_index": 14}
+        }
+      ],
+      "source_anchor": {"function_dump_lines": [12679, 12696], "member_id_dump_line": 12720, "member_name_dump_line": 12727, "member_offset_dump_line": 12734},
+      "catalog": {
+        "id": "provisional.com.CodeGenerationResult.Messages",
+        "source": {
+          "official_url": "https://www.altova.com/manual/en/api/mapforceapi/mfapi_interfaces_codegenerationresult_properties_messages.html",
+          "raw_sha256": "68fdd5a5fdbd59edb77f7fad0a4a48222d7f47c431b24e48647fbf2706152358",
+          "release_binding": "unestablished",
+          "source_file": "mfapi_interfaces_codegenerationresult_properties_messages.html"
+        },
+        "displayed_signature": "Messages as AppOutputLines",
+        "displayed_property_type": "AppOutputLines",
+        "property_access": "not_explicitly_read_only_in_summary",
+        "parameters": [],
+        "constraints": [],
+        "documented_error_codes": []
+      }
+    },
+    {
+      "owner": "ICodeGenerationResult",
+      "name": "MessageText",
+      "record_index": 6,
+      "dispatch_member_id": 7,
+      "name_offset": 8000,
+      "record_offset": 47168,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {"vartype": "HRESULT", "encoded": "80190019"},
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 47200,
+          "parameter_flags": 10,
+          "direction": ["out", "retval"],
+          "type": {"declared_type": "BSTR*", "encoded": "00000000", "pointer_depth": 1, "descriptor_chain": [0], "target_type_info_index": null}
+        }
+      ],
+      "source_anchor": {"function_dump_lines": [12697, 12714], "member_id_dump_line": 12721, "member_name_dump_line": 12728, "member_offset_dump_line": 12735},
+      "catalog": {
+        "id": "provisional.com.CodeGenerationResult.MessageText",
+        "source": {
+          "official_url": "https://www.altova.com/manual/en/api/mapforceapi/mfapi_interfaces_codegenerationresult_properties_messagetext.html",
+          "raw_sha256": "5fe444d461240e65e0ed0d859f5baffb2849ee22f07d67d3dbd52485e52cb538",
+          "release_binding": "unestablished",
+          "source_file": "mfapi_interfaces_codegenerationresult_properties_messagetext.html"
+        },
+        "displayed_signature": "MessageText as String",
+        "displayed_property_type": "String",
+        "property_access": "not_explicitly_read_only_in_summary",
+        "parameters": [],
+        "constraints": [],
+        "documented_error_codes": []
+      }
+    }
+  ],
+  "comparison_boundary": {
+    "return_notation": "Online property types are higher-level declarations; raw getters return HRESULT with one out/retval parameter. This is not a contradiction or ABI equivalence claim.",
+    "application_parent": "Online Application and Parent are displayed as Application. Raw declarations retain generic PTR(DISPATCH), not a concrete IApplication target; neither representation replaces the other.",
+    "access": "Only property_get records occur in this bounded raw cohort. The online not_explicitly_read_only_in_summary access labels remain unchanged; getter-only records do not rewrite those labels or establish runtime mutability.",
+    "messages": "Online Messages describes a message tree and MessageText describes line-break-separated text. These release-unbound descriptions do not establish runtime ordering, flattening, ownership or lifetime.",
+    "success": "Succeeded and Failed declarations do not establish complementarity or any relationship to HRESULT or ResultCode at runtime.",
+    "types": "BOOL/Boolean, BSTR/String and named enum/interface comparisons are declaration-level only, not coercion or marshaling proof. Enum constants are already covered by com-enum-values.json and are not a new cohort."
+  },
+  "counts": {"interfaces": 2, "property_gets": 14, "parameters": 14, "out_retval_parameters": 14},
+  "remaining": [
+    "Other COM method signatures remain outside this bounded fragment; inventory_complete remains false.",
+    "The pinned online catalog's release binding remains unestablished.",
+    "No ABI, calling convention, marshaling, ownership, lifetime, runtime default, error behavior or backend support is established.",
+    "No activation or execution evidence is supplied; canonical capability assessments are unchanged."
+  ]
+}
