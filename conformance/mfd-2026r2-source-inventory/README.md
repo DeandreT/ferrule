@@ -464,6 +464,20 @@ initialization, mutation, coercion or accepted runtime type. Other omitted null,
 default, threading, lifetime and error clauses remain documentation silence,
 not negative guarantees. Method/property labels are not full behavior contracts.
 
+There are 165 standalone `property NAME` notes across 124 owner/name pairs;
+ordinary prose mentioning a property value or property access is not a label.
+`documentation_tensions` keeps five iterator `Specified by`/`Overrides`
+annotation fingerprints separate from the actual generic type declarations:
+annotations print `LIST extends ...` where the declared iterator uses `ELEMENT`
+or extends `COMIDispatchConstIterator<LIST,ELEMENT>`. These annotations do not
+rewrite the bases. The pointer wrapper's prose says `int`, while its constructor
+parameter and pointer accessor are `long`; no native width follows. Both
+`addNotify()` declarations return `void` despite prose describing an IDispatch
+pointer return. These source discrepancies remain unresolved, not repaired
+declarations. The separate `oracles/installer-java-api-docs-tensions.json` pins
+the note/annotation ranges, normalized-text hashes and declaration joins without
+altering the original declaration, metadata or claim oracles.
+
 `oracles/installer-java-api-docs.jsonl` was frozen before candidate production
 using an independent regex summary-cell path for names, returns and ordered
 parameters, with separate detail reads for facts absent from summaries
