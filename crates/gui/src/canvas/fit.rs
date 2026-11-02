@@ -48,8 +48,9 @@ pub(crate) fn record_node_rect(ui: &Ui, node: NodeId, rect: Rect, snarl: &Snarl<
         position: info.pos,
         rect,
     };
+    let canvas = crate::graph_draft_ui::property_canvas(ui);
     ui.ctx().data_mut(|data| {
-        data.get_temp_mut_or_default::<Measurements>(ui.layer_id().id.with("fit_node_rects"))
+        data.get_temp_mut_or_default::<Measurements>(canvas.with("fit_node_rects"))
             .0
             .insert(node, measured);
     });
