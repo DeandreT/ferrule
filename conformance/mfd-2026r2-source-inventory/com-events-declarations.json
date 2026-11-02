@@ -1,0 +1,597 @@
+{
+  "format": "mapforce-enterprise-2026r2-com-declarations",
+  "format_version": 1,
+  "cohort": "events",
+  "assessment": {
+    "inventory_complete": false,
+    "runtime_proof": false,
+    "status": "unassessed",
+    "applicability": "unknown",
+    "execution_evidence": []
+  },
+  "sources": {
+    "observation": "artifact-observations.json",
+    "member": "MapForce.tlb",
+    "cab_member": "MapForce.tlb_1193",
+    "bytes": 54108,
+    "sha256": "785c484fbaa882cae724a3568b04650300eb18941084ac23eb2d041dfb4a2789",
+    "library": "MapForceLib",
+    "version": "4.1",
+    "platform": "SYS_WIN64",
+    "dump_sha256": "672097183d6a6b0d80f3aa5f92d02172bb3a588609cb743bb82b73c342192bb4",
+    "release_binding": "2026r2",
+    "catalog_file": "com-api.json",
+    "catalog_sha256": "d9a2fd8a4f8935598fdd2590f837fd6205931ba43c6218dc6b32a29fbe35c16a",
+    "catalog_release_binding": "unestablished",
+    "type_info_table_offset": 624,
+    "type_info_record_bytes": 100,
+    "type_info_records": 75,
+    "name_table_offset": 10804,
+    "name_table_bytes": 13724,
+    "descriptor_table_offset": 30276,
+    "descriptor_table_bytes": 824,
+    "descriptor_record_bytes": 8
+  },
+  "types": [
+    {
+      "type_info_index": 7,
+      "name": "IDocument",
+      "kind": "TKIND_DISPATCH",
+      "name_offset": 1776,
+      "header_dump_lines": [
+        390,
+        417
+      ]
+    },
+    {
+      "type_info_index": 34,
+      "name": "IProject",
+      "kind": "TKIND_DISPATCH",
+      "name_offset": 8708,
+      "header_dump_lines": [
+        1146,
+        1173
+      ]
+    },
+    {
+      "type_info_index": 48,
+      "name": "_IApplicationEvents",
+      "kind": "TKIND_DISPATCH",
+      "name_offset": 12952,
+      "header_dump_lines": [
+        1538,
+        1565
+      ]
+    },
+    {
+      "type_info_index": 52,
+      "name": "_IDocumentEvents",
+      "kind": "TKIND_DISPATCH",
+      "name_offset": 13112,
+      "header_dump_lines": [
+        1650,
+        1677
+      ]
+    },
+    {
+      "type_info_index": 55,
+      "name": "_IProjectEvents",
+      "kind": "TKIND_DISPATCH",
+      "name_offset": 13252,
+      "header_dump_lines": [
+        1734,
+        1761
+      ]
+    },
+    {
+      "type_info_index": 57,
+      "name": "_IProjectItemEvents",
+      "kind": "TKIND_DISPATCH",
+      "name_offset": 13328,
+      "header_dump_lines": [
+        1790,
+        1817
+      ]
+    }
+  ],
+  "descriptors": [
+    {
+      "descriptor_offset": 680,
+      "descriptor_word": "7fff001d",
+      "target_word": "000002bc"
+    },
+    {
+      "descriptor_offset": 688,
+      "descriptor_word": "7fff001a",
+      "target_word": "000002a8"
+    },
+    {
+      "descriptor_offset": 752,
+      "descriptor_word": "7fff001d",
+      "target_word": "00000d48"
+    },
+    {
+      "descriptor_offset": 760,
+      "descriptor_word": "7fff001a",
+      "target_word": "000002f0"
+    }
+  ],
+  "owners": [
+    {
+      "name": "_IApplicationEvents",
+      "type_info_index": 48,
+      "type_flags": 4096,
+      "member_block_offset": 53656,
+      "member_data_bytes": 120,
+      "function_records": 3,
+      "member_id_table_offset": 53780,
+      "member_name_table_offset": 53792,
+      "member_record_table_offset": 53804
+    },
+    {
+      "name": "_IDocumentEvents",
+      "type_info_index": 52,
+      "type_flags": 4096,
+      "member_block_offset": 53816,
+      "member_data_bytes": 88,
+      "function_records": 2,
+      "member_id_table_offset": 53908,
+      "member_name_table_offset": 53916,
+      "member_record_table_offset": 53924
+    },
+    {
+      "name": "_IProjectEvents",
+      "type_info_index": 55,
+      "type_flags": 4096,
+      "member_block_offset": 53932,
+      "member_data_bytes": 44,
+      "function_records": 1,
+      "member_id_table_offset": 53980,
+      "member_name_table_offset": 53984,
+      "member_record_table_offset": 53988
+    },
+    {
+      "name": "_IProjectItemEvents",
+      "type_info_index": 57,
+      "type_flags": 4096,
+      "member_block_offset": 53992,
+      "member_data_bytes": 88,
+      "function_records": 2,
+      "member_id_table_offset": 54084,
+      "member_name_table_offset": 54092,
+      "member_record_table_offset": 54100
+    }
+  ],
+  "records": [
+    {
+      "owner": "_IApplicationEvents",
+      "type_info_index": 48,
+      "name": "OnShutdown",
+      "record_index": 0,
+      "dispatch_member_id": 1,
+      "raw_member_id": "00000001",
+      "name_offset": 12984,
+      "record_offset": 53660,
+      "record_bytes": 32,
+      "invocation_kind": "function",
+      "invocation_kind_value": 1,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80000018",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "VOID"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [],
+      "source_anchor": {
+        "function_dump_lines": [
+          15089,
+          15101
+        ],
+        "member_id_dump_line": 15138,
+        "member_name_dump_line": 15141,
+        "member_offset_dump_line": 15144
+      },
+      "catalog_id": "provisional.com.Application.OnShutdown"
+    },
+    {
+      "owner": "_IApplicationEvents",
+      "type_info_index": 48,
+      "name": "OnProjectOpened",
+      "record_index": 1,
+      "dispatch_member_id": 2,
+      "raw_member_id": "00000002",
+      "name_offset": 13008,
+      "record_offset": 53692,
+      "record_bytes": 44,
+      "invocation_kind": "function",
+      "invocation_kind_value": 1,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80000018",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "VOID"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "i_ipProject",
+          "name_offset": 13036,
+          "record_offset": 53724,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "000002f8",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "user_defined",
+              "name": "IProject",
+              "type_info_index": 34,
+              "type_kind": "TKIND_DISPATCH"
+            },
+            "descriptor_chain": [
+              760,
+              752
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          15102,
+          15119
+        ],
+        "member_id_dump_line": 15139,
+        "member_name_dump_line": 15142,
+        "member_offset_dump_line": 15145
+      },
+      "catalog_id": "provisional.com.Application.OnProjectOpened"
+    },
+    {
+      "owner": "_IApplicationEvents",
+      "type_info_index": 48,
+      "name": "OnDocumentOpened",
+      "record_index": 2,
+      "dispatch_member_id": 3,
+      "raw_member_id": "00000003",
+      "name_offset": 13060,
+      "record_offset": 53736,
+      "record_bytes": 44,
+      "invocation_kind": "function",
+      "invocation_kind_value": 1,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80000018",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "VOID"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "i_ipDocument",
+          "name_offset": 13088,
+          "record_offset": 53768,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "000002b0",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "user_defined",
+              "name": "IDocument",
+              "type_info_index": 7,
+              "type_kind": "TKIND_DISPATCH"
+            },
+            "descriptor_chain": [
+              688,
+              680
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          15120,
+          15137
+        ],
+        "member_id_dump_line": 15140,
+        "member_name_dump_line": 15143,
+        "member_offset_dump_line": 15146
+      },
+      "catalog_id": "provisional.com.Application.OnDocumentOpened"
+    },
+    {
+      "owner": "_IDocumentEvents",
+      "type_info_index": 52,
+      "name": "OnDocumentClosed",
+      "record_index": 0,
+      "dispatch_member_id": 1,
+      "raw_member_id": "00000001",
+      "name_offset": 13140,
+      "record_offset": 53820,
+      "record_bytes": 44,
+      "invocation_kind": "function",
+      "invocation_kind_value": 1,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80000018",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "VOID"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "i_ipDocument",
+          "name_offset": 13088,
+          "record_offset": 53852,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "000002b0",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "user_defined",
+              "name": "IDocument",
+              "type_info_index": 7,
+              "type_kind": "TKIND_DISPATCH"
+            },
+            "descriptor_chain": [
+              688,
+              680
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": null,
+        "member_id_dump_line": 15177,
+        "member_name_dump_line": 15179,
+        "member_offset_dump_line": 15181
+      },
+      "catalog_id": "provisional.com.Document.OnDocumentClosed"
+    },
+    {
+      "owner": "_IDocumentEvents",
+      "type_info_index": 52,
+      "name": "OnModifiedFlagChanged",
+      "record_index": 1,
+      "dispatch_member_id": 2,
+      "raw_member_id": "00000002",
+      "name_offset": 13168,
+      "record_offset": 53864,
+      "record_bytes": 44,
+      "invocation_kind": "function",
+      "invocation_kind_value": 1,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80000018",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "VOID"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "i_bIsModified",
+          "name_offset": 13204,
+          "record_offset": 53896,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "800b000b",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BOOL"
+            },
+            "descriptor_chain": []
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": null,
+        "member_id_dump_line": 15178,
+        "member_name_dump_line": 15180,
+        "member_offset_dump_line": 15182
+      },
+      "catalog_id": "provisional.com.Document.OnModifiedFlagChanged"
+    },
+    {
+      "owner": "_IProjectEvents",
+      "type_info_index": 55,
+      "name": "OnProjectClosed",
+      "record_index": 0,
+      "dispatch_member_id": 1,
+      "raw_member_id": "00000001",
+      "name_offset": 13280,
+      "record_offset": 53936,
+      "record_bytes": 44,
+      "invocation_kind": "function",
+      "invocation_kind_value": 1,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80000018",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "VOID"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "i_ipProject",
+          "name_offset": 13036,
+          "record_offset": 53968,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "000002f8",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "user_defined",
+              "name": "IProject",
+              "type_info_index": 34,
+              "type_kind": "TKIND_DISPATCH"
+            },
+            "descriptor_chain": [
+              760,
+              752
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": null,
+        "member_id_dump_line": 15201,
+        "member_name_dump_line": 15202,
+        "member_offset_dump_line": 15203
+      },
+      "catalog_id": "provisional.com.Project.OnProjectClosed"
+    },
+    {
+      "owner": "_IProjectItemEvents",
+      "type_info_index": 57,
+      "name": "OnProjectClosed",
+      "record_index": 0,
+      "dispatch_member_id": 1,
+      "raw_member_id": "00000001",
+      "name_offset": 13280,
+      "record_offset": 53996,
+      "record_bytes": 44,
+      "invocation_kind": "function",
+      "invocation_kind_value": 1,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80000018",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "VOID"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "i_ipProject",
+          "name_offset": 13036,
+          "record_offset": 54028,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "000002f8",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "user_defined",
+              "name": "IProject",
+              "type_info_index": 34,
+              "type_kind": "TKIND_DISPATCH"
+            },
+            "descriptor_chain": [
+              760,
+              752
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": null,
+        "member_id_dump_line": 15233,
+        "member_name_dump_line": 15235,
+        "member_offset_dump_line": 15237
+      },
+      "catalog_id": "provisional.com.ProjectItem.OnProjectClosed"
+    },
+    {
+      "owner": "_IProjectItemEvents",
+      "type_info_index": 57,
+      "name": "OnModifiedFlagChanged",
+      "record_index": 1,
+      "dispatch_member_id": 2,
+      "raw_member_id": "00000002",
+      "name_offset": 13168,
+      "record_offset": 54040,
+      "record_bytes": 44,
+      "invocation_kind": "function",
+      "invocation_kind_value": 1,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80000018",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "VOID"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "i_bIsModified",
+          "name_offset": 13204,
+          "record_offset": 54072,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "800b000b",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BOOL"
+            },
+            "descriptor_chain": []
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": null,
+        "member_id_dump_line": 15234,
+        "member_name_dump_line": 15236,
+        "member_offset_dump_line": 15238
+      },
+      "catalog_id": "provisional.com.ProjectItem.OnModifiedFlagChanged"
+    }
+  ]
+}
