@@ -13,8 +13,8 @@
     "type_infos": 75,
     "ordinary_records": 317,
     "event_records": 8,
-    "adopted_records": 142,
-    "remaining_records": 183,
+    "adopted_records": 325,
+    "remaining_records": 0,
     "enum_types": 20,
     "enum_variables": 130,
     "zero_callable_types": 29
@@ -50,30 +50,30 @@
     },
     {
       "id": "graph",
-      "state": "remaining",
-      "fragment": null,
-      "record_field": null,
+      "state": "adopted",
+      "fragment": "com-graph-declarations.json",
+      "record_field": "records",
       "record_count": 79
     },
     {
       "id": "projects",
-      "state": "remaining",
-      "fragment": null,
-      "record_field": null,
+      "state": "adopted",
+      "fragment": "com-projects-declarations.json",
+      "record_field": "records",
       "record_count": 68
     },
     {
       "id": "diagnostics",
-      "state": "remaining",
-      "fragment": null,
-      "record_field": null,
+      "state": "adopted",
+      "fragment": "com-diagnostics-declarations.json",
+      "record_field": "records",
       "record_count": 28
     },
     {
       "id": "events",
-      "state": "remaining",
-      "fragment": null,
-      "record_field": null,
+      "state": "adopted",
+      "fragment": "com-events-declarations.json",
+      "record_field": "records",
       "record_count": 8
     }
   ],
