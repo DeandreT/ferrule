@@ -9,7 +9,7 @@ pub const MAX_JSON_ALLOWED_VALUE_STRING_BYTES: usize = 256 * 1024;
 pub const MAX_JSON_ALLOWED_VALUE_TOTAL_STRING_BYTES: usize = 1024 * 1024;
 
 /// One exact JSON-compatible scalar value in a JSON Schema `enum`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(
     tag = "type",
     content = "value",
@@ -22,6 +22,28 @@ pub enum JsonAllowedValue {
     Float(FiniteF64),
     Bool(bool),
     JsonNull,
+}
+
+impl<'de> Deserialize<'de> for JsonAllowedValue {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(
+            remote = "JsonAllowedValue",
+            tag = "type",
+            content = "value",
+            rename_all = "snake_case",
+            deny_unknown_fields
+        )]
+        enum Repr {
+            String(String),
+            Int(i64),
+            Float(FiniteF64),
+            Bool(bool),
+            JsonNull,
+        }
+
+        Repr::deserialize(super::number_serde::NumberDeserializer(deserializer))
+    }
 }
 
 impl JsonAllowedValue {
