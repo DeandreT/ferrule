@@ -289,6 +289,40 @@ fn subjects() -> TestResult<Vec<Subject>> {
             json!({"id":"priority-valid-after-constraint", "wire":"UNH+1'DTL+1+0001'", "output":"ACK+OK'\n"}),
         ],
     });
+    let base = &result[0];
+    let mut project = base.document.project().clone();
+    project.source_options.edi_value_constraints[3] = EdiValueConstraint::new(
+        vec!["DTL".into(), "Text".into()],
+        3,
+        3,
+        vec!["A:B".into(), "C/D".into()],
+    )
+    .unwrap();
+    project.target = SchemaNode::group(
+        "Document",
+        vec![SchemaNode::group("ACK", vec![string("Status")])],
+    );
+    project.graph.nodes.insert(
+        91,
+        Node::Const {
+            value: Value::String("OK".into()),
+        },
+    );
+    project.root = result[5].document.project().root.clone();
+    let isa = "ISA*00*          *00*          *ZZ*SENDER         *ZZ*RECEIVER       *261025*1200*^*00501*000000001*0*P*:~";
+    let second = isa.replace("000000001", "000000002").replace("*:~", "*/~");
+    let wire = format!(
+        "{isa}DTL*0001*01.00*1234*A:B~IEA*0*000000001~{second}DTL*0001*01.00*1234*C/D~IEA*0*000000002~"
+    );
+    result.push(Subject {
+        name: "x12-active-component".into(),
+        document: mapping::DocumentProject::new(project, base.document.primary_source().clone()),
+        cases: vec![
+            json!({"id":"x12-changing-component", "wire":wire, "output":"ACK*OK~\n"}),
+            json!({"id":"x12-second-interchange-code", "wire":wire.replace("C/D", "C/E"), "issues":[["DTL[2]/Text", "NotAllowed", "DTL/Text", null, null, null, 2]]}),
+            json!({"id":"x12-changing-component-after-error", "wire":wire, "output":"ACK*OK~\n"}),
+        ],
+    });
     Ok(result)
 }
 

@@ -129,11 +129,27 @@ internal static partial class Program
             new object[] { new { path = new[] { "Rows", "DTL", "Code" }, min_chars = -1, max_chars = 2 } },
             new object[] { new { path = new[] { "Rows", "DTL", "Code" }, min_chars = 0, max_chars = 2, allowed_values = new[] { 1 } } },
         }) EdiRefusal(FerruleEdiError.Descriptor, () => EdiSource(children, rules));
+        var codes = Enumerable.Range(0, 4096).Select(code => code.ToString("D4", System.Globalization.CultureInfo.InvariantCulture)).ToArray();
+        object[] codeFields = [EdiGroup("DTL", [EdiLeaf("Value")])];
+        foreach (var allowed in new[] { codes, codes.Concat(codes).ToArray() })
+        {
+            var bounded = EdiSource(codeFields, [EdiRule(["DTL", "Value"], 4, 4, allowed)]);
+            Equal("4095", EdiAt(bounded.Parse("UNH+1'DTL+4095'"u8.ToArray()), "DTL", "Value").StringValue);
+            var refusal = EdiRefusal(FerruleEdiError.Constraint, () => bounded.Parse("UNH+1'DTL+9999'"u8.ToArray())).ValidationReport!;
+            Equal(1, refusal.Issues.Count);
+            Equal((int?)4096, refusal.Issues[0].AllowedCount);
+        }
+        EdiRefusal(FerruleEdiError.Descriptor, () => EdiSource(codeFields, [EdiRule(["DTL", "Value"], 4, 4, codes.Append("4096").ToArray())]));
         var many = "UNB+UNOC:4'" + string.Concat(Enumerable.Repeat("DTL+B'", 5_001));
         var report = EdiRefusal(FerruleEdiError.Constraint, () => codec.Parse(Encoding.UTF8.GetBytes(many))).ValidationReport!;
         Equal(10_000, report.Issues.Count);
         Equal(true, report.Truncated);
         Equal("Rows[5000]/DTL/Code[1]", report.Issues[^1].Location);
         Equal(true, report.ToString().Length < 2_000);
+        var exact = "UNB+UNOC:4'" + string.Concat(Enumerable.Repeat("DTL+B'", 5_000)) + "DTL+AA'";
+        var atCap = EdiRefusal(FerruleEdiError.Constraint, () => codec.Parse(Encoding.UTF8.GetBytes(exact))).ValidationReport!;
+        Equal(10_000, atCap.Issues.Count);
+        Equal(false, atCap.Truncated);
+        Equal("Rows[5000]/DTL/Code[1]", atCap.Issues[^1].Location);
     }
 }
