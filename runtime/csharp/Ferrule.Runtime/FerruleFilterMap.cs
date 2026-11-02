@@ -165,7 +165,7 @@ public sealed partial class ScopeContext
     private readonly int _filterMapCallDepth;
 
     internal ScopeContext WithFilterMapBoundary(FerruleFilterMapBoundary boundary) =>
-        new(_primarySource, _frames, _collections, _executionContext, _dynamicSourceLoader,
+        new(_jsonProjections, _primarySource, _frames, _collections, _executionContext, _dynamicSourceLoader,
             _filterMapRunState, boundary, _filterMapCallDepth);
 
     /// <summary>Generated nodes charge only inside a reached feature subevaluation.</summary>
@@ -191,8 +191,8 @@ public sealed partial class ScopeContext
             throw new FerruleRuntimeException(
                 FerruleRuntimeError.UserFunctionDepth, "user function exceeds the 64-call depth limit", maximumDepth: 64);
         }
-        return new ScopeContext(_primarySource, _frames, _collections, _executionContext, _dynamicSourceLoader,
-            _filterMapRunState, active, _filterMapCallDepth + 1, _invocationCounters, _jsonProjections);
+        return new ScopeContext(_jsonProjections, _primarySource, _frames, _collections, _executionContext, _dynamicSourceLoader,
+            _filterMapRunState, active, _filterMapCallDepth + 1, _invocationCounters);
     }
 
     internal void CheckFilterMap(FerruleFilterMapBoundary boundary) => _filterMapRunState.Check(boundary);

@@ -260,10 +260,11 @@ public sealed partial class ScopeContext
             new(collection.ToArray(), value, index),
         };
         return new ScopeContext(
+            _jsonProjections,
             _primarySource,
             new ReadOnlyCollection<FerruleInstance>(frames),
             new ReadOnlyCollection<CollectionIdentity>(collections),
             _executionContext,
-            _dynamicSourceLoader, invocationCounters: _invocationCounters, jsonProjections: _jsonProjections);
+            _dynamicSourceLoader, invocationCounters: _invocationCounters);
     }
 }

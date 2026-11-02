@@ -249,11 +249,12 @@ public sealed partial class ScopeContext
                 Grouped: sourcePath.Count != 0,
                 DocumentPath: group.DocumentPath));
             contexts[index] = new ScopeContext(
+                _jsonProjections,
                 _primarySource,
                 new ReadOnlyCollection<FerruleInstance>(frames),
                 new ReadOnlyCollection<CollectionIdentity>(collections),
                 _executionContext,
-                _dynamicSourceLoader, invocationCounters: _invocationCounters, jsonProjections: _jsonProjections);
+                _dynamicSourceLoader, invocationCounters: _invocationCounters);
         }
         return new ReadOnlyCollection<ScopeContext>(contexts);
     }

@@ -6,6 +6,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use ir::{Instance, ScalarType, SchemaNode, Value};
 use mapping::{Binding, FormatOptions, Graph, Node, Project, Scope, ScopeIteration, SequenceExpr};
 
+#[path = "json_projection_work/contexts.rs"]
+mod contexts;
+
 fn fields(count: usize) -> Vec<SchemaNode> {
     (0..count)
         .map(|field| {
