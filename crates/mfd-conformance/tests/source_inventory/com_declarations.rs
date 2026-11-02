@@ -1,9 +1,13 @@
 //! Shared source-only declaration checks; no vendor artifacts or activation.
 
+#[path = "com_declarations/cohorts.rs"]
+mod cohorts;
 #[path = "com_declarations/coverage.rs"]
 mod coverage;
 #[path = "com_declarations/oracle.rs"]
 mod oracle;
+#[path = "com_declarations/remaining.rs"]
+mod remaining;
 #[path = "com_declarations/schema.rs"]
 mod schema;
 #[path = "com_declarations/validate.rs"]
@@ -17,7 +21,7 @@ use super::load;
 fn core_declarations_match_independent_dump_oracle_and_catalog() {
     let core = checked_core(&load("com-core-declarations.json"));
     let coverage = coverage::check(&load("com-callable-coverage.json"));
-    coverage::core_extents(&core, &coverage);
+    coverage::declaration_extents(&core, &coverage);
     assert_eq!(core.records.len(), 114);
     assert_eq!(
         core.records
@@ -119,8 +123,13 @@ fn core(value: &Value) {
     checked_core(value);
 }
 
+fn declared(value: &Value) {
+    let cohort = cohorts::by_id(value["cohort"].as_str().unwrap());
+    validate::declarations(value, cohort);
+}
+
 fn checked_core(value: &Value) -> schema::Declarations {
-    validate::declarations(value, "core", oracle::core_expected())
+    validate::declarations(value, cohorts::by_id("core"))
 }
 fn manifest(value: &Value) {
     coverage::check(value);
@@ -338,7 +347,7 @@ fn coherent_coverage_mutations_cannot_promote_partial_or_missing_records() {
         &[
             |v| {
                 v["records"].as_array_mut().unwrap().remove(0);
-                v["counts"]["adopted_records"] = json!(141);
+                v["counts"]["adopted_records"] = json!(324);
                 v["cohorts"][3]["record_count"] = json!(113);
             },
             |v| {
@@ -359,7 +368,7 @@ fn coherent_coverage_mutations_cannot_promote_partial_or_missing_records() {
                 v["cohorts"][4]["record_count"] = json!(78);
             },
             |v| {
-                v["cohorts"][7]["state"] = json!("adopted");
+                v["cohorts"][7]["state"] = json!("remaining");
             },
             |v| {
                 let r = v["records"].as_array_mut().unwrap().last_mut().unwrap();

@@ -1,0 +1,4468 @@
+{
+  "format": "mapforce-enterprise-2026r2-com-declarations",
+  "format_version": 1,
+  "cohort": "projects",
+  "assessment": {
+    "inventory_complete": false,
+    "runtime_proof": false,
+    "status": "unassessed",
+    "applicability": "unknown",
+    "execution_evidence": []
+  },
+  "sources": {
+    "observation": "artifact-observations.json",
+    "member": "MapForce.tlb",
+    "cab_member": "MapForce.tlb_1193",
+    "bytes": 54108,
+    "sha256": "785c484fbaa882cae724a3568b04650300eb18941084ac23eb2d041dfb4a2789",
+    "library": "MapForceLib",
+    "version": "4.1",
+    "platform": "SYS_WIN64",
+    "dump_sha256": "672097183d6a6b0d80f3aa5f92d02172bb3a588609cb743bb82b73c342192bb4",
+    "release_binding": "2026r2",
+    "catalog_file": "com-api.json",
+    "catalog_sha256": "d9a2fd8a4f8935598fdd2590f837fd6205931ba43c6218dc6b32a29fbe35c16a",
+    "catalog_release_binding": "unestablished",
+    "type_info_table_offset": 624,
+    "type_info_record_bytes": 100,
+    "type_info_records": 75,
+    "name_table_offset": 10804,
+    "name_table_bytes": 13724,
+    "descriptor_table_offset": 30276,
+    "descriptor_table_bytes": 824,
+    "descriptor_record_bytes": 8
+  },
+  "types": [
+    {
+      "type_info_index": 7,
+      "name": "IDocument",
+      "kind": "TKIND_DISPATCH",
+      "name_offset": 1776,
+      "header_dump_lines": [
+        390,
+        417
+      ]
+    },
+    {
+      "type_info_index": 23,
+      "name": "ENUMProgrammingLanguage",
+      "kind": "TKIND_ENUM",
+      "name_offset": 6592,
+      "header_dump_lines": [
+        838,
+        865
+      ]
+    },
+    {
+      "type_info_index": 24,
+      "name": "IErrorMarkers",
+      "kind": "TKIND_DISPATCH",
+      "name_offset": 6796,
+      "header_dump_lines": [
+        866,
+        893
+      ]
+    },
+    {
+      "type_info_index": 32,
+      "name": "ILibraryImports",
+      "kind": "TKIND_DISPATCH",
+      "name_offset": 8352,
+      "header_dump_lines": [
+        1090,
+        1117
+      ]
+    },
+    {
+      "type_info_index": 33,
+      "name": "ILibraryImport",
+      "kind": "TKIND_DISPATCH",
+      "name_offset": 8380,
+      "header_dump_lines": [
+        1118,
+        1145
+      ]
+    },
+    {
+      "type_info_index": 34,
+      "name": "IProject",
+      "kind": "TKIND_DISPATCH",
+      "name_offset": 8708,
+      "header_dump_lines": [
+        1146,
+        1173
+      ]
+    },
+    {
+      "type_info_index": 35,
+      "name": "IProjectItem",
+      "kind": "TKIND_DISPATCH",
+      "name_offset": 8728,
+      "header_dump_lines": [
+        1174,
+        1201
+      ]
+    },
+    {
+      "type_info_index": 36,
+      "name": "ENUMProjectItemType",
+      "kind": "TKIND_ENUM",
+      "name_offset": 8752,
+      "header_dump_lines": [
+        1202,
+        1229
+      ]
+    }
+  ],
+  "descriptors": [
+    {
+      "descriptor_offset": 0,
+      "descriptor_word": "4008001a",
+      "target_word": "80080008"
+    },
+    {
+      "descriptor_offset": 8,
+      "descriptor_word": "4009001a",
+      "target_word": "80090009"
+    },
+    {
+      "descriptor_offset": 16,
+      "descriptor_word": "400b001a",
+      "target_word": "800b000b"
+    },
+    {
+      "descriptor_offset": 128,
+      "descriptor_word": "4003001a",
+      "target_word": "80030003"
+    },
+    {
+      "descriptor_offset": 248,
+      "descriptor_word": "400d001a",
+      "target_word": "800d000d"
+    },
+    {
+      "descriptor_offset": 496,
+      "descriptor_word": "0003001d",
+      "target_word": "000008fc"
+    },
+    {
+      "descriptor_offset": 504,
+      "descriptor_word": "7fff001d",
+      "target_word": "00000960"
+    },
+    {
+      "descriptor_offset": 512,
+      "descriptor_word": "7fff001a",
+      "target_word": "000001f8"
+    },
+    {
+      "descriptor_offset": 520,
+      "descriptor_word": "7fff001a",
+      "target_word": "00000200"
+    },
+    {
+      "descriptor_offset": 632,
+      "descriptor_word": "7fff001d",
+      "target_word": "00000ce4"
+    },
+    {
+      "descriptor_offset": 640,
+      "descriptor_word": "7fff001a",
+      "target_word": "00000278"
+    },
+    {
+      "descriptor_offset": 648,
+      "descriptor_word": "7fff001a",
+      "target_word": "00000280"
+    },
+    {
+      "descriptor_offset": 680,
+      "descriptor_word": "7fff001d",
+      "target_word": "000002bc"
+    },
+    {
+      "descriptor_offset": 688,
+      "descriptor_word": "7fff001a",
+      "target_word": "000002a8"
+    },
+    {
+      "descriptor_offset": 696,
+      "descriptor_word": "7fff001a",
+      "target_word": "000002b0"
+    },
+    {
+      "descriptor_offset": 704,
+      "descriptor_word": "7fff001d",
+      "target_word": "00000dac"
+    },
+    {
+      "descriptor_offset": 712,
+      "descriptor_word": "7fff001a",
+      "target_word": "000002c0"
+    },
+    {
+      "descriptor_offset": 720,
+      "descriptor_word": "7fff001a",
+      "target_word": "000002c8"
+    },
+    {
+      "descriptor_offset": 728,
+      "descriptor_word": "0003001d",
+      "target_word": "00000e10"
+    },
+    {
+      "descriptor_offset": 736,
+      "descriptor_word": "4003001a",
+      "target_word": "000002d8"
+    },
+    {
+      "descriptor_offset": 744,
+      "descriptor_word": "4003001a",
+      "target_word": "000001f0"
+    }
+  ],
+  "owners": [
+    {
+      "name": "ILibraryImports",
+      "type_info_index": 32,
+      "type_flags": 4416,
+      "member_block_offset": 47364,
+      "member_data_bytes": 364,
+      "function_records": 8,
+      "member_id_table_offset": 47732,
+      "member_name_table_offset": 47764,
+      "member_record_table_offset": 47796
+    },
+    {
+      "name": "ILibraryImport",
+      "type_info_index": 33,
+      "type_flags": 4416,
+      "member_block_offset": 47828,
+      "member_data_bytes": 204,
+      "function_records": 5,
+      "member_id_table_offset": 48036,
+      "member_name_table_offset": 48056,
+      "member_record_table_offset": 48076
+    },
+    {
+      "name": "IProject",
+      "type_info_index": 34,
+      "type_flags": 4416,
+      "member_block_offset": 48096,
+      "member_data_bytes": 1312,
+      "function_records": 29,
+      "member_id_table_offset": 49412,
+      "member_name_table_offset": 49528,
+      "member_record_table_offset": 49644
+    },
+    {
+      "name": "IProjectItem",
+      "type_info_index": 35,
+      "type_flags": 4416,
+      "member_block_offset": 49760,
+      "member_data_bytes": 1156,
+      "function_records": 26,
+      "member_id_table_offset": 50920,
+      "member_name_table_offset": 51024,
+      "member_record_table_offset": 51128
+    }
+  ],
+  "records": [
+    {
+      "owner": "ILibraryImports",
+      "type_info_index": 32,
+      "name": "Count",
+      "record_index": 0,
+      "dispatch_member_id": 1610743808,
+      "raw_member_id": "60020000",
+      "name_offset": 2572,
+      "record_offset": 47368,
+      "record_bytes": 36,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pnCount",
+          "name_offset": 2592,
+          "record_offset": 47392,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000080",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "primitive",
+              "name": "I4"
+            },
+            "descriptor_chain": [
+              128
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          12764,
+          12779
+        ],
+        "member_id_dump_line": 12917,
+        "member_name_dump_line": 12925,
+        "member_offset_dump_line": 12933
+      },
+      "catalog_id": "provisional.com.LibraryImports.Count"
+    },
+    {
+      "owner": "ILibraryImports",
+      "type_info_index": 32,
+      "name": "Item",
+      "record_index": 1,
+      "dispatch_member_id": 0,
+      "raw_member_id": "00000000",
+      "name_offset": 4284,
+      "record_offset": 47404,
+      "record_bytes": 48,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "n",
+          "name_offset": 4300,
+          "record_offset": 47428,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "80030003",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "primitive",
+              "name": "I4"
+            },
+            "descriptor_chain": []
+          }
+        },
+        {
+          "index": 1,
+          "name": "ppItem",
+          "name_offset": 3508,
+          "record_offset": 47440,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000288",
+            "pointer_depth": 2,
+            "leaf": {
+              "kind": "user_defined",
+              "name": "ILibraryImport",
+              "type_info_index": 33,
+              "type_kind": "TKIND_DISPATCH"
+            },
+            "descriptor_chain": [
+              648,
+              640,
+              632
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          12780,
+          12800
+        ],
+        "member_id_dump_line": 12918,
+        "member_name_dump_line": 12926,
+        "member_offset_dump_line": 12934
+      },
+      "catalog_id": "provisional.com.LibraryImports.Item"
+    },
+    {
+      "owner": "ILibraryImports",
+      "type_info_index": 32,
+      "name": "_NewEnum",
+      "record_index": 2,
+      "dispatch_member_id": -4,
+      "raw_member_id": "fffffffc",
+      "name_offset": 4316,
+      "record_offset": 47452,
+      "record_bytes": 36,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "ppEnum",
+          "name_offset": 4336,
+          "record_offset": 47476,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "000000f8",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "primitive",
+              "name": "UNKNOWN"
+            },
+            "descriptor_chain": [
+              248
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          12801,
+          12816
+        ],
+        "member_id_dump_line": 12919,
+        "member_name_dump_line": 12927,
+        "member_offset_dump_line": 12935
+      },
+      "catalog_id": null
+    },
+    {
+      "owner": "ILibraryImports",
+      "type_info_index": 32,
+      "name": "Application",
+      "record_index": 3,
+      "dispatch_member_id": 1,
+      "raw_member_id": "00000001",
+      "name_offset": 80,
+      "record_offset": 47488,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 47520,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000008",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "primitive",
+              "name": "DISPATCH"
+            },
+            "descriptor_chain": [
+              8
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          12817,
+          12834
+        ],
+        "member_id_dump_line": 12920,
+        "member_name_dump_line": 12928,
+        "member_offset_dump_line": 12936
+      },
+      "catalog_id": "provisional.com.LibraryImports.Application"
+    },
+    {
+      "owner": "ILibraryImports",
+      "type_info_index": 32,
+      "name": "Parent",
+      "record_index": 4,
+      "dispatch_member_id": 2,
+      "raw_member_id": "00000002",
+      "name_offset": 104,
+      "record_offset": 47532,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 47564,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000008",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "primitive",
+              "name": "DISPATCH"
+            },
+            "descriptor_chain": [
+              8
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          12835,
+          12852
+        ],
+        "member_id_dump_line": 12921,
+        "member_name_dump_line": 12929,
+        "member_offset_dump_line": 12937
+      },
+      "catalog_id": "provisional.com.LibraryImports.Parent"
+    },
+    {
+      "owner": "ILibraryImports",
+      "type_info_index": 32,
+      "name": "Add",
+      "record_index": 5,
+      "dispatch_member_id": 3,
+      "raw_member_id": "00000003",
+      "name_offset": 8460,
+      "record_offset": 47576,
+      "record_bytes": 56,
+      "invocation_kind": "function",
+      "invocation_kind_value": 1,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "i_strFileName",
+          "name_offset": 1892,
+          "record_offset": 47608,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "80080008",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BSTR"
+            },
+            "descriptor_chain": []
+          }
+        },
+        {
+          "index": 1,
+          "name": "ppItem",
+          "name_offset": 3508,
+          "record_offset": 47620,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000288",
+            "pointer_depth": 2,
+            "leaf": {
+              "kind": "user_defined",
+              "name": "ILibraryImport",
+              "type_info_index": 33,
+              "type_kind": "TKIND_DISPATCH"
+            },
+            "descriptor_chain": [
+              648,
+              640,
+              632
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          12853,
+          12875
+        ],
+        "member_id_dump_line": 12922,
+        "member_name_dump_line": 12930,
+        "member_offset_dump_line": 12938
+      },
+      "catalog_id": "provisional.com.LibraryImports.Add"
+    },
+    {
+      "owner": "ILibraryImports",
+      "type_info_index": 32,
+      "name": "Remove",
+      "record_index": 6,
+      "dispatch_member_id": 4,
+      "raw_member_id": "00000004",
+      "name_offset": 8476,
+      "record_offset": 47632,
+      "record_bytes": 44,
+      "invocation_kind": "function",
+      "invocation_kind_value": 1,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "i_strFileName",
+          "name_offset": 1892,
+          "record_offset": 47664,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "80080008",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BSTR"
+            },
+            "descriptor_chain": []
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          12876,
+          12893
+        ],
+        "member_id_dump_line": 12923,
+        "member_name_dump_line": 12931,
+        "member_offset_dump_line": 12939
+      },
+      "catalog_id": "provisional.com.LibraryImports.Remove"
+    },
+    {
+      "owner": "ILibraryImports",
+      "type_info_index": 32,
+      "name": "Find",
+      "record_index": 7,
+      "dispatch_member_id": 5,
+      "raw_member_id": "00000005",
+      "name_offset": 8496,
+      "record_offset": 47676,
+      "record_bytes": 56,
+      "invocation_kind": "function",
+      "invocation_kind_value": 1,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "i_strFileName",
+          "name_offset": 1892,
+          "record_offset": 47708,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "80080008",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BSTR"
+            },
+            "descriptor_chain": []
+          }
+        },
+        {
+          "index": 1,
+          "name": "ppItem",
+          "name_offset": 3508,
+          "record_offset": 47720,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000288",
+            "pointer_depth": 2,
+            "leaf": {
+              "kind": "user_defined",
+              "name": "ILibraryImport",
+              "type_info_index": 33,
+              "type_kind": "TKIND_DISPATCH"
+            },
+            "descriptor_chain": [
+              648,
+              640,
+              632
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          12894,
+          12916
+        ],
+        "member_id_dump_line": 12924,
+        "member_name_dump_line": 12932,
+        "member_offset_dump_line": 12940
+      },
+      "catalog_id": "provisional.com.LibraryImports.Find"
+    },
+    {
+      "owner": "ILibraryImport",
+      "type_info_index": 33,
+      "name": "Application",
+      "record_index": 0,
+      "dispatch_member_id": 1,
+      "raw_member_id": "00000001",
+      "name_offset": 80,
+      "record_offset": 47832,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 47864,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000008",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "primitive",
+              "name": "DISPATCH"
+            },
+            "descriptor_chain": [
+              8
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          12944,
+          12961
+        ],
+        "member_id_dump_line": 13030,
+        "member_name_dump_line": 13035,
+        "member_offset_dump_line": 13040
+      },
+      "catalog_id": "provisional.com.LibraryImport.Application"
+    },
+    {
+      "owner": "ILibraryImport",
+      "type_info_index": 33,
+      "name": "Parent",
+      "record_index": 1,
+      "dispatch_member_id": 2,
+      "raw_member_id": "00000002",
+      "name_offset": 104,
+      "record_offset": 47876,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 47908,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000008",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "primitive",
+              "name": "DISPATCH"
+            },
+            "descriptor_chain": [
+              8
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          12962,
+          12979
+        ],
+        "member_id_dump_line": 13031,
+        "member_name_dump_line": 13036,
+        "member_offset_dump_line": 13041
+      },
+      "catalog_id": "provisional.com.LibraryImport.Parent"
+    },
+    {
+      "owner": "ILibraryImport",
+      "type_info_index": 33,
+      "name": "Path",
+      "record_index": 2,
+      "dispatch_member_id": 3,
+      "raw_member_id": "00000003",
+      "name_offset": 1820,
+      "record_offset": 47920,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 47952,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000000",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BSTR"
+            },
+            "descriptor_chain": [
+              0
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          12980,
+          12997
+        ],
+        "member_id_dump_line": 13032,
+        "member_name_dump_line": 13037,
+        "member_offset_dump_line": 13042
+      },
+      "catalog_id": "provisional.com.LibraryImport.Path"
+    },
+    {
+      "owner": "ILibraryImport",
+      "type_info_index": 33,
+      "name": "SaveRelativePath",
+      "record_index": 3,
+      "dispatch_member_id": 4,
+      "raw_member_id": "00000004",
+      "name_offset": 8408,
+      "record_offset": 47964,
+      "record_bytes": 36,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pRelative",
+          "name_offset": 8436,
+          "record_offset": 47988,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000010",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BOOL"
+            },
+            "descriptor_chain": [
+              16
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          12998,
+          13013
+        ],
+        "member_id_dump_line": 13033,
+        "member_name_dump_line": 13038,
+        "member_offset_dump_line": 13043
+      },
+      "catalog_id": "provisional.com.LibraryImport.SaveRelativePath"
+    },
+    {
+      "owner": "ILibraryImport",
+      "type_info_index": 33,
+      "name": "SaveRelativePath",
+      "record_index": 4,
+      "dispatch_member_id": 4,
+      "raw_member_id": "00000004",
+      "name_offset": 8408,
+      "record_offset": 48000,
+      "record_bytes": 36,
+      "invocation_kind": "property_put",
+      "invocation_kind_value": 4,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": null,
+          "name_offset": 4294967295,
+          "record_offset": 48024,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "800b000b",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BOOL"
+            },
+            "descriptor_chain": []
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          13014,
+          13029
+        ],
+        "member_id_dump_line": 13034,
+        "member_name_dump_line": 13039,
+        "member_offset_dump_line": 13044
+      },
+      "catalog_id": "provisional.com.LibraryImport.SaveRelativePath"
+    },
+    {
+      "owner": "IProject",
+      "type_info_index": 34,
+      "name": "Count",
+      "record_index": 0,
+      "dispatch_member_id": 1610743808,
+      "raw_member_id": "60020000",
+      "name_offset": 2572,
+      "record_offset": 48100,
+      "record_bytes": 36,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pnCount",
+          "name_offset": 2592,
+          "record_offset": 48124,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000080",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "primitive",
+              "name": "I4"
+            },
+            "descriptor_chain": [
+              128
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          13048,
+          13063
+        ],
+        "member_id_dump_line": 13589,
+        "member_name_dump_line": 13618,
+        "member_offset_dump_line": 13647
+      },
+      "catalog_id": "provisional.com.Project.Count"
+    },
+    {
+      "owner": "IProject",
+      "type_info_index": 34,
+      "name": "Item",
+      "record_index": 1,
+      "dispatch_member_id": 0,
+      "raw_member_id": "00000000",
+      "name_offset": 4284,
+      "record_offset": 48136,
+      "record_bytes": 48,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "n",
+          "name_offset": 4300,
+          "record_offset": 48160,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "80030003",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "primitive",
+              "name": "I4"
+            },
+            "descriptor_chain": []
+          }
+        },
+        {
+          "index": 1,
+          "name": "ppItem",
+          "name_offset": 3508,
+          "record_offset": 48172,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "000002d0",
+            "pointer_depth": 2,
+            "leaf": {
+              "kind": "user_defined",
+              "name": "IProjectItem",
+              "type_info_index": 35,
+              "type_kind": "TKIND_DISPATCH"
+            },
+            "descriptor_chain": [
+              720,
+              712,
+              704
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          13064,
+          13084
+        ],
+        "member_id_dump_line": 13590,
+        "member_name_dump_line": 13619,
+        "member_offset_dump_line": 13648
+      },
+      "catalog_id": "provisional.com.Project.Item"
+    },
+    {
+      "owner": "IProject",
+      "type_info_index": 34,
+      "name": "_NewEnum",
+      "record_index": 2,
+      "dispatch_member_id": -4,
+      "raw_member_id": "fffffffc",
+      "name_offset": 4316,
+      "record_offset": 48184,
+      "record_bytes": 36,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "ppEnum",
+          "name_offset": 4336,
+          "record_offset": 48208,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "000000f8",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "primitive",
+              "name": "UNKNOWN"
+            },
+            "descriptor_chain": [
+              248
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          13085,
+          13100
+        ],
+        "member_id_dump_line": 13591,
+        "member_name_dump_line": 13620,
+        "member_offset_dump_line": 13649
+      },
+      "catalog_id": "provisional.com.Project._NewEnum"
+    },
+    {
+      "owner": "IProject",
+      "type_info_index": 34,
+      "name": "Application",
+      "record_index": 3,
+      "dispatch_member_id": 1,
+      "raw_member_id": "00000001",
+      "name_offset": 80,
+      "record_offset": 48220,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 48252,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000008",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "primitive",
+              "name": "DISPATCH"
+            },
+            "descriptor_chain": [
+              8
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          13101,
+          13118
+        ],
+        "member_id_dump_line": 13592,
+        "member_name_dump_line": 13621,
+        "member_offset_dump_line": 13650
+      },
+      "catalog_id": "provisional.com.Project.Application"
+    },
+    {
+      "owner": "IProject",
+      "type_info_index": 34,
+      "name": "Parent",
+      "record_index": 4,
+      "dispatch_member_id": 2,
+      "raw_member_id": "00000002",
+      "name_offset": 104,
+      "record_offset": 48264,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 48296,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000008",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "primitive",
+              "name": "DISPATCH"
+            },
+            "descriptor_chain": [
+              8
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          13119,
+          13136
+        ],
+        "member_id_dump_line": 13593,
+        "member_name_dump_line": 13622,
+        "member_offset_dump_line": 13651
+      },
+      "catalog_id": "provisional.com.Project.Parent"
+    },
+    {
+      "owner": "IProject",
+      "type_info_index": 34,
+      "name": "FullName",
+      "record_index": 5,
+      "dispatch_member_id": 3,
+      "raw_member_id": "00000003",
+      "name_offset": 1800,
+      "record_offset": 48308,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 48340,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000000",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BSTR"
+            },
+            "descriptor_chain": [
+              0
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          13137,
+          13154
+        ],
+        "member_id_dump_line": 13594,
+        "member_name_dump_line": 13623,
+        "member_offset_dump_line": 13652
+      },
+      "catalog_id": "provisional.com.Project.FullName"
+    },
+    {
+      "owner": "IProject",
+      "type_info_index": 34,
+      "name": "FullName",
+      "record_index": 6,
+      "dispatch_member_id": 3,
+      "raw_member_id": "00000003",
+      "name_offset": 1800,
+      "record_offset": 48352,
+      "record_bytes": 44,
+      "invocation_kind": "property_put",
+      "invocation_kind_value": 4,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": null,
+          "name_offset": 4294967295,
+          "record_offset": 48384,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "80080008",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BSTR"
+            },
+            "descriptor_chain": []
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          13155,
+          13172
+        ],
+        "member_id_dump_line": 13595,
+        "member_name_dump_line": 13624,
+        "member_offset_dump_line": 13653
+      },
+      "catalog_id": "provisional.com.Project.FullName"
+    },
+    {
+      "owner": "IProject",
+      "type_info_index": 34,
+      "name": "Name",
+      "record_index": 7,
+      "dispatch_member_id": 4,
+      "raw_member_id": "00000004",
+      "name_offset": 48,
+      "record_offset": 48396,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 48428,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000000",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BSTR"
+            },
+            "descriptor_chain": [
+              0
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          13173,
+          13190
+        ],
+        "member_id_dump_line": 13596,
+        "member_name_dump_line": 13625,
+        "member_offset_dump_line": 13654
+      },
+      "catalog_id": "provisional.com.Project.Name"
+    },
+    {
+      "owner": "IProject",
+      "type_info_index": 34,
+      "name": "Path",
+      "record_index": 8,
+      "dispatch_member_id": 5,
+      "raw_member_id": "00000005",
+      "name_offset": 1820,
+      "record_offset": 48440,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 48472,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000000",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BSTR"
+            },
+            "descriptor_chain": [
+              0
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          13191,
+          13208
+        ],
+        "member_id_dump_line": 13597,
+        "member_name_dump_line": 13626,
+        "member_offset_dump_line": 13655
+      },
+      "catalog_id": "provisional.com.Project.Path"
+    },
+    {
+      "owner": "IProject",
+      "type_info_index": 34,
+      "name": "Saved",
+      "record_index": 9,
+      "dispatch_member_id": 6,
+      "raw_member_id": "00000006",
+      "name_offset": 1836,
+      "record_offset": 48484,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 48516,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000010",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BOOL"
+            },
+            "descriptor_chain": [
+              16
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          13209,
+          13226
+        ],
+        "member_id_dump_line": 13598,
+        "member_name_dump_line": 13627,
+        "member_offset_dump_line": 13656
+      },
+      "catalog_id": "provisional.com.Project.Saved"
+    },
+    {
+      "owner": "IProject",
+      "type_info_index": 34,
+      "name": "Save",
+      "record_index": 10,
+      "dispatch_member_id": 7,
+      "raw_member_id": "00000007",
+      "name_offset": 1856,
+      "record_offset": 48528,
+      "record_bytes": 32,
+      "invocation_kind": "function",
+      "invocation_kind_value": 1,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [],
+      "source_anchor": {
+        "function_dump_lines": [
+          13227,
+          13239
+        ],
+        "member_id_dump_line": 13599,
+        "member_name_dump_line": 13628,
+        "member_offset_dump_line": 13657
+      },
+      "catalog_id": "provisional.com.Project.Save"
+    },
+    {
+      "owner": "IProject",
+      "type_info_index": 34,
+      "name": "SaveAs",
+      "record_index": 11,
+      "dispatch_member_id": 8,
+      "raw_member_id": "00000008",
+      "name_offset": 1872,
+      "record_offset": 48560,
+      "record_bytes": 44,
+      "invocation_kind": "function",
+      "invocation_kind_value": 1,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "i_strFileName",
+          "name_offset": 1892,
+          "record_offset": 48592,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "80080008",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BSTR"
+            },
+            "descriptor_chain": []
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          13240,
+          13257
+        ],
+        "member_id_dump_line": 13600,
+        "member_name_dump_line": 13629,
+        "member_offset_dump_line": 13658
+      },
+      "catalog_id": "provisional.com.Project.SaveAs"
+    },
+    {
+      "owner": "IProject",
+      "type_info_index": 34,
+      "name": "Close",
+      "record_index": 12,
+      "dispatch_member_id": 9,
+      "raw_member_id": "00000009",
+      "name_offset": 6496,
+      "record_offset": 48604,
+      "record_bytes": 32,
+      "invocation_kind": "function",
+      "invocation_kind_value": 1,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [],
+      "source_anchor": {
+        "function_dump_lines": [
+          13258,
+          13270
+        ],
+        "member_id_dump_line": 13601,
+        "member_name_dump_line": 13630,
+        "member_offset_dump_line": 13659
+      },
+      "catalog_id": "provisional.com.Project.Close"
+    },
+    {
+      "owner": "IProject",
+      "type_info_index": 34,
+      "name": "Output_Folder",
+      "record_index": 13,
+      "dispatch_member_id": 10,
+      "raw_member_id": "0000000a",
+      "name_offset": 9812,
+      "record_offset": 48636,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 48668,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000000",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BSTR"
+            },
+            "descriptor_chain": [
+              0
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          13271,
+          13288
+        ],
+        "member_id_dump_line": 13602,
+        "member_name_dump_line": 13631,
+        "member_offset_dump_line": 13660
+      },
+      "catalog_id": "provisional.com.Project.Output_Folder"
+    },
+    {
+      "owner": "IProject",
+      "type_info_index": 34,
+      "name": "Output_Folder",
+      "record_index": 14,
+      "dispatch_member_id": 10,
+      "raw_member_id": "0000000a",
+      "name_offset": 9812,
+      "record_offset": 48680,
+      "record_bytes": 44,
+      "invocation_kind": "property_put",
+      "invocation_kind_value": 4,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": null,
+          "name_offset": 4294967295,
+          "record_offset": 48712,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "80080008",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BSTR"
+            },
+            "descriptor_chain": []
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          13289,
+          13306
+        ],
+        "member_id_dump_line": 13603,
+        "member_name_dump_line": 13632,
+        "member_offset_dump_line": 13661
+      },
+      "catalog_id": "provisional.com.Project.Output_Folder"
+    },
+    {
+      "owner": "IProject",
+      "type_info_index": 34,
+      "name": "Output_TextEncoding",
+      "record_index": 15,
+      "dispatch_member_id": 11,
+      "raw_member_id": "0000000b",
+      "name_offset": 9840,
+      "record_offset": 48724,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 48756,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000000",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BSTR"
+            },
+            "descriptor_chain": [
+              0
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          13307,
+          13324
+        ],
+        "member_id_dump_line": 13604,
+        "member_name_dump_line": 13633,
+        "member_offset_dump_line": 13662
+      },
+      "catalog_id": "provisional.com.Project.Output_TextEncoding"
+    },
+    {
+      "owner": "IProject",
+      "type_info_index": 34,
+      "name": "Output_TextEncoding",
+      "record_index": 16,
+      "dispatch_member_id": 11,
+      "raw_member_id": "0000000b",
+      "name_offset": 9840,
+      "record_offset": 48768,
+      "record_bytes": 44,
+      "invocation_kind": "property_put",
+      "invocation_kind_value": 4,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": null,
+          "name_offset": 4294967295,
+          "record_offset": 48800,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "80080008",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BSTR"
+            },
+            "descriptor_chain": []
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          13325,
+          13342
+        ],
+        "member_id_dump_line": 13605,
+        "member_name_dump_line": 13634,
+        "member_offset_dump_line": 13663
+      },
+      "catalog_id": "provisional.com.Project.Output_TextEncoding"
+    },
+    {
+      "owner": "IProject",
+      "type_info_index": 34,
+      "name": "Output_Language",
+      "record_index": 17,
+      "dispatch_member_id": 12,
+      "raw_member_id": "0000000c",
+      "name_offset": 9872,
+      "record_offset": 48812,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 48844,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "000002e8",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "user_defined",
+              "name": "ENUMProgrammingLanguage",
+              "type_info_index": 23,
+              "type_kind": "TKIND_ENUM"
+            },
+            "descriptor_chain": [
+              744,
+              496
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          13343,
+          13360
+        ],
+        "member_id_dump_line": 13606,
+        "member_name_dump_line": 13635,
+        "member_offset_dump_line": 13664
+      },
+      "catalog_id": "provisional.com.Project.Output_Language"
+    },
+    {
+      "owner": "IProject",
+      "type_info_index": 34,
+      "name": "Output_Language",
+      "record_index": 18,
+      "dispatch_member_id": 12,
+      "raw_member_id": "0000000c",
+      "name_offset": 9872,
+      "record_offset": 48856,
+      "record_bytes": 44,
+      "invocation_kind": "property_put",
+      "invocation_kind_value": 4,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": null,
+          "name_offset": 4294967295,
+          "record_offset": 48888,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "000001f0",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "user_defined",
+              "name": "ENUMProgrammingLanguage",
+              "type_info_index": 23,
+              "type_kind": "TKIND_ENUM"
+            },
+            "descriptor_chain": [
+              496
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          13361,
+          13378
+        ],
+        "member_id_dump_line": 13607,
+        "member_name_dump_line": 13636,
+        "member_offset_dump_line": 13665
+      },
+      "catalog_id": "provisional.com.Project.Output_Language"
+    },
+    {
+      "owner": "IProject",
+      "type_info_index": 34,
+      "name": "Java_BasePackageName",
+      "record_index": 19,
+      "dispatch_member_id": 13,
+      "raw_member_id": "0000000d",
+      "name_offset": 9900,
+      "record_offset": 48900,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 48932,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000000",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BSTR"
+            },
+            "descriptor_chain": [
+              0
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          13379,
+          13396
+        ],
+        "member_id_dump_line": 13608,
+        "member_name_dump_line": 13637,
+        "member_offset_dump_line": 13666
+      },
+      "catalog_id": "provisional.com.Project.Java_BasePackageName"
+    },
+    {
+      "owner": "IProject",
+      "type_info_index": 34,
+      "name": "Java_BasePackageName",
+      "record_index": 20,
+      "dispatch_member_id": 13,
+      "raw_member_id": "0000000d",
+      "name_offset": 9900,
+      "record_offset": 48944,
+      "record_bytes": 44,
+      "invocation_kind": "property_put",
+      "invocation_kind_value": 4,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": null,
+          "name_offset": 4294967295,
+          "record_offset": 48976,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "80080008",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BSTR"
+            },
+            "descriptor_chain": []
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          13397,
+          13414
+        ],
+        "member_id_dump_line": 13609,
+        "member_name_dump_line": 13638,
+        "member_offset_dump_line": 13667
+      },
+      "catalog_id": "provisional.com.Project.Java_BasePackageName"
+    },
+    {
+      "owner": "IProject",
+      "type_info_index": 34,
+      "name": "AddFile",
+      "record_index": 21,
+      "dispatch_member_id": 14,
+      "raw_member_id": "0000000e",
+      "name_offset": 9632,
+      "record_offset": 48988,
+      "record_bytes": 56,
+      "invocation_kind": "function",
+      "invocation_kind_value": 1,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "i_strFileName",
+          "name_offset": 1892,
+          "record_offset": 49020,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "80080008",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BSTR"
+            },
+            "descriptor_chain": []
+          }
+        },
+        {
+          "index": 1,
+          "name": "o_ipProjectItem",
+          "name_offset": 9576,
+          "record_offset": 49032,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "000002d0",
+            "pointer_depth": 2,
+            "leaf": {
+              "kind": "user_defined",
+              "name": "IProjectItem",
+              "type_info_index": 35,
+              "type_kind": "TKIND_DISPATCH"
+            },
+            "descriptor_chain": [
+              720,
+              712,
+              704
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          13415,
+          13437
+        ],
+        "member_id_dump_line": 13610,
+        "member_name_dump_line": 13639,
+        "member_offset_dump_line": 13668
+      },
+      "catalog_id": "provisional.com.Project.AddFile"
+    },
+    {
+      "owner": "IProject",
+      "type_info_index": 34,
+      "name": "AddActiveFile",
+      "record_index": 22,
+      "dispatch_member_id": 15,
+      "raw_member_id": "0000000f",
+      "name_offset": 9604,
+      "record_offset": 49044,
+      "record_bytes": 44,
+      "invocation_kind": "function",
+      "invocation_kind_value": 1,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "o_ipProjectItem",
+          "name_offset": 9576,
+          "record_offset": 49076,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "000002d0",
+            "pointer_depth": 2,
+            "leaf": {
+              "kind": "user_defined",
+              "name": "IProjectItem",
+              "type_info_index": 35,
+              "type_kind": "TKIND_DISPATCH"
+            },
+            "descriptor_chain": [
+              720,
+              712,
+              704
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          13438,
+          13455
+        ],
+        "member_id_dump_line": 13611,
+        "member_name_dump_line": 13640,
+        "member_offset_dump_line": 13669
+      },
+      "catalog_id": "provisional.com.Project.AddActiveFile"
+    },
+    {
+      "owner": "IProject",
+      "type_info_index": 34,
+      "name": "GenerateCode",
+      "record_index": 23,
+      "dispatch_member_id": 16,
+      "raw_member_id": "00000010",
+      "name_offset": 9732,
+      "record_offset": 49088,
+      "record_bytes": 32,
+      "invocation_kind": "function",
+      "invocation_kind_value": 1,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [],
+      "source_anchor": {
+        "function_dump_lines": [
+          13456,
+          13468
+        ],
+        "member_id_dump_line": 13612,
+        "member_name_dump_line": 13641,
+        "member_offset_dump_line": 13670
+      },
+      "catalog_id": "provisional.com.Project.GenerateCode"
+    },
+    {
+      "owner": "IProject",
+      "type_info_index": 34,
+      "name": "GenerateCodeIn",
+      "record_index": 24,
+      "dispatch_member_id": 17,
+      "raw_member_id": "00000011",
+      "name_offset": 9756,
+      "record_offset": 49120,
+      "record_bytes": 44,
+      "invocation_kind": "function",
+      "invocation_kind_value": 1,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "i_nLanguage",
+          "name_offset": 7192,
+          "record_offset": 49152,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "000001f0",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "user_defined",
+              "name": "ENUMProgrammingLanguage",
+              "type_info_index": 23,
+              "type_kind": "TKIND_ENUM"
+            },
+            "descriptor_chain": [
+              496
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          13469,
+          13486
+        ],
+        "member_id_dump_line": 13613,
+        "member_name_dump_line": 13642,
+        "member_offset_dump_line": 13671
+      },
+      "catalog_id": "provisional.com.Project.GenerateCodeIn"
+    },
+    {
+      "owner": "IProject",
+      "type_info_index": 34,
+      "name": "InsertWebService",
+      "record_index": 25,
+      "dispatch_member_id": 18,
+      "raw_member_id": "00000012",
+      "name_offset": 9932,
+      "record_offset": 49164,
+      "record_bytes": 92,
+      "invocation_kind": "function",
+      "invocation_kind_value": 1,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "i_strWSDLFile",
+          "name_offset": 9960,
+          "record_offset": 49196,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "80080008",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BSTR"
+            },
+            "descriptor_chain": []
+          }
+        },
+        {
+          "index": 1,
+          "name": "i_strService",
+          "name_offset": 9988,
+          "record_offset": 49208,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "80080008",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BSTR"
+            },
+            "descriptor_chain": []
+          }
+        },
+        {
+          "index": 2,
+          "name": "i_strPort",
+          "name_offset": 10012,
+          "record_offset": 49220,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "80080008",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BSTR"
+            },
+            "descriptor_chain": []
+          }
+        },
+        {
+          "index": 3,
+          "name": "i_bGenerateMappings",
+          "name_offset": 10036,
+          "record_offset": 49232,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "800b000b",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BOOL"
+            },
+            "descriptor_chain": []
+          }
+        },
+        {
+          "index": 4,
+          "name": "o_ipProjectItem",
+          "name_offset": 9576,
+          "record_offset": 49244,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "000002d0",
+            "pointer_depth": 2,
+            "leaf": {
+              "kind": "user_defined",
+              "name": "IProjectItem",
+              "type_info_index": 35,
+              "type_kind": "TKIND_DISPATCH"
+            },
+            "descriptor_chain": [
+              720,
+              712,
+              704
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          13487,
+          13524
+        ],
+        "member_id_dump_line": 13614,
+        "member_name_dump_line": 13643,
+        "member_offset_dump_line": 13672
+      },
+      "catalog_id": "provisional.com.Project.InsertWebService"
+    },
+    {
+      "owner": "IProject",
+      "type_info_index": 34,
+      "name": "CreateFolder",
+      "record_index": 26,
+      "dispatch_member_id": 19,
+      "raw_member_id": "00000013",
+      "name_offset": 9680,
+      "record_offset": 49256,
+      "record_bytes": 56,
+      "invocation_kind": "function",
+      "invocation_kind_value": 1,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "i_strFolderName",
+          "name_offset": 9704,
+          "record_offset": 49288,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "80080008",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BSTR"
+            },
+            "descriptor_chain": []
+          }
+        },
+        {
+          "index": 1,
+          "name": "o_ipProjectItem",
+          "name_offset": 9576,
+          "record_offset": 49300,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "000002d0",
+            "pointer_depth": 2,
+            "leaf": {
+              "kind": "user_defined",
+              "name": "IProjectItem",
+              "type_info_index": 35,
+              "type_kind": "TKIND_DISPATCH"
+            },
+            "descriptor_chain": [
+              720,
+              712,
+              704
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          13525,
+          13547
+        ],
+        "member_id_dump_line": 13615,
+        "member_name_dump_line": 13644,
+        "member_offset_dump_line": 13673
+      },
+      "catalog_id": "provisional.com.Project.CreateFolder"
+    },
+    {
+      "owner": "IProject",
+      "type_info_index": 34,
+      "name": "GenerateCodeEx",
+      "record_index": 27,
+      "dispatch_member_id": 20,
+      "raw_member_id": "00000014",
+      "name_offset": 7164,
+      "record_offset": 49312,
+      "record_bytes": 44,
+      "invocation_kind": "function",
+      "invocation_kind_value": 1,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 49344,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000208",
+            "pointer_depth": 2,
+            "leaf": {
+              "kind": "user_defined",
+              "name": "IErrorMarkers",
+              "type_info_index": 24,
+              "type_kind": "TKIND_DISPATCH"
+            },
+            "descriptor_chain": [
+              520,
+              512,
+              504
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          13548,
+          13565
+        ],
+        "member_id_dump_line": 13616,
+        "member_name_dump_line": 13645,
+        "member_offset_dump_line": 13674
+      },
+      "catalog_id": "provisional.com.Project.GenerateCodeEx"
+    },
+    {
+      "owner": "IProject",
+      "type_info_index": 34,
+      "name": "GenerateCodeInEx",
+      "record_index": 28,
+      "dispatch_member_id": 21,
+      "raw_member_id": "00000015",
+      "name_offset": 9784,
+      "record_offset": 49356,
+      "record_bytes": 56,
+      "invocation_kind": "function",
+      "invocation_kind_value": 1,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "i_nLanguage",
+          "name_offset": 7192,
+          "record_offset": 49388,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "000001f0",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "user_defined",
+              "name": "ENUMProgrammingLanguage",
+              "type_info_index": 23,
+              "type_kind": "TKIND_ENUM"
+            },
+            "descriptor_chain": [
+              496
+            ]
+          }
+        },
+        {
+          "index": 1,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 49400,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000208",
+            "pointer_depth": 2,
+            "leaf": {
+              "kind": "user_defined",
+              "name": "IErrorMarkers",
+              "type_info_index": 24,
+              "type_kind": "TKIND_DISPATCH"
+            },
+            "descriptor_chain": [
+              520,
+              512,
+              504
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          13566,
+          13588
+        ],
+        "member_id_dump_line": 13617,
+        "member_name_dump_line": 13646,
+        "member_offset_dump_line": 13675
+      },
+      "catalog_id": "provisional.com.Project.GenerateCodeInEx"
+    },
+    {
+      "owner": "IProjectItem",
+      "type_info_index": 35,
+      "name": "Count",
+      "record_index": 0,
+      "dispatch_member_id": 1610743808,
+      "raw_member_id": "60020000",
+      "name_offset": 2572,
+      "record_offset": 49764,
+      "record_bytes": 36,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pnCount",
+          "name_offset": 2592,
+          "record_offset": 49788,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000080",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "primitive",
+              "name": "I4"
+            },
+            "descriptor_chain": [
+              128
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          13679,
+          13694
+        ],
+        "member_id_dump_line": 14156,
+        "member_name_dump_line": 14182,
+        "member_offset_dump_line": 14208
+      },
+      "catalog_id": "provisional.com.ProjectItem.Count"
+    },
+    {
+      "owner": "IProjectItem",
+      "type_info_index": 35,
+      "name": "Item",
+      "record_index": 1,
+      "dispatch_member_id": 0,
+      "raw_member_id": "00000000",
+      "name_offset": 4284,
+      "record_offset": 49800,
+      "record_bytes": 48,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "n",
+          "name_offset": 4300,
+          "record_offset": 49824,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "80030003",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "primitive",
+              "name": "I4"
+            },
+            "descriptor_chain": []
+          }
+        },
+        {
+          "index": 1,
+          "name": "ppItem",
+          "name_offset": 3508,
+          "record_offset": 49836,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "000002d0",
+            "pointer_depth": 2,
+            "leaf": {
+              "kind": "user_defined",
+              "name": "IProjectItem",
+              "type_info_index": 35,
+              "type_kind": "TKIND_DISPATCH"
+            },
+            "descriptor_chain": [
+              720,
+              712,
+              704
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          13695,
+          13715
+        ],
+        "member_id_dump_line": 14157,
+        "member_name_dump_line": 14183,
+        "member_offset_dump_line": 14209
+      },
+      "catalog_id": "provisional.com.ProjectItem.Item"
+    },
+    {
+      "owner": "IProjectItem",
+      "type_info_index": 35,
+      "name": "_NewEnum",
+      "record_index": 2,
+      "dispatch_member_id": -4,
+      "raw_member_id": "fffffffc",
+      "name_offset": 4316,
+      "record_offset": 49848,
+      "record_bytes": 36,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "ppEnum",
+          "name_offset": 4336,
+          "record_offset": 49872,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "000000f8",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "primitive",
+              "name": "UNKNOWN"
+            },
+            "descriptor_chain": [
+              248
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          13716,
+          13731
+        ],
+        "member_id_dump_line": 14158,
+        "member_name_dump_line": 14184,
+        "member_offset_dump_line": 14210
+      },
+      "catalog_id": "provisional.com.ProjectItem._NewEnum"
+    },
+    {
+      "owner": "IProjectItem",
+      "type_info_index": 35,
+      "name": "Application",
+      "record_index": 3,
+      "dispatch_member_id": 1,
+      "raw_member_id": "00000001",
+      "name_offset": 80,
+      "record_offset": 49884,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 49916,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000008",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "primitive",
+              "name": "DISPATCH"
+            },
+            "descriptor_chain": [
+              8
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          13732,
+          13749
+        ],
+        "member_id_dump_line": 14159,
+        "member_name_dump_line": 14185,
+        "member_offset_dump_line": 14211
+      },
+      "catalog_id": "provisional.com.ProjectItem.Application"
+    },
+    {
+      "owner": "IProjectItem",
+      "type_info_index": 35,
+      "name": "Parent",
+      "record_index": 4,
+      "dispatch_member_id": 2,
+      "raw_member_id": "00000002",
+      "name_offset": 104,
+      "record_offset": 49928,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 49960,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000008",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "primitive",
+              "name": "DISPATCH"
+            },
+            "descriptor_chain": [
+              8
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          13750,
+          13767
+        ],
+        "member_id_dump_line": 14160,
+        "member_name_dump_line": 14186,
+        "member_offset_dump_line": 14212
+      },
+      "catalog_id": "provisional.com.ProjectItem.Parent"
+    },
+    {
+      "owner": "IProjectItem",
+      "type_info_index": 35,
+      "name": "Kind",
+      "record_index": 5,
+      "dispatch_member_id": 3,
+      "raw_member_id": "00000003",
+      "name_offset": 9344,
+      "record_offset": 49972,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 50004,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "000002e0",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "user_defined",
+              "name": "ENUMProjectItemType",
+              "type_info_index": 36,
+              "type_kind": "TKIND_ENUM"
+            },
+            "descriptor_chain": [
+              736,
+              728
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          13768,
+          13785
+        ],
+        "member_id_dump_line": 14161,
+        "member_name_dump_line": 14187,
+        "member_offset_dump_line": 14213
+      },
+      "catalog_id": "provisional.com.ProjectItem.Kind"
+    },
+    {
+      "owner": "IProjectItem",
+      "type_info_index": 35,
+      "name": "Name",
+      "record_index": 6,
+      "dispatch_member_id": 4,
+      "raw_member_id": "00000004",
+      "name_offset": 48,
+      "record_offset": 50016,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 50048,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000000",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BSTR"
+            },
+            "descriptor_chain": [
+              0
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          13786,
+          13803
+        ],
+        "member_id_dump_line": 14162,
+        "member_name_dump_line": 14188,
+        "member_offset_dump_line": 14214
+      },
+      "catalog_id": "provisional.com.ProjectItem.Name"
+    },
+    {
+      "owner": "IProjectItem",
+      "type_info_index": 35,
+      "name": "Name",
+      "record_index": 7,
+      "dispatch_member_id": 4,
+      "raw_member_id": "00000004",
+      "name_offset": 48,
+      "record_offset": 50060,
+      "record_bytes": 44,
+      "invocation_kind": "property_put",
+      "invocation_kind_value": 4,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": null,
+          "name_offset": 4294967295,
+          "record_offset": 50092,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "80080008",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BSTR"
+            },
+            "descriptor_chain": []
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          13804,
+          13821
+        ],
+        "member_id_dump_line": 14163,
+        "member_name_dump_line": 14189,
+        "member_offset_dump_line": 14215
+      },
+      "catalog_id": "provisional.com.ProjectItem.Name"
+    },
+    {
+      "owner": "IProjectItem",
+      "type_info_index": 35,
+      "name": "CodeGenSettings_UseDefault",
+      "record_index": 8,
+      "dispatch_member_id": 5,
+      "raw_member_id": "00000005",
+      "name_offset": 9360,
+      "record_offset": 50104,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 50136,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000010",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BOOL"
+            },
+            "descriptor_chain": [
+              16
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          13822,
+          13839
+        ],
+        "member_id_dump_line": 14164,
+        "member_name_dump_line": 14190,
+        "member_offset_dump_line": 14216
+      },
+      "catalog_id": "provisional.com.ProjectItem.CodeGenSettings_UseDefault"
+    },
+    {
+      "owner": "IProjectItem",
+      "type_info_index": 35,
+      "name": "CodeGenSettings_UseDefault",
+      "record_index": 9,
+      "dispatch_member_id": 5,
+      "raw_member_id": "00000005",
+      "name_offset": 9360,
+      "record_offset": 50148,
+      "record_bytes": 44,
+      "invocation_kind": "property_put",
+      "invocation_kind_value": 4,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": null,
+          "name_offset": 4294967295,
+          "record_offset": 50180,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "800b000b",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BOOL"
+            },
+            "descriptor_chain": []
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          13840,
+          13857
+        ],
+        "member_id_dump_line": 14165,
+        "member_name_dump_line": 14191,
+        "member_offset_dump_line": 14217
+      },
+      "catalog_id": "provisional.com.ProjectItem.CodeGenSettings_UseDefault"
+    },
+    {
+      "owner": "IProjectItem",
+      "type_info_index": 35,
+      "name": "CodeGenSettings_OutputFolder",
+      "record_index": 10,
+      "dispatch_member_id": 6,
+      "raw_member_id": "00000006",
+      "name_offset": 9400,
+      "record_offset": 50192,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 50224,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000000",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BSTR"
+            },
+            "descriptor_chain": [
+              0
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          13858,
+          13875
+        ],
+        "member_id_dump_line": 14166,
+        "member_name_dump_line": 14192,
+        "member_offset_dump_line": 14218
+      },
+      "catalog_id": "provisional.com.ProjectItem.CodeGenSettings_OutputFolder"
+    },
+    {
+      "owner": "IProjectItem",
+      "type_info_index": 35,
+      "name": "CodeGenSettings_OutputFolder",
+      "record_index": 11,
+      "dispatch_member_id": 6,
+      "raw_member_id": "00000006",
+      "name_offset": 9400,
+      "record_offset": 50236,
+      "record_bytes": 44,
+      "invocation_kind": "property_put",
+      "invocation_kind_value": 4,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": null,
+          "name_offset": 4294967295,
+          "record_offset": 50268,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "80080008",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BSTR"
+            },
+            "descriptor_chain": []
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          13876,
+          13893
+        ],
+        "member_id_dump_line": 14167,
+        "member_name_dump_line": 14193,
+        "member_offset_dump_line": 14219
+      },
+      "catalog_id": "provisional.com.ProjectItem.CodeGenSettings_OutputFolder"
+    },
+    {
+      "owner": "IProjectItem",
+      "type_info_index": 35,
+      "name": "CodeGenSettings_Language",
+      "record_index": 12,
+      "dispatch_member_id": 7,
+      "raw_member_id": "00000007",
+      "name_offset": 9440,
+      "record_offset": 50280,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 50312,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "000002e8",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "user_defined",
+              "name": "ENUMProgrammingLanguage",
+              "type_info_index": 23,
+              "type_kind": "TKIND_ENUM"
+            },
+            "descriptor_chain": [
+              744,
+              496
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          13894,
+          13911
+        ],
+        "member_id_dump_line": 14168,
+        "member_name_dump_line": 14194,
+        "member_offset_dump_line": 14220
+      },
+      "catalog_id": "provisional.com.ProjectItem.CodeGenSettings_Language"
+    },
+    {
+      "owner": "IProjectItem",
+      "type_info_index": 35,
+      "name": "CodeGenSettings_Language",
+      "record_index": 13,
+      "dispatch_member_id": 7,
+      "raw_member_id": "00000007",
+      "name_offset": 9440,
+      "record_offset": 50324,
+      "record_bytes": 44,
+      "invocation_kind": "property_put",
+      "invocation_kind_value": 4,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": null,
+          "name_offset": 4294967295,
+          "record_offset": 50356,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "000001f0",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "user_defined",
+              "name": "ENUMProgrammingLanguage",
+              "type_info_index": 23,
+              "type_kind": "TKIND_ENUM"
+            },
+            "descriptor_chain": [
+              496
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          13912,
+          13929
+        ],
+        "member_id_dump_line": 14169,
+        "member_name_dump_line": 14195,
+        "member_offset_dump_line": 14221
+      },
+      "catalog_id": "provisional.com.ProjectItem.CodeGenSettings_Language"
+    },
+    {
+      "owner": "IProjectItem",
+      "type_info_index": 35,
+      "name": "WSDLFile",
+      "record_index": 14,
+      "dispatch_member_id": 8,
+      "raw_member_id": "00000008",
+      "name_offset": 9476,
+      "record_offset": 50368,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 50400,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000000",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BSTR"
+            },
+            "descriptor_chain": [
+              0
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          13930,
+          13947
+        ],
+        "member_id_dump_line": 14170,
+        "member_name_dump_line": 14196,
+        "member_offset_dump_line": 14222
+      },
+      "catalog_id": "provisional.com.ProjectItem.WSDLFile"
+    },
+    {
+      "owner": "IProjectItem",
+      "type_info_index": 35,
+      "name": "QualifiedName",
+      "record_index": 15,
+      "dispatch_member_id": 9,
+      "raw_member_id": "00000009",
+      "name_offset": 9496,
+      "record_offset": 50412,
+      "record_bytes": 44,
+      "invocation_kind": "property_get",
+      "invocation_kind_value": 2,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 50444,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000000",
+            "pointer_depth": 1,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BSTR"
+            },
+            "descriptor_chain": [
+              0
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          13948,
+          13965
+        ],
+        "member_id_dump_line": 14171,
+        "member_name_dump_line": 14197,
+        "member_offset_dump_line": 14223
+      },
+      "catalog_id": "provisional.com.ProjectItem.QualifiedName"
+    },
+    {
+      "owner": "IProjectItem",
+      "type_info_index": 35,
+      "name": "Open",
+      "record_index": 16,
+      "dispatch_member_id": 10,
+      "raw_member_id": "0000000a",
+      "name_offset": 9524,
+      "record_offset": 50456,
+      "record_bytes": 44,
+      "invocation_kind": "function",
+      "invocation_kind_value": 1,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "o_ipDocument",
+          "name_offset": 8596,
+          "record_offset": 50488,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "000002b8",
+            "pointer_depth": 2,
+            "leaf": {
+              "kind": "user_defined",
+              "name": "IDocument",
+              "type_info_index": 7,
+              "type_kind": "TKIND_DISPATCH"
+            },
+            "descriptor_chain": [
+              696,
+              688,
+              680
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          13966,
+          13983
+        ],
+        "member_id_dump_line": 14172,
+        "member_name_dump_line": 14198,
+        "member_offset_dump_line": 14224
+      },
+      "catalog_id": "provisional.com.ProjectItem.Open"
+    },
+    {
+      "owner": "IProjectItem",
+      "type_info_index": 35,
+      "name": "Remove",
+      "record_index": 17,
+      "dispatch_member_id": 11,
+      "raw_member_id": "0000000b",
+      "name_offset": 8476,
+      "record_offset": 50500,
+      "record_bytes": 32,
+      "invocation_kind": "function",
+      "invocation_kind_value": 1,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [],
+      "source_anchor": {
+        "function_dump_lines": [
+          13984,
+          13996
+        ],
+        "member_id_dump_line": 14173,
+        "member_name_dump_line": 14199,
+        "member_offset_dump_line": 14225
+      },
+      "catalog_id": "provisional.com.ProjectItem.Remove"
+    },
+    {
+      "owner": "IProjectItem",
+      "type_info_index": 35,
+      "name": "CreateMappingForProject",
+      "record_index": 18,
+      "dispatch_member_id": 12,
+      "raw_member_id": "0000000c",
+      "name_offset": 9540,
+      "record_offset": 50532,
+      "record_bytes": 56,
+      "invocation_kind": "function",
+      "invocation_kind_value": 1,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "i_strFileName",
+          "name_offset": 1892,
+          "record_offset": 50564,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "80080008",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BSTR"
+            },
+            "descriptor_chain": []
+          }
+        },
+        {
+          "index": 1,
+          "name": "o_ipProjectItem",
+          "name_offset": 9576,
+          "record_offset": 50576,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "000002d0",
+            "pointer_depth": 2,
+            "leaf": {
+              "kind": "user_defined",
+              "name": "IProjectItem",
+              "type_info_index": 35,
+              "type_kind": "TKIND_DISPATCH"
+            },
+            "descriptor_chain": [
+              720,
+              712,
+              704
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          13997,
+          14019
+        ],
+        "member_id_dump_line": 14174,
+        "member_name_dump_line": 14200,
+        "member_offset_dump_line": 14226
+      },
+      "catalog_id": "provisional.com.ProjectItem.CreateMappingForProject"
+    },
+    {
+      "owner": "IProjectItem",
+      "type_info_index": 35,
+      "name": "AddActiveFile",
+      "record_index": 19,
+      "dispatch_member_id": 13,
+      "raw_member_id": "0000000d",
+      "name_offset": 9604,
+      "record_offset": 50588,
+      "record_bytes": 44,
+      "invocation_kind": "function",
+      "invocation_kind_value": 1,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "o_ipProjectItem",
+          "name_offset": 9576,
+          "record_offset": 50620,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "000002d0",
+            "pointer_depth": 2,
+            "leaf": {
+              "kind": "user_defined",
+              "name": "IProjectItem",
+              "type_info_index": 35,
+              "type_kind": "TKIND_DISPATCH"
+            },
+            "descriptor_chain": [
+              720,
+              712,
+              704
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          14020,
+          14037
+        ],
+        "member_id_dump_line": 14175,
+        "member_name_dump_line": 14201,
+        "member_offset_dump_line": 14227
+      },
+      "catalog_id": "provisional.com.ProjectItem.AddActiveFile"
+    },
+    {
+      "owner": "IProjectItem",
+      "type_info_index": 35,
+      "name": "AddFile",
+      "record_index": 20,
+      "dispatch_member_id": 14,
+      "raw_member_id": "0000000e",
+      "name_offset": 9632,
+      "record_offset": 50632,
+      "record_bytes": 56,
+      "invocation_kind": "function",
+      "invocation_kind_value": 1,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "i_strFilePath",
+          "name_offset": 9652,
+          "record_offset": 50664,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "80080008",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BSTR"
+            },
+            "descriptor_chain": []
+          }
+        },
+        {
+          "index": 1,
+          "name": "o_ipProjectItem",
+          "name_offset": 9576,
+          "record_offset": 50676,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "000002d0",
+            "pointer_depth": 2,
+            "leaf": {
+              "kind": "user_defined",
+              "name": "IProjectItem",
+              "type_info_index": 35,
+              "type_kind": "TKIND_DISPATCH"
+            },
+            "descriptor_chain": [
+              720,
+              712,
+              704
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          14038,
+          14060
+        ],
+        "member_id_dump_line": 14176,
+        "member_name_dump_line": 14202,
+        "member_offset_dump_line": 14228
+      },
+      "catalog_id": "provisional.com.ProjectItem.AddFile"
+    },
+    {
+      "owner": "IProjectItem",
+      "type_info_index": 35,
+      "name": "CreateFolder",
+      "record_index": 21,
+      "dispatch_member_id": 15,
+      "raw_member_id": "0000000f",
+      "name_offset": 9680,
+      "record_offset": 50688,
+      "record_bytes": 56,
+      "invocation_kind": "function",
+      "invocation_kind_value": 1,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "i_strFolderName",
+          "name_offset": 9704,
+          "record_offset": 50720,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "80080008",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "primitive",
+              "name": "BSTR"
+            },
+            "descriptor_chain": []
+          }
+        },
+        {
+          "index": 1,
+          "name": "o_ipProjectItem",
+          "name_offset": 9576,
+          "record_offset": 50732,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "000002d0",
+            "pointer_depth": 2,
+            "leaf": {
+              "kind": "user_defined",
+              "name": "IProjectItem",
+              "type_info_index": 35,
+              "type_kind": "TKIND_DISPATCH"
+            },
+            "descriptor_chain": [
+              720,
+              712,
+              704
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          14061,
+          14083
+        ],
+        "member_id_dump_line": 14177,
+        "member_name_dump_line": 14203,
+        "member_offset_dump_line": 14229
+      },
+      "catalog_id": "provisional.com.ProjectItem.CreateFolder"
+    },
+    {
+      "owner": "IProjectItem",
+      "type_info_index": 35,
+      "name": "GenerateCode",
+      "record_index": 22,
+      "dispatch_member_id": 16,
+      "raw_member_id": "00000010",
+      "name_offset": 9732,
+      "record_offset": 50744,
+      "record_bytes": 32,
+      "invocation_kind": "function",
+      "invocation_kind_value": 1,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [],
+      "source_anchor": {
+        "function_dump_lines": [
+          14084,
+          14096
+        ],
+        "member_id_dump_line": 14178,
+        "member_name_dump_line": 14204,
+        "member_offset_dump_line": 14230
+      },
+      "catalog_id": "provisional.com.ProjectItem.GenerateCode"
+    },
+    {
+      "owner": "IProjectItem",
+      "type_info_index": 35,
+      "name": "GenerateCodeIn",
+      "record_index": 23,
+      "dispatch_member_id": 17,
+      "raw_member_id": "00000011",
+      "name_offset": 9756,
+      "record_offset": 50776,
+      "record_bytes": 44,
+      "invocation_kind": "function",
+      "invocation_kind_value": 1,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "i_nLanguage",
+          "name_offset": 7192,
+          "record_offset": 50808,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "000001f0",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "user_defined",
+              "name": "ENUMProgrammingLanguage",
+              "type_info_index": 23,
+              "type_kind": "TKIND_ENUM"
+            },
+            "descriptor_chain": [
+              496
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          14097,
+          14114
+        ],
+        "member_id_dump_line": 14179,
+        "member_name_dump_line": 14205,
+        "member_offset_dump_line": 14231
+      },
+      "catalog_id": "provisional.com.ProjectItem.GenerateCodeIn"
+    },
+    {
+      "owner": "IProjectItem",
+      "type_info_index": 35,
+      "name": "GenerateCodeEx",
+      "record_index": 24,
+      "dispatch_member_id": 18,
+      "raw_member_id": "00000012",
+      "name_offset": 7164,
+      "record_offset": 50820,
+      "record_bytes": 44,
+      "invocation_kind": "function",
+      "invocation_kind_value": 1,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 50852,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000208",
+            "pointer_depth": 2,
+            "leaf": {
+              "kind": "user_defined",
+              "name": "IErrorMarkers",
+              "type_info_index": 24,
+              "type_kind": "TKIND_DISPATCH"
+            },
+            "descriptor_chain": [
+              520,
+              512,
+              504
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          14115,
+          14132
+        ],
+        "member_id_dump_line": 14180,
+        "member_name_dump_line": 14206,
+        "member_offset_dump_line": 14232
+      },
+      "catalog_id": "provisional.com.ProjectItem.GenerateCodeEx"
+    },
+    {
+      "owner": "IProjectItem",
+      "type_info_index": 35,
+      "name": "GenerateCodeInEx",
+      "record_index": 25,
+      "dispatch_member_id": 19,
+      "raw_member_id": "00000013",
+      "name_offset": 9784,
+      "record_offset": 50864,
+      "record_bytes": 56,
+      "invocation_kind": "function",
+      "invocation_kind_value": 1,
+      "function_flags": 0,
+      "optional_argument_count": 0,
+      "return_type": {
+        "encoded": "80190019",
+        "pointer_depth": 0,
+        "leaf": {
+          "kind": "primitive",
+          "name": "HRESULT"
+        },
+        "descriptor_chain": []
+      },
+      "parameters": [
+        {
+          "index": 0,
+          "name": "i_nLanguage",
+          "name_offset": 7192,
+          "record_offset": 50896,
+          "parameter_flags": 1,
+          "direction": [
+            "in"
+          ],
+          "type": {
+            "encoded": "000001f0",
+            "pointer_depth": 0,
+            "leaf": {
+              "kind": "user_defined",
+              "name": "ENUMProgrammingLanguage",
+              "type_info_index": 23,
+              "type_kind": "TKIND_ENUM"
+            },
+            "descriptor_chain": [
+              496
+            ]
+          }
+        },
+        {
+          "index": 1,
+          "name": "pVal",
+          "name_offset": 64,
+          "record_offset": 50908,
+          "parameter_flags": 10,
+          "direction": [
+            "out",
+            "retval"
+          ],
+          "type": {
+            "encoded": "00000208",
+            "pointer_depth": 2,
+            "leaf": {
+              "kind": "user_defined",
+              "name": "IErrorMarkers",
+              "type_info_index": 24,
+              "type_kind": "TKIND_DISPATCH"
+            },
+            "descriptor_chain": [
+              520,
+              512,
+              504
+            ]
+          }
+        }
+      ],
+      "source_anchor": {
+        "function_dump_lines": [
+          14133,
+          14155
+        ],
+        "member_id_dump_line": 14181,
+        "member_name_dump_line": 14207,
+        "member_offset_dump_line": 14233
+      },
+      "catalog_id": "provisional.com.ProjectItem.GenerateCodeInEx"
+    }
+  ]
+}

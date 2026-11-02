@@ -6,28 +6,29 @@ use std::sync::OnceLock;
 use serde_json::{Value, json};
 
 use super::super::load;
+use super::cohorts;
 use super::oracle;
 use super::schema::*;
 
 fn fragment(name: &str) -> &'static Value {
-    static GENERATION: OnceLock<Value> = OnceLock::new();
-    static RESULTS: OnceLock<Value> = OnceLock::new();
-    static COLLECTIONS: OnceLock<Value> = OnceLock::new();
-    static CORE: OnceLock<Value> = OnceLock::new();
-    let slot = match name {
-        "com-generation-signatures.json" => &GENERATION,
-        "com-result-getters.json" => &RESULTS,
-        "com-collection-getters.json" => &COLLECTIONS,
-        "com-core-declarations.json" => &CORE,
-        other => panic!("unregistered adopted fragment: {other}"),
-    };
-    slot.get_or_init(|| load(name))
+    static FRAGMENTS: OnceLock<BTreeMap<&str, Value>> = OnceLock::new();
+    &FRAGMENTS.get_or_init(|| {
+        [
+            "com-generation-signatures.json",
+            "com-result-getters.json",
+            "com-collection-getters.json",
+        ]
+        .into_iter()
+        .chain(cohorts::DECLARED.iter().map(|c| c.file))
+        .map(|file| (file, load(file)))
+        .collect()
+    })[name]
 }
 
 fn registered_cohorts(value: &Coverage) {
-    // Fixed finite partition; future adoption must deliberately change its state
-    // and fragment registration, not the denominator or the old fragment schemas.
-    let expected = [
+    // Legacy schemas remain independent; all shared-schema cohorts use the same
+    // descriptors as exact declaration validation, not a second hand-built list.
+    let legacy = [
         (
             "generation",
             "adopted",
@@ -49,18 +50,15 @@ fn registered_cohorts(value: &Coverage) {
             Some("getters"),
             10,
         ),
-        (
-            "core",
-            "adopted",
-            Some("com-core-declarations.json"),
-            Some("records"),
-            114,
-        ),
-        ("graph", "remaining", None, None, 79),
-        ("projects", "remaining", None, None, 68),
-        ("diagnostics", "remaining", None, None, 28),
-        ("events", "remaining", None, None, 8),
     ];
+    let expected: Vec<_> = legacy
+        .into_iter()
+        .chain(
+            cohorts::DECLARED
+                .iter()
+                .map(|c| (c.id, "adopted", Some(c.file), Some("records"), c.records)),
+        )
+        .collect();
     assert_eq!(value.cohorts.len(), expected.len());
     for (c, (id, state, file, field, count)) in value.cohorts.iter().zip(expected) {
         assert_eq!(
@@ -77,6 +75,10 @@ fn registered_cohorts(value: &Coverage) {
 }
 
 pub fn check(value: &Value) -> Coverage {
+    check_using(value, fragment)
+}
+
+pub fn check_using<'a>(value: &Value, get_fragment: impl Fn(&str) -> &'a Value) -> Coverage {
     let coverage: Coverage = serde_json::from_value(value.clone()).unwrap();
     assert_eq!(
         coverage.format,
@@ -102,7 +104,7 @@ pub fn check(value: &Value) -> Coverage {
             c.enum_variables,
             c.zero_callable_types
         ],
-        [75, 317, 8, 142, 183, 20, 130, 29]
+        [75, 317, 8, 325, 0, 20, 130, 29]
     );
     let declarations: BTreeMap<_, _> = coverage
         .declarations
@@ -198,7 +200,7 @@ pub fn check(value: &Value) -> Coverage {
             cohort.record_count as usize
         );
         if let (Some(file), Some(field)) = (&cohort.fragment, &cohort.record_field) {
-            let adopted = fragment(file);
+            let adopted = get_fragment(file);
             let rows = adopted[field].as_array().unwrap();
             assert_eq!(rows.len(), cohort.record_count as usize);
             let mut adopted_membership = BTreeSet::new();
@@ -280,8 +282,8 @@ pub fn check(value: &Value) -> Coverage {
     coverage
 }
 
-pub fn core_extents(core: &Declarations, coverage: &Coverage) {
-    for owner in &core.owners {
+pub fn declaration_extents(inventory: &Declarations, coverage: &Coverage) {
+    for owner in &inventory.owners {
         let rows: Vec<_> = coverage
             .records
             .iter()
@@ -301,10 +303,10 @@ pub fn core_extents(core: &Declarations, coverage: &Coverage) {
     let adopted = &coverage
         .records
         .iter()
-        .filter(|r| r.cohort == "core")
+        .filter(|r| r.cohort == inventory.cohort)
         .collect::<Vec<_>>();
-    assert_eq!(adopted.len(), core.records.len());
-    for (r, c) in core.records.iter().zip(adopted) {
+    assert_eq!(adopted.len(), inventory.records.len());
+    for (r, c) in inventory.records.iter().zip(adopted) {
         assert_eq!(
             (
                 r.type_info_index,
