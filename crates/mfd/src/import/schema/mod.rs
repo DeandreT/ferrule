@@ -485,6 +485,30 @@ pub(super) fn is_xml_document_wrapper(
             })
 }
 
+/// Shared exact selectors: a consumer census must not admit a later content
+/// root or a filename alias that the downstream XML reader selects differently.
+pub(super) fn xml_content_entry<'a, 'input>(
+    root: roxmltree::Node<'a, 'input>,
+) -> Option<roxmltree::Node<'a, 'input>> {
+    xml_document_wrapper(root)
+        .and_then(|document| {
+            document
+                .children()
+                .find(|node| node.has_tag_name("entry") && !is_document_decoration_entry(node))
+        })
+        .or_else(|| root.children().find(|node| node.has_tag_name("entry")))
+}
+
+pub(super) fn xml_file_instance_input(root: roxmltree::Node<'_, '_>) -> Option<u32> {
+    root.descendants()
+        .find(|entry| {
+            entry.has_tag_name("entry")
+                && entry.attribute("name") == Some("FileInstance")
+                && entry.attribute("inpkey").is_some()
+        })
+        .and_then(|entry| parse_u32(entry.attribute("inpkey")))
+}
+
 fn read_schema_component_resolved(
     component: &roxmltree::Node,
     mfd_path: &Path,
@@ -506,13 +530,7 @@ fn read_schema_component_resolved(
     // The document wrapper is a protocol level. Descend through it once,
     // then retain the complete payload even when its local name or namespace
     // intentionally matches either reserved wrapper.
-    let entry = xml_document_wrapper(root_el)
-        .and_then(|document| {
-            document
-                .children()
-                .find(|node| node.has_tag_name("entry") && !is_document_decoration_entry(node))
-        })
-        .or_else(|| root_el.children().find(|node| node.has_tag_name("entry")))?;
+    let entry = xml_content_entry(root_el)?;
 
     let mut ports = BTreeMap::new();
     let mut out_count = 0usize;
@@ -678,28 +696,10 @@ fn read_schema_component_resolved(
     {
         ports.insert(key, vec![SOURCE_DOCUMENT_PATH_PORT.to_string()]);
     }
-    if is_source
-        && let Some(key) = root_el
-            .descendants()
-            .find(|entry| {
-                entry.has_tag_name("entry")
-                    && entry.attribute("name") == Some("FileInstance")
-                    && entry.attribute("inpkey").is_some()
-            })
-            .and_then(|entry| parse_u32(entry.attribute("inpkey")))
-    {
+    if is_source && let Some(key) = xml_file_instance_input(root_el) {
         ports.insert(key, vec![SOURCE_INPUT_DOCUMENT_PATH_PORT.to_string()]);
     }
-    if !is_source
-        && let Some(key) = root_el
-            .descendants()
-            .find(|entry| {
-                entry.has_tag_name("entry")
-                    && entry.attribute("name") == Some("FileInstance")
-                    && entry.attribute("inpkey").is_some()
-            })
-            .and_then(|entry| parse_u32(entry.attribute("inpkey")))
-    {
+    if !is_source && let Some(key) = xml_file_instance_input(root_el) {
         ports.insert(key, vec![TARGET_DOCUMENT_PATH_PORT.to_string()]);
     }
     let schema_setting = component
