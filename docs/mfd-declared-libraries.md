@@ -87,6 +87,29 @@ parsers and serializers remain blocking producer claims, not invisible routes.
 Source-node rules affecting a checked argument, driver or output also refuse
 until their provenance and consumption profile are proved.
 
+Frame availability is proved separately for every receiving boundary. A frame
+in one sibling receiver cannot authorize an argument in another. Root-visible
+singleton values and constants remain usable across receivers; repeated source
+fields require their exact source frames in that receiver's ancestor chain.
+The bounded nested profile supports same-source descendant and identity driver
+chains, not a second implementation of the legacy fallback resolver.
+
+Affected raw `ferrule-scope-sources` entries are checked before the legacy map
+can collapse duplicate keys. Matching hints retain the proved stored driver
+path (relative for a nested descendant). Changed, duplicate, conflicting,
+unknown or oversized affected hints refuse; unrelated scopes retain their
+ordinary behavior. A final context seal then checks actual constructed roots,
+ancestor paths, drivers and direct declared-call bindings after hint restoration
+and subsequent transformations, before publication. Unproved wrappers or late
+context changes refuse rather than inheriting the earlier producer proof.
+
+XML path identity is checked for every segment. Attribute ancestors are outside
+the supported profile; a leaf attribute is allowed only when its normalized
+schema role agrees. Numeric prefixes may reference only the proved unqualified
+zero namespace slot, including the legacy implicit zero slot. Qualified,
+undefined and nonzero slots are not made unqualified by stripping their prefix.
+These checks apply to arguments, drivers and receiving paths alike.
+
 Independent local function namespaces and parameter catalogs remain local.
 An unused catalog becomes relevant only if its actually promoted ports compete
 on the checked closure; unrelated collisions do not become a whole-graph gate.

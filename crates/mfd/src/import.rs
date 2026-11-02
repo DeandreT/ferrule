@@ -1600,7 +1600,6 @@ fn import_resolved(
     }) {
         return Err(MfdError::Unsupported("XML scalar output inside a user function or outside the active structure cannot be retained safely".into()));
     }
-    let scope_source_hints = scope_source_hints(&structure);
     let selected_language = wrapper
         .children()
         .find(|node| node.has_tag_name("properties"))
@@ -2532,6 +2531,7 @@ fn import_resolved(
         udf::certificate::Normalized {
             schemas: &schema_components,
             sources: &sources,
+            source_names: &source_names,
             intermediates: &intermediates,
             targets: &targets,
             functions: &fn_components,
@@ -2545,11 +2545,15 @@ fn import_resolved(
             joins: &joins,
             rules: &source_node_functions,
         },
+        structure,
     );
     udf_registry
         .finish_construction()
         .map_err(MfdError::Resource)?;
-    certificate.map_err(MfdError::UnsupportedImport)?;
+    let context_certificate = certificate.map_err(MfdError::UnsupportedImport)?;
+    // In the declared profile, raw affected hints have now been checked before
+    // the legacy parser's last-wins collapse. Ordinary behavior stays unchanged.
+    let scope_source_hints = scope_source_hints(&structure);
 
     let xml_type_conditions = alternatives::conditioned_port_types(&structure);
     let xml_condition_ports = structure
@@ -2891,6 +2895,7 @@ fn import_resolved(
     source_options.mfd_optional_parser_input_names =
         std::mem::take(&mut builder.optional_parser_input_names);
     source_options.mfd_json5_string_dependencies = json5_string_dependencies;
+    let declared_call_nodes = std::mem::take(&mut builder.udf_nodes);
     let mut project = Project {
         source: primary.schema.clone(),
         target: runtime_target_schema(target, &edge_from),
@@ -2987,6 +2992,26 @@ fn import_resolved(
             &mut warnings,
         );
     }
+    let context_audit: Result<(), String> = (|| {
+        context_certificate.audit_target_count(
+            connected_targets.len().saturating_sub(1),
+            project.extra_targets.len(),
+        )?;
+        context_certificate.audit(target, &project.root, &project.graph, &declared_call_nodes)?;
+        for (descriptor, actual) in connected_targets.iter().skip(1).zip(&project.extra_targets) {
+            context_certificate.audit(
+                descriptor,
+                &actual.root,
+                &project.graph,
+                &declared_call_nodes,
+            )?;
+        }
+        Ok(())
+    })();
+    udf_registry
+        .finish_construction()
+        .map_err(MfdError::Resource)?;
+    context_audit.map_err(MfdError::UnsupportedImport)?;
     resources.append_refusals(&mut warnings);
     Ok(LoweredStage {
         primary_filename,

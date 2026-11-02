@@ -299,18 +299,36 @@ fn xml_path(
         .and_then(|data| data.children().find(|node| element(*node, "document")))
         .and_then(|document| document.attribute("instanceroot"))
         .and_then(|name| name.strip_prefix("{}"));
+    if !unqualified_segment(root) {
+        return Ok(None);
+    }
     let root_name = normalize_xml_entry_name(root.attribute("name").unwrap_or_default()).0;
     if root_name.is_empty()
         || root_name.contains(':')
+        || !unqualified_segment(root)
+        || normalize_xml_entry_name(root.attribute("name").unwrap_or_default()).1
+        || root.attribute("type").is_some_and(|kind| kind != "element")
         || document_root != Some(root_name)
         || root.attribute("ns").is_some_and(|value| value != "0")
     {
         return Ok(None);
     }
-    if let Some(header) = data
-        .and_then(|data| data.children().find(|node| element(*node, "root")))
-        .and_then(|root| root.children().find(|node| element(*node, "header")))
-    {
+    let metadata_root = data.and_then(|data| data.children().find(|node| element(*node, "root")));
+    let mut headers = metadata_root
+        .into_iter()
+        .flat_map(|root| root.children().filter(|node| element(*node, "header")));
+    if let Some(header) = headers.next() {
+        if headers.next().is_some() {
+            return Ok(None);
+        }
+        if header
+            .children()
+            .filter(|node| element(*node, "namespaces"))
+            .count()
+            != 1
+        {
+            return Ok(None);
+        }
         let namespace = header
             .children()
             .find(|node| element(*node, "namespaces"))
@@ -329,6 +347,10 @@ fn xml_path(
     let mut path = Vec::new();
     for entry in pin.ancestors().take_while(|n| *n != root) {
         if !element(entry, "entry")
+            || !unqualified_segment(entry)
+            || entry != pin
+                && (normalize_xml_entry_name(entry.attribute("name").unwrap_or_default()).1
+                    || entry.attribute("type") == Some("attribute"))
             || entry.attribute("ns").is_some_and(|value| value != "0")
             || entry.children().any(|n| element(n, "condition"))
             || entry
@@ -346,6 +368,24 @@ fn xml_path(
     }
     path.reverse();
     Ok(Some(path))
+}
+
+/// The initial certificate supports only namespace slot zero, whose empty URI
+/// is checked against the actual header (or the legacy implicit zero slot).
+/// Stripping a numeric prefix alone is never evidence that its slot is empty.
+fn unqualified_segment(entry: roxmltree::Node<'_, '_>) -> bool {
+    let name = entry.attribute("name").unwrap_or_default();
+    if name.len() > 4096 {
+        return false;
+    }
+    if let Some((prefix, _)) = name.split_once(':')
+        && (prefix.is_empty()
+            || !prefix.bytes().all(|byte| byte.is_ascii_digit())
+            || prefix.parse::<u32>() != Ok(0))
+    {
+        return false;
+    }
+    entry.attribute("ns").is_none_or(|slot| slot == "0")
 }
 
 fn element(node: roxmltree::Node<'_, '_>, local_name: &str) -> bool {
