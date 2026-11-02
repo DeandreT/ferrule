@@ -23,6 +23,9 @@ mod com_result_getters;
 #[path = "source_inventory/com_names.rs"]
 mod com_names;
 
+#[path = "source_inventory/com_type_relationships.rs"]
+mod com_type_relationships;
+
 #[path = "source_inventory/source_contracts.rs"]
 mod source_contracts;
 

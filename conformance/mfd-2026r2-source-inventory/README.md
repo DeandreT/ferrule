@@ -21,6 +21,7 @@ They do not change the canonical capability ledger or establish execution suppor
 | `com-diagnostics-declarations.json` | 28 release-bound output-line, symbol and error-marker declarations with 44 ordered parameters |
 | `com-events-declarations.json` | Eight release-bound event-source declarations with seven ordered parameters; five function-body dump anchors are explicitly null |
 | `com-callable-coverage.json` | Finite, disjoint membership of all 325 callable records; declaration adoption remains separate from runtime support |
+| `com-type-relationships.json` | GUID/header enrichment of the same 75 type identities and all 32 ordered coclass references, including nine default sources; no new capabilities or activation proof |
 | `supporting.json` | Public I/O classes, wrapper-library exceptions and the named installation-artifact requests |
 | `schema-wrappers.json` | Four optional schema-wrapper source profiles, actual schema identities and build/dependency metadata; no compiled or runtime qualification |
 | `external-references.json` | Linked historical DOM algorithm and redirected .NET interface contract, kept separate from vendor claims |
@@ -184,10 +185,57 @@ once. This closes only the finite function-declaration partition, not the COM
 type inventory, product scope or parity. The 75
 type-info declarations also include 20 enum tables/130 variable records and 29
 zero-function/zero-variable types (23 coclasses, five empty event sources and
-`_IDummy`). These are separate metadata, not additional capabilities or proof of
-coclass/default-interface/event-source relationship or activation coverage.
-Owner TYPEFLAGS are retained declaration bits, not complete owner-type metadata.
-Those metadata layers and all platform/ABI/runtime qualification remain separate.
+`_IDummy`). These are separate metadata, not additional capabilities or activation
+coverage. The supplemental type/relationship fragment enriches these same 75
+identities: 22 ordinary dispatch interfaces, nine event dispatch interfaces,
+`_IDummy`, 23 coclasses and 20 enums. It joins the existing callable/variable
+counts without duplicating their declarations or changing the capability ledger.
+
+The type fragment retains header/name anchors, raw TYPEFLAGS, version words,
+`cImplTypes`, `datatype1`/`datatype2`, alignment, declared vtable/instance sizes and
+custom-data offsets. All 55 non-enum types have GUIDs; all 20 enums explicitly
+have null GUIDs and raw `ffffffff` GUID offsets. The complete 62-record GUID table
+also contains the library identity, two import identities and four deliberately
+unclassified metadata identities. Those seven rows are not new local types or
+capabilities. Library `SYS_WIN64`/4.1 metadata and the `stdole2.tlb`/imported IID
+references establish neither platform/ABI qualification nor dependency availability.
+
+Every coclass list starts at its raw `datatype1` segment offset, traverses exactly
+`cImplTypes` records and ends at `ffffffff`. The 32 records are reached exactly
+once without gaps, shared ownership, cycles or unresolved local targets: 23
+`FDEFAULT` (`0x1`) interfaces and nine `FDEFAULT | FSOURCE` (`0x3`) sources. These
+are standard IMPLTYPEFLAG declaration labels, not behavioral defaults. Fourteen
+coclasses have only a default interface. All ordinary defaults have the same stem,
+with the literal `_Dummy` → `_IDummy` exception. Sources include the five empty
+AppOutputLineSymbol/AppOutputLines/AppOutputLine/ErrorMarkers/ErrorMarker event
+interfaces and the nonempty Application/Document/Project/ProjectItem sources.
+Event headers retain `cImplTypes=1` with `datatype1=ffffffff`; that unresolved raw
+distinction is not replaced with the ordinary/dummy `datatype1=1`, and no event-base
+edge is invented. Dummy/source headers do not establish intended public use.
+
+**Dump hazard:** relationship evidence comes from global RefTab hex rows at dump
+lines 2615–2646, anchored by segment-relative ordinal. Their printed first address
+`0000280c` is displaced from the actual segment start `0000260c` (9740); it is not
+a binary position. Late `TypeInfo`/`RefRecord` renderings are invalid list evidence:
+lines 15148–15161 contain event words and lines 15239–15254 contain `ffffffff`
+renderings. Neither substitutes for the authoritative global rows. Type headers
+use lines `194+28*i`–`221+28*i`; GUID rows use `2304+5*i`–`2308+5*i`; name rows use
+`2693+6*n`–`2698+6*n`. These uniform anchors were independently checked against the
+pinned dump, including all 453 name records and their bounded binary counterparts.
+
+The type fragment's `columns` legend defines its compact arrays. Its separate
+`oracles/com-type-relationships.jsonl` is a dump-only transcription, not output
+from the candidate JSON, candidate binary reader or existing coverage inventory.
+`T` tuples retain index, name, kind, name/GUID offsets, flags, version,
+`cImplTypes`, both datatype words, function/variable counts, header-extra tuple and
+name-record index. `G` tuples retain index, GUID and both raw reference/hash words;
+`R` tuples retain segment offset and all four literal global-row words. The
+validator independently checks deterministic anchors, nullable GUID joins, target
+names/GUIDs, owner ordinals and complete list reachability. Coherent GUID, same-kind
+target and list-relinking mutations remain structurally consistent but fail the
+frozen source oracle. All checks use repository files only, without vendor files,
+network access, native COM execution or activation. Neither declaration wiring nor
+raw sizes qualify ABI, marshaling, ownership, lifetime, defaults or runtime behavior.
 
 Scalar, unknown-field and coherent mutation controls run with repository files
 only; they do not require vendor artifacts, network access or activation. Every
