@@ -13,6 +13,10 @@ pub(crate) fn add_runtime(library: &mut Library) {
             include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleEdi.Tokenizer.cs"),
         ),
         (
+            "Runtime/FerruleEdi.SourceConstraints.cs",
+            include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleEdi.SourceConstraints.cs"),
+        ),
+        (
             "Runtime/FerruleEdi.Writer.cs",
             include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleEdi.Writer.cs"),
         ),

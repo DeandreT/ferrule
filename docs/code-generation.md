@@ -1169,6 +1169,32 @@ with embedded family-specific schemas and options; their package-free codecs
 handle X12, EDIFACT, HL7 v2, TRADACOMS, and IDoc. Each layer keeps its own admission ahead of the
 layer below it.
 
+The generic EDI document inputs enforce retained `edi_value_constraints` on
+the decoded, schema-projected source spelling before scalar conversion or
+implied-decimal scaling. Length counts Unicode scalar characters and code
+lists match exactly: integer `0001`, float `01.00`, and an implied-decimal
+wire value `1234` are checked in those spellings, not as `1`, `1.0`, or
+`12.34`. Composite string projections use the active segment's component
+separator; HL7 escapes and IDoc UTF-8/padding are decoded before checking.
+Only consumed schema fields are checked, not skipped lenient segments or
+unprojected components and repetitions. Empty or missing wire positions retain
+their existing Null/cardinality behavior and are exempt from lexical rules,
+even with a positive minimum length. This is distinct from the separate strict
+generated X12 API's empty-value policy. `edi_lexical_formats` remain output-only.
+
+Invalid source constraint metadata, duplicate paths, and paths that do not
+select scalar schema fields are refused during boundary preparation, including
+when optional data is absent. Source failures retain exact repeated locations
+and the adapter's source owner. C# exposes `FerruleEdiError.Constraint` with a
+`ValidationReport`; native/Rust expose `EdiFormatError::Validation`. Reports
+retain at most 10,000 length/code-list issues and mark truncation, without
+including raw input values in diagnostics. Source refusal occurs before mapping
+or output serialization, including mappings with constant targets. Each call
+owns its validation state; source acquisition and byte budgets are unchanged.
+Validation follows the existing parser descent without retaining a second value
+tree. Reports follow consumed field order; a constraint violation already
+observed on a field remains a constraint failure if its scalar conversion fails.
+
 An explicit filename-endpoint `DocumentProject` may instead read one direct EDI
 document and return one strict JSON document through those primary EDI byte APIs.
 Its retained output filename is available through `evaluate_output_filename` /

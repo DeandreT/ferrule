@@ -352,6 +352,16 @@ pub fn from_str_with_separators(
     lenient: bool,
     separators: Option<Separators>,
 ) -> Result<Instance, EdiFormatError> {
+    from_str_with_constraints(text, schema, lenient, separators, &[])
+}
+
+pub(crate) fn from_str_with_constraints(
+    text: &str,
+    schema: &SchemaNode,
+    lenient: bool,
+    separators: Option<Separators>,
+    constraints: &[mapping::EdiValueConstraint],
+) -> Result<Instance, EdiFormatError> {
     crate::refuse_json_tuple(schema)?;
     let tokenized = tokenizer::tokenize(text, separators)?;
     read_x12_segments(
@@ -359,6 +369,7 @@ pub fn from_str_with_separators(
         &tokenized.segments,
         &tokenized.component_joins,
         lenient,
+        constraints,
     )
 }
 

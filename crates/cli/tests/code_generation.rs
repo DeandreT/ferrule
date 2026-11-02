@@ -120,6 +120,8 @@ mod document_collections;
 mod dynamic_properties;
 #[path = "code_generation/dynamic_source_fault_projection.rs"]
 mod dynamic_source_fault_projection;
+#[path = "code_generation/edi_source_constraints.rs"]
+mod edi_source_constraints;
 #[path = "code_generation/enclosing_frame_date_producers.rs"]
 mod enclosing_frame_date_producers;
 #[path = "code_generation/enclosing_frame_value_maps.rs"]
