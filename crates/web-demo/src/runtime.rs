@@ -157,6 +157,7 @@ pub fn parse_source(
             side: DataSide::Source,
         });
     }
+    let xml_options = xml_read_options(project, format)?;
     validate_xbrl_format(
         project.source_options.xbrl.is_some(),
         format,
@@ -168,7 +169,7 @@ pub fn parse_source(
                 Some(wsdl) => {
                     format_xml::from_wsdl_message_str(text, &project.source, wsdl.operation())
                 }
-                None => format_xml::from_str(text, &project.source),
+                None => format_xml::from_str_with_options(text, &project.source, &xml_options),
             };
             parsed.map_err(|error| RuntimeError::Parse {
                 format,
@@ -242,6 +243,13 @@ pub fn serialize_target(
         return Err(RuntimeError::CsvFormatRequired {
             side: DataSide::Target,
         });
+    }
+    if project.target_options.xml_allow_inactive_root_type_members
+        || project.target_options.xml_root_view_read_policy
+    {
+        return Err(RuntimeError::InvalidProject(vec![
+            "XML root read policies are source-only".into(),
+        ]));
     }
     validate_xbrl_format(
         project.target_options.xbrl.is_some(),
@@ -352,6 +360,44 @@ pub fn run(
     serialize_target(project, &target, target_format)
 }
 
+fn xml_read_options(
+    project: &Project,
+    format: DataFormat,
+) -> Result<format_xml::XmlReadOptions, RuntimeError> {
+    let options = &project.source_options;
+    let read = format_xml::XmlReadOptions {
+        allow_inactive_root_type_members: options.xml_allow_inactive_root_type_members,
+        root_view_policy: options.xml_root_view_read_policy,
+    };
+    if !read.allow_inactive_root_type_members && !read.root_view_policy {
+        return Ok(read);
+    }
+    let accepted = mapping::FormatOptions {
+        xml_document: true,
+        xml_allow_inactive_root_type_members: true,
+        xml_root_view_read_policy: read.root_view_policy,
+        ..Default::default()
+    };
+    let remote = project.source_path.as_deref().is_some_and(|path| {
+        path.split_once("://").is_some_and(|(scheme, _)| {
+            scheme.eq_ignore_ascii_case("http") || scheme.eq_ignore_ascii_case("https")
+        })
+    });
+    // Direct parse_source callers bypass graph validation, but the opt-in
+    // boundary must still obey the same closed profile as validated runs.
+    if format != DataFormat::Xml
+        || options != &accepted
+        || remote
+        || !ir::xml_inactive_root_type_members_are_supported(&project.source)
+        || (read.root_view_policy && !ir::xml_root_view_read_policy_is_supported(&project.source))
+    {
+        return Err(RuntimeError::InvalidProject(vec![
+            "XML root read policies require a closed flat typed local XML source, XML selection and no other format options".into(),
+        ]));
+    }
+    Ok(read)
+}
+
 fn reject_xbrl_extra_sources(project: &Project) -> Result<(), RuntimeError> {
     if let Some(source) = project
         .extra_sources
@@ -389,6 +435,9 @@ fn validate_xbrl_format(
 
 #[cfg(test)]
 mod xml_schema_hint_tests;
+
+#[cfg(test)]
+mod xml_root_policy_tests;
 
 #[cfg(test)]
 mod tests {
