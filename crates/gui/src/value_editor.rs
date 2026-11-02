@@ -13,6 +13,17 @@ const VALUE_MAP_COMPACT_CONTENT_WIDTH: f32 = crate::theme::METRICS.value_map_com
 const VALUE_MAP_MAX_HEIGHT: f32 = crate::theme::METRICS.value_map_height;
 const CONST_TITLE_CHAR_LIMIT: usize = 28;
 
+#[cfg(test)]
+pub(crate) fn graph_draft_counts(context: &egui::Context) -> (usize, usize, usize) {
+    context.data(|data| {
+        (
+            data.count::<DecimalDraft>(),
+            data.count::<MapCellDraft>(),
+            data.count::<egui::text_edit::TextEditState>(),
+        )
+    })
+}
+
 fn parse_finite_float(text: &str) -> Option<f64> {
     let normalized = text
         .chars()
@@ -87,7 +98,7 @@ pub fn title_preview(value: &Value) -> String {
 pub fn show_value_editor(ui: &mut Ui, value: &mut Value) {
     let before_kind = std::mem::discriminant(value);
     ui.label("Type");
-    egui::ComboBox::from_id_salt(ui.scope_id().with("value_kind"))
+    let type_response = egui::ComboBox::from_id_salt(ui.scope_id().with("value_kind"))
         .selected_text(type_label(value))
         .width(ui.available_width())
         .show_ui(ui, |ui| {
@@ -140,6 +151,7 @@ pub fn show_value_editor(ui: &mut Ui, value: &mut Value) {
         })
         .response
         .accessible_name("Constant type");
+    crate::graph_draft_ui::track_popup(ui.ctx(), &type_response);
     if !matches!(value, Value::Decimal(_)) || before_kind != std::mem::discriminant(value) {
         ui.ctx().data_mut(|data| {
             data.remove::<DecimalDraft>(ui.scope_id().with("exact_decimal_draft"));
@@ -157,23 +169,41 @@ pub fn show_value_editor(ui: &mut Ui, value: &mut Value) {
             ui.checkbox(b, "True");
         }
         Value::Int(i) => {
-            ui.add(egui::DragValue::new(i));
+            crate::graph_draft_ui::claim::<egui::text_edit::TextEditState>(
+                ui.ctx(),
+                ui.next_auto_id(),
+            );
+            crate::graph_draft_ui::claim::<f64>(ui.ctx(), ui.next_auto_id());
+            let response = ui.add(egui::DragValue::new(i));
+            crate::graph_draft_ui::track::<egui::text_edit::TextEditState>(ui.ctx(), response.id);
+            crate::graph_draft_ui::track::<f64>(ui.ctx(), response.id);
         }
         Value::Float(f) => {
-            ui.add(
+            crate::graph_draft_ui::claim::<egui::text_edit::TextEditState>(
+                ui.ctx(),
+                ui.next_auto_id(),
+            );
+            crate::graph_draft_ui::claim::<f64>(ui.ctx(), ui.next_auto_id());
+            let response = ui.add(
                 egui::DragValue::from_get_set(move |proposed| accept_finite_float(f, proposed))
                     .range(f64::MIN..=f64::MAX)
                     .clamp_existing_to_range(false)
                     .custom_parser(parse_finite_float),
             );
+            crate::graph_draft_ui::track::<egui::text_edit::TextEditState>(ui.ctx(), response.id);
+            crate::graph_draft_ui::track::<f64>(ui.ctx(), response.id);
         }
         Value::String(s) => {
-            ui.add(
+            let text_id = ui.next_auto_id();
+            crate::graph_draft_ui::claim::<egui::text_edit::TextEditState>(ui.ctx(), text_id);
+            let response = ui.add(
                 egui::TextEdit::multiline(s)
+                    .id(text_id)
                     .desired_width(f32::INFINITY)
                     .desired_rows(4)
                     .hint_text("Enter text…"),
             );
+            crate::graph_draft_ui::track::<egui::text_edit::TextEditState>(ui.ctx(), response.id);
         }
         Value::XmlNil(_) => {
             crate::ui_kit::help(ui, "Explicit XML nil (xsi:nil)");
@@ -201,14 +231,18 @@ impl DecimalDraft {
 
 fn show_decimal_editor(ui: &mut Ui, value: &mut Decimal96) {
     let draft_id = ui.scope_id().with("exact_decimal_draft");
+    crate::graph_draft_ui::claim::<DecimalDraft>(ui.ctx(), draft_id);
     let mut draft = ui
         .ctx()
         .data_mut(|data| data.get_temp::<DecimalDraft>(draft_id))
         // Undo/Redo and replacement values invalidate an uncommitted draft.
         .filter(|draft| draft.original == *value)
         .unwrap_or_else(|| DecimalDraft::new(*value));
+    let text_id = ui.next_auto_id();
+    crate::graph_draft_ui::claim::<egui::text_edit::TextEditState>(ui.ctx(), text_id);
     let response = ui.add(
         egui::TextEdit::singleline(&mut draft.text)
+            .id(text_id)
             .desired_width(f32::INFINITY)
             // Keep one extra character so oversized input cannot become an
             // accepted truncated prefix. The parser enforces the byte limit.
@@ -220,6 +254,7 @@ fn show_decimal_editor(ui: &mut Ui, value: &mut Decimal96) {
         info.label = Some("Exact decimal value".into());
         info
     });
+    crate::graph_draft_ui::track::<egui::text_edit::TextEditState>(ui.ctx(), response.id);
     if response.changed() {
         draft.error = None;
     }
@@ -257,10 +292,8 @@ pub fn show_value_map_editor(
     default: &mut Option<Value>,
     wheel_delta_y: Option<f32>,
 ) {
-    // Node and row IDs can be reused after a document is replaced. Scope both
-    // our cell drafts and TextEdit's own state to the actual canvas instance.
-    let owner = crate::canvas_tools::active(ui.ctx());
-    ui.push_id(("value_map_editor", owner), |ui| {
+    // The graph host supplies semantic node/cell identities outside this table.
+    ui.push_id("value_map_editor", |ui| {
         show_value_map_table(ui, table, default, wheel_delta_y);
     });
 }
@@ -323,6 +356,7 @@ fn show_value_map_table(
                     mouse_wheel: true,
                 });
             let wheel_offset_id = ui.scope_id().with("value_map_wheel_offset");
+            crate::graph_draft_ui::track::<f32>(ui.ctx(), wheel_offset_id);
             if let Some(offset) = ui
                 .ctx()
                 .data_mut(|data| data.remove_temp::<f32>(wheel_offset_id))
@@ -353,6 +387,7 @@ fn show_value_map_table(
                 });
             });
             apply_value_map_wheel(ui, &scroll, wheel_delta_y, wheel_offset_id);
+            crate::graph_draft_ui::track::<egui::scroll_area::State>(ui.ctx(), scroll.id);
         });
         if let Some(i) = remove_idx {
             table.remove(i);
@@ -367,7 +402,7 @@ fn show_value_map_table(
             if changed {
                 *default = has_default.then(|| Value::String(String::new()));
             }
-            ui.push_id("value_map_default_cell", |ui| {
+            crate::graph_draft_ui::cell(ui, crate::graph_draft_ui::Cell::Default, |ui| {
                 if changed {
                     let id = ui.scope_id().with("value_map_cell_draft");
                     ui.ctx().data_mut(|data| data.remove::<MapCellDraft>(id));
@@ -386,21 +421,19 @@ fn show_value_map_entry(
     (from, to): &mut (Value, Value),
     remove_idx: &mut Option<usize>,
 ) {
-    let key_draft_id = ui
-        .push_id(("value_map_key", index), |ui| {
+    let key_draft_id =
+        crate::graph_draft_ui::cell(ui, crate::graph_draft_ui::Cell::Key(index), |ui| {
             let draft_id = ui.scope_id().with("value_map_cell_draft");
             edit_map_value(ui, from, &format!("Entry {} key", index + 1), true);
             draft_id
-        })
-        .inner;
+        });
     ui.weak("->");
-    let value_draft_id = ui
-        .push_id(("value_map_value", index), |ui| {
+    let value_draft_id =
+        crate::graph_draft_ui::cell(ui, crate::graph_draft_ui::Cell::Value(index), |ui| {
             let draft_id = ui.scope_id().with("value_map_cell_draft");
             edit_map_value(ui, to, &format!("Entry {} value", index + 1), true);
             draft_id
-        })
-        .inner;
+        });
     if ui
         .add(egui::Button::new(crate::icons::text(
             lucide_icons::Icon::Trash2,
@@ -541,6 +574,7 @@ impl MapCellDraft {
 
 fn edit_map_value(ui: &mut Ui, value: &mut Value, label: &str, stacked: bool) {
     let draft_id = ui.scope_id().with("value_map_cell_draft");
+    crate::graph_draft_ui::claim::<MapCellDraft>(ui.ctx(), draft_id);
     let mut draft = ui
         .ctx()
         .data_mut(|data| data.get_temp::<MapCellDraft>(draft_id))
@@ -565,6 +599,7 @@ fn edit_map_value(ui: &mut Ui, value: &mut Value, label: &str, stacked: bool) {
                 }
             })
             .response;
+        crate::graph_draft_ui::track_popup(ui.ctx(), &response);
         response.widget_info(|| egui::WidgetInfo {
             current_text_value: Some(draft.kind.label().to_owned()),
             ..egui::WidgetInfo::labeled(
@@ -599,9 +634,11 @@ fn edit_map_value(ui: &mut Ui, value: &mut Value, label: &str, stacked: bool) {
         let previous = draft.text.clone();
         let response = ui
             .add_enabled_ui(enabled, |ui| {
+                let text_id = ui.next_auto_id();
+                crate::graph_draft_ui::claim::<egui::text_edit::TextEditState>(ui.ctx(), text_id);
                 ui.add_sized(
                     [VALUE_MAP_CELL_WIDTH, ui.spacing().interact_size.y],
-                    egui::TextEdit::singleline(&mut draft.text),
+                    egui::TextEdit::singleline(&mut draft.text).id(text_id),
                 )
             })
             .inner;
@@ -612,6 +649,7 @@ fn edit_map_value(ui: &mut Ui, value: &mut Value, label: &str, stacked: bool) {
             info
         });
         text_changed = response.changed();
+        crate::graph_draft_ui::track::<egui::text_edit::TextEditState>(ui.ctx(), response.id);
         enter = response.lost_focus() && ui.input(|input| input.key_pressed(egui::Key::Enter));
         response.on_hover_text(if draft.text.is_empty() {
             "<empty>"

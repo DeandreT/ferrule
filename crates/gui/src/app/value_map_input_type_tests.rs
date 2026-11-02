@@ -493,7 +493,11 @@ fn bounds(app: &FerruleApp, context: &egui::Context) -> egui::Rect {
         .into_iter()
         .find_map(|id| {
             context.read_response(id).and_then(|pin| {
-                context.read_response(pin.layer_id.id.with(("snarl-node", node)).with("frame"))
+                context.read_response(
+                    crate::graph_draft_ui::widget_canvas(context, pin.layer_id.id)
+                        .with(("snarl-node", node))
+                        .with("frame"),
+                )
             })
         })
         .expect("existing registered Value map frame");

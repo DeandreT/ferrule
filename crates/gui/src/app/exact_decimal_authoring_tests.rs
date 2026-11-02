@@ -335,6 +335,7 @@ fn editor(app: FerruleApp) -> Harness<'static, Editor> {
                 host.app.handle_history_shortcuts(ui.ctx(), host.editing);
                 host.app.show_mapping_workspace_canvas(ui, host.editing);
                 host.app.show_preview_setup(ui.ctx());
+                host.app.show_extra_target_setup(ui.ctx());
                 host.app
                     .observe_editor_history(std::time::Instant::now(), false);
             },
@@ -359,7 +360,7 @@ fn open_constant(harness: &mut Harness<'_, Editor>) {
     };
     let (_, rects) = crate::canvas_keyboard::current_fit_rects(
         &harness.ctx,
-        salt,
+        app.embedded_canvas_id(salt),
         state.view_generation,
         &state.snarl,
     )
@@ -702,3 +703,5 @@ fn exact_decimal_save_reopen_and_preview_keep_all_digits_wires_and_layout() {
         assert_eq!(layout(&harness.state().app), expected_layout);
     }
 }
+#[path = "exact_decimal_authoring_tests/lifetime.rs"]
+mod lifetime;

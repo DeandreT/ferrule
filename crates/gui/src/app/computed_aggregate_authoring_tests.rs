@@ -356,7 +356,11 @@ fn bounds(app: &FerruleApp, context: &egui::Context, wanted: NodeId) -> egui::Re
     let response = responses(app, context)
         .iter()
         .find_map(|pin| {
-            context.read_response(pin.layer_id.id.with(("snarl-node", id)).with("frame"))
+            context.read_response(
+                crate::graph_draft_ui::widget_canvas(context, pin.layer_id.id)
+                    .with(("snarl-node", id))
+                    .with("frame"),
+            )
         })
         .expect("actual node frame");
     context

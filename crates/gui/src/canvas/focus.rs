@@ -176,13 +176,19 @@ pub(crate) fn name_as(response: &egui::Response, role: egui::Role, label: &str) 
 
 /// Records a focusable control drawn on the snarl layer of `ui` for `node`.
 pub(crate) fn record_control(ui: &egui::Ui, id: egui::Id, node: SnarlNodeId) {
-    record_control_at(ui.ctx(), ui.layer_id().id, id, node);
+    record_control_at(
+        ui.ctx(),
+        crate::graph_draft_ui::property_canvas(ui),
+        id,
+        node,
+    );
 }
 
 /// Records a pin drawn on the snarl layer of `ui`.
 pub(crate) fn record_pin(ui: &egui::Ui, pin: PinWidget) {
+    let canvas = crate::graph_draft_ui::property_canvas(ui);
     ui.ctx().data_mut(|data| {
-        data.get_temp_mut_or_default::<PinWidgets>(pins_id(ui.layer_id().id))
+        data.get_temp_mut_or_default::<PinWidgets>(pins_id(canvas))
             .0
             .push(pin);
     });
@@ -205,7 +211,8 @@ pub(crate) fn paint_focus(ui: &egui::Ui, rect: egui::Rect, rounding: f32) {
     );
 }
 
-fn canvas_layers(canvas_id: egui::Id) -> [egui::Id; 4] {
+fn canvas_layers(ctx: &egui::Context, canvas_id: egui::Id) -> [egui::Id; 4] {
+    let canvas_id = crate::graph_draft_ui::paint_canvas(ctx, canvas_id);
     [
         canvas_id,
         canvas_id.with("navigation_layer"),
@@ -254,7 +261,7 @@ pub(crate) fn shortcuts(ctx: &egui::Context, canvas_id: egui::Id) -> Shortcuts {
 pub(crate) fn has_keyboard_focus(ctx: &egui::Context, canvas_id: egui::Id) -> bool {
     ctx.memory(|memory| memory.focused())
         .and_then(|id| ctx.read_response(id))
-        .is_some_and(|response| canvas_layers(canvas_id).contains(&response.layer_id.id))
+        .is_some_and(|response| canvas_layers(ctx, canvas_id).contains(&response.layer_id.id))
 }
 
 /// Starts a pass: node controls are recorded afresh while the graph is drawn.
@@ -311,7 +318,10 @@ pub(crate) fn finish(
     let ctx = ui.ctx();
     surface.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Canvas, true, "Mapping canvas"));
     ctx.data_mut(|data| data.insert_temp(surface_id(canvas_id), surface.id));
-    let layer = egui::LayerId::new(ui.layer_id().order, canvas_id);
+    let layer = egui::LayerId::new(
+        ui.layer_id().order,
+        crate::graph_draft_ui::paint_canvas(ctx, canvas_id),
+    );
     let painter = ctx.layer_painter(layer).with_clip_rect(
         viewer
             .canvas_transform
