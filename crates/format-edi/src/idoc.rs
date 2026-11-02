@@ -32,6 +32,16 @@ pub fn from_bytes(
     layout: &IdocLayout,
     lenient: bool,
 ) -> Result<Instance, EdiFormatError> {
+    from_bytes_with_constraints(bytes, schema, layout, lenient, &[])
+}
+
+pub(crate) fn from_bytes_with_constraints(
+    bytes: &[u8],
+    schema: &SchemaNode,
+    layout: &IdocLayout,
+    lenient: bool,
+    constraints: &[mapping::EdiValueConstraint],
+) -> Result<Instance, EdiFormatError> {
     crate::refuse_json_tuple(schema)?;
     if bytes.len() > MAX_RUNTIME_INPUT_BYTES {
         return Err(EdiFormatError::IdocLimit("input size"));
@@ -85,7 +95,7 @@ pub fn from_bytes(
         });
     }
 
-    crate::segments::read_segments(schema, &segments, ' ', None, lenient)
+    crate::segments::read_segments(schema, &segments, ' ', None, lenient, constraints)
 }
 
 /// Reads with explicitly requested descriptor validation. `lenient` retains

@@ -1,0 +1,45 @@
+use std::{cell::RefCell, error::Error, path::Path};
+use codegen_runtime::{EdiBoundaryError, EdiFormatError, ExecutionContext, PrimaryAcquisitionError, PrimaryEdiDocumentError, PrimaryFileSelection, PrimarySourceHost, CsvSourceData};
+
+struct Source { bytes: Vec<u8>, calls: RefCell<Vec<String>> }
+impl PrimarySourceHost for Source {
+    type Error = std::io::Error;
+    fn select(&self, filename: &str, _: PrimaryFileSelection) -> Result<Vec<String>, Self::Error> { self.calls.borrow_mut().push(format!("select:{filename}")); Ok(vec![filename.into()]) }
+    fn load(&self, request: &str) -> Result<CsvSourceData, Self::Error> { self.calls.borrow_mut().push(format!("load:{request}")); Ok(CsvSourceData { bytes: self.bytes.clone(), resolved_path: Some(request.into()) }) }
+}
+fn main() -> Result<(), Box<dyn Error>> {
+    let cases: serde_json::Value = serde_json::from_slice(&std::fs::read("cases.json")?)?;
+    for test in cases.as_array().ok_or("cases")? {
+        let host = Source { bytes: test["wire"].as_str().ok_or("wire")?.as_bytes().to_vec(), calls: RefCell::new(vec![]) };
+        let execution = ExecutionContext::new(Path::new("authored.mapping"));
+        let result = match test["model"].as_u64().ok_or("model")? {
+            __DISPATCH__
+            _ => return Err("unknown model".into()),
+        };
+        match result {
+            Ok(bytes) => { assert!(test.get("issues").is_none() && test["value_error"] != true, "wrong success: {test}"); assert_eq!(bytes, test["output"].as_str().ok_or("output")?.as_bytes(), "{test}"); }
+            Err(PrimaryEdiDocumentError::Acquisition(PrimaryAcquisitionError::Input { path, source: EdiBoundaryError::Format(EdiFormatError::ElementParse { segment, element, expected, value }), .. })) if test["value_error"] == true => {
+                assert_eq!(path, "input.edi");
+                assert_eq!((segment.as_str(), element, expected, value.as_str()), ("DTL", 1, codegen_runtime::ScalarType::Int, "bad"));
+            }
+            Err(PrimaryEdiDocumentError::Acquisition(PrimaryAcquisitionError::Input { path, source: EdiBoundaryError::Format(EdiFormatError::Validation(report)), .. })) => {
+                assert_eq!(path, "input.edi");
+                let expected = test["issues"].as_array().ok_or("unexpected refusal")?;
+                assert!(!report.truncated());
+                assert_eq!(report.issues().len(), expected.len(), "{test}");
+                for (issue, expected) in report.issues().iter().zip(expected) {
+                    let actual = match issue.violation() {
+                        format_edi::EdiConstraintViolation::TooShort { minimum, actual } => serde_json::json!([issue.location(), "TooShort", minimum, null, actual, null]),
+                        format_edi::EdiConstraintViolation::TooLong { maximum, actual } => serde_json::json!([issue.location(), "TooLong", null, maximum, actual, null]),
+                        format_edi::EdiConstraintViolation::NotAllowed { allowed_count } => serde_json::json!([issue.location(), "NotAllowed", null, null, null, allowed_count]),
+                    };
+                    assert_eq!(actual, serde_json::json!([expected[0], expected[1], expected[3], expected[4], expected[5], expected[6]]), "{test}");
+                }
+            }
+            Err(error) => return Err(format!("unexpected boundary error for {test}: {error}").into()),
+        }
+        assert_eq!(*host.calls.borrow(), ["select:input.edi", "load:input.edi"]);
+    }
+    println!("verified emitted primary EDI source constraints");
+    Ok(())
+}

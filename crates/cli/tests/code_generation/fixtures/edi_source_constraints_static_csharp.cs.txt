@@ -1,0 +1,35 @@
+using System.Text;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+const string valid = "UNH+1'DTL+0001'UNT+3+1'";
+const string invalid = "UNH+1'DTL+0002'UNT+3+1'";
+const string expected = "{\n  \"Status\": \"OK\"\n}\n";
+var named = new[] { new NamedDocumentInput("Reference", valid) };
+var namedBytes = new[] { new NamedDocumentBytesInput("Reference", Encoding.UTF8.GetBytes(valid)) };
+for (int iteration = 0; iteration < 2; iteration++)
+{
+    var output = GeneratedMapping.ExecuteDocumentOutputsWithHost(valid, named);
+    if (output.Primary != expected || output.Extras.Count != 0 || output.PrimaryFormat != DocumentBoundaryFormat.Json) throw new Exception($"Whole constant output differs: {System.Text.Json.JsonSerializer.Serialize(output.Primary)}");
+    var binary = GeneratedMapping.ExecuteDocumentBytesOutputsWithHost(Encoding.UTF8.GetBytes(valid), namedBytes);
+    if (!binary.Primary.SequenceEqual(Encoding.UTF8.GetBytes(expected)) || binary.Extras.Count != 0) throw new Exception("Whole byte output differs");
+    Refuses(() => GeneratedMapping.ExecuteDocumentOutputsWithHost(invalid, named), false);
+    Refuses(() => GeneratedMapping.ExecuteDocumentBytesOutputsWithHost(Encoding.UTF8.GetBytes(invalid), namedBytes), false);
+    Refuses(() => GeneratedMapping.ExecuteDocumentSelectedTargetWithHost(invalid, FerruleTargetSelection.Primary(), named), false);
+    Refuses(() => GeneratedMapping.ExecuteDocumentOutputsWithHost(valid, new[] { new NamedDocumentInput("Reference", invalid) }), true);
+    Refuses(() => GeneratedMapping.ExecuteDocumentBytesSelectedTargetWithHost(Encoding.UTF8.GetBytes(valid), FerruleTargetSelection.Primary(), new[] { new NamedDocumentBytesInput("Reference", Encoding.UTF8.GetBytes(invalid)) }), true);
+}
+Console.WriteLine("verified emitted static EDIFACT primary/named text/byte source constraints");
+
+static void Refuses(Action action, bool named)
+{
+    try { action(); }
+    catch (DocumentExecutionException error)
+    {
+        if (named ? error.Owner is not DocumentBoundaryOwner.NamedSource { DeclarationIndex: 0, Name: "Reference" } : error.Owner is not DocumentBoundaryOwner.Source) throw new Exception("Source owner differs", error);
+        if (error.Boundary is not FerruleEdiException { Code: FerruleEdiError.Constraint, Field: "DTL/Code", Location: "DTL/Code", ValidationReport: { Truncated: false } report }
+            || report.Issues.Count != 1 || report.Issues[0].Violation != FerruleEdiConstraintViolation.NotAllowed) throw new Exception("Typed constraint differs", error);
+        return;
+    }
+    throw new Exception("Invalid source accepted before constant target");
+}

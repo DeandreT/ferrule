@@ -12,6 +12,8 @@ public sealed class FerruleEdiException(FerruleEdiError code, string message, lo
     public long? Maximum { get; } = maximum;
     public string? Field { get; } = field;
     public int? SegmentIndex { get; } = segmentIndex;
+    public FerruleEdiValidationReport? ValidationReport { get; internal init; }
+    public string? Location => ValidationReport?.Issues.FirstOrDefault()?.Location;
 }
 
 public sealed class FerruleEdiInputBudget
@@ -42,6 +44,7 @@ public sealed partial class FerruleEdi
     private readonly bool _lenient;
     private readonly bool _strictEnvelope;
     private readonly Dictionary<string, JsonElement> _layouts = new(StringComparer.Ordinal);
+    private readonly SourceConstraint[] _sourceConstraints;
     private static FerruleEdiException Fail(FerruleEdiError code, string text) => new(code, text);
     private static string? Text(JsonElement value, string name) => value.TryGetProperty(name, out var found) && found.ValueKind == JsonValueKind.String ? found.GetString() : null;
     private static bool Flag(JsonElement value, string name) => value.TryGetProperty(name, out var found) && found.ValueKind == JsonValueKind.True;
@@ -67,7 +70,7 @@ public sealed partial class FerruleEdi
             using var parsedOptions = JsonDocument.Parse(options, new JsonDocumentOptions { MaxDepth = 128 });
             _options = parsedOptions.RootElement.Clone();
             _lenient = Flag(_options, "lenient_segments");
-            foreach (string option in new[] { "edi_implied_decimals", "edi_lexical_formats", "edi_value_constraints" })
+            foreach (string option in new[] { "edi_implied_decimals", "edi_lexical_formats" })
             {
                 var seen = new HashSet<string>(StringComparer.Ordinal);
                 foreach (var rule in Array(_options, option))
@@ -79,6 +82,7 @@ public sealed partial class FerruleEdi
                     if (leaf.Type is null || input && option == "edi_implied_decimals" && leaf.Type != "float") throw Fail(FerruleEdiError.Descriptor, "Invalid EDI option target.");
                 }
             }
+            _sourceConstraints = PrepareSourceConstraints();
             if (_options.TryGetProperty("edi_config_reference", out var unresolved) && unresolved.ValueKind != JsonValueKind.Null)
                 throw Fail(FerruleEdiError.Descriptor, "Unresolved EDI configuration.");
             if (kind == "Idoc")
@@ -158,8 +162,17 @@ public sealed partial class FerruleEdi
         catch (DecoderFallbackException) { throw Fail(FerruleEdiError.Format, "EDI input is not UTF-8."); }
         if (_strictEnvelope) ValidateEnvelopeSegments(segments);
         int position = 0;
-        var source = Read(_root, segments, ref position, syntax, [], true);
-        if (!_lenient && position < segments.Count) throw Fail(FerruleEdiError.Schema, "Trailing EDI segment.");
+        var validation = new SourceValidation(_sourceConstraints);
+        FerruleInstance source;
+        try
+        {
+            source = Read(_root, segments, ref position, syntax, [], true, validation, "");
+            if (!_lenient && position < segments.Count) throw Fail(FerruleEdiError.Schema, "Trailing EDI segment.");
+        }
+        catch (FerruleEdiException) { validation.ThrowIfAny(); throw; }
+        // Preserve an observed lexical violation even when conversion of that
+        // field failed. No raw values or parallel instance tree are retained.
+        validation.ThrowIfAny();
         foreach (var implied in Array(_options, "edi_implied_decimals"))
         {
             string[] path = Array(implied, "path").Select(v => v.GetString()!).ToArray();
@@ -185,7 +198,7 @@ public sealed partial class FerruleEdi
         return true;
     }
 
-    private FerruleInstance Read(Node node, List<Segment> segments, ref int position, Syntax syntax, Node[] follow, bool root)
+    private FerruleInstance Read(Node node, List<Segment> segments, ref int position, Syntax syntax, Node[] follow, bool root, SourceValidation validation, string location)
     {
         bool segmentNode = !root && (_kind == "Idoc" ? _layouts.ContainsKey(node.Name) : Id(node.Name) is not null);
         if (segmentNode)
@@ -196,7 +209,8 @@ public sealed partial class FerruleEdi
             return new FerruleGroup(node.Children.Select((child, at) =>
             {
                 var repeats = at < segment.Elements.Count ? segment.Elements[at] : [];
-                FerruleInstance value = child.Repeating ? new FerruleRepeated(repeats.Select(parts => ReadElement(child, parts, segmentSyntax))) : ReadElement(child, repeats.FirstOrDefault() ?? [], segmentSyntax);
+                string field = validation.Child(location, child.Name);
+                FerruleInstance value = child.Repeating ? new FerruleRepeated(repeats.Select((parts, index) => ReadElement(child, parts, segmentSyntax, validation, validation.Occurrence(field, index + 1)))) : ReadElement(child, repeats.FirstOrDefault() ?? [], segmentSyntax, validation, field);
                 return new FerruleField(child.Name, value);
             }));
         }
@@ -204,6 +218,7 @@ public sealed partial class FerruleEdi
         for (int at = 0; at < node.Children.Length; at++)
         {
             var child = node.Children[at];
+            string childLocation = validation.Child(location, child.Name);
             Node[] triggers = Triggers(child).ToArray();
             Node[] childFollow = [.. node.Children.Skip(at + 1).SelectMany(n => Triggers(n)), .. follow];
             Node[] expectations = [.. triggers, .. childFollow];
@@ -217,7 +232,7 @@ public sealed partial class FerruleEdi
                     Skip(ref position);
                     if (!MatchesAt(triggers, position)) break;
                     int before = position;
-                    items.Add(Read(child, segments, ref position, syntax, [.. triggers, .. childFollow], false));
+                    items.Add(Read(child, segments, ref position, syntax, [.. triggers, .. childFollow], false, validation, validation.Occurrence(childLocation, items.Count + 1)));
                     if (position == before) throw Fail(FerruleEdiError.Schema, "EDI loop did not consume a segment.");
                 }
                 fields.Add(new(child.Name, new FerruleRepeated(items)));
@@ -226,22 +241,27 @@ public sealed partial class FerruleEdi
             {
                 Skip(ref position);
                 if (!MatchesAt(triggers, position)) throw Fail(FerruleEdiError.Schema, "Missing or out-of-order EDI segment.");
-                fields.Add(new(child.Name, Read(child, segments, ref position, syntax, childFollow, false)));
+                fields.Add(new(child.Name, Read(child, segments, ref position, syntax, childFollow, false, validation, childLocation)));
             }
         }
         return new FerruleGroup(fields);
     }
 
-    private static FerruleInstance ReadElement(Node node, List<string> parts, Syntax syntax)
+    private static FerruleInstance ReadElement(Node node, List<string> parts, Syntax syntax, SourceValidation validation, string location)
     {
-        if (node.Type is not null) return new FerruleScalar(ParseScalar(node.Type, DecodeSubcomponent(string.Join(syntax.ReadComponent ?? syntax.Component.ToString(), parts), syntax)));
-        return new FerruleGroup(node.Children.Select((child, at) => new FerruleField(child.Name, ReadComponent(child, at < parts.Count ? parts[at] : "", syntax, syntax.Subcomponent))));
+        if (node.Type is not null) return ReadScalar(node, DecodeSubcomponent(string.Join(syntax.ReadComponent ?? syntax.Component.ToString(), parts), syntax), validation, location);
+        return new FerruleGroup(node.Children.Select((child, at) => new FerruleField(child.Name, ReadComponent(child, at < parts.Count ? parts[at] : "", syntax, syntax.Subcomponent, validation, validation.Child(location, child.Name)))));
     }
-    private static FerruleInstance ReadComponent(Node node, string raw, Syntax syntax, char? separator)
+    private static FerruleInstance ReadComponent(Node node, string raw, Syntax syntax, char? separator, SourceValidation validation, string location)
     {
-        if (node.Type is not null) return new FerruleScalar(ParseScalar(node.Type, DecodeSubcomponent(raw, syntax)));
+        if (node.Type is not null) return ReadScalar(node, DecodeSubcomponent(raw, syntax), validation, location);
         string[] parts = separator is { } split ? raw.Split(split) : [raw];
-        return new FerruleGroup(node.Children.Select((child, at) => new FerruleField(child.Name, ReadComponent(child, at < parts.Length ? parts[at] : "", syntax, null))));
+        return new FerruleGroup(node.Children.Select((child, at) => new FerruleField(child.Name, ReadComponent(child, at < parts.Length ? parts[at] : "", syntax, null, validation, validation.Child(location, child.Name)))));
+    }
+    private static FerruleInstance ReadScalar(Node node, string raw, SourceValidation validation, string location)
+    {
+        validation.Check(node, raw, location);
+        return new FerruleScalar(ParseScalar(node.Type!, raw));
     }
     private static string DecodeSubcomponent(string raw, Syntax syntax) => syntax.Subcomponent is { } sub && syntax.Release is { } escape ? raw.Replace($"{escape}T{escape}", sub.ToString(), StringComparison.Ordinal) : raw;
     private static FerruleValue ParseScalar(string type, string raw)
