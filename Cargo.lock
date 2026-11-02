@@ -5357,6 +5357,7 @@ dependencies = [
  "egui-snarl",
  "engine",
  "format-csv",
+ "format-flextext",
  "format-json",
  "format-xbrl",
  "format-xml",
