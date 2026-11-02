@@ -49,11 +49,14 @@ and output type adapters and eager argument consumption, including unused typed
 arguments. Supported conditional branches inside the function remain lazy.
 Owned helper graphs do not reopen libraries during execution or export.
 
-Every connected argument feed must have one raw producer declaration before
-call admission; normalized schema/function maps do not prove ownership.
-This includes unused typed arguments and
-the connected inputs of intermediate producers. Duplicate producer declarations
-are refused regardless of order; one producer may still feed multiple consumers.
+Every connected argument feed must have exactly one raw output declaration and
+no input-direction claims in its active graph before call admission. Source
+readers can retain input keys in normalized source-port maps, so output-only
+counts and normalized maps do not prove ownership. This includes unused typed
+arguments and connected inputs of intermediate producers. Duplicate or opposite-
+direction claims are refused regardless of owner/order or whether the colliding
+input is connected. Nested function graph namespaces stay independent. Graph
+edges do not add pin declarations: one producer may feed multiple consumers.
 
 Only direct ordinary XML scalar target consumers are admitted. Their selected
 content root, explicit unqualified `document/@instanceroot`, nonempty schema
