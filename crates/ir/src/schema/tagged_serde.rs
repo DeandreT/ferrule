@@ -10,7 +10,12 @@ use super::number_serde::NumberDeserializer;
 impl<'de> Deserialize<'de> for SchemaKind {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Deserialize)]
-        #[serde(remote = "SchemaKind", tag = "kind", rename_all = "snake_case")]
+        #[serde(
+            remote = "SchemaKind",
+            rename = "SchemaKind",
+            tag = "kind",
+            rename_all = "snake_case"
+        )]
         enum Repr {
             Scalar {
                 ty: ScalarType,
@@ -40,6 +45,7 @@ impl<'de> Deserialize<'de> for GroupAlternativeConstraintValue {
         #[derive(Deserialize)]
         #[serde(
             remote = "GroupAlternativeConstraintValue",
+            rename = "GroupAlternativeConstraintValue",
             tag = "type",
             content = "value",
             rename_all = "snake_case"
