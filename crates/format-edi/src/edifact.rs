@@ -298,9 +298,18 @@ pub fn from_str(
     schema: &SchemaNode,
     lenient: bool,
 ) -> Result<Instance, EdiFormatError> {
+    from_str_with_constraints(text, schema, lenient, &[])
+}
+
+pub(crate) fn from_str_with_constraints(
+    text: &str,
+    schema: &SchemaNode,
+    lenient: bool,
+    constraints: &[mapping::EdiValueConstraint],
+) -> Result<Instance, EdiFormatError> {
     crate::refuse_json_tuple(schema)?;
     let (segments, component_joins) = tokenize_with_separators(text, false)?;
-    read_edifact_segments(schema, &segments, &component_joins, lenient)
+    read_edifact_segments(schema, &segments, &component_joins, lenient, constraints)
 }
 
 /// Writes an [`Instance`] tree shaped by `schema` as EDIFACT.

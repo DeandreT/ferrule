@@ -186,40 +186,7 @@ fn validate_at(
             let Some(lexical) = lexical_value(value) else {
                 return Ok(());
             };
-            let length = lexical.chars().count();
-            if length < constraint.min_chars() as usize {
-                push_issue(
-                    report,
-                    location,
-                    EdiConstraintViolation::TooShort {
-                        minimum: constraint.min_chars(),
-                        actual: length,
-                    },
-                );
-            } else if length > constraint.max_chars() as usize {
-                push_issue(
-                    report,
-                    location,
-                    EdiConstraintViolation::TooLong {
-                        maximum: constraint.max_chars(),
-                        actual: length,
-                    },
-                );
-            }
-            if !constraint.allowed_values().is_empty()
-                && constraint
-                    .allowed_values()
-                    .binary_search_by(|candidate| candidate.as_str().cmp(lexical.as_ref()))
-                    .is_err()
-            {
-                push_issue(
-                    report,
-                    location,
-                    EdiConstraintViolation::NotAllowed {
-                        allowed_count: constraint.allowed_values().len(),
-                    },
-                );
-            }
+            validate_lexical(lexical.as_ref(), constraint, location, report);
             Ok(())
         }
         Instance::Scalar(_) => Err(EdiFormatError::InvalidValueConstraintLayout {
@@ -230,6 +197,48 @@ fn validate_at(
             path: full_path.join("/"),
             reason: "path crosses a document set",
         }),
+    }
+}
+
+pub(crate) fn validate_lexical(
+    lexical: &str,
+    constraint: &EdiValueConstraint,
+    location: &str,
+    report: &mut EdiValidationReport,
+) {
+    let length = lexical.chars().count();
+    if length < constraint.min_chars() as usize {
+        push_issue(
+            report,
+            location,
+            EdiConstraintViolation::TooShort {
+                minimum: constraint.min_chars(),
+                actual: length,
+            },
+        );
+    } else if length > constraint.max_chars() as usize {
+        push_issue(
+            report,
+            location,
+            EdiConstraintViolation::TooLong {
+                maximum: constraint.max_chars(),
+                actual: length,
+            },
+        );
+    }
+    if !constraint.allowed_values().is_empty()
+        && constraint
+            .allowed_values()
+            .binary_search_by(|candidate| candidate.as_str().cmp(lexical))
+            .is_err()
+    {
+        push_issue(
+            report,
+            location,
+            EdiConstraintViolation::NotAllowed {
+                allowed_count: constraint.allowed_values().len(),
+            },
+        );
     }
 }
 

@@ -109,9 +109,12 @@ fn compiled_metadata_survives_serialization_and_source_removal()
         b"MSH|^~\\&|SOURCE\rPID|12.34|20261026|OK\r"
     );
     // Lexical formatting must still fail before the later code-list check.
+    // Build output-only invalid values without weakening source validation.
+    let mut output_setup = restored.clone();
+    output_setup.edi_value_constraints.clear();
     let invalid = document::parse(
         &schema,
-        &restored,
+        &output_setup,
         EdiBoundaryKind::Hl7,
         b"MSH|^~\\&|SOURCE\rPID|1234|bad|NO\r",
     )?;
@@ -121,7 +124,7 @@ fn compiled_metadata_survives_serialization_and_source_removal()
     ));
     let invalid = document::parse(
         &schema,
-        &restored,
+        &output_setup,
         EdiBoundaryKind::Hl7,
         b"MSH|^~\\&|SOURCE\rPID|1234|20261026|NO\r",
     )?;
@@ -130,5 +133,14 @@ fn compiled_metadata_survives_serialization_and_source_removal()
         matches!(result, Err(EdiFormatError::Validation(_))),
         "{result:?}"
     );
+    assert!(matches!(
+        document::parse(
+            &schema,
+            &restored,
+            EdiBoundaryKind::Hl7,
+            b"MSH|^~\\&|SOURCE\rPID|1234|bad|NO\r"
+        ),
+        Err(EdiFormatError::Validation(_))
+    ));
     Ok(())
 }
