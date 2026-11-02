@@ -32,6 +32,9 @@ mod source_contracts;
 #[path = "source_inventory/schema_wrappers.rs"]
 mod schema_wrappers;
 
+#[path = "source_inventory/supporting_io_declarations.rs"]
+mod supporting_io_declarations;
+
 fn load(name: &str) -> Value {
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../conformance/mfd-2026r2-source-inventory")

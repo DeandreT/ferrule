@@ -1,0 +1,4126 @@
+{
+  "format": "mapforce-enterprise-2026r2-supporting-io-declarations",
+  "format_version": 1,
+  "inventory_complete": false,
+  "runtime_proof": false,
+  "status": "unassessed",
+  "applicability": "unknown",
+  "execution_evidence": [],
+  "execution_receipts": [],
+  "purpose": "Finite normalized directly declared public source surface of the existing 24 documented I/O owners; not a new capability denominator or complete SDK.",
+  "assessment_boundary": {
+    "status": "unassessed",
+    "applicability": "unknown",
+    "runtime_proof": false,
+    "execution_evidence": [],
+    "execution_receipts": []
+  },
+  "scope": {
+    "owner_count": 24,
+    "source_count": 13,
+    "direct_member_count": 99,
+    "nested_type_count": 2,
+    "enum_constant_count": 6,
+    "member_counts": {
+      "constructor": 26,
+      "method": 35,
+      "property": 31,
+      "field": 1,
+      "constant": 6
+    },
+    "inherited_members": "excluded",
+    "implicit_members": "excluded",
+    "implementation_copied": false,
+    "excluded": [
+      "UrlInput",
+      "Web",
+      "mapping-entry APIs",
+      "close-setting APIs",
+      "exception owners",
+      "schema-generated types",
+      "nonpublic members",
+      "implementation bodies"
+    ],
+    "unqualified": [
+      "ownership",
+      "lifetime",
+      "encoding and buffering",
+      "null and error behavior",
+      "runtime defaults",
+      "exact Java version",
+      "dependency availability",
+      "Authenticode trust",
+      "ABI",
+      "backend applicability"
+    ]
+  },
+  "provenance": {
+    "observation": "artifact-observations.json",
+    "wrapper_observation": "schema-wrappers.json",
+    "generator_version": "28.2.0.0",
+    "generator_sha256": "4dc5b2bf1fb9644ba8224a9df19b7f92cb014d7bad1f8a2a217541e0a69ddd55",
+    "ordinary_manifest_sha256": "db01c723a234bf515ddbeb2930f9ddb00277960eea80ade4fff28a6407d4da04",
+    "wrapper_manifest_sha256": "1101c782bb8056df2a82cbba777af11de0aeebc813c889deb49ad25687d5f69d",
+    "release_comparison_sha256": "d67383470c8781e7997f3eb765b6b43bd69aea5925e3c044b5d8847328c53cfe",
+    "inputs": [
+      {
+        "name": "ConvertProducts.mfd",
+        "role": "design",
+        "bytes": 3688,
+        "sha256": "f36889cd8ed91b57ef66923fd56960de396db136ba4968352ad212796a34bd67"
+      },
+      {
+        "name": "Products.xsd",
+        "role": "source schema",
+        "bytes": 633,
+        "sha256": "aaceb86a93fc2cb254974ea57728ab2e9de67a4ec0c482de48afb303ad425b78"
+      },
+      {
+        "name": "Products.xml",
+        "role": "source instance",
+        "bytes": 413,
+        "sha256": "45a93f80ae4406c079148d0a006195df50d2bd68e82d3803756b06940e7799dc"
+      },
+      {
+        "name": "ProductValuePairs.xsd",
+        "role": "target schema",
+        "bytes": 744,
+        "sha256": "4c0e3a8b7595e10fe9a05a5a72fb2cb8d030ad3f15892f662bcc18320c488a75"
+      }
+    ],
+    "ordinary_settings": "Loaded tutorial inherited settings; C# and Java generation selected separately; no application-wide default inferred.",
+    "wrapper_settings": "generate_wrapper_classes=true; adopted source bundles only.",
+    "binding": "Retained historical generation manifests joined to HTTPS-origin installer-member byte matches. Original manifest acquisition caveats are superseded only for the selected generator and four inputs, not product-wide provenance.",
+    "audit": "Fresh hashes of 13 ordinary and 13 wrapper files match both manifests and each other; original/staged inputs and five selected installer members rehashed. No new vendor operation.",
+    "vendor_generation": false,
+    "vendor_compilation": false,
+    "vendor_execution": false
+  },
+  "anchoring": "One-based LF-delimited lines (including final empty split item in lf_lines), zero-based source/type/member/parameter indexes. Declaration ranges exclude bodies and constructor initializers; getter anchors name tokens, not their bodies. Source type indexes count excluded top-level types too.",
+  "normalization": "Type spelling and resolved names retain declaration facts only. Using/import tables and nested ownership resolve names; no implicit base/constructor is invented. Public accessor visibility is explicit or inherited from its property declaration. Nonconstant initializer values and runtime defaults are not established.",
+  "oracle": {
+    "path": "oracles/supporting-io-declarations.jsonl",
+    "method": "Independent manual transcription from numbered retained source reads and separate hash readback; no candidate JSON, cached discovery metadata or candidate lexer used to create expected rows."
+  },
+  "manual_comparison": {
+    "research_id": "enterprise2026r2.supporting.com.altova.io.StreamOutput",
+    "manual_signature": "com.altova.io.StreamOutput(String filename)",
+    "manual_text_lines": [
+      56832,
+      56832
+    ],
+    "generated_public_constructor_parameter_types": [
+      [
+        "java.io.OutputStream"
+      ]
+    ],
+    "relationship": "Separate source claims, not an automatic contradiction or a correction of the manual. Protected constructors are outside this public cohort; behavior remains unqualified."
+  },
+  "sources": [
+    {
+      "index": 0,
+      "language": "C#",
+      "path": "Altova/io.cs",
+      "bytes": 6989,
+      "sha256": "7f1cd6b9f5fd5221c8f850b7f613822ff93dc2b98741c17d9c939083b203e854",
+      "wrapper_sha256": "7f1cd6b9f5fd5221c8f850b7f613822ff93dc2b98741c17d9c939083b203e854",
+      "wrapper_byte_identical": true,
+      "lf_lines": 227,
+      "imports": [
+        {
+          "name": "System.IO",
+          "declaration_lines": [
+            4,
+            4
+          ]
+        },
+        {
+          "name": "System.Xml",
+          "declaration_lines": [
+            5,
+            5
+          ]
+        },
+        {
+          "name": "System.Text",
+          "declaration_lines": [
+            6,
+            6
+          ]
+        },
+        {
+          "name": "System.Net",
+          "declaration_lines": [
+            7,
+            7
+          ]
+        },
+        {
+          "name": "System.Net.Http",
+          "declaration_lines": [
+            8,
+            8
+          ]
+        },
+        {
+          "name": "System",
+          "declaration_lines": [
+            9,
+            9
+          ]
+        }
+      ],
+      "conditions": []
+    },
+    {
+      "index": 1,
+      "language": "Java",
+      "path": "com/altova/io/Input.java",
+      "bytes": 703,
+      "sha256": "7ebabbc866cd54e60b8e845a6dbd91a29814a09dd245eb4939fb2b2443cb3939",
+      "wrapper_sha256": "7ebabbc866cd54e60b8e845a6dbd91a29814a09dd245eb4939fb2b2443cb3939",
+      "wrapper_byte_identical": true,
+      "lf_lines": 23,
+      "imports": [],
+      "conditions": []
+    },
+    {
+      "index": 2,
+      "language": "Java",
+      "path": "com/altova/io/Output.java",
+      "bytes": 681,
+      "sha256": "e5f1e37cdc405b9b234857cac79e1d7a89af3863c6605bbc09ace05ae1e46817",
+      "wrapper_sha256": "e5f1e37cdc405b9b234857cac79e1d7a89af3863c6605bbc09ace05ae1e46817",
+      "wrapper_byte_identical": true,
+      "lf_lines": 22,
+      "imports": [],
+      "conditions": []
+    },
+    {
+      "index": 3,
+      "language": "Java",
+      "path": "com/altova/io/FileInput.java",
+      "bytes": 428,
+      "sha256": "3b03211498a9c97a3e69cb6ca37328c12bc63ce40ef4d25e076f0cad8b46c451",
+      "wrapper_sha256": "3b03211498a9c97a3e69cb6ca37328c12bc63ce40ef4d25e076f0cad8b46c451",
+      "wrapper_byte_identical": true,
+      "lf_lines": 15,
+      "imports": [],
+      "conditions": []
+    },
+    {
+      "index": 4,
+      "language": "Java",
+      "path": "com/altova/io/FileOutput.java",
+      "bytes": 348,
+      "sha256": "f8b93b89b9a8804877d26f0b1fc31607d2394cc844b09e8655d3b849dcddd9ad",
+      "wrapper_sha256": "f8b93b89b9a8804877d26f0b1fc31607d2394cc844b09e8655d3b849dcddd9ad",
+      "wrapper_byte_identical": true,
+      "lf_lines": 13,
+      "imports": [],
+      "conditions": []
+    },
+    {
+      "index": 5,
+      "language": "Java",
+      "path": "com/altova/io/StreamInput.java",
+      "bytes": 838,
+      "sha256": "0d9a9029d7d7a9c1212f5fed7c6c1606d01d4c5b02550677a8b709f967e2a5d6",
+      "wrapper_sha256": "0d9a9029d7d7a9c1212f5fed7c6c1606d01d4c5b02550677a8b709f967e2a5d6",
+      "wrapper_byte_identical": true,
+      "lf_lines": 35,
+      "imports": [
+        {
+          "name": "java.io.InputStream",
+          "declaration_lines": [
+            6,
+            6
+          ]
+        }
+      ],
+      "conditions": []
+    },
+    {
+      "index": 6,
+      "language": "Java",
+      "path": "com/altova/io/StreamOutput.java",
+      "bytes": 824,
+      "sha256": "d914330f4c5c4fb24c84fac9ff4efd29c362e087eb5e96ff7789f3e7d37c1187",
+      "wrapper_sha256": "d914330f4c5c4fb24c84fac9ff4efd29c362e087eb5e96ff7789f3e7d37c1187",
+      "wrapper_byte_identical": true,
+      "lf_lines": 35,
+      "imports": [
+        {
+          "name": "java.io.OutputStream",
+          "declaration_lines": [
+            6,
+            6
+          ]
+        },
+        {
+          "name": "java.io.FileOutputStream",
+          "declaration_lines": [
+            7,
+            7
+          ]
+        }
+      ],
+      "conditions": []
+    },
+    {
+      "index": 7,
+      "language": "Java",
+      "path": "com/altova/io/StringInput.java",
+      "bytes": 433,
+      "sha256": "5672c4cb3e9ada0a02f9914967315b6b88cf42776930da9b83990afdd0fd709a",
+      "wrapper_sha256": "5672c4cb3e9ada0a02f9914967315b6b88cf42776930da9b83990afdd0fd709a",
+      "wrapper_byte_identical": true,
+      "lf_lines": 18,
+      "imports": [
+        {
+          "name": "java.io.StringReader",
+          "declaration_lines": [
+            6,
+            6
+          ]
+        }
+      ],
+      "conditions": []
+    },
+    {
+      "index": 8,
+      "language": "Java",
+      "path": "com/altova/io/StringOutput.java",
+      "bytes": 398,
+      "sha256": "afec36e6bf36a9a0761a559bb0f9115ab2071b81286a3494e98513bf0684b886",
+      "wrapper_sha256": "afec36e6bf36a9a0761a559bb0f9115ab2071b81286a3494e98513bf0684b886",
+      "wrapper_byte_identical": true,
+      "lf_lines": 15,
+      "imports": [
+        {
+          "name": "java.io.StringWriter",
+          "declaration_lines": [
+            6,
+            6
+          ]
+        }
+      ],
+      "conditions": []
+    },
+    {
+      "index": 9,
+      "language": "Java",
+      "path": "com/altova/io/ReaderInput.java",
+      "bytes": 508,
+      "sha256": "f70b8b6eadd5e286ddd763cce2600a90d75afc7c5169f4deaa0a7b55a1a5e473",
+      "wrapper_sha256": "f70b8b6eadd5e286ddd763cce2600a90d75afc7c5169f4deaa0a7b55a1a5e473",
+      "wrapper_byte_identical": true,
+      "lf_lines": 24,
+      "imports": [
+        {
+          "name": "java.io.Reader",
+          "declaration_lines": [
+            6,
+            6
+          ]
+        }
+      ],
+      "conditions": []
+    },
+    {
+      "index": 10,
+      "language": "Java",
+      "path": "com/altova/io/WriterOutput.java",
+      "bytes": 489,
+      "sha256": "eed7a4ed327ef1e991a0570dbb3f08dbe1df70f7eed8b80af9d539203a8f88fd",
+      "wrapper_sha256": "eed7a4ed327ef1e991a0570dbb3f08dbe1df70f7eed8b80af9d539203a8f88fd",
+      "wrapper_byte_identical": true,
+      "lf_lines": 23,
+      "imports": [
+        {
+          "name": "java.io.Writer",
+          "declaration_lines": [
+            6,
+            6
+          ]
+        }
+      ],
+      "conditions": []
+    },
+    {
+      "index": 11,
+      "language": "Java",
+      "path": "com/altova/io/DocumentInput.java",
+      "bytes": 410,
+      "sha256": "cbe23e1b5bd6a3a3fbeee09a7c9505196453638f30d5ef93c6ddcb0d005936bf",
+      "wrapper_sha256": "cbe23e1b5bd6a3a3fbeee09a7c9505196453638f30d5ef93c6ddcb0d005936bf",
+      "wrapper_byte_identical": true,
+      "lf_lines": 18,
+      "imports": [
+        {
+          "name": "org.w3c.dom.Document",
+          "declaration_lines": [
+            6,
+            6
+          ]
+        }
+      ],
+      "conditions": []
+    },
+    {
+      "index": 12,
+      "language": "Java",
+      "path": "com/altova/io/DocumentOutput.java",
+      "bytes": 416,
+      "sha256": "ea1da37aff7ce292c80223333f2479b289c1bba6422a828025fc62b695f92014",
+      "wrapper_sha256": "ea1da37aff7ce292c80223333f2479b289c1bba6422a828025fc62b695f92014",
+      "wrapper_byte_identical": true,
+      "lf_lines": 18,
+      "imports": [
+        {
+          "name": "org.w3c.dom.Document",
+          "declaration_lines": [
+            6,
+            6
+          ]
+        }
+      ],
+      "conditions": []
+    }
+  ],
+  "owners": [
+    {
+      "research_id": "enterprise2026r2.supporting.Altova.IO.Input",
+      "name": "Altova.IO.Input",
+      "kind": "class",
+      "language": "C#",
+      "source_index": 0,
+      "source_type_index": 0,
+      "declaration_lines": [
+        13,
+        13
+      ],
+      "modifiers": [
+        "public",
+        "abstract"
+      ],
+      "extends": [],
+      "implements": [
+        {
+          "spelling": "IDisposable",
+          "resolved": "System.IDisposable"
+        }
+      ],
+      "conditions": [],
+      "assessment_ref": "#/assessment_boundary",
+      "members": [
+        {
+          "index": 0,
+          "declaration_lines": [
+            18,
+            18
+          ],
+          "kind": "constructor",
+          "name": "Input",
+          "type": null,
+          "modifiers": [
+            "public"
+          ],
+          "parameters": [
+            {
+              "index": 0,
+              "name": "t",
+              "type": {
+                "spelling": "InputType",
+                "resolved": "Altova.IO.Input.InputType"
+              },
+              "direction": "value",
+              "default": null
+            }
+          ],
+          "throws": [],
+          "accessors": [],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        },
+        {
+          "index": 1,
+          "declaration_lines": [
+            19,
+            19
+          ],
+          "kind": "property",
+          "name": "Type",
+          "type": {
+            "spelling": "InputType",
+            "resolved": "Altova.IO.Input.InputType"
+          },
+          "modifiers": [
+            "public"
+          ],
+          "parameters": [],
+          "throws": [],
+          "accessors": [
+            {
+              "name": "get",
+              "visibility": "public",
+              "declaration_lines": [
+                19,
+                19
+              ]
+            }
+          ],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        },
+        {
+          "index": 2,
+          "declaration_lines": [
+            20,
+            20
+          ],
+          "kind": "property",
+          "name": "Reader",
+          "type": {
+            "spelling": "TextReader",
+            "resolved": "System.IO.TextReader"
+          },
+          "modifiers": [
+            "public",
+            "abstract"
+          ],
+          "parameters": [],
+          "throws": [],
+          "accessors": [
+            {
+              "name": "get",
+              "visibility": "public",
+              "declaration_lines": [
+                20,
+                20
+              ]
+            }
+          ],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        },
+        {
+          "index": 3,
+          "declaration_lines": [
+            21,
+            21
+          ],
+          "kind": "property",
+          "name": "Stream",
+          "type": {
+            "spelling": "Stream",
+            "resolved": "System.IO.Stream"
+          },
+          "modifiers": [
+            "public",
+            "abstract"
+          ],
+          "parameters": [],
+          "throws": [],
+          "accessors": [
+            {
+              "name": "get",
+              "visibility": "public",
+              "declaration_lines": [
+                21,
+                21
+              ]
+            }
+          ],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        },
+        {
+          "index": 4,
+          "declaration_lines": [
+            22,
+            22
+          ],
+          "kind": "property",
+          "name": "Document",
+          "type": {
+            "spelling": "XmlDocument",
+            "resolved": "System.Xml.XmlDocument"
+          },
+          "modifiers": [
+            "public",
+            "abstract"
+          ],
+          "parameters": [],
+          "throws": [],
+          "accessors": [
+            {
+              "name": "get",
+              "visibility": "public",
+              "declaration_lines": [
+                22,
+                22
+              ]
+            }
+          ],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        },
+        {
+          "index": 5,
+          "declaration_lines": [
+            23,
+            23
+          ],
+          "kind": "method",
+          "name": "Close",
+          "type": {
+            "spelling": "void",
+            "resolved": "System.Void"
+          },
+          "modifiers": [
+            "public",
+            "virtual"
+          ],
+          "parameters": [],
+          "throws": [],
+          "accessors": [],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        },
+        {
+          "index": 6,
+          "declaration_lines": [
+            24,
+            24
+          ],
+          "kind": "method",
+          "name": "Dispose",
+          "type": {
+            "spelling": "void",
+            "resolved": "System.Void"
+          },
+          "modifiers": [
+            "public"
+          ],
+          "parameters": [],
+          "throws": [],
+          "accessors": [],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        },
+        {
+          "index": 7,
+          "declaration_lines": [
+            33,
+            33
+          ],
+          "kind": "property",
+          "name": "Filename",
+          "type": {
+            "spelling": "string",
+            "resolved": "System.String"
+          },
+          "modifiers": [
+            "public",
+            "virtual"
+          ],
+          "parameters": [],
+          "throws": [],
+          "accessors": [
+            {
+              "name": "get",
+              "visibility": "public",
+              "declaration_lines": [
+                33,
+                33
+              ]
+            }
+          ],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        }
+      ],
+      "nested_types": [
+        {
+          "name": "InputType",
+          "kind": "enum",
+          "modifiers": [
+            "public"
+          ],
+          "declaration_lines": [
+            15,
+            15
+          ],
+          "underlying_type": null,
+          "constants": [
+            {
+              "name": "Reader",
+              "value": "0",
+              "declaration_lines": [
+                15,
+                15
+              ]
+            },
+            {
+              "name": "Stream",
+              "value": "1",
+              "declaration_lines": [
+                15,
+                15
+              ]
+            },
+            {
+              "name": "XmlDocument",
+              "value": "2",
+              "declaration_lines": [
+                15,
+                15
+              ]
+            }
+          ],
+          "conditions": []
+        }
+      ]
+    },
+    {
+      "research_id": "enterprise2026r2.supporting.Altova.IO.StreamInput",
+      "name": "Altova.IO.StreamInput",
+      "kind": "class",
+      "language": "C#",
+      "source_index": 0,
+      "source_type_index": 1,
+      "declaration_lines": [
+        36,
+        36
+      ],
+      "modifiers": [
+        "public"
+      ],
+      "extends": [
+        {
+          "spelling": "Input",
+          "resolved": "Altova.IO.Input"
+        }
+      ],
+      "implements": [],
+      "conditions": [],
+      "assessment_ref": "#/assessment_boundary",
+      "members": [
+        {
+          "index": 0,
+          "declaration_lines": [
+            39,
+            39
+          ],
+          "kind": "constructor",
+          "name": "StreamInput",
+          "type": null,
+          "modifiers": [
+            "public"
+          ],
+          "parameters": [
+            {
+              "index": 0,
+              "name": "s",
+              "type": {
+                "spelling": "Stream",
+                "resolved": "System.IO.Stream"
+              },
+              "direction": "value",
+              "default": null
+            }
+          ],
+          "throws": [],
+          "accessors": [],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        },
+        {
+          "index": 1,
+          "declaration_lines": [
+            41,
+            41
+          ],
+          "kind": "property",
+          "name": "Stream",
+          "type": {
+            "spelling": "Stream",
+            "resolved": "System.IO.Stream"
+          },
+          "modifiers": [
+            "public",
+            "override"
+          ],
+          "parameters": [],
+          "throws": [],
+          "accessors": [
+            {
+              "name": "get",
+              "visibility": "public",
+              "declaration_lines": [
+                41,
+                41
+              ]
+            }
+          ],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        },
+        {
+          "index": 2,
+          "declaration_lines": [
+            42,
+            42
+          ],
+          "kind": "property",
+          "name": "Reader",
+          "type": {
+            "spelling": "TextReader",
+            "resolved": "System.IO.TextReader"
+          },
+          "modifiers": [
+            "public",
+            "override"
+          ],
+          "parameters": [],
+          "throws": [],
+          "accessors": [
+            {
+              "name": "get",
+              "visibility": "public",
+              "declaration_lines": [
+                42,
+                42
+              ]
+            }
+          ],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        },
+        {
+          "index": 3,
+          "declaration_lines": [
+            43,
+            43
+          ],
+          "kind": "property",
+          "name": "Document",
+          "type": {
+            "spelling": "XmlDocument",
+            "resolved": "System.Xml.XmlDocument"
+          },
+          "modifiers": [
+            "public",
+            "override"
+          ],
+          "parameters": [],
+          "throws": [],
+          "accessors": [
+            {
+              "name": "get",
+              "visibility": "public",
+              "declaration_lines": [
+                43,
+                43
+              ]
+            }
+          ],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        },
+        {
+          "index": 4,
+          "declaration_lines": [
+            44,
+            44
+          ],
+          "kind": "method",
+          "name": "Close",
+          "type": {
+            "spelling": "void",
+            "resolved": "System.Void"
+          },
+          "modifiers": [
+            "public",
+            "override"
+          ],
+          "parameters": [],
+          "throws": [],
+          "accessors": [],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        },
+        {
+          "index": 5,
+          "declaration_lines": [
+            52,
+            52
+          ],
+          "kind": "method",
+          "name": "createInput",
+          "type": {
+            "spelling": "StreamInput",
+            "resolved": "Altova.IO.StreamInput"
+          },
+          "modifiers": [
+            "public",
+            "static"
+          ],
+          "parameters": [
+            {
+              "index": 0,
+              "name": "url",
+              "type": {
+                "spelling": "string",
+                "resolved": "System.String"
+              },
+              "direction": "value",
+              "default": null
+            }
+          ],
+          "throws": [],
+          "accessors": [],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        }
+      ],
+      "nested_types": []
+    },
+    {
+      "research_id": "enterprise2026r2.supporting.Altova.IO.FileInput",
+      "name": "Altova.IO.FileInput",
+      "kind": "class",
+      "language": "C#",
+      "source_index": 0,
+      "source_type_index": 2,
+      "declaration_lines": [
+        61,
+        61
+      ],
+      "modifiers": [
+        "public"
+      ],
+      "extends": [
+        {
+          "spelling": "StreamInput",
+          "resolved": "Altova.IO.StreamInput"
+        }
+      ],
+      "implements": [],
+      "conditions": [],
+      "assessment_ref": "#/assessment_boundary",
+      "members": [
+        {
+          "index": 0,
+          "declaration_lines": [
+            64,
+            64
+          ],
+          "kind": "constructor",
+          "name": "FileInput",
+          "type": null,
+          "modifiers": [
+            "public"
+          ],
+          "parameters": [
+            {
+              "index": 0,
+              "name": "f",
+              "type": {
+                "spelling": "string",
+                "resolved": "System.String"
+              },
+              "direction": "value",
+              "default": null
+            }
+          ],
+          "throws": [],
+          "accessors": [],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        },
+        {
+          "index": 1,
+          "declaration_lines": [
+            65,
+            65
+          ],
+          "kind": "property",
+          "name": "Filename",
+          "type": {
+            "spelling": "string",
+            "resolved": "System.String"
+          },
+          "modifiers": [
+            "public",
+            "override"
+          ],
+          "parameters": [],
+          "throws": [],
+          "accessors": [
+            {
+              "name": "get",
+              "visibility": "public",
+              "declaration_lines": [
+                65,
+                65
+              ]
+            }
+          ],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        }
+      ],
+      "nested_types": []
+    },
+    {
+      "research_id": "enterprise2026r2.supporting.Altova.IO.ReaderInput",
+      "name": "Altova.IO.ReaderInput",
+      "kind": "class",
+      "language": "C#",
+      "source_index": 0,
+      "source_type_index": 4,
+      "declaration_lines": [
+        83,
+        83
+      ],
+      "modifiers": [
+        "public"
+      ],
+      "extends": [
+        {
+          "spelling": "Input",
+          "resolved": "Altova.IO.Input"
+        }
+      ],
+      "implements": [],
+      "conditions": [],
+      "assessment_ref": "#/assessment_boundary",
+      "members": [
+        {
+          "index": 0,
+          "declaration_lines": [
+            86,
+            86
+          ],
+          "kind": "constructor",
+          "name": "ReaderInput",
+          "type": null,
+          "modifiers": [
+            "public"
+          ],
+          "parameters": [
+            {
+              "index": 0,
+              "name": "r",
+              "type": {
+                "spelling": "TextReader",
+                "resolved": "System.IO.TextReader"
+              },
+              "direction": "value",
+              "default": null
+            }
+          ],
+          "throws": [],
+          "accessors": [],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        },
+        {
+          "index": 1,
+          "declaration_lines": [
+            91,
+            91
+          ],
+          "kind": "property",
+          "name": "Stream",
+          "type": {
+            "spelling": "Stream",
+            "resolved": "System.IO.Stream"
+          },
+          "modifiers": [
+            "public",
+            "override"
+          ],
+          "parameters": [],
+          "throws": [],
+          "accessors": [
+            {
+              "name": "get",
+              "visibility": "public",
+              "declaration_lines": [
+                91,
+                91
+              ]
+            }
+          ],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        },
+        {
+          "index": 2,
+          "declaration_lines": [
+            92,
+            92
+          ],
+          "kind": "property",
+          "name": "Reader",
+          "type": {
+            "spelling": "TextReader",
+            "resolved": "System.IO.TextReader"
+          },
+          "modifiers": [
+            "public",
+            "override"
+          ],
+          "parameters": [],
+          "throws": [],
+          "accessors": [
+            {
+              "name": "get",
+              "visibility": "public",
+              "declaration_lines": [
+                92,
+                92
+              ]
+            }
+          ],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        },
+        {
+          "index": 3,
+          "declaration_lines": [
+            93,
+            93
+          ],
+          "kind": "property",
+          "name": "Document",
+          "type": {
+            "spelling": "XmlDocument",
+            "resolved": "System.Xml.XmlDocument"
+          },
+          "modifiers": [
+            "public",
+            "override"
+          ],
+          "parameters": [],
+          "throws": [],
+          "accessors": [
+            {
+              "name": "get",
+              "visibility": "public",
+              "declaration_lines": [
+                93,
+                93
+              ]
+            }
+          ],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        },
+        {
+          "index": 4,
+          "declaration_lines": [
+            94,
+            94
+          ],
+          "kind": "method",
+          "name": "Close",
+          "type": {
+            "spelling": "void",
+            "resolved": "System.Void"
+          },
+          "modifiers": [
+            "public",
+            "override"
+          ],
+          "parameters": [],
+          "throws": [],
+          "accessors": [],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        }
+      ],
+      "nested_types": []
+    },
+    {
+      "research_id": "enterprise2026r2.supporting.Altova.IO.StringInput",
+      "name": "Altova.IO.StringInput",
+      "kind": "class",
+      "language": "C#",
+      "source_index": 0,
+      "source_type_index": 5,
+      "declaration_lines": [
+        104,
+        104
+      ],
+      "modifiers": [
+        "public"
+      ],
+      "extends": [
+        {
+          "spelling": "ReaderInput",
+          "resolved": "Altova.IO.ReaderInput"
+        }
+      ],
+      "implements": [],
+      "conditions": [],
+      "assessment_ref": "#/assessment_boundary",
+      "members": [
+        {
+          "index": 0,
+          "declaration_lines": [
+            107,
+            107
+          ],
+          "kind": "constructor",
+          "name": "StringInput",
+          "type": null,
+          "modifiers": [
+            "public"
+          ],
+          "parameters": [
+            {
+              "index": 0,
+              "name": "c",
+              "type": {
+                "spelling": "string",
+                "resolved": "System.String"
+              },
+              "direction": "value",
+              "default": null
+            }
+          ],
+          "throws": [],
+          "accessors": [],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        },
+        {
+          "index": 1,
+          "declaration_lines": [
+            112,
+            112
+          ],
+          "kind": "property",
+          "name": "Content",
+          "type": {
+            "spelling": "string",
+            "resolved": "System.String"
+          },
+          "modifiers": [
+            "public"
+          ],
+          "parameters": [],
+          "throws": [],
+          "accessors": [
+            {
+              "name": "get",
+              "visibility": "public",
+              "declaration_lines": [
+                112,
+                112
+              ]
+            }
+          ],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        }
+      ],
+      "nested_types": []
+    },
+    {
+      "research_id": "enterprise2026r2.supporting.Altova.IO.DocumentInput",
+      "name": "Altova.IO.DocumentInput",
+      "kind": "class",
+      "language": "C#",
+      "source_index": 0,
+      "source_type_index": 6,
+      "declaration_lines": [
+        115,
+        115
+      ],
+      "modifiers": [
+        "public"
+      ],
+      "extends": [
+        {
+          "spelling": "Input",
+          "resolved": "Altova.IO.Input"
+        }
+      ],
+      "implements": [],
+      "conditions": [],
+      "assessment_ref": "#/assessment_boundary",
+      "members": [
+        {
+          "index": 0,
+          "declaration_lines": [
+            118,
+            118
+          ],
+          "kind": "constructor",
+          "name": "DocumentInput",
+          "type": null,
+          "modifiers": [
+            "public"
+          ],
+          "parameters": [
+            {
+              "index": 0,
+              "name": "d",
+              "type": {
+                "spelling": "XmlDocument",
+                "resolved": "System.Xml.XmlDocument"
+              },
+              "direction": "value",
+              "default": null
+            }
+          ],
+          "throws": [],
+          "accessors": [],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        },
+        {
+          "index": 1,
+          "declaration_lines": [
+            120,
+            120
+          ],
+          "kind": "property",
+          "name": "Reader",
+          "type": {
+            "spelling": "TextReader",
+            "resolved": "System.IO.TextReader"
+          },
+          "modifiers": [
+            "public",
+            "override"
+          ],
+          "parameters": [],
+          "throws": [],
+          "accessors": [
+            {
+              "name": "get",
+              "visibility": "public",
+              "declaration_lines": [
+                120,
+                120
+              ]
+            }
+          ],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        },
+        {
+          "index": 2,
+          "declaration_lines": [
+            121,
+            121
+          ],
+          "kind": "property",
+          "name": "Stream",
+          "type": {
+            "spelling": "Stream",
+            "resolved": "System.IO.Stream"
+          },
+          "modifiers": [
+            "public",
+            "override"
+          ],
+          "parameters": [],
+          "throws": [],
+          "accessors": [
+            {
+              "name": "get",
+              "visibility": "public",
+              "declaration_lines": [
+                121,
+                121
+              ]
+            }
+          ],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        },
+        {
+          "index": 3,
+          "declaration_lines": [
+            122,
+            122
+          ],
+          "kind": "property",
+          "name": "Document",
+          "type": {
+            "spelling": "XmlDocument",
+            "resolved": "System.Xml.XmlDocument"
+          },
+          "modifiers": [
+            "public",
+            "override"
+          ],
+          "parameters": [],
+          "throws": [],
+          "accessors": [
+            {
+              "name": "get",
+              "visibility": "public",
+              "declaration_lines": [
+                122,
+                122
+              ]
+            }
+          ],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        }
+      ],
+      "nested_types": []
+    },
+    {
+      "research_id": "enterprise2026r2.supporting.Altova.IO.Output",
+      "name": "Altova.IO.Output",
+      "kind": "class",
+      "language": "C#",
+      "source_index": 0,
+      "source_type_index": 7,
+      "declaration_lines": [
+        125,
+        125
+      ],
+      "modifiers": [
+        "public",
+        "abstract"
+      ],
+      "extends": [],
+      "implements": [
+        {
+          "spelling": "IDisposable",
+          "resolved": "System.IDisposable"
+        }
+      ],
+      "conditions": [],
+      "assessment_ref": "#/assessment_boundary",
+      "members": [
+        {
+          "index": 0,
+          "declaration_lines": [
+            128,
+            128
+          ],
+          "kind": "field",
+          "name": "type",
+          "type": {
+            "spelling": "OutputType",
+            "resolved": "Altova.IO.Output.OutputType"
+          },
+          "modifiers": [
+            "public"
+          ],
+          "parameters": [],
+          "throws": [],
+          "accessors": [],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_established"
+        },
+        {
+          "index": 1,
+          "declaration_lines": [
+            130,
+            130
+          ],
+          "kind": "constructor",
+          "name": "Output",
+          "type": null,
+          "modifiers": [
+            "public"
+          ],
+          "parameters": [
+            {
+              "index": 0,
+              "name": "t",
+              "type": {
+                "spelling": "OutputType",
+                "resolved": "Altova.IO.Output.OutputType"
+              },
+              "direction": "value",
+              "default": null
+            }
+          ],
+          "throws": [],
+          "accessors": [],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        },
+        {
+          "index": 2,
+          "declaration_lines": [
+            131,
+            131
+          ],
+          "kind": "property",
+          "name": "Type",
+          "type": {
+            "spelling": "OutputType",
+            "resolved": "Altova.IO.Output.OutputType"
+          },
+          "modifiers": [
+            "public"
+          ],
+          "parameters": [],
+          "throws": [],
+          "accessors": [
+            {
+              "name": "get",
+              "visibility": "public",
+              "declaration_lines": [
+                131,
+                131
+              ]
+            }
+          ],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        },
+        {
+          "index": 3,
+          "declaration_lines": [
+            132,
+            132
+          ],
+          "kind": "property",
+          "name": "Writer",
+          "type": {
+            "spelling": "TextWriter",
+            "resolved": "System.IO.TextWriter"
+          },
+          "modifiers": [
+            "public",
+            "abstract"
+          ],
+          "parameters": [],
+          "throws": [],
+          "accessors": [
+            {
+              "name": "get",
+              "visibility": "public",
+              "declaration_lines": [
+                132,
+                132
+              ]
+            }
+          ],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        },
+        {
+          "index": 4,
+          "declaration_lines": [
+            133,
+            133
+          ],
+          "kind": "property",
+          "name": "Stream",
+          "type": {
+            "spelling": "Stream",
+            "resolved": "System.IO.Stream"
+          },
+          "modifiers": [
+            "public",
+            "abstract"
+          ],
+          "parameters": [],
+          "throws": [],
+          "accessors": [
+            {
+              "name": "get",
+              "visibility": "public",
+              "declaration_lines": [
+                133,
+                133
+              ]
+            }
+          ],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        },
+        {
+          "index": 5,
+          "declaration_lines": [
+            134,
+            134
+          ],
+          "kind": "property",
+          "name": "Document",
+          "type": {
+            "spelling": "XmlDocument",
+            "resolved": "System.Xml.XmlDocument"
+          },
+          "modifiers": [
+            "public",
+            "abstract"
+          ],
+          "parameters": [],
+          "throws": [],
+          "accessors": [
+            {
+              "name": "get",
+              "visibility": "public",
+              "declaration_lines": [
+                134,
+                134
+              ]
+            }
+          ],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        },
+        {
+          "index": 6,
+          "declaration_lines": [
+            135,
+            135
+          ],
+          "kind": "method",
+          "name": "Close",
+          "type": {
+            "spelling": "void",
+            "resolved": "System.Void"
+          },
+          "modifiers": [
+            "public",
+            "virtual"
+          ],
+          "parameters": [],
+          "throws": [],
+          "accessors": [],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        },
+        {
+          "index": 7,
+          "declaration_lines": [
+            136,
+            136
+          ],
+          "kind": "method",
+          "name": "Dispose",
+          "type": {
+            "spelling": "void",
+            "resolved": "System.Void"
+          },
+          "modifiers": [
+            "public"
+          ],
+          "parameters": [],
+          "throws": [],
+          "accessors": [],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        }
+      ],
+      "nested_types": [
+        {
+          "name": "OutputType",
+          "kind": "enum",
+          "modifiers": [
+            "public"
+          ],
+          "declaration_lines": [
+            127,
+            127
+          ],
+          "underlying_type": null,
+          "constants": [
+            {
+              "name": "Writer",
+              "value": "0",
+              "declaration_lines": [
+                127,
+                127
+              ]
+            },
+            {
+              "name": "Stream",
+              "value": "1",
+              "declaration_lines": [
+                127,
+                127
+              ]
+            },
+            {
+              "name": "XmlDocument",
+              "value": "2",
+              "declaration_lines": [
+                127,
+                127
+              ]
+            }
+          ],
+          "conditions": []
+        }
+      ]
+    },
+    {
+      "research_id": "enterprise2026r2.supporting.Altova.IO.StreamOutput",
+      "name": "Altova.IO.StreamOutput",
+      "kind": "class",
+      "language": "C#",
+      "source_index": 0,
+      "source_type_index": 8,
+      "declaration_lines": [
+        147,
+        147
+      ],
+      "modifiers": [
+        "public"
+      ],
+      "extends": [
+        {
+          "spelling": "Output",
+          "resolved": "Altova.IO.Output"
+        }
+      ],
+      "implements": [],
+      "conditions": [],
+      "assessment_ref": "#/assessment_boundary",
+      "members": [
+        {
+          "index": 0,
+          "declaration_lines": [
+            153,
+            153
+          ],
+          "kind": "constructor",
+          "name": "StreamOutput",
+          "type": null,
+          "modifiers": [
+            "public"
+          ],
+          "parameters": [
+            {
+              "index": 0,
+              "name": "s",
+              "type": {
+                "spelling": "Stream",
+                "resolved": "System.IO.Stream"
+              },
+              "direction": "value",
+              "default": null
+            }
+          ],
+          "throws": [],
+          "accessors": [],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        },
+        {
+          "index": 1,
+          "declaration_lines": [
+            154,
+            154
+          ],
+          "kind": "constructor",
+          "name": "StreamOutput",
+          "type": null,
+          "modifiers": [
+            "public"
+          ],
+          "parameters": [
+            {
+              "index": 0,
+              "name": "f",
+              "type": {
+                "spelling": "string",
+                "resolved": "System.String"
+              },
+              "direction": "value",
+              "default": null
+            },
+            {
+              "index": 1,
+              "name": "fm",
+              "type": {
+                "spelling": "System.IO.FileMode",
+                "resolved": "System.IO.FileMode"
+              },
+              "direction": "value",
+              "default": null
+            }
+          ],
+          "throws": [],
+          "accessors": [],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        },
+        {
+          "index": 2,
+          "declaration_lines": [
+            156,
+            156
+          ],
+          "kind": "property",
+          "name": "Stream",
+          "type": {
+            "spelling": "Stream",
+            "resolved": "System.IO.Stream"
+          },
+          "modifiers": [
+            "public",
+            "override"
+          ],
+          "parameters": [],
+          "throws": [],
+          "accessors": [
+            {
+              "name": "get",
+              "visibility": "public",
+              "declaration_lines": [
+                158,
+                158
+              ]
+            }
+          ],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        },
+        {
+          "index": 3,
+          "declaration_lines": [
+            165,
+            165
+          ],
+          "kind": "property",
+          "name": "Writer",
+          "type": {
+            "spelling": "TextWriter",
+            "resolved": "System.IO.TextWriter"
+          },
+          "modifiers": [
+            "public",
+            "override"
+          ],
+          "parameters": [],
+          "throws": [],
+          "accessors": [
+            {
+              "name": "get",
+              "visibility": "public",
+              "declaration_lines": [
+                165,
+                165
+              ]
+            }
+          ],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        },
+        {
+          "index": 4,
+          "declaration_lines": [
+            166,
+            166
+          ],
+          "kind": "property",
+          "name": "Document",
+          "type": {
+            "spelling": "XmlDocument",
+            "resolved": "System.Xml.XmlDocument"
+          },
+          "modifiers": [
+            "public",
+            "override"
+          ],
+          "parameters": [],
+          "throws": [],
+          "accessors": [
+            {
+              "name": "get",
+              "visibility": "public",
+              "declaration_lines": [
+                166,
+                166
+              ]
+            }
+          ],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        },
+        {
+          "index": 5,
+          "declaration_lines": [
+            167,
+            167
+          ],
+          "kind": "method",
+          "name": "Close",
+          "type": {
+            "spelling": "void",
+            "resolved": "System.Void"
+          },
+          "modifiers": [
+            "public",
+            "override"
+          ],
+          "parameters": [],
+          "throws": [],
+          "accessors": [],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        }
+      ],
+      "nested_types": []
+    },
+    {
+      "research_id": "enterprise2026r2.supporting.Altova.IO.FileOutput",
+      "name": "Altova.IO.FileOutput",
+      "kind": "class",
+      "language": "C#",
+      "source_index": 0,
+      "source_type_index": 9,
+      "declaration_lines": [
+        177,
+        177
+      ],
+      "modifiers": [
+        "public"
+      ],
+      "extends": [
+        {
+          "spelling": "StreamOutput",
+          "resolved": "Altova.IO.StreamOutput"
+        }
+      ],
+      "implements": [],
+      "conditions": [],
+      "assessment_ref": "#/assessment_boundary",
+      "members": [
+        {
+          "index": 0,
+          "declaration_lines": [
+            179,
+            179
+          ],
+          "kind": "constructor",
+          "name": "FileOutput",
+          "type": null,
+          "modifiers": [
+            "public"
+          ],
+          "parameters": [
+            {
+              "index": 0,
+              "name": "f",
+              "type": {
+                "spelling": "string",
+                "resolved": "System.String"
+              },
+              "direction": "value",
+              "default": null
+            }
+          ],
+          "throws": [],
+          "accessors": [],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        },
+        {
+          "index": 1,
+          "declaration_lines": [
+            180,
+            180
+          ],
+          "kind": "constructor",
+          "name": "FileOutput",
+          "type": null,
+          "modifiers": [
+            "public"
+          ],
+          "parameters": [
+            {
+              "index": 0,
+              "name": "f",
+              "type": {
+                "spelling": "string",
+                "resolved": "System.String"
+              },
+              "direction": "value",
+              "default": null
+            },
+            {
+              "index": 1,
+              "name": "fm",
+              "type": {
+                "spelling": "System.IO.FileMode",
+                "resolved": "System.IO.FileMode"
+              },
+              "direction": "value",
+              "default": null
+            }
+          ],
+          "throws": [],
+          "accessors": [],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        },
+        {
+          "index": 2,
+          "declaration_lines": [
+            181,
+            181
+          ],
+          "kind": "property",
+          "name": "Fielname",
+          "type": {
+            "spelling": "string",
+            "resolved": "System.String"
+          },
+          "modifiers": [
+            "public"
+          ],
+          "parameters": [],
+          "throws": [],
+          "accessors": [
+            {
+              "name": "get",
+              "visibility": "public",
+              "declaration_lines": [
+                181,
+                181
+              ]
+            }
+          ],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        }
+      ],
+      "nested_types": []
+    },
+    {
+      "research_id": "enterprise2026r2.supporting.Altova.IO.WriterOutput",
+      "name": "Altova.IO.WriterOutput",
+      "kind": "class",
+      "language": "C#",
+      "source_index": 0,
+      "source_type_index": 10,
+      "declaration_lines": [
+        184,
+        184
+      ],
+      "modifiers": [
+        "public"
+      ],
+      "extends": [
+        {
+          "spelling": "Output",
+          "resolved": "Altova.IO.Output"
+        }
+      ],
+      "implements": [],
+      "conditions": [],
+      "assessment_ref": "#/assessment_boundary",
+      "members": [
+        {
+          "index": 0,
+          "declaration_lines": [
+            187,
+            187
+          ],
+          "kind": "constructor",
+          "name": "WriterOutput",
+          "type": null,
+          "modifiers": [
+            "public"
+          ],
+          "parameters": [
+            {
+              "index": 0,
+              "name": "w",
+              "type": {
+                "spelling": "TextWriter",
+                "resolved": "System.IO.TextWriter"
+              },
+              "direction": "value",
+              "default": null
+            }
+          ],
+          "throws": [],
+          "accessors": [],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        },
+        {
+          "index": 1,
+          "declaration_lines": [
+            189,
+            189
+          ],
+          "kind": "property",
+          "name": "Stream",
+          "type": {
+            "spelling": "Stream",
+            "resolved": "System.IO.Stream"
+          },
+          "modifiers": [
+            "public",
+            "override"
+          ],
+          "parameters": [],
+          "throws": [],
+          "accessors": [
+            {
+              "name": "get",
+              "visibility": "public",
+              "declaration_lines": [
+                189,
+                189
+              ]
+            }
+          ],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        },
+        {
+          "index": 2,
+          "declaration_lines": [
+            190,
+            190
+          ],
+          "kind": "property",
+          "name": "Writer",
+          "type": {
+            "spelling": "TextWriter",
+            "resolved": "System.IO.TextWriter"
+          },
+          "modifiers": [
+            "public",
+            "override"
+          ],
+          "parameters": [],
+          "throws": [],
+          "accessors": [
+            {
+              "name": "get",
+              "visibility": "public",
+              "declaration_lines": [
+                190,
+                190
+              ]
+            }
+          ],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        },
+        {
+          "index": 3,
+          "declaration_lines": [
+            191,
+            191
+          ],
+          "kind": "property",
+          "name": "Document",
+          "type": {
+            "spelling": "XmlDocument",
+            "resolved": "System.Xml.XmlDocument"
+          },
+          "modifiers": [
+            "public",
+            "override"
+          ],
+          "parameters": [],
+          "throws": [],
+          "accessors": [
+            {
+              "name": "get",
+              "visibility": "public",
+              "declaration_lines": [
+                191,
+                191
+              ]
+            }
+          ],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        },
+        {
+          "index": 4,
+          "declaration_lines": [
+            192,
+            192
+          ],
+          "kind": "method",
+          "name": "Close",
+          "type": {
+            "spelling": "void",
+            "resolved": "System.Void"
+          },
+          "modifiers": [
+            "public",
+            "override"
+          ],
+          "parameters": [],
+          "throws": [],
+          "accessors": [],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        }
+      ],
+      "nested_types": []
+    },
+    {
+      "research_id": "enterprise2026r2.supporting.Altova.IO.StringOutput",
+      "name": "Altova.IO.StringOutput",
+      "kind": "class",
+      "language": "C#",
+      "source_index": 0,
+      "source_type_index": 11,
+      "declaration_lines": [
+        202,
+        202
+      ],
+      "modifiers": [
+        "public"
+      ],
+      "extends": [
+        {
+          "spelling": "WriterOutput",
+          "resolved": "Altova.IO.WriterOutput"
+        }
+      ],
+      "implements": [],
+      "conditions": [],
+      "assessment_ref": "#/assessment_boundary",
+      "members": [
+        {
+          "index": 0,
+          "declaration_lines": [
+            205,
+            205
+          ],
+          "kind": "constructor",
+          "name": "StringOutput",
+          "type": null,
+          "modifiers": [
+            "public"
+          ],
+          "parameters": [
+            {
+              "index": 0,
+              "name": "s",
+              "type": {
+                "spelling": "StringBuilder",
+                "resolved": "System.Text.StringBuilder"
+              },
+              "direction": "value",
+              "default": null
+            }
+          ],
+          "throws": [],
+          "accessors": [],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        },
+        {
+          "index": 1,
+          "declaration_lines": [
+            207,
+            207
+          ],
+          "kind": "property",
+          "name": "Content",
+          "type": {
+            "spelling": "StringBuilder",
+            "resolved": "System.Text.StringBuilder"
+          },
+          "modifiers": [
+            "public"
+          ],
+          "parameters": [],
+          "throws": [],
+          "accessors": [
+            {
+              "name": "get",
+              "visibility": "public",
+              "declaration_lines": [
+                207,
+                207
+              ]
+            }
+          ],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        }
+      ],
+      "nested_types": []
+    },
+    {
+      "research_id": "enterprise2026r2.supporting.Altova.IO.DocumentOutput",
+      "name": "Altova.IO.DocumentOutput",
+      "kind": "class",
+      "language": "C#",
+      "source_index": 0,
+      "source_type_index": 12,
+      "declaration_lines": [
+        210,
+        210
+      ],
+      "modifiers": [
+        "public"
+      ],
+      "extends": [
+        {
+          "spelling": "Output",
+          "resolved": "Altova.IO.Output"
+        }
+      ],
+      "implements": [],
+      "conditions": [],
+      "assessment_ref": "#/assessment_boundary",
+      "members": [
+        {
+          "index": 0,
+          "declaration_lines": [
+            213,
+            213
+          ],
+          "kind": "constructor",
+          "name": "DocumentOutput",
+          "type": null,
+          "modifiers": [
+            "public"
+          ],
+          "parameters": [
+            {
+              "index": 0,
+              "name": "d",
+              "type": {
+                "spelling": "XmlDocument",
+                "resolved": "System.Xml.XmlDocument"
+              },
+              "direction": "value",
+              "default": null
+            }
+          ],
+          "throws": [],
+          "accessors": [],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        },
+        {
+          "index": 1,
+          "declaration_lines": [
+            215,
+            215
+          ],
+          "kind": "property",
+          "name": "Stream",
+          "type": {
+            "spelling": "Stream",
+            "resolved": "System.IO.Stream"
+          },
+          "modifiers": [
+            "public",
+            "override"
+          ],
+          "parameters": [],
+          "throws": [],
+          "accessors": [
+            {
+              "name": "get",
+              "visibility": "public",
+              "declaration_lines": [
+                215,
+                215
+              ]
+            }
+          ],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        },
+        {
+          "index": 2,
+          "declaration_lines": [
+            216,
+            216
+          ],
+          "kind": "property",
+          "name": "Writer",
+          "type": {
+            "spelling": "TextWriter",
+            "resolved": "System.IO.TextWriter"
+          },
+          "modifiers": [
+            "public",
+            "override"
+          ],
+          "parameters": [],
+          "throws": [],
+          "accessors": [
+            {
+              "name": "get",
+              "visibility": "public",
+              "declaration_lines": [
+                216,
+                216
+              ]
+            }
+          ],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        },
+        {
+          "index": 3,
+          "declaration_lines": [
+            217,
+            217
+          ],
+          "kind": "property",
+          "name": "Document",
+          "type": {
+            "spelling": "XmlDocument",
+            "resolved": "System.Xml.XmlDocument"
+          },
+          "modifiers": [
+            "public",
+            "override"
+          ],
+          "parameters": [],
+          "throws": [],
+          "accessors": [
+            {
+              "name": "get",
+              "visibility": "public",
+              "declaration_lines": [
+                217,
+                217
+              ]
+            }
+          ],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        }
+      ],
+      "nested_types": []
+    },
+    {
+      "research_id": "enterprise2026r2.supporting.com.altova.io.Input",
+      "name": "com.altova.io.Input",
+      "kind": "class",
+      "language": "Java",
+      "source_index": 1,
+      "source_type_index": 0,
+      "declaration_lines": [
+        6,
+        6
+      ],
+      "modifiers": [
+        "public"
+      ],
+      "extends": [],
+      "implements": [
+        {
+          "spelling": "AutoCloseable",
+          "resolved": "java.lang.AutoCloseable"
+        }
+      ],
+      "conditions": [],
+      "assessment_ref": "#/assessment_boundary",
+      "members": [
+        {
+          "index": 0,
+          "declaration_lines": [
+            7,
+            7
+          ],
+          "kind": "constant",
+          "name": "IO_READER",
+          "type": {
+            "spelling": "byte",
+            "resolved": "byte"
+          },
+          "modifiers": [
+            "public",
+            "final",
+            "static"
+          ],
+          "parameters": [],
+          "throws": [],
+          "accessors": [],
+          "annotations": [],
+          "constant_value": "0",
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "literal_constant"
+        },
+        {
+          "index": 1,
+          "declaration_lines": [
+            8,
+            8
+          ],
+          "kind": "constant",
+          "name": "IO_STREAM",
+          "type": {
+            "spelling": "byte",
+            "resolved": "byte"
+          },
+          "modifiers": [
+            "public",
+            "final",
+            "static"
+          ],
+          "parameters": [],
+          "throws": [],
+          "accessors": [],
+          "annotations": [],
+          "constant_value": "1",
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "literal_constant"
+        },
+        {
+          "index": 2,
+          "declaration_lines": [
+            9,
+            9
+          ],
+          "kind": "constant",
+          "name": "IO_DOM",
+          "type": {
+            "spelling": "byte",
+            "resolved": "byte"
+          },
+          "modifiers": [
+            "public",
+            "final",
+            "static"
+          ],
+          "parameters": [],
+          "throws": [],
+          "accessors": [],
+          "annotations": [],
+          "constant_value": "2",
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "literal_constant"
+        },
+        {
+          "index": 3,
+          "declaration_lines": [
+            13,
+            13
+          ],
+          "kind": "constructor",
+          "name": "Input",
+          "type": null,
+          "modifiers": [
+            "public"
+          ],
+          "parameters": [
+            {
+              "index": 0,
+              "name": "type",
+              "type": {
+                "spelling": "byte",
+                "resolved": "byte"
+              },
+              "direction": "value",
+              "default": null
+            }
+          ],
+          "throws": [],
+          "accessors": [],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        },
+        {
+          "index": 4,
+          "declaration_lines": [
+            16,
+            16
+          ],
+          "kind": "method",
+          "name": "getType",
+          "type": {
+            "spelling": "byte",
+            "resolved": "byte"
+          },
+          "modifiers": [
+            "public"
+          ],
+          "parameters": [],
+          "throws": [],
+          "accessors": [],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        },
+        {
+          "index": 5,
+          "declaration_lines": [
+            17,
+            17
+          ],
+          "kind": "method",
+          "name": "getReader",
+          "type": {
+            "spelling": "java.io.Reader",
+            "resolved": "java.io.Reader"
+          },
+          "modifiers": [
+            "public"
+          ],
+          "parameters": [],
+          "throws": [],
+          "accessors": [],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        },
+        {
+          "index": 6,
+          "declaration_lines": [
+            18,
+            18
+          ],
+          "kind": "method",
+          "name": "getStream",
+          "type": {
+            "spelling": "java.io.InputStream",
+            "resolved": "java.io.InputStream"
+          },
+          "modifiers": [
+            "public"
+          ],
+          "parameters": [],
+          "throws": [],
+          "accessors": [],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        },
+        {
+          "index": 7,
+          "declaration_lines": [
+            19,
+            19
+          ],
+          "kind": "method",
+          "name": "getDocument",
+          "type": {
+            "spelling": "org.w3c.dom.Document",
+            "resolved": "org.w3c.dom.Document"
+          },
+          "modifiers": [
+            "public"
+          ],
+          "parameters": [],
+          "throws": [],
+          "accessors": [],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        },
+        {
+          "index": 8,
+          "declaration_lines": [
+            20,
+            20
+          ],
+          "kind": "method",
+          "name": "close",
+          "type": {
+            "spelling": "void",
+            "resolved": "void"
+          },
+          "modifiers": [
+            "public"
+          ],
+          "parameters": [],
+          "throws": [
+            {
+              "spelling": "Exception",
+              "resolved": "java.lang.Exception"
+            }
+          ],
+          "accessors": [],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        },
+        {
+          "index": 9,
+          "declaration_lines": [
+            21,
+            21
+          ],
+          "kind": "method",
+          "name": "getFilename",
+          "type": {
+            "spelling": "String",
+            "resolved": "java.lang.String"
+          },
+          "modifiers": [
+            "public"
+          ],
+          "parameters": [],
+          "throws": [],
+          "accessors": [],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        }
+      ],
+      "nested_types": []
+    },
+    {
+      "research_id": "enterprise2026r2.supporting.com.altova.io.Output",
+      "name": "com.altova.io.Output",
+      "kind": "class",
+      "language": "Java",
+      "source_index": 2,
+      "source_type_index": 0,
+      "declaration_lines": [
+        6,
+        6
+      ],
+      "modifiers": [
+        "public"
+      ],
+      "extends": [],
+      "implements": [
+        {
+          "spelling": "AutoCloseable",
+          "resolved": "java.lang.AutoCloseable"
+        }
+      ],
+      "conditions": [],
+      "assessment_ref": "#/assessment_boundary",
+      "members": [
+        {
+          "index": 0,
+          "declaration_lines": [
+            7,
+            7
+          ],
+          "kind": "constant",
+          "name": "IO_WRITER",
+          "type": {
+            "spelling": "byte",
+            "resolved": "byte"
+          },
+          "modifiers": [
+            "public",
+            "final",
+            "static"
+          ],
+          "parameters": [],
+          "throws": [],
+          "accessors": [],
+          "annotations": [],
+          "constant_value": "0",
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "literal_constant"
+        },
+        {
+          "index": 1,
+          "declaration_lines": [
+            8,
+            8
+          ],
+          "kind": "constant",
+          "name": "IO_STREAM",
+          "type": {
+            "spelling": "byte",
+            "resolved": "byte"
+          },
+          "modifiers": [
+            "public",
+            "final",
+            "static"
+          ],
+          "parameters": [],
+          "throws": [],
+          "accessors": [],
+          "annotations": [],
+          "constant_value": "1",
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "literal_constant"
+        },
+        {
+          "index": 2,
+          "declaration_lines": [
+            9,
+            9
+          ],
+          "kind": "constant",
+          "name": "IO_DOM",
+          "type": {
+            "spelling": "byte",
+            "resolved": "byte"
+          },
+          "modifiers": [
+            "public",
+            "final",
+            "static"
+          ],
+          "parameters": [],
+          "throws": [],
+          "accessors": [],
+          "annotations": [],
+          "constant_value": "2",
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "literal_constant"
+        },
+        {
+          "index": 3,
+          "declaration_lines": [
+            13,
+            13
+          ],
+          "kind": "constructor",
+          "name": "Output",
+          "type": null,
+          "modifiers": [
+            "public"
+          ],
+          "parameters": [
+            {
+              "index": 0,
+              "name": "type",
+              "type": {
+                "spelling": "byte",
+                "resolved": "byte"
+              },
+              "direction": "value",
+              "default": null
+            }
+          ],
+          "throws": [],
+          "accessors": [],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        },
+        {
+          "index": 4,
+          "declaration_lines": [
+            17,
+            17
+          ],
+          "kind": "method",
+          "name": "getType",
+          "type": {
+            "spelling": "byte",
+            "resolved": "byte"
+          },
+          "modifiers": [
+            "public"
+          ],
+          "parameters": [],
+          "throws": [],
+          "accessors": [],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        },
+        {
+          "index": 5,
+          "declaration_lines": [
+            18,
+            18
+          ],
+          "kind": "method",
+          "name": "getWriter",
+          "type": {
+            "spelling": "java.io.Writer",
+            "resolved": "java.io.Writer"
+          },
+          "modifiers": [
+            "public"
+          ],
+          "parameters": [],
+          "throws": [],
+          "accessors": [],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        },
+        {
+          "index": 6,
+          "declaration_lines": [
+            19,
+            19
+          ],
+          "kind": "method",
+          "name": "getStream",
+          "type": {
+            "spelling": "java.io.OutputStream",
+            "resolved": "java.io.OutputStream"
+          },
+          "modifiers": [
+            "public"
+          ],
+          "parameters": [],
+          "throws": [
+            {
+              "spelling": "Exception",
+              "resolved": "java.lang.Exception"
+            }
+          ],
+          "accessors": [],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        },
+        {
+          "index": 7,
+          "declaration_lines": [
+            20,
+            20
+          ],
+          "kind": "method",
+          "name": "getDocument",
+          "type": {
+            "spelling": "org.w3c.dom.Document",
+            "resolved": "org.w3c.dom.Document"
+          },
+          "modifiers": [
+            "public"
+          ],
+          "parameters": [],
+          "throws": [],
+          "accessors": [],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        },
+        {
+          "index": 8,
+          "declaration_lines": [
+            21,
+            21
+          ],
+          "kind": "method",
+          "name": "close",
+          "type": {
+            "spelling": "void",
+            "resolved": "void"
+          },
+          "modifiers": [
+            "public"
+          ],
+          "parameters": [],
+          "throws": [
+            {
+              "spelling": "Exception",
+              "resolved": "java.lang.Exception"
+            }
+          ],
+          "accessors": [],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        }
+      ],
+      "nested_types": []
+    },
+    {
+      "research_id": "enterprise2026r2.supporting.com.altova.io.FileInput",
+      "name": "com.altova.io.FileInput",
+      "kind": "class",
+      "language": "Java",
+      "source_index": 3,
+      "source_type_index": 0,
+      "declaration_lines": [
+        6,
+        6
+      ],
+      "modifiers": [
+        "public"
+      ],
+      "extends": [
+        {
+          "spelling": "StreamInput",
+          "resolved": "com.altova.io.StreamInput"
+        }
+      ],
+      "implements": [],
+      "conditions": [],
+      "assessment_ref": "#/assessment_boundary",
+      "members": [
+        {
+          "index": 0,
+          "declaration_lines": [
+            8,
+            8
+          ],
+          "kind": "constructor",
+          "name": "FileInput",
+          "type": null,
+          "modifiers": [
+            "public"
+          ],
+          "parameters": [
+            {
+              "index": 0,
+              "name": "filename",
+              "type": {
+                "spelling": "String",
+                "resolved": "java.lang.String"
+              },
+              "direction": "value",
+              "default": null
+            }
+          ],
+          "throws": [
+            {
+              "spelling": "Exception",
+              "resolved": "java.lang.Exception"
+            }
+          ],
+          "accessors": [],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        },
+        {
+          "index": 1,
+          "declaration_lines": [
+            13,
+            13
+          ],
+          "kind": "method",
+          "name": "getFilename",
+          "type": {
+            "spelling": "String",
+            "resolved": "java.lang.String"
+          },
+          "modifiers": [
+            "public"
+          ],
+          "parameters": [],
+          "throws": [],
+          "accessors": [],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        }
+      ],
+      "nested_types": []
+    },
+    {
+      "research_id": "enterprise2026r2.supporting.com.altova.io.FileOutput",
+      "name": "com.altova.io.FileOutput",
+      "kind": "class",
+      "language": "Java",
+      "source_index": 4,
+      "source_type_index": 0,
+      "declaration_lines": [
+        6,
+        6
+      ],
+      "modifiers": [
+        "public"
+      ],
+      "extends": [
+        {
+          "spelling": "StreamOutput",
+          "resolved": "com.altova.io.StreamOutput"
+        }
+      ],
+      "implements": [],
+      "conditions": [],
+      "assessment_ref": "#/assessment_boundary",
+      "members": [
+        {
+          "index": 0,
+          "declaration_lines": [
+            7,
+            7
+          ],
+          "kind": "constructor",
+          "name": "FileOutput",
+          "type": null,
+          "modifiers": [
+            "public"
+          ],
+          "parameters": [
+            {
+              "index": 0,
+              "name": "filename",
+              "type": {
+                "spelling": "String",
+                "resolved": "java.lang.String"
+              },
+              "direction": "value",
+              "default": null
+            }
+          ],
+          "throws": [
+            {
+              "spelling": "Exception",
+              "resolved": "java.lang.Exception"
+            }
+          ],
+          "accessors": [],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        },
+        {
+          "index": 1,
+          "declaration_lines": [
+            11,
+            11
+          ],
+          "kind": "method",
+          "name": "getFilename",
+          "type": {
+            "spelling": "String",
+            "resolved": "java.lang.String"
+          },
+          "modifiers": [
+            "public"
+          ],
+          "parameters": [],
+          "throws": [],
+          "accessors": [],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        }
+      ],
+      "nested_types": []
+    },
+    {
+      "research_id": "enterprise2026r2.supporting.com.altova.io.StreamInput",
+      "name": "com.altova.io.StreamInput",
+      "kind": "class",
+      "language": "Java",
+      "source_index": 5,
+      "source_type_index": 0,
+      "declaration_lines": [
+        8,
+        8
+      ],
+      "modifiers": [
+        "public"
+      ],
+      "extends": [
+        {
+          "spelling": "Input",
+          "resolved": "com.altova.io.Input"
+        }
+      ],
+      "implements": [],
+      "conditions": [],
+      "assessment_ref": "#/assessment_boundary",
+      "members": [
+        {
+          "index": 0,
+          "declaration_lines": [
+            11,
+            11
+          ],
+          "kind": "constructor",
+          "name": "StreamInput",
+          "type": null,
+          "modifiers": [
+            "public"
+          ],
+          "parameters": [
+            {
+              "index": 0,
+              "name": "stream",
+              "type": {
+                "spelling": "InputStream",
+                "resolved": "java.io.InputStream"
+              },
+              "direction": "value",
+              "default": null
+            }
+          ],
+          "throws": [],
+          "accessors": [],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        },
+        {
+          "index": 1,
+          "declaration_lines": [
+            16,
+            16
+          ],
+          "kind": "method",
+          "name": "getStream",
+          "type": {
+            "spelling": "InputStream",
+            "resolved": "java.io.InputStream"
+          },
+          "modifiers": [
+            "public"
+          ],
+          "parameters": [],
+          "throws": [],
+          "accessors": [],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        },
+        {
+          "index": 2,
+          "declaration_lines": [
+            18,
+            18
+          ],
+          "kind": "method",
+          "name": "close",
+          "type": {
+            "spelling": "void",
+            "resolved": "void"
+          },
+          "modifiers": [
+            "public"
+          ],
+          "parameters": [],
+          "throws": [
+            {
+              "spelling": "Exception",
+              "resolved": "java.lang.Exception"
+            }
+          ],
+          "accessors": [],
+          "annotations": [
+            "Override"
+          ],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        },
+        {
+          "index": 3,
+          "declaration_lines": [
+            23,
+            23
+          ],
+          "kind": "method",
+          "name": "createInput",
+          "type": {
+            "spelling": "StreamInput",
+            "resolved": "com.altova.io.StreamInput"
+          },
+          "modifiers": [
+            "static",
+            "public"
+          ],
+          "parameters": [
+            {
+              "index": 0,
+              "name": "u",
+              "type": {
+                "spelling": "String",
+                "resolved": "java.lang.String"
+              },
+              "direction": "value",
+              "default": null
+            }
+          ],
+          "throws": [
+            {
+              "spelling": "Exception",
+              "resolved": "java.lang.Exception"
+            }
+          ],
+          "accessors": [],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        }
+      ],
+      "nested_types": []
+    },
+    {
+      "research_id": "enterprise2026r2.supporting.com.altova.io.StreamOutput",
+      "name": "com.altova.io.StreamOutput",
+      "kind": "class",
+      "language": "Java",
+      "source_index": 6,
+      "source_type_index": 0,
+      "declaration_lines": [
+        9,
+        9
+      ],
+      "modifiers": [
+        "public"
+      ],
+      "extends": [
+        {
+          "spelling": "Output",
+          "resolved": "com.altova.io.Output"
+        }
+      ],
+      "implements": [],
+      "conditions": [],
+      "assessment_ref": "#/assessment_boundary",
+      "members": [
+        {
+          "index": 0,
+          "declaration_lines": [
+            13,
+            13
+          ],
+          "kind": "constructor",
+          "name": "StreamOutput",
+          "type": null,
+          "modifiers": [
+            "public"
+          ],
+          "parameters": [
+            {
+              "index": 0,
+              "name": "stream",
+              "type": {
+                "spelling": "OutputStream",
+                "resolved": "java.io.OutputStream"
+              },
+              "direction": "value",
+              "default": null
+            }
+          ],
+          "throws": [],
+          "accessors": [],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        },
+        {
+          "index": 1,
+          "declaration_lines": [
+            23,
+            23
+          ],
+          "kind": "method",
+          "name": "getStream",
+          "type": {
+            "spelling": "OutputStream",
+            "resolved": "java.io.OutputStream"
+          },
+          "modifiers": [
+            "public"
+          ],
+          "parameters": [],
+          "throws": [
+            {
+              "spelling": "Exception",
+              "resolved": "java.lang.Exception"
+            }
+          ],
+          "accessors": [],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        },
+        {
+          "index": 2,
+          "declaration_lines": [
+            30,
+            30
+          ],
+          "kind": "method",
+          "name": "close",
+          "type": {
+            "spelling": "void",
+            "resolved": "void"
+          },
+          "modifiers": [
+            "public"
+          ],
+          "parameters": [],
+          "throws": [
+            {
+              "spelling": "Exception",
+              "resolved": "java.lang.Exception"
+            }
+          ],
+          "accessors": [],
+          "annotations": [
+            "Override"
+          ],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        }
+      ],
+      "nested_types": []
+    },
+    {
+      "research_id": "enterprise2026r2.supporting.com.altova.io.StringInput",
+      "name": "com.altova.io.StringInput",
+      "kind": "class",
+      "language": "Java",
+      "source_index": 7,
+      "source_type_index": 0,
+      "declaration_lines": [
+        8,
+        8
+      ],
+      "modifiers": [
+        "public"
+      ],
+      "extends": [
+        {
+          "spelling": "ReaderInput",
+          "resolved": "com.altova.io.ReaderInput"
+        }
+      ],
+      "implements": [],
+      "conditions": [],
+      "assessment_ref": "#/assessment_boundary",
+      "members": [
+        {
+          "index": 0,
+          "declaration_lines": [
+            11,
+            11
+          ],
+          "kind": "constructor",
+          "name": "StringInput",
+          "type": null,
+          "modifiers": [
+            "public"
+          ],
+          "parameters": [
+            {
+              "index": 0,
+              "name": "content",
+              "type": {
+                "spelling": "String",
+                "resolved": "java.lang.String"
+              },
+              "direction": "value",
+              "default": null
+            }
+          ],
+          "throws": [],
+          "accessors": [],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        },
+        {
+          "index": 1,
+          "declaration_lines": [
+            16,
+            16
+          ],
+          "kind": "method",
+          "name": "getString",
+          "type": {
+            "spelling": "String",
+            "resolved": "java.lang.String"
+          },
+          "modifiers": [
+            "public"
+          ],
+          "parameters": [],
+          "throws": [],
+          "accessors": [],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        }
+      ],
+      "nested_types": []
+    },
+    {
+      "research_id": "enterprise2026r2.supporting.com.altova.io.StringOutput",
+      "name": "com.altova.io.StringOutput",
+      "kind": "class",
+      "language": "Java",
+      "source_index": 8,
+      "source_type_index": 0,
+      "declaration_lines": [
+        8,
+        8
+      ],
+      "modifiers": [
+        "public"
+      ],
+      "extends": [
+        {
+          "spelling": "WriterOutput",
+          "resolved": "com.altova.io.WriterOutput"
+        }
+      ],
+      "implements": [],
+      "conditions": [],
+      "assessment_ref": "#/assessment_boundary",
+      "members": [
+        {
+          "index": 0,
+          "declaration_lines": [
+            9,
+            9
+          ],
+          "kind": "constructor",
+          "name": "StringOutput",
+          "type": null,
+          "modifiers": [
+            "public"
+          ],
+          "parameters": [],
+          "throws": [],
+          "accessors": [],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        },
+        {
+          "index": 1,
+          "declaration_lines": [
+            13,
+            13
+          ],
+          "kind": "method",
+          "name": "getString",
+          "type": {
+            "spelling": "StringBuffer",
+            "resolved": "java.lang.StringBuffer"
+          },
+          "modifiers": [
+            "public"
+          ],
+          "parameters": [],
+          "throws": [],
+          "accessors": [],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        }
+      ],
+      "nested_types": []
+    },
+    {
+      "research_id": "enterprise2026r2.supporting.com.altova.io.ReaderInput",
+      "name": "com.altova.io.ReaderInput",
+      "kind": "class",
+      "language": "Java",
+      "source_index": 9,
+      "source_type_index": 0,
+      "declaration_lines": [
+        8,
+        8
+      ],
+      "modifiers": [
+        "public"
+      ],
+      "extends": [
+        {
+          "spelling": "Input",
+          "resolved": "com.altova.io.Input"
+        }
+      ],
+      "implements": [],
+      "conditions": [],
+      "assessment_ref": "#/assessment_boundary",
+      "members": [
+        {
+          "index": 0,
+          "declaration_lines": [
+            11,
+            11
+          ],
+          "kind": "constructor",
+          "name": "ReaderInput",
+          "type": null,
+          "modifiers": [
+            "public"
+          ],
+          "parameters": [
+            {
+              "index": 0,
+              "name": "reader",
+              "type": {
+                "spelling": "Reader",
+                "resolved": "java.io.Reader"
+              },
+              "direction": "value",
+              "default": null
+            }
+          ],
+          "throws": [],
+          "accessors": [],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        },
+        {
+          "index": 1,
+          "declaration_lines": [
+            16,
+            16
+          ],
+          "kind": "method",
+          "name": "getReader",
+          "type": {
+            "spelling": "Reader",
+            "resolved": "java.io.Reader"
+          },
+          "modifiers": [
+            "public"
+          ],
+          "parameters": [],
+          "throws": [],
+          "accessors": [],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        },
+        {
+          "index": 2,
+          "declaration_lines": [
+            18,
+            18
+          ],
+          "kind": "method",
+          "name": "close",
+          "type": {
+            "spelling": "void",
+            "resolved": "void"
+          },
+          "modifiers": [
+            "public"
+          ],
+          "parameters": [],
+          "throws": [
+            {
+              "spelling": "Exception",
+              "resolved": "java.lang.Exception"
+            }
+          ],
+          "accessors": [],
+          "annotations": [
+            "Override"
+          ],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        }
+      ],
+      "nested_types": []
+    },
+    {
+      "research_id": "enterprise2026r2.supporting.com.altova.io.WriterOutput",
+      "name": "com.altova.io.WriterOutput",
+      "kind": "class",
+      "language": "Java",
+      "source_index": 10,
+      "source_type_index": 0,
+      "declaration_lines": [
+        8,
+        8
+      ],
+      "modifiers": [
+        "public"
+      ],
+      "extends": [
+        {
+          "spelling": "Output",
+          "resolved": "com.altova.io.Output"
+        }
+      ],
+      "implements": [],
+      "conditions": [],
+      "assessment_ref": "#/assessment_boundary",
+      "members": [
+        {
+          "index": 0,
+          "declaration_lines": [
+            11,
+            11
+          ],
+          "kind": "constructor",
+          "name": "WriterOutput",
+          "type": null,
+          "modifiers": [
+            "public"
+          ],
+          "parameters": [
+            {
+              "index": 0,
+              "name": "writer",
+              "type": {
+                "spelling": "Writer",
+                "resolved": "java.io.Writer"
+              },
+              "direction": "value",
+              "default": null
+            }
+          ],
+          "throws": [],
+          "accessors": [],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        },
+        {
+          "index": 1,
+          "declaration_lines": [
+            16,
+            16
+          ],
+          "kind": "method",
+          "name": "getWriter",
+          "type": {
+            "spelling": "Writer",
+            "resolved": "java.io.Writer"
+          },
+          "modifiers": [
+            "public"
+          ],
+          "parameters": [],
+          "throws": [],
+          "accessors": [],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        },
+        {
+          "index": 2,
+          "declaration_lines": [
+            18,
+            18
+          ],
+          "kind": "method",
+          "name": "close",
+          "type": {
+            "spelling": "void",
+            "resolved": "void"
+          },
+          "modifiers": [
+            "public"
+          ],
+          "parameters": [],
+          "throws": [
+            {
+              "spelling": "Exception",
+              "resolved": "java.lang.Exception"
+            }
+          ],
+          "accessors": [],
+          "annotations": [
+            "Override"
+          ],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        }
+      ],
+      "nested_types": []
+    },
+    {
+      "research_id": "enterprise2026r2.supporting.com.altova.io.DocumentInput",
+      "name": "com.altova.io.DocumentInput",
+      "kind": "class",
+      "language": "Java",
+      "source_index": 11,
+      "source_type_index": 0,
+      "declaration_lines": [
+        8,
+        8
+      ],
+      "modifiers": [
+        "public"
+      ],
+      "extends": [
+        {
+          "spelling": "Input",
+          "resolved": "com.altova.io.Input"
+        }
+      ],
+      "implements": [],
+      "conditions": [],
+      "assessment_ref": "#/assessment_boundary",
+      "members": [
+        {
+          "index": 0,
+          "declaration_lines": [
+            11,
+            11
+          ],
+          "kind": "constructor",
+          "name": "DocumentInput",
+          "type": null,
+          "modifiers": [
+            "public"
+          ],
+          "parameters": [
+            {
+              "index": 0,
+              "name": "document",
+              "type": {
+                "spelling": "Document",
+                "resolved": "org.w3c.dom.Document"
+              },
+              "direction": "value",
+              "default": null
+            }
+          ],
+          "throws": [],
+          "accessors": [],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        },
+        {
+          "index": 1,
+          "declaration_lines": [
+            16,
+            16
+          ],
+          "kind": "method",
+          "name": "getDocument",
+          "type": {
+            "spelling": "Document",
+            "resolved": "org.w3c.dom.Document"
+          },
+          "modifiers": [
+            "public"
+          ],
+          "parameters": [],
+          "throws": [],
+          "accessors": [],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        }
+      ],
+      "nested_types": []
+    },
+    {
+      "research_id": "enterprise2026r2.supporting.com.altova.io.DocumentOutput",
+      "name": "com.altova.io.DocumentOutput",
+      "kind": "class",
+      "language": "Java",
+      "source_index": 12,
+      "source_type_index": 0,
+      "declaration_lines": [
+        8,
+        8
+      ],
+      "modifiers": [
+        "public"
+      ],
+      "extends": [
+        {
+          "spelling": "Output",
+          "resolved": "com.altova.io.Output"
+        }
+      ],
+      "implements": [],
+      "conditions": [],
+      "assessment_ref": "#/assessment_boundary",
+      "members": [
+        {
+          "index": 0,
+          "declaration_lines": [
+            11,
+            11
+          ],
+          "kind": "constructor",
+          "name": "DocumentOutput",
+          "type": null,
+          "modifiers": [
+            "public"
+          ],
+          "parameters": [
+            {
+              "index": 0,
+              "name": "document",
+              "type": {
+                "spelling": "Document",
+                "resolved": "org.w3c.dom.Document"
+              },
+              "direction": "value",
+              "default": null
+            }
+          ],
+          "throws": [],
+          "accessors": [],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        },
+        {
+          "index": 1,
+          "declaration_lines": [
+            16,
+            16
+          ],
+          "kind": "method",
+          "name": "getDocument",
+          "type": {
+            "spelling": "Document",
+            "resolved": "org.w3c.dom.Document"
+          },
+          "modifiers": [
+            "public"
+          ],
+          "parameters": [],
+          "throws": [],
+          "accessors": [],
+          "annotations": [],
+          "constant_value": null,
+          "directly_declared": true,
+          "conditions": [],
+          "value_status": "not_applicable"
+        }
+      ],
+      "nested_types": []
+    }
+  ]
+}
