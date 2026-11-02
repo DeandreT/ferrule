@@ -20,6 +20,9 @@ egui = { workspace = true }
 eframe = { workspace = true }
 egui-snarl = { workspace = true }
 
+[dev-dependencies]
+format-flextext = { workspace = true }
+
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 js-sys = "0.3"
 wasm-bindgen-futures = "0.4"
