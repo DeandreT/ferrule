@@ -23,6 +23,7 @@ They do not change the canonical capability ledger or establish execution suppor
 | `com-callable-coverage.json` | Finite, disjoint membership of all 325 callable records; declaration adoption remains separate from runtime support |
 | `com-type-relationships.json` | GUID/header enrichment of the same 75 type identities and all 32 ordered coclass references, including nine default sources; no new capabilities or activation proof |
 | `supporting.json` | Public I/O classes, wrapper-library exceptions and the named installation-artifact requests |
+| `supporting-io-declarations.json` | Direct public source declarations on the existing 24 documented C#/Java I/O owners, with nested C# enums and an independent offline oracle |
 | `schema-wrappers.json` | Four optional schema-wrapper source profiles, actual schema identities and build/dependency metadata; no compiled or runtime qualification |
 | `external-references.json` | Linked historical DOM algorithm and redirected .NET interface contract, kept separate from vendor claims |
 
@@ -245,7 +246,61 @@ and byte identity do not verify Authenticode trust. No calling convention, ABI,
 marshaling, ownership, lifetime, coercion, defaults, runtime errors, activation or
 backend support is qualified by declaration adoption.
 
-The public supporting declarations are inventoried. `schema-wrappers.json`
+The supporting-I/O declaration fragment enriches the same 24 research identities
+from `supporting.json`, twelve owners per language. Its finite source cohort is
+`Altova/io.cs` and twelve `com/altova/io` owner files. The ordinary and
+wrapper-enabled retained bundles have identical bytes for all thirteen files.
+The recorded generation manifests join the selected generator and four
+ConvertProducts inputs to the existing HTTPS-origin installer-member comparisons;
+this does not strengthen Authenticode trust or establish product-wide provenance.
+
+The fragment retains 99 directly declared public non-type members: 26 constructors,
+35 methods, 31 properties, one field and six Java constants. Two nested C# enum
+declarations and their six constants remain owned by `Input` and `Output`, not new
+research identities. Type spelling and resolved names are separate, including
+`System.IO.TextReader` versus `java.io.Reader` and the nested enum types. Explicit
+modifiers, getter visibility, overloads, parameter names/directions, absent declared
+defaults (explicit null metadata) and Java throws remain source metadata. The literal
+C# `Fielname` spelling is not corrected. Inherited members, implicit constructors, nonpublic declarations,
+UrlInput/Web, mapping-entry and close-setting APIs, exceptions and schema-generated
+types are excluded. An override is retained where directly declared, without
+duplicating the rest of its inherited surface.
+
+One-based LF declaration ranges, zero-based file/type/member/parameter indexes and
+import anchors refer to freshly hashed private sources. Type indexes count excluded
+top-level types as well; member indexes count only the scoped direct public value
+members, with nested types listed separately. Accessor anchors identify declaration
+tokens, never property bodies. No preprocessor directives occur in these thirteen
+files; an empty condition list does not establish compiled availability or a default
+build configuration. Literal constant values are declarations; method/property/
+constructor bodies, comments, constructor initializers and nonconstant field
+initializer expressions are not copied. The public field's value status is explicitly
+`not_established`; its null constant-value slot does not claim a null runtime value.
+
+`oracles/supporting-io-declarations.jsonl` is an independent manual transcription
+from numbered source reads and separate manifest/hash readback, not output from the
+candidate lexer, candidate JSON or partial discovery caches. `S` rows retain file
+identity, byte hash, LF extent, imports and conditions; `O` rows retain owner/type
+index, declaration anchor, modifiers and explicit inheritance; `N` rows retain nested
+enum ownership and constants; `M` rows retain direct members, ordered parameters,
+throws, accessors and explicit constant values. The Rust projection defines each
+tuple's field order. A strict typed schema rejects unknown fields and missing
+explicit nulls. The source oracle and coherent mutation controls pin every owner and
+member, including same-shape changes to names, types, throws, accessors, source
+coordinates, hashes, imports, nesting and inherited-member promotion.
+
+The manual's Java `StreamOutput(String filename)` stays separate from the observed
+public `OutputStream` constructor. This is not an automatic contradiction or a
+correction to the manual. The protected filename constructor is outside this public
+cohort. Existing partial observations in `artifact-observations.json` are compared,
+not rewritten. Runtime ownership, closing/lifetime, buffering, encoding, defaults,
+null/error behavior, dependency availability, exact Java version, ABI and backend
+applicability remain unqualified. All owners inherit unassessed status, unknown
+applicability and empty execution evidence/receipts; the inventory remains incomplete.
+These checks need only repository metadata, not vendor files, network access or
+vendor generation, compilation, activation or execution.
+
+`schema-wrappers.json`
 records bounded source bundles for C#, Java and both C++ DOM options, including
 actual schema names and build dependencies. The requested compiled C# DLLs,
 complete API contracts and runtime behavior remain unqualified. Running the
