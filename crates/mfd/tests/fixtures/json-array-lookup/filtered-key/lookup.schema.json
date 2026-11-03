@@ -1,0 +1,9 @@
+{
+  "type": "object",
+  "properties": {
+    "Label": {"type":["string","null"]},
+    "Rows": {"type":"array","items":{"type":"object","properties":{"Code":{"type":["string","null"]},"Value":{"type":["string","null"]}},"additionalProperties":false}},
+    "Guard": {"type":"object","properties":{"Flag":{"type":"boolean"}},"required":["Flag"],"additionalProperties":false}
+  },
+  "additionalProperties": false
+}
