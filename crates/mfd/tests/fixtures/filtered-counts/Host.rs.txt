@@ -1,0 +1,110 @@
+use codegen_runtime::{Instance, Value};
+
+#[derive(Debug)]
+struct InputFailure {
+    category: String,
+    detail: String,
+}
+
+fn xml_failure(error: codegen_runtime::XmlBoundaryError) -> InputFailure {
+    InputFailure {
+        category: format!("{:?}", error.kind),
+        detail: format!("{error:?}"),
+    }
+}
+
+fn x12_failure(error: codegen_runtime::X12BoundaryError) -> InputFailure {
+    let category = match &error {
+        codegen_runtime::X12BoundaryError::Syntax { .. } => "Syntax",
+        _ => "unexpected X12 error",
+    };
+    InputFailure {
+        category: category.into(),
+        detail: format!("{error:?}"),
+    }
+}
+
+fn verify(actual: &Instance, expected: &serde_json::Value) {
+    match expected {
+        serde_json::Value::Object(fields) => {
+            let Instance::Group(actual_fields) = actual else {
+                panic!("expected group")
+            };
+            assert_eq!(actual_fields.len(), fields.len());
+            for (name, expected) in fields {
+                verify(actual.field(name).unwrap(), expected);
+            }
+        }
+        serde_json::Value::Array(items) => {
+            let actual = actual.as_repeated().unwrap();
+            assert_eq!(actual.len(), items.len());
+            for (actual, expected) in actual.iter().zip(items) {
+                verify(actual, expected);
+            }
+        }
+        serde_json::Value::String(text) => {
+            assert_eq!(actual.as_scalar(), Some(&Value::String(text.clone())))
+        }
+        serde_json::Value::Number(number) => assert_eq!(
+            actual.as_scalar(),
+            Some(&Value::Int(number.as_i64().unwrap()))
+        ),
+        _ => panic!("outside authored output domain"),
+    }
+}
+
+fn main() {
+    let cases: Vec<serde_json::Value> =
+        serde_json::from_str(include_str!("../cases.json")).unwrap();
+    let source = include_str!("../source-schema.json");
+    let target = include_str!("../target-schema.json");
+    let kind = include_str!("../input-kind.txt");
+    for case in &cases {
+        let input = case["input"].as_str().unwrap();
+        let (text, bytes) = match kind {
+            "xml" => (
+                codegen_runtime::parse_structured_xml(source, input).map_err(xml_failure),
+                codegen_runtime::parse_structured_xml_bytes(source, input.as_bytes())
+                    .map_err(xml_failure),
+            ),
+            "x12" => (
+                codegen_runtime::parse_x12(source, input).map_err(x12_failure),
+                codegen_runtime::parse_x12_bytes(source, input.as_bytes()).map_err(x12_failure),
+            ),
+            _ => panic!("unknown authored input cohort"),
+        };
+        if case["reject"] == true {
+            assert_eq!(case["stage"], "input");
+            for (boundary, result) in [("text", text), ("utf8", bytes)] {
+                let error = result.expect_err("invalid input reached mapping");
+                println!(
+                    "{}",
+                    serde_json::json!({"case":case["name"],"boundary":boundary,"stage":"input","category":error.category,"error":error.detail})
+                );
+                assert_eq!(error.category, case["runtimeCategory"].as_str().unwrap());
+            }
+            continue;
+        }
+        let (text, bytes) = (text.unwrap(), bytes.unwrap());
+        assert_eq!(text, bytes);
+        for (boundary, input) in [("text", &text), ("utf8", &bytes)] {
+            let before = input.clone();
+            let outcome = ferrule_filtered_counts::execute(input);
+            eprintln!("{} {boundary} mapping outcome: {outcome:?}", case["name"]);
+            let output = outcome.unwrap();
+            assert_eq!(input, &before);
+            eprintln!("typed output {} {boundary}: {output:?}", case["name"]);
+            let json = codegen_runtime::serialize_json(target, &output).unwrap();
+            println!(
+                "{}",
+                serde_json::json!({"case": case["name"], "boundary": boundary, "stage":"mapping", "output": serde_json::from_str::<serde_json::Value>(&json).unwrap()})
+            );
+            verify(&output, &case["expected"]);
+            assert_eq!(
+                serde_json::from_str::<serde_json::Value>(&json).unwrap(),
+                case["expected"]
+            );
+        }
+    }
+    println!("filtered-count {kind} Release cases: {}", cases.len());
+}

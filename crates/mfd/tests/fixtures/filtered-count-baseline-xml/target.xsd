@@ -1,0 +1,14 @@
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:element name="Results"><xs:complexType><xs:sequence>
+    <xs:element name="Included" type="xs:integer"/>
+    <xs:element name="Excluded" type="xs:integer"/>
+    <xs:element name="Batch" minOccurs="0" maxOccurs="unbounded"><xs:complexType><xs:sequence>
+      <xs:element name="Included" type="xs:integer"/>
+      <xs:element name="Excluded" type="xs:integer"/>
+      <xs:element name="Record" minOccurs="0" maxOccurs="unbounded"><xs:complexType><xs:sequence>
+        <xs:element name="Included" type="xs:integer"/>
+        <xs:element name="Excluded" type="xs:integer"/>
+      </xs:sequence></xs:complexType></xs:element>
+    </xs:sequence></xs:complexType></xs:element>
+  </xs:sequence></xs:complexType></xs:element>
+</xs:schema>
