@@ -37,6 +37,8 @@ use thiserror::Error;
 pub use prepared::PreparedSchema;
 #[cfg(test)]
 use reader::read_node;
+#[cfg(feature = "document-dom-instrumentation")]
+pub use reader::{document_dom_decode_attempt_count, reset_document_dom_decode_attempt_count};
 pub use reader::{from_json5_str, from_lines, from_str, read, read_json5, read_lines};
 use reader::{
     from_value_with, read_node_with_patterns, read_repeated, read_scalar, read_scalar_union,

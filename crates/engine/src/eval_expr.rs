@@ -24,6 +24,7 @@ use crate::{DebugHook, EngineError, ExecutionPurpose};
 
 #[derive(Clone, Copy)]
 pub(crate) struct EvalProgram<'a> {
+    json_projections: Option<&'a RefCell<functions::JsonArrayProjections>>,
     pub(crate) invocation_counters: Option<&'a RefCell<functions::InvocationCounters>>,
     pub(crate) graph: &'a Graph,
     pub(crate) user_functions: &'a BTreeMap<FunctionId, UserFunction>,
@@ -52,6 +53,7 @@ impl<'a> EvalProgram<'a> {
         first_failure_reported: &'a Cell<bool>,
     ) -> Self {
         Self {
+            json_projections: None,
             invocation_counters: None,
             graph,
             user_functions,
@@ -86,6 +88,14 @@ impl<'a> EvalProgram<'a> {
         counters: Option<&'a RefCell<functions::InvocationCounters>>,
     ) -> Self {
         self.invocation_counters = counters;
+        self
+    }
+
+    pub(crate) fn with_json_projections(
+        mut self,
+        projections: &'a RefCell<functions::JsonArrayProjections>,
+    ) -> Self {
+        self.json_projections = Some(projections);
         self
     }
 
@@ -604,7 +614,27 @@ fn eval_expr_inner(
                     in_progress,
                 )?);
             }
-            functions::call(function, &values).map_err(EngineError::from)
+            if let Some(projections) = program.json_projections
+                && matches!(
+                    function.as_str(),
+                    "json_parse_array_length"
+                        | "json_parse_array_field"
+                        | "json_parse_field"
+                        | "json_parse_object_exists"
+                )
+                && let [source, ..] = args.as_slice()
+            {
+                projections
+                    .borrow_mut()
+                    .call(
+                        functions::JsonProjectionOwner { source: *source },
+                        function,
+                        &values,
+                    )
+                    .map_err(EngineError::from)
+            } else {
+                functions::call(function, &values).map_err(EngineError::from)
+            }
         }
         Node::UserFunctionCall { function, args } => {
             let mut values = Vec::with_capacity(args.len());

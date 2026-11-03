@@ -260,6 +260,7 @@ public sealed partial class ScopeContext
             new(collection.ToArray(), value, index),
         };
         return new ScopeContext(
+            _jsonProjections,
             _primarySource,
             new ReadOnlyCollection<FerruleInstance>(frames),
             new ReadOnlyCollection<CollectionIdentity>(collections),
