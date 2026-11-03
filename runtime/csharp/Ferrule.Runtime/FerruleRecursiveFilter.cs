@@ -417,6 +417,7 @@ public sealed partial class ScopeContext
         collections.AddRange(_collections);
         collections.Add(new CollectionIdentity(new[] { collection }, item, index));
         return new ScopeContext(
+            _jsonProjections,
             _primarySource,
             new ReadOnlyCollection<FerruleInstance>(frames),
             new ReadOnlyCollection<CollectionIdentity>(collections),
@@ -447,7 +448,7 @@ public sealed partial class ScopeContext
         for (var i = 0; i < _collections.Count; i++) collections[i] = _collections[i];
         frames[^1] = item;
         collections[^1] = new CollectionIdentity(path, item, index);
-        return new ScopeContext(_primarySource, new ReadOnlyCollection<FerruleInstance>(frames),
+        return new ScopeContext(_jsonProjections, _primarySource, new ReadOnlyCollection<FerruleInstance>(frames),
             new ReadOnlyCollection<CollectionIdentity>(collections), _executionContext,
             _dynamicSourceLoader, _filterMapRunState, _filterMapBoundary, _filterMapCallDepth, _invocationCounters);
     }
