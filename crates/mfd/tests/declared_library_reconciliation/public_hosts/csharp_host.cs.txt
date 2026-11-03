@@ -1,0 +1,160 @@
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Xml.Linq;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+using G = Ferrule.Generated.GeneratedMapping;
+using Reason = Ferrule.Runtime.FerruleSourceContractReason;
+
+static class Program
+{
+    // No schema/reader is consulted for the deliberate sparse raw host case.
+    static FerruleInstance Raw(JsonElement value) => value.ValueKind switch
+    {
+        JsonValueKind.Object => new FerruleGroup(value.EnumerateObject().Select(
+            field => new FerruleField(field.Name, Raw(field.Value)))),
+        JsonValueKind.Array => new FerruleRepeated(value.EnumerateArray().Select(Raw)),
+        JsonValueKind.String => new FerruleScalar(FerruleValue.FromString(value.GetString()!)),
+        JsonValueKind.Number => new FerruleScalar(FerruleValue.FromInt64(value.GetInt64())),
+        _ => throw new Exception("Outside authored raw input domain"),
+    };
+
+    static void Whole(FerruleInstance actual, JsonElement expected)
+    {
+        switch (expected.ValueKind)
+        {
+            case JsonValueKind.Object:
+                if (actual is not FerruleGroup group || group.Fields.Count != expected.EnumerateObject().Count())
+                    throw new Exception("Whole group differs");
+                foreach (var (actualField, expectedField) in group.Fields.Zip(expected.EnumerateObject()))
+                {
+                    if (!StringComparer.Ordinal.Equals(actualField.Name, expectedField.Name))
+                        throw new Exception("Ordered typed output field differs");
+                    Whole(actualField.Value, expectedField.Value);
+                }
+                return;
+            case JsonValueKind.Array:
+                if (actual is not FerruleRepeated repeated || repeated.Items.Count != expected.GetArrayLength())
+                    throw new Exception("Whole repeated output differs");
+                for (int index = 0; index < repeated.Items.Count; index++) Whole(repeated.Items[index], expected[index]);
+                return;
+            case JsonValueKind.String:
+                if (actual is not FerruleScalar scalar || scalar.Value.Kind != FerruleValueKind.String ||
+                    scalar.Value.StringValue != expected.GetString()) throw new Exception("Literal scalar differs");
+                return;
+            default: throw new Exception("Outside independently authored output domain");
+        }
+    }
+
+    static object? Plain(FerruleInstance value) => value switch
+    {
+        FerruleGroup group => group.Fields.ToDictionary(field => field.Name, field => Plain(field.Value), StringComparer.Ordinal),
+        FerruleRepeated repeated => repeated.Items.Select(Plain).ToArray(),
+        FerruleScalar scalar => scalar.Value.Kind switch
+        {
+            FerruleValueKind.String => scalar.Value.StringValue,
+            FerruleValueKind.Int64 => scalar.Value.Int64Value,
+            FerruleValueKind.Double => scalar.Value.DoubleValue,
+            FerruleValueKind.Bool => scalar.Value.BooleanValue,
+            FerruleValueKind.Null => null,
+            _ => new { unexpected_typed_output = scalar.Value.Kind.ToString() },
+        },
+        _ => new { unexpected_typed_output = value.GetType().FullName },
+    };
+
+    static void Reject(string id, Action action, Reason expected)
+    {
+        try { action(); }
+        catch (Exception error)
+        {
+            for (Exception? current = error; current is not null; current = current.InnerException)
+            {
+                if (current is not FerruleRuntimeException runtime || runtime.SourceContractViolation is not { } violation)
+                    continue;
+                Console.WriteLine(JsonSerializer.Serialize(new { kind = "refusal", @case = id,
+                    reason = violation.Reason.ToString(), path = violation.Path, boundary = "guard" }));
+                if (runtime.Error != FerruleRuntimeError.SourceContractViolation || violation.Reason != expected)
+                    throw new Exception("Wrong typed guard category", error);
+                if (id == "sparse-with-root-donor" && !violation.Path.SequenceEqual(new[] { "Row", "Cell" }))
+                    throw new Exception("Sparse refusal did not identify the missing local Cell", error);
+                if (violation.Path.Any(part => part.Contains("secret", StringComparison.Ordinal)))
+                    throw new Exception("Guard path leaked a host value", error);
+                return;
+            }
+            throw new Exception("No typed guard violation", error);
+        }
+        throw new Exception($"{id}: guarded public entry succeeded");
+    }
+
+    static void UdfError(Action action, JsonElement spec)
+    {
+        try { action(); }
+        catch (Exception error)
+        {
+            for (Exception? current = error; current is not null; current = current.InnerException)
+            {
+                if (current is not FerruleRuntimeException runtime || runtime.Error != FerruleRuntimeError.UserFunctionType)
+                    continue;
+                Console.WriteLine(JsonSerializer.Serialize(new { kind = "refusal", @case = "typed-udf-error",
+                    reason = runtime.Error.ToString(), function = runtime.UserFunction, parameter = runtime.FunctionParameter,
+                    expected = runtime.ExpectedScalarType?.ToString(), found = runtime.FoundKind?.ToString() }));
+                if (runtime.UserFunction != spec.GetProperty("udf_function").GetUInt64() ||
+                    runtime.FunctionParameter != spec.GetProperty("udf_parameter").GetUInt64() ||
+                    runtime.ExpectedScalarType != FerruleScalarType.Int64 || runtime.FoundKind != FerruleValueKind.String)
+                    throw new Exception("Wrong imported UDF adapter identity/category", error);
+                return;
+            }
+            throw new Exception("Not the typed imported UDF error", error);
+        }
+        throw new Exception("Typed imported UDF argument was not adapted");
+    }
+
+    static void Main(string[] args)
+    {
+        using var document = JsonDocument.Parse(File.ReadAllText(args.Single()));
+        var spec = document.RootElement;
+        foreach (var test in spec.GetProperty("valid").EnumerateArray())
+        {
+            var source = Raw(test.GetProperty("input"));
+            for (int repeat = 0; repeat < 3; repeat++)
+            {
+                var actual = G.Execute(source);
+                string json = G.ExecuteJson(test.GetProperty("input").GetRawText());
+                string xml = G.ExecuteXml(test.GetProperty("input_xml").GetString()!);
+                // Preserve complete actual output before semantic assertions.
+                Console.WriteLine(JsonSerializer.Serialize(new { kind = "valid", @case = test.GetProperty("id").GetString(),
+                    repeat, typed = Plain(actual), typed_debug = actual.ToString(), json, xml }));
+                Whole(actual, test.GetProperty("expected"));
+                if (!JsonNode.DeepEquals(JsonNode.Parse(json), JsonNode.Parse(test.GetProperty("expected").GetRawText())))
+                    throw new Exception("Whole JSON output differs");
+                if (!XNode.DeepEquals(XDocument.Parse(xml).Root, XDocument.Parse(test.GetProperty("expected_xml").GetString()!).Root))
+                    throw new Exception("Whole XML element tree differs");
+            }
+        }
+        foreach (var test in spec.GetProperty("guards").EnumerateArray())
+            Reject(test.GetProperty("id").GetString()!, () => G.Execute(Raw(test.GetProperty("input"))),
+                Enum.Parse<Reason>(test.GetProperty("reason").GetString()!, ignoreCase: false));
+        var valid = Raw(spec.GetProperty("valid")[0].GetProperty("input"));
+        var parameters = new FerruleRuntimeParameters(new Dictionary<string, FerruleValue>
+            { ["undeclared"] = FerruleValue.FromString("secret") });
+        var context = FerruleExecutionContext.WithParameters("imported.mapping.json", parameters);
+        Reject("parameters", () => G.Execute(valid, context), Reason.UnexpectedParameter);
+        Reject("extras", () => G.ExecuteWithSources(valid, new[] { new NamedInput("undeclared", valid) }), Reason.UnexpectedBinding);
+
+        // The immutable public host model rejects duplicates during construction;
+        // this is the native typed boundary, not a fabricated guard violation.
+        var fields = ((FerruleGroup)valid).Fields;
+        try
+        {
+            _ = new FerruleGroup(fields.Append(fields[0]));
+            throw new Exception("Duplicate public host field was accepted");
+        }
+        catch (FerruleRuntimeException error) when (error.Error == FerruleRuntimeError.DuplicateField)
+        {
+            Console.WriteLine(JsonSerializer.Serialize(new { kind = "refusal", @case = "duplicate",
+                reason = error.Error.ToString(), boundary = "host-construction" }));
+        }
+        if (spec.GetProperty("kind").GetString() == "root")
+            UdfError(() => G.Execute(Raw(spec.GetProperty("udf_error"))), spec);
+    }
+}

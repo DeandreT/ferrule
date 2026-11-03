@@ -1,0 +1,70 @@
+use codegen_runtime::{ExecutionContext, FunctionError, RuntimeError, RuntimeParameters, Value};
+use std::path::Path;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let paths: Vec<_> = std::env::args().skip(1).collect();
+    let cases: Vec<serde_json::Value> = serde_json::from_str(&std::fs::read_to_string(&paths[0])?)?;
+    let source = std::fs::read_to_string(&paths[1])?;
+    let target = std::fs::read_to_string(&paths[2])?;
+    for case in cases.iter().chain(cases.iter().rev()) {
+        let mut parameters = RuntimeParameters::new();
+        match case["parameter_failure"].as_str() {
+            Some("missing") => {}
+            Some("null") => parameters.insert("LookupText", Value::Null)?,
+            Some("int") => parameters.insert("LookupText", Value::Int(7))?,
+            None => parameters.insert(
+                "LookupText",
+                Value::String(case["lookup"].as_str().unwrap().into()),
+            )?,
+            other => panic!("unknown control {other:?}"),
+        }
+        let input = codegen_runtime::parse_json(&source, &case["primary"].to_string())?;
+        let context = ExecutionContext::new(Path::new("lookup.mfd")).with_parameters(&parameters);
+        let result = ferrule_generated_mapping::execute_with_context(&input, &context);
+        println!("{}|{result:?}", case["name"]);
+        match case["parameter_failure"].as_str() {
+            Some("missing") => assert!(
+                matches!(result, Err(RuntimeError::MissingRuntimeParameter { name, .. }) if name == "LookupText"),
+                "{case}"
+            ),
+            Some("null") => assert!(
+                matches!(
+                    result,
+                    Err(RuntimeError::Function(FunctionError::TypeMismatch {
+                        function: "json_parse_array_length",
+                        got: "null"
+                    }))
+                ),
+                "{case}"
+            ),
+            Some("int") => assert!(
+                matches!(
+                    result,
+                    Err(RuntimeError::Function(FunctionError::InvalidArgument {
+                        function: "json_parse_array_length",
+                        message: "input does not match the JSON schema"
+                    }))
+                ),
+                "{case}"
+            ),
+            None if case.get("error").is_some() => assert!(
+                matches!(result, Err(RuntimeError::Function(FunctionError::InvalidArgument { function: "json_parse_array_length", message })) if Some(message) == case["error"].as_str()),
+                "{case}"
+            ),
+            None => {
+                let actual = result?;
+                assert_eq!(
+                    actual,
+                    codegen_runtime::parse_json(&target, &case["expected"].to_string())?,
+                    "{case}"
+                );
+                let json: serde_json::Value =
+                    serde_json::from_str(&codegen_runtime::serialize_json(&target, &actual)?)?;
+                assert_eq!(json, case["expected"], "{case}");
+            }
+            other => panic!("unknown control {other:?}"),
+        }
+    }
+    println!("PASS complete parsed lookup syntax contracts");
+    Ok(())
+}
