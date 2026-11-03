@@ -1,0 +1,5 @@
+[
+  {"name":"empty undemanded","input":{"Row":[]},"expected":{"Group":[]}},
+  {"name":"nonempty demands clock","input":{"Row":[{"Value":"a","End":true}]},"missing_clock":true},
+  {"name":"supplied grouped","input":{"Row":[{"Value":"a","End":false},{"Value":"b","End":true},{"Value":"c","End":false}]},"clock":"2026-07-12T12:01:02.345-07:00","expected":{"Group":[{"First":"a","Stamp":"2026-07-12T12:01:02.345-07:00"},{"First":"c","Stamp":"2026-07-12T12:01:02.345-07:00"}]}}
+]
