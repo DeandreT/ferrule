@@ -1,0 +1,14 @@
+[
+  {
+    "name": "one_count_three_receiver_uses_and_empty_inner_repeat_with_outer_donor",
+    "input": "<Source><Cell><Label>OUTER-DONOR</Label></Cell><Row><Text>keep</Text><Cell><Label>A</Label></Cell><Cell><Label>B</Label></Cell></Row><Row><Text>drop</Text><Cell><Label>C</Label></Cell></Row><Row><Cell><Label>D</Label></Cell></Row><Row><Text>keep</Text></Row></Source>",
+    "expected": {"Total":2,"Row":[{"Count":1,"Cell":[{"Label":"A","Count":1},{"Label":"B","Count":1}]},{"Count":0,"Cell":[{"Label":"C","Count":0}]},{"Count":0,"Cell":[{"Label":"D","Count":0}]},{"Count":1,"Cell":[]}]},
+    "expectedXml": "<Results><Total>2</Total><Row><Count>1</Count><Cell><Label>A</Label><Count>1</Count></Cell><Cell><Label>B</Label><Count>1</Count></Cell></Row><Row><Count>0</Count><Cell><Label>C</Label><Count>0</Count></Cell></Row><Row><Count>0</Count><Cell><Label>D</Label><Count>0</Count></Cell></Row><Row><Count>1</Count></Row></Results>"
+  },
+  {
+    "name": "empty_direct_repeated_row_slot_does_not_select_a_donor",
+    "input": "<Source><Cell><Label>OUTER-DONOR</Label></Cell></Source>",
+    "expected": {"Total":0,"Row":[]},
+    "expectedXml": "<Results><Total>0</Total></Results>"
+  }
+]

@@ -45,6 +45,10 @@ impl GraphBuilder<'_> {
                 Ok(None) => {
                     self.unsupported_aggregate_call(&name, "has an unresolvable sequence input")
                 }
+                Err(reason) if self.owns_filtered_count_index(idx) => {
+                    self.refuse_filtered_count(&reason);
+                    Node::Unconnected
+                }
                 Err(reason) => self.unsupported_aggregate_call(
                     &name,
                     &format!("cannot import its sequence: {reason}"),
