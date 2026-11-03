@@ -19,17 +19,33 @@ pub(in crate::import) struct Headers {
 impl Headers {
     pub(in crate::import) fn read(structure: roxmltree::Node<'_, '_>) -> Result<Self, String> {
         let mut result = Self::default();
-        for node in structure.descendants().filter(roxmltree::Node::is_element) {
+        let parent_records = structure.parent().into_iter().flat_map(|parent| {
+            parent
+                .children()
+                .filter(saved_container)
+                .flat_map(|container| container.descendants())
+        });
+        // Only saved edge containers expand the scope. Wrapper components are
+        // not main producers; the active-structure identity check stays below.
+        for node in structure
+            .descendants()
+            .chain(parent_records)
+            .filter(roxmltree::Node::is_element)
+        {
             count_visit(Counter::NegativeHeader);
             result.dimensions.nodes += 1;
             result.dimensions.decoded = result
                 .dimensions
                 .decoded
                 .checked_add(node.tag_name().name().len())
+                .and_then(|n| n.checked_add(node.tag_name().namespace().map_or(0, str::len)))
                 .ok_or("Count routing decoded size overflow")?;
             result.work = result
                 .work
-                .checked_add(8 + node.tag_name().name().len())
+                .checked_add(
+                    8 + node.tag_name().name().len()
+                        + node.tag_name().namespace().map_or(0, str::len),
+                )
                 .ok_or("Count routing header work overflow")?;
             let component = node.has_tag_name("component")
                 && node.parent().is_some_and(|parent| {
@@ -45,12 +61,15 @@ impl Headers {
                     .decoded
                     .checked_add(attribute.name().len())
                     .and_then(|n| n.checked_add(attribute.value().len()))
+                    .and_then(|n| n.checked_add(attribute.namespace().map_or(0, str::len)))
                     .ok_or("Count routing decoded size overflow")?;
                 // Attribute names are inspected; unrelated literal values are
                 // only sized, never scanned or retained by this header pass.
                 result.work = result
                     .work
-                    .checked_add(2 + attribute.name().len())
+                    .checked_add(
+                        2 + attribute.name().len() + attribute.namespace().map_or(0, str::len),
+                    )
                     .ok_or("Count routing header work overflow")?;
                 if matches!(attribute.name(), "key" | "inpkey" | "outkey" | "vertexkey") {
                     result.dimensions.pins += 1;
@@ -65,9 +84,50 @@ impl Headers {
             }
             result.dimensions.edges += usize::from(node.has_tag_name("edge"));
         }
+        // The saved graph grammar associates a descendant edge with every
+        // enclosing vertex, including malformed nested vertices. Size those
+        // actual claims as well as XML records before the legacy reader parses
+        // or lends them; the negative buffers retain that same complete union.
+        for parent in std::iter::once(structure).chain(structure.parent()) {
+            for container in parent.children() {
+                result.work = result
+                    .work
+                    .checked_add(2)
+                    .ok_or("Count routing header work overflow")?;
+                if !container.has_tag_name("graph") {
+                    continue;
+                }
+                for vertex in container.descendants() {
+                    result.work = result
+                        .work
+                        .checked_add(1)
+                        .ok_or("Count routing header work overflow")?;
+                    if !vertex.has_tag_name("vertex") {
+                        continue;
+                    }
+                    for edge in vertex.descendants() {
+                        result.work = result
+                            .work
+                            .checked_add(1)
+                            .ok_or("Count routing header work overflow")?;
+                        if edge.has_tag_name("edge") {
+                            result.dimensions.edges = result
+                                .dimensions
+                                .edges
+                                .checked_add(1)
+                                .ok_or("Count routing edge dimensions overflow")?;
+                        }
+                    }
+                }
+            }
+        }
         publish_header(result);
         Ok(result)
     }
+}
+
+fn saved_container(node: &roxmltree::Node<'_, '_>) -> bool {
+    node.has_tag_name("connections") || node.has_tag_name("graph")
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -110,6 +170,7 @@ pub(in crate::import) struct Routing {
     counts: Buffer<CountRegistration>,
     filters: Buffer<FilterRegistration>,
     groups: Buffer<GroupClaim>,
+    uncertain_ports: Buffer<u32>,
     unknown_edge: bool,
     frozen: bool,
 }
@@ -247,6 +308,7 @@ impl Routing {
             counts: Buffer::new(),
             filters: Buffer::new(),
             groups: Buffer::new(),
+            uncertain_ports: Buffer::new(),
             unknown_edge: false,
             frozen: false,
         };
@@ -320,40 +382,60 @@ impl Routing {
                 }
             }
         }
-        // Audit saved containers not represented by the ordinary selected map.
-        // These are connectivity links, never another edge feed index.
-        for edge in structure.descendants().filter(|n| n.has_tag_name("edge")) {
-            state.metadata(edge)?;
-            state.ledger.work(headers.dimensions.nodes)?;
-            if edge.ancestors().find(|n| n.has_tag_name("structure")) != Some(structure) {
-                continue;
-            }
-            let (from, to) =
-                if let Some(parent) = edge.parent().filter(|p| p.has_tag_name("connections")) {
-                    let _ = parent;
-                    (edge.attribute("from"), edge.attribute("to"))
-                } else if edge.attribute("vertexkey").is_some() {
-                    (
-                        edge.ancestors()
-                            .find(|n| n.has_tag_name("vertex"))
-                            .and_then(|n| n.attribute("vertexkey")),
-                        edge.attribute("vertexkey"),
-                    )
+        // Same saved-container scope as positive raw authority, including ALL
+        // wrapper siblings. Those siblings intentionally lack a structure
+        // ancestor. This audit is connectivity, never a second feed index.
+        for parent in std::iter::once(structure).chain(structure.parent()) {
+            for container in parent.children().filter(saved_container) {
+                state.metadata(container)?;
+                if container.has_tag_name("connections") {
+                    for edge in container.descendants().skip(1) {
+                        state.ledger.work(1)?;
+                        if !edge.is_element() {
+                            continue;
+                        }
+                        // Nested malformed edge records still carry negative
+                        // authority; a bounded outer destination cannot hide an
+                        // inner record with a different destination.
+                        if !edge.has_tag_name("edge") && edge.parent() != Some(container) {
+                            continue;
+                        }
+                        state.metadata(edge)?;
+                        let recognized = state.closed_record(edge, false)?;
+                        state.saved_edge(
+                            edge.attribute("from"),
+                            edge.attribute("to"),
+                            recognized,
+                        )?;
+                    }
                 } else {
-                    continue;
-                };
-            state
-                .ledger
-                .text(from.map_or(0, str::len) + to.map_or(0, str::len))?;
-            let from = crate::import::schema::parse_u32(from);
-            let to = crate::import::schema::parse_u32(to);
-            match (from, to) {
-                (Some(from), Some(to)) => state.link(Key::Port(from), Key::Port(to))?,
-                (_, Some(to)) => {
-                    state.unknown_edge = true;
-                    state.link(Key::Port(to), Key::Port(to))?;
+                    for vertex in container.descendants() {
+                        state.ledger.work(1)?;
+                        if !vertex.has_tag_name("vertex") {
+                            continue;
+                        }
+                        state.metadata(vertex)?;
+                        state
+                            .ledger
+                            .text(vertex.attribute("vertexkey").map_or(0, str::len))?;
+                        let from = crate::import::schema::parse_u32(vertex.attribute("vertexkey"));
+                        // Nested vertices follow the existing reader/raw audit:
+                        // each enclosing vertex contributes its original claim.
+                        for edge in vertex.descendants() {
+                            state.ledger.work(1)?;
+                            if !edge.has_tag_name("edge") {
+                                continue;
+                            }
+                            state.metadata(edge)?;
+                            state
+                                .ledger
+                                .text(edge.attribute("vertexkey").map_or(0, str::len))?;
+                            let to = crate::import::schema::parse_u32(edge.attribute("vertexkey"));
+                            let recognized = state.closed_record(edge, true)?;
+                            state.edge_fact(from, to, recognized)?;
+                        }
+                    }
                 }
-                _ => state.unknown_edge = true,
             }
         }
         state.ledger.sort(state.links.0.len())?;
@@ -390,8 +472,12 @@ impl Routing {
     fn metadata_names(&mut self, node: roxmltree::Node<'_, '_>) -> Result<(), String> {
         self.ledger.work(1 + node.attributes().len())?;
         self.ledger.text(node.tag_name().name().len())?;
+        self.ledger
+            .text(node.tag_name().namespace().map_or(0, str::len))?;
         for attribute in node.attributes() {
             self.ledger.text(attribute.name().len())?;
+            self.ledger
+                .text(attribute.namespace().map_or(0, str::len))?;
         }
         Ok(())
     }
@@ -404,6 +490,69 @@ impl Routing {
     }
     pub(super) fn link(&mut self, from: Key, to: Key) -> Result<(), String> {
         self.links.push((from, to), &mut self.ledger)
+    }
+    fn saved_edge(
+        &mut self,
+        from: Option<&str>,
+        to: Option<&str>,
+        recognized: bool,
+    ) -> Result<(), String> {
+        self.ledger
+            .text(from.map_or(0, str::len) + to.map_or(0, str::len))?;
+        self.edge_fact(
+            crate::import::schema::parse_u32(from),
+            crate::import::schema::parse_u32(to),
+            recognized,
+        )
+    }
+    fn closed_record(
+        &mut self,
+        node: roxmltree::Node<'_, '_>,
+        graph: bool,
+    ) -> Result<bool, String> {
+        self.ledger.work(2 + node.tag_name().name().len())?;
+        let mut closed = node.has_tag_name("edge");
+        for attribute in node.attributes() {
+            self.ledger.work(2 + 2 * attribute.name().len())?;
+            closed &= if graph {
+                matches!(attribute.name(), "vertexkey" | "edgekey")
+            } else {
+                matches!(attribute.name(), "from" | "to")
+            };
+        }
+        for child in node.children() {
+            self.ledger.work(1)?;
+            closed &= !child.is_element();
+        }
+        Ok(closed)
+    }
+    fn edge_fact(
+        &mut self,
+        from: Option<u32>,
+        to: Option<u32>,
+        recognized: bool,
+    ) -> Result<(), String> {
+        match (from, to) {
+            (Some(from), Some(to)) => {
+                if !recognized {
+                    self.uncertain_ports.push(to, &mut self.ledger)?;
+                }
+                self.link(Key::Port(from), Key::Port(to))
+            }
+            (None, Some(to)) => {
+                self.uncertain_ports.push(to, &mut self.ledger)?;
+                self.link(Key::Port(to), Key::Port(to))
+            }
+            // In the recognized numeric edge grammar, no numeric endpoint
+            // means no possible u32 destination. The legacy reader drops it.
+            (_, None) if recognized => Ok(()),
+            // An unsupported record shape with no attributable destination
+            // cannot certify disjointness. Do not invent a numeric endpoint.
+            _ => {
+                self.unknown_edge = true;
+                Ok(())
+            }
+        }
     }
     fn owner_index(&mut self, owner: RawOwner) -> Result<Option<usize>, String> {
         self.ledger.lookup(self.owners.0.len())?;
@@ -425,6 +574,11 @@ impl Routing {
         let mut starts = Buffer::new();
         let has_filter = self.owners.0.iter().any(|o| o.filter);
         self.ledger.work(self.owners.0.len())?;
+        if has_filter {
+            for &port in &self.uncertain_ports.0 {
+                starts.push(Key::Port(port), &mut self.ledger)?;
+            }
+        }
         for (i, owner) in self.owners.0.iter().enumerate() {
             if owner.filter || has_filter && (owner.uncertain || self.unknown_edge && owner.count) {
                 starts.push(Key::Raw(i), &mut self.ledger)?;
@@ -519,6 +673,10 @@ pub(in crate::import) fn finish(
     }
     let has_filter = !state.filters.0.is_empty() || state.owners.0.iter().any(|o| o.filter);
     if has_filter {
+        for index in 0..state.uncertain_ports.0.len() {
+            let port = state.uncertain_ports.0[index];
+            starts.push(Key::Port(port), &mut state.ledger)?;
+        }
         for &key in &graph.keys.0 {
             state.ledger.work(1)?;
             if matches!(key, Key::Registered(10 | 11, _)) {
@@ -594,6 +752,8 @@ pub(in crate::import) fn finish(
     state.filters.0.shrink_to_fit();
     state.groups.0.clear();
     state.groups.0.shrink_to_fit();
+    state.uncertain_ports.0.clear();
+    state.uncertain_ports.0.shrink_to_fit();
     state.publish();
     Ok(CompleteDemand {
         seeds: seeds.0,
@@ -888,7 +1048,8 @@ fn publish_routing(state: &Routing) {
                 + state.owners.0.capacity()
                 + state.counts.0.capacity()
                 + state.filters.0.capacity()
-                + state.groups.0.capacity(),
+                + state.groups.0.capacity()
+                + state.uncertain_ports.0.capacity(),
         })
     });
     #[cfg(not(test))]

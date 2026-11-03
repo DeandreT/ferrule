@@ -3,6 +3,7 @@ use std::{cell::Cell, path::PathBuf};
 
 mod input_routing;
 mod receiver_contexts;
+mod resource_followup;
 mod review_regressions;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
