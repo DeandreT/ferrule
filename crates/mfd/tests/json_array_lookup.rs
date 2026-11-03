@@ -3,6 +3,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use ir::{Instance, Value};
 
+#[path = "json_array_lookup/host_commands.rs"]
+mod host_commands;
 #[path = "json_array_lookup/root_scalars.rs"]
 mod root_scalars;
 
@@ -795,73 +797,16 @@ fn generated_hosts(profile: &str) {
     )
     .unwrap();
     std::fs::copy(hosts.join("rust_host.rs"), rust.join("host.rs")).unwrap();
-    checked(
-        std::process::Command::new("cargo")
-            .args([
-                "run",
-                "--release",
-                "--offline",
-                "-j",
-                "1",
-                "--config",
-                "profile.release.incremental=false",
-                "--config",
-                "profile.release.strip=\"symbols\"",
-                "--manifest-path",
-            ])
-            .env_remove("CARGO_ENCODED_RUSTFLAGS")
-            .env("RUSTFLAGS", "-D warnings")
-            .arg(manifest)
-            .args(["--bin", "lookup-host", "--"])
-            .arg(fixtures.join("cases.json"))
-            .arg(dir.0.join("source-schema.json"))
-            .arg(dir.0.join("target-schema.json")),
-    );
-    let host = dir.0.join("csharp/host");
-    std::fs::create_dir(&host).unwrap();
-    std::fs::write(
-        dir.0.join("NuGet.Config"),
-        r#"<configuration><packageSources><clear/></packageSources></configuration>"#,
-    )
-    .unwrap();
-    std::fs::write(host.join("Host.csproj"), r#"<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><TreatWarningsAsErrors>true</TreatWarningsAsErrors><NuGetAudit>false</NuGetAudit></PropertyGroup><ItemGroup><ProjectReference Include="../Ferrule.Generated.csproj"/></ItemGroup></Project>"#).unwrap();
-    std::fs::copy(hosts.join("csharp_host.cs"), host.join("Program.cs")).unwrap();
-    std::fs::copy(shared.join("typed_assert.cs"), host.join("LookupOracle.cs")).unwrap();
-    let home = dir.0.join("dotnet-home");
-    checked(dotnet(&host, &home).arg("--version"));
-    checked(
-        dotnet(&host, &home)
-            .args([
-                "run",
-                "--configuration",
-                "Release",
-                "--disable-build-servers",
-                "-p:UseSharedCompilation=false",
-                "-p:BuildInParallel=false",
-                "--project",
-            ])
-            .arg(host.join("Host.csproj"))
-            .arg("--")
-            .arg(fixtures.join("cases.json"))
-            .arg(dir.0.join("source-schema.json"))
-            .arg(dir.0.join("target-schema.json")),
-    );
+    let sdk_version = host_commands::prepare_csharp_host(&dir.0, &hosts, &shared);
+    checked(&mut host_commands::rust_command(&dir.0, &fixtures));
+    let executable = std::env::var_os("FERRULE_DOTNET_EXE").unwrap_or_else(|| "dotnet".into());
+    let (mut sdk, mut host) = host_commands::csharp_commands(&dir.0, &fixtures, &executable);
+    let output = checked(&mut sdk);
+    host_commands::check_sdk_version(&output.stdout, &sdk_version)
+        .unwrap_or_else(|message| panic!("{message}"));
+    checked(&mut host);
 }
-fn dotnet(directory: &Path, home: &Path) -> std::process::Command {
-    let mut command = std::process::Command::new(
-        std::env::var_os("FERRULE_DOTNET_EXE").unwrap_or_else(|| "dotnet".into()),
-    );
-    command
-        .current_dir(directory)
-        .env("DOTNET_CLI_HOME", home)
-        .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
-        .env("DOTNET_NOLOGO", "1")
-        .env("DOTNET_SKIP_FIRST_TIME_EXPERIENCE", "1")
-        .env("DOTNET_CLI_USE_MSBUILD_SERVER", "0")
-        .env("MSBUILDDISABLENODEREUSE", "1");
-    command
-}
-fn checked(command: &mut std::process::Command) {
+fn checked(command: &mut std::process::Command) -> std::process::Output {
     let output = command.output().unwrap();
     println!(
         "{command:?}\nstatus: {}\n{}\n{}",
@@ -875,4 +820,5 @@ fn checked(command: &mut std::process::Command) {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
+    output
 }
