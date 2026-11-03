@@ -1,6 +1,9 @@
 use super::*;
 use std::{cell::Cell, path::PathBuf};
 
+mod receiver_contexts;
+mod review_regressions;
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Probe {
     None,
@@ -90,6 +93,7 @@ pub(super) fn probe_audit(
     descriptors: &[&SchemaComponent],
     declared_guard: bool,
 ) -> Option<Result<(), String>> {
+    review_regressions::audit_disjoint(table);
     let mode = PROBE.get();
     if mode == Probe::GuardedMix {
         assert!(declared_guard);
@@ -369,11 +373,11 @@ impl Drop for Package {
 const DESIGN: &str =
     include_str!("../../../../tests/fixtures/filtered-count-receivers/row-cell-fanout.mfd");
 
-fn counts() -> [usize; 18] {
+fn counts() -> [usize; 20] {
     COUNTERS.with(|c| *c.borrow())
 }
 fn reset() {
-    COUNTERS.with(|c| *c.borrow_mut() = [0; 18]);
+    COUNTERS.with(|c| *c.borrow_mut() = [0; 20]);
 }
 
 #[test]

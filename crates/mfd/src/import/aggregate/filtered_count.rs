@@ -77,10 +77,7 @@ pub(in crate::import) struct CountProofTable {
     target_schemas: BTreeMap<usize, [u8; 32]>,
     target_options: BTreeMap<usize, [u8; 32]>,
     failure: Option<String>,
-    raw_filter_header: bool,
-    unresolved_count_header: bool,
-    filter_header_outputs: [Option<u32>; 128],
-    filter_header_overflow: bool,
+    discovery_incomplete: bool,
 }
 
 pub(in crate::import) enum CountBinding {
@@ -105,10 +102,7 @@ impl CountProofTable {
         target_schemas: BTreeMap::new(),
         target_options: BTreeMap::new(),
         failure: None,
-        raw_filter_header: false,
-        unresolved_count_header: false,
-        filter_header_outputs: [None; 128],
-        filter_header_overflow: false,
+        discovery_incomplete: false,
     };
     pub(in crate::import) fn owns_index(&self, index: usize) -> bool {
         self.candidates
@@ -146,62 +140,11 @@ impl CountProofTable {
         };
         let mut table = Self::EMPTY;
         table.budget = Some(budget.clone());
-        // Negative header facts survive optional origin exhaustion without a
-        // producer census or an allocated fallback ownership map.
-        let mut header_outputs = 0usize;
-        let mut header_visits = 0usize;
-        for owner in structure
-            .children()
-            .filter(|n| n.has_tag_name("children"))
-            .flat_map(|n| n.children())
-            .filter(|n| n.has_tag_name("component"))
-        {
-            table.raw_filter_header |= owner.attribute("name") == Some("filter");
-            table.unresolved_count_header |= owner.attribute("name") == Some("count")
-                && !non_count_header(owner)
-                && (owner.attribute("library") != Some("core")
-                    || owner.attribute("kind") != Some("5"));
-            if owner.attribute("name") == Some("filter") {
-                // Fixed negative metadata remains usable when optional capture
-                // has exhausted. It never supplies producer or use authority.
-                for node in owner.descendants().filter(roxmltree::Node::is_element) {
-                    header_visits += 1;
-                    if header_visits > 256 {
-                        table.filter_header_overflow = true;
-                        break;
-                    }
-                    let _ = budget.claim(1 + node.attributes().len(), 0, 0);
-                    if node.ancestors().find(|n| n.has_tag_name("component")) != Some(owner) {
-                        continue;
-                    }
-                    let keys = crate::import::schema::parse_u32(node.attribute("outkey"))
-                        .into_iter()
-                        .chain(
-                            (node.has_tag_name("datapoint")
-                                && node.parent().is_some_and(|p| p.has_tag_name("targets")))
-                            .then(|| crate::import::schema::parse_u32(node.attribute("key")))
-                            .flatten(),
-                        );
-                    for key in keys {
-                        if let Some(slot) = table.filter_header_outputs.get_mut(header_outputs) {
-                            *slot = Some(key);
-                            header_outputs += 1;
-                        } else {
-                            table.filter_header_overflow = true;
-                        }
-                    }
-                }
-            }
-        }
-        table.raw_filter_header |= n.functions.iter().any(|f| f.name == "filter");
-        table.unresolved_count_header |= n
-            .functions
-            .iter()
-            .any(|f| f.name == "count" && f.kind == 5 && f.outputs.is_empty());
         // This is closure discovery over original registrations, not a raw pin
         // or final producer census. Competing declarations remain in each slot.
-        let discover = discovery::discover(&mut table, structure, edges, n, budget);
+        let discover = discovery::discover(&mut table, structure, edges, n, &budget.discovery());
         if let Err(reason) = discover {
+            table.discovery_incomplete = true;
             table.failure = Some(reason);
         }
         if table.candidates.is_empty() {
@@ -290,7 +233,7 @@ impl CountProofTable {
                                 || target.ports.get(&input) != Some(&path)
                                 || !leaf.is_scalar()
                                 || leaf.repeating
-                                || leaf.attribute != raw::attribute(pin)
+                                || leaf.attribute != raw::attribute(pin, budget)?
                                 || target.is_variable
                                 || target.is_pass_through
                                 || target.dynamic_json.is_some()
@@ -313,7 +256,7 @@ impl CountProofTable {
                                                 != prefix
                                             || target_node(&target.schema, prefix, budget)?
                                                 .attribute
-                                                != raw::attribute(target_pin)
+                                                != raw::attribute(target_pin, budget)?
                                         {
                                             return Err("receiver input identity mismatch".into());
                                         }
@@ -461,7 +404,7 @@ impl Compiler<'_, '_, '_> {
             return Err("raw/final physical path mismatch".into());
         }
         let node = exact_node(&source.schema, path, self.budget)?;
-        if node.attribute != raw::attribute(self.raw.pin(feed, true, self.budget)?) {
+        if node.attribute != raw::attribute(self.raw.pin(feed, true, self.budget)?, self.budget)? {
             return Err("raw/registered scalar or group attribute profile differs".into());
         }
         copy_path(path, self.budget)
@@ -470,6 +413,14 @@ impl Compiler<'_, '_, '_> {
         let CountProducer::Function(f) = self.producer(feed)? else {
             return Err("not an ordinary function".into());
         };
+        self.budget.claim(
+            1,
+            f.name
+                .len()
+                .checked_add(f.library.len())
+                .ok_or("Count function metadata overflow")?,
+            0,
+        )?;
         let origin = Origin::ActiveMain(RawOwner::of(self.raw.pin(feed, true, self.budget)?.owner));
         self.raw.function(f, origin, self.budget)?;
         Ok(f)
@@ -730,6 +681,11 @@ fn exact_node<'a>(
             && !node.xml_type_alternatives
             && !node.container_nullable
             && !(node.nillable && matches!(node.kind, SchemaKind::Group { .. }))
+            && !matches!(
+                node.name.as_str(),
+                ir::XML_ATTRIBUTES_FIELD | ir::XML_ELEMENTS_FIELD
+            )
+            && !(node.repeating && (node.attribute || node.text || node.name == ir::XML_TEXT_FIELD))
             && node.json_object_item_nullable != Some(true)
             && !node.json_array_wrapper
             && !matches!(node.xml_namespace, Some(ir::XmlNamespace::Qualified(_)))
@@ -810,6 +766,8 @@ pub(in crate::import) enum Counter {
     QuotaFailure,
     EdgeIndex,
     Speculative,
+    RefusalElement,
+    RefusalPin,
 }
 pub(in crate::import) fn count_visit(counter: Counter) {
     #[cfg(test)]
@@ -820,42 +778,11 @@ pub(in crate::import) fn count_visit(counter: Counter) {
     let _ = counter;
 }
 #[cfg(test)]
-thread_local! { static COUNTERS: std::cell::RefCell<[usize; 18]> = const { std::cell::RefCell::new([0; 18]) }; }
+thread_local! { static COUNTERS: std::cell::RefCell<[usize; 20]> = const { std::cell::RefCell::new([0; 20]) }; }
 
 impl GraphBuilder<'_> {
     pub(in crate::import) fn owns_filtered_count_index(&self, index: usize) -> bool {
-        if self.filtered_counts.owns_index(index) {
-            return true;
-        }
-        // This existing trace supplies negative authority only: a failed
-        // optional census can never authorize a scalar-filter fallback.
-        if self.filtered_counts.failure.is_none() || !self.filtered_counts.raw_filter_header {
-            return false;
-        }
-        let Some(function) = self
-            .fn_components
-            .get(index)
-            .filter(|f| f.name == "count" && f.kind == 5)
-        else {
-            return false;
-        };
-        let sequence = self.input_feed(index, 1).or_else(|| {
-            (function.inputs.len() == 1)
-                .then(|| self.input_feed(index, 0))
-                .flatten()
-        });
-        self.filtered_counts.filter_header_overflow
-            || sequence.is_none_or(|feed| {
-                self.filtered_counts
-                    .filter_header_outputs
-                    .contains(&Some(feed))
-                    || self.resolve_iteration_feed(feed).has_filter
-                    || self
-                        .fn_by_output
-                        .get(&feed)
-                        .is_some_and(|&i| self.fn_components[i].name == "filter")
-                    || self.sequence_source_path(feed).is_none()
-            })
+        self.filtered_counts.owns_index(index)
     }
     pub(in crate::import) fn refuse_filtered_count(&mut self, reason: &str) -> String {
         let message = format!("physical filtered count: {reason}");
@@ -906,14 +833,6 @@ impl GraphBuilder<'_> {
     ) -> CountBinding {
         let table = self.filtered_counts;
         let Some(candidate) = table.candidate(feed) else {
-            if let Some(&index) = self.fn_by_output.get(&feed)
-                && self.owns_filtered_count_index(index)
-            {
-                self.refuse_filtered_count(
-                    "incomplete Count authority for a demanded scalar filter",
-                );
-                return CountBinding::Refused;
-            }
             return CountBinding::Legacy;
         };
         #[cfg(test)]

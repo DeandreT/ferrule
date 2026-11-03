@@ -167,12 +167,15 @@ impl CountProofTable {
         descriptors: &[&SchemaComponent],
         declared_guard: bool,
     ) -> Result<(), String> {
+        if self.discovery_incomplete {
+            return Err(self
+                .failure
+                .clone()
+                .unwrap_or_else(|| "incomplete Count refusal discovery".into()));
+        }
         if self.candidates.is_empty() {
             if let Some(reason) = &seal.failure {
                 return Err(reason.clone());
-            }
-            if self.raw_filter_header && self.unresolved_count_header {
-                return self.failure.as_ref().map_or(Ok(()), |e| Err(e.clone()));
             }
             return Ok(());
         }

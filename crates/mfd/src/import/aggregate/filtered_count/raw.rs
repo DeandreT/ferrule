@@ -2,6 +2,30 @@
 use super::*;
 use crate::import::schema::parse_u32;
 
+/// Account decoded metadata before looking up, parsing or normalizing a value.
+/// Attribute counts alone do not bound a padded numeric key's scan cost.
+pub(super) fn metadata(
+    node: roxmltree::Node<'_, '_>,
+    budget: &CountConstruction,
+) -> Result<(), String> {
+    let mut bytes = node.tag_name().name().len();
+    bytes = bytes
+        .checked_add(node.tag_name().namespace().map_or(0, str::len))
+        .ok_or("Count metadata text overflow")?;
+    for attribute in node.attributes() {
+        for size in [
+            attribute.name().len(),
+            attribute.value().len(),
+            attribute.namespace().map_or(0, str::len),
+        ] {
+            bytes = bytes
+                .checked_add(size)
+                .ok_or("Count metadata text overflow")?;
+        }
+    }
+    budget.claim(1 + node.attributes().len(), bytes, 0)
+}
+
 #[derive(Clone, Copy)]
 pub(super) struct Pin<'a, 'xml> {
     pub owner: roxmltree::Node<'a, 'xml>,
@@ -27,7 +51,7 @@ impl<'a, 'xml> Raw<'a, 'xml> {
             counts: BTreeMap::new(),
         };
         for node in structure.descendants().filter(roxmltree::Node::is_element) {
-            budget.claim(1 + node.attributes().len(), 0, 0)?;
+            metadata(node, budget)?;
             count_visit(Counter::RawElement);
             let (owner, nearest_structure) = ownership(node, budget)?;
             if nearest_structure != Some(structure) {
@@ -78,13 +102,13 @@ impl<'a, 'xml> Raw<'a, 'xml> {
                 .children()
                 .filter(|n| n.has_tag_name("connections") || n.has_tag_name("graph"))
             {
-                budget.claim(1, 0, 0)?;
+                metadata(container, budget)?;
                 if container.has_tag_name("connections") {
                     if container.attributes().len() != 0 {
                         return Err("unsupported edge container".into());
                     }
                     for edge in container.children().filter(roxmltree::Node::is_element) {
-                        budget.claim(1 + edge.attributes().len(), 0, 0)?;
+                        metadata(edge, budget)?;
                         if !edge.has_tag_name("edge")
                             || edge
                                 .attributes()
@@ -100,11 +124,11 @@ impl<'a, 'xml> Raw<'a, 'xml> {
                     }
                 } else {
                     for vertex in container.descendants().filter(|n| n.has_tag_name("vertex")) {
-                        budget.claim(1, 0, 0)?;
+                        metadata(vertex, budget)?;
                         let from = parse_u32(vertex.attribute("vertexkey"))
                             .ok_or("invalid graph vertex")?;
                         for edge in vertex.descendants().filter(|n| n.has_tag_name("edge")) {
-                            budget.claim(1 + edge.attributes().len(), 0, 0)?;
+                            metadata(edge, budget)?;
                             if edge
                                 .attributes()
                                 .any(|a| !matches!(a.name(), "vertexkey" | "edgekey"))
@@ -160,6 +184,7 @@ impl<'a, 'xml> Raw<'a, 'xml> {
             return Err("alternate edge disagrees with selected feed".into());
         }
         let uses = self.outgoing.entry(from).or_default();
+        budget.claim(uses.len(), 0, 0)?;
         if uses.contains(&to) {
             return Err("duplicate saved edge".into());
         }
@@ -235,11 +260,16 @@ pub(super) fn path(
     budget: &CountConstruction,
     expected_root: &str,
 ) -> Result<Vec<String>, String> {
-    let root = pin
-        .node
-        .ancestors()
-        .find(|n| n.has_tag_name("root"))
-        .ok_or("pin has no raw schema root")?;
+    let mut selected = None;
+    for (depth, ancestor) in pin.node.ancestors().enumerate() {
+        budget.claim(1, 0, depth)?;
+        metadata(ancestor, budget)?;
+        if ancestor.has_tag_name("root") {
+            selected = Some(ancestor);
+            break;
+        }
+    }
+    let root = selected.ok_or("pin has no raw schema root")?;
     let mut top = pin
         .node
         .ancestors()
@@ -247,7 +277,7 @@ pub(super) fn path(
         .last()
         .ok_or("missing schema root entry")?;
     while matches!(top.attribute("name"), Some("document" | "FileInstance")) {
-        budget.claim(1, 0, 0)?;
+        metadata(top, budget)?;
         let mut entries = top.children().filter(|n| n.has_tag_name("entry"));
         top = entries.next().ok_or("empty raw document wrapper")?;
         if entries.next().is_some() {
@@ -256,7 +286,8 @@ pub(super) fn path(
     }
     let json = pin.owner.attribute("library") == Some("json");
     if pin.owner.attribute("library") == Some("xml") {
-        budget.claim(1 + top.attributes().len(), expected_root.len(), 0)?;
+        metadata(top, budget)?;
+        budget.claim(1, expected_root.len(), 0)?;
         let (name, attribute) = crate::import::schema::normalize_xml_entry_name(
             top.attribute("name").unwrap_or_default(),
         );
@@ -273,6 +304,7 @@ pub(super) fn path(
             .and_then(|data| data.children().find(|n| n.has_tag_name("document")))
             && let Some(instance_root) = document.attribute("instanceroot")
         {
+            metadata(document, budget)?;
             budget.claim(1, instance_root.len(), 0)?;
             if instance_root.strip_prefix("{}") != Some(expected_root) {
                 return Err("unproved XML Count document root".into());
@@ -280,7 +312,7 @@ pub(super) fn path(
         }
         let mut headers = root.children().filter(|n| n.has_tag_name("header"));
         if let Some(header) = headers.next() {
-            budget.claim(1, 0, 0)?;
+            metadata(header, budget)?;
             if headers.next().is_some() {
                 return Err("ambiguous XML Count namespace header".into());
             }
@@ -288,6 +320,7 @@ pub(super) fn path(
             let namespace = containers
                 .next()
                 .ok_or("missing XML Count namespace authority")?;
+            metadata(namespace, budget)?;
             if containers.next().is_some() {
                 return Err("duplicate XML Count namespace containers".into());
             }
@@ -295,6 +328,7 @@ pub(super) fn path(
                 .children()
                 .find(|n| n.has_tag_name("namespace"))
                 .ok_or("missing XML Count namespace zero")?;
+            metadata(first, budget)?;
             if first.attribute("uid").is_some_and(|uri| !uri.is_empty()) {
                 return Err("qualified XML Count namespace is unsupported".into());
             }
@@ -303,7 +337,8 @@ pub(super) fn path(
     let mut path = Vec::new();
     let mut bytes = 0usize;
     for entry in pin.node.ancestors().take_while(|n| *n != top) {
-        budget.claim(1 + entry.attributes().len(), 0, path.len())?;
+        budget.claim(1, 0, path.len())?;
+        metadata(entry, budget)?;
         if !entry.has_tag_name("entry")
             || entry.children().any(|n| n.has_tag_name("condition"))
             || entry.attribute("ns").is_some_and(|n| n != "0")
@@ -355,8 +390,10 @@ fn plain_xml_name(entry: roxmltree::Node<'_, '_>) -> bool {
         && entry.attribute("ns").is_none_or(|slot| slot == "0")
 }
 
-pub(super) fn attribute(pin: Pin<'_, '_>) -> bool {
-    crate::import::schema::normalize_xml_entry_name(pin.node.attribute("name").unwrap_or_default())
-        .1
-        || pin.node.attribute("type") == Some("attribute")
+pub(super) fn attribute(pin: Pin<'_, '_>, budget: &CountConstruction) -> Result<bool, String> {
+    metadata(pin.node, budget)?;
+    Ok(crate::import::schema::normalize_xml_entry_name(
+        pin.node.attribute("name").unwrap_or_default(),
+    )
+    .1 || pin.node.attribute("type") == Some("attribute"))
 }
