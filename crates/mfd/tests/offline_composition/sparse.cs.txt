@@ -1,0 +1,20 @@
+using System.Text.Json.Nodes;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+var cases = JsonNode.Parse(File.ReadAllText(args[0]))!.AsArray();
+var source = File.ReadAllText(args[1]);
+var target = File.ReadAllText(args[2]);
+foreach (var item in cases.Concat(cases.Reverse()))
+{
+    var test = item!;
+    var input = FerruleJson.ParseEmbedded(source, test["input"]!.GetValue<string>());
+    var actual = GeneratedMapping.Execute(input);
+    Console.WriteLine(test["name"] + "|" + FerruleJson.SerializeEmbedded(target, actual));
+    Oracle.Equal(actual, Oracle.Literal(test["expected"]));
+    Oracle.Json(FerruleJson.SerializeEmbedded(target, actual), test["expected"]!);
+    var xml = FerruleXml.SerializeEmbedded(1, target, actual, false, false, null).StringValue;
+    Console.WriteLine("XML|" + xml);
+    if (xml != test["expected_xml"]!.GetValue<string>()) throw new Exception("Exact compact XML differs: " + xml);
+}
+Console.WriteLine("PASS complete sparse absence contracts");
