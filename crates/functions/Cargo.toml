@@ -9,6 +9,7 @@ description = "Built-in function library (string/math/date/aggregate/node-set) p
 [features]
 default = ["runtime"]
 runtime = ["dep:uuid", "dep:rand"]
+json-projection-instrumentation = ["runtime", "format-json/document-dom-instrumentation"]
 
 [dependencies]
 ir = { workspace = true }
@@ -20,3 +21,6 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 uuid = { workspace = true, optional = true }
 rand = { workspace = true, optional = true }
+
+[dev-dependencies]
+format-json = { workspace = true, features = ["document-dom-instrumentation"] }
