@@ -1,6 +1,7 @@
 use std::ops::{Deref, DerefMut};
 
 use super::super::{Registry, limits::ConstructionBudget};
+use crate::import::aggregate::filtered_count::routing::{self, Fact};
 use crate::import::schema::SchemaComponent;
 
 /// Session-local immutable XML identity. Never serialized, dereferenced as a
@@ -40,31 +41,24 @@ pub(in crate::import) enum Origin {
 /// Optional Count work has its own sticky quota. It never enables declared
 /// libraries and its exhaustion must not alter ordinary registration.
 #[derive(Clone, Debug)]
-pub(in crate::import) struct CountConstruction(ConstructionBudget, ConstructionBudget);
+#[cfg_attr(not(test), derive(Default))]
+pub(in crate::import) struct CountConstruction(ConstructionBudget, Option<routing::Handle>);
+#[cfg(test)]
 impl Default for CountConstruction {
     fn default() -> Self {
-        #[cfg(test)]
         if let Some((work, text)) =
             crate::import::aggregate::filtered_count::tests::construction_limits()
         {
             return Self::for_test(work, text);
         }
-        let proof = ConstructionBudget::default();
-        // Reserve refusal-only connectivity before optional origin/proof work.
-        // The two non-renewable partitions still total 65,536 work / 32 MiB.
-        let _ = proof.claim(16_384, 8 * 1024 * 1024, 0);
-        Self(proof, Self::refusal_partition())
+        Self(ConstructionBudget::default(), None)
     }
 }
 
 impl CountConstruction {
-    fn refusal_partition() -> ConstructionBudget {
-        let budget = ConstructionBudget::default();
-        let _ = budget.claim(49_152, 24 * 1024 * 1024, 0);
-        budget
-    }
-    pub(in crate::import) fn discovery(&self) -> Self {
-        Self(self.1.clone(), self.1.clone())
+    pub(in crate::import) fn with_routing(mut self, routing: routing::Handle) -> Self {
+        self.1 = Some(routing);
+        self
     }
     pub(in crate::import) fn claim(
         &self,
@@ -84,10 +78,7 @@ impl CountConstruction {
     }
     #[cfg(test)]
     pub(in crate::import) fn for_test(work: usize, text: usize) -> Self {
-        Self(
-            ConstructionBudget::for_test(work, text),
-            Self::refusal_partition(),
-        )
+        Self(ConstructionBudget::for_test(work, text), None)
     }
     #[cfg(test)]
     pub(in crate::import) fn remaining_for_test(&self) -> (usize, usize) {
@@ -111,9 +102,8 @@ pub(in crate::import) struct RegisteredVec<T> {
     current: Origin,
     budget: Option<ConstructionBudget>,
     count_capture: OriginCapture,
-    count_origins: Vec<Origin>,
+    count_origins: Vec<(usize, Origin)>,
     count_complete: bool,
-    count_refusal_complete: bool,
 }
 
 impl<T> RegisteredVec<T> {
@@ -132,12 +122,13 @@ impl<T> RegisteredVec<T> {
             count_capture: capture,
             count_origins: Vec::new(),
             count_complete: true,
-            count_refusal_complete: true,
         }
     }
     pub(in crate::import) fn set_active(&mut self, component: roxmltree::Node<'_, '_>) {
         self.current = Origin::ActiveMain(RawOwner::of(component));
     }
+}
+impl<T: Fact> RegisteredVec<T> {
     pub(in crate::import) fn push(&mut self, value: T) {
         self.push_origin(value, self.current);
     }
@@ -149,38 +140,38 @@ impl<T> RegisteredVec<T> {
             self.origins.push(origin);
         }
         if let OriginCapture::Count(budget) = &self.count_capture {
-            if self.count_refusal_complete && budget.discovery().claim(2, 0, 0).is_ok() {
-                self.count_origins.push(origin);
+            let wanted = if let Some(routing) = &budget.1 {
+                let mut routing = routing.borrow_mut();
+                routing.record(&value, origin, self.values.len());
+                routing.wants(origin).unwrap_or(false)
+            } else {
+                true
+            };
+            if wanted
+                && self.count_complete
+                && budget.claim(2, 0, 0).is_ok()
+                && self.count_origins.try_reserve_exact(1).is_ok()
+            {
+                self.count_origins.push((self.values.len(), origin));
                 crate::import::aggregate::filtered_count::count_visit(
                     crate::import::aggregate::filtered_count::Counter::Origin,
                 );
-            } else {
-                self.count_refusal_complete = false;
-            }
-            if self.count_complete
-                && (!self.count_refusal_complete || budget.claim(2, 0, 0).is_err())
-            {
+            } else if wanted {
                 self.count_complete = false;
             }
         }
         self.values.push(value);
     }
+}
+impl<T> RegisteredVec<T> {
     pub(in crate::import) fn count_origin_at(&self, index: usize) -> Origin {
         if !self.count_complete {
             return Origin::SyntheticOrUnproved;
         }
-        self.count_refusal_origin_at(index)
-    }
-    /// Registration identity for refusal/unchanged-earlier-route discovery only.
-    /// Positive producer authority must continue to use `count_origin_at`.
-    pub(in crate::import) fn count_refusal_origin_at(&self, index: usize) -> Origin {
-        if !self.count_refusal_complete {
-            return Origin::SyntheticOrUnproved;
-        }
         self.count_origins
-            .get(index)
-            .copied()
-            .unwrap_or(Origin::SyntheticOrUnproved)
+            .binary_search_by_key(&index, |(slot, _)| *slot)
+            .ok()
+            .map_or(Origin::SyntheticOrUnproved, |i| self.count_origins[i].1)
     }
     pub(super) fn count_origin_of(
         &self,

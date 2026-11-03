@@ -1607,7 +1607,13 @@ fn import_resolved(
         .unwrap_or_default()
         .to_ascii_lowercase();
 
-    let edges = read_edge_inputs(&structure, Some(&wrapper));
+    let count_headers =
+        aggregate::filtered_count::routing::Headers::read(structure).map_err(MfdError::Resource)?;
+    let (edges, count_routing) =
+        graph::read_edge_inputs_with_probe(&structure, Some(&wrapper), |claims| {
+            aggregate::filtered_count::routing::Routing::prepare(count_headers, structure, claims)
+        });
+    let count_routing = count_routing.map_err(MfdError::Resource)?;
     if retain_primary_filename && (!edges.complete || !edges.conflicts.is_empty()) {
         return Err(MfdError::UnsupportedImport(
             if filename_import == FilenameImport::CsvRetention {
@@ -1628,16 +1634,11 @@ fn import_resolved(
         edges.complete && target_iteration::csv_raw_authority(&structure, &edges.feeds);
     let mut udf_registry = UdfRegistry::read_in_package(&mapping_el, resources, &mut warnings);
     use udf::certificate::{CountConstruction, OriginCapture, RegisteredVec};
-    // A header trigger only. Count proof never enables UDF construction.
-    let count_construction = structure
-        .children()
-        .filter(|n| n.has_tag_name("children"))
-        .flat_map(|n| n.children())
-        .any(|n| {
-            aggregate::filtered_count::count_visit(aggregate::filtered_count::Counter::Header);
-            n.has_tag_name("component") && n.attribute("name") == Some("count")
-        })
-        .then(CountConstruction::default);
+    // Negative routing is complete under its separate input-derived policy;
+    // only provisionally demanded owners receive optional positive origins.
+    let count_construction = count_routing
+        .as_ref()
+        .map(|routing| CountConstruction::default().with_routing(routing.clone()));
     let count_capture = count_construction
         .as_ref()
         .map_or(OriginCapture::Existing, |b| OriginCapture::Count(b.clone()));
@@ -2559,11 +2560,22 @@ fn import_resolved(
         joins: &joins,
         rules: &source_node_functions,
     };
+    let count_demand =
+        aggregate::filtered_count::routing::finish(count_routing.as_ref(), &normalized).map_err(
+            |reason| {
+                if reason.starts_with("physical filtered count:") {
+                    MfdError::UnsupportedImport(reason)
+                } else {
+                    MfdError::Resource(reason)
+                }
+            },
+        )?;
     let filtered_counts = aggregate::filtered_count::CountProofTable::compile(
         structure,
         &edges,
         &normalized,
         count_construction.as_ref(),
+        count_demand,
         matches!(selection, StageSelection::Ordinary) && filename_import == FilenameImport::None,
     );
     let certificate = udf::certificate::certify(&udf_registry, &udf_calls, normalized, structure);

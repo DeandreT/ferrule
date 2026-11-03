@@ -17,6 +17,7 @@ use std::collections::{BTreeMap, BTreeSet};
 mod discovery;
 mod raw;
 mod receiver;
+pub(in crate::import) mod routing;
 mod seal;
 #[cfg(test)]
 pub(in crate::import) mod tests;
@@ -68,7 +69,7 @@ impl Predicate {
 
 pub(in crate::import) struct CountProofTable {
     candidates: Vec<Candidate>,
-    candidate_outputs: BTreeMap<u32, Vec<usize>>,
+    candidate_outputs: routing::OutputIndex,
     uses: BTreeMap<UseId, DirectUse>,
     targets: BTreeMap<usize, usize>,
     budget: Option<CountConstruction>,
@@ -93,7 +94,7 @@ impl CountProofTable {
     }
     pub(in crate::import) const EMPTY: Self = Self {
         candidates: Vec::new(),
-        candidate_outputs: BTreeMap::new(),
+        candidate_outputs: routing::OutputIndex::EMPTY,
         uses: BTreeMap::new(),
         targets: BTreeMap::new(),
         budget: None,
@@ -122,15 +123,22 @@ impl CountProofTable {
         edges: &EdgeInputs,
         n: &Normalized<'_>,
         capture: Option<&CountConstruction>,
+        demand: routing::CompleteDemand,
         ordinary_reader: bool,
     ) -> Self {
+        let mut table = Self::EMPTY;
+        if let Err(reason) = discovery::discover(&mut table, demand) {
+            table.discovery_incomplete = true;
+            table.failure = Some(reason);
+            return table;
+        }
+        if table.candidates.is_empty() {
+            return table;
+        }
         let missing_capture;
         let budget = match capture {
             Some(budget) => budget,
             None => {
-                if !n.functions.iter().any(|f| f.name == "count") {
-                    return Self::EMPTY;
-                }
                 // A normalized/promoted Count missed by the optional header
                 // trigger gets no fabricated origins. Discovery must retain
                 // any affected output as an explicit missing-origin refusal.
@@ -138,73 +146,27 @@ impl CountProofTable {
                 &missing_capture
             }
         };
-        let mut table = Self::EMPTY;
         table.budget = Some(budget.clone());
-        // This is closure discovery over original registrations, not a raw pin
-        // or final producer census. Competing declarations remain in each slot.
-        let discover = discovery::discover(&mut table, structure, edges, n, &budget.discovery());
-        if let Err(reason) = discover {
-            table.discovery_incomplete = true;
-            table.failure = Some(reason);
-        }
-        if table.candidates.is_empty() {
-            return table;
-        }
         if !ordinary_reader {
             table.failure = Some("filtered Count requires an ordinary reader boundary, not a pipeline boundary value".into());
         }
         let reconcile = (|| {
-            let raw = raw::Raw::build(structure, edges, budget)?;
+            let raw = raw::Raw::build(structure, edges, budget);
             count_visit(Counter::FinalBuild);
-            let view = CountProducerView::build(n, budget)?;
-            // Preserve raw Counts skipped by the normal reader as negative
-            // authority. They must never disappear behind a keyed winner.
-            for &(owner, ref raw_outputs) in raw.counts.values() {
-                budget.claim(table.candidates.len() + raw_outputs.len(), 0, 0)?;
-                let selected = table
-                    .candidates
-                    .iter()
-                    .position(|c| c.raw_owner == Some(owner));
-                if let Some(id) = selected {
-                    for &output in raw_outputs {
-                        if !table.candidates[id].outputs.contains(&output) {
-                            budget.claim(2, 0, 0)?;
-                            table.candidates[id].outputs.push(output);
-                            table.candidate_outputs.entry(output).or_default().push(id);
-                        }
-                    }
-                    continue;
-                }
-                budget.claim(n.functions.len(), 0, 0)?;
-                if n.functions
-                    .iter()
-                    .enumerate()
-                    .any(|(i, _)| n.functions.count_origin_at(i) == Origin::ActiveMain(owner))
-                {
-                    continue;
-                }
-                if known_other_owner(owner, n, budget)? {
-                    continue;
-                }
-                let outputs = raw_outputs.clone();
-                let connected = outputs.iter().any(|key| raw.outgoing.contains_key(key));
-                let id = table.candidates.len();
-                for &key in &outputs {
-                    table.candidate_outputs.entry(key).or_default().push(id);
-                }
-                table.candidates.push(Candidate {
-                    registration: None,
-                    raw_owner: Some(owner),
-                    outputs,
-                    connected,
-                    plan: Err("unregistered raw Count candidate".into()),
-                });
-            }
+            let view = CountProducerView::build(n, budget);
+            let raw = raw?;
+            let view = view?;
             for id in 0..table.candidates.len() {
                 let result = (|| {
                     let index = table.candidates[id]
                         .registration
                         .ok_or("unregistered Count")?;
+                    if table.candidates[id].raw_owner.is_none()
+                        || table.candidates[id].raw_owner.map(Origin::ActiveMain)
+                            != Some(n.functions.count_origin_at(index))
+                    {
+                        return Err("Count negative and positive owner identities differ".into());
+                    }
                     let compiler = Compiler {
                         n,
                         raw: &raw,
@@ -618,28 +580,6 @@ fn non_count_header(owner: roxmltree::Node<'_, '_>) -> bool {
         })
 }
 
-fn known_other_owner(
-    owner: RawOwner,
-    n: &Normalized<'_>,
-    budget: &CountConstruction,
-) -> Result<bool, String> {
-    fn has<T>(
-        values: &RegisteredVec<T>,
-        owner: RawOwner,
-        budget: &CountConstruction,
-    ) -> Result<bool, String> {
-        budget.claim(values.len() + 1, 0, 0)?;
-        Ok((0..values.len()).any(|i| values.count_origin_at(i) == Origin::ActiveMain(owner)))
-    }
-    Ok(has(n.schemas, owner, budget)?
-        || has(n.calls, owner, budget)?
-        || has(n.external_scalar, owner, budget)?
-        || has(n.external_xslt, owner, budget)?
-        || has(n.json_serializers, owner, budget)?
-        || has(n.xml_serializers, owner, budget)?
-        || has(n.json_parsers, owner, budget)?
-        || has(n.flextext_parsers, owner, budget)?)
-}
 fn copy_path(path: &[String], budget: &CountConstruction) -> Result<Vec<String>, String> {
     checked_path(path, budget)?;
     Ok(path.to_vec())
@@ -768,6 +708,10 @@ pub(in crate::import) enum Counter {
     Speculative,
     RefusalElement,
     RefusalPin,
+    NegativeHeader,
+    NegativeBuild,
+    NegativeWork,
+    NegativeReservation,
 }
 pub(in crate::import) fn count_visit(counter: Counter) {
     #[cfg(test)]
@@ -778,7 +722,7 @@ pub(in crate::import) fn count_visit(counter: Counter) {
     let _ = counter;
 }
 #[cfg(test)]
-thread_local! { static COUNTERS: std::cell::RefCell<[usize; 20]> = const { std::cell::RefCell::new([0; 20]) }; }
+thread_local! { static COUNTERS: std::cell::RefCell<[usize; 24]> = const { std::cell::RefCell::new([0; 24]) }; }
 
 impl GraphBuilder<'_> {
     pub(in crate::import) fn owns_filtered_count_index(&self, index: usize) -> bool {
