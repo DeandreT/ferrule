@@ -7,6 +7,7 @@ mod named_input_admission_tests;
 
 mod grouping;
 mod join;
+mod json_projection;
 mod recursive;
 mod resolve;
 mod walk;
@@ -90,6 +91,7 @@ impl GeneratedItems {
 /// when the selected value is not itself a collection.
 #[derive(Clone)]
 pub struct ScopeContext<'a> {
+    json_projections: json_projection::ProjectionState,
     pub(crate) invocation_counters: Option<crate::invocation_counter::CounterState>,
     primary_source: &'a Instance,
     frames: Vec<ScopeFrame<'a>>,
@@ -169,6 +171,7 @@ impl<'a> ScopeContext<'a> {
     pub fn new(source: &'a Instance) -> Self {
         Self {
             invocation_counters: None,
+            json_projections: Default::default(),
             primary_source: source,
             frames: vec![ScopeFrame {
                 instance: source,
@@ -189,6 +192,7 @@ impl<'a> ScopeContext<'a> {
     pub fn with_named_inputs(source: &'a Instance, inputs: &'a [NamedInput<'a>]) -> Self {
         Self {
             invocation_counters: None,
+            json_projections: Default::default(),
             primary_source: source,
             frames: vec![ScopeFrame {
                 instance: source,
@@ -210,6 +214,7 @@ impl<'a> ScopeContext<'a> {
     pub fn with_execution_context(source: &'a Instance, execution: &ExecutionContext<'a>) -> Self {
         Self {
             invocation_counters: crate::invocation_counter::new_state(*execution),
+            json_projections: Default::default(),
             primary_source: source,
             frames: vec![ScopeFrame {
                 instance: source,
@@ -233,6 +238,7 @@ impl<'a> ScopeContext<'a> {
     ) -> Self {
         Self {
             invocation_counters: crate::invocation_counter::new_state(*execution),
+            json_projections: Default::default(),
             primary_source: source,
             frames: vec![ScopeFrame {
                 instance: source,
@@ -534,6 +540,7 @@ impl<'a> ScopeContext<'a> {
                 dynamic_source_loader: self.dynamic_source_loader,
                 filter_map: self.filter_map.clone(),
                 invocation_counters: self.invocation_counters.clone(),
+                json_projections: self.json_projections.clone(),
             }
         })
     }
@@ -589,6 +596,7 @@ impl<'a> ScopeContext<'a> {
             dynamic_source_loader: self.dynamic_source_loader,
             filter_map: self.filter_map.clone(),
             invocation_counters: self.invocation_counters.clone(),
+            json_projections: self.json_projections.clone(),
         }
     }
 
@@ -627,6 +635,7 @@ impl<'a> ScopeContext<'a> {
             dynamic_source_loader: self.dynamic_source_loader,
             filter_map: self.filter_map.clone(),
             invocation_counters: self.invocation_counters.clone(),
+            json_projections: self.json_projections.clone(),
         }
     }
 

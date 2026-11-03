@@ -1040,6 +1040,8 @@ fn evaluate_run<R>(
         .as_ref()
         .map(|roots| trace::TraceOwnedRegistry::new(project, roots));
     let first_failure_reported = Cell::new(false);
+    // One state per execution, not per reusable project or host context.
+    let json_projections = RefCell::new(functions::JsonArrayProjections::default());
     let invocation_counters = execution
         .and_then(|execution| execution.invocation_counter_limits)
         .map(|limits| RefCell::new(functions::InvocationCounters::new(limits)));
@@ -1058,6 +1060,7 @@ fn evaluate_run<R>(
         &first_failure_reported,
     )
     .with_filter_map_run_state(&filter_map_run_state)
+    .with_json_projections(&json_projections)
     .with_invocation_counters(invocation_counters.as_ref())
     .with_primary_source(source)
     .with_debug_hook(execution.and_then(|execution| execution.debug_hook))

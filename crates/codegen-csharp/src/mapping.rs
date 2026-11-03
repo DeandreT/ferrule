@@ -2243,7 +2243,20 @@ fn render_expression(
                 literal::string(key)));
         }
         Expression::Call { function, args } => {
-            output.push_str(" =>\n        global::Ferrule.Runtime.FerruleFunctions.Call(");
+            if matches!(
+                function.as_str(),
+                "json_parse_array_length"
+                    | "json_parse_array_field"
+                    | "json_parse_field"
+                    | "json_parse_object_exists"
+            ) && let [source, ..] = args.as_slice()
+            {
+                output.push_str(&format!(
+                    " =>\n        {legacy_receiver}.CallJsonArrayProjection({source}U, "
+                ));
+            } else {
+                output.push_str(" =>\n        global::Ferrule.Runtime.FerruleFunctions.Call(");
+            }
             output.push_str(&literal::string(function.as_str()));
             output.push_str(", new global::Ferrule.Runtime.FerruleValue[] { ");
             for (index, argument) in args.iter().enumerate() {
