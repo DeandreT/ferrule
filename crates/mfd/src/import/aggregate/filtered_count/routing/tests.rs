@@ -44,6 +44,7 @@ fn normalized_test(functions: &RegisteredVec<FnComponent>, apply: impl FnOnce(No
 fn input_derived_work_slots_and_bytes_are_exact_sticky_and_fail_before_allocation() {
     let dimensions = Dimensions {
         nodes: 3,
+        walk_nodes: 0,
         pins: 2,
         edges: 1,
         attributes: 4,

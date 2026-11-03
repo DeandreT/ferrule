@@ -5,7 +5,11 @@ use super::super::{Counter, count_visit};
 
 #[derive(Clone, Copy, Debug, Default)]
 pub(in crate::import) struct Dimensions {
+    /// Element records that can contribute retained routing facts.
     pub nodes: usize,
+    /// All-kind scoped DOM nodes and container-selection visits. Work only:
+    /// comments/text/PIs contribute no retained routing slots or data bytes.
+    pub walk_nodes: usize,
     pub pins: usize,
     pub edges: usize,
     pub attributes: usize,
@@ -38,8 +42,11 @@ impl Ledger {
     /// snapshots, reverse traversal and freeze receipts together use <256 slots
     /// per inspected node/attribute/pin/edge/event. Graph-array records are
     /// <=128 bytes; control blocks and route receipts use their actual sizes.
-    /// Work permits charged linear scans and integer sorting/lookup even in the
-    /// worst (quadratic) owner lookup case, plus repeated decoded numeric reads.
+    /// Work additionally includes all-kind DOM traversal. Each scoped node can
+    /// be revisited by at most each enclosing vertex/owner; edge-child visits
+    /// are likewise bounded by this quadratic all-kind term. Numeric metadata
+    /// reads and integer sorting/lookup retain the existing allowance. Ignored
+    /// nodes enlarge only work, never the retained-capacity ceilings.
     pub fn limits(&self) -> (u128, usize, usize) {
         let d = self.dimensions;
         let units = (d.nodes as u128)
@@ -48,7 +55,8 @@ impl Ledger {
             + d.edges as u128
             + d.registered as u128
             + 1;
-        let work = 1024 * units * (units + d.decoded as u128 + 1);
+        let work_units = units + d.walk_nodes as u128;
+        let work = 1024 * work_units * (work_units + d.decoded as u128 + 1);
         let slots = usize::try_from(256 * units).unwrap_or(usize::MAX);
         (work, slots, slots.saturating_mul(128))
     }
