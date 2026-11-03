@@ -136,6 +136,7 @@ fn xml_project() -> Project {
         ..Scope::default()
     };
     Project {
+        execution_contract: None,
         source: source_schema(),
         target,
         source_path: Some("source.xml".into()),
@@ -167,6 +168,7 @@ fn csv_project() -> Project {
         ..Scope::default()
     };
     Project {
+        execution_contract: None,
         source: source_schema(),
         target,
         source_path: Some("source.xml".into()),
@@ -295,6 +297,7 @@ fn conditioned_xml_project() -> Project {
         ]),
     };
     Project {
+        execution_contract: None,
         source,
         target,
         source_path: Some("source.xml".into()),
@@ -374,6 +377,7 @@ fn unconditioned_mapped_sequence_project() -> Project {
         ..Scope::default()
     };
     Project {
+        execution_contract: None,
         source,
         target,
         source_path: Some("source.xml".into()),
@@ -549,6 +553,7 @@ fn conditioned_plain_target_project() -> Project {
         ..Scope::default()
     };
     Project {
+        execution_contract: None,
         source,
         target,
         source_path: Some("source.xml".into()),
@@ -693,6 +698,7 @@ fn conditioned_repeating_filter_project() -> Project {
         ]),
     };
     Project {
+        execution_contract: None,
         source,
         target,
         source_path: Some("source.xml".into()),

@@ -15,6 +15,7 @@ fn project() -> Project {
         ..Default::default()
     };
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Input", Vec::new()),
         target: target.clone(),
         source_path: None,

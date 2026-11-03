@@ -37,6 +37,7 @@ pub(super) fn project(case: &Json) -> Project {
         panic!("literal descriptor");
     };
     let mut project = Project {
+        execution_contract: None,
         source: SchemaNode::group("Input", Vec::new()),
         target: SchemaNode::group("Output", vec![rows(composition.output_type)]),
         source_path: None,
@@ -337,6 +338,7 @@ pub(super) fn named_project(case: &Json) -> Project {
 pub(super) fn legacy_project(case: &Json) -> Project {
     let descriptor: SequenceExpr = serde_json::from_value(case["descriptor"].clone()).unwrap();
     let mut project = Project {
+        execution_contract: None,
         source: SchemaNode::group("Input", Vec::new()),
         target: SchemaNode::group("Output", vec![rows(ScalarType::Int)]),
         source_path: None,

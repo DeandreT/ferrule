@@ -58,6 +58,7 @@ fn segment(collection: &str, street: u32, city: u32) -> Scope {
 
 fn project() -> Project {
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Input", vec![source_branch("A"), source_branch("B")]),
         target: SchemaNode::group(
             "Contacts",

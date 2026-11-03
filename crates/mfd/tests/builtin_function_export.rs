@@ -434,6 +434,7 @@ fn call_graph(function: &str, arguments: &[Node]) -> Graph {
 
 fn project(graph: Graph, output: ScalarType) -> Project {
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Source",
             vec![SchemaNode::scalar("Seed", ScalarType::String)],

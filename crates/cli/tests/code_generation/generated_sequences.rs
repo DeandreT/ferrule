@@ -93,6 +93,7 @@ fn generated_sequence_project() -> Project {
     .repeating();
 
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Source",
             vec![string("ErrorInput"), bool_("TriggerError"), parent],

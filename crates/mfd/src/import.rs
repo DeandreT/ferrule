@@ -2550,7 +2550,10 @@ fn import_resolved(
     udf_registry
         .finish_construction()
         .map_err(MfdError::Resource)?;
-    let context_certificate = certificate.map_err(MfdError::UnsupportedImport)?;
+    let mut context_certificate = certificate.map_err(MfdError::UnsupportedImport)?;
+    context_certificate
+        .seal_functions(&user_functions)
+        .map_err(MfdError::UnsupportedImport)?;
     // In the declared profile, raw affected hints have now been checked before
     // the legacy parser's last-wins collapse. Ordinary behavior stays unchanged.
     let scope_source_hints = scope_source_hints(&structure);
@@ -2594,6 +2597,7 @@ fn import_resolved(
         warned_variable_constructions: BTreeSet::new(),
         rejected_join_paths: BTreeSet::new(),
         source_fields: BTreeMap::new(),
+        materialized_arguments: Default::default(),
         json_serializer_nodes: BTreeMap::new(),
         xml_serializer_nodes: BTreeMap::new(),
         external_scalar_nodes: BTreeMap::new(),
@@ -2642,6 +2646,8 @@ fn import_resolved(
     }
 
     let dormant_parser_parameters = builder.dormant_json_parser_parameters();
+    #[cfg(test)]
+    udf::certificate::probe_speculative_builder(&builder);
 
     // Dynamic document inputs must establish their driver frames before any
     // target expression is materialized. A filename expression can also feed
@@ -2896,7 +2902,9 @@ fn import_resolved(
         std::mem::take(&mut builder.optional_parser_input_names);
     source_options.mfd_json5_string_dependencies = json5_string_dependencies;
     let declared_call_nodes = std::mem::take(&mut builder.udf_nodes);
+    let materialized_arguments = std::mem::take(&mut builder.materialized_arguments);
     let mut project = Project {
+        execution_contract: None,
         source: primary.schema.clone(),
         target: runtime_target_schema(target, &edge_from),
         source_path,
@@ -2993,6 +3001,8 @@ fn import_resolved(
         );
     }
     let context_audit: Result<(), String> = (|| {
+        udf_registry.audit_materialized_arguments(&materialized_arguments, &project.graph)?;
+        context_certificate.audit_functions(&project.user_functions)?;
         context_certificate.audit_target_count(
             connected_targets.len().saturating_sub(1),
             project.extra_targets.len(),
@@ -3012,6 +3022,10 @@ fn import_resolved(
         .finish_construction()
         .map_err(MfdError::Resource)?;
     context_audit.map_err(MfdError::UnsupportedImport)?;
+    if context_certificate.enabled() {
+        project.execution_contract = Some(mapping::ExecutionContract::ClosedPrimarySourceV1);
+        project.validate_execution_contract().map_err(|error| MfdError::UnsupportedImport(format!("declared-library primary-source safety guard refused the materialized model: {error}")))?;
+    }
     resources.append_refusals(&mut warnings);
     Ok(LoweredStage {
         primary_filename,

@@ -146,6 +146,7 @@ pub fn base() -> Project {
     let (target, root) = output("Output", 21);
     let (audit, audit_root) = output("Audit", 22);
     let mut project = Project {
+        execution_contract: None,
         source: endpoint_schema("Input"),
         target,
         source_path: None,

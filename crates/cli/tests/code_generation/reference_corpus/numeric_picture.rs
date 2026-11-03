@@ -295,6 +295,7 @@ fn schema_at<'a>(root: &'a SchemaNode, path: &[String]) -> &'a SchemaNode {
 // mapping's source frames or scaling edge. No extra function-crate dependency.
 fn formatter_oracle(picture: &Value) -> Project {
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Context", Vec::new()),
         target: SchemaNode::group(
             "Result",

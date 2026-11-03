@@ -82,6 +82,7 @@ fn project(evidence: &Evidence, corpus: &serde_json::Value) -> TestResult<Projec
         });
     }
     let project = Project {
+        execution_contract: None,
         source: schema.clone(),
         target: schema,
         source_path: None,

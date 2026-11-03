@@ -259,6 +259,7 @@ mod tests {
 
     fn project() -> Project {
         Project {
+            execution_contract: None,
             source: SchemaNode::group("source", vec![]),
             target: SchemaNode::group("target", vec![]),
             source_path: None,

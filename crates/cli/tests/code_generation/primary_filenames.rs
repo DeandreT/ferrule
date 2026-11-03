@@ -4,6 +4,7 @@ use mapping::{DocumentProject, PrimarySourcePlan};
 pub(super) fn document(literal: bool) -> DocumentProject {
     DocumentProject::new(
         Project {
+            execution_contract: None,
             source: SchemaNode::group("Input", vec![]),
             target: SchemaNode::group("Output", vec![string("Value")]),
             source_path: Some("ignored-preview.csv".into()),

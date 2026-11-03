@@ -12,10 +12,7 @@ fn assert_control(
     let control = mfd::import(&fixture.0.join("embedded.mfd")).unwrap();
     assert!(actual.warnings.is_empty(), "{:?}", actual.warnings);
     assert!(control.warnings.is_empty(), "{:?}", control.warnings);
-    assert_eq!(
-        serde_json::to_value(&actual.project).unwrap(),
-        serde_json::to_value(&control.project).unwrap()
-    );
+    assert_guarded_control(&actual.project, &control.project);
     (actual.project, control.project)
 }
 
@@ -73,11 +70,12 @@ fn owned_function_calls_keep_per_row_and_per_run_lifetimes_after_library_removal
         );
         assert_eq!(output, expected);
     }
-    let exported = fixture.0.join("owned.mfd");
-    mfd::export(&actual, &exported).unwrap();
-    let round_trip = mfd::import(&exported).unwrap();
-    assert!(round_trip.warnings.is_empty(), "{:?}", round_trip.warnings);
-    assert_eq!(round_trip.project.user_functions.len(), 1);
+    // Guarded persistence uses the required-capability codec, not ignorable MFD metadata.
+    let encoded = mapping::project_file::encode_pretty(&actual).unwrap();
+    let round_trip = mapping::project_file::decode_str(&encoded).unwrap();
+    assert!(mfd::export(&actual, &fixture.0.join("owned.mfd")).is_err());
+    assert!(!fixture.0.join("owned.mfd").exists());
+    assert_eq!(round_trip.user_functions.len(), 1);
     let input = format_xml::from_str(
         "<Input><Row><Text>after-export</Text></Row></Input>",
         &actual.source,
@@ -85,7 +83,7 @@ fn owned_function_calls_keep_per_row_and_per_run_lifetimes_after_library_removal
     .unwrap();
     assert_eq!(
         engine::run(&actual, &input).unwrap(),
-        engine::run(&round_trip.project, &input).unwrap()
+        engine::run(&round_trip, &input).unwrap()
     );
 }
 

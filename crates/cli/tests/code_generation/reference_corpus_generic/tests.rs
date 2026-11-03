@@ -4,6 +4,7 @@ use envelope::{Document, EnvelopeError};
 
 fn identity_project() -> Project {
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Source", vec![string("Text")]),
         target: SchemaNode::group("Target", vec![string("Text")]),
         source_path: None,

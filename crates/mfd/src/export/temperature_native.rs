@@ -930,6 +930,7 @@ mod tests {
             ..FormatOptions::default()
         };
         Project {
+            execution_contract: None,
             source,
             target,
             source_path: Some("temperatures.xml".into()),

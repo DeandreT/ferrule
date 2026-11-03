@@ -59,6 +59,7 @@ fn project(primary: bool, dynamic: bool) -> Project {
         vec!["document".into(), "Item".into()]
     };
     Project {
+        execution_contract: None,
         source: document_schema(),
         target: SchemaNode::group(
             "Output",

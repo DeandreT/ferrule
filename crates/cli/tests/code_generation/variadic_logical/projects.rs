@@ -105,6 +105,7 @@ pub(super) fn project() -> Project {
         },
     );
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Source", fields),
         target: SchemaNode::group(
             "Target",

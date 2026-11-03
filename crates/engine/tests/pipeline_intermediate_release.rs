@@ -1,7 +1,7 @@
 //! Peak live heap bytes of a stage chain when every intermediate is retained
 //! versus when each is released after its last reader.
 //!
-//! Run with `--nocapture` to print the table for this run.
+//! Run with `--nocapture` to print the measured heap usage for each strategy.
 
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;
@@ -109,6 +109,7 @@ fn batch() -> Instance {
 
 fn copy_project() -> Project {
     Project {
+        execution_contract: None,
         source: schema(),
         target: schema(),
         source_path: None,

@@ -312,6 +312,7 @@ fn join_validation_reports_a_sort_key_before_the_output_path() {
         path: vec![field.into()],
     };
     let project = Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Source",
             vec![
@@ -380,6 +381,7 @@ fn join_validation_reports_a_block_size_with_the_parent_roots() {
         path: vec![field.into()],
     };
     let project = Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Source",
             vec![

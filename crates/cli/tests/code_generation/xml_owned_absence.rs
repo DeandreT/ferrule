@@ -181,6 +181,7 @@ fn project(variants: &[Variant]) -> Project {
         fields.push(string(variant.target));
     }
     Project {
+        execution_contract: None,
         source: group(
             "Source",
             vec![

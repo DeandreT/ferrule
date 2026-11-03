@@ -139,6 +139,7 @@ pub fn base() -> Project {
     let mut graph = Graph::default();
     graph.nodes.insert(AUDIT_VALUE, owned(REF, &["Value"]));
     Project {
+        execution_contract: None,
         source: endpoint_schema("Input"),
         target: string("Out"),
         source_path: None,

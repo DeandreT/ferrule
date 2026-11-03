@@ -70,6 +70,7 @@ fn project(filename: Node) -> Project {
         ..Default::default()
     };
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Input", vec![string("Key"), string("Text"), int("Count")]),
         target: SchemaNode::group(
             "Output",

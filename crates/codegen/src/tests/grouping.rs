@@ -11,6 +11,7 @@ fn scalar(name: &str, ty: ScalarType) -> SchemaNode {
 
 fn source_project() -> Project {
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Source",
             vec![

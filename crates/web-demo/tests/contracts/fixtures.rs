@@ -15,6 +15,7 @@ pub const PRETTY_JSON: &str = "{\n  \"name\": \"Ada\"\n}\n";
 
 pub fn project() -> Project {
     let mut project = Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Source",
             vec![SchemaNode::scalar("name", ScalarType::String)],

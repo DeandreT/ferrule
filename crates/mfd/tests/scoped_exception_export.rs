@@ -62,6 +62,7 @@ fn field(path: &str) -> Node {
 }
 fn project(message: Option<u32>, raise_on_true: bool) -> Project {
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Input",
             vec![

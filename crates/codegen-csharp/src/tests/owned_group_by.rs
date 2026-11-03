@@ -95,6 +95,7 @@ fn group_441_project(owner: SourceOwner, post: bool) -> ::mapping::Project {
         ..Scope::default()
     };
     Project {
+        execution_contract: None,
         source: group_441_endpoint(),
         target: target.clone(),
         source_path: None,

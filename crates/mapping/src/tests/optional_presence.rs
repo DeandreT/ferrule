@@ -66,6 +66,7 @@ fn optional_presence_wire_is_strict_and_exclusive() {
 #[test]
 fn optional_presence_conditions_are_reachable_roots() {
     let mut project = Project {
+        execution_contract: None,
         source: ir::SchemaNode::group("Source", Vec::new()),
         target: ir::SchemaNode::group("Target", Vec::new()),
         source_path: None,

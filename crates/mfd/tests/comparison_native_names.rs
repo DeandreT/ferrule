@@ -93,6 +93,7 @@ fn output(expected: &[bool]) -> Instance {
 
 fn project(function: &str) -> Project {
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Input",
             vec![

@@ -221,6 +221,7 @@ pub fn base(driver: &str) -> Project {
         ),
     ]);
     Project {
+        execution_contract: None,
         source: batch_schema("Batch"),
         target: out_schema(false),
         source_path: None,

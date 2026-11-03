@@ -20,6 +20,7 @@ fn ancestor_position_project() -> Project {
         item,
     };
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Input", vec![]),
         target: SchemaNode::group(
             "Output",
@@ -595,6 +596,7 @@ fn scope(value: &Json) -> Scope {
 
 fn project(value: &Json) -> Project {
     Project {
+        execution_contract: None,
         source: schema(&value["source"]),
         target: schema(&value["target"]),
         source_path: value["source_path"].as_str().map(str::to_owned),

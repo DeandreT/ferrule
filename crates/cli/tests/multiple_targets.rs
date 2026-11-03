@@ -43,6 +43,7 @@ fn output_scope() -> Scope {
 
 fn project(extra_path: &str) -> Project {
     Project {
+        execution_contract: None,
         source: document("Source"),
         target: document("First"),
         source_path: None,
@@ -81,6 +82,7 @@ fn colliding_project() -> Project {
 
 fn project_with_unavailable_unselected_source() -> Project {
     Project {
+        execution_contract: None,
         source: document("Source"),
         target: document("Primary"),
         source_path: None,

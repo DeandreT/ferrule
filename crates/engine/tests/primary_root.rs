@@ -35,6 +35,7 @@ fn schema(namespace: Option<&str>) -> SchemaNode {
 }
 fn project() -> Project {
     Project {
+        execution_contract: None,
         source: schema(None),
         target: schema(None),
         source_path: None,

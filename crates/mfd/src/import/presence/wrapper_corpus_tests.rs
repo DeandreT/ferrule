@@ -80,6 +80,7 @@ fn frames(node: &SchemaNode) -> usize {
 /// A project whose only content is `schema` on both boundaries.
 fn schema_project(schema: SchemaNode) -> Project {
     Project {
+        execution_contract: None,
         source: schema.clone(),
         target: schema,
         source_path: None,

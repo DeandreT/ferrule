@@ -207,6 +207,7 @@ fn project(case: &Json, descriptor: SequenceExpr) -> Project {
         parent.filter = Some(92);
     }
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Input",
             vec![SchemaNode::scalar("Parents", ScalarType::Int).repeating()],

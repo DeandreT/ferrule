@@ -282,6 +282,7 @@ fn lowers_recursive_collect_into_a_repeating_scalar_scope() {
         ]),
     };
     let project = Project {
+        execution_contract: None,
         source,
         target,
         source_path: None,

@@ -89,6 +89,7 @@ message Painting { float height = 1; string name = 2; }"#;
         output: 8,
     };
     let mut project = Project {
+        execution_contract: None,
         source: format_protobuf::to_ir_schema(&layout, "fixture.Assets").unwrap(),
         target: SchemaNode::group(
             "Rows",

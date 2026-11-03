@@ -24,6 +24,7 @@ fn layout() -> PdfLayout {
 fn configured_project() -> Project {
     let layout = layout();
     Project {
+        execution_contract: None,
         source: layout.schema(),
         target: SchemaNode::group(
             "Output",

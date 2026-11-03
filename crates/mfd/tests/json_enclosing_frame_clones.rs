@@ -171,6 +171,7 @@ fn expected_project(literals: bool) -> Project {
         ..Default::default()
     };
     Project {
+        execution_contract: None,
         source,
         target,
         source_path: Some("source.json".into()),

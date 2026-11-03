@@ -35,6 +35,7 @@ fn call(function: &str, args: &[u32]) -> mapping::Node {
 /// `Value = join(tokenize("a|b"), equal(item, Cfg.Code), expression, Primary.Code)`.
 fn project(expression: Option<u32>) -> mapping::Project {
     mapping::Project {
+        execution_contract: None,
         source: schema(),
         target: SchemaNode::group(
             "Output",

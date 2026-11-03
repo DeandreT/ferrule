@@ -20,6 +20,11 @@ impl Default for ConstructionBudget {
 
 impl ConstructionBudget {
     #[cfg(test)]
+    pub(super) fn remaining_for_test(&self) -> (usize, usize) {
+        let state = self.0.borrow();
+        (state.work, state.text)
+    }
+    #[cfg(test)]
     pub(super) fn for_test(work: usize, text: usize) -> Self {
         Self::with_limits(work, text)
     }
