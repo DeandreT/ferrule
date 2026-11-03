@@ -163,6 +163,7 @@
         "FoundInstance": null,
         "OwnedSourceFailure": null,
         "BasicSourceBridgeFailure": null,
+        "SourceContractViolation": null,
         "PrimaryRoot": null
       }
     },
@@ -232,6 +233,7 @@
         "FoundInstance": null,
         "OwnedSourceFailure": null,
         "BasicSourceBridgeFailure": null,
+        "SourceContractViolation": null,
         "PrimaryRoot": null
       }
     },
@@ -2614,6 +2616,7 @@
         "FoundInstance": null,
         "OwnedSourceFailure": null,
         "BasicSourceBridgeFailure": null,
+        "SourceContractViolation": null,
         "PrimaryRoot": null
       }
     },
@@ -2737,6 +2740,7 @@
         "FoundInstance": null,
         "OwnedSourceFailure": null,
         "BasicSourceBridgeFailure": null,
+        "SourceContractViolation": null,
         "PrimaryRoot": null
       }
     },
@@ -4570,6 +4574,7 @@
         "FoundInstance": null,
         "OwnedSourceFailure": null,
         "BasicSourceBridgeFailure": null,
+        "SourceContractViolation": null,
         "PrimaryRoot": null
       }
     },
@@ -4820,6 +4825,7 @@
         "FoundInstance": null,
         "OwnedSourceFailure": null,
         "BasicSourceBridgeFailure": null,
+        "SourceContractViolation": null,
         "PrimaryRoot": null
       }
     },
@@ -4938,6 +4944,7 @@
         "FoundInstance": null,
         "OwnedSourceFailure": null,
         "BasicSourceBridgeFailure": null,
+        "SourceContractViolation": null,
         "PrimaryRoot": null
       }
     },
@@ -5056,6 +5063,7 @@
         "FoundInstance": null,
         "OwnedSourceFailure": null,
         "BasicSourceBridgeFailure": null,
+        "SourceContractViolation": null,
         "PrimaryRoot": null
       }
     },
