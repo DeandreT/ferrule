@@ -1,0 +1,29 @@
+using System.Text.Json.Nodes;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+var cases = JsonNode.Parse(File.ReadAllText(args[0]))!.AsArray();
+var source = File.ReadAllText(args[1]);
+var target = File.ReadAllText(args[2]);
+var order = Enumerable.Range(0, cases.Count).ToList();
+if (cases.Count == 5) { order.RemoveRange(0, 2); order.InsertRange(0, [0, 1, 0]); }
+order.AddRange(Enumerable.Range(0, cases.Count).Reverse());
+foreach (var index in order)
+{
+    var test = cases[index]!;
+    var input = FerruleJson.ParseEmbedded(source, test["input"]!.ToJsonString());
+    var context = test["clock"] is JsonNode clock
+        ? new FerruleExecutionContext("clock.mfd", "clock.mfd", clock.GetValue<string>())
+        : new FerruleExecutionContext("clock.mfd");
+    try {
+        var actual = GeneratedMapping.Execute(input, context);
+        Console.WriteLine(test["name"] + "|" + FerruleJson.SerializeEmbedded(target, actual));
+        if (test["missing_clock"] is not null) throw new Exception("Expected missing clock: " + test);
+        Oracle.Equal(actual, Oracle.Literal(test["expected"]));
+        Oracle.Json(FerruleJson.SerializeEmbedded(target, actual), test["expected"]!);
+    } catch (FerruleRuntimeException error) when (test["missing_clock"] is not null) {
+        Console.WriteLine(test["name"] + "|" + error.Error + "|" + error.RuntimeValue);
+        if (error.Error != FerruleRuntimeError.MissingRuntimeValue || error.RuntimeValue != FerruleRuntimeValue.CurrentDateTime) throw;
+    }
+}
+Console.WriteLine("PASS complete grouped clock contracts");

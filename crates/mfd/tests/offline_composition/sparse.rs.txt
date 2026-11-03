@@ -1,0 +1,28 @@
+mod oracle;
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let paths: Vec<_> = std::env::args().skip(1).collect();
+    let cases: Vec<serde_json::Value> = serde_json::from_str(&std::fs::read_to_string(&paths[0])?)?;
+    let source = std::fs::read_to_string(&paths[1])?;
+    let target = std::fs::read_to_string(&paths[2])?;
+    for case in cases.iter().chain(cases.iter().rev()) {
+        let input = codegen_runtime::parse_json(&source, case["input"].as_str().unwrap())?;
+        let actual = ferrule_generated_mapping::execute(&input)?;
+        println!("{}|{actual:?}", case["name"]);
+        assert_eq!(actual, oracle::literal(&case["expected"]), "{case}");
+        let json: serde_json::Value =
+            serde_json::from_str(&codegen_runtime::serialize_json(&target, &actual)?)?;
+        assert_eq!(json, case["expected"], "{case}");
+        let xml = codegen_runtime::serialize_xml(1, &target, &actual, false, false, None)?;
+        let codegen_runtime::Value::String(xml) = xml else {
+            panic!("XML serializer must return text")
+        };
+        println!("XML|{xml}");
+        assert_eq!(
+            xml.as_bytes(),
+            case["expected_xml"].as_str().unwrap().as_bytes(),
+            "{case}"
+        );
+    }
+    println!("PASS complete sparse absence contracts");
+    Ok(())
+}
