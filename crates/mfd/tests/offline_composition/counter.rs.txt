@@ -1,0 +1,59 @@
+use codegen_runtime::{ExecutionContext, InvocationCounterLimits, RuntimeError};
+use std::path::Path;
+mod oracle;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let paths: Vec<_> = std::env::args().skip(1).collect();
+    let cases: Vec<serde_json::Value> = serde_json::from_str(&std::fs::read_to_string(&paths[0])?)?;
+    let source = std::fs::read_to_string(&paths[1])?;
+    let target = std::fs::read_to_string(&paths[2])?;
+    let audit = std::fs::read_to_string(
+        Path::new(&paths[2])
+            .parent()
+            .unwrap()
+            .join("audit-schema.json"),
+    )?;
+    let context = ExecutionContext::new(Path::new("native-counter.ferrule"))
+        .with_invocation_counter_limits(InvocationCounterLimits {
+            max_counters: 1,
+            max_text_bytes: 16,
+        });
+    for index in [0, 0, 1, 0, 1] {
+        let case = &cases[index];
+        let input = codegen_runtime::parse_json(&source, &case["input"].to_string())?;
+        let outputs = ferrule_generated_mapping::execute_outputs_with_context(&input, &context)?;
+        println!("{}|{outputs:?}", case["name"]);
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&codegen_runtime::serialize_json(
+                &target,
+                &outputs.primary
+            )?)?,
+            case["primary"]
+        );
+        assert_eq!(outputs.primary, oracle::literal(&case["primary"]), "{case}");
+        assert_eq!(outputs.extras.len(), 1);
+        assert_eq!(outputs.extras[0].name, "audit");
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&codegen_runtime::serialize_json(
+                &audit,
+                &outputs.extras[0].instance
+            )?)?,
+            case["audit"]
+        );
+        assert_eq!(
+            outputs.extras[0].instance,
+            oracle::literal(&case["audit"]),
+            "{case}"
+        );
+        let unconfigured = ExecutionContext::new(Path::new("native-counter.ferrule"));
+        assert!(
+            matches!(
+                ferrule_generated_mapping::execute_outputs_with_context(&input, &unconfigured),
+                Err(RuntimeError::MissingInvocationCounters { node: 1 })
+            ),
+            "{case}"
+        );
+    }
+    println!("PASS native Ferrule grouped counter contracts (not MFD auto-number)");
+    Ok(())
+}

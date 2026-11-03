@@ -1,0 +1,32 @@
+[
+  {
+    "id": "empty-document",
+    "xml": "<Input/>",
+    "input": {"Batch": []},
+    "expected": {"Batch": []}
+  },
+  {
+    "id": "empty-batch",
+    "xml": "<Input><Batch><Label>empty</Label></Batch></Input>",
+    "input": {"Batch": [{"Label": "empty", "Row": []}]},
+    "expected": {"Batch": [{"Label": "empty", "Group": []}]}
+  },
+  {
+    "id": "consecutive-starts-and-trailing-member",
+    "xml": "<Input><Batch><Label>markers</Label><Row><Value>a</Value><Start>false</Start></Row><Row><Value>b</Value><Start>true</Start></Row><Row><Value>c</Value><Start>true</Start></Row><Row><Value>d</Value><Start>false</Start></Row></Batch></Input>",
+    "input": {"Batch": [{"Label": "markers", "Row": [{"Value": "a", "Start": false}, {"Value": "b", "Start": true}, {"Value": "c", "Start": true}, {"Value": "d", "Start": false}]}]},
+    "expected": {"Batch": [{"Label": "markers", "Group": [{"Number": 3, "First": "a", "Count": 1}, {"Number": 7, "First": "b", "Count": 1}, {"Number": 11, "First": "c", "Count": 2}]}]}
+  },
+  {
+    "id": "empty-middle-and-parent-reset",
+    "xml": "<Input><Batch><Label>before</Label><Row><Value>e</Value><Start>true</Start></Row><Row><Value>f</Value><Start>false</Start></Row><Row><Value>g</Value><Start>true</Start></Row></Batch><Batch><Label>middle</Label></Batch><Batch><Label>after</Label><Row><Value>h</Value><Start>false</Start></Row><Row><Value>i</Value><Start>false</Start></Row><Row><Value>j</Value><Start>true</Start></Row></Batch></Input>",
+    "input": {"Batch": [{"Label": "before", "Row": [{"Value": "e", "Start": true}, {"Value": "f", "Start": false}, {"Value": "g", "Start": true}]}, {"Label": "middle", "Row": []}, {"Label": "after", "Row": [{"Value": "h", "Start": false}, {"Value": "i", "Start": false}, {"Value": "j", "Start": true}]}]},
+    "expected": {"Batch": [{"Label": "before", "Group": [{"Number": 3, "First": "e", "Count": 2}, {"Number": 7, "First": "g", "Count": 1}]}, {"Label": "middle", "Group": []}, {"Label": "after", "Group": [{"Number": 3, "First": "h", "Count": 2}, {"Number": 7, "First": "j", "Count": 1}]}]}
+  },
+  {
+    "id": "different-single-group",
+    "xml": "<Input><Batch><Label>fresh</Label><Row><Value>z</Value><Start>false</Start></Row></Batch></Input>",
+    "input": {"Batch": [{"Label": "fresh", "Row": [{"Value": "z", "Start": false}]}]},
+    "expected": {"Batch": [{"Label": "fresh", "Group": [{"Number": 3, "First": "z", "Count": 1}]}]}
+  }
+]

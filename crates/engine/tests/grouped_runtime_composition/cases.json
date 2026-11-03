@@ -1,0 +1,4 @@
+[
+  {"name":"all members share invocation table","input":{"Rows":[{"Key":"A","Label":"a"},{"Key":"A","Label":"b"},{"Key":"B","Label":"c"}]},"primary":{"Group":[{"Key":"A","GroupTick":1,"Member":[{"Label":"a","MemberTick":2},{"Label":"b","MemberTick":3}]},{"Key":"B","GroupTick":4,"Member":[{"Label":"c","MemberTick":5}]}]},"audit":{"Tick":6}},
+  {"name":"empty primary then named starts at one","input":{"Rows":[]},"primary":{"Group":[]},"audit":{"Tick":1}}
+]
