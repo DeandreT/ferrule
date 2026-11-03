@@ -92,6 +92,7 @@ pub fn expected(mixed: bool) -> Project {
         ..Default::default()
     };
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Source",
             vec![rows, SchemaNode::scalar("GlobalChoose", ScalarType::Bool)],

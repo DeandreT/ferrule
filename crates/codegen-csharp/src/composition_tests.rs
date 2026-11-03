@@ -38,6 +38,7 @@ fn marker_program() -> Program {
         "Plain",
     ];
     Program {
+        execution_contract: None,
         xml_boundary: None,
         source: SchemaNode::group("Source", Vec::new()).repeating(),
         extra_sources: Vec::new(),

@@ -51,6 +51,7 @@ fn dynamic_output_project() -> Project {
         ],
     );
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Input",
             vec![
@@ -196,6 +197,7 @@ fn payload_debug_cancellation_discards_all_target_artifacts() -> anyhow::Result<
         vec![SchemaNode::scalar("Value", ScalarType::String)],
     );
     let project = Project {
+        execution_contract: None,
         source: SchemaNode::group("Input", Vec::new()),
         target: target.clone(),
         source_path: None,
@@ -429,6 +431,7 @@ fn payload_run_can_select_one_named_target_without_evaluating_primary() -> anyho
 
 fn dynamic_source_project() -> Project {
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Files",
             vec![SchemaNode::scalar("File", ScalarType::String).repeating()],
@@ -512,6 +515,7 @@ fn project_with_unavailable_unselected_payload_source() -> Project {
     let target =
         |name: &str| SchemaNode::group(name, vec![SchemaNode::scalar("Value", ScalarType::String)]);
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Input", Vec::new()),
         target: target("Primary"),
         source_path: None,
@@ -747,6 +751,7 @@ fn payload_routing_metadata_is_bounded() -> anyhow::Result<()> {
 #[test]
 fn payload_and_filesystem_runners_produce_identical_csv() -> anyhow::Result<()> {
     let project = Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Source",
             vec![
@@ -845,6 +850,7 @@ fn custom_csv_quote_applies_to_file_and_payload_inputs_and_outputs() -> anyhow::
         ],
     );
     let project = Project {
+        execution_contract: None,
         source: schema.clone(),
         target: schema,
         source_path: Some("input.csv".into()),

@@ -154,6 +154,7 @@ fn nested_current_and_restarted_collection_sources_roundtrip_distinctly()
         ],
     );
     let project = Project {
+        execution_contract: None,
         source: source_schema,
         target: target_schema,
         source_path: Some("source.xml".into()),

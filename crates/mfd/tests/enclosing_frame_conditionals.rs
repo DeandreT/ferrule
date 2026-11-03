@@ -124,6 +124,7 @@ fn expected() -> Project {
         ..Default::default()
     };
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Source",
             vec![rows, scalar("GlobalChoose", ScalarType::Bool)],

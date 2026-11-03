@@ -192,6 +192,7 @@ pub fn base() -> Project {
         std::iter::once(string("Value")).chain(reducers()).collect(),
     );
     let mut project = Project {
+        execution_contract: None,
         source: endpoint_schema("Input"),
         target,
         source_path: None,

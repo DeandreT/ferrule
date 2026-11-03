@@ -93,6 +93,9 @@ pub fn prepare_json5_boundary(
 ) -> Result<Json5BoundaryProfile, Json5BoundaryPolicyError> {
     // Future Program fields require an explicit admission decision.
     let Program {
+        // Ordinary validation below re-proves this; companions call its guarded
+        // typed executor rather than accepting a separate execution policy.
+        execution_contract: _,
         xml_boundary,
         source,
         extra_sources,

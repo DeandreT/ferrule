@@ -42,6 +42,7 @@ fn program() -> Program {
         vec![SchemaNode::scalar("Value", ScalarType::String)],
     );
     Program {
+        execution_contract: None,
         xml_boundary: None,
         source: SchemaNode::group(
             "Input",

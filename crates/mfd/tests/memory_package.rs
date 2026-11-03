@@ -21,6 +21,7 @@ fn books() -> MfdPackage {
 fn scalar_project(format: &str) -> mapping::Project {
     use ir::{ScalarType, SchemaNode};
     mapping::Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Input",
             vec![SchemaNode::scalar("Value", ScalarType::String)],

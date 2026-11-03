@@ -31,6 +31,7 @@ fn project() -> Project {
     );
     rows.repeating = true;
     Project {
+        execution_contract: None,
         source: group("I", vec![scalar("B", ScalarType::String), rows]),
         target: group("O", vec![scalar("T", ScalarType::String)]),
         source_path: None,

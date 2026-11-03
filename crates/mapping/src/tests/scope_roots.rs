@@ -235,6 +235,7 @@ fn pruning_keeps_exactly_the_visited_roots() {
         ..Scope::default()
     });
     let mut project = crate::Project {
+        execution_contract: None,
         source: ir::SchemaNode::group("Source", Vec::new()),
         target: ir::SchemaNode::group("Target", Vec::new()),
         source_path: None,

@@ -27,6 +27,7 @@ fn hierarchy_project() -> Project {
         panic!("valid path-hierarchy plan");
     };
     Project {
+        execution_contract: None,
         source,
         target,
         source_path: None,

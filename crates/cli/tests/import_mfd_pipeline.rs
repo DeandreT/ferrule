@@ -227,6 +227,7 @@ fn imports_and_runs_a_connected_xlsx_workbook_design() -> Result<(), Box<dyn Err
     workbook_project.source_path = None;
     workbook_project.target_path = Some("converted.xlsx".into());
     let copy_project = mapping::Project {
+        execution_contract: None,
         source: source_schema.clone(),
         target: source_schema,
         source_path: Some("source.xml".into()),
@@ -361,6 +362,7 @@ fn imports_and_runs_a_connected_flextext_design_with_its_generated_layout()
     text_project.source_path = None;
     text_project.target_path = Some("converted.txt".into());
     let copy_project = mapping::Project {
+        execution_contract: None,
         source: source_schema.clone(),
         target: source_schema,
         source_path: Some("Quotations.xml".into()),
@@ -474,6 +476,7 @@ fn imports_and_runs_a_connected_protobuf_design_with_its_generated_schema()
     protobuf_project.source_path = None;
     protobuf_project.target_path = Some("directory.bin".into());
     let copy_project = mapping::Project {
+        execution_contract: None,
         source: source_schema.clone(),
         target: source_schema,
         source_path: Some("protobuf-target-source.xml".into()),
@@ -612,6 +615,7 @@ fn imports_and_runs_a_connected_xbrl_design_with_exact_instance_bytes() -> Resul
     xbrl_project.source_path = None;
     xbrl_project.target_path = Some("filing.xbrl".into());
     let copy_project = mapping::Project {
+        execution_contract: None,
         source: source_schema.clone(),
         target: source_schema,
         source_path: Some("xbrl-final-source.xml".into()),
@@ -736,6 +740,7 @@ fn imports_and_runs_an_xml_primary_with_exact_named_csv_bytes() -> Result<(), Bo
     };
     final_project.extra_targets.push(named_csv);
     let copy_project = mapping::Project {
+        execution_contract: None,
         source: final_project.source.clone(),
         target: final_project.source.clone(),
         source_path: Some("people.xml".into()),
@@ -875,6 +880,7 @@ fn imports_and_runs_an_xml_primary_with_exact_named_json_bytes() -> Result<(), B
     };
     final_project.extra_targets.push(named_json);
     let copy_project = mapping::Project {
+        execution_contract: None,
         source: final_project.source.clone(),
         target: final_project.source.clone(),
         source_path: Some("stock.xml".into()),

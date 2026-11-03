@@ -121,6 +121,7 @@ pub fn project(separate: bool, hops: usize) -> Project {
         )
     };
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Input",
             vec![SchemaNode::group("Rows", vec![flag, text("Label"), object, detail]).repeating()],

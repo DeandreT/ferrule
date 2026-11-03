@@ -113,6 +113,7 @@ fn join_project_with_singleton(singleton: Vec<String>) -> Project {
         ]),
     };
     Project {
+        execution_contract: None,
         source,
         target,
         source_path: None,
@@ -210,6 +211,7 @@ fn correlated_aggregate_project() -> Project {
     )
     .expect("correlated join plan");
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Source",
             vec![

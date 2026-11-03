@@ -166,6 +166,7 @@ fn project() -> Project {
         vec![SchemaNode::scalar("File", ScalarType::String).repeating()],
     );
     Project {
+        execution_contract: None,
         source,
         target,
         source_path: None,

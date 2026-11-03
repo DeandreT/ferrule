@@ -43,6 +43,7 @@ fn schema() -> SchemaNode {
 
 fn program() -> Program {
     Program {
+        execution_contract: None,
         xml_boundary: None,
         source: schema(),
         extra_sources: vec![],

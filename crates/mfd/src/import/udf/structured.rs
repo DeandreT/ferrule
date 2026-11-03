@@ -26,7 +26,11 @@ pub(super) use recursive::try_read as try_read_recursive;
 pub(super) use target::instantiate_find;
 pub(in crate::import) use target::{accept_target, build_targets, prepare_target_frames};
 
-pub(super) type ImportedDefinition = (Definition, Option<SchemaComponent>, Vec<String>);
+pub(super) type ImportedDefinition = (
+    Definition,
+    Option<super::certificate::CatalogSource>,
+    Vec<String>,
+);
 
 #[derive(Clone)]
 pub(super) struct Recipe {
@@ -411,7 +415,10 @@ pub(super) fn read(
                 }),
             )]),
         },
-        Some(catalog),
+        Some(super::certificate::CatalogSource::new(
+            catalog,
+            catalog_node,
+        )),
         schema_warnings,
     ))
 }
@@ -651,7 +658,7 @@ fn try_read_scalar_find(
                 }),
             )]),
         },
-        (!parameter_source).then_some(catalog),
+        (!parameter_source).then(|| super::certificate::CatalogSource::new(catalog, *catalog_node)),
         schema_warnings,
     )))
 }

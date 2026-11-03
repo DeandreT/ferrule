@@ -16,8 +16,9 @@ pub use graph::{
     XmlMixedContentReplacement,
 };
 pub use project::{
-    DynamicSourcePath, FailureIteration, FailureRule, FailureSelection, FunctionId,
-    FunctionParameter, FunctionParameterId, NamedSource, NamedTarget, Project, UserFunction,
+    DynamicSourcePath, ExecutionContract, FailureIteration, FailureRule, FailureSelection,
+    FunctionId, FunctionParameter, FunctionParameterId, NamedSource, NamedTarget, Project,
+    UserFunction,
 };
 pub use scope::{
     IterationOutput, Scope, ScopeConstruction, SequenceWindow, SortFilterOrder, SortKey,

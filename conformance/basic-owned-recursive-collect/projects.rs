@@ -161,6 +161,7 @@ pub fn base() -> Project {
     let forest = directory_schema().repeating();
     let mut builder = Builder {
         project: Project {
+            execution_contract: None,
             source: endpoint_schema("Input"),
             target: SchemaNode::group("Out", vec![]),
             source_path: None,

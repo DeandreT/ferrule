@@ -48,6 +48,7 @@ fn binding(target_field: &str, node: u32) -> Binding {
 
 fn project(target: SchemaNode, kind: EdiBoundaryKind, graph: Graph, root: Scope) -> Project {
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Input", Vec::new()),
         target,
         source_path: None,

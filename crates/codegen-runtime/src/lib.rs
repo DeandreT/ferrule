@@ -6,6 +6,9 @@
 
 #![forbid(unsafe_code)]
 
+#[cfg(feature = "json-projection-instrumentation")]
+pub use functions::{json_projection_full_parse_count, reset_json_projection_full_parse_count};
+
 mod adjacency_tree;
 mod aggregate;
 mod context;
@@ -29,6 +32,7 @@ mod path_hierarchy;
 mod primary_document;
 mod recursive_filter;
 mod runtime_value;
+mod source_contract;
 mod user_function;
 mod value_map;
 mod x12;
@@ -164,12 +168,14 @@ pub use json5::{
     Json5BoundaryError, Json5BoundaryResource, Json5SyntaxError, Json5SyntaxKind,
     Json5SyntaxResource, JsonFormatError, map_json5_bytes_with, map_json5_with,
 };
+pub use mapping::{ClosedPrimarySourcePlan, SourceContractReason, SourceContractViolation};
 pub use mapping::{EmptyFileSelection, PrimaryDocumentShape, PrimaryFileSelection};
 pub use mapping::{FixedFieldWidth, FixedWidthLayout};
 pub use path_hierarchy::{
     MAX_PATH_HIERARCHY_DEPTH, MAX_PATH_HIERARCHY_ITEMS, owned_path_hierarchy, path_hierarchy,
 };
 pub use primary_document::PrimaryXmlDocumentError;
+pub use source_contract::validate_source_contract_bindings;
 mod edi_document;
 mod fixed_width;
 pub use edi_document::{
@@ -235,6 +241,7 @@ pub enum TargetSelection<'a> {
 /// Failure produced while executing generated mapping code.
 #[derive(Debug, PartialEq)]
 pub enum RuntimeError {
+    SourceContractViolation(SourceContractViolation),
     MissingInvocationCounters {
         node: u32,
     },
@@ -510,6 +517,7 @@ impl RuntimeError {
 impl fmt::Display for RuntimeError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::SourceContractViolation(error) => error.fmt(formatter),
             Self::FilterMapRuntime { boundary, source } => {
                 write!(formatter, "filter/map {boundary:?}: {source}")
             }
@@ -838,6 +846,7 @@ impl fmt::Display for RuntimeError {
 impl std::error::Error for RuntimeError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
+            Self::SourceContractViolation(error) => Some(error),
             Self::FilterMapRuntime { source, .. } => Some(source.as_ref()),
             Self::SourcePath(error) => Some(error),
             Self::OwnedSource(error) => Some(error),

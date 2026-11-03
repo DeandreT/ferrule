@@ -17,6 +17,7 @@ fn copy_schema(name: &str) -> SchemaNode {
 
 fn copy_project() -> Project {
     Project {
+        execution_contract: None,
         source: copy_schema("Source"),
         target: copy_schema("Target"),
         source_path: None,

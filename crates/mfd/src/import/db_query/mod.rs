@@ -32,6 +32,33 @@ pub(super) struct DbQuery {
     computed_ports: BTreeMap<u32, DbComputedExpression>,
 }
 
+impl DbQuery {
+    pub(super) fn certificate_computed_outputs(&self) -> impl Iterator<Item = u32> + '_ {
+        self.computed_ports.keys().copied()
+    }
+}
+
+#[cfg(test)]
+mod certificate_tests {
+    use super::*;
+    #[test]
+    fn certificate_computed_outputs_include_ports_without_plain_schema_entries() {
+        let mut query = at_most_one_query_for_test(vec!["Rows".into()]);
+        query.computed_ports.insert(
+            77,
+            DbComputedExpression::Multiply {
+                left: vec!["A".into()],
+                right: vec!["B".into()],
+                ty: ScalarType::Float,
+            },
+        );
+        assert_eq!(
+            query.certificate_computed_outputs().collect::<Vec<_>>(),
+            vec![77]
+        );
+    }
+}
+
 #[derive(Clone)]
 enum DbComputedExpression {
     Multiply {

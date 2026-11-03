@@ -163,6 +163,7 @@ fn project(driver: &str) -> Project {
         ],
     );
     Project {
+        execution_contract: None,
         source: batch("Batch"),
         target,
         source_path: None,

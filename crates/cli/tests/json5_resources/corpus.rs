@@ -76,6 +76,7 @@ pub(super) fn program(profile: &str) -> TestResult<codegen::Program> {
         _ => return Err("unknown literal resource profile".into()),
     };
     Ok(codegen::Program {
+        execution_contract: None,
         xml_boundary: None,
         source,
         extra_sources: Vec::new(),

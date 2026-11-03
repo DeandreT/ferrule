@@ -55,6 +55,7 @@ fn project() -> Project {
         node: 0,
     });
     Project {
+        execution_contract: None,
         source,
         target,
         source_path: Some("input.idoc".into()),
@@ -108,6 +109,7 @@ fn output_project() -> Project {
     let mut root = Scope::default();
     root.children.push(header);
     Project {
+        execution_contract: None,
         source,
         target,
         source_path: Some("input.json".into()),

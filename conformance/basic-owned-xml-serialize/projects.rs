@@ -166,6 +166,7 @@ fn target(name: &str, schema: SchemaNode, root: Scope) -> NamedTarget {
 /// primary root field the serializers read.
 pub fn base(target: SchemaNode, root: Scope, nodes: Vec<(NodeId, Node)>) -> Project {
     Project {
+        execution_contract: None,
         source: input_schema(),
         target,
         source_path: None,

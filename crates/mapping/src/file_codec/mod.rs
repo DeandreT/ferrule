@@ -16,7 +16,8 @@ const MAX_POINTER_BYTES: usize = 4096;
 const PLAIN_VERSION: u64 = 2;
 /// Capability envelopes also name the features older readers must refuse.
 const CAPABILITY_VERSION: u64 = 3;
-const KNOWN_CAPABILITIES: [&str; 6] = [
+const KNOWN_CAPABILITIES: [&str; 7] = [
+    crate::PRIMARY_SOURCE_SAFETY_GUARD_V1_CAPABILITY,
     crate::JOIN_COMPUTED_KEYS_V1_CAPABILITY,
     crate::JOIN_COMPUTED_SEQUENCE_KEYS_V1_CAPABILITY,
     crate::SQLITE_READ_V1_CAPABILITY,
@@ -61,6 +62,11 @@ impl FileModel for crate::Project {
             .chain(
                 self.uses_join_computed_sequence_keys()
                     .then_some(crate::JOIN_COMPUTED_SEQUENCE_KEYS_V1_CAPABILITY),
+            )
+            .chain(
+                self.execution_contract
+                    .is_some()
+                    .then_some(crate::PRIMARY_SOURCE_SAFETY_GUARD_V1_CAPABILITY),
             )
             .collect()
     }

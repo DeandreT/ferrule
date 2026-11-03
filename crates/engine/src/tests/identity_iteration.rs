@@ -46,6 +46,7 @@ fn nested_identity_scope_preserves_outer_collection_frames() {
         )],
     );
     let project = Project {
+        execution_contract: None,
         source,
         target,
         source_path: None,
