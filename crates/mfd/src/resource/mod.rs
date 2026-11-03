@@ -13,8 +13,8 @@ use sha2::{Digest, Sha256};
 pub(crate) use bindings::validate as validate_bindings;
 pub(crate) use bindings::{BindingSession, BoundResource};
 pub use bindings::{
-    MAX_RESOURCE_BINDINGS_V1, ResourceBindingKindV1, ResourceBindingV1, ResourceReadRecordV1,
-    ResourceReadSetV1,
+    MAX_RESOURCE_BINDINGS_V1, MappingLibraryDefinitionRecordV1, MappingLibraryFunctionIdentityV1,
+    ResourceBindingKindV1, ResourceBindingV1, ResourceReadRecordV1, ResourceReadSetV1,
 };
 pub use manifest::PackageManifest;
 
@@ -30,6 +30,7 @@ pub(crate) struct ResourceResolver {
     resource_refusals: RefCell<BTreeSet<String>>,
     bindings: Option<BindingSession>,
     design_snapshot: Option<String>,
+    readset: Option<ResourceReadSetV1>,
     package: Option<std::rc::Rc<crate::package::PackageReader>>,
 }
 
@@ -76,6 +77,7 @@ impl ResourceResolver {
             resource_refusals: RefCell::default(),
             bindings: None,
             design_snapshot: None,
+            readset: None,
             package: None,
         })
     }
@@ -100,6 +102,7 @@ impl ResourceResolver {
             json_schema_catalog_roots: Vec::new(),
             resource_refusals: RefCell::default(),
             bindings: None,
+            readset: None,
         })
     }
 
@@ -143,6 +146,7 @@ impl ResourceResolver {
         bindings: &[ResourceBindingV1],
         readset: Option<ResourceReadSetV1>,
     ) -> Result<Self, MfdError> {
+        self.readset = readset.clone();
         if !bindings.is_empty() {
             let snapshot = crate::design::read(&self.mapping_path)?;
             self.bindings = Some(BindingSession::new(
@@ -182,6 +186,42 @@ impl ResourceResolver {
             Some(session) => session.finish(),
             None => Ok(()),
         }
+    }
+
+    pub(crate) fn mapping_library(
+        &self,
+        reference: &str,
+        origin_sha256: [u8; 32],
+    ) -> Result<std::rc::Rc<BoundResource>, String> {
+        // Package import refuses this profile before registration. Keep a
+        // second boundary here so future callers cannot acquire filesystem
+        // authority from a virtual package path.
+        if self.package.is_some() {
+            return Err("declared mapping libraries are unsupported in immutable byte packages; no filesystem fallback".into());
+        }
+        if let Some(bound) =
+            self.bound_resource(ResourceBindingKindV1::MappingLibrary, reference)?
+        {
+            return Ok(bound);
+        }
+        let target = self.package_relative_path(reference, "declared mapping library")?;
+        BoundResource::mapping_library(
+            &self.package_root,
+            &self.mapping_path,
+            origin_sha256,
+            reference,
+            &target,
+            self.readset.clone(),
+        )
+    }
+
+    pub(crate) fn record_mapping_library_definition(
+        &self,
+        record: MappingLibraryDefinitionRecordV1,
+    ) -> Result<(), String> {
+        self.readset.as_ref().map_or(Ok(()), |readset| {
+            readset.record_mapping_library_definition(record)
+        })
     }
 
     pub(crate) fn with_edi_catalog_roots(mut self, roots: &[PathBuf]) -> Result<Self, MfdError> {

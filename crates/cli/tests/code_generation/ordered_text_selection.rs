@@ -21,6 +21,7 @@ fn project() -> Project {
         arg: None,
     };
     let mut project = Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Source",
             vec![

@@ -82,6 +82,7 @@ fn project() -> mapping::Project {
         graph.nodes.insert(id, node);
     }
     mapping::Project {
+        execution_contract: None,
         source: endpoint("Input"),
         target: SchemaNode::group(
             "Output",

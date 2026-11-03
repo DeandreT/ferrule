@@ -96,6 +96,7 @@ fn expected_rows(values: &[i64]) -> Instance {
 
 fn project(when_true: bool) -> Project {
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Input",
             vec![

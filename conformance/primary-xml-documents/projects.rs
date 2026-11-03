@@ -77,6 +77,7 @@ pub fn project(filename: Node, document_set: bool) -> Project {
         ..Default::default()
     };
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Orders",
             vec![row(

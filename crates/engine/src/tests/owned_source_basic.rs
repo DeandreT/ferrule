@@ -79,6 +79,7 @@ fn schema() -> SchemaNode {
 }
 fn project() -> Project {
     Project {
+        execution_contract: None,
         source: schema(),
         target: SchemaNode::group(
             "Output",

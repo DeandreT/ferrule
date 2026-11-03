@@ -53,8 +53,11 @@ pub fn execute_xml_bytes_selected_target_with_host(
             "        ResolvedTarget::{variant} => &[{names}],\n"
         ));
     }
-    output.push_str(r#"    };
-    let _count = codegen_runtime::XmlInputSetBudget::new(inputs.len().saturating_add(1))?;
+    output.push_str("    };\n");
+    if program.execution_contract.is_some() {
+        output.push_str("    codegen_runtime::validate_source_contract_bindings(inputs.len(), execution.map_or(0, |context| context.runtime_parameter_count())).map_err(codegen_runtime::XmlBoundaryError::from)?;\n");
+    }
+    output.push_str(r#"    let _count = codegen_runtime::XmlInputSetBudget::new(inputs.len().saturating_add(1))?;
     let names: Vec<&str> = inputs.iter().map(|input| input.name).collect();
     let indices = codegen_runtime::xml_input_indices(expected, &names)?;
     let mut sizes = vec![(codegen_runtime::XmlInputSource::Primary, source.len())];

@@ -92,6 +92,7 @@ fn address_schema() -> SchemaNode {
 fn project() -> Project {
     let item = item_schema();
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Source",
             vec![SchemaNode::group("Rows", vec![item.clone()]).repeating()],

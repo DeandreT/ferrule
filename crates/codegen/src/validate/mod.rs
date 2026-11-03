@@ -85,6 +85,7 @@ fn validate_program_proving_xml(
     program: &Program,
     capabilities: crate::OwnedCapabilities,
 ) -> Result<Option<ProvedXmlBoundary>, ProgramValidationError> {
+    program.validate_execution_contract()?;
     let xml = xml::validate_boundary(program)?;
     if matches!(
         program.root.construction,

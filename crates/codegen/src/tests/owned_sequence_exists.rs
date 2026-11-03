@@ -38,6 +38,7 @@ fn item() -> Node {
 /// `Found = exists(sequence, equal(item, Cfg.Code))`.
 fn project(sequence: mapping::SequenceExpr) -> mapping::Project {
     mapping::Project {
+        execution_contract: None,
         source: schema(),
         target: SchemaNode::group(
             "Output",

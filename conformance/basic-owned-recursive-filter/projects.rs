@@ -148,6 +148,7 @@ pub fn base() -> Project {
         (AUDIT_PREDICATE, call("ends_with", &[90, 91])),
     ]);
     Project {
+        execution_contract: None,
         source: endpoint_schema("Input"),
         target: dirs_target("Out"),
         source_path: None,

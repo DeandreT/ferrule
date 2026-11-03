@@ -85,6 +85,7 @@ fn removal_patch() -> GraphPatch {
 fn project() -> Project {
     let (graph, root) = before();
     Project {
+        execution_contract: None,
         source: SchemaNode::group("source", vec![SchemaNode::scalar("A", ScalarType::String)]),
         target: SchemaNode::group("target", vec![]),
         source_path: None,

@@ -27,6 +27,7 @@ fn project(predicate: u32) -> mapping::Project {
         frame: Some(vec![]),
     });
     mapping::Project {
+        execution_contract: None,
         source: schema(),
         target: SchemaNode::group(
             "Output",

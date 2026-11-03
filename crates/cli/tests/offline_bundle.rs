@@ -56,6 +56,7 @@ fn project() -> Project {
         ..Default::default()
     };
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Input", vec![string("Value")]),
         target: SchemaNode::group(
             "Output",

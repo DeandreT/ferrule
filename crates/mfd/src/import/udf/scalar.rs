@@ -233,6 +233,17 @@ pub(super) fn read(
                 "definition {detail}: `{child_name}` ({library})"
             )));
         }
+        if registry.external_owner
+            && let Some(budget) = &registry.construction
+        {
+            budget
+                .claim(
+                    512,
+                    super::limits::decoded_bytes(child).saturating_mul(8),
+                    0,
+                )
+                .map_err(ReadError::Nested)?;
+        }
         let function = read_function(&child);
         if !has_sequence_reducer
             && function.library == "core"
@@ -360,7 +371,13 @@ pub(super) fn read(
         parameter_default_by_key: &parameter_default_by_key,
         edge_from: &edge_from,
     };
-    let mut budget = ExpansionBudget::new();
+    let mut budget = ExpansionBudget {
+        shared: registry
+            .external_owner
+            .then(|| registry.construction.clone())
+            .flatten(),
+        ..ExpansionBudget::new()
+    };
     let mut outputs = BTreeMap::new();
     for (component_id, feed) in output_feeds {
         let expression = context
@@ -385,6 +402,11 @@ pub(super) fn read(
         scalar_interface: Some(ScalarInterface {
             parameters: scalar_parameters,
             outputs: scalar_outputs,
+            external_required: None,
+            construction: registry
+                .external_owner
+                .then(|| registry.construction.clone())
+                .flatten(),
         }),
     })
 }
@@ -392,6 +414,7 @@ pub(super) fn read(
 struct ExpansionBudget {
     remaining: usize,
     depth: usize,
+    shared: Option<super::limits::ConstructionBudget>,
 }
 
 impl ExpansionBudget {
@@ -399,14 +422,22 @@ impl ExpansionBudget {
         Self {
             remaining: MAX_SCALAR_EXPANSION_NODES,
             depth: 0,
+            shared: None,
         }
     }
 
     fn claim(&mut self, depth: usize) -> Result<(), String> {
         if depth >= MAX_SCALAR_EXPANSION_DEPTH.saturating_sub(self.depth) || self.remaining == 0 {
-            return Err(format!(
+            let reason = format!(
                 "scalar expression expansion exceeds the {MAX_SCALAR_EXPANSION_NODES}-node or {MAX_SCALAR_EXPANSION_DEPTH}-level limit"
-            ));
+            );
+            return Err(self
+                .shared
+                .as_ref()
+                .map_or(reason.clone(), |shared| shared.refuse(reason)));
+        }
+        if let Some(shared) = &self.shared {
+            shared.claim(1, 0, self.depth.saturating_add(depth))?;
         }
         self.remaining -= 1;
         Ok(())
@@ -550,6 +581,28 @@ impl DefinitionContext<'_> {
         sequence_items: &[u32],
     ) -> Result<ScalarExpr, String> {
         let function = &self.functions[idx];
+        if let Some(shared) = &budget.shared {
+            // Leaf scalar definitions cannot substitute nested recipes. Charge
+            // every visit (including repeated DAG paths), before argument
+            // vectors, strings or synthesized numeric/control adapters exist.
+            // These conservative slots cover current multicase If/positive/
+            // numeric lowering without duplicating its semantics here.
+            shared.claim(
+                16usize.saturating_add(function.inputs.len().saturating_mul(4)),
+                256usize
+                    .saturating_add(function.inputs.len().saturating_mul(16))
+                    .saturating_add(
+                        function
+                            .constant
+                            .as_ref()
+                            .map_or(0, |(value, ty)| value.len().saturating_add(ty.len())),
+                    ),
+                budget
+                    .depth
+                    .saturating_mul(2)
+                    .saturating_add(function.inputs.len() / 2),
+            )?;
+        }
         if let Some(expression) =
             self.sequence_aggregate_expression(function, active, budget, sequence_items)?
         {

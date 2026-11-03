@@ -107,6 +107,7 @@ fn project() -> Project {
         dynamic_path,
     };
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Primary", vec![scalar("Value"), rows("Rows")]),
         target: SchemaNode::group("Output", vec![scalar("Value")]),
         source_path: None,

@@ -134,6 +134,7 @@ fn subjects() -> TestResult<Vec<Subject>> {
             target_options.idoc = Some(layout([4, 5, 8, 8])?);
         }
         let mut project = Project {
+            execution_contract: None,
             source: schema.clone(),
             target: schema,
             source_path: None,

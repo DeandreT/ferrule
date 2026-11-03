@@ -5,6 +5,7 @@ use mapping::{Binding, FunctionId, Graph, Node, Project, Scope, ScopeIteration, 
 pub(super) fn projects() -> Vec<Project> {
     vec![
         Project {
+            execution_contract: None,
             source: SchemaNode::group("Input", vec![]),
             target: SchemaNode::group(
                 "Primary",
@@ -142,6 +143,7 @@ pub(super) fn projects() -> Vec<Project> {
             },
         },
         Project {
+            execution_contract: None,
             source: SchemaNode::group("Input", vec![]),
             target: SchemaNode::group(
                 "Primary",
@@ -310,6 +312,7 @@ pub(super) fn projects() -> Vec<Project> {
             },
         },
         Project {
+            execution_contract: None,
             source: SchemaNode::group(
                 "Files",
                 vec![SchemaNode::scalar("File", ScalarType::String).repeating()],
@@ -560,6 +563,7 @@ pub(super) fn projects() -> Vec<Project> {
             },
         },
         Project {
+            execution_contract: None,
             source: SchemaNode::group("Input", vec![]),
             target: SchemaNode::group(
                 "Primary",

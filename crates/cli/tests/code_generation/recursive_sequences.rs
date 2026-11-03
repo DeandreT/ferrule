@@ -16,6 +16,7 @@ fn sequence(item: u32) -> SequenceExpr {
 
 fn recursive_project() -> Project {
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "directory",
             vec![

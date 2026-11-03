@@ -8,6 +8,8 @@ internal static partial class Program
     {
         var tests = new (string Name, Action Run)[]
         {
+            ("closed primary source shapes", ClosedPrimarySourceShapes),
+            ("closed primary source Unicode and work", ClosedPrimarySourceUnicodeAndWork),
 #if FERRULE_COMPONENT_ORACLES
             ("owned Starting R01-R02 authenticated empty", BasicOwnedStartingR01R02),
             ("owned Starting R03 malformed witnesses", BasicOwnedStartingR03),

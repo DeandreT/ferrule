@@ -36,6 +36,7 @@ pub(crate) fn typed_schema(name: &str) -> SchemaNode {
 
 pub(crate) fn project() -> Project {
     let mut project = Project {
+        execution_contract: None,
         source: SchemaNode::group("Input", vec![]),
         target: SchemaNode::group("Output", vec![]),
         source_path: None,

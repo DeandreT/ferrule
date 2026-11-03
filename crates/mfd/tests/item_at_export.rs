@@ -31,6 +31,7 @@ impl Drop for Scratch {
 
 fn project(computed: bool, function: AggregateOp) -> Project {
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Source",
             vec![

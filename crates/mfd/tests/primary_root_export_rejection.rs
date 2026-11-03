@@ -38,6 +38,7 @@ impl Drop for Directory {
 fn project() -> Project {
     let schema = || SchemaNode::group("Root", vec![SchemaNode::scalar("Code", ScalarType::String)]);
     Project {
+        execution_contract: None,
         source: schema(),
         target: schema(),
         source_path: Some("input.xml".into()),

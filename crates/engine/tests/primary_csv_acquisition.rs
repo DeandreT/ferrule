@@ -11,6 +11,7 @@ use mapping::{Binding, DocumentProject, Graph, Node, PrimarySourcePlan, Project,
 fn document() -> DocumentProject {
     DocumentProject::new(
         Project {
+            execution_contract: None,
             source: SchemaNode::group(
                 "Input",
                 vec![SchemaNode::scalar("Text", ScalarType::String)],

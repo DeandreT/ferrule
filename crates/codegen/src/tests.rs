@@ -76,6 +76,7 @@ fn typed_scalar(name: &str, ty: ScalarType) -> SchemaNode {
 
 fn supported_project() -> Project {
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Source",
             vec![scalar("First"), scalar("Second"), scalar("NestedValue")],
@@ -436,6 +437,7 @@ fn lowers_exact_whole_current_source_group_copy() {
     let mut target = source.clone();
     target.name = "Target".into();
     let project = Project {
+        execution_contract: None,
         source,
         target,
         source_path: None,
@@ -473,6 +475,7 @@ fn lowers_copy_current_source_with_dynamic_target_paths() {
     };
     assert!(root.set_output_path(Some(1)));
     let project = Project {
+        execution_contract: None,
         source,
         target,
         source_path: None,
