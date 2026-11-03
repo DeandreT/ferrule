@@ -79,6 +79,7 @@ fn project() -> Project {
         }),
     );
     Project {
+        execution_contract: None,
         source: input(),
         target: node(),
         source_path: None,

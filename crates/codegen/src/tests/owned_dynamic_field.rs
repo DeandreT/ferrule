@@ -45,6 +45,7 @@ fn project_with(field: OwnedDynamicSourceField) -> mapping::Project {
     );
     graph.nodes.insert(10, Node::OwnedDynamicSourceField(field));
     mapping::Project {
+        execution_contract: None,
         source: endpoint("Input"),
         target: SchemaNode::group(
             "Output",

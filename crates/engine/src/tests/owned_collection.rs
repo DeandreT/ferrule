@@ -23,6 +23,7 @@ fn owned(owner: SourceOwner, path: &[&str]) -> Scope {
 }
 fn project() -> Project {
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Input",
             vec![

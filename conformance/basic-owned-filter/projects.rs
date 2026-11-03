@@ -180,6 +180,7 @@ fn build(
         dynamic_path: None,
     };
     Project {
+        execution_contract: None,
         source: input(),
         target,
         source_path: None,

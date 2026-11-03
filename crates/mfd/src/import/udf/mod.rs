@@ -14,6 +14,9 @@ use super::graph::{GraphBuilder, read_edge_inputs, read_edges};
 use super::schema::{parse_u32, read_schema_component_with_resources, schema_node_at};
 use crate::resource::ResourceResolver;
 
+pub(super) mod certificate;
+mod libraries;
+mod limits;
 mod scalar;
 mod sequence;
 pub(super) mod structured;
@@ -212,6 +215,8 @@ struct ScalarOutput {
 struct ScalarInterface {
     parameters: Vec<ScalarParameter>,
     outputs: Vec<ScalarOutput>,
+    external_required: Option<BTreeSet<u32>>,
+    construction: Option<limits::ConstructionBudget>,
 }
 
 #[derive(Default)]
@@ -219,7 +224,10 @@ pub(super) struct Registry {
     definitions: Vec<Definition>,
     supported: BTreeMap<(String, String), usize>,
     unsupported: BTreeMap<(String, String), String>,
-    sources: Vec<super::schema::SchemaComponent>,
+    sources: Vec<certificate::CatalogSource>,
+    external_owner: bool,
+    construction: Option<limits::ConstructionBudget>,
+    declared_mapping_libraries: bool,
 }
 
 impl Registry {
@@ -237,9 +245,27 @@ impl Registry {
         resources: &ResourceResolver,
         warnings: &mut Vec<String>,
     ) -> Self {
-        Self::read_resolved(mapping, resources.mapping_path(), Some(resources), warnings)
+        let mut registry = Self {
+            declared_mapping_libraries: libraries::has_mapping_imports(*mapping),
+            ..Self::default()
+        };
+        if let Err(reason) = libraries::read(mapping, resources, &mut registry, warnings) {
+            let warning = format!("declared mapping library unresolved: {reason}");
+            resources.record_refusal(warning.clone());
+            warnings.push(warning);
+        }
+        if registry.finish_construction().is_ok() {
+            registry.read_declarations(
+                mapping,
+                resources.mapping_path(),
+                Some(resources),
+                warnings,
+            );
+        }
+        registry
     }
 
+    #[cfg(test)]
     fn read_resolved(
         mapping: &roxmltree::Node<'_, '_>,
         mfd_path: &std::path::Path,
@@ -247,6 +273,17 @@ impl Registry {
         warnings: &mut Vec<String>,
     ) -> Self {
         let mut registry = Self::default();
+        registry.read_declarations(mapping, mfd_path, resources, warnings);
+        registry
+    }
+
+    fn read_declarations(
+        &mut self,
+        mapping: &roxmltree::Node<'_, '_>,
+        mfd_path: &std::path::Path,
+        resources: Option<&ResourceResolver>,
+        warnings: &mut Vec<String>,
+    ) {
         warn_unsupported_value_map_input_modes(mapping, warnings);
         let declarations = mapping
             .children()
@@ -264,12 +301,30 @@ impl Registry {
                 })
             })
             .collect::<Vec<_>>();
-        let declaration_by_key = declarations
-            .iter()
-            .map(|(key, component)| (key.clone(), *component))
-            .collect::<BTreeMap<_, _>>();
+        let mut declaration_by_key = BTreeMap::new();
+        let mut duplicates = BTreeSet::new();
+        for (key, component) in &declarations {
+            // Document-local definitions precede imports, but not each other.
+            self.supported.remove(key);
+            self.unsupported.remove(key);
+            if declaration_by_key.insert(key.clone(), *component).is_some() {
+                duplicates.insert(key.clone());
+            }
+        }
+        for key in duplicates {
+            declaration_by_key.remove(&key);
+            let reason = "conflicting exact declarations in one owner".to_string();
+            warnings.push(format!(
+                "user-defined function `{}` ({}) refused: {reason}",
+                key.1, key.0
+            ));
+            self.unsupported.insert(key, reason);
+        }
         for (key, _) in &declarations {
-            let _ = registry.resolve(
+            if self.finish_construction().is_err() {
+                break;
+            }
+            let _ = self.resolve(
                 key,
                 &declaration_by_key,
                 &mut Vec::new(),
@@ -278,7 +333,6 @@ impl Registry {
                 warnings,
             );
         }
-        registry
     }
 
     fn resolve<'a, 'input>(
@@ -321,6 +375,13 @@ impl Registry {
                 key.1, key.0
             ));
         };
+
+        if self.external_owner
+            && let Err(reason) = libraries::validate_definition(component)
+        {
+            self.unsupported.insert(key.clone(), reason.clone());
+            return Err(reason);
+        }
 
         if let Some(structure) = component
             .children()
@@ -373,7 +434,17 @@ impl Registry {
                 })
             });
         let result = dependency_result.and_then(|()| {
-            if direct_recursive {
+            if self.external_owner {
+                scalar::read(&component, self).and_then(|mut definition| {
+                    if definition.first_class_parts().is_none() {
+                        return Err(scalar::ReadError::Nested("imported signature requires unsupported inline/default/multi-output adaptation".into()));
+                    }
+                    if let Some(interface) = &mut definition.scalar_interface {
+                        interface.external_required = Some(libraries::required_parameters(component).map_err(scalar::ReadError::Nested)?);
+                    }
+                    Ok((definition, None, Vec::new()))
+                }).map_err(|error| match error { scalar::ReadError::Shape(reason) | scalar::ReadError::Nested(reason) => reason })
+            } else if direct_recursive {
                 if let Some(definition) =
                     structured::try_read_adjacency_tree(&component, mfd_path, resources)?
                 {
@@ -394,6 +465,9 @@ impl Registry {
 
         match result {
             Ok((definition, source, source_warnings)) => {
+                if let Some(budget) = &self.construction {
+                    budget.claim(1 + usize::from(source.is_some()), 0, 0)?;
+                }
                 let idx = self.definitions.len();
                 self.definitions.push(definition);
                 self.sources.extend(source);
@@ -426,6 +500,28 @@ impl Registry {
         self.definitions.get(idx)
     }
 
+    pub(super) fn has_declared_mapping_libraries(&self) -> bool {
+        self.declared_mapping_libraries
+    }
+
+    pub(super) fn refuses_reserved_call(&self, library: &str, kind: Option<&str>) -> bool {
+        self.is_declared_call(kind) && libraries::reserved_owner(library)
+    }
+
+    pub(super) fn is_declared_call(&self, kind: Option<&str>) -> bool {
+        self.declared_mapping_libraries && parse_u32(kind) == Some(19)
+    }
+
+    pub(super) fn refuses_noncanonical_call(&self, kind: Option<&str>) -> bool {
+        self.is_declared_call(kind) && kind != Some("19")
+    }
+
+    pub(super) fn finish_construction(&self) -> Result<(), String> {
+        self.construction
+            .as_ref()
+            .map_or(Ok(()), limits::ConstructionBudget::finish)
+    }
+
     fn definition_named(&self, library: &str, name: &str) -> Option<&Definition> {
         self.supported(library, name)
             .and_then(|idx| self.definition(idx))
@@ -437,6 +533,9 @@ impl Registry {
         name: &str,
     ) -> Option<(BTreeSet<u32>, ScalarExpr)> {
         let definition = self.definition_named(library, name)?;
+        if definition.is_external() {
+            return None;
+        }
         let mut outputs = definition.outputs.values();
         let OutputExpr::Scalar(expression) = outputs.next()? else {
             return None;
@@ -447,7 +546,7 @@ impl Registry {
             .then(|| (definition.parameters.clone(), expression.clone()))
     }
 
-    pub(super) fn take_sources(&mut self) -> Vec<super::schema::SchemaComponent> {
+    pub(super) fn take_sources(&mut self) -> Vec<certificate::CatalogSource> {
         std::mem::take(&mut self.sources)
     }
 
@@ -470,6 +569,12 @@ fn function_id(idx: usize) -> Option<FunctionId> {
 }
 
 impl Definition {
+    fn is_external(&self) -> bool {
+        self.scalar_interface
+            .as_ref()
+            .is_some_and(|i| i.external_required.is_some())
+    }
+
     fn first_class_parts(&self) -> Option<(&[ScalarParameter], &ScalarOutput, &ScalarExpr)> {
         let interface = self.scalar_interface.as_ref()?;
         let [output] = interface.outputs.as_slice() else {
@@ -488,7 +593,7 @@ impl Definition {
             && interface.parameters.iter().all(|parameter| {
                 parameter.ty.is_some()
                     && !parameter.name.trim().is_empty()
-                    && parameter_names.insert(parameter.name.clone())
+                    && parameter_names.insert(parameter.name.as_str())
                     && self.parameters.contains(&parameter.component_id)
             }))
         .then_some((interface.parameters.as_slice(), output, expression))
@@ -496,6 +601,11 @@ impl Definition {
 
     fn as_user_function(&self, library: &str, name: &str) -> Option<UserFunction> {
         let (interface_parameters, output, expression) = self.first_class_parts()?;
+        if let Some(budget) = self.scalar_interface.as_ref()?.construction.as_ref() {
+            libraries::reserve_helper(self, library, name, budget)
+                .map_err(|reason| budget.refuse(reason))
+                .ok()?;
+        }
         let parameters = interface_parameters
             .iter()
             .map(|parameter| {
@@ -636,6 +746,7 @@ fn nested_definition_keys(component: roxmltree::Node<'_, '_>) -> Vec<(String, St
 }
 
 pub(super) struct Call {
+    certificate: Option<certificate::ArgumentClosure>,
     pub(super) definition: usize,
     pub(super) inputs: BTreeMap<u32, u32>,
     structured_inputs: BTreeMap<u32, Vec<(Vec<String>, u32)>>,
@@ -664,6 +775,16 @@ impl Call {
         definition: usize,
         shape: &Definition,
     ) -> Result<Self, String> {
+        let certificate = if shape.is_external() {
+            let budget = shape
+                .scalar_interface
+                .as_ref()
+                .and_then(|i| i.construction.as_ref())
+                .ok_or("imported call has no construction authority")?;
+            Some(libraries::validate_call(component, budget)?)
+        } else {
+            None
+        };
         let mut inputs = BTreeMap::new();
         let mut outputs = BTreeMap::new();
         let mut structured_inputs = BTreeMap::new();
@@ -737,7 +858,30 @@ impl Call {
                 "input port references unknown definition parameter `{component_id}`"
             ));
         }
+        if let Some(required) = shape
+            .scalar_interface
+            .as_ref()
+            .and_then(|i| i.external_required.as_ref())
+        {
+            let structure = component
+                .ancestors()
+                .find(|n| n.has_tag_name("structure"))
+                .ok_or("imported call has no owning graph")?;
+            let owner = structure.parent();
+            let feeds = read_edges(&structure, owner.as_ref());
+            for parameter in required {
+                if inputs
+                    .get(parameter)
+                    .is_none_or(|port| !feeds.contains_key(port))
+                {
+                    return Err(format!(
+                        "required imported parameter `{parameter}` has no connected producer"
+                    ));
+                }
+            }
+        }
         Ok(Self {
+            certificate,
             definition,
             inputs,
             structured_inputs,
@@ -834,14 +978,7 @@ fn read_definition(
     mfd_path: &std::path::Path,
     resources: Option<&ResourceResolver>,
     registry: &Registry,
-) -> Result<
-    (
-        Definition,
-        Option<super::schema::SchemaComponent>,
-        Vec<String>,
-    ),
-    String,
-> {
+) -> Result<(Definition, Option<certificate::CatalogSource>, Vec<String>), String> {
     if let Some(reason) = unsupported_value_map_input_mode_in_definition(component) {
         return Err(reason.to_string());
     }
@@ -874,14 +1011,7 @@ fn read_lookup_definition(
     component: &roxmltree::Node<'_, '_>,
     mfd_path: &std::path::Path,
     resources: Option<&ResourceResolver>,
-) -> Result<
-    (
-        Definition,
-        Option<super::schema::SchemaComponent>,
-        Vec<String>,
-    ),
-    String,
-> {
+) -> Result<(Definition, Option<certificate::CatalogSource>, Vec<String>), String> {
     let structure = component
         .children()
         .find(|node| node.has_tag_name("structure"))
@@ -1043,7 +1173,7 @@ fn read_lookup_definition(
                 OutputExpr::Lookup(LookupExpr { source, matches }),
             )]),
         },
-        catalog,
+        catalog.map(|catalog| certificate::CatalogSource::new(catalog, document)),
         schema_warnings,
     ))
 }
@@ -1101,6 +1231,9 @@ impl GraphBuilder<'_> {
         let &(call_idx, component_id) = self.udf_by_output.get(&output_key)?;
         let call = self.udf_calls.get(call_idx)?;
         let definition = self.udf_registry.definition(call.definition)?;
+        if definition.is_external() {
+            return None;
+        }
         let OutputExpr::Scalar(expression) = definition.outputs.get(&component_id)? else {
             return None;
         };
@@ -1113,6 +1246,9 @@ impl GraphBuilder<'_> {
         let &(call_idx, component_id) = self.udf_by_output.get(&output_key)?;
         let call = self.udf_calls.get(call_idx)?;
         let definition = self.udf_registry.definition(call.definition)?;
+        if definition.is_external() {
+            return None;
+        }
         let OutputExpr::Scalar(expression) = definition.outputs.get(&component_id)? else {
             return None;
         };
@@ -1161,6 +1297,8 @@ impl GraphBuilder<'_> {
             return Some(node);
         }
         let call = self.udf_calls.get(call_idx)?;
+        let external = self.udf_registry.definition(call.definition)?.is_external();
+        let certified = call.certificate.is_some();
         let input_ports: Vec<_> = call
             .inputs
             .iter()
@@ -1171,7 +1309,11 @@ impl GraphBuilder<'_> {
             let Some(feed) = self.edge_from.get(&port).copied() else {
                 continue;
             };
-            let node = self.value_node(feed).unwrap_or_else(|| self.const_null());
+            let node = match self.value_node(feed) {
+                Some(node) => node,
+                None if external => return None,
+                None => self.const_null(),
+            };
             parameters.insert(parameter, node);
         }
         let first_class_parameters = self
@@ -1200,7 +1342,18 @@ impl GraphBuilder<'_> {
                 args,
             });
             self.udf_nodes.insert(output_key, node);
+            if certified
+                && self
+                    .udf_registry
+                    .seal_materialized_call(&mut self.materialized_arguments, &self.graph, node)
+                    .is_err()
+            {
+                return None;
+            }
             return Some(node);
+        }
+        if external {
+            return None;
         }
         let definition = self.udf_registry.definition(call.definition)?;
         let expression = definition.outputs.get(&component_id)?.clone();

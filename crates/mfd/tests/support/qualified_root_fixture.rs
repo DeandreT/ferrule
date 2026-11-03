@@ -145,6 +145,7 @@ pub fn project(shape: Shape, source_required: bool, target_required: bool) -> Pr
         },
     );
     Project {
+        execution_contract: None,
         source: schema(shape, source_required),
         target: schema(shape, target_required),
         source_path: Some("input.xml".into()),

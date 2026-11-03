@@ -213,6 +213,7 @@ impl Nodes {
 }
 fn project(source: SchemaNode, target: SchemaNode, nodes: Nodes, root: Scope) -> Project {
     Project {
+        execution_contract: None,
         source,
         target,
         source_path: None,

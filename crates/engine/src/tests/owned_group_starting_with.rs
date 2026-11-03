@@ -123,6 +123,7 @@ fn groups_schema(marker: bool) -> SchemaNode {
 }
 fn project(owner: SourceOwner) -> Project {
     Project {
+        execution_contract: None,
         source: source_schema(),
         target: SchemaNode::group("Output", vec![groups_schema(true)]),
         source_path: None,

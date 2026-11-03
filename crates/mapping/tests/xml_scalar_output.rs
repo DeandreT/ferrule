@@ -6,6 +6,7 @@ use mapping::{FormatOptions, Graph, Project, Scope};
 
 fn project() -> Project {
     let mut project = Project {
+        execution_contract: None,
         source: SchemaNode::group("Input", vec![]),
         target: SchemaNode::group(
             "Envelope",

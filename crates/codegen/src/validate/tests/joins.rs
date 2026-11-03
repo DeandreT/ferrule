@@ -208,6 +208,7 @@ fn correlated_join_aggregate_program() -> Program {
         .expect("multi-stage correlated join plan"),
     );
     Program {
+        execution_contract: None,
         xml_boundary: None,
         source: SchemaNode::group(
             "Source",

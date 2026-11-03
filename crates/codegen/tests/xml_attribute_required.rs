@@ -6,6 +6,7 @@ fn project() -> Project {
     code.set_xml_attribute_required(true);
     let schema = SchemaNode::group("Root", vec![code]);
     Project {
+        execution_contract: None,
         source: schema.clone(),
         target: schema,
         source_path: None,

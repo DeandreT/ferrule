@@ -9,6 +9,7 @@ fn project(
     output: NodeId,
 ) -> Project {
     Project {
+        execution_contract: None,
         source,
         target: SchemaNode::group("target", vec![SchemaNode::scalar("result", target_type)]),
         source_path: None,

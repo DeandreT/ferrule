@@ -20,6 +20,7 @@ fn layout(root: &str) -> FlexTextLayout {
 
 fn project() -> Project {
     let mut project = Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Source",
             vec![SchemaNode::scalar("name", ScalarType::String)],

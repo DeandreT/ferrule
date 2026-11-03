@@ -80,11 +80,13 @@ public enum FerruleRuntimeError
     GeneratedPositionUnavailable,
     InvalidDocumentCollectionItem,
     InvalidCurrentRows,
+    SourceContractViolation,
 }
 
 /// <summary>An error with a machine-readable Ferrule runtime category.</summary>
 public sealed class FerruleRuntimeException : Exception
 {
+    public FerruleSourceContractViolation? SourceContractViolation { get; }
     public FerruleRuntimeException(
         FerruleRuntimeError error,
         string message,
@@ -110,10 +112,12 @@ public sealed class FerruleRuntimeException : Exception
         string? foundInstance = null,
         FerrulePrimaryRootFailure? primaryRoot = null,
         string? mappingExceptionMessage = null,
-        uint? generatedItem = null)
+        uint? generatedItem = null,
+        FerruleSourceContractViolation? sourceContractViolation = null)
         : base(message)
     {
         Error = error;
+        SourceContractViolation = sourceContractViolation;
         GeneratedItem = generatedItem;
         Node = node;
         Function = function;

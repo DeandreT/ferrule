@@ -64,6 +64,7 @@ mod tests {
         OwnedPreset::DocumentPaths
             .capabilities()
             .check_xml_document_set_inputs(&Program {
+                execution_contract: None,
                 xml_boundary: None,
                 ..program.clone()
             })

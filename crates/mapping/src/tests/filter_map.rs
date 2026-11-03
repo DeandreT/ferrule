@@ -25,6 +25,7 @@ fn project(
 ) -> Project {
     let item = sequence.item();
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Input", Vec::new()),
         target: SchemaNode::group(
             "Output",

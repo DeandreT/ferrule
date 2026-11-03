@@ -18,6 +18,7 @@ fn declared_array_descendant_preserves_complete_project_and_ordered_values() {
         ]
     };
     let expected = Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Source",
             vec![

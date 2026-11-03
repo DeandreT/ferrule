@@ -62,6 +62,7 @@ fn project() -> Project {
         ..Scope::default()
     };
     Project {
+        execution_contract: None,
         source: SchemaNode::group("source", vec![SchemaNode::scalar("A", ScalarType::String)]),
         target: SchemaNode::group("target", vec![]),
         source_path: None,

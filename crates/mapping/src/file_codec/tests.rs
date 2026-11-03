@@ -19,6 +19,7 @@ fn project() -> Project {
 }
 fn plain_project() -> Project {
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Source", vec![]),
         target: SchemaNode::group("Target", vec![]),
         source_path: None,

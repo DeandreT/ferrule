@@ -19,6 +19,7 @@ fn selected_edi_variable_forwards_complete_values_without_physical_endpoints() {
         ]
     };
     let expected = Project {
+        execution_contract: None,
         source: SchemaNode::group("Source", fields()),
         target: SchemaNode::group("Report", fields()),
         source_path: Some("source.json".into()),

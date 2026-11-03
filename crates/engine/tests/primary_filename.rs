@@ -12,6 +12,7 @@ use mapping::{
 fn document(filename: Node) -> DocumentProject {
     DocumentProject::new(
         Project {
+            execution_contract: None,
             source: SchemaNode::group("Input", vec![]),
             target: SchemaNode::group(
                 "Output",

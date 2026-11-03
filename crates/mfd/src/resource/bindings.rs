@@ -24,6 +24,8 @@ pub enum ResourceBindingKindV1 {
     XmlSchema,
     JsonSchema,
     EdiConfig,
+    /// Declarative `.mfd` function metadata, never executable code.
+    MappingLibrary,
 }
 
 /// One exact `(canonical original MFD, original reference, kind)` authorization.
@@ -38,7 +40,7 @@ pub struct ResourceBindingV1 {
     origin_sha256: Option<[u8; 32]>,
     root: PathBuf,
     target: PathBuf,
-    sha256: [u8; 32],
+    sha256: Option<[u8; 32]>,
     pins: BTreeMap<PathBuf, [u8; 32]>,
     prepared: Arc<BTreeMap<PathBuf, Arc<[u8]>>>,
 }
@@ -92,7 +94,7 @@ impl ResourceBindingV1 {
             origin_sha256: None,
             root,
             target,
-            sha256,
+            sha256: Some(sha256),
             pins: BTreeMap::new(),
             prepared: Arc::default(),
         })
@@ -175,12 +177,77 @@ pub struct ResourceReadRecordV1 {
     pub from_prepared_snapshot: bool,
 }
 
+/// Exact document-owned symbol, not an alias or a name-based replacement.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MappingLibraryFunctionIdentityV1 {
+    pub document: PathBuf,
+    pub sha256: [u8; 32],
+    pub library: String,
+    pub name: String,
+}
+
+/// Private evidence only, never serialized in an imported project. Accepted
+/// declarations are leaf scalar helpers; refused nested calls remain raw XML,
+/// not an invented admitted dependency closure.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MappingLibraryDefinitionRecordV1 {
+    pub declaring_document: PathBuf,
+    pub declaring_sha256: [u8; 32],
+    pub original_reference: String,
+    pub identity: MappingLibraryFunctionIdentityV1,
+    pub declaration_xml: String,
+    pub refusal: Option<String>,
+}
+
+impl MappingLibraryDefinitionRecordV1 {
+    pub(crate) fn retained_bytes(&self) -> usize {
+        self.declaring_document
+            .as_os_str()
+            .len()
+            .saturating_add(self.original_reference.len())
+            .saturating_add(self.identity.document.as_os_str().len())
+            .saturating_add(self.identity.library.len())
+            .saturating_add(self.identity.name.len())
+            .saturating_add(self.declaration_xml.len())
+            .saturating_add(self.refusal.as_ref().map_or(0, String::len))
+            .saturating_add(64)
+    }
+}
+
 /// Append-only, explicitly host-selected private provenance. Clones share the
 /// sink, but resource caches and failures are private to each import session.
 #[derive(Clone, Debug, Default)]
-pub struct ResourceReadSetV1(Arc<Mutex<Vec<ResourceReadRecordV1>>>);
+pub struct ResourceReadSetV1(
+    Arc<Mutex<Vec<ResourceReadRecordV1>>>,
+    Arc<Mutex<Vec<MappingLibraryDefinitionRecordV1>>>,
+);
 
 impl ResourceReadSetV1 {
+    pub fn mapping_library_definitions(&self) -> Vec<MappingLibraryDefinitionRecordV1> {
+        self.1.lock().unwrap_or_else(|e| e.into_inner()).clone()
+    }
+
+    pub fn take_mapping_library_definitions(&self) -> Vec<MappingLibraryDefinitionRecordV1> {
+        std::mem::take(&mut *self.1.lock().unwrap_or_else(|e| e.into_inner()))
+    }
+
+    pub(crate) fn record_mapping_library_definition(
+        &self,
+        record: MappingLibraryDefinitionRecordV1,
+    ) -> Result<(), String> {
+        let mut records = self.1.lock().unwrap_or_else(|e| e.into_inner());
+        let bytes = records
+            .iter()
+            .fold(record.retained_bytes(), |total, record| {
+                total.saturating_add(record.retained_bytes())
+            });
+        if records.len() >= 4096 || bytes > 32 * 1024 * 1024 {
+            return Err("mapping-library definition evidence budget exceeded".into());
+        }
+        records.push(record);
+        Ok(())
+    }
+
     pub fn records(&self) -> Vec<ResourceReadRecordV1> {
         self.0.lock().unwrap_or_else(|e| e.into_inner()).clone()
     }
@@ -350,6 +417,43 @@ impl std::fmt::Debug for BoundResource {
 }
 
 impl BoundResource {
+    /// Natural package-contained metadata uses the same no-link rooted reader
+    /// as bound resources, without asserting a pre-authorized content digest.
+    pub(crate) fn mapping_library(
+        root: &Path,
+        origin: &Path,
+        origin_sha256: [u8; 32],
+        reference: &str,
+        target: &Path,
+        readset: Option<ResourceReadSetV1>,
+    ) -> Result<Rc<Self>, String> {
+        let target = relative(target).map_err(|e| e.to_string())?;
+        let root = rooted::Root::open(root).map_err(|e| e.to_string())?;
+        let binding = ResourceBindingV1 {
+            kind: ResourceBindingKindV1::MappingLibrary,
+            origin: origin.into(),
+            reference: reference.into(),
+            origin_sha256: Some(origin_sha256),
+            root: root.path().into(),
+            target,
+            sha256: None,
+            pins: BTreeMap::new(),
+            prepared: Arc::default(),
+        };
+        Ok(Rc::new(Self {
+            path: root.path().join(&binding.target),
+            binding,
+            root,
+            cache: RefCell::default(),
+            bytes: Cell::new(0),
+            total: Rc::new(Cell::new(0)),
+            requests: Rc::new(Cell::new(0)),
+            failure: Rc::default(),
+            readset,
+            origin_sha256,
+        }))
+    }
+
     pub(crate) fn path(&self) -> &Path {
         &self.path
     }
@@ -373,6 +477,12 @@ impl BoundResource {
     }
 
     pub(crate) fn bytes(&self, path: &Path) -> io::Result<Arc<[u8]>> {
+        self.bytes_bounded(path, usize::MAX)
+    }
+
+    /// Enforce a closure's remaining delivery quota before live reads and
+    /// cached/prepared deliveries, not after allocating a complete body.
+    pub(crate) fn bytes_bounded(&self, path: &Path, remaining: usize) -> io::Result<Arc<[u8]>> {
         if let Some(failure) = self.failure.borrow().as_ref() {
             return Err(io::Error::new(
                 io::ErrorKind::PermissionDenied,
@@ -392,19 +502,29 @@ impl BoundResource {
         let rel = relative(rel)
             .map_err(|_| self.fail("bound dependency is not a normalized contained path"))?;
         if let Some(bytes) = self.cache.borrow().get(&rel).cloned() {
+            if bytes.len() > remaining {
+                return Err(self.fail("mapping-library aggregate byte budget exceeded"));
+            }
             return Ok(bytes);
         }
         let (max_files, max_bytes): (usize, usize) = match self.binding.kind {
             ResourceBindingKindV1::XmlSchema => (64, 64 * 1024 * 1024),
             ResourceBindingKindV1::JsonSchema => (256, 64 * 1024 * 1024),
             ResourceBindingKindV1::EdiConfig => (32, 8 * 1024 * 1024),
+            ResourceBindingKindV1::MappingLibrary => (32, 32 * 1024 * 1024),
         };
         if self.cache.borrow().len() >= max_files {
             return Err(self.fail("bound resource file-count limit exceeded"));
         }
         let budget = max_bytes
             .saturating_sub(self.bytes.get())
-            .min(MAX_IMPORT_BYTES.saturating_sub(self.total.get()));
+            .min(MAX_IMPORT_BYTES.saturating_sub(self.total.get()))
+            .min(remaining);
+        let budget = if self.binding.kind == ResourceBindingKindV1::MappingLibrary {
+            budget.min(8 * 1024 * 1024)
+        } else {
+            budget
+        };
         let prepared = self.binding.prepared.get(&rel);
         let bytes: Arc<[u8]> = match prepared {
             Some(bytes) => bytes.clone(),
@@ -422,7 +542,7 @@ impl BoundResource {
         }
         let digest: [u8; 32] = Sha256::digest(bytes.as_ref()).into();
         let expected = if rel == self.binding.target {
-            Some(self.binding.sha256)
+            self.binding.sha256
         } else {
             self.binding.pins.get(&rel).copied()
         };

@@ -114,6 +114,7 @@ fn project(plan: OwnedJoinPlan) -> Project {
         graph.nodes.insert(id, node);
     }
     Project {
+        execution_contract: None,
         source: endpoint("Input"),
         target: SchemaNode::group("Output", vec![row_target()]),
         source_path: None,

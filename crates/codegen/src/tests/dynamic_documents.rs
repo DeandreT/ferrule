@@ -7,6 +7,7 @@ use crate::{Expression, IterationSource, lower};
 
 fn project() -> Project {
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Source",
             vec![SchemaNode::scalar("Value", ScalarType::String)],

@@ -80,6 +80,7 @@ fn project(index: ScalarType, result: ScalarType) -> mapping::Project {
     };
     let target = SchemaNode::group("Output", vec![SchemaNode::scalar("Result", result)]);
     mapping::Project {
+        execution_contract: None,
         source: source_schema(index),
         target: target.clone(),
         source_path: None,

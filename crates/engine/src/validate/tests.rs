@@ -59,6 +59,7 @@ pub(super) fn valid_project() -> Project {
         },
     );
     Project {
+        execution_contract: None,
         source: SchemaNode::group("row", vec![SchemaNode::scalar("name", ScalarType::String)]),
         target: SchemaNode::group("row", vec![SchemaNode::scalar("name", ScalarType::String)]),
         source_path: None,

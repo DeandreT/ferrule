@@ -51,6 +51,7 @@ fn project() -> Project {
         SchemaNode::group("Windowed", vec![int("Original"), int("Position")]).repeating();
     let function = FunctionId::new(1);
     let mut project = Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Input",
             vec![

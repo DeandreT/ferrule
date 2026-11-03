@@ -61,6 +61,13 @@ pub fn export_pipeline_with_profile(
 }
 
 fn prepare_pipeline_export(pipeline: &Pipeline, path: &Path) -> Result<PreparedExport, MfdError> {
+    if pipeline
+        .stages
+        .iter()
+        .any(|stage| stage.project.execution_contract.is_some())
+    {
+        return Err(MfdError::Unsupported("closed primary-source safety guards have no fail-closed .mfd pipeline export representation".into()));
+    }
     // Flattening serial stages does not prove cross-stage exception priority.
     for stage in &pipeline.stages {
         if stage

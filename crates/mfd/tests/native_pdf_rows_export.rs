@@ -132,6 +132,7 @@ fn layout() -> PdfLayout {
 
 fn project(layout: PdfLayout) -> Project {
     Project {
+        execution_contract: None,
         source: layout.schema(),
         target: SchemaNode::group(
             "Output",

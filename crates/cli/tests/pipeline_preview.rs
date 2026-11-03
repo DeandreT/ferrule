@@ -48,6 +48,7 @@ fn value_schema() -> SchemaNode {
 }
 fn copy_project() -> Project {
     Project {
+        execution_contract: None,
         source: value_schema(),
         target: value_schema(),
         source_path: None,

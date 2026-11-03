@@ -5,6 +5,7 @@ fn document(selection: PrimaryFileSelection) -> DocumentProject {
     let schema = SchemaNode::scalar("value", ScalarType::String);
     DocumentProject::new(
         Project {
+            execution_contract: None,
             source: schema.clone(),
             target: schema,
             source_path: Some("input.json".into()),
