@@ -103,6 +103,7 @@ pub(in crate::import) struct RegisteredVec<T> {
     budget: Option<ConstructionBudget>,
     count_capture: OriginCapture,
     count_origins: Vec<(usize, Origin)>,
+    count_origin_capacity: OriginCapacity,
     count_complete: bool,
 }
 
@@ -121,6 +122,7 @@ impl<T> RegisteredVec<T> {
             budget: registry.construction.clone(),
             count_capture: capture,
             count_origins: Vec::new(),
+            count_origin_capacity: OriginCapacity::default(),
             count_complete: true,
         }
     }
@@ -149,8 +151,10 @@ impl<T: Fact> RegisteredVec<T> {
             };
             if wanted
                 && self.count_complete
-                && budget.claim(2, 0, 0).is_ok()
-                && self.count_origins.try_reserve_exact(1).is_ok()
+                && self
+                    .count_origin_capacity
+                    .admit(&mut self.count_origins, budget)
+                    .is_ok()
             {
                 self.count_origins.push((self.values.len(), origin));
                 crate::import::aggregate::filtered_count::count_visit(
@@ -161,6 +165,62 @@ impl<T: Fact> RegisteredVec<T> {
             }
         }
         self.values.push(value);
+    }
+}
+
+/// Logical requested Vec capacity, not malloc's physical allocation size.
+/// Potential relocation is charged even when the allocator can grow in place.
+#[derive(Default)]
+struct OriginCapacity {
+    requested: usize,
+    reserved_bytes: usize,
+    relocated_rows: usize,
+    growths: usize,
+}
+impl OriginCapacity {
+    fn admit(
+        &mut self,
+        rows: &mut Vec<(usize, Origin)>,
+        budget: &CountConstruction,
+    ) -> Result<(), String> {
+        // Allocator over-reservation cannot grant uncharged logical slots.
+        if rows.len() < self.requested {
+            return budget.claim(2, 0, 0);
+        }
+        let old_capacity = self.requested;
+        let Some(capacity) = old_capacity.checked_mul(2).map(|n| n.max(4)) else {
+            return Err(budget
+                .budget()
+                .refuse("Count origin capacity overflow".into()));
+        };
+        let Some(bytes) =
+            (capacity - self.requested).checked_mul(std::mem::size_of::<(usize, Origin)>())
+        else {
+            return Err(budget
+                .budget()
+                .refuse("Count origin capacity bytes overflow".into()));
+        };
+        let Some(work) = rows
+            .len()
+            .checked_add(capacity - old_capacity)
+            .and_then(|n| n.checked_add(2))
+        else {
+            return Err(budget
+                .budget()
+                .refuse("Count origin relocation work overflow".into()));
+        };
+        // Both admission checks precede allocation, relocation and insertion.
+        budget.claim(work, bytes, 0)?;
+        rows.try_reserve_exact(capacity - rows.len()).map_err(|_| {
+            budget
+                .budget()
+                .refuse("Count origin host allocation failed".into())
+        })?;
+        self.requested = capacity;
+        self.reserved_bytes += bytes;
+        self.relocated_rows += rows.len();
+        self.growths += 1;
+        Ok(())
     }
 }
 impl<T> RegisteredVec<T> {
@@ -267,6 +327,9 @@ impl CatalogSource {
 }
 
 #[cfg(test)]
+mod resource_followup;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     #[test]
@@ -278,7 +341,7 @@ mod tests {
                 construction: udf.then(ConstructionBudget::default),
                 ..Registry::default()
             };
-            let count = CountConstruction::for_test(2, 0);
+            let count = CountConstruction::for_test(6, 4 * std::mem::size_of::<(usize, Origin)>());
             let mut values =
                 RegisteredVec::with_origin_capture(&registry, OriginCapture::Count(count.clone()));
             values.push_origin(1, owner);
