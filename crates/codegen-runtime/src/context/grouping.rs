@@ -11,6 +11,7 @@ pub struct GroupedItems<'a> {
 }
 
 struct OwnedGroup<'a> {
+    json_projections: super::json_projection::ProjectionState,
     invocation_counters: Option<crate::invocation_counter::CounterState>,
     primary_source: &'a Instance,
     prefix: Vec<ScopeFrame<'a>>,
@@ -347,6 +348,7 @@ impl<'a> GroupedItems<'a> {
                     dynamic_source_loader: group.dynamic_source_loader,
                     filter_map: group.filter_map.clone(),
                     invocation_counters: group.invocation_counters.clone(),
+                    json_projections: group.json_projections.clone(),
                 }
             })
             .collect()
@@ -377,6 +379,7 @@ impl<'a> GroupedItems<'a> {
                         dynamic_source_loader: group.first.dynamic_source_loader,
                         filter_map: group.first.filter_map.clone(),
                         invocation_counters: group.first.invocation_counters.clone(),
+                        json_projections: group.first.json_projections.clone(),
                         wrapper,
                         members,
                         collection,
