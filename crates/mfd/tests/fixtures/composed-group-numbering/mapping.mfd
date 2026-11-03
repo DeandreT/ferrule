@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mapping version="26"><component name="map"><structure><children>
+  <component name="source" library="xml" kind="14"><data>
+    <root><entry name="document"><entry name="Input">
+      <entry name="Batch" outkey="10"><entry name="Label" outkey="11"/>
+        <entry name="Row" outkey="12"><entry name="Value" outkey="13"/><entry name="Start" outkey="14"/></entry>
+      </entry>
+    </entry></entry></root>
+    <document schema="source.xsd" instanceroot="{}Input"/>
+  </data></component>
+  <component name="target" library="xml" kind="14"><properties XSLTDefaultOutput="1"/><data>
+    <root><entry name="document"><entry name="Output">
+      <entry name="Batch" inpkey="20"><entry name="Label" inpkey="21"/>
+        <entry name="Group" inpkey="22"><entry name="Number" inpkey="23"/><entry name="First" inpkey="24"/><entry name="Count" inpkey="25"/></entry>
+      </entry>
+    </entry></entry></root>
+    <document schema="target.xsd" instanceroot="{}Output"/>
+  </data></component>
+  <component name="group-starting-with" library="core" kind="5">
+    <sources><datapoint pos="0" key="30"/><datapoint pos="1" key="31"/></sources>
+    <targets><datapoint pos="0" key="32"/></targets>
+  </component>
+  <component name="count" library="core" kind="5">
+    <sources><datapoint/><datapoint pos="1" key="33"/></sources>
+    <targets><datapoint pos="0" key="34"/></targets>
+  </component>
+  <component name="constant" library="core" kind="2">
+    <targets><datapoint pos="0" key="40"/></targets><data><constant value="3" datatype="integer"/></data>
+  </component>
+  <component name="constant" library="core" kind="2">
+    <targets><datapoint pos="0" key="41"/></targets><data><constant value="4" datatype="integer"/></data>
+  </component>
+  <component name="auto-number" library="core" kind="5">
+    <sources><datapoint/><datapoint pos="1" key="42"/><datapoint pos="2" key="43"/><datapoint/></sources>
+    <targets><datapoint pos="0" key="44"/></targets>
+  </component>
+</children></structure><connections>
+  <edge from="10" to="20"/>
+  <edge from="11" to="21"/>
+  <edge from="12" to="30"/>
+  <edge from="14" to="31"/>
+  <edge from="32" to="22"/>
+  <edge from="13" to="24"/>
+  <edge from="32" to="33"/>
+  <edge from="34" to="25"/>
+  <edge from="40" to="42"/>
+  <edge from="41" to="43"/>
+  <edge from="44" to="23"/>
+</connections></component></mapping>
