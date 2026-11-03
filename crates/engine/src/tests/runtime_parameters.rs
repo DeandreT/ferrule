@@ -4,6 +4,7 @@ use mapping::{Binding, Graph, Node, Scope};
 
 fn project() -> Project {
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Input", vec![]),
         target: SchemaNode::group(
             "Output",

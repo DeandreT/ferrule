@@ -34,6 +34,7 @@ fn owned_join_project() -> Project {
     )
     .unwrap();
     Project {
+        execution_contract: None,
         source: rows(),
         target: SchemaNode::group("Target", vec![SchemaNode::group("Row", vec![]).repeating()]),
         source_path: None,

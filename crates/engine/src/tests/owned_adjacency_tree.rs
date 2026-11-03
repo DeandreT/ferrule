@@ -78,6 +78,7 @@ fn tree(owner: SourceOwner, rows: &[&str], root: Option<u32>) -> Scope {
 
 fn project(root: Scope) -> Project {
     Project {
+        execution_contract: None,
         source: input_schema(),
         target: node("node"),
         source_path: None,

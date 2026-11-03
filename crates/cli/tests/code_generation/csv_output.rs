@@ -164,6 +164,7 @@ pub(super) fn csv_project(options: FormatOptions) -> Project {
         },
     );
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Source",
             vec![

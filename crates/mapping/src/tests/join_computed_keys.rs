@@ -80,6 +80,7 @@ fn join_aggregate(plan: JoinPlan) -> Node {
 
 fn project() -> Project {
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Source", vec![]),
         target: SchemaNode::group("Report", vec![]),
         source_path: None,

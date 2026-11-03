@@ -39,6 +39,7 @@ fn scope(node: u32) -> Scope {
 }
 fn project() -> Project {
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Primary",
             vec![

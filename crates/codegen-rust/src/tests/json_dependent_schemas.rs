@@ -131,6 +131,7 @@ fn dependent_schema_program() -> Result<Program, &'static str> {
         ],
     )?;
     Ok(Program {
+        execution_contract: None,
         xml_boundary: None,
         source,
         extra_sources: vec![NamedSourceProgram {
@@ -193,6 +194,7 @@ fn pattern_budget_program() -> Result<Program, &'static str> {
         ],
     )?;
     Ok(Program {
+        execution_contract: None,
         xml_boundary: None,
         source,
         extra_sources: Vec::new(),

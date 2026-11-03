@@ -12,6 +12,7 @@ fn options() -> FormatOptions {
 }
 fn project() -> Project {
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Source", vec![]),
         target: SchemaNode::group("Root", vec![]),
         source_path: None,

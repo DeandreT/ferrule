@@ -12,6 +12,7 @@ fn schema() -> SchemaNode {
 /// `Found = exists(tokenize("a|b"), equal(item, Cfg.Code))`.
 fn project() -> ::mapping::Project {
     ::mapping::Project {
+        execution_contract: None,
         source: schema(),
         target: SchemaNode::group(
             "Output",

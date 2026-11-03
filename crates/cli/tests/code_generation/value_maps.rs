@@ -280,6 +280,7 @@ fn value_map_project() -> Project {
         ),
     ]);
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Source", Vec::new()),
         target: SchemaNode::group(
             "Target",
@@ -872,6 +873,7 @@ fn isolated_precision_project() -> Project {
         fields.push(string(name));
     }
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Source",
             vec![

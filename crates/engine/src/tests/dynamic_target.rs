@@ -85,6 +85,7 @@ fn project(target: SchemaNode) -> Project {
         ..Scope::default()
     };
     Project {
+        execution_contract: None,
         source,
         target,
         source_path: None,
@@ -174,6 +175,7 @@ fn merges_computed_scalar_fragments_into_one_open_object() {
         .with_dynamic_fields(SchemaNode::scalar("*", ScalarType::Float))
         .unwrap();
     let project = Project {
+        execution_contract: None,
         source,
         target,
         source_path: None,

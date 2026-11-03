@@ -82,6 +82,7 @@ fn generated_union_targets_preserve_tags_and_adapt_exact_numbers() {
 fn scalar_root_construction_renders_union_adaptation() {
     let (_, types) = scalar_union("Target", [ScalarType::Float, ScalarType::Bool]);
     let program = Program {
+        execution_contract: None,
         xml_boundary: None,
         source: SchemaNode::scalar("Source", ScalarType::Int),
         extra_sources: Vec::new(),
@@ -147,6 +148,7 @@ fn union_program() -> Program {
         16,
     );
     Program {
+        execution_contract: None,
         xml_boundary: None,
         source: SchemaNode::group(
             "Source",

@@ -57,6 +57,7 @@ fn project(owner: SourceOwner) -> mapping::Project {
     )
     .repeating();
     mapping::Project {
+        execution_contract: None,
         source: source(),
         target: SchemaNode::group(
             "Output",

@@ -42,6 +42,7 @@ fn project(required_source: bool, required_target: bool) -> Project {
         )
     };
     Project {
+        execution_contract: None,
         source: schema("Request", required_source),
         target: schema("Response", required_target),
         source_path: Some("input.xml".into()),

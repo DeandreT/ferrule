@@ -35,6 +35,7 @@ fn owned_failure_program() -> codegen::Program {
         message: Some(message),
     };
     let project = mapping::Project {
+        execution_contract: None,
         source: source.clone(),
         target: ir::SchemaNode::group("Output", vec![]),
         source_path: None,

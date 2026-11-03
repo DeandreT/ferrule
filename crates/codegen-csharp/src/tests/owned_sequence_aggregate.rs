@@ -21,6 +21,7 @@ fn owned(owner: SourceOwner) -> Node {
 /// `Value = join(tokenize("a|b"), equal(item, Cfg.Code), item, Primary.Code)`.
 fn project() -> ::mapping::Project {
     ::mapping::Project {
+        execution_contract: None,
         source: schema(),
         target: SchemaNode::group(
             "Output",

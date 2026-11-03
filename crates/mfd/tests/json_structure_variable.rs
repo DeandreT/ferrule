@@ -13,6 +13,7 @@ fn selected_json_variable_forwards_complete_values_without_physical_endpoints() 
     let imported = mfd::import(&fixture()).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     let mut expected = Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Source",
             vec![

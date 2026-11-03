@@ -63,9 +63,22 @@ pub(super) fn render(
             "            {index} => new string[] {{ {names} }},\n"
         ));
     }
-    output.push_str(r#"            _ => throw new global::System.InvalidOperationException(),
+    output.push_str(
+        r#"            _ => throw new global::System.InvalidOperationException(),
         };
-        var budget = new global::Ferrule.Runtime.FerruleXmlInputSetBudget((long)extraSources.Count + 1);
+"#,
+    );
+    super::super::source_contract::bindings(
+        program,
+        output,
+        "extraSources.Count",
+        "executionContext",
+    );
+    if program.execution_contract.is_some() {
+        output
+            .push_str("        extraSources = global::System.Array.Empty<NamedXmlBytesInput>();\n");
+    }
+    output.push_str(r#"        var budget = new global::Ferrule.Runtime.FerruleXmlInputSetBudget((long)extraSources.Count + 1);
         var names = new string[extraSources.Count];
         for (var i = 0; i < names.Length; i++)
         {
@@ -94,7 +107,15 @@ pub(super) fn render(
             catch (global::Ferrule.Runtime.FerruleXmlBoundaryException error)
             { throw global::Ferrule.Runtime.FerruleXmlExecutionException.ForInput(SelectedXmlInputOwner(name), error); }
         }
-        var context = global::Ferrule.Runtime.ScopeContext.FromSources(primary, fields, executionContext);
+"#);
+    super::super::source_contract::input(
+        program,
+        output,
+        "primary",
+        "fields.Length",
+        "executionContext",
+    );
+    output.push_str(r#"        var context = global::Ferrule.Runtime.ScopeContext.FromSources(primary, fields, executionContext);
         SelectedTargetOutput mapped;
         try { mapped = ExecuteSelectedTargetFromContext(context, selected); }
         catch (global::Ferrule.Runtime.FerruleRuntimeException error) { throw SelectedXmlMappingError(error); }

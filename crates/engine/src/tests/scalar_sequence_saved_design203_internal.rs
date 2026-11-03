@@ -255,6 +255,7 @@ fn project(case: &Json, descriptor: &SequenceExpr) -> Project {
         Vec::new()
     };
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Input", source_fields),
         target,
         source_path: None,

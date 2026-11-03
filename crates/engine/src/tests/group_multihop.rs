@@ -161,6 +161,7 @@ fn project(mode: Mode, failure: Failure) -> Project {
         Mode::IntoBlocks => grouped.group_into_blocks = Some(7),
     }
     Project {
+        execution_contract: None,
         source: SchemaNode::group("root", vec![]),
         target: SchemaNode::group("root", vec![]),
         source_path: None,

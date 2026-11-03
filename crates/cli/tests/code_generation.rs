@@ -401,6 +401,7 @@ fn bool_(name: &str) -> SchemaNode {
 
 fn project() -> Project {
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Source",
             vec![
@@ -662,6 +663,7 @@ fn nested_iteration_project() -> Project {
         SchemaNode::group("Orders", vec![string("OrderId"), target_line]).repeating();
 
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Source",
             vec![
@@ -984,6 +986,7 @@ fn expected_csharp_artifact_paths(dynamic_document_companion: bool) -> Vec<&'sta
         "Runtime/FerruleScalarRegex.ScriptTables.cs",
         "Runtime/FerruleScalarRegex.cs",
         "Runtime/FerruleSequences.cs",
+        "Runtime/FerruleSourceContract.cs",
         "Runtime/FerruleSourceOrigin.cs",
         "Runtime/FerruleTargetSelection.cs",
         "Runtime/FerruleUnicodeCasing.Tables.cs",

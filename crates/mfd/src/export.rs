@@ -396,6 +396,12 @@ fn prepare_export_mode(
     path: &Path,
     filesystem: bool,
 ) -> Result<PreparedExport, MfdError> {
+    if project.execution_contract.is_some() {
+        return Err(MfdError::Unsupported(
+            "closed primary-source safety guards have no fail-closed .mfd export representation"
+                .into(),
+        ));
+    }
     wildcard_exclusions::validate(project)?;
     // Derived target schema-location hints export as the native default
     // setting. Every other proof sees the unhinted project; only the target

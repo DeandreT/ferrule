@@ -110,6 +110,7 @@ fn project(xml: Node, guarded: bool) -> Project {
     );
     graph.nodes.insert(XML, xml);
     Project {
+        execution_contract: None,
         source: source_schema(),
         target: SchemaNode::group(
             "Target",

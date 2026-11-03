@@ -19,6 +19,7 @@ fn casing_project() -> Project {
         );
     }
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Source",
             vec![SchemaNode::group("Cases", vec![string("Text")]).repeating()],

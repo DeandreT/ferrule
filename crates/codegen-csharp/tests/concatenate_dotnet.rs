@@ -69,6 +69,7 @@ fn project(output: IterationOutput) -> Project {
         address
     };
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Source",
             vec![

@@ -91,6 +91,7 @@ fn strings(name: &str, fields: &[&str]) -> SchemaNode {
 /// `Header` is a named endpoint spelled like the primary root field.
 fn project(target: SchemaNode, root: Scope, nodes: Vec<(u32, Node)>) -> Project {
     Project {
+        execution_contract: None,
         source: source_schema(),
         target,
         source_path: None,
