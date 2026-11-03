@@ -1,0 +1,4 @@
+{"type":"object","properties":{
+  "Included":{"type":"integer"},"Excluded":{"type":"integer"},"Present":{"type":"integer"},
+  "Records":{"type":"array","items":{"type":"object","properties":{"Included":{"type":"integer"},"Excluded":{"type":"integer"}}}}
+}}

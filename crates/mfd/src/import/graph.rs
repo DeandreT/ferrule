@@ -35,6 +35,8 @@ pub(super) struct GraphBuilder<'a> {
     /// Speculative builders own their seal; discarded probes cannot certify
     /// or poison the materialized graph that is actually published.
     pub(super) materialized_arguments: super::udf::certificate::ArgumentSeal,
+    pub(super) filtered_counts: &'a super::aggregate::filtered_count::CountProofTable,
+    pub(super) materialized_counts: super::aggregate::filtered_count::CountSeal,
     pub(super) json_serializer_nodes: BTreeMap<u32, NodeId>,
     pub(super) xml_serializer_nodes: BTreeMap<u32, NodeId>,
     pub(super) external_scalar_nodes: BTreeMap<u32, NodeId>,
@@ -176,6 +178,9 @@ pub(super) fn read_edge_inputs(
     structure: &roxmltree::Node<'_, '_>,
     legacy_parent: Option<&roxmltree::Node<'_, '_>>,
 ) -> EdgeInputs {
+    super::aggregate::filtered_count::count_visit(
+        super::aggregate::filtered_count::Counter::EdgeIndex,
+    );
     let mut sources = BTreeMap::<u32, BTreeSet<u32>>::new();
     if let Some(graph) = structure
         .children()

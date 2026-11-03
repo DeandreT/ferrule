@@ -1,0 +1,3 @@
+[
+  {"name":"guarded_edi_not_an_interchange","input":"not X12","reject":true,"stage":"input","nativeCategory":"NotX12","runtimeCategory":"Syntax"}
+]

@@ -118,6 +118,19 @@ impl GraphBuilder<'_> {
         if function.kind == 5 && function.name == "auto-number" {
             return Some(self.auto_number_node_at_anchor(index, active_anchor));
         }
+        if function.kind == 5 && function.name == "count" && self.owns_filtered_count_index(index) {
+            match self.aggregate_node_at_anchor(mapping::AggregateOp::Count, index, active_anchor) {
+                Ok(Some(node)) => {
+                    let node = self.alloc(node);
+                    self.materialized_counts.earlier(index, node);
+                    return Some(node);
+                }
+                Ok(None) | Err(_) => {
+                    self.refuse_filtered_count("Count consumer lacks a direct receiver proof");
+                    return Some(self.alloc(Node::Unconnected));
+                }
+            }
+        }
         if function.kind == 5
             && let Some(op) = aggregate_op(&function.name)
             && let Some(node) = self

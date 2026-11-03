@@ -5,7 +5,10 @@ mod view;
 pub(in crate::import) use materialized::ArgumentSeal;
 #[cfg(test)]
 pub(in crate::import) use materialized::probe_speculative_builder;
-pub(in crate::import) use origin::{CatalogSource, Origin, RawOwner, RegisteredVec, SchemaSink};
+pub(in crate::import) use origin::{
+    CatalogSource, CountConstruction, Origin, OriginCapture, RawOwner, RegisteredVec, SchemaSink,
+};
+pub(in crate::import) use view::{CountProducer, CountProducerView};
 pub(in crate::import) use view::{Normalized, certify};
 
 use std::collections::BTreeMap;

@@ -1,0 +1,4 @@
+[
+  {"name":"bool_invalid_lexical_value","input":"<Source><Record><Enabled>maybe</Enabled></Record></Source>","reject":true},
+  {"name":"bool_malformed_xml","input":"<Source><Record></Source>","reject":true}
+]
