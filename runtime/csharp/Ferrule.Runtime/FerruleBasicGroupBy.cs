@@ -118,7 +118,7 @@ public sealed partial class ScopeContext
 {
     internal CollectionIdentity BasicCollectionAt(int index) => _collections[index];
     internal ScopeContext FromAdmittedGroup(FerruleInstance[] frames, CollectionIdentity[] collections) =>
-        new(_primarySource, new ReadOnlyCollection<FerruleInstance>(frames),
+        new(_jsonProjections, _primarySource, new ReadOnlyCollection<FerruleInstance>(frames),
             new ReadOnlyCollection<CollectionIdentity>(collections), _executionContext,
             _dynamicSourceLoader, _filterMapRunState, _filterMapBoundary, _filterMapCallDepth);
     internal void SetAdmittedRank(int slot, int rank)
