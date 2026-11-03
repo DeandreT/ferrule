@@ -136,6 +136,7 @@ fn program(case: &Json) -> Program {
         _ => ScalarType::Int,
     };
     Program {
+        execution_contract: None,
         xml_boundary: None,
         source: SchemaNode::group("Input", Vec::new()),
         extra_sources: Vec::new(),
@@ -324,6 +325,7 @@ fn native_project(case: &Json) -> mapping::Project {
         _ => ScalarType::Int,
     };
     mapping::Project {
+        execution_contract: None,
         source: SchemaNode::group("Input", Vec::new()),
         target: SchemaNode::group("Output", vec![SchemaNode::scalar("Result", ty)]),
         source_path: None,

@@ -63,6 +63,7 @@ fn group_by_partitions_iterated_items() {
         ),
     ]);
     let project = Project {
+        execution_contract: None,
         source: dummy_schema(),
         target: dummy_schema(),
         source_path: None,
@@ -203,6 +204,7 @@ fn filter_removes_candidates_before_grouping() {
         ),
     ]);
     let project = Project {
+        execution_contract: None,
         source: dummy_schema(),
         target: dummy_schema(),
         source_path: None,
@@ -345,6 +347,7 @@ fn grouped_nested_items_preserve_outer_iteration_frames() {
         ),
     ]);
     let project = Project {
+        execution_contract: None,
         source: dummy_schema(),
         target: dummy_schema(),
         source_path: None,
@@ -535,6 +538,7 @@ fn empty_path_child_iteration_selects_each_grouped_member_frame() {
         ),
     ]);
     let project = Project {
+        execution_contract: None,
         source: dummy_schema(),
         target: dummy_schema(),
         source_path: None,
@@ -701,6 +705,7 @@ fn aggregates_reduce_collections_in_context() {
         ),
     ]);
     let project = Project {
+        execution_contract: None,
         source: dummy_schema(),
         target: dummy_schema(),
         source_path: None,
@@ -878,6 +883,7 @@ fn generated_sequences_reuse_nested_scope_controls_and_positions() {
         ),
     ]);
     let project = Project {
+        execution_contract: None,
         source: dummy_schema(),
         target: dummy_schema(),
         source_path: None,
@@ -1046,6 +1052,7 @@ fn tokenizers_handle_empty_and_unicode_inputs() {
         ),
     ]);
     let project = Project {
+        execution_contract: None,
         source: dummy_schema(),
         target: dummy_schema(),
         source_path: None,
@@ -1230,6 +1237,7 @@ fn generated_integer_ranges_use_parent_context_defaults_and_positions() {
         ),
     ]);
     let project = Project {
+        execution_contract: None,
         source: dummy_schema(),
         target: dummy_schema(),
         source_path: None,
@@ -1406,6 +1414,7 @@ fn filtered_positions_compact_across_intermediate_repeating_levels() {
         ),
     ]);
     let project = Project {
+        execution_contract: None,
         source: dummy_schema(),
         target: dummy_schema(),
         source_path: None,
@@ -1472,6 +1481,7 @@ fn uncontrolled_multi_hop_positions_remain_relative_to_their_source_parent() {
         },
     )]);
     let project = Project {
+        execution_contract: None,
         source: dummy_schema(),
         target: dummy_schema(),
         source_path: None,
@@ -1552,6 +1562,7 @@ fn aggregate_flattens_nested_repeating_collection_paths() {
         ),
     ]);
     let project = Project {
+        execution_contract: None,
         source: dummy_schema(),
         target: dummy_schema(),
         source_path: None,
@@ -2040,6 +2051,7 @@ fn capped_tokenize_project(fixed_length: bool) -> Project {
         }
     };
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Source",
             vec![

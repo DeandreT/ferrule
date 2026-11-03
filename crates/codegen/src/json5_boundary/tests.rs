@@ -14,6 +14,7 @@ use super::*;
 
 fn program() -> Program {
     Program {
+        execution_contract: None,
         xml_boundary: None,
         source: SchemaNode::group("Source", vec![SchemaNode::scalar("n", ScalarType::String)]),
         extra_sources: Vec::new(),
@@ -66,6 +67,7 @@ fn closed_program_retains_complete_ordinary_descriptors_and_all_lowering_bodies(
     eprintln!("original validate-only={result:?}");
     assert!(result.is_ok());
     let project = mapping::Project {
+        execution_contract: program.execution_contract,
         source: program.source.clone(),
         target: program.target.clone(),
         source_path: None,

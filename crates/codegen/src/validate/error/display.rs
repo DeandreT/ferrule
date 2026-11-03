@@ -8,6 +8,11 @@ use super::ProgramValidationError;
 impl fmt::Display for ProgramValidationError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::SourceContractViolation(error) => error.fmt(formatter),
+            Self::UnsupportedExecutionContract(contract) => write!(
+                formatter,
+                "owned emission does not enforce execution contract {contract:?}"
+            ),
             Self::OwnedSource { diagnostic } => write!(formatter, "owned source: {diagnostic:?}"),
             Self::FilterMapAdmission { item, kind } => {
                 write!(formatter, "compiled filter_map_v1 item {item}: {kind:?}")
@@ -918,6 +923,7 @@ impl fmt::Display for ProgramValidationError {
 impl std::error::Error for ProgramValidationError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
+            Self::SourceContractViolation(error) => Some(error),
             Self::NamedTarget { error, .. }
             | Self::UserFunction { error, .. }
             | Self::DynamicChild { error, .. } => Some(error.as_ref()),

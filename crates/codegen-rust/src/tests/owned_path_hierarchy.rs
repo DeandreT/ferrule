@@ -48,6 +48,7 @@ fn hierarchy(owner: SourceOwner) -> Scope {
 
 fn project() -> Project {
     Project {
+        execution_contract: None,
         source: input(),
         target: directory(),
         source_path: None,

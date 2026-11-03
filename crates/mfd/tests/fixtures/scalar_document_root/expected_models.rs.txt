@@ -55,6 +55,7 @@ pub fn expected_project(case: &serde_json::Value) -> Project {
         _ => format!("target-{}.xsd", case["type"].as_str().expect("literal type")),
     };
     Project {
+        execution_contract: None,
         source: source_schema(), target: xml_scalar("Output", ty),
         source_path: Some("input.xml".into()), target_path: Some("output.xml".into()),
         source_options: FormatOptions { xml_document: true, ..FormatOptions::default() },
@@ -67,6 +68,7 @@ pub fn expected_project(case: &serde_json::Value) -> Project {
 
 pub fn expected_named_project() -> Project {
     let mut project = Project {
+        execution_contract: None,
         source: source_schema(), target: xml_scalar("Output", ScalarType::String),
         source_path: Some("input.xml".into()), target_path: Some("output.xml".into()),
         source_options: FormatOptions { xml_document: true, ..FormatOptions::default() },

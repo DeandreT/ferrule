@@ -92,6 +92,7 @@ pub fn expected_total_string_value_map_project() -> Project {
         ..Default::default()
     };
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Source", vec![rows]),
         target,
         source_path: Some("source.json".into()),

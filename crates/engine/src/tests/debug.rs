@@ -128,6 +128,7 @@ impl TraceSink for Collector {
 
 fn two_field_project() -> Project {
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Source",
             vec![SchemaNode::scalar("input", ScalarType::String)],

@@ -224,6 +224,7 @@ fn expected_project(preserve: bool) -> Project {
         ..Default::default()
     };
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Input",
             vec![
@@ -634,6 +635,7 @@ fn expected_legacy_project(preserve: bool) -> Project {
         ..Default::default()
     };
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Input",
             vec![

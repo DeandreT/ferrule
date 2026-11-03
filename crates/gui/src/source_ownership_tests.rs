@@ -18,6 +18,7 @@ fn named(name: &str, schema: SchemaNode) -> NamedSource {
 
 fn project(primary: SchemaNode, sources: Vec<NamedSource>) -> Project {
     Project {
+        execution_contract: None,
         source: primary,
         target: value_group("Output"),
         source_path: None,

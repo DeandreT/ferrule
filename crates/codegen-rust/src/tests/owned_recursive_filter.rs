@@ -73,6 +73,7 @@ fn project() -> Project {
         (7, call("and", vec![3, 6])),
     ]);
     Project {
+        execution_contract: None,
         source: input(),
         target: SchemaNode::group("Out", vec![directory().repeating()]),
         source_path: None,

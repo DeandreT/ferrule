@@ -48,6 +48,7 @@ fn scope(node: u32) -> Scope {
 fn project() -> Project {
     let layout = layout();
     Project {
+        execution_contract: None,
         source: layout.schema(),
         target: document("Output"),
         source_path: None,

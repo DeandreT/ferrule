@@ -68,6 +68,7 @@ mod xml_serialize;
 
 fn program() -> Program {
     Program {
+        execution_contract: None,
         xml_boundary: None,
         source: SchemaNode::group(
             "Source",
@@ -951,6 +952,7 @@ fn generated_range_project_builds_runs_and_short_circuits_null_bounds() {
         .unwrap();
     let output = TempDir::new("rust_generated_sequence_codegen");
     let program = Program {
+        execution_contract: None,
         xml_boundary: None,
         source: SchemaNode::group(
             "Source",
@@ -1130,6 +1132,7 @@ fn generated_sequence_reducers_build_run_and_preserve_evaluation_order() {
         .unwrap();
     let output = TempDir::new("rust_generated_sequence_reducers");
     let program = Program {
+        execution_contract: None,
         xml_boundary: None,
         source: SchemaNode::group(
             "Source",

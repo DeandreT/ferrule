@@ -5,6 +5,32 @@ use serde::{Deserialize, Serialize};
 
 use crate::{FormatOptions, Graph, NodeId, OwnedSourceRef, Scope, SequenceExpr, SourceSelector};
 
+/// An opt-in execution admission rule, independent of format-reader defaults.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ExecutionContract {
+    ClosedPrimarySourceV1,
+}
+
+impl<'de> Deserialize<'de> for ExecutionContract {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(rename_all = "snake_case")]
+        enum Kind {
+            ClosedPrimarySourceV1,
+        }
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Wire {
+            kind: Kind,
+        }
+        let Wire {
+            kind: Kind::ClosedPrimarySourceV1,
+        } = Wire::deserialize(deserializer)?;
+        Ok(Self::ClosedPrimarySourceV1)
+    }
+}
+
 /// Stable identity of one user-defined function within a project.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -144,6 +170,9 @@ impl FailureSelection {
 /// scope tree that maps one into the other.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Project {
+    /// Missing means legacy execution. Supported saved files require a versioned capability.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub execution_contract: Option<ExecutionContract>,
     pub source: SchemaNode,
     pub target: SchemaNode,
     /// Default source/target instances, carried over from imported designs

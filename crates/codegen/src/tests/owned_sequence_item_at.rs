@@ -146,6 +146,7 @@ fn project(producer: Producer) -> mapping::Project {
         },
     );
     mapping::Project {
+        execution_contract: None,
         source: schema(),
         target: SchemaNode::group("Output", vec![SchemaNode::scalar("Result", producer.ty())]),
         source_path: None,

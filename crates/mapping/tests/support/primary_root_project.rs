@@ -29,6 +29,7 @@ pub fn required_primary_root_project(required: bool) -> Project {
     source.xml_type_alternatives = true;
     source.xml_default_type = Some("Base".into());
     Project {
+        execution_contract: None,
         source,
         target: SchemaNode::group(
             "Target",

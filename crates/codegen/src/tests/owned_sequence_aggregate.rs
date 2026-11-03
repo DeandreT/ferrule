@@ -53,6 +53,7 @@ fn aggregate(function: AggregateOp, sequence: mapping::SequenceExpr) -> Node {
 /// `Value = function(sequence, equal(item, Cfg.Code), concat(item, Cfg.Code), Cfg.Count)`.
 fn project(function: AggregateOp, sequence: mapping::SequenceExpr) -> mapping::Project {
     mapping::Project {
+        execution_contract: None,
         source: schema(),
         target: SchemaNode::group(
             "Output",

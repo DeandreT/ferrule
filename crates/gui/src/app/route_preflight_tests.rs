@@ -72,6 +72,7 @@ fn closed_owned_source_project() -> Project {
         frame: None,
     });
     Project {
+        execution_contract: None,
         source: record("Input"),
         target: record("Output"),
         source_path: Some("input.json".into()),

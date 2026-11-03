@@ -32,6 +32,7 @@ fn wildcard(constraint: XmlWildcardNamespaceConstraint) -> SchemaNode {
 fn project(child: SchemaNode) -> Project {
     let schema = SchemaNode::group("Root", vec![child]);
     Project {
+        execution_contract: None,
         source: schema.clone(),
         target: schema,
         source_path: None,
@@ -135,6 +136,7 @@ fn xml_serialize_refuses_excluded_names() {
         ],
     );
     let project = Project {
+        execution_contract: None,
         source: SchemaNode::group("Root", vec![item.clone()]),
         target: SchemaNode::group("Out", vec![SchemaNode::scalar("Xml", ScalarType::String)]),
         source_path: None,

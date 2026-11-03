@@ -51,6 +51,7 @@ fn project() -> Project {
         node,
     };
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Data",
             vec![

@@ -338,6 +338,7 @@ mod tests {
 
     fn program() -> Program {
         Program {
+            execution_contract: None,
             xml_boundary: None,
             source: SchemaNode::group("schema source", Vec::new()),
             extra_sources: Vec::new(),
@@ -1596,6 +1597,7 @@ mod owned_stage_a_tests {
     }
     fn owned(source: SchemaNode, target: SchemaNode, parts: &[&str]) -> Program {
         Program {
+            execution_contract: None,
             xml_boundary: None,
             source,
             target,

@@ -4,6 +4,7 @@ use mapping::{Binding, ScopeIteration, SequenceExpr, SequenceWindow};
 
 fn window_project(windows: Vec<SequenceWindow>) -> Project {
     Project {
+        execution_contract: None,
         source: SchemaNode::group("source", Vec::new()),
         target: SchemaNode::group(
             "target",

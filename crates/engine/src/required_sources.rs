@@ -338,6 +338,7 @@ mod tests {
     #[test]
     fn selected_target_keeps_its_sources_and_global_failure_sources() {
         let project = Project {
+            execution_contract: None,
             source: SchemaNode::group("Input", Vec::new()),
             target: SchemaNode::group(
                 "Primary",
@@ -423,6 +424,7 @@ mod tests {
         let mut dynamic = source("dynamic");
         dynamic.dynamic_path = Some(DynamicSourcePath::legacy(0, vec!["driver_data".into()]));
         let project = Project {
+            execution_contract: None,
             source: SchemaNode::group("Input", Vec::new()),
             target: SchemaNode::group("Primary", Vec::new()),
             source_path: None,
@@ -489,6 +491,7 @@ mod tests {
             Err(error) => panic!("test join plan should be valid: {error}"),
         };
         let project = Project {
+            execution_contract: None,
             source: SchemaNode::group("Input", Vec::new()),
             target: SchemaNode::group("Primary", Vec::new()),
             source_path: None,

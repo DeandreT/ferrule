@@ -51,6 +51,7 @@ fn binding(node: u32) -> Scope {
 /// The primary target pins the endpoint root; the named target reads `audit`.
 fn project() -> Project {
     Project {
+        execution_contract: None,
         source: input(),
         target: output(),
         source_path: None,

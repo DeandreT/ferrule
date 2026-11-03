@@ -1,5 +1,12 @@
 # Project and pipeline files
 
+Projects with an explicit `ClosedPrimarySourceV1` execution contract require
+the version-3 `primary-source-safety-guard-v1` capability, including when
+embedded in pipelines or document projects. See the
+[primary-source safety guard](primary-source-safety-guard.md) for model/input
+admission and the raw-Serde compatibility boundary. Guarded models cannot be
+saved as plain/version-2 artifacts or exported to MFD.
+
 The CLI, native editor, and browser editor share the mapping crate's project
 file codec. Pipeline files use the same codec for all embedded projects.
 Existing unmarked files retain their ordinary JSON wire format.
@@ -101,7 +108,10 @@ capabilities are:
   names on an XML wildcard in any stored schema
   ([XSD 1.1 wildcard exclusions](design/xml-wildcard-exclusions.md));
 - `json_tuple_arrays_v1`, carried by a
-  [JSON tuple frame](design/json-tuple-arrays.md) in any stored schema.
+  [JSON tuple frame](design/json-tuple-arrays.md) in any stored schema;
+- `primary-source-safety-guard-v1`, carried by the presence of a
+  [closed primary-source execution contract](primary-source-safety-guard.md),
+  independently of expression reachability or whether a source read is used.
 
 
 ## Primary XML root reads

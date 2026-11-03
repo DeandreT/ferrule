@@ -92,6 +92,7 @@ fn project() -> Project {
         node: 1,
     });
     Project {
+        execution_contract: None,
         source,
         target,
         source_path: Some("input.txt".into()),

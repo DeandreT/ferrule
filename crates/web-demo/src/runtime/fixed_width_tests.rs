@@ -7,6 +7,7 @@ const CSV_INPUT: &str = "name\nAda\n";
 
 fn project() -> Project {
     let mut project = Project {
+        execution_contract: None,
         source: SchemaNode::group("Source", vec![]),
         target: SchemaNode::group("Target", vec![]),
         source_path: None,

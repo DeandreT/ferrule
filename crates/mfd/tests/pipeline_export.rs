@@ -1628,6 +1628,7 @@ fn identity_xml_to_xlsx_pipeline(
     final_project.source_path = None;
     final_project.target_path = Some("converted.xlsx".into());
     let copy_project = mapping::Project {
+        execution_contract: None,
         source: source_schema.clone(),
         target: source_schema,
         source_path: Some(input.file_name().unwrap().to_str().unwrap().into()),
@@ -1805,6 +1806,7 @@ fn identity_xml_to_fixed_width_pipeline(
     final_project.source_path = None;
     final_project.target_path = Some("converted.dat".into());
     let copy_project = mapping::Project {
+        execution_contract: None,
         source: source_schema.clone(),
         target: source_schema,
         source_path: Some(input.file_name().unwrap().to_str().unwrap().into()),
@@ -2392,6 +2394,7 @@ fn local_xml_to_json_mapping_runs_after_an_identity_xml_stage() {
     final_project.source_path = None;
     final_project.target_path = Some("converted.json".into());
     let copy_project = mapping::Project {
+        execution_contract: None,
         source: source_schema.clone(),
         target: source_schema,
         source_path: Some("Altova_Hierarchical.xml".into()),
@@ -2733,6 +2736,7 @@ fn identity_xml_to_final_pipeline(
     final_project.source_path = None;
     final_project.target_path = Some(target_path.into());
     let copy_project = mapping::Project {
+        execution_contract: None,
         source: source_schema.clone(),
         target: source_schema,
         source_path: Some(input.file_name().unwrap().to_str().unwrap().into()),

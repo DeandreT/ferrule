@@ -36,6 +36,7 @@ fn project(case: &Json, descriptor: SequenceExpr) -> Project {
         _ => ScalarType::Int,
     };
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Input", Vec::new()),
         target: SchemaNode::group(
             "Output",

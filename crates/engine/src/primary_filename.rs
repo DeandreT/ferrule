@@ -26,6 +26,7 @@ pub fn evaluate_primary_filename(
     document: &DocumentProject,
     execution: &ExecutionContext<'_>,
 ) -> Result<String, PrimaryFilenameEvaluationError> {
+    crate::admit_source_contract_bindings(document.project(), 0, Some(execution))?;
     evaluate_filename(
         document.global_filename()?,
         document.primary_source().filename,
@@ -38,6 +39,7 @@ pub fn evaluate_output_filename(
     document: &DocumentProject,
     execution: &ExecutionContext<'_>,
 ) -> Result<Option<String>, PrimaryFilenameEvaluationError> {
+    crate::admit_source_contract_bindings(document.project(), 0, Some(execution))?;
     document
         .global_output_filename()?
         .map(|filename| {

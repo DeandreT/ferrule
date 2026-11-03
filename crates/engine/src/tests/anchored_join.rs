@@ -145,6 +145,7 @@ fn project(outer: &[&str], key: &str, plan: JoinPlan, columns: [(&[&str], &str);
         });
     }
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Source",
             vec![

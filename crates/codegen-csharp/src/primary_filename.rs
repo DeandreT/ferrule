@@ -23,13 +23,24 @@ pub(crate) fn add_evaluator(library: &mut Library, document: &DocumentProgram) {
         library,
         document.primary_filename(),
         "EvaluatePrimaryFilename",
+        document.program().execution_contract.is_some(),
     );
     if let Some(filename) = document.output_filename() {
-        add_filename_evaluator(library, filename, "EvaluateOutputFilename");
+        add_filename_evaluator(
+            library,
+            filename,
+            "EvaluateOutputFilename",
+            document.program().execution_contract.is_some(),
+        );
     }
 }
 
-fn add_filename_evaluator(library: &mut Library, filename: &PrimaryFilenamePlan, name: &str) {
+fn add_filename_evaluator(
+    library: &mut Library,
+    filename: &PrimaryFilenamePlan,
+    name: &str,
+    guarded: bool,
+) {
     let expression = match filename {
         PrimaryFilenamePlan::Literal { text, .. } => literal::string(text),
         PrimaryFilenamePlan::Parameter { node, name } => format!(
@@ -37,7 +48,12 @@ fn add_filename_evaluator(library: &mut Library, filename: &PrimaryFilenamePlan,
             literal::string(name)
         ),
     };
+    let guard = if guarded {
+        "        global::Ferrule.Runtime.FerrulePrimarySourceContract.ValidateBindings(0, execution.RuntimeParameters.Count);\n"
+    } else {
+        ""
+    };
     library.extend_mapping(format!(
-        "    /// <summary>Resolve filename text only; performs no path interpretation, loading or mapping execution.</summary>\n    public static string {name}(global::Ferrule.Runtime.FerruleExecutionContext execution)\n    {{\n        global::System.ArgumentNullException.ThrowIfNull(execution);\n        return {expression};\n    }}\n"
+        "    /// <summary>Resolve filename text only; performs no path interpretation, loading or mapping execution.</summary>\n    public static string {name}(global::Ferrule.Runtime.FerruleExecutionContext execution)\n    {{\n        global::System.ArgumentNullException.ThrowIfNull(execution);\n{guard}        return {expression};\n    }}\n"
     ));
 }

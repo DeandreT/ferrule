@@ -115,6 +115,7 @@ fn suffix_project(selected: &SourceOwner) -> Project {
 
 fn project(graph: Graph, scope: Scope) -> Project {
     Project {
+        execution_contract: None,
         source: input_schema(),
         target: SchemaNode::group("Out", vec![directory().repeating()]),
         source_path: None,

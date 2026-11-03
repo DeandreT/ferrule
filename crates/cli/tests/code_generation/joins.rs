@@ -62,6 +62,7 @@ fn join_project() -> Result<Project, mapping::JoinPlanError> {
     .repeating();
 
     Ok(Project {
+        execution_contract: None,
         source: SchemaNode::group("Source", vec![a, c]),
         target: SchemaNode::group("Target", vec![row]),
         source_path: None,

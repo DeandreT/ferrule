@@ -53,6 +53,7 @@ fn workspace_runtime() -> TestResult<PathBuf> {
 /// A second self-authored mapping with its own source and target shape.
 fn invoices_project() -> Project {
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Invoice", vec![string("Customer"), int("Amount")]),
         target: SchemaNode::group(
             "Statement",

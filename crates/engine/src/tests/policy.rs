@@ -18,6 +18,7 @@ fn empty_source() -> Instance {
 
 fn scalar_project(nodes: impl IntoIterator<Item = (NodeId, Node)>, output: NodeId) -> Project {
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Source", Vec::new()),
         target: SchemaNode::group(
             "Target",

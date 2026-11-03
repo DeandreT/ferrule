@@ -72,6 +72,7 @@ fn nested_position_project() -> Project {
         )],
     );
     Project {
+        execution_contract: None,
         source,
         target,
         source_path: Some("offices.xml".into()),
@@ -250,6 +251,7 @@ fn named_source_concatenation_project() -> Project {
         ..Scope::default()
     };
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Driver",
             vec![SchemaNode::scalar("Value", ScalarType::String)],

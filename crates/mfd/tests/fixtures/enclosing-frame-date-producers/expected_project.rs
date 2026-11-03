@@ -28,6 +28,7 @@ pub fn expected(picture: &str) -> Project {
         ..Default::default()
     };
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Source", vec![rows]),
         target: SchemaNode::group(
             "Result",

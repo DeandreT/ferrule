@@ -46,6 +46,7 @@ catch (FerruleX12Exception failure) when (failure.Error == FerruleX12Error.Envel
 fn project() -> TestResult<Project> {
     let schema: SchemaNode = serde_json::from_str(SCHEMA)?;
     Ok(Project {
+        execution_contract: None,
         source: schema.clone(),
         target: schema,
         source_path: Some("shipments.json".into()),

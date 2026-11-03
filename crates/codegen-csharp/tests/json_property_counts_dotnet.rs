@@ -82,6 +82,7 @@ fn emitted_package_enforces_source_named_and_normalized_target_property_counts()
     .ok_or("target accepts an exact-two property range")?;
 
     let program = Program {
+        execution_contract: None,
         xml_boundary: None,
         source,
         extra_sources: vec![NamedSourceProgram {

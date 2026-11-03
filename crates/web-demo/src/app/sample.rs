@@ -95,6 +95,7 @@ pub(super) fn demo_project() -> Project {
     );
 
     Project {
+        execution_contract: None,
         source,
         target,
         source_path: None,

@@ -105,6 +105,7 @@ fn project() -> Project {
         output,
     };
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Primary", vec![scalar("Value"), rows("Tree")]),
         target: SchemaNode::group("Output", vec![scalar("Value")]),
         source_path: None,

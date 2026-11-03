@@ -6,6 +6,7 @@ use edit_ops::{BindingRef, EditOperation, EditSession, Expression, Index, ScopeR
 
 fn project(fx: &Fixture) -> mapping::Project {
     mapping::Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "row",
             vec![

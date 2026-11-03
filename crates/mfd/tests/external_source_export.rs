@@ -65,6 +65,7 @@ fn http_boundary() -> Result<ExternalSourceOptions, Box<dyn Error>> {
 
 fn project_with_http_source() -> Result<Project, Box<dyn Error>> {
     Ok(Project {
+        execution_contract: None,
         source: response_schema(),
         target: SchemaNode::group(
             "Result",
@@ -245,6 +246,7 @@ fn database_primary_survives_secondary_http_iteration() -> Result<(), Box<dyn Er
     )
     .repeating();
     let project = Project {
+        execution_contract: None,
         source: database_schema.clone(),
         target: database_schema,
         source_path: Some("catalog.sqlite".into()),

@@ -21,14 +21,23 @@ pub fn emit_with_primary_filename(
 
 /// The `evaluate_primary_filename` item appended to a generated library.
 pub(crate) fn evaluator(document: &DocumentProgram) -> String {
-    let mut code = filename_evaluator(document.primary_filename(), "evaluate_primary_filename");
+    let guarded = document.program().execution_contract.is_some();
+    let mut code = filename_evaluator(
+        document.primary_filename(),
+        "evaluate_primary_filename",
+        guarded,
+    );
     if let Some(filename) = document.output_filename() {
-        code.push_str(&filename_evaluator(filename, "evaluate_output_filename"));
+        code.push_str(&filename_evaluator(
+            filename,
+            "evaluate_output_filename",
+            guarded,
+        ));
     }
     code
 }
 
-fn filename_evaluator(filename: &PrimaryFilenamePlan, name: &str) -> String {
+fn filename_evaluator(filename: &PrimaryFilenamePlan, name: &str, guarded: bool) -> String {
     let expression = match filename {
         PrimaryFilenamePlan::Literal { text, .. } => {
             format!("Ok({}.to_string())", rust_string(text))
@@ -38,13 +47,18 @@ fn filename_evaluator(filename: &PrimaryFilenamePlan, name: &str) -> String {
             rust_string(name)
         ),
     };
-    let parameter = if matches!(filename, PrimaryFilenamePlan::Literal { .. }) {
+    let parameter = if !guarded && matches!(filename, PrimaryFilenamePlan::Literal { .. }) {
         "_execution"
     } else {
         "execution"
     };
+    let guard = if guarded {
+        "    codegen_runtime::validate_source_contract_bindings(0, execution.runtime_parameter_count())?;\n"
+    } else {
+        ""
+    };
     format!(
-        "\n/// Resolve filename text only. No path interpretation, source loading or mapping execution.\npub fn {name}({parameter}: &ExecutionContext<'_>) -> Result<String, codegen_runtime::RuntimeError> {{\n    {expression}\n}}\n"
+        "\n/// Resolve filename text only. No path interpretation, source loading or mapping execution.\npub fn {name}({parameter}: &ExecutionContext<'_>) -> Result<String, codegen_runtime::RuntimeError> {{\n{guard}    {expression}\n}}\n"
     )
 }
 

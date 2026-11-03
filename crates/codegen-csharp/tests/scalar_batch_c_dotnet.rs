@@ -67,6 +67,7 @@ fn generated_scalar_batch_c_preserves_runtime_semantics() {
 
 fn fixture() -> Program {
     Program {
+        execution_contract: None,
         xml_boundary: None,
         source: SchemaNode::group(
             "Source",

@@ -302,6 +302,7 @@ fn project() -> Project {
         node: 1000,
     });
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Source", vec![]),
         target: SchemaNode::group("Target", fields),
         source_path: Some("source.json".into()),

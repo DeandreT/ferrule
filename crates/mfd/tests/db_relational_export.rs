@@ -30,6 +30,7 @@ impl Drop for TempDir {
 
 fn empty_project(source: SchemaNode, target: SchemaNode) -> Project {
     Project {
+        execution_contract: None,
         source,
         target,
         source_path: Some("source.xml".into()),

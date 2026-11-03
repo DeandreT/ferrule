@@ -119,6 +119,7 @@ fn project(v1: Node, nodes: Vec<(u32, Node)>) -> Project {
     graph.nodes.insert(11, item());
     graph.nodes.extend(nodes);
     Project {
+        execution_contract: None,
         source: endpoint_schema("Input"),
         target: SchemaNode::group("Out", vec![SchemaNode::scalar("V1", ScalarType::String)]),
         source_path: None,

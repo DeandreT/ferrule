@@ -69,6 +69,7 @@ fn rows(number: u32) -> Scope {
 
 fn project() -> Project {
     Project {
+        execution_contract: None,
         source: row_schema("Input"),
         target: row_schema("Output"),
         source_path: Some("input.csv".into()),
@@ -267,6 +268,7 @@ fn ordinary_file_output_above_64_mib_succeeds_while_payload_keeps_its_limit() ->
     let mut directory = TestDirectory::new()?;
     let schema = SchemaNode::group("Row", vec![SchemaNode::scalar("Value", ScalarType::String)]);
     let project = Project {
+        execution_contract: None,
         source: schema.clone(),
         target: schema,
         source_path: Some("input.csv".into()),

@@ -44,6 +44,7 @@ fn project() -> Project {
         ],
     );
     Project {
+        execution_contract: None,
         source: schema.clone(),
         target: schema.clone(),
         source_path: Some("input.csv".into()),

@@ -55,6 +55,7 @@ fn project() -> Project {
         ],
     );
     Project {
+        execution_contract: None,
         source,
         target,
         source_path: Some("input.xml".into()),

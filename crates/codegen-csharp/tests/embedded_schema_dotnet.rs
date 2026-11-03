@@ -160,6 +160,7 @@ fn rust_encoded_float_metadata_executes_in_generated_csharp()
     }
 
     let program = Program {
+        execution_contract: None,
         xml_boundary: None,
         source: SchemaNode::group("Source", Vec::new()),
         extra_sources: Vec::new(),

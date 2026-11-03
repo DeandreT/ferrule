@@ -348,6 +348,7 @@ mod tests {
                 warned_variable_constructions: BTreeSet::new(),
                 rejected_join_paths: BTreeSet::new(),
                 source_fields: BTreeMap::new(),
+                materialized_arguments: Default::default(),
                 json_serializer_nodes: BTreeMap::new(),
                 xml_serializer_nodes: BTreeMap::new(),
                 external_scalar_nodes: BTreeMap::new(),

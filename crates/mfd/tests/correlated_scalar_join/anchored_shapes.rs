@@ -155,6 +155,7 @@ fn shape_project(plan: JoinPlan, outer: Outer, columns: Vec<Column>) -> Project 
         });
     }
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Source",
             vec![

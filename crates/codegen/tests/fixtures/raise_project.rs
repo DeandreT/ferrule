@@ -37,6 +37,7 @@ fn raise_project() -> mapping::Project {
         nodes.insert(19 + mode, Node::Call { function: "equal".into(), args: vec![5, 14 + mode] });
     }
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Input", vec![
             SchemaNode::scalar("Mode", ScalarType::Int),
             SchemaNode::scalar("Global", ScalarType::Bool),

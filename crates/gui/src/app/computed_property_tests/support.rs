@@ -79,6 +79,7 @@ fn project(retained: &Retained, populated: bool) -> Project {
     .and_then(|target| target.with_required_fields(vec!["fixed".into()]));
     retained.record("target-schema-construction", &target);
     let mut project = Project {
+        execution_contract: None,
         source: source.expect("ordinary source schema"),
         target: target.expect("scalar open target schema"),
         source_path: Some(retained.path.join("input.json").display().to_string()),

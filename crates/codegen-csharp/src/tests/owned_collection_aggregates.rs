@@ -40,6 +40,7 @@ fn owned_aggregate_program() -> codegen::Program {
         })
     };
     let project = mapping::Project {
+        execution_contract: None,
         source: source.clone(),
         target: ir::SchemaNode::group(
             "Output",

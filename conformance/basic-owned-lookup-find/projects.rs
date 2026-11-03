@@ -163,6 +163,7 @@ pub fn base() -> Project {
     );
     let audit = SchemaNode::group("Audit", vec![string("Value")]);
     let mut project = Project {
+        execution_contract: None,
         source: endpoint_schema("Input"),
         target,
         source_path: None,
