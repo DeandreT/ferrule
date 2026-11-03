@@ -46,6 +46,12 @@ pub use catalog::{
 pub use invocation_counters::{
     InvocationCounterError, InvocationCounterLimits, InvocationCounters,
 };
+#[cfg(feature = "runtime")]
+pub use json::projection::{JsonArrayProjections, JsonProjectionOwner};
+#[cfg(feature = "json-projection-instrumentation")]
+pub use json::projection::{
+    json_projection_full_parse_count, reset_json_projection_full_parse_count,
+};
 
 #[derive(Debug, Error, PartialEq)]
 pub enum FunctionError {
