@@ -207,6 +207,7 @@ public sealed partial class ScopeContext
             collections.AddRange(_collections);
             collections.AddRange(row.Collections);
             contexts[index] = new ScopeContext(
+                _jsonProjections,
                 _primarySource,
                 new ReadOnlyCollection<FerruleInstance>(frames),
                 new ReadOnlyCollection<CollectionIdentity>(collections),
