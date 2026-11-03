@@ -537,6 +537,7 @@ fn detached_call(function: &str, values: Vec<Value>) -> TestResult<Value> {
         },
     );
     let oracle = Project {
+        execution_contract: None,
         source: SchemaNode::group("Context", Vec::new()),
         target: SchemaNode::group(
             "Result",

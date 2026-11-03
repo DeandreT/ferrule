@@ -389,6 +389,7 @@ fn composite_xlsx_source_maps_fixed_record_and_repeated_table_to_json() {
         );
     }
     let project = Project {
+        execution_contract: None,
         source,
         target,
         source_path: None,
@@ -615,6 +616,7 @@ fn grid_xlsx_source_maps_headers_and_matrix_rows_to_nested_json_and_xml() {
         },
     );
     let project = Project {
+        execution_contract: None,
         source,
         target: target.clone(),
         source_path: None,
@@ -1023,6 +1025,7 @@ fn composite_sqlite_input_iterates_a_selected_table() {
     .unwrap();
 
     let project = Project {
+        execution_contract: None,
         source: source_schema,
         target: target_schema,
         source_path: None,

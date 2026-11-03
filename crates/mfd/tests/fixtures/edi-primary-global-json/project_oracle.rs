@@ -252,6 +252,7 @@ pub fn expected(design: &str) -> Project {
         }
     };
     Project {
+        execution_contract: None,
         source,
         target,
         source_path: Some("input.x12".into()),

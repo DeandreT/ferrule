@@ -478,6 +478,7 @@ pub(super) fn import_schema(path: &std::path::Path) -> anyhow::Result<SchemaNode
 
 pub(super) fn blank_project() -> Project {
     Project {
+        execution_contract: None,
         source: SchemaNode::group("root", vec![]),
         target: SchemaNode::group("root", vec![]),
         source_path: None,

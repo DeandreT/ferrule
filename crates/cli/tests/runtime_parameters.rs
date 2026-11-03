@@ -31,6 +31,7 @@ impl Drop for TempDir {
 
 fn project() -> Project {
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Source", vec![]),
         target: SchemaNode::group(
             "Target",

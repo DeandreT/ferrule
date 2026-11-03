@@ -334,6 +334,7 @@ fn limits_refuse_before_their_entries_are_visited() {
 
 fn query_project() -> Project {
     Project {
+        execution_contract: None,
         source: schema(),
         target: SchemaNode::group("Target", vec![]),
         source_path: Some("orders.db".into()),

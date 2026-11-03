@@ -9,6 +9,7 @@ use crate::MfdError;
 
 fn project() -> Project {
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Input", vec![]),
         target: SchemaNode::group("Output", vec![]),
         source_path: None,

@@ -1012,6 +1012,7 @@ mod tests {
 
     fn project_with_source(source: NamedSource) -> mapping::Project {
         let mut project = mapping::Project {
+            execution_contract: None,
             source: SchemaNode::group("source", Vec::new()),
             target: SchemaNode::group("target", Vec::new()),
             source_path: None,
@@ -1186,6 +1187,7 @@ mod tests {
             },
         );
         let project = Project {
+            execution_contract: None,
             source: SchemaNode::group(
                 "Root",
                 vec![SchemaNode::scalar(

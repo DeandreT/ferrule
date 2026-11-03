@@ -67,6 +67,7 @@ fn project() -> Project {
     let mut source_options = csv(';', true);
     source_options.csv_quote = Some('\'');
     Project {
+        execution_contract: None,
         source: schema(),
         target: schema(),
         source_path: Some("saved.csv".into()),

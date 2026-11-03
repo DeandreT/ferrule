@@ -48,6 +48,7 @@ pub(super) fn first_function() -> UserFunction {
 
 fn base(source: SchemaNode, nodes: BTreeMap<u32, Node>) -> Project {
     Project {
+        execution_contract: None,
         source,
         target: SchemaNode::group(
             "Target",

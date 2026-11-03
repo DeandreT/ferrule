@@ -61,6 +61,7 @@ pub(crate) fn dynamic_project() -> Project {
     )
     .repeating();
     Project {
+        execution_contract: None,
         source,
         target: SchemaNode::group("Output", vec![row]),
         source_path: None,

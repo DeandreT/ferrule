@@ -55,6 +55,7 @@ fn authored_project(
     let source =
         format_xml::xsd::import_root(&schema_path, Some("{urn:default-view}Envelope")).unwrap();
     Project {
+        execution_contract: None,
         source,
         target: SchemaNode::group(
             "Output",

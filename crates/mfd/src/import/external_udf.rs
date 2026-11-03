@@ -214,7 +214,7 @@ fn depends_on_candidate(
 }
 
 pub(super) fn install_fallback(
-    components: &mut Vec<SchemaComponent>,
+    components: &mut impl super::udf::certificate::SchemaSink,
     candidates: Vec<Candidate>,
     target_inputs: &BTreeSet<u32>,
     edges: &BTreeMap<u32, u32>,
@@ -239,7 +239,7 @@ pub(super) fn install_fallback(
     for (index, candidate) in candidates.into_iter().enumerate() {
         if selected == Some(index) {
             warnings.extend(candidate.warnings);
-            components.push(candidate.component);
+            components.push_synthetic(candidate.component);
         } else {
             warnings.push(format!(
                 "skipped user-defined function `{}`: {}",

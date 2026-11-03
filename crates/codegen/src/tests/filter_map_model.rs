@@ -22,6 +22,7 @@ fn project(case_id: &str) -> Project {
         .find(|case| case["id"] == case_id)
         .unwrap();
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Input", Vec::new()),
         target: rows_schema(),
         source_path: None,
@@ -178,6 +179,7 @@ fn rows(sequence: GeneratedSequence) -> TargetScope {
 }
 fn expected_identity() -> Program {
     Program {
+        execution_contract: None,
         xml_boundary: None,
         source: SchemaNode::group("Input", Vec::new()),
         extra_sources: Vec::new(),
@@ -196,6 +198,7 @@ fn expected_identity() -> Program {
 }
 fn expected_positions() -> Program {
     Program {
+        execution_contract: None,
         xml_boundary: None,
         source: SchemaNode::group("Input", Vec::new()),
         extra_sources: Vec::new(),
@@ -255,6 +258,7 @@ fn expected_positions() -> Program {
 }
 fn expected_nested() -> Program {
     Program {
+        execution_contract: None,
         xml_boundary: None,
         source: SchemaNode::group("Input", Vec::new()),
         extra_sources: Vec::new(),
@@ -715,6 +719,7 @@ fn complete_filter_map_lowering_stage_roots_and_private_context_controls() {
         .nodes
         .insert(30, Node::SequenceItemAt { sequence, index: 1 });
     let expected_empty = Program {
+        execution_contract: None,
         xml_boundary: None,
         source: SchemaNode::group("Input", Vec::new()),
         extra_sources: Vec::new(),
@@ -740,6 +745,7 @@ fn complete_filter_map_lowering_stage_roots_and_private_context_controls() {
     });
     legacy.root.children[0].bindings[0].node = 10;
     let expected_legacy = Program {
+        execution_contract: None,
         xml_boundary: None,
         source: SchemaNode::group("Input", Vec::new()),
         extra_sources: Vec::new(),

@@ -77,6 +77,7 @@ fn generated_mapping_matches_dynamic_document_interpreter_output() {
 
 fn project() -> Project {
     Project {
+        execution_contract: None,
         source: schema("Source"),
         target: SchemaNode::group(
             "Target",

@@ -196,6 +196,7 @@ fn base(target: SchemaNode, children: Vec<Scope>, nodes: Vec<(NodeId, Node)>) ->
         },
     ));
     Project {
+        execution_contract: None,
         source: input_schema(),
         target,
         source_path: None,

@@ -134,6 +134,7 @@ fn rows(sequence: GeneratedSequence) -> TargetScope {
 }
 fn expected_identity() -> Program {
     Program {
+        execution_contract: None,
         xml_boundary: None,
         source: SchemaNode::group("Input", Vec::new()),
         extra_sources: Vec::new(),

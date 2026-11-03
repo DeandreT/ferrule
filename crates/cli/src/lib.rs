@@ -2198,6 +2198,7 @@ fn validate_xml_scalar_output_format(
 #[cfg(test)]
 pub(crate) fn owned_source_test_project() -> mapping::Project {
     mapping::Project {
+        execution_contract: None,
         source: ir::SchemaNode::group(
             "Input",
             vec![ir::SchemaNode::scalar("Value", ir::ScalarType::String)],

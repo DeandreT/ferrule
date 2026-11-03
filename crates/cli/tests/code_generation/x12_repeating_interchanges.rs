@@ -1,5 +1,5 @@
-//! End-to-end CLI generation of an X12 interchange companion: a strict JSON
-//! source copied into the self-authored the X12 `Envelope.Config` 945 shape,
+//! End-to-end CLI generation of a repeating-interchange companion: a strict JSON
+//! source copied into the self-authored `Envelope.Config` 945 shape,
 //! with output completion recreating every absent trailer.
 use std::collections::BTreeMap;
 use std::process::Command;
@@ -13,10 +13,12 @@ use serde_json::Value as Json;
 
 use super::{CommandOutputExt, TempDir, TestResult, dotnet_command};
 
-const SCHEMA: &str =
-    include_str!("../../../codegen-csharp/tests/x12/repeating-envelope/fixtures/005010-schema.json");
-const VALUES: &str =
-    include_str!("../../../codegen-csharp/tests/x12/repeating-envelope/fixtures/005010-input-values.json");
+const SCHEMA: &str = include_str!(
+    "../../../codegen-csharp/tests/x12/repeating-envelope/fixtures/005010-schema.json"
+);
+const VALUES: &str = include_str!(
+    "../../../codegen-csharp/tests/x12/repeating-envelope/fixtures/005010-input-values.json"
+);
 const EXPECTED: &str =
     include_str!("../../../codegen-csharp/tests/x12/repeating-envelope/fixtures/005010-output.x12");
 const CONTEXT: &str = "2030-06-15T09:45:01Z";
@@ -28,7 +30,7 @@ using Ferrule.Runtime;
 
 var utf8 = new UTF8Encoding(false, true);
 string input = File.ReadAllText(args[0]);
-var context = new FerruleExecutionContext("mapping.json", "mapping.json", args[1]);
+var context = new FerruleExecutionContext("repeating-interchanges", "repeating-interchanges", args[1]);
 File.WriteAllText(args[2], GeneratedMapping.ExecuteJsonToX12(input, context), utf8);
 File.WriteAllBytes(args[3], GeneratedMapping.ExecuteJsonToX12Bytes(utf8.GetBytes(input), context));
 try
@@ -46,6 +48,7 @@ catch (FerruleX12Exception failure) when (failure.Error == FerruleX12Error.Envel
 fn project() -> TestResult<Project> {
     let schema: SchemaNode = serde_json::from_str(SCHEMA)?;
     Ok(Project {
+        execution_contract: None,
         source: schema.clone(),
         target: schema,
         source_path: Some("shipments.json".into()),
@@ -105,7 +108,7 @@ fn source_document() -> TestResult<String> {
 }
 
 #[test]
-fn repeating_envelope_interchange_flag_generates_a_completed_json_to_x12_companion() -> TestResult<()> {
+fn repeating_interchange_flag_generates_a_completed_json_to_x12_companion() -> TestResult<()> {
     let directory = TempDir::new("x12_repeating_interchanges")?;
     let root = &directory.0;
     let project = project()?;
@@ -143,7 +146,7 @@ fn repeating_envelope_interchange_flag_generates_a_completed_json_to_x12_compani
         .args([
             "--x12-adapters",
             "--x12-target-envelope-profile",
-            "mapforce-interchanges",
+            "repeating-interchanges",
         ]);
     let generation = command.output()?;
     std::fs::write(root.join("generate-stderr.bin"), &generation.stderr)?;

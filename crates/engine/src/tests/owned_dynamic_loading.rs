@@ -158,6 +158,7 @@ pub(crate) fn project(driver: &str) -> Project {
     )
     .repeating();
     Project {
+        execution_contract: None,
         source: batch_schema("Batch"),
         target: SchemaNode::group("Out", vec![doc_row]),
         source_path: None,

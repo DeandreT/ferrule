@@ -308,6 +308,7 @@ mod tests {
 
     fn project(iteration: ScopeIteration) -> Project {
         Project {
+            execution_contract: None,
             source: ir::SchemaNode::group("Input", vec![]),
             target: ir::SchemaNode::group("Output", vec![]),
             source_path: None,

@@ -53,6 +53,7 @@ fn capture(name: &str, left: f64, right: f64) -> PdfCommand {
 
 fn project(layout: PdfLayout) -> Project {
     Project {
+        execution_contract: None,
         source: layout.schema(),
         target: SchemaNode::group(
             "Output",

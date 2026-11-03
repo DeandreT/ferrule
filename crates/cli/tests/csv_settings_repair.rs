@@ -40,6 +40,7 @@ fn options() -> FormatOptions {
 }
 fn project() -> Project {
     Project {
+        execution_contract: None,
         source: schema(),
         target: schema(),
         source_path: Some("input.csv".into()),

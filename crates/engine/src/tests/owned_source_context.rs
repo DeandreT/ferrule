@@ -24,6 +24,7 @@ fn record_schema() -> SchemaNode {
 
 fn project(source: SchemaNode, names: &[&str]) -> Project {
     Project {
+        execution_contract: None,
         source,
         target: SchemaNode::group(
             "Output",

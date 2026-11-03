@@ -160,6 +160,7 @@ fn project() -> Project {
         .map(|name| SchemaNode::scalar(name, ScalarType::String))
         .collect();
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Source",
             vec![

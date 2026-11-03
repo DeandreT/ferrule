@@ -2,6 +2,7 @@ use super::*;
 
 fn disconnected_project() -> Project {
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Source", vec![bool_("CheckDirect")]),
         target: SchemaNode::group("Target", vec![bool_("Present"), string("Label")]),
         source_path: None,

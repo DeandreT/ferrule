@@ -4,6 +4,7 @@ use mapping::{Graph, Node, Project, Scope, project_file};
 fn project() -> Project {
     let value = Value::decimal(Decimal96::parse_exact("9007199254740993.123456789012").unwrap());
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Source", vec![]),
         target: SchemaNode::group(
             "Target",

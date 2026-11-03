@@ -304,7 +304,59 @@ impl PendingJoins {
     }
 }
 
+#[cfg(test)]
+mod certificate_tests {
+    use super::*;
+    #[test]
+    fn certificate_outputs_include_hierarchical_and_refused_aliases() {
+        let mut registry = Registry::default();
+        let id = JoinId::new(1);
+        registry.row_outputs.insert(10, id);
+        registry.field_outputs.insert(
+            11,
+            ResolvedField {
+                join: id,
+                input_index: 0,
+                path: vec!["Value".into()],
+            },
+        );
+        registry.hierarchical_rows.insert(
+            12,
+            SourcePath {
+                source: 0,
+                path: vec!["Rows".into()],
+            },
+        );
+        registry.hierarchical_fields.insert(
+            13,
+            SourcePath {
+                source: 0,
+                path: vec!["Rows".into(), "Value".into()],
+            },
+        );
+        registry.rejected_row_outputs.insert(14);
+        registry.rejected_field_outputs.insert(15);
+        assert_eq!(
+            registry.certificate_outputs().collect::<BTreeSet<_>>(),
+            (10..=15).collect()
+        );
+    }
+}
+
 impl Registry {
+    /// All currently resolvable or refused join aliases block the initial
+    /// declared-library certificate; no join precedence is reimplemented.
+    pub(super) fn certificate_outputs(&self) -> impl Iterator<Item = u32> + '_ {
+        self.row_outputs
+            .keys()
+            .chain(self.field_outputs.keys())
+            .chain(self.hierarchical_rows.keys())
+            .chain(self.hierarchical_fields.keys())
+            .chain(self.rejected_row_outputs.iter())
+            .chain(self.rejected_field_outputs.iter())
+            .copied()
+    }
+
     fn reject(&mut self, parsed: &ParsedJoin) {
         self.rejected_row_outputs
             .extend(parsed.tuple_output.iter().copied());

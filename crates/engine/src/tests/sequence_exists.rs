@@ -4,6 +4,7 @@ use mapping::{Binding, SequenceExpr};
 
 fn project(nodes: Vec<(NodeId, Node)>, output: NodeId) -> Project {
     Project {
+        execution_contract: None,
         source: SchemaNode::group("source", vec![]),
         target: SchemaNode::group(
             "target",

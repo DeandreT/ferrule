@@ -9,6 +9,7 @@ fn grouping_and_whole_row_copy_retain_each_original_physical_identity() {
         vec![SchemaNode::scalar("Value", ScalarType::String)],
     );
     let project = Project {
+        execution_contract: None,
         source: SchemaNode::group("Input", vec![row_schema.clone().repeating()]),
         target: SchemaNode::group(
             "Output",

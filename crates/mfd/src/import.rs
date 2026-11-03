@@ -1600,7 +1600,6 @@ fn import_resolved(
     }) {
         return Err(MfdError::Unsupported("XML scalar output inside a user function or outside the active structure cannot be retained safely".into()));
     }
-    let scope_source_hints = scope_source_hints(&structure);
     let selected_language = wrapper
         .children()
         .find(|node| node.has_tag_name("properties"))
@@ -1627,18 +1626,25 @@ fn import_resolved(
     };
     let csv_occurrence_raw_authority =
         edges.complete && target_iteration::csv_raw_authority(&structure, &edges.feeds);
-    let mut schema_components = Vec::new();
-    let mut fn_components = Vec::new();
-    let mut json_serializers = Vec::new();
-    let mut xml_serializers = Vec::new();
-    let mut json_parsers = Vec::new();
-    let mut flextext_parsers = Vec::new();
-    let mut output_parameters = Vec::new();
     let mut udf_registry = UdfRegistry::read_in_package(&mapping_el, resources, &mut warnings);
-    let mut udf_calls = Vec::new();
+    use udf::certificate::RegisteredVec;
+    let mut schema_components = RegisteredVec::new(&udf_registry);
+    let mut fn_components = RegisteredVec::new(&udf_registry);
+    let mut json_serializers = RegisteredVec::new(&udf_registry);
+    let mut xml_serializers = RegisteredVec::new(&udf_registry);
+    let mut json_parsers = RegisteredVec::new(&udf_registry);
+    let mut flextext_parsers = RegisteredVec::new(&udf_registry);
+    let mut output_parameters = Vec::new();
+    if resources.package().is_some() && udf_registry.has_declared_mapping_libraries() {
+        return Err(MfdError::UnsupportedImport("declared mapping libraries are unsupported in immutable byte packages; no filesystem fallback".into()));
+    }
+    udf_registry
+        .finish_construction()
+        .map_err(MfdError::Resource)?;
+    let mut udf_calls = RegisteredVec::new(&udf_registry);
     let mut external_udf_candidates = Vec::new();
-    let mut external_scalar_recipes = Vec::new();
-    let mut external_xslt_aggregates = Vec::new();
+    let mut external_scalar_recipes = RegisteredVec::new(&udf_registry);
+    let mut external_xslt_aggregates = RegisteredVec::new(&udf_registry);
     let pipeline_exceptions = if matches!(selection, StageSelection::Ordinary) {
         None
     } else {
@@ -1658,6 +1664,7 @@ fn import_resolved(
             .descendants()
             .any(|node| xml_scalar_output::xml_request_owner(node).is_some())
         && matches!(selection, StageSelection::Ordinary)
+        && !udf_registry.has_declared_mapping_libraries()
         && edges.conflicts.is_empty()
         && !(item_ordered_exceptions && exception::item_ordered::has_exception(structure))
         && let Some((project, key)) =
@@ -1695,8 +1702,29 @@ fn import_resolved(
             .children()
             .filter(|n| n.is_element() && n.tag_name().name() == "component")
         {
+            udf_registry
+                .finish_construction()
+                .map_err(MfdError::Resource)?;
             let library = component.attribute("library").unwrap_or_default();
             let name = component.attribute("name").unwrap_or_default().to_string();
+            schema_components.set_active(component);
+            fn_components.set_active(component);
+            json_serializers.set_active(component);
+            xml_serializers.set_active(component);
+            json_parsers.set_active(component);
+            flextext_parsers.set_active(component);
+            udf_calls.set_active(component);
+            external_scalar_recipes.set_active(component);
+            external_xslt_aggregates.set_active(component);
+            if udf_registry.refuses_noncanonical_call(component.attribute("kind")) {
+                let kind = component.attribute("kind").unwrap_or_default();
+                warnings.push(format!("declared kind-19 function `{name}` uses noncanonical kind `{kind}`; refused before built-in/schema/HTTP/module dispatch"));
+                continue;
+            }
+            if udf_registry.refuses_reserved_call(library, component.attribute("kind")) {
+                warnings.push(format!("declared kind-19 function `{name}` has reserved owner `{library}`; refused before built-in/schema/HTTP dispatch"));
+                continue;
+            }
             match library {
                 "xml" => {
                     let root_view_findings = root_view_inventory.inspect(component);
@@ -2135,6 +2163,8 @@ fn import_resolved(
                                 )),
                             }
                         }
+                    } else if udf_registry.is_declared_call(component.attribute("kind")) {
+                        warnings.push(format!("unresolved declared user-defined function `{name}` ({other}): {}; no module discovery or name fallback is permitted", udf_registry.unsupported_reason(other, &name).unwrap_or("required declaring library resource/producer is unavailable or symbol is not directly exported")));
                     } else {
                         match external_scalar::read(&component, path, &selected_language, resources)
                         {
@@ -2182,10 +2212,18 @@ fn import_resolved(
         )));
     }
     let user_functions = udf_registry.user_functions();
+    udf_registry
+        .finish_construction()
+        .map_err(MfdError::Resource)?;
     // UDF-owned static catalogs are secondary to ordinary mapping sources.
     // Keeping them last also preserves the document source as the default in
     // scalar-only mappings, where repetition-based primary scoring is tied.
-    schema_components.extend(udf_registry.take_sources());
+    for source in udf_registry.take_sources() {
+        schema_components.push_origin(source.component, source.origin);
+    }
+    udf_registry
+        .finish_construction()
+        .map_err(MfdError::Resource)?;
 
     match selection {
         StageSelection::Ordinary => {}
@@ -2337,6 +2375,9 @@ fn import_resolved(
         &fn_components,
         &mut warnings,
     );
+    udf_registry
+        .finish_construction()
+        .map_err(MfdError::Resource)?;
 
     let mut sources: Vec<&SchemaComponent> = schema_components
         .iter()
@@ -2473,6 +2514,50 @@ fn import_resolved(
         &mut warnings,
     );
 
+    // The complete normalized producer inventory is now fixed. Certify before
+    // any graph value is materialized or keyed lookup can select a winner.
+    let sources = sources;
+    let fn_components = fn_components;
+    let udf_calls = udf_calls;
+    let external_scalar_recipes = external_scalar_recipes;
+    let external_xslt_aggregates = external_xslt_aggregates;
+    let json_serializers = json_serializers;
+    let xml_serializers = xml_serializers;
+    let json_parsers = json_parsers;
+    let flextext_parsers = flextext_parsers;
+    let certificate = udf::certificate::certify(
+        &udf_registry,
+        &udf_calls,
+        udf::certificate::Normalized {
+            schemas: &schema_components,
+            sources: &sources,
+            source_names: &source_names,
+            intermediates: &intermediates,
+            targets: &targets,
+            functions: &fn_components,
+            calls: &udf_calls,
+            external_scalar: &external_scalar_recipes,
+            external_xslt: &external_xslt_aggregates,
+            json_serializers: &json_serializers,
+            xml_serializers: &xml_serializers,
+            json_parsers: &json_parsers,
+            flextext_parsers: &flextext_parsers,
+            joins: &joins,
+            rules: &source_node_functions,
+        },
+        structure,
+    );
+    udf_registry
+        .finish_construction()
+        .map_err(MfdError::Resource)?;
+    let mut context_certificate = certificate.map_err(MfdError::UnsupportedImport)?;
+    context_certificate
+        .seal_functions(&user_functions)
+        .map_err(MfdError::UnsupportedImport)?;
+    // In the declared profile, raw affected hints have now been checked before
+    // the legacy parser's last-wins collapse. Ordinary behavior stays unchanged.
+    let scope_source_hints = scope_source_hints(&structure);
+
     let xml_type_conditions = alternatives::conditioned_port_types(&structure);
     let xml_condition_ports = structure
         .descendants()
@@ -2512,6 +2597,7 @@ fn import_resolved(
         warned_variable_constructions: BTreeSet::new(),
         rejected_join_paths: BTreeSet::new(),
         source_fields: BTreeMap::new(),
+        materialized_arguments: Default::default(),
         json_serializer_nodes: BTreeMap::new(),
         xml_serializer_nodes: BTreeMap::new(),
         external_scalar_nodes: BTreeMap::new(),
@@ -2560,6 +2646,8 @@ fn import_resolved(
     }
 
     let dormant_parser_parameters = builder.dormant_json_parser_parameters();
+    #[cfg(test)]
+    udf::certificate::probe_speculative_builder(&builder);
 
     // Dynamic document inputs must establish their driver frames before any
     // target expression is materialized. A filename expression can also feed
@@ -2813,7 +2901,10 @@ fn import_resolved(
     source_options.mfd_optional_parser_input_names =
         std::mem::take(&mut builder.optional_parser_input_names);
     source_options.mfd_json5_string_dependencies = json5_string_dependencies;
+    let declared_call_nodes = std::mem::take(&mut builder.udf_nodes);
+    let materialized_arguments = std::mem::take(&mut builder.materialized_arguments);
     let mut project = Project {
+        execution_contract: None,
         source: primary.schema.clone(),
         target: runtime_target_schema(target, &edge_from),
         source_path,
@@ -2908,6 +2999,32 @@ fn import_resolved(
             &project,
             &mut warnings,
         );
+    }
+    let context_audit: Result<(), String> = (|| {
+        udf_registry.audit_materialized_arguments(&materialized_arguments, &project.graph)?;
+        context_certificate.audit_functions(&project.user_functions)?;
+        context_certificate.audit_target_count(
+            connected_targets.len().saturating_sub(1),
+            project.extra_targets.len(),
+        )?;
+        context_certificate.audit(target, &project.root, &project.graph, &declared_call_nodes)?;
+        for (descriptor, actual) in connected_targets.iter().skip(1).zip(&project.extra_targets) {
+            context_certificate.audit(
+                descriptor,
+                &actual.root,
+                &project.graph,
+                &declared_call_nodes,
+            )?;
+        }
+        Ok(())
+    })();
+    udf_registry
+        .finish_construction()
+        .map_err(MfdError::Resource)?;
+    context_audit.map_err(MfdError::UnsupportedImport)?;
+    if context_certificate.enabled() {
+        project.execution_contract = Some(mapping::ExecutionContract::ClosedPrimarySourceV1);
+        project.validate_execution_contract().map_err(|error| MfdError::UnsupportedImport(format!("declared-library primary-source safety guard refused the materialized model: {error}")))?;
     }
     resources.append_refusals(&mut warnings);
     Ok(LoweredStage {

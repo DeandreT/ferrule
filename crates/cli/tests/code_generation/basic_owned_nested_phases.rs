@@ -352,6 +352,7 @@ fn project_model() -> Project {
     ];
     source_children.extend(FLAGS.map(bool_));
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Input", source_children),
         target: SchemaNode::group(
             "Output",

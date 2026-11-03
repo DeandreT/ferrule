@@ -158,6 +158,7 @@ fn delimiter_and_line_content_splits_roundtrip_losslessly() -> Result<(), Box<dy
         true,
     )?;
     let project = Project {
+        execution_contract: None,
         source: layout.schema(),
         target: ir::SchemaNode::group(
             "Result",
