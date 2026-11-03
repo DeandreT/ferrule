@@ -269,7 +269,11 @@ fn write_artifacts(directory: &Path, artifacts: &codegen::ArtifactSet) {
     }
 }
 
-fn checked(command: &mut std::process::Command, directory: &Path, label: &str) {
+fn checked(
+    command: &mut std::process::Command,
+    directory: &Path,
+    label: &str,
+) -> std::process::Output {
     let sources = [
         "rust",
         "csharp",
@@ -288,9 +292,10 @@ fn checked(command: &mut std::process::Command, directory: &Path, label: &str) {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
+    output
 }
 
-fn csharp_release_command(root: &Path) -> std::process::Command {
+fn csharp_command(root: &Path) -> std::process::Command {
     let mut command = std::process::Command::new(
         std::env::var_os("FERRULE_DOTNET_EXE").unwrap_or_else(|| "dotnet".into()),
     );
@@ -302,21 +307,34 @@ fn csharp_release_command(root: &Path) -> std::process::Command {
         .env("DOTNET_NOLOGO", "1")
         .env("DOTNET_CLI_TELEMETRY_OPTOUT", "1")
         .env("DOTNET_CLI_USE_MSBUILD_SERVER", "0")
-        .dotnet_temp(root)
-        .args([
-            "run",
-            "--project",
-            "csharp/Host/Host.csproj",
-            "--configuration",
-            "Release",
-            "--disable-build-servers",
-            "-p:BuildInParallel=false",
-            "-p:UseSharedCompilation=false",
-            "--",
-            "cases.json",
-            "source-schema.json",
-            "target-schema.json",
-        ]);
+        .dotnet_temp(root);
+    command
+}
+
+fn csharp_sdk_version_command(root: &Path) -> std::process::Command {
+    let mut command = csharp_command(root);
+    command.arg("--version");
+    command
+}
+
+fn csharp_release_command(root: &Path) -> std::process::Command {
+    let mut command = csharp_command(root);
+    command.args([
+        "run",
+        "--project",
+        "csharp/Host/Host.csproj",
+        "--configuration",
+        "Release",
+        "--disable-build-servers",
+        "-p:BuildInParallel=false",
+        "-p:UseSharedCompilation=false",
+        "-p:DisableTransitiveFrameworkReferenceDownloads=true",
+        "-p:AutomaticallyUseReferenceAssemblyPackages=false",
+        "--",
+        "cases.json",
+        "source-schema.json",
+        "target-schema.json",
+    ]);
     command
 }
 
@@ -329,6 +347,22 @@ fn csharp_release_command_passes_only_the_expected_host_arguments() {
     let arguments: Vec<_> = command.get_args().collect();
     assert_eq!(arguments[0], "run");
     let separator = arguments.iter().position(|arg| *arg == "--").unwrap();
+    for control in [
+        "--disable-build-servers",
+        "-p:BuildInParallel=false",
+        "-p:UseSharedCompilation=false",
+        "-p:DisableTransitiveFrameworkReferenceDownloads=true",
+        "-p:AutomaticallyUseReferenceAssemblyPackages=false",
+    ] {
+        assert_eq!(
+            arguments[..separator]
+                .iter()
+                .filter(|arg| **arg == control)
+                .count(),
+            1,
+            "missing or duplicated build control: {control}"
+        );
+    }
     assert_eq!(
         &arguments[separator + 1..],
         ["cases.json", "source-schema.json", "target-schema.json"].map(OsStr::new)
@@ -350,6 +384,49 @@ fn csharp_release_command_passes_only_the_expected_host_arguments() {
             .find(|(key, _)| *key == "MSBUILDDISABLENODEREUSE"),
         Some((OsStr::new("MSBUILDDISABLENODEREUSE"), Some(OsStr::new("1"))))
     );
+}
+
+#[test]
+fn csharp_sdk_probe_uses_the_release_executable_directory_and_isolation_policy() {
+    use std::ffi::OsStr;
+
+    let directory = TempDir::new("sdk_command").unwrap();
+    let release = csharp_release_command(&directory.0);
+    let version = csharp_sdk_version_command(&directory.0);
+    assert_eq!(version.get_program(), release.get_program());
+    assert_eq!(version.get_current_dir(), Some(directory.0.as_path()));
+    assert_eq!(version.get_current_dir(), release.get_current_dir());
+    assert_eq!(
+        version.get_args().collect::<Vec<_>>(),
+        [OsStr::new("--version")]
+    );
+    assert_eq!(
+        version.get_envs().collect::<Vec<_>>(),
+        release.get_envs().collect::<Vec<_>>()
+    );
+    let environment = release
+        .get_envs()
+        .collect::<std::collections::BTreeMap<_, _>>();
+    for (key, value) in [
+        ("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false"),
+        ("DOTNET_SKIP_FIRST_TIME_EXPERIENCE", "1"),
+        ("DOTNET_NOLOGO", "1"),
+        ("DOTNET_CLI_TELEMETRY_OPTOUT", "1"),
+        ("DOTNET_CLI_USE_MSBUILD_SERVER", "0"),
+        ("MSBUILDDISABLENODEREUSE", "1"),
+        ("UseSharedCompilation", "false"),
+    ] {
+        assert_eq!(environment[OsStr::new(key)], Some(OsStr::new(value)));
+    }
+    let home = directory.0.join(".dotnet-home");
+    assert_eq!(
+        environment[OsStr::new("DOTNET_CLI_HOME")],
+        Some(home.as_os_str())
+    );
+    let temporary = directory.0.join(".tmp");
+    for key in ["TMPDIR", "TEMP", "TMP"] {
+        assert_eq!(environment[OsStr::new(key)], Some(temporary.as_os_str()));
+    }
 }
 
 #[cfg(windows)]
@@ -454,6 +531,15 @@ fn generated_release_hosts_match_complete_documents_and_fresh_invocations() {
     .unwrap();
     #[cfg(windows)]
     let before = saved_user_path();
+    let sdk = checked(
+        &mut csharp_sdk_version_command(&root),
+        &root,
+        "csharp-sdk-version",
+    );
+    eprintln!(
+        "C# host SDK: {}",
+        String::from_utf8_lossy(&sdk.stdout).trim()
+    );
     checked(&mut csharp_release_command(&root), &root, "csharp-release");
     #[cfg(windows)]
     assert_eq!(
