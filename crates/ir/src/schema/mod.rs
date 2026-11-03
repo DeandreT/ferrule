@@ -13,9 +13,11 @@ mod json_property_name_constraints;
 mod json_schema_predicate;
 mod json_tuple;
 mod json_undeclared_property;
+mod number_serde;
 mod numeric_range;
 mod property_count_range;
 mod string_length_range;
+mod tagged_serde;
 
 pub use effective::{
     EffectiveCardinality, EffectiveNullability, EffectivePresence, EffectiveSchemaView,
