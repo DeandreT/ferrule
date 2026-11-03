@@ -67,6 +67,7 @@ fn project(mode: Mode) -> Project {
     }
 
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Root", vec![rows]),
         target: SchemaNode::group("Target", vec![groups]),
         source_path: None,

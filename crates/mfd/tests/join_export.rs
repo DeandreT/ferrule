@@ -77,6 +77,7 @@ fn two_way_plan(join: JoinId) -> (JoinId, JoinPlan) {
 fn two_way_project() -> Project {
     let (join, plan) = two_way_plan(JoinId::new(8));
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Source",
             vec![
@@ -688,6 +689,7 @@ fn exports_and_round_trips_a_three_way_join() {
     )
     .unwrap();
     let project = Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Source",
             vec![
@@ -839,6 +841,7 @@ fn root_aggregate_project() -> Project {
     )
     .unwrap();
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Source",
             vec![
@@ -1206,6 +1209,7 @@ fn mapped_join_sequence_round_trips_named_and_singleton_sources() {
         ],
     );
     let mut project = Project {
+        execution_contract: None,
         source: SchemaNode::group("Customers", vec![customer.clone().repeating()]),
         target: SchemaNode::group("Result", vec![customer]),
         source_path: Some("customers.xml".into()),

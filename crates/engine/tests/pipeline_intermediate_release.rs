@@ -110,6 +110,7 @@ fn batch() -> Instance {
 
 fn copy_project() -> Project {
     Project {
+        execution_contract: None,
         source: schema(),
         target: schema(),
         source_path: None,

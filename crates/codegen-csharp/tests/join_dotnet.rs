@@ -136,6 +136,7 @@ fn computed_fixture(key_first: bool) -> Program {
     .expect("valid computed join plan");
     let b = SchemaNode::group("B", vec![string("Aid"), string("Tag")]).repeating();
     Program {
+        execution_contract: None,
         xml_boundary: None,
         source: SchemaNode::group("Source", vec![string("Separator")]),
         extra_sources: vec![NamedSourceProgram {
@@ -245,6 +246,7 @@ fn fixture() -> Program {
     .repeating();
 
     Program {
+        execution_contract: None,
         xml_boundary: None,
         source: SchemaNode::group("Source", vec![a, c, string("Separator")]),
         extra_sources: vec![NamedSourceProgram {

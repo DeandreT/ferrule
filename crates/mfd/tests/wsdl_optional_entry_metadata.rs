@@ -37,6 +37,7 @@ fn project(optional_source: bool, optional_target: bool) -> Project {
         SchemaNode::group(name, vec![value, details])
     };
     Project {
+        execution_contract: None,
         source: schema("Request", optional_source),
         target: schema("Response", optional_target),
         source_path: Some("input.xml".into()),

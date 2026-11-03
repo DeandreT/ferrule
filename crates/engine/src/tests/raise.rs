@@ -34,6 +34,7 @@ fn group(fields: Vec<(&str, Instance)>) -> Instance {
 
 fn scalar_project(output: u32, nodes: impl IntoIterator<Item = (u32, Node)>) -> Project {
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Source", Vec::new()),
         target: SchemaNode::group(
             "Target",

@@ -7,6 +7,7 @@ fn text_boundary_project() -> Project {
             .expect("string encodes arbitrary JSON")
     };
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Source", vec![string("Text"), arbitrary("Any")]),
         target: SchemaNode::group(
             "Target",

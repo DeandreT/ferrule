@@ -7,6 +7,7 @@ const SKIPPED: &str = "missing-current-skipped";
 
 fn runtime_project() -> Project {
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Source", vec![bool_("UseCurrent")]),
         target: SchemaNode::group(
             "Target",

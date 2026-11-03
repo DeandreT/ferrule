@@ -23,6 +23,7 @@ fn empty_iterated_scopes_compile_with_warnings_denied() -> TestResult<()> {
             ..Default::default()
         };
         let project = Project {
+            execution_contract: None,
             source: SchemaNode::group(
                 "Source",
                 vec![SchemaNode::group("Rows", vec![string("Label")]).repeating()],

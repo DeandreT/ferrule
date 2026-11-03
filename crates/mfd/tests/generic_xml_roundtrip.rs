@@ -70,6 +70,7 @@ fn source_schema() -> SchemaNode {
 
 fn project() -> Project {
     Project {
+        execution_contract: None,
         source: source_schema(),
         target: SchemaNode::group("Result", vec![SchemaNode::scalar("Batch", ScalarType::Int)]),
         source_path: Some("input.xml".into()),

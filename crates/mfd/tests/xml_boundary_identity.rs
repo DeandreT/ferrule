@@ -39,6 +39,7 @@ fn pathless_xml_boundaries_roundtrip_without_format_inference() -> Result<(), Bo
         vec![SchemaNode::scalar("Result", ScalarType::String)],
     );
     let project = Project {
+        execution_contract: None,
         source: source.clone(),
         target: target.clone(),
         source_path: None,

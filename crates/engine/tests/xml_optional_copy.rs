@@ -10,6 +10,7 @@ fn schema() -> SchemaNode {
 fn project() -> Project {
     let s = schema();
     Project {
+        execution_contract: None,
         source: s.clone(),
         target: s,
         source_path: None,

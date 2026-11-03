@@ -63,6 +63,7 @@ pub fn project(program: &str) -> Project {
         ),
     };
     Project {
+        execution_contract: None,
         source,
         target: SchemaNode::group("Output", vec![string("Value"), int("Position")]),
         source_path: None,

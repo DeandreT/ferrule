@@ -63,6 +63,7 @@ mod tests {
 
     fn valid_project() -> Project {
         Project {
+            execution_contract: None,
             source: SchemaNode::group(
                 "source",
                 vec![SchemaNode::scalar("value", ScalarType::String)],

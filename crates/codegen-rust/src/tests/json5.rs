@@ -61,6 +61,7 @@ fn prototype() -> Program {
     let mut nil = SchemaNode::scalar("Nil", ScalarType::String);
     nil.nullable = true;
     Program {
+        execution_contract: None,
         xml_boundary: None,
         source: required(
             SchemaNode::group(

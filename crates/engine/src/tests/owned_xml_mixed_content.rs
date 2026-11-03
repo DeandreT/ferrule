@@ -152,6 +152,7 @@ fn strings(name: &str, fields: &[&str]) -> SchemaNode {
 /// primary root field holding the mixed group.
 fn project(target: SchemaNode, root: Scope, nodes: Vec<(u32, Node)>) -> Project {
     Project {
+        execution_contract: None,
         source: source_schema(),
         target,
         source_path: None,

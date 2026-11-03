@@ -130,6 +130,7 @@ pub(super) fn projects() -> Vec<Project> {
     ]);
     let target = SchemaNode::group("Output", vec![string("Value")]);
     let primary = Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Input",
             vec![

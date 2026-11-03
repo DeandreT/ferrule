@@ -31,6 +31,7 @@ impl Drop for TempDir {
 
 fn project() -> Project {
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Files",
             vec![SchemaNode::scalar("File", ScalarType::String).repeating()],

@@ -319,6 +319,7 @@ mod tests {
             vec![SchemaNode::scalar("Value", ScalarType::Int).repeating()],
         );
         let mut project = mapping::Project {
+            execution_contract: None,
             source: schema,
             target: SchemaNode::group("Output", vec![]),
             source_path: None,

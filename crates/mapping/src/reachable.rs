@@ -48,6 +48,7 @@ mod tests {
     #[test]
     fn project_prunes_only_nodes_outside_executable_roots() {
         let mut project = Project {
+            execution_contract: None,
             source: SchemaNode::group("Source", Vec::new()),
             target: SchemaNode::group(
                 "Target",

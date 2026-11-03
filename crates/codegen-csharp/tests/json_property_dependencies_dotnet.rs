@@ -99,6 +99,7 @@ fn emitted_package_enforces_source_named_and_target_property_dependencies()
         ],
     )?;
     let program = Program {
+        execution_contract: None,
         xml_boundary: None,
         source,
         extra_sources: vec![NamedSourceProgram {

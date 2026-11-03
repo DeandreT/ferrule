@@ -23,6 +23,7 @@ impl Drop for TempDir {
 fn generated_random_preserves_float_range_binding_shape_and_arity_errors()
 -> Result<(), Box<dyn std::error::Error>> {
     let project = Project {
+        execution_contract: None,
         source: SchemaNode::group("Source", vec![]),
         target: SchemaNode::group(
             "Target",

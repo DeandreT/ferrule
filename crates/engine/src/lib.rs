@@ -305,6 +305,8 @@ pub enum OwnedCapabilityContext {
 #[derive(Debug, Error, PartialEq)]
 pub enum EngineError {
     #[error(transparent)]
+    SourceContractViolation(#[from] mapping::SourceContractViolation),
+    #[error(transparent)]
     XmlScalarOutput(#[from] mapping::XmlScalarOutputAdmissionError),
     #[error("graph node {node}: invocation counters require explicit host limits")]
     MissingInvocationCounters { node: NodeId },
@@ -874,6 +876,7 @@ fn run_outputs_internal(
     extras: Vec<(String, Instance)>,
     execution: Option<&ExecutionContext<'_>>,
 ) -> Result<ExecutionOutputs, EngineError> {
+    admit_source_contract(project, source, extras.len(), execution)?;
     let preserve_scalars = project.validate_xml_scalar_output()?;
     let admission = source_ownership::admit_project(project, None)?;
     evaluate_run(
@@ -925,6 +928,7 @@ fn run_selected_target_internal(
     execution: Option<&ExecutionContext<'_>>,
     selection: TargetSelection<'_>,
 ) -> Result<SelectedTargetOutput, EngineError> {
+    admit_source_contract(project, source, extras.len(), execution)?;
     let preserve_scalars = project.validate_xml_scalar_output()?;
     let named_target = required_sources::selected_target(project, selection)?;
     let admission = source_ownership::admit_project(project, Some(selection))?;
@@ -972,6 +976,48 @@ fn run_selected_target_internal(
             }
         },
     )
+}
+
+fn admit_source_contract(
+    project: &Project,
+    source: &Instance,
+    supplied_extras: usize,
+    execution: Option<&ExecutionContext<'_>>,
+) -> Result<(), EngineError> {
+    if let Some(plan) = admit_source_contract_bindings(project, supplied_extras, execution)? {
+        plan.validate_input(source, 0, 0)?;
+    }
+    Ok(())
+}
+
+fn admit_source_contract_bindings(
+    project: &Project,
+    supplied_extras: usize,
+    execution: Option<&ExecutionContext<'_>>,
+) -> Result<Option<mapping::ClosedPrimarySourcePlan>, EngineError> {
+    if project.execution_contract.is_some() {
+        // Reject supplied bindings independently of declared extras. Do not
+        // construct runtime frames, load sources, evaluate failures or trace values.
+        if supplied_extras != 0 {
+            return Err(mapping::SourceContractViolation {
+                path: Vec::new(),
+                reason: mapping::SourceContractReason::UnexpectedBinding,
+            }
+            .into());
+        }
+        if execution
+            .and_then(|context| context.parameters)
+            .is_some_and(|parameters| !parameters.values.is_empty())
+        {
+            return Err(mapping::SourceContractViolation {
+                path: Vec::new(),
+                reason: mapping::SourceContractReason::UnexpectedParameter,
+            }
+            .into());
+        }
+        return Ok(project.validate_execution_contract()?);
+    }
+    Ok(None)
 }
 
 fn evaluate_run<R>(

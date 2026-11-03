@@ -47,6 +47,7 @@ fn project(value: Value) -> Project {
         ..FormatOptions::default()
     };
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Source", Vec::new()),
         target: SchemaNode::group(
             "Target",

@@ -59,6 +59,7 @@ fn project() -> mapping::Project {
         vec![SchemaNode::scalar("Value", ScalarType::String)],
     );
     mapping::Project {
+        execution_contract: None,
         source: source.clone(),
         target,
         source_path: None,

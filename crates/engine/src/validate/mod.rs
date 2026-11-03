@@ -167,6 +167,20 @@ pub fn validate(project: &Project) -> Vec<ValidationIssue> {
 /// Validate a filename plan's mapping with its explicitly selected document-set
 /// context. Ordinary projects keep their existing source-path admission rules.
 pub fn validate_primary_document(document: &mapping::DocumentProject) -> Vec<ValidationIssue> {
+    if document.project().execution_contract.is_some()
+        && document
+            .primary_route()
+            .is_ok_and(|route| route.shape != mapping::PrimaryDocumentShape::Document)
+    {
+        return vec![ValidationIssue::new(
+            "execution contract",
+            mapping::SourceContractViolation {
+                path: Vec::new(),
+                reason: mapping::SourceContractReason::UnsupportedModel,
+            }
+            .to_string(),
+        )];
+    }
     let document_set = document.primary_route().is_ok_and(|route| {
         matches!(
             route.format,
@@ -214,6 +228,12 @@ pub fn validate_primary_document(document: &mapping::DocumentProject) -> Vec<Val
 }
 
 fn validate_in_document_context(project: &Project, document_set: bool) -> Vec<ValidationIssue> {
+    if let Err(error) = project.validate_execution_contract() {
+        return vec![ValidationIssue::new(
+            "execution contract",
+            error.to_string(),
+        )];
+    }
     let mut issues = Vec::new();
     if let Err(error) = project.validate_xml_scalar_output() {
         issues.push(ValidationIssue::new("XML scalar output", error.to_string()));

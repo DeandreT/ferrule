@@ -128,6 +128,7 @@ fn project() -> Project {
         ),
     ]);
     Project {
+        execution_contract: None,
         source,
         target,
         graph: Graph { nodes },

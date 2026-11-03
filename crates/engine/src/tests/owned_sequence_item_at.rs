@@ -139,6 +139,7 @@ fn tokenize(item: NodeId) -> SequenceExpr {
 }
 fn project(sequence: SequenceExpr, output_type: ScalarType) -> Project {
     Project {
+        execution_contract: None,
         source: schema(ScalarType::Int),
         target: SchemaNode::group("Output", vec![SchemaNode::scalar("Result", output_type)]),
         source_path: None,

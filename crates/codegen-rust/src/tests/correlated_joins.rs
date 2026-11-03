@@ -96,6 +96,7 @@ fn project() -> Project {
     })
     .expect("multi-stage correlated join plan");
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Source",
             vec![

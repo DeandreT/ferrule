@@ -1,5 +1,8 @@
 use super::*;
 
+#[path = "safety_guard.rs"]
+mod safety_guard;
+
 fn run(fixture: &Fixture, main: &str, input: &str) -> Instance {
     fixture.write("mapping.mfd", main);
     let actual = imported(fixture);
@@ -296,29 +299,17 @@ fn affected_hint_paths_are_bounded_before_json_allocation() {
 }
 
 #[test]
-fn owned_nested_scope_hints_survive_export_and_declared_library_reimport() {
+fn guarded_nested_scope_hints_persist_through_the_capability_codec_and_export_refuses() {
     let fixture = Fixture::new();
     let main = nested(&fixture);
     fixture.write("mapping.mfd", &main);
     let original = imported(&fixture);
     assert!(original.warnings.is_empty());
     let path = fixture.0.join("owned.mfd");
-    mfd::export(&original.project, &path).unwrap();
-    let mut xml = std::fs::read_to_string(&path).unwrap();
-    let doc = roxmltree::Document::parse(&xml).unwrap();
-    let definition = doc
-        .root_element()
-        .children()
-        .find(|node| node.has_tag_name("component") && node.attribute("library") == Some("generic"))
-        .unwrap()
-        .range();
-    let body = xml[definition.clone()].to_string();
-    xml.replace_range(definition, "");
-    xml = xml.replace("</mapping>", r#"<settings><libraries><import path="owned-functions.mfd" saverelative="1"/></libraries></settings></mapping>"#);
-    fixture.write("owned-functions.mfd", &format!("<mapping>{body}</mapping>"));
-    fixture.write("owned.mfd", &xml);
-    let round_trip = mfd::import(&path).unwrap();
-    assert!(round_trip.warnings.is_empty(), "{:?}", round_trip.warnings);
+    assert!(mfd::export(&original.project, &path).is_err());
+    assert!(!path.exists());
+    let encoded = mapping::project_file::encode_pretty(&original.project).unwrap();
+    let round_trip = mapping::project_file::decode_str(&encoded).unwrap();
     let input = format_xml::from_str(
         "<Input><Row><Text>A</Text><Cell><Text>C</Text></Cell></Row></Input>",
         &original.project.source,
@@ -326,6 +317,6 @@ fn owned_nested_scope_hints_survive_export_and_declared_library_reimport() {
     .unwrap();
     assert_eq!(
         engine::run(&original.project, &input).unwrap(),
-        engine::run(&round_trip.project, &input).unwrap()
+        engine::run(&round_trip, &input).unwrap()
     );
 }

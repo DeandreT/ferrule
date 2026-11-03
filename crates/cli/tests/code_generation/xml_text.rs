@@ -33,6 +33,7 @@ fn generated_xml_text_preserves_carriage_returns_and_matches_interpreter() -> Te
         });
     }
     let project = Project {
+        execution_contract: None,
         source: SchemaNode::group("Source", vec![plain.clone(), simple.clone()]),
         target: SchemaNode::group("Target", fields),
         source_path: None,

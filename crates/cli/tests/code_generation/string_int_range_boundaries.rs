@@ -108,6 +108,7 @@ fn project(root: &Evidence, fixture: &Json) -> TestResult<Project> {
         ..Scope::default()
     };
     let mut project = Project {
+        execution_contract: None,
         source,
         target,
         source_path: None,

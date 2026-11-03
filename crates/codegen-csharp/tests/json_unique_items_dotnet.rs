@@ -24,6 +24,7 @@ fn emitted_package_enforces_raw_source_and_normalized_target_unique_items()
         .with_json_unique_items()
         .ok_or("test target array accepts uniqueItems")?;
     let program = Program {
+        execution_contract: None,
         xml_boundary: None,
         source: SchemaNode::group(
             "Source",
