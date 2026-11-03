@@ -22,6 +22,7 @@ fn document(
     };
     DocumentProject::new(
         Project {
+            execution_contract: None,
             source: schema(),
             target: schema(),
             source_path: source.1.map(Into::into),

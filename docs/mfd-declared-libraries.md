@@ -47,7 +47,8 @@ definition input/output component IDs, not display names. IDs and ports are
 document-local. Calls remain `UserFunctionCall` nodes, preserving existing input
 and output type adapters and eager argument consumption, including unused typed
 arguments. Supported conditional branches inside the function remain lazy.
-Owned helper graphs do not reopen libraries during execution or export.
+Owned helper graphs do not reopen libraries during execution. Admitted projects
+carry the [closed primary-source guard](primary-source-safety-guard.md).
 
 Every connected argument feed must have exactly one raw output declaration and
 no input-direction claims in its active graph before call admission. Source
@@ -65,7 +66,8 @@ Reader registrations retain the immutable XML document/structure/component
 identity beside their normalized records. Promoted local catalogs retain their
 own origin; synthetic or unproved records cannot acquire a main-graph identity
 through matching names, UIDs, keys, paths or values. Origins and certificates
-are never serialized into a Project and do not change the execution model.
+are never serialized into a Project. The separate execution guard is persisted
+and enforced against the actual host input.
 
 The certificate inspects the original producer collections, before keyed
 builder maps can overwrite competing records. Every argument dependency,
@@ -89,10 +91,11 @@ until their provenance and consumption profile are proved.
 
 Frame availability is proved separately for every receiving boundary. A frame
 in one sibling receiver cannot authorize an argument in another. Root-visible
-singleton values and constants remain usable across receivers; repeated source
-fields require their exact source frames in that receiver's ancestor chain.
-The bounded nested profile supports same-source descendant and identity driver
-chains, not a second implementation of the legacy fallback resolver.
+singleton values require a proof against every active readable item schema;
+constants remain usable across receivers. Repeated source fields require their
+exact source frame, with an unambiguous latest runtime pin match in that
+receiver's ancestor chain. Drivers name one direct repeated group child of the
+root or immediate active item. Identity and multi-segment drivers refuse.
 
 Affected raw `ferrule-scope-sources` entries are checked before the legacy map
 can collapse duplicate keys. Matching hints retain the proved stored driver
@@ -101,7 +104,22 @@ unknown or oversized affected hints refuse; unrelated scopes retain their
 ordinary behavior. A final context seal then checks actual constructed roots,
 ancestor paths, drivers and direct declared-call bindings after hint restoration
 and subsequent transformations, before publication. Unproved wrappers or late
-context changes refuse rather than inheriting the earlier producer proof.
+context changes refuse rather than inheriting the earlier producer proof. The
+seal also checks actual materialized argument node kinds, paths, frames,
+function/conversion identities, ordered edges and UDF interfaces/arguments;
+an unchanged output binding does not authorize a changed argument graph.
+
+The whole guarded project is revalidated against the closed primary schema.
+Runtime admission checks actual trees, explicit repeated slots, scalar domains
+and supplied secondary/parameter bindings before evaluation. A missing nested
+collection cannot borrow root rows, and a host cannot inject a shadow field
+that was absent from the schema proof. This does not alter ordinary resolver
+precedence or extend the profile through input-value heuristics.
+
+Guarded imports persist through the version-3 project/pipeline capability
+codec. Both MFD export profiles hard-refuse them before publishing artifacts;
+they cannot be exported with an ignorable guard marker. Ordinary embedded UDF
+and lookup imports without the guard keep their existing behavior.
 
 XML path identity is checked for every segment. Attribute ancestors are outside
 the supported profile; a leaf attribute is allowed only when its normalized

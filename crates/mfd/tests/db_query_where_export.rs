@@ -171,6 +171,7 @@ fn project() -> Project {
         ),
     ]);
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Person",
             vec![

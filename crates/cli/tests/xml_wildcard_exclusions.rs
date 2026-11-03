@@ -76,6 +76,7 @@ fn import_xsd_and_file_runs_apply_wildcard_exclusions() -> anyhow::Result<()> {
         ..FormatOptions::default()
     };
     let project = Project {
+        execution_contract: None,
         source: schema.clone(),
         target: schema,
         source_path: Some("input.xml".into()),

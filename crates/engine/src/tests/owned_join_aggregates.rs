@@ -135,6 +135,7 @@ fn bind(target_field: &str, node: NodeId) -> Binding {
 
 fn project(target: Vec<SchemaNode>, nodes: Vec<(NodeId, Node)>, root: Scope) -> Project {
     Project {
+        execution_contract: None,
         source: endpoint("Input"),
         target: SchemaNode::group("Output", target),
         source_path: None,

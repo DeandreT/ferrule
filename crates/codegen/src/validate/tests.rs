@@ -27,6 +27,7 @@ mod xml_serialize;
 
 fn program() -> Program {
     Program {
+        execution_contract: None,
         xml_boundary: None,
         source: SchemaNode::group(
             "Source",

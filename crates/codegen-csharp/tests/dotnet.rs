@@ -140,6 +140,7 @@ fn fixture() -> Program {
         panic!("target schema metadata is valid");
     };
     Program {
+        execution_contract: None,
         xml_boundary: None,
         source: SchemaNode::group(
             "source schema",

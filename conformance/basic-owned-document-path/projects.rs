@@ -214,6 +214,7 @@ pub fn project(model: &str) -> Project {
         _ => panic!("authored model"),
     };
     Project {
+        execution_contract: None,
         source: endpoint(),
         target,
         source_path: None,

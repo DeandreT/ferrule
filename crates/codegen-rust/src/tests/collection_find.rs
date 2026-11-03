@@ -20,6 +20,7 @@ fn collection_find_program(named: bool) -> Program {
         vec!["People".into()]
     };
     Program {
+        execution_contract: None,
         xml_boundary: None,
         source,
         extra_sources: named

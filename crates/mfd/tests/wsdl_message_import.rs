@@ -188,6 +188,7 @@ fn exported_wsdl_messages_retain_typed_sequences_and_case_sensitive_target_names
         vec![SchemaNode::scalar("Reason", ScalarType::String)],
     );
     let project = Project {
+        execution_contract: None,
         source: source.clone(),
         target: target.clone(),
         source_path: Some("request.xml".into()),

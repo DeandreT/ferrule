@@ -24,6 +24,7 @@ fn itemat_473_project(sequence: ::mapping::SequenceExpr, result: ScalarType) -> 
         ..Scope::default()
     };
     Project {
+        execution_contract: None,
         source: itemat_473_endpoint(),
         target: target.clone(),
         source_path: None,

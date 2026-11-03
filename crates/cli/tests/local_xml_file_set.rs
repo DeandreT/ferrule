@@ -55,6 +55,7 @@ fn runs_a_sorted_bounded_local_xml_file_set() -> Result<(), Box<dyn Error>> {
         "<Source><Item><Value>a</Value></Item></Source>",
     )?;
     let project = Project {
+        execution_contract: None,
         source: SchemaNode::group("Source", vec![source_row("Item")]),
         target: SchemaNode::group("Target", vec![target_row("Item")]),
         source_path: Some("records-*.xml".into()),

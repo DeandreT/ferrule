@@ -28,6 +28,7 @@ fn encoded(text: &str, width: u8, be: bool) -> Vec<u8> {
 #[test]
 fn complete_csv_documents_keep_decoding_explicit_in_both_backends() -> TestResult<()> {
     let project = Project {
+        execution_contract: None,
         source: SchemaNode::group("Input", vec![string("Value")]),
         target: SchemaNode::group("Output", vec![string("Value")]),
         source_path: None,

@@ -28,6 +28,7 @@ fn root(children: Vec<SchemaNode>) -> SchemaNode {
 
 fn project() -> Project {
     Project {
+        execution_contract: None,
         source: root(vec![]),
         target: root(vec![]),
         source_path: None,

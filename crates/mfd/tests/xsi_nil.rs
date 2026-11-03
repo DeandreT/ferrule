@@ -201,6 +201,7 @@ fn nested_nil_udf_project() -> Project {
         ),
     ]);
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Source",
             vec![

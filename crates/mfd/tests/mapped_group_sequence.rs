@@ -403,6 +403,7 @@ fn nested_source_group_project(copy_extra: bool) -> Project {
         });
     }
     Project {
+        execution_contract: None,
         source,
         target,
         source_path: Some("source.xml".into()),
@@ -637,6 +638,7 @@ fn nested_first_output_roundtrips_controls_and_compacted_position() {
         ],
     );
     let project = Project {
+        execution_contract: None,
         source,
         target,
         source_path: Some("source.xml".into()),
@@ -827,6 +829,7 @@ fn computed_text_mapping_uses_a_distinct_occurrence_port() {
         )],
     );
     let project = Project {
+        execution_contract: None,
         source,
         target,
         source_path: Some("source.xml".into()),
@@ -930,6 +933,7 @@ fn nested_mapped_sequence_resolves_an_outward_source_collection() {
         ],
     );
     let project = Project {
+        execution_contract: None,
         source,
         target,
         source_path: Some("source.xml".into()),

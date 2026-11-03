@@ -24,6 +24,7 @@ mod model;
 mod owned_admission;
 mod presets;
 mod primary_document_boundary;
+mod source_contract;
 mod static_document_boundary;
 mod validate;
 mod x12_boundary;

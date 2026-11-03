@@ -27,6 +27,7 @@ fn generated_object_item_nullability_builds_and_preserves_complete_values()
     let mut target = source.clone();
     target.name = "Target".into();
     let program = Program {
+        execution_contract: None,
         xml_boundary: None,
         source,
         target,

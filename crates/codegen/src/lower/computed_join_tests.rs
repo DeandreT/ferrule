@@ -69,6 +69,7 @@ fn project(root: Scope, aggregate: Option<JoinPlan>) -> Project {
         );
     }
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Source",
             vec![SchemaNode::group("Customer", vec![scalar("Number"), scalar("Name")]).repeating()],

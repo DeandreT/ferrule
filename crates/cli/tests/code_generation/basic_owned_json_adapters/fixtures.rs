@@ -43,6 +43,7 @@ pub(super) fn projects() -> Vec<Project> {
         .with_item_count_range(ir::ItemCountRange::new(0, Some(2)).unwrap())
         .unwrap();
     let project = Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Input",
             vec![

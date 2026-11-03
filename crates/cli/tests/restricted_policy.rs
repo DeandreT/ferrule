@@ -238,6 +238,7 @@ fn dynamic_project() -> Project {
         ],
     );
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Files",
             vec![SchemaNode::scalar("File", ScalarType::String).repeating()],
@@ -357,6 +358,7 @@ fn dynamic_source_paths_are_checked_for_every_driver_item() {
 /// Reads a local XML file set and writes one dynamic document per member.
 fn file_set_project() -> Project {
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Source",
             vec![SchemaNode::scalar("Value", ScalarType::String)],
@@ -518,6 +520,7 @@ fn copy_pipeline() -> Pipeline {
             id: "copy".into(),
             mapping_path: None,
             project: Project {
+                execution_contract: None,
                 source: schema.clone(),
                 target: schema,
                 source_path: None,

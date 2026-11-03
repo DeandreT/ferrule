@@ -63,6 +63,7 @@ fn document(name: &str, wildcard: SchemaNode) -> SchemaNode {
 
 fn project(source: SchemaNode, target: SchemaNode) -> Project {
     Project {
+        execution_contract: None,
         source,
         target,
         source_path: Some("source.xml".into()),

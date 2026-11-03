@@ -60,6 +60,7 @@ fn bind(node: u32) -> Scope {
 
 fn copy_project(id: &str) -> Project {
     Project {
+        execution_contract: None,
         source: record(),
         target: record(),
         source_path: None,

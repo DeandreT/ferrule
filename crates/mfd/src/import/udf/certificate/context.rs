@@ -20,6 +20,7 @@ struct Receiver {
 pub(in crate::import) struct ContextSeal {
     receivers: Vec<Receiver>,
     budget: Option<ConstructionBudget>,
+    functions: Option<[u8; 32]>,
 }
 
 fn copy_path(path: &[String], budget: &ConstructionBudget) -> Result<Vec<String>, String> {
@@ -236,6 +237,7 @@ pub(super) fn build<'a>(
     let mut seal = ContextSeal {
         receivers: Vec::new(),
         budget: Some(budget.clone()),
+        functions: None,
     };
     for call in calls {
         let Some(closure) = &call.certificate else {
@@ -253,6 +255,56 @@ pub(super) fn build<'a>(
 }
 
 impl ContextSeal {
+    pub(in crate::import) fn enabled(&self) -> bool {
+        self.budget.is_some()
+    }
+
+    pub(in crate::import) fn seal_functions(
+        &mut self,
+        functions: &BTreeMap<mapping::FunctionId, mapping::UserFunction>,
+    ) -> Result<(), String> {
+        if let Some(budget) = &self.budget {
+            // Refuse context-bearing bodies before serialization can traverse
+            // their nested plans. Ordinary scalar body errors remain lazy.
+            for function in functions.values() {
+                budget.claim(function.body.nodes.len(), 0, 0)?;
+                for node in function.body.nodes.values() {
+                    if !matches!(
+                        node,
+                        mapping::Node::Const { .. }
+                            | mapping::Node::Unconnected
+                            | mapping::Node::FunctionParameter { .. }
+                            | mapping::Node::Call { .. }
+                            | mapping::Node::UserFunctionCall { .. }
+                            | mapping::Node::If { .. }
+                            | mapping::Node::Raise { .. }
+                            | mapping::Node::ValueMap { .. }
+                    ) {
+                        return Err(
+                            "declared-library safety guard refuses context-bearing isolated bodies"
+                                .into(),
+                        );
+                    }
+                }
+            }
+            self.functions = Some(super::super::materialized::fingerprint_functions(
+                functions, budget,
+            )?);
+        }
+        Ok(())
+    }
+
+    pub(in crate::import) fn audit_functions(
+        &self,
+        functions: &BTreeMap<mapping::FunctionId, mapping::UserFunction>,
+    ) -> Result<(), String> {
+        if let (Some(expected), Some(budget)) = (&self.functions, &self.budget)
+            && expected != &super::super::materialized::fingerprint_functions(functions, budget)?
+        {
+            return Err("declared-library final isolated function identity/body/interface differs from its seal".into());
+        }
+        Ok(())
+    }
     pub(in crate::import) fn audit_target_count(
         &self,
         expected: usize,
@@ -390,6 +442,7 @@ mod tests {
                 ],
             }],
             budget: Some(ConstructionBudget::default()),
+            functions: None,
         };
         seal.audit(&target, &root, &graph, &calls).unwrap();
         for change in 0..5 {

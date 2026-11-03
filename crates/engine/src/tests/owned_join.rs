@@ -55,6 +55,7 @@ fn plan(right: OwnedSourceRef, right_path: &str) -> OwnedJoinPlan {
 
 fn project(plan: OwnedJoinPlan) -> Project {
     Project {
+        execution_contract: None,
         source: rows_schema(),
         target: SchemaNode::group("Output", vec![SchemaNode::group("Row", vec![]).repeating()]),
         source_path: None,

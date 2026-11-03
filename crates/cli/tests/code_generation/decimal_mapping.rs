@@ -5,6 +5,7 @@ fn project() -> Project {
     let mut amount = string("Amount");
     amount.nullable = true;
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Source",
             vec![SchemaNode::group("Rows", vec![amount]).repeating()],

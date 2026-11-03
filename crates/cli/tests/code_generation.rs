@@ -401,6 +401,7 @@ fn bool_(name: &str) -> SchemaNode {
 
 fn project() -> Project {
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Source",
             vec![
@@ -662,6 +663,7 @@ fn nested_iteration_project() -> Project {
         SchemaNode::group("Orders", vec![string("OrderId"), target_line]).repeating();
 
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Source",
             vec![

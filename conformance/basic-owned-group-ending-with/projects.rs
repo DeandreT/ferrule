@@ -188,6 +188,7 @@ pub fn base() -> Project {
     }
     nodes.insert(600, Node::Position { collection: vec![] });
     let mut p = Project {
+        execution_contract: None,
         source: endpoint(),
         target: SchemaNode::group("Output", vec![groups_schema()]),
         source_path: None,

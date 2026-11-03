@@ -277,6 +277,7 @@ impl Model {
             vec![]
         };
         Project {
+            execution_contract: None,
             source: self.source,
             target: self.target,
             source_path: None,

@@ -457,6 +457,7 @@ fn json_options() -> FormatOptions {
 /// One stage with two host inputs; hosts are acquired in name order.
 fn two_host_pipeline() -> Pipeline {
     let mut project = Project {
+        execution_contract: None,
         source: record_schema("Record"),
         target: record_schema("Record"),
         source_path: None,

@@ -31,6 +31,7 @@ fn project(primary_path: &str, named_path: &str) -> Project {
         vec![SchemaNode::scalar("Value", ScalarType::String)],
     );
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Input", Vec::new()),
         target: target.clone(),
         source_path: None,

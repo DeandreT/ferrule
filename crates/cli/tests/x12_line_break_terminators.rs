@@ -70,6 +70,7 @@ fn project(segment_terminator: char) -> Project {
         ..FormatOptions::default()
     };
     Project {
+        execution_contract: None,
         source: schema.clone(),
         target: schema,
         source_path: Some("input.x12".into()),

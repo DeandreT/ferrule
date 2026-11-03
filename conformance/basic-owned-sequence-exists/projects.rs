@@ -168,6 +168,7 @@ pub fn exists(p: &mut Project, id: u32, sequence: SequenceExpr, predicate: u32) 
 /// exact Unicode 200 and the never-supplied static declaration 300.
 pub fn base() -> Project {
     let mut p = Project {
+        execution_contract: None,
         source: endpoint(),
         target: output(vec![boolean("Found")]),
         source_path: None,

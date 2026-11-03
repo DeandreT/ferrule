@@ -104,6 +104,7 @@ fn scalar_project(lookup: bool) -> Project {
         ..Scope::default()
     };
     Project {
+        execution_contract: None,
         source: value_schema("Input"),
         target: value_schema("Output"),
         source_path: Some("input.json".into()),

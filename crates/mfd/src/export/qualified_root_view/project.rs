@@ -150,6 +150,7 @@ pub(super) fn project(
         None => FormatOptions::default(),
     };
     let project = Project {
+        execution_contract: None,
         source: plan.source.schema.clone(),
         target: plan.target.schema.clone(),
         source_path: Some(plan.source.instance_path.clone()),

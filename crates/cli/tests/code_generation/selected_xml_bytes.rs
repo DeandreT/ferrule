@@ -42,6 +42,7 @@ fn project(bad: &str) -> Project {
         .xml_qualified("urn:orders")
         .unwrap();
     let mut result = Project {
+        execution_contract: None,
         source,
         target,
         source_path: None,

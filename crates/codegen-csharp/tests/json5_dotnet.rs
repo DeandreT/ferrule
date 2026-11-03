@@ -50,6 +50,7 @@ fn identity(profile: &str) -> Program {
         })
         .collect();
     Program {
+        execution_contract: None,
         xml_boundary: None,
         source: SchemaNode::group("Input", fields.clone()),
         extra_sources: vec![],

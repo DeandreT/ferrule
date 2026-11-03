@@ -94,6 +94,7 @@ fn project(root: Option<(u32, Value)>) -> Project {
             .collect::<BTreeMap<_, _>>(),
     };
     Project {
+        execution_contract: None,
         source: source_schema(),
         target: target_schema(),
         source_path: None,

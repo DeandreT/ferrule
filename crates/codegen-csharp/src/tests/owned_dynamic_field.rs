@@ -22,6 +22,7 @@ fn owned_read_program() -> codegen::Program {
         })
     };
     let project = mapping::Project {
+        execution_contract: None,
         source: endpoint("Input"),
         target: ir::SchemaNode::group(
             "Output",

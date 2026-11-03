@@ -66,6 +66,7 @@ fn aggregate_project() -> Project {
     };
 
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Source", vec![office, order]),
         target: SchemaNode::group("Target", vec![string("AllContacts"), order_out]),
         source_path: None,

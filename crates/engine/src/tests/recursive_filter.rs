@@ -104,6 +104,7 @@ fn project() -> Project {
         ]),
     };
     Project {
+        execution_contract: None,
         source: schema.clone(),
         target: schema,
         source_path: None,

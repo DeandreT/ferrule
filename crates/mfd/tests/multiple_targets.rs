@@ -100,6 +100,7 @@ fn two_target_project() -> Project {
         node: 0,
     };
     Project {
+        execution_contract: None,
         source: scalar_target("Source"),
         target: scalar_target("Primary"),
         source_path: Some("source.xml".into()),

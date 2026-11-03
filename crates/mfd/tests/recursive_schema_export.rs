@@ -135,6 +135,7 @@ fn project() -> Project {
         ..Scope::default()
     };
     Project {
+        execution_contract: None,
         source,
         target,
         source_path: Some("page.xml".into()),

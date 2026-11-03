@@ -164,6 +164,7 @@ fn identity(model: &SchemaNode) -> TestResult<Option<Project>> {
         );
     }
     Ok(Some(Project {
+        execution_contract: None,
         source: model.clone(),
         target: model.clone(),
         source_path: None,

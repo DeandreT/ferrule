@@ -39,6 +39,7 @@ fn project() -> Project {
     .unwrap()
     .with_repair_dependency(PdfRepairDependency::ObjectFind);
     Project {
+        execution_contract: None,
         source: layout.schema(),
         target: layout.schema(),
         source_path: Some("missing.pdf".into()),

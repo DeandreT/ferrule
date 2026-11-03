@@ -6,6 +6,7 @@ use mapping::{
 
 fn project(filename: Node) -> Project {
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Input", vec![]),
         target: SchemaNode::group(
             "Output",

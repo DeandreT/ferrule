@@ -580,6 +580,7 @@ fn scalar_function_project() -> Project {
     );
 
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Source", vec![bool_("FailType")]),
         target: SchemaNode::group("Target", target),
         source_path: None,

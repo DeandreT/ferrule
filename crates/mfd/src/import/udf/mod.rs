@@ -1298,6 +1298,7 @@ impl GraphBuilder<'_> {
         }
         let call = self.udf_calls.get(call_idx)?;
         let external = self.udf_registry.definition(call.definition)?.is_external();
+        let certified = call.certificate.is_some();
         let input_ports: Vec<_> = call
             .inputs
             .iter()
@@ -1341,6 +1342,14 @@ impl GraphBuilder<'_> {
                 args,
             });
             self.udf_nodes.insert(output_key, node);
+            if certified
+                && self
+                    .udf_registry
+                    .seal_materialized_call(&mut self.materialized_arguments, &self.graph, node)
+                    .is_err()
+            {
+                return None;
+            }
             return Some(node);
         }
         if external {

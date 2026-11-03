@@ -68,6 +68,20 @@ fn imported(fixture: &Fixture) -> mfd::Imported {
     })
 }
 
+fn assert_guarded_control(actual: &mapping::Project, control: &mapping::Project) {
+    assert_eq!(
+        actual.execution_contract,
+        Some(mapping::ExecutionContract::ClosedPrimarySourceV1)
+    );
+    assert_eq!(control.execution_contract, None);
+    let mut guarded = serde_json::to_value(actual).unwrap();
+    guarded
+        .as_object_mut()
+        .unwrap()
+        .remove("execution_contract");
+    assert_eq!(guarded, serde_json::to_value(control).unwrap());
+}
+
 fn refused(fixture: &Fixture, message: &str) {
     let actual = imported(fixture);
     assert!(
@@ -147,10 +161,7 @@ fn typed_input_and_output_adapters_keep_exact_values_and_error_categories() {
             let control = mfd::import(&fixture.0.join("embedded.mfd")).unwrap();
             assert!(actual.warnings.is_empty(), "{:?}", actual.warnings);
             assert!(control.warnings.is_empty(), "{:?}", control.warnings);
-            assert_eq!(
-                serde_json::to_value(&actual.project).unwrap(),
-                serde_json::to_value(&control.project).unwrap()
-            );
+            assert_guarded_control(&actual.project, &control.project);
             for (text, expected) in &values {
                 let input = format_xml::from_str(
                     &format!("<Input><Text>{text}</Text></Input>"),
@@ -376,10 +387,7 @@ fn declared_identity_matches_embedded_control_without_name_substitution() {
     assert!(control.warnings.is_empty(), "{:?}", control.warnings);
     let actual = mfd::import(&fixture.0.join("mapping.mfd")).unwrap();
     assert!(actual.warnings.is_empty(), "{:?}", actual.warnings);
-    assert_eq!(
-        serde_json::to_value(&actual.project).unwrap(),
-        serde_json::to_value(&control.project).unwrap()
-    );
+    assert_guarded_control(&actual.project, &control.project);
     let input = format_xml::from_str(
         "<Input><Text>unchanged</Text></Input>",
         &actual.project.source,

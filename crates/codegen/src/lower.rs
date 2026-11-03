@@ -227,6 +227,7 @@ fn lower_with_xml_request(
         return Err(LowerError::new(diagnostics));
     }
     let mut program = Program {
+        execution_contract: project.execution_contract,
         xml_boundary: xml_request.boundary(project),
         source: project.source.clone(),
         extra_sources,
@@ -1359,6 +1360,7 @@ mod structured_xml_admission_tests {
 
     fn project() -> Project {
         Project {
+            execution_contract: None,
             source: SchemaNode::group(
                 "Source",
                 vec![SchemaNode::scalar("Value", ScalarType::String)],

@@ -78,6 +78,7 @@ fn expected(nested: bool) -> Project {
         };
     }
     Project {
+        execution_contract: None,
         source,
         target,
         source_path: Some("source.json".into()),

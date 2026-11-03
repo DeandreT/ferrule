@@ -27,6 +27,7 @@ fn fixture() -> Program {
         ],
     );
     Program {
+        execution_contract: None,
         xml_boundary: None,
         source: SchemaNode::group("Source", vec![content]),
         extra_sources: Vec::new(),
@@ -168,6 +169,7 @@ fn main() {
 
 fn target_fixture() -> Program {
     Program {
+        execution_contract: None,
         xml_boundary: None,
         source: SchemaNode::group(
             "Source",

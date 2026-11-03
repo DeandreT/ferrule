@@ -55,6 +55,15 @@ pub struct RuntimeParameters {
 }
 
 impl RuntimeParameters {
+    /// Counts bindings without reading or exposing any names or scalar values.
+    pub fn len(&self) -> usize {
+        self.values.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.values.is_empty()
+    }
+
     pub fn new() -> Self {
         Self::default()
     }
@@ -122,6 +131,10 @@ pub struct ExecutionContext<'a> {
 }
 
 impl<'a> ExecutionContext<'a> {
+    pub fn runtime_parameter_count(self) -> usize {
+        self.parameters.map_or(0, RuntimeParameters::len)
+    }
+
     /// Uses one path for both the active and top-level mapping.
     pub fn new(mapping_file_path: &'a Path) -> Self {
         Self {

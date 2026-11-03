@@ -28,6 +28,7 @@ impl Drop for Directory {
 }
 fn project(ty: ScalarType, value: Value) -> Project {
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Input", vec![SchemaNode::scalar("Value", ty)]),
         target: SchemaNode::group("Output", vec![SchemaNode::scalar("Value", ty)]),
         source_path: Some("input.xml".into()),

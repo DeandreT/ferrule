@@ -24,6 +24,7 @@ pub(crate) fn project(fixture: &str) -> Project {
     let mut leaf = SchemaNode::scalar(name, ty);
     leaf.nullable = fixture == "N";
     let mut candidate = Project {
+        execution_contract: None,
         source: SchemaNode::group("Input", vec![leaf.clone()]),
         target: SchemaNode::group("Output", vec![leaf]),
         source_path: None,

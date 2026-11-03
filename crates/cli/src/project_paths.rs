@@ -714,6 +714,7 @@ mod tests {
     fn rebases_every_static_project_boundary_but_not_dynamic_sources() {
         let schema = SchemaNode::group("root", Vec::new());
         let mut project = Project {
+            execution_contract: None,
             source: schema.clone(),
             target: schema.clone(),
             source_path: Some("../data/input.json".into()),

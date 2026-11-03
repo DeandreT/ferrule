@@ -79,6 +79,7 @@ fn project() -> Project {
     let row =
         SchemaNode::group("Row", vec![SchemaNode::scalar("Value", ScalarType::String)]).repeating();
     Project {
+        execution_contract: None,
         source,
         target: SchemaNode::group("Output", vec![row]),
         source_path: Some("files.xml".into()),

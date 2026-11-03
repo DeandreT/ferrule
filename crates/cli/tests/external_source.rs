@@ -51,6 +51,7 @@ fn project() -> Result<Project, Box<dyn Error>> {
         ..mapping::FormatOptions::default()
     };
     Ok(Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "response",
             vec![SchemaNode::scalar("answer", ScalarType::String)],

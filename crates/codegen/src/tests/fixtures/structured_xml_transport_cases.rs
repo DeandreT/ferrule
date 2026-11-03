@@ -17,6 +17,7 @@ pub(super) fn source_at_depth(depth: usize) -> SchemaNode {
 
 pub(super) fn project_with_source(source: SchemaNode) -> Project {
     Project {
+        execution_contract: None,
         source,
         target: SchemaNode::group(
             "Target",

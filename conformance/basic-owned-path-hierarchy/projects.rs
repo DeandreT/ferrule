@@ -115,6 +115,7 @@ fn target(name: &str, schema: SchemaNode, root: Scope) -> NamedTarget {
 
 pub fn base(target: SchemaNode, root: Scope) -> Project {
     Project {
+        execution_contract: None,
         source: input_schema(),
         target,
         source_path: None,

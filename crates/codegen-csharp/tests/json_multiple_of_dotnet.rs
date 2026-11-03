@@ -55,6 +55,7 @@ fn emitted_package_enforces_exact_source_and_normalized_target_multiples()
         )?);
     }
     let program = Program {
+        execution_contract: None,
         xml_boundary: None,
         source: SchemaNode::group("Source", source_fields),
         extra_sources: Vec::new(),

@@ -344,6 +344,7 @@ impl Cohort {
 
     fn project(self) -> TestResult<Project> {
         Ok(Project {
+            execution_contract: None,
             source: source_schema()?,
             target: SchemaNode::group("Cohort", self.groups),
             source_path: None,

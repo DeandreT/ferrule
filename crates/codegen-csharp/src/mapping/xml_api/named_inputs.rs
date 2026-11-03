@@ -102,11 +102,24 @@ pub(super) fn render(
             } else {
                 ""
             };
+            let guard = if program.execution_contract.is_some() {
+                let execution = if context { "executionContext" } else { "null" };
+                format!(
+                    "        global::System.ArgumentNullException.ThrowIfNull(extraSources);\n        ValidateClosedSourceBindings(extraSources, extraSources.Count, {execution});\n"
+                )
+            } else {
+                String::new()
+            };
+            let parse_sources = if program.execution_contract.is_some() {
+                format!("global::System.Array.Empty<{input}>()")
+            } else {
+                "extraSources".into()
+            };
             output.push_str(&format!(r#"
     public static {result} {stem}OutputsWithSources({ty} source,
         global::System.Collections.Generic.IReadOnlyList<{input}> extraSources{context_arg})
     {{
-{require_context}        var parsed = {parse_helper}(source, extraSources);
+{require_context}{guard}        var parsed = {parse_helper}(source, {parse_sources});
         ExecutionOutputs mapped;
         try {{ mapped = ExecuteOutputsWithSources(parsed.Primary, parsed.Inputs{context_call}); }}
         catch (global::Ferrule.Runtime.FerruleRuntimeException error)

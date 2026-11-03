@@ -89,6 +89,7 @@ fn join_program() -> Program {
     };
 
     Program {
+        execution_contract: None,
         xml_boundary: None,
         source: SchemaNode::group(
             "Source",

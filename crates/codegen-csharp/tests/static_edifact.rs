@@ -75,6 +75,7 @@ fn project(grouped: bool) -> Project {
         ..Default::default()
     };
     Project {
+        execution_contract: None,
         source: schema.clone(),
         target: schema.clone(),
         source_path: None,

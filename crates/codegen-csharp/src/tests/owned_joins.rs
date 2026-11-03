@@ -114,6 +114,7 @@ fn owned_join_project() -> mapping::Project {
         node,
     };
     mapping::Project {
+        execution_contract: None,
         source: source.clone(),
         target: ir::SchemaNode::group(
             "Output",

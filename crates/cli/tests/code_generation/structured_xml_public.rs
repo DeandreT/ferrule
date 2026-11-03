@@ -64,6 +64,7 @@ fn mapping() -> Project {
     let mut text = float("#text");
     text.text = true;
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "OrderBatch",
             vec![

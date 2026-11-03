@@ -50,6 +50,7 @@ fn regex_project() -> Project {
         },
     );
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Source",
             vec![

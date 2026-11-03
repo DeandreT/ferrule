@@ -27,6 +27,7 @@ fn project() -> Project {
         || SchemaNode::group("Input", vec![SchemaNode::group("Rows", vec![]).repeating()]);
     let s = |name| SchemaNode::scalar(name, ScalarType::String);
     Project {
+        execution_contract: None,
         source: endpoint(),
         target: SchemaNode::group(
             "Output",

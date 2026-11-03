@@ -23,6 +23,7 @@ fn schema(default: &str) -> SchemaNode {
 }
 fn project(target: SchemaNode) -> Project {
     Project {
+        execution_contract: None,
         source: schema("A"),
         target,
         source_path: None,

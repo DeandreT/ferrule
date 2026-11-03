@@ -29,6 +29,7 @@ impl Drop for TempDir {
 
 fn constant_project(value: String) -> Project {
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Input",
             vec![SchemaNode::scalar("Value", ScalarType::String)],

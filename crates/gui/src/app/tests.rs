@@ -4568,6 +4568,7 @@ fn build_snarl_recreates_endpoint_and_binding_wires() {
         },
     );
     let project = Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "row",
             vec![
@@ -4676,6 +4677,7 @@ fn build_snarl_matches_hidden_source_fields_by_frame_and_path() {
         },
     );
     let project = Project {
+        execution_contract: None,
         source,
         target,
         source_path: None,
@@ -4731,6 +4733,7 @@ fn build_snarl_only_hides_legacy_frameless_fields_with_unique_suffixes() {
             },
         );
         Project {
+            execution_contract: None,
             source,
             target,
             source_path: None,

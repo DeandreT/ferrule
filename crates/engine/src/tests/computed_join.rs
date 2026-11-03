@@ -233,6 +233,7 @@ fn root_scope(context: Context, plan: JoinPlan) -> Scope {
 
 fn fixture_project(graph: Graph, root: Scope) -> Project {
     Project {
+        execution_contract: None,
         source: source_schema(),
         target: target_schema(),
         source_path: None,

@@ -56,6 +56,7 @@ fn schema() -> SchemaNode {
 
 fn project(owner: SourceOwner) -> mapping::Project {
     mapping::Project {
+        execution_contract: None,
         source: schema(),
         target: SchemaNode::group(
             "Output",

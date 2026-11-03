@@ -168,15 +168,22 @@ fn parameter_catalog_and_nonpromoted_local_ids_stay_local() {
 }
 
 #[test]
-fn unrelated_promoted_collisions_do_not_create_a_global_gate() {
+fn unrelated_promoted_collisions_keep_ordinary_behavior_but_guarded_projects_refuse_extras() {
     let fixture = Fixture::new();
     fixture.write("catalog.xsd", CATALOG_SCHEMA);
     let main = constant_main(false, "unused").replace(
         "<vertex vertexkey=\"10\"><edges><edge vertexkey=\"20\"/></edges></vertex>",
         "<vertex vertexkey=\"12\"><edges><edge vertexkey=\"20\"/></edges></vertex>",
     );
-    fixture.write("mapping.mfd", &with_definition(&main, &lookup(10)));
+    let declared = with_definition(&main, &lookup(10));
+    fixture.write("mapping.mfd", &declared);
+    assert!(matches!(mfd::import(&fixture.0.join("mapping.mfd")),
+        Err(mfd::MfdError::UnsupportedImport(message)) if message.contains("safety guard") && message.contains("UnsupportedModel")));
+    // This is a whole guarded-profile refusal, not a new global collision
+    // census. The same ordinary embedded/lookup design retains its behavior.
+    fixture.write("mapping.mfd", &embedded(&declared, IDENTITY));
     let actual = imported(&fixture);
+    assert_eq!(actual.project.execution_contract, None);
     assert!(actual.warnings.is_empty(), "{:?}", actual.warnings);
     let input = format_xml::from_str(
         "<Input><Text>independent</Text></Input>",

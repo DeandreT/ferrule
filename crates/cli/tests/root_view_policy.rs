@@ -61,6 +61,7 @@ fn options() -> FormatOptions {
 }
 fn project() -> Project {
     Project {
+        execution_contract: None,
         source: schema(),
         target: SchemaNode::group(
             "Result",

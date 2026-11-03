@@ -61,6 +61,7 @@ fn optional(mut schema: SchemaNode) -> SchemaNode {
 
 fn project(message: Option<u32>) -> Project {
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Input",
             vec![

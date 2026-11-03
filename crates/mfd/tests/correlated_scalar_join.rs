@@ -277,6 +277,7 @@ fn three_project() -> Result<Project, mapping::JoinPlanError> {
     let mut customer_number = SchemaNode::scalar("CustomerNumber", ScalarType::String).nillable();
     assert!(customer_number.set_xml_optional(true));
     Ok(Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Orders",
             vec![

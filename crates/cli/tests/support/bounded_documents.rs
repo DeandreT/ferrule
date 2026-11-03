@@ -91,6 +91,7 @@ pub fn project(
     rows: bool,
 ) -> Project {
     Project {
+        execution_contract: None,
         source: schema(),
         target: schema(),
         // Both saved and host paths intentionally name different codecs.

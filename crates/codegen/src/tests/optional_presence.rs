@@ -17,6 +17,7 @@ fn project() -> Project {
         frame: Some(vec!["Rows".into()]),
     };
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Source", vec![row]),
         target: SchemaNode::group(
             "Target",

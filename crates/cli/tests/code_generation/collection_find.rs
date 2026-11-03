@@ -18,6 +18,7 @@ fn collection_find_project() -> Project {
     let catalog_item = SchemaNode::group("Items", vec![string("Key"), string("Label")]).repeating();
 
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Source",
             vec![
