@@ -23,7 +23,9 @@ impl TempDir {
 }
 impl Drop for TempDir {
     fn drop(&mut self) {
-        if std::thread::panicking() {
+        if std::thread::panicking()
+            || std::env::var_os("FERRULE_CODEGEN_KEEP_ARTIFACTS").is_some_and(|value| value == "1")
+        {
             eprintln!("retained lookup fixture: {}", self.0.display());
             return;
         }
@@ -798,16 +800,59 @@ fn generated_hosts(profile: &str) {
     .unwrap();
     std::fs::copy(hosts.join("rust_host.rs"), rust.join("host.rs")).unwrap();
     let sdk_version = host_commands::prepare_csharp_host(&dir.0, &hosts, &shared);
-    checked(&mut host_commands::rust_command(&dir.0, &fixtures));
+    checked(
+        &dir.0,
+        "rust-release",
+        &mut host_commands::rust_command(&dir.0, &fixtures),
+    );
     let executable = std::env::var_os("FERRULE_DOTNET_EXE").unwrap_or_else(|| "dotnet".into());
     let (mut sdk, mut host) = host_commands::csharp_commands(&dir.0, &fixtures, &executable);
-    let output = checked(&mut sdk);
+    let output = checked(&dir.0, "csharp-sdk", &mut sdk);
     host_commands::check_sdk_version(&output.stdout, &sdk_version)
         .unwrap_or_else(|message| panic!("{message}"));
-    checked(&mut host);
+    checked(&dir.0, "csharp-release", &mut host);
 }
-fn checked(command: &mut std::process::Command) -> std::process::Output {
+fn checked(root: &Path, label: &str, command: &mut std::process::Command) -> std::process::Output {
+    #[cfg(unix)]
+    let free_bytes = {
+        let space = rustix::fs::statvfs(root).unwrap();
+        Some(space.f_bavail.saturating_mul(space.f_frsize))
+    };
+    #[cfg(not(unix))]
+    let free_bytes: Option<u64> = None;
+    std::fs::write(
+        root.join(format!("{label}-command.json")),
+        serde_json::to_vec_pretty(&serde_json::json!({
+            "command": command.get_program().to_string_lossy(),
+            "arguments": command.get_args().map(|arg| arg.to_string_lossy().into_owned()).collect::<Vec<_>>(),
+            "cwd": command.get_current_dir(),
+            "environment": command.get_envs().filter(|(name, _)| matches!(name.to_str(), Some(
+                "DOTNET_CLI_HOME" | "DOTNET_ADD_GLOBAL_TOOLS_TO_PATH" | "DOTNET_NOLOGO"
+                | "DOTNET_SKIP_FIRST_TIME_EXPERIENCE" | "DOTNET_CLI_USE_MSBUILD_SERVER"
+                | "MSBUILDDISABLENODEREUSE" | "RUSTFLAGS"
+            ))).map(|(name, value)| (name.to_string_lossy(), value.map(|value| value.to_string_lossy()))).collect::<std::collections::BTreeMap<_, _>>(),
+            "free_bytes_before": free_bytes,
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    if let Some(free) = free_bytes {
+        assert!(
+            free >= 45 * 1024 * 1024 * 1024,
+            "generated host requires 45 GiB free; available: {free}"
+        );
+    }
     let output = command.output().unwrap();
+    std::fs::write(root.join(format!("{label}.stdout")), &output.stdout).unwrap();
+    std::fs::write(root.join(format!("{label}.stderr")), &output.stderr).unwrap();
+    std::fs::write(
+        root.join(format!("{label}-status.json")),
+        serde_json::to_vec(&serde_json::json!({
+            "success": output.status.success(), "exit_code": output.status.code()
+        }))
+        .unwrap(),
+    )
+    .unwrap();
     println!(
         "{command:?}\nstatus: {}\n{}\n{}",
         output.status,
