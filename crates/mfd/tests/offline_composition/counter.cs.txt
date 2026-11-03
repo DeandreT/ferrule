@@ -1,0 +1,31 @@
+using System.Text.Json.Nodes;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+var cases = JsonNode.Parse(File.ReadAllText(args[0]))!.AsArray();
+var source = File.ReadAllText(args[1]);
+var target = File.ReadAllText(args[2]);
+var audit = File.ReadAllText(Path.Combine(Path.GetDirectoryName(args[2])!, "audit-schema.json"));
+var context = new FerruleExecutionContext("native-counter.ferrule")
+    .WithInvocationCounterLimits(new FerruleInvocationCounterLimits(1, 16));
+foreach (var index in new[] { 0, 0, 1, 0, 1 })
+{
+    var test = cases[index]!;
+    var input = FerruleJson.ParseEmbedded(source, test["input"]!.ToJsonString());
+    var outputs = GeneratedMapping.ExecuteOutputs(input, context);
+    Console.WriteLine(test["name"] + "|primary|" + FerruleJson.SerializeEmbedded(target, outputs.Primary));
+    foreach (var named in outputs.Extras) Console.WriteLine(test["name"] + "|" + named.Name + "|" + FerruleJson.SerializeEmbedded(audit, named.Instance));
+    Oracle.Equal(outputs.Primary, Oracle.Literal(test["primary"]));
+    Oracle.Json(FerruleJson.SerializeEmbedded(target, outputs.Primary), test["primary"]!);
+    if (outputs.Extras.Count != 1 || outputs.Extras[0].Name != "audit") throw new Exception("Whole named target set differs");
+    Oracle.Equal(outputs.Extras[0].Instance, Oracle.Literal(test["audit"]));
+    Oracle.Json(FerruleJson.SerializeEmbedded(audit, outputs.Extras[0].Instance), test["audit"]!);
+    try {
+        _ = GeneratedMapping.ExecuteOutputs(input, new FerruleExecutionContext("native-counter.ferrule"));
+        throw new Exception("Expected missing counter configuration");
+    } catch (FerruleRuntimeException error) {
+        Console.WriteLine(test["name"] + "|" + error.Error + "|" + error.Node);
+        if (error.Error != FerruleRuntimeError.MissingInvocationCounters || error.Node != 1) throw;
+    }
+}
+Console.WriteLine("PASS native Ferrule grouped counter contracts (not MFD auto-number)");

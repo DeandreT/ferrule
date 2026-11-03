@@ -1,0 +1,43 @@
+using System.Text.Json.Nodes;
+using Ferrule.Runtime;
+
+static class Oracle
+{
+    public static FerruleInstance Literal(JsonNode? value) => value switch
+    {
+        JsonObject fields => new FerruleGroup(fields.Select(field => new FerruleField(field.Key, Literal(field.Value)))),
+        JsonArray items => new FerruleRepeated(items.Select(Literal)),
+        JsonValue scalar when scalar.TryGetValue<string>(out var text) => new FerruleScalar(FerruleValue.FromString(text)),
+        JsonValue scalar when scalar.TryGetValue<bool>(out var boolean) => new FerruleScalar(FerruleValue.FromBoolean(boolean)),
+        JsonValue scalar when scalar.TryGetValue<long>(out var integer) => new FerruleScalar(FerruleValue.FromInt64(integer)),
+        null => new FerruleScalar(FerruleValue.JsonNull),
+        _ => throw new Exception("Outside finite catalog scalar types")
+    };
+
+    public static void Equal(FerruleInstance actual, FerruleInstance expected)
+    {
+        switch (actual, expected)
+        {
+            case (FerruleScalar a, FerruleScalar b):
+                if (a.Value.Kind != b.Value.Kind || !a.Value.Equals(b.Value)) throw new Exception("Typed scalar differs");
+                break;
+            case (FerruleGroup a, FerruleGroup b):
+                if (a.Fields.Count != b.Fields.Count) throw new Exception("Whole field set differs");
+                for (int i = 0; i < a.Fields.Count; i++) {
+                    if (a.Fields[i].Name != b.Fields[i].Name) throw new Exception("Field order differs");
+                    Equal(a.Fields[i].Value, b.Fields[i].Value);
+                }
+                break;
+            case (FerruleRepeated a, FerruleRepeated b):
+                if (a.Items.Count != b.Items.Count) throw new Exception("Whole sequence differs");
+                for (int i = 0; i < a.Items.Count; i++) Equal(a.Items[i], b.Items[i]);
+                break;
+            default: throw new Exception("Typed shape differs");
+        }
+    }
+
+    public static void Json(string actual, JsonNode expected)
+    {
+        if (!JsonNode.DeepEquals(JsonNode.Parse(actual), expected)) throw new Exception("Complete JSON differs: " + actual);
+    }
+}
