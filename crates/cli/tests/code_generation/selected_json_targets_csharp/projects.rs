@@ -11,6 +11,7 @@ pub fn all() -> Vec<(&'static str, Project)> {
         (
             "unicode-and-lazy-raise-root-rows",
             Project {
+                execution_contract: None,
                 source: SchemaNode::group(
                     "Input",
                     vec![SchemaNode::scalar("message", ScalarType::String)],
@@ -223,6 +224,7 @@ pub fn all() -> Vec<(&'static str, Project)> {
         (
             "complete-static-admission-and-supplied-parse-order",
             Project {
+                execution_contract: None,
                 source: SchemaNode::group(
                     "Input",
                     vec![SchemaNode::scalar("message", ScalarType::String)],
@@ -348,6 +350,7 @@ pub fn all() -> Vec<(&'static str, Project)> {
         (
             "dynamic-selected-host-loader",
             Project {
+                execution_contract: None,
                 source: SchemaNode::group(
                     "Input",
                     vec![SchemaNode::scalar("Files", ScalarType::String).repeating()],
@@ -612,6 +615,7 @@ pub fn all() -> Vec<(&'static str, Project)> {
         (
             "global-failure-order",
             Project {
+                execution_contract: None,
                 source: SchemaNode::group("Input", vec![]),
                 target: SchemaNode::group(
                     "Primary",
@@ -722,6 +726,7 @@ pub fn all() -> Vec<(&'static str, Project)> {
         (
             "runtime-parameter-and-output-byte-limit",
             Project {
+                execution_contract: None,
                 source: SchemaNode::group("Input", vec![]),
                 target: SchemaNode::scalar("PrimaryText", ScalarType::String),
                 source_path: None,
@@ -892,6 +897,7 @@ pub fn all() -> Vec<(&'static str, Project)> {
         (
             "selected-shared-filter-map-controls",
             Project {
+                execution_contract: None,
                 source: SchemaNode::group("Input", vec![]),
                 target: SchemaNode::group(
                     "Primary",
@@ -1164,6 +1170,7 @@ pub fn all() -> Vec<(&'static str, Project)> {
         (
             "selected-output-schema-only",
             Project {
+                execution_contract: None,
                 source: SchemaNode::group("Input", vec![]),
                 target: SchemaNode::group(
                     "Primary",

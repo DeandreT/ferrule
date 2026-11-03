@@ -61,6 +61,7 @@ fn target_schema(scope: &TargetScope, name: &str) -> SchemaNode {
 }
 fn input(expressions: Vec<crate::ExpressionNode>, root: TargetScope) -> crate::Program {
     crate::Program {
+        execution_contract: None,
         xml_boundary: None,
         source: schema("Primary"),
         extra_sources: [

@@ -366,6 +366,7 @@ fn materialize(case: &Json) -> (Project, String) {
         )
     };
     let mut project = Project {
+        execution_contract: None,
         source,
         target,
         source_path: None,

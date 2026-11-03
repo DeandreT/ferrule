@@ -42,6 +42,7 @@ fn project() -> mapping::Project {
         ..Default::default()
     };
     mapping::Project {
+        execution_contract: None,
         source: source.clone(),
         target: target.clone(),
         source_path: None,

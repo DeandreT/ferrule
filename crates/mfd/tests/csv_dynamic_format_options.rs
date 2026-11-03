@@ -29,6 +29,7 @@ impl Drop for TempDir {
 
 fn computed_property_project() -> Project {
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Source",
             vec![

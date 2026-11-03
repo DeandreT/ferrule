@@ -155,6 +155,7 @@ fn imported_protobuf_target_writes_binary_independent_of_extension() {
     let protobuf_options = project.target_options.clone();
     let decoded_path = std::env::temp_dir().join(format!("ferrule_cli_{tag}.xml"));
     let decode_project = mapping::Project {
+        execution_contract: None,
         source: protobuf_schema.clone(),
         target: protobuf_schema,
         source_path: None,

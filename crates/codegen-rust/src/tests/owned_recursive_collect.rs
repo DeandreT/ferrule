@@ -37,6 +37,7 @@ fn owned_walk_program() -> codegen::Program {
     });
     let constant = |value| mapping::Node::Const { value };
     let project = mapping::Project {
+        execution_contract: None,
         source: endpoint("Input"),
         target: ir::SchemaNode::group(
             "Output",

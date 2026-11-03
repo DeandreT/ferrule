@@ -53,6 +53,7 @@ fn file_codecs_and_dependency_reports_preserve_repair_after_reload() {
         repair
     );
     let mut project = Project {
+        execution_contract: None,
         source: repair.schema(),
         target: repair.schema(),
         source_path: Some("source.pdf".into()),

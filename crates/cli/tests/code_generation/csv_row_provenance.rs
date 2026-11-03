@@ -7,6 +7,7 @@ const EXPECTED: &str = r#"{"Groups":[{"Member":[{"Value":"A"},{"Value":"A"},{"Va
 pub(super) fn project() -> Project {
     let row = |name| SchemaNode::group(name, vec![SchemaNode::scalar("Value", ScalarType::String)]);
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Input", vec![row("Rows").repeating()]),
         target: SchemaNode::group(
             "Output",

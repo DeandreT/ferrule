@@ -493,6 +493,7 @@ fn pdf_options() -> FormatOptions {
 /// A JSON list of document names, each loaded as a dynamic PDF source.
 fn dynamic_project() -> Project {
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Files",
             vec![SchemaNode::scalar("File", ScalarType::String).repeating()],

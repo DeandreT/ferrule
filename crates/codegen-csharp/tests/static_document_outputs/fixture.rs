@@ -178,6 +178,7 @@ pub fn mixed() -> (Program, StaticDocumentBoundaryPolicy) {
     );
     unused = unused.with_required_fields(vec!["permit".into()]).unwrap();
     let program = Program {
+        execution_contract: None,
         xml_boundary: None,
         source: object("Request", &["message"]),
         extra_sources: vec![
@@ -257,6 +258,7 @@ pub fn grouped() -> (Program, StaticDocumentBoundaryPolicy) {
     let mut copy = scope("", &[], vec![]);
     copy.construction = TargetConstruction::CopyCurrentSource;
     let program = Program {
+        execution_contract: None,
         xml_boundary: None,
         source: schema.clone(),
         extra_sources: vec![],
@@ -294,6 +296,7 @@ pub fn single() -> (Program, StaticDocumentBoundaryPolicy) {
     copy.construction = TargetConstruction::CopyCurrentSource;
     (
         Program {
+            execution_contract: None,
             xml_boundary: None,
             source: schema.clone(),
             extra_sources: vec![],

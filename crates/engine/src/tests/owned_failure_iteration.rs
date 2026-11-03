@@ -107,6 +107,7 @@ fn project(rules: Vec<FailureRule>, nodes: Vec<(u32, Node)>) -> Project {
     );
     graph.nodes.extend(nodes);
     Project {
+        execution_contract: None,
         source: endpoint_schema("Input"),
         target: target.clone(),
         source_path: None,

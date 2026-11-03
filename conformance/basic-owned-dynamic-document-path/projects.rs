@@ -228,6 +228,7 @@ pub fn project(model: &str) -> Project {
         (PART_NAME, field(PARTS, &["Name"], None)),
     ]);
     Project {
+        execution_contract: None,
         source: batch_schema("Batch"),
         target,
         source_path: None,

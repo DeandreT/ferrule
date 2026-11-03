@@ -2244,6 +2244,13 @@ The Rust and C# evaluators of `json_parse_field`, `json_parse_object_exists`,
 descriptor that contains a [JSON tuple frame](design/json-tuple-arrays.md)
 during schema validation.
 
+Main-graph JSON projection helpers share an invocation-owned completely
+validated document for the same source expression and exact input/schema
+contents. Path checks and typed operation errors remain independent; new
+executions and user-function graphs do not share the state. See
+[JSON projection work](design/json-projection-work.md) for the full-parse
+call-count bound, ownership, instrumentation and remaining costs.
+
 Embedded scalar constants, bounded exact scalar allowed-value sets, and
 exact integer/finite-number ranges are enforced on both input and generated
 output in Rust and C#, including after supported output coercion. Embedded

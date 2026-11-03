@@ -233,6 +233,7 @@ mod tests {
             vec![SchemaNode::scalar("Value", ScalarType::String)],
         );
         mapping::Project {
+            execution_contract: None,
             source: schema.clone(),
             target: schema.clone(),
             source_path: None,

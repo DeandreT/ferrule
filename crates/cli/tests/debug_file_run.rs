@@ -40,6 +40,7 @@ fn project() -> Project {
         ],
     );
     Project {
+        execution_contract: None,
         source: SchemaNode::group("root", Vec::new()),
         target,
         source_path: None,

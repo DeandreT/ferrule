@@ -645,6 +645,7 @@ mod tests {
         format_xml::write(&reference_extra, &extra_schema, &extra_instance).unwrap();
 
         let project = Project {
+            execution_contract: None,
             source: SchemaNode::group("Source", Vec::new()),
             target: primary_schema,
             source_path: None,
@@ -688,6 +689,7 @@ mod tests {
             ..Scope::default()
         };
         let project = Project {
+            execution_contract: None,
             source: SchemaNode::group("Source", Vec::new()),
             target: schema.clone(),
             source_path: None,

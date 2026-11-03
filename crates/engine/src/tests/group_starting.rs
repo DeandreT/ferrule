@@ -37,6 +37,7 @@ fn project() -> Project {
     )
     .repeating();
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Root", vec![row_schema]),
         target: SchemaNode::group("Target", vec![group_schema]),
         source_path: None,

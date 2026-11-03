@@ -107,6 +107,7 @@ fn project(position_collection: Option<Vec<String>>) -> Project {
         Node::OwnedSourceDocumentPath(OwnedSourceDocumentPath { owner: named() }),
     );
     Project {
+        execution_contract: None,
         source: endpoint(),
         target: SchemaNode::group(
             "Output",

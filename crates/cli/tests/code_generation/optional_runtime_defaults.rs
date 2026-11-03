@@ -14,6 +14,7 @@ fn optional_project() -> Project {
         output,
     };
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Source", Vec::new()),
         target: SchemaNode::group("Target", vec![int("Direct"), string("Nested")]),
         source_path: None,

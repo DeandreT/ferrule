@@ -20,6 +20,7 @@ fn endpoint(name: &str) -> ir::SchemaNode {
 fn owned_filter_program() -> codegen::Program {
     let owner = mapping::SourceOwner::Named { name: "Ref".into() };
     let project = mapping::Project {
+        execution_contract: None,
         source: endpoint("Input"),
         target: ir::SchemaNode::group("Output", vec![directory().repeating()]),
         source_path: None,

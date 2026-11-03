@@ -76,6 +76,7 @@ pub(super) fn document_project(grouped: bool, unquoted: bool) -> Project {
         );
     }
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Input",
             vec![string("Key"), string("Text"), int("Count"), bool_("Fail")],

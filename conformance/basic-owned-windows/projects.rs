@@ -262,6 +262,7 @@ fn build(
         vec![]
     };
     Project {
+        execution_contract: None,
         source: input(),
         target,
         source_path: None,

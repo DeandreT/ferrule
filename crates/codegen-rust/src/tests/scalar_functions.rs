@@ -194,7 +194,13 @@ fn emits_exact_scalar_function_names_through_the_shared_runtime() {
             .and_then(|file| std::str::from_utf8(&file.contents).ok())
             .expect("generated Rust source");
 
-        assert!(source.contains(&format!("call(\"{name}\", &args)")));
+        if name == "json_parse_field" {
+            assert!(source.contains(&format!(
+                ".call_json_array_projection(100, \"{name}\", &args)"
+            )));
+        } else {
+            assert!(source.contains(&format!("call(\"{name}\", &args)")));
+        }
     }
 }
 
@@ -227,6 +233,7 @@ fn generated_fixed_width_flextext_projection_executes_the_embedded_layout() {
         .expect("runtime has a workspace parent");
     let output = TempDir::new("rust_fixed_width_flextext_codegen");
     let program = Program {
+        execution_contract: None,
         xml_boundary: None,
         source: SchemaNode::group(
             "Source",

@@ -190,6 +190,7 @@ fn program() -> Result<Program, &'static str> {
     )?;
 
     Ok(Program {
+        execution_contract: None,
         xml_boundary: None,
         source,
         extra_sources: vec![NamedSourceProgram {

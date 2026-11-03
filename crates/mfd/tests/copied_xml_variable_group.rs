@@ -72,6 +72,7 @@ fn copied_variable_mapped_output_roundtrips_controls_and_positions() {
         ],
     );
     let project = Project {
+        execution_contract: None,
         source,
         target,
         source_path: Some("source.xml".into()),

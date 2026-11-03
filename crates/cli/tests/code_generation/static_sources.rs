@@ -9,6 +9,7 @@ fn static_source_project() -> Project {
     let reference_label = SchemaNode::group("ReferenceLabel", vec![string("Text")]).repeating();
 
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Source",
             vec![SchemaNode::group("Order", vec![string("Sku")]).repeating()],

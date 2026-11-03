@@ -28,6 +28,7 @@ fn project(root_view: bool) -> Project {
     source.xml_type_alternatives = true;
     source.xml_default_type = Some("Base".into());
     Project {
+        execution_contract: None,
         source,
         target: SchemaNode::group(
             "Result",

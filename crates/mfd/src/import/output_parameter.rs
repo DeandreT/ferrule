@@ -150,7 +150,7 @@ fn build(
 }
 
 pub(super) fn install_fallback(
-    components: &mut Vec<SchemaComponent>,
+    components: &mut impl super::udf::certificate::SchemaSink,
     parameters: Vec<Result<OutputParameter, String>>,
     edge_from: &BTreeMap<u32, u32>,
     warnings: &mut Vec<String>,
@@ -162,7 +162,7 @@ pub(super) fn install_fallback(
     warnings.extend(built.issues);
     match built.component {
         Some(component) => {
-            components.push(component);
+            components.push_synthetic(component);
             false
         }
         None => true,

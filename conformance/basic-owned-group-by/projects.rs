@@ -317,6 +317,7 @@ fn graph() -> Graph {
 }
 pub fn base() -> Project {
     Project {
+        execution_contract: None,
         source: endpoint(),
         target: output(),
         source_path: None,

@@ -33,6 +33,7 @@ fn qualified(node: SchemaNode, namespace: &str) -> SchemaNode {
 }
 fn project(source: SchemaNode, target: SchemaNode, bindings: &[(&[&str], &str)]) -> Project {
     Project {
+        execution_contract: None,
         source,
         target,
         source_path: None,

@@ -35,6 +35,7 @@ impl Drop for TempDir {
 
 fn source_project(message: Option<u32>) -> Project {
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Input",
             vec![
@@ -111,6 +112,7 @@ fn source_project(message: Option<u32>) -> Project {
 
 fn nested_project(message_collection: Vec<String>) -> Project {
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Input",
             vec![

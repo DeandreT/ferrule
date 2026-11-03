@@ -334,6 +334,7 @@ fn expected(design: &str) -> Project {
         };
     }
     Project {
+        execution_contract: None,
         source: source_schema(design),
         target: target_schema(design),
         source_path: Some("source.json".into()),

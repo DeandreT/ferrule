@@ -458,6 +458,8 @@ pub const SUPPORTED_SCALAR_CALLS: &[ScalarFunction] = ScalarFunction::ALL;
 /// Deterministic backend-neutral representation of one supported mapping.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Program {
+    /// Admission required by every generated public execution boundary.
+    pub execution_contract: Option<mapping::ExecutionContract>,
     /// Explicit primary XML document adapter. JSON entry points remain independent.
     pub xml_boundary: Option<XmlBoundaryProgram>,
     pub source: SchemaNode,

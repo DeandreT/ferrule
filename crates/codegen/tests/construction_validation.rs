@@ -10,6 +10,7 @@ use mapping::{Graph, NamedTarget, Node, Project, Scope, ScopeConstruction};
 
 fn project() -> Project {
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Source", Vec::new()),
         target: SchemaNode::group("Primary", Vec::new()),
         source_path: None,

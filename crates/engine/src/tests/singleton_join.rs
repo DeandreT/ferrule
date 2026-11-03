@@ -193,6 +193,7 @@ fn row_target(field: &str) -> SchemaNode {
 
 fn project(target: SchemaNode, graph: Graph, root: Scope) -> Project {
     Project {
+        execution_contract: None,
         source: source_schema(),
         target,
         source_path: None,

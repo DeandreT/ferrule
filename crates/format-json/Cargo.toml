@@ -6,6 +6,9 @@ license.workspace = true
 repository.workspace = true
 description = "JSON Schema import and JSON instance read/write"
 
+[features]
+document-dom-instrumentation = []
+
 [dependencies]
 ir = { workspace = true }
 json-pattern = { workspace = true }

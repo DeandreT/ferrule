@@ -129,6 +129,7 @@ fn expected(design: &str) -> Project {
         _ => panic!("unrecognized authored fixture"),
     };
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Source", vec![rows]),
         target,
         source_path: Some("source.json".into()),

@@ -320,7 +320,9 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
              }\n\n",
         );
     }
-    if static_sources.is_empty() {
+    if program.execution_contract.is_some() {
+        output.push_str("fn validate_named_json_input_names(inputs: &[NamedJsonInput<'_>]) -> Result<(), JsonBoundaryError> {\n    codegen_runtime::validate_source_contract_bindings(inputs.len(), 0)?;\n    Ok(())\n}\nfn validate_named_json_bytes_input_names(inputs: &[NamedJsonBytesInput<'_>]) -> Result<(), JsonBoundaryError> {\n    codegen_runtime::validate_source_contract_bindings(inputs.len(), 0)?;\n    Ok(())\n}\nfn parse_named_json_inputs<'a>(_inputs: &[NamedJsonInput<'a>]) -> Result<Vec<(&'a str, Instance)>, JsonBoundaryError> { Ok(Vec::new()) }\nfn parse_named_json_bytes_inputs<'a>(_inputs: &[NamedJsonBytesInput<'a>]) -> Result<Vec<(&'a str, Instance)>, JsonBoundaryError> { Ok(Vec::new()) }\n");
+    } else if static_sources.is_empty() {
         output.push_str(
             "fn validate_named_json_input_names(\n\
                  inputs: &[NamedJsonInput<'_>],\n\

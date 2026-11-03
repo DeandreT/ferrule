@@ -130,6 +130,7 @@ pub fn expected() -> Project {
         ..Default::default()
     };
     Project {
+        execution_contract: None,
         source,
         target,
         source_path: Some("source.x12".into()),

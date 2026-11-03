@@ -253,6 +253,7 @@ mod tests {
         assert!(serde_json::from_value::<OldConstruction>(wire).is_err());
 
         let project = Project {
+            execution_contract: None,
             source: ir::SchemaNode::group("Input", vec![]),
             target: ir::SchemaNode::group("Output", vec![]),
             source_path: None,

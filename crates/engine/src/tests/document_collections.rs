@@ -119,6 +119,7 @@ fn project() -> Project {
         ..Scope::default()
     };
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Input",
             vec![

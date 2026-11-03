@@ -160,6 +160,7 @@ fn colliding() -> Project {
     let p = paragraph("P", None, &["Doc", "Para"], 10, &mut nodes);
     let q = paragraph("Q", Some("notes"), &["Doc", "Para"], 20, &mut nodes);
     Project {
+        execution_contract: None,
         source: source_schema(),
         target: target_schema(),
         source_path: None,

@@ -20,6 +20,7 @@ fn fixture() -> Program {
         repeating: false,
     };
     Program {
+        execution_contract: None,
         xml_boundary: None,
         source: SchemaNode::group("Source", vec![open_group("Properties")]),
         extra_sources: vec![NamedSourceProgram {
@@ -122,6 +123,7 @@ fn fixture() -> Program {
 
 fn dynamic_document_fixture() -> Program {
     Program {
+        execution_contract: None,
         xml_boundary: None,
         source: SchemaNode::group(
             "Source",

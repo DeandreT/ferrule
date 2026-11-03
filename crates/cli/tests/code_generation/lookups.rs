@@ -29,6 +29,7 @@ fn lookup_project() -> Project {
     .repeating();
 
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Source", vec![row, catalog]),
         target: SchemaNode::group("Target", vec![result]),
         source_path: None,

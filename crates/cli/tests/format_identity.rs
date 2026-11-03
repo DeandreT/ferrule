@@ -38,6 +38,7 @@ fn json_document_identity_overrides_neutral_instance_extensions() {
         },
     );
     let mut project = Project {
+        execution_contract: None,
         source: schema.clone(),
         target: schema,
         source_path: None,
@@ -92,6 +93,7 @@ fn xml_document_identity_overrides_neutral_instance_extensions() {
         },
     );
     let project = Project {
+        execution_contract: None,
         source: schema.clone(),
         target: schema,
         source_path: None,
@@ -157,6 +159,7 @@ fn wsdl_message_identity_unwraps_soap_inputs() -> Result<(), Box<dyn std::error:
         },
     );
     let project = Project {
+        execution_contract: None,
         source,
         target,
         source_path: None,
@@ -247,6 +250,7 @@ fn tabular_project(target_kind: TabularBoundaryKind) -> Project {
         },
     );
     Project {
+        execution_contract: None,
         source: schema.clone(),
         target: schema,
         source_path: None,

@@ -48,6 +48,7 @@ fn fixture() -> Project {
         },
     );
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "source",
             vec![SchemaNode::scalar("input", ScalarType::String)],

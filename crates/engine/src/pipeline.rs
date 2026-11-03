@@ -656,6 +656,7 @@ mod tests {
     fn copy_project(ty: ScalarType) -> mapping::Project {
         let schema = schema(ty);
         mapping::Project {
+            execution_contract: None,
             source: schema.clone(),
             target: schema,
             source_path: None,

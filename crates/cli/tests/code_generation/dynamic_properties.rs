@@ -70,6 +70,7 @@ fn frontier_project() -> Project {
     };
     let constant = |value| Node::Const { value };
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Source",
             vec![

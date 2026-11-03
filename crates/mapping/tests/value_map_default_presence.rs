@@ -123,6 +123,7 @@ fn project(default: Option<Value>) -> Project {
         ..mapping::FormatOptions::default()
     };
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Input", vec![]),
         target: SchemaNode::group(
             "Output",

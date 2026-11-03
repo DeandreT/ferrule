@@ -67,6 +67,7 @@ fn project(first_condition: Node) -> Project {
         frame: Some(vec!["Rows".into()]),
     };
     Project {
+        execution_contract: None,
         source,
         target,
         graph: Graph {

@@ -7,6 +7,7 @@ fn execute(types: [ScalarType; 2], value: Value) -> Result<Value, EngineError> {
         panic!("test scalar union must contain two distinct types");
     };
     let project = Project {
+        execution_contract: None,
         source: SchemaNode::group("source", Vec::new()),
         target: SchemaNode::group("target", vec![SchemaNode::scalar_union("value", types)]),
         source_path: None,
@@ -40,6 +41,7 @@ fn execute_scalar_scope(types: [ScalarType; 2], value: Value) -> Result<Value, E
         panic!("test scalar union must contain two distinct types");
     };
     let project = Project {
+        execution_contract: None,
         source: SchemaNode::group("source", Vec::new()),
         target: SchemaNode::scalar_union("target", types),
         source_path: None,

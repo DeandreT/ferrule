@@ -27,6 +27,7 @@ fn value(text: &str) -> Instance {
 
 fn copy_project() -> Project {
     Project {
+        execution_contract: None,
         source: record(),
         target: record(),
         source_path: None,

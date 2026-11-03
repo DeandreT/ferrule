@@ -47,6 +47,11 @@ invalidate an otherwise complete protobuf graph.
 
 ## Import
 
+Document-local declarative `.mfd` function imports have a deliberately bounded
+[library contract](mfd-declared-libraries.md), with exact symbol ownership,
+resource limits and explicit refusals for unproved signatures or call roles.
+Immutable byte packages currently refuse this profile without filesystem fallback.
+
 ```sh
 cargo run -p cli -- import-mfd --mfd design.mfd --out project.json
 ```
@@ -1084,17 +1089,23 @@ array only after the descriptor resolves to a declared scalar or array and the
 complete input passes schema validation. Invalid descriptor paths, missing
 required properties, incompatible values and disallowed nulls remain failures.
 
-This adapter validates the complete document before iterating and again for each
-selected field. It materializes the input and is not a streaming or large-array
+This adapter validates the complete document before iterating and reuses that
+validated representation across main-graph field projections within the same
+invocation and source owner. Exact input/schema changes require validation
+again; independent source expressions never share slots. It materializes the
+input and is not a streaming or large-array
 performance contract. Nested arrays, scalar arrays, computed or optional parser
 inputs, indirect scalar consumers, mixed record feeds and enclosing target
 iterations, cloned target occurrences, target node controls and nullable containers
 remain outside this profile and produce
 executable-import diagnostics. Schema array constraints and the existing
 generated-sequence item limit still apply.
-There is no shared parsed-input cache: work grows with mapped fields times
-records times document size, which can be quadratic in record count. Existing
-input-size and item-count ceilings do not make large arrays efficient.
+One unchanged main-graph source owner needs one full parse, independent of
+record and connected-field counts. Complete-string comparisons, descriptors,
+selection and output construction still cost work. Stateless calls and
+user-function body graphs keep per-call parsing. Existing input-size and
+item-count ceilings do not establish elapsed-time or memory efficiency; see
+[JSON projection work](design/json-projection-work.md).
 
 A separate bounded scalar lookup accepts a parsed record-array value wired to
 the first input of a core filter, with `equal` comparing a String key from the
@@ -1136,13 +1147,14 @@ JSON null remains null, without choosing another branch or inventing a default.
 Other functions, parameter reads, coercions, stateful or recursive expressions,
 aggregates, filters, parser reads and foreign-frame leaves remain outside this
 key-expression profile.
-The complete parser input is validated whenever a lookup is demanded, including
-later duplicates, nonmatching records and unused properties. An empty primary
-iteration does not demand the parser. There is no shared parsing cache; repeated
-lookups can cost primary-item count times lookup-record count times document
-size, in addition to value projections. This is not a large-array performance
-contract; shared parsing and work bounds remain separate work in
-[#1175](https://github.com/DeandreT/ferrule/issues/1175).
+The complete parser input is validated when first demanded within an invocation,
+including later duplicates, nonmatching records and unused properties.
+Main-graph projections reuse it only for that source owner and exact input/schema
+contents. An empty primary iteration does not itself demand the parser; an
+independent connected root-field demand still validates it. Lookup scans and
+content comparisons retain their costs even though repeated field demands no
+longer reparse an unchanged document. This is not a large-array performance
+contract; see [JSON projection work](design/json-projection-work.md).
 
 A JSON string parser with no declared output ports can retain a directly connected,
 uniquely declared required global String parameter without evaluating that parser.

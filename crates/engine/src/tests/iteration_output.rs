@@ -99,6 +99,7 @@ fn project_with_output(iteration_output: IterationOutput) -> Project {
         ..Scope::default()
     };
     Project {
+        execution_contract: None,
         source,
         target,
         source_path: None,
@@ -233,6 +234,7 @@ fn validation_rejects_invalid_first_output_cardinality() {
 #[test]
 fn non_iterating_scope_constructs_one_item_for_a_repeating_target_group() {
     let project = Project {
+        execution_contract: None,
         source: SchemaNode::group("Source", Vec::new()),
         target: SchemaNode::group(
             "Target",
@@ -364,6 +366,7 @@ fn concatenated_project(first: Scope, second: Scope) -> Project {
         )],
     );
     Project {
+        execution_contract: None,
         source,
         target,
         source_path: None,
@@ -569,6 +572,7 @@ fn validation_rejects_invalid_mapped_sequence_scopes_and_targets() {
 #[test]
 fn first_output_does_not_evaluate_later_unused_bindings() {
     let project = Project {
+        execution_contract: None,
         source: SchemaNode::group("row", vec![SchemaNode::scalar("Value", ScalarType::String)])
             .repeating(),
         target: SchemaNode::group("row", vec![SchemaNode::scalar("Value", ScalarType::String)]),

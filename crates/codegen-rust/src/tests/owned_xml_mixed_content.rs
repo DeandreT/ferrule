@@ -34,6 +34,7 @@ fn project() -> Project {
         name: "notes".into(),
     };
     Project {
+        execution_contract: None,
         source: input(),
         target: SchemaNode::group(
             "Output",

@@ -131,6 +131,7 @@ fn project() -> Project {
         ],
     );
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Input", Vec::new()),
         target: target.clone(),
         source_path: Some("input.json".into()),

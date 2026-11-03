@@ -45,6 +45,7 @@ mod primary_xml_document;
 pub use primary_json_document::emit_with_primary_json_documents;
 mod scalar_sequence;
 mod selected_json_api;
+mod source_contract;
 
 pub use json5_api::{Json5EmitError, emit_with_json5};
 pub use primary_csv::{PrimaryCsvEmitError, emit_with_primary_csv_acquisition};
@@ -361,6 +362,7 @@ fn render_selected_target_api(program: &Program, filter_map: bool) -> String {
     output.push_str(
         "pub fn execute_selected_target(\n    source: &Instance,\n    selection: TargetSelection<'_>,\n) -> Result<SelectedTargetOutput, RuntimeError> {\n    execute_selected_target_with_host(source, &[], None, None, selection)\n}\n\npub fn execute_selected_target_with_host<'a>(\n    source: &'a Instance,\n    inputs: &[NamedInput<'a>],\n    execution: Option<&ExecutionContext<'a>>,\n    loader: Option<&'a dyn DynamicSourceLoader>,\n    selection: TargetSelection<'_>,\n) -> Result<SelectedTargetOutput, RuntimeError> {\n    let selected = resolve_target(selection)?;\n    let inputs = validate_named_inputs(inputs)?;\n    let context = match execution {\n        Some(execution) => ScopeContext::with_named_inputs_and_execution_context(source, &inputs, execution),\n        None => ScopeContext::with_named_inputs(source, &inputs),\n    };\n    let context = match loader { Some(loader) => context.with_dynamic_source_loader(loader), None => context };\n    execute_selected_target_from_context(&context, selected)\n}\n\npub fn execute_selected_target_with_filter_map_controls<'a>(\n    source: &'a Instance,\n    inputs: &[NamedInput<'a>],\n    execution: Option<&ExecutionContext<'a>>,\n    loader: Option<&'a dyn DynamicSourceLoader>,\n    selection: TargetSelection<'_>,\n    limits: FilterMapLimits,\n    cancellation: Option<&'a dyn FilterMapCancellation>,\n) -> Result<FilterMapExecution<SelectedTargetOutput>, RuntimeError> {\n    let selected = resolve_target(selection)?;\n    let inputs = validate_named_inputs(inputs)?;\n    let run = FilterMapRun::new(limits, cancellation);\n    let context = match execution {\n        Some(execution) => ScopeContext::with_named_inputs_and_execution_context(source, &inputs, execution),\n        None => ScopeContext::with_named_inputs(source, &inputs),\n    };\n    let context = context.with_filter_map_run(&run);\n    let context = match loader { Some(loader) => context.with_dynamic_source_loader(loader), None => context };\n    let outcome = execute_selected_target_from_context(&context, selected);\n    Ok(FilterMapExecution { outcome, counters: run.counters() })\n}\n\nfn execute_selected_target_from_context(\n    context: &ScopeContext<'_>,\n    selected: ResolvedTarget,\n) -> Result<SelectedTargetOutput, RuntimeError> {\n",
     );
+    source_contract::render_admission(program, &mut output);
     if filter_map {
         output.push_str("    let run_context = context.with_filter_map_defaults();\n    let context = &run_context;\n");
     }
@@ -551,6 +553,11 @@ fn render_library(program: &Program, plan: &BoundaryEmissionPlan<'_>) -> Result<
         .iter()
         .filter(|source| source.dynamic.is_none())
         .collect::<Vec<_>>();
+    if program.execution_contract.is_some() {
+        source.push_str(
+            "    codegen_runtime::validate_source_contract_bindings(inputs.len(), 0)?;\n",
+        );
+    }
     if static_sources.is_empty() {
         source.push_str(
             "    if let Some(input) = inputs.first() {\n        return Err(RuntimeError::UnexpectedNamedSource {\n            name: input.name.to_string(),\n        });\n    }\n    Ok(Vec::new())\n}\n\n",
@@ -596,6 +603,7 @@ fn render_library(program: &Program, plan: &BoundaryEmissionPlan<'_>) -> Result<
     source.push_str(
         "fn execute_outputs_from_context(\n    context: &ScopeContext<'_>,\n) -> Result<ExecutionOutputs, RuntimeError> {\n",
     );
+    source_contract::render_admission(program, &mut source);
     if filter_map {
         source.push_str("    let run_context = context.with_filter_map_defaults();\n    let context = &run_context;\n");
     }
@@ -696,6 +704,7 @@ fn render_library(program: &Program, plan: &BoundaryEmissionPlan<'_>) -> Result<
             &segment_names,
         )?);
     }
+    source_contract::render(program, &mut source)?;
     Ok(source)
 }
 
@@ -1280,10 +1289,24 @@ fn render_expression_in_context_with_scalar_item_at(
                         call_expression(*arg, "context")
                     ));
                 }
-                body.push_str(&format!(
-                    "        ];\n        call({}, &args)\n    }}",
-                    rust_string(function.as_str())
-                ));
+                let call = if owner_function.is_none()
+                    && matches!(
+                        function.as_str(),
+                        "json_parse_array_length"
+                            | "json_parse_array_field"
+                            | "json_parse_field"
+                            | "json_parse_object_exists"
+                    )
+                    && let [source, ..] = args.as_slice()
+                {
+                    format!(
+                        "{legacy_context}.call_json_array_projection({source}, {}, &args)",
+                        rust_string(function.as_str())
+                    )
+                } else {
+                    format!("call({}, &args)", rust_string(function.as_str()))
+                };
+                body.push_str(&format!("        ];\n        {call}\n    }}"));
                 body
             }
             Expression::DelimitedTextField { input, parser } => format!(

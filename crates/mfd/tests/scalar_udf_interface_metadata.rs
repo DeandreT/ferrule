@@ -52,6 +52,7 @@ fn function(ty: ScalarType, parameter: &str, output: &str) -> UserFunction {
 }
 fn project(ty: ScalarType, parameter: &str, output: &str) -> Project {
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Input", vec![SchemaNode::scalar("Value", ty)]),
         target: SchemaNode::group("Output", vec![SchemaNode::scalar("Value", ty)]),
         source_path: Some("input.xml".into()),

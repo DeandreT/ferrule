@@ -23,6 +23,7 @@ mod owned_json_api_tests;
 mod owned_recursive_collect;
 mod owned_recursive_filter;
 mod selected_json_api;
+mod source_contract;
 mod xml_api;
 pub(crate) use xml_api::render_owned_document_sets;
 
@@ -150,6 +151,7 @@ fn render_mapping(
     }
     types.push_str(SELECTED_TARGET_OUTPUT_TYPES);
     let mut output = String::new();
+    source_contract::render(program, &mut output)?;
     let selected_xml = plan
         .xml()
         .is_some_and(|xml| xml.selected_inputs().is_some());
@@ -1003,7 +1005,11 @@ fn render_json_entry_points(program: &Program, output: &mut String) -> Result<()
     output.push_str(
         "\n    private static void ValidateNamedJsonInputNames(\n        global::System.Collections.Generic.IReadOnlyList<NamedJsonInput> extraSources)\n    {\n",
     );
-    if static_sources.is_empty() {
+    if program.execution_contract.is_some() {
+        output.push_str(
+            "        ValidateClosedSourceBindings(extraSources, extraSources.Count, null);\n",
+        );
+    } else if static_sources.is_empty() {
         output.push_str(
             "        foreach (var extraSource in extraSources)\n        {\n            global::System.ArgumentNullException.ThrowIfNull(extraSource);\n            global::System.ArgumentNullException.ThrowIfNull(extraSource.Name);\n            throw new global::Ferrule.Runtime.FerruleRuntimeException(\n                global::Ferrule.Runtime.FerruleRuntimeError.UnexpectedNamedSource,\n                $\"named source '{extraSource.Name}' is not declared by this mapping\",\n                detail: extraSource.Name);\n        }\n",
         );
@@ -1033,7 +1039,11 @@ fn render_json_entry_points(program: &Program, output: &mut String) -> Result<()
     output.push_str(
         "\n    private static void ValidateNamedJsonBytesInputNames(\n        global::System.Collections.Generic.IReadOnlyList<NamedJsonBytesInput> extraSources)\n    {\n",
     );
-    if static_sources.is_empty() {
+    if program.execution_contract.is_some() {
+        output.push_str(
+            "        ValidateClosedSourceBindings(extraSources, extraSources.Count, null);\n",
+        );
+    } else if static_sources.is_empty() {
         output.push_str(
             "        foreach (var extraSource in extraSources)\n        {\n            global::System.ArgumentNullException.ThrowIfNull(extraSource);\n            global::System.ArgumentNullException.ThrowIfNull(extraSource.Name);\n            throw new global::Ferrule.Runtime.FerruleRuntimeException(\n                global::Ferrule.Runtime.FerruleRuntimeError.UnexpectedNamedSource,\n                $\"named source '{extraSource.Name}' is not declared by this mapping\",\n                detail: extraSource.Name);\n        }\n",
         );
@@ -1063,7 +1073,9 @@ fn render_json_entry_points(program: &Program, output: &mut String) -> Result<()
     output.push_str(
         "\n    private static global::System.Collections.Generic.IReadOnlyList<NamedInput> ParseNamedJsonInputs(\n        global::System.Collections.Generic.IReadOnlyList<NamedJsonInput> extraSources)\n    {\n",
     );
-    if static_sources.is_empty() {
+    if program.execution_contract.is_some() {
+        output.push_str("        return global::System.Array.Empty<NamedInput>();\n");
+    } else if static_sources.is_empty() {
         output.push_str(
             "        foreach (var extraSource in extraSources)\n        {\n            global::System.ArgumentNullException.ThrowIfNull(extraSource);\n            global::System.ArgumentNullException.ThrowIfNull(extraSource.Name);\n            throw new global::Ferrule.Runtime.FerruleRuntimeException(\n                global::Ferrule.Runtime.FerruleRuntimeError.UnexpectedNamedSource,\n                $\"named source '{extraSource.Name}' is not declared by this mapping\",\n                detail: extraSource.Name);\n        }\n        return global::System.Array.Empty<NamedInput>();\n",
         );
@@ -1085,7 +1097,9 @@ fn render_json_entry_points(program: &Program, output: &mut String) -> Result<()
     output.push_str(
         "\n    private static global::System.Collections.Generic.IReadOnlyList<NamedInput> ParseNamedJsonBytesInputs(\n        global::System.Collections.Generic.IReadOnlyList<NamedJsonBytesInput> extraSources)\n    {\n",
     );
-    if static_sources.is_empty() {
+    if program.execution_contract.is_some() {
+        output.push_str("        return global::System.Array.Empty<NamedInput>();\n");
+    } else if static_sources.is_empty() {
         output.push_str(
             "        foreach (var extraSource in extraSources)\n        {\n            global::System.ArgumentNullException.ThrowIfNull(extraSource);\n            global::System.ArgumentNullException.ThrowIfNull(extraSource.Name);\n            throw new global::Ferrule.Runtime.FerruleRuntimeException(\n                global::Ferrule.Runtime.FerruleRuntimeError.UnexpectedNamedSource,\n                $\"named source '{extraSource.Name}' is not declared by this mapping\",\n                detail: extraSource.Name);\n        }\n        return global::System.Array.Empty<NamedInput>();\n",
         );
@@ -1114,6 +1128,9 @@ fn render_json_entry_points(program: &Program, output: &mut String) -> Result<()
 }
 
 fn render_source_context(program: &Program, output: &mut String) {
+    if source_contract::render_context(program, output) {
+        return;
+    }
     let static_sources = program
         .extra_sources
         .iter()
@@ -1121,6 +1138,13 @@ fn render_source_context(program: &Program, output: &mut String) {
         .collect::<Vec<_>>();
     output.push_str(
         "\n    private static global::Ferrule.Runtime.ScopeContext CreateContext(\n        global::Ferrule.Runtime.FerruleInstance source,\n        global::System.Collections.Generic.IReadOnlyList<NamedInput> extraSources,\n        global::Ferrule.Runtime.FerruleExecutionContext? executionContext,\n        global::Ferrule.Runtime.IFerruleDynamicSourceLoader? dynamicSourceLoader = null)\n    {\n        global::System.ArgumentNullException.ThrowIfNull(source);\n        global::System.ArgumentNullException.ThrowIfNull(extraSources);\n",
+    );
+    source_contract::input(
+        program,
+        output,
+        "source",
+        "extraSources.Count",
+        "executionContext",
     );
     if static_sources.is_empty() {
         output.push_str(
@@ -2243,7 +2267,20 @@ fn render_expression(
                 literal::string(key)));
         }
         Expression::Call { function, args } => {
-            output.push_str(" =>\n        global::Ferrule.Runtime.FerruleFunctions.Call(");
+            if matches!(
+                function.as_str(),
+                "json_parse_array_length"
+                    | "json_parse_array_field"
+                    | "json_parse_field"
+                    | "json_parse_object_exists"
+            ) && let [source, ..] = args.as_slice()
+            {
+                output.push_str(&format!(
+                    " =>\n        {legacy_receiver}.CallJsonArrayProjection({source}U, "
+                ));
+            } else {
+                output.push_str(" =>\n        global::Ferrule.Runtime.FerruleFunctions.Call(");
+            }
             output.push_str(&literal::string(function.as_str()));
             output.push_str(", new global::Ferrule.Runtime.FerruleValue[] { ");
             for (index, argument) in args.iter().enumerate() {
