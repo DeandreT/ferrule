@@ -2,6 +2,7 @@ use super::*;
 use std::{cell::Cell, path::PathBuf};
 
 mod input_routing;
+mod non_element_routing;
 mod receiver_contexts;
 mod resource_followup;
 mod review_regressions;

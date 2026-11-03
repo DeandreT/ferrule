@@ -27,12 +27,20 @@ impl Headers {
         });
         // Only saved edge containers expand the scope. Wrapper components are
         // not main producers; the active-structure identity check stays below.
-        for node in structure
-            .descendants()
-            .chain(parent_records)
-            .filter(roxmltree::Node::is_element)
-        {
+        for node in structure.descendants().chain(parent_records) {
             count_visit(Counter::NegativeHeader);
+            result.dimensions.walk_nodes = result
+                .dimensions
+                .walk_nodes
+                .checked_add(1)
+                .ok_or("Count routing traversal dimensions overflow")?;
+            result.work = result
+                .work
+                .checked_add(1)
+                .ok_or("Count routing header work overflow")?;
+            if !node.is_element() {
+                continue;
+            }
             result.dimensions.nodes += 1;
             result.dimensions.decoded = result
                 .dimensions
@@ -90,6 +98,13 @@ impl Headers {
         // or lends them; the negative buffers retain that same complete union.
         for parent in std::iter::once(structure).chain(structure.parent()) {
             for container in parent.children() {
+                // Also size direct selector visits, including wrapper siblings
+                // outside saved containers. They grant no retained identities.
+                result.dimensions.walk_nodes = result
+                    .dimensions
+                    .walk_nodes
+                    .checked_add(1)
+                    .ok_or("Count routing traversal dimensions overflow")?;
                 result.work = result
                     .work
                     .checked_add(2)
@@ -318,8 +333,16 @@ impl Routing {
                 state.link(Key::Port(feed), Key::Port(input))?;
             }
         }
-        for children in structure.children().filter(|n| n.has_tag_name("children")) {
-            for owner in children.children().filter(|n| n.has_tag_name("component")) {
+        for children in structure.children() {
+            state.ledger.work(1)?;
+            if !children.has_tag_name("children") {
+                continue;
+            }
+            for owner in children.children() {
+                state.ledger.work(1)?;
+                if !owner.has_tag_name("component") {
+                    continue;
+                }
                 let id = state.owners.0.len();
                 state.metadata(owner)?;
                 let name = owner.attribute("name").unwrap_or_default();
@@ -333,7 +356,11 @@ impl Routing {
                 // The existing non-Count header grammar is used only after its
                 // complete inspected subtree has been charged, never as proof.
                 if info.count || info.filter {
-                    for node in owner.descendants().filter(roxmltree::Node::is_element) {
+                    for node in owner.descendants() {
+                        state.ledger.work(1)?;
+                        if !node.is_element() {
+                            continue;
+                        }
                         state.metadata(node)?;
                     }
                     if non_count_header(owner) {
@@ -342,7 +369,11 @@ impl Routing {
                     }
                 }
                 state.owners.push(info, &mut state.ledger)?;
-                for node in owner.descendants().filter(roxmltree::Node::is_element) {
+                for node in owner.descendants() {
+                    state.ledger.work(1)?;
+                    if !node.is_element() {
+                        continue;
+                    }
                     count_visit(Counter::RefusalElement);
                     state.metadata_names(node)?;
                     if !state.belongs(node, owner, structure)? {
@@ -386,7 +417,11 @@ impl Routing {
         // wrapper siblings. Those siblings intentionally lack a structure
         // ancestor. This audit is connectivity, never a second feed index.
         for parent in std::iter::once(structure).chain(structure.parent()) {
-            for container in parent.children().filter(saved_container) {
+            for container in parent.children() {
+                state.ledger.work(1)?;
+                if !saved_container(&container) {
+                    continue;
+                }
                 state.metadata(container)?;
                 if container.has_tag_name("connections") {
                     for edge in container.descendants().skip(1) {
@@ -999,7 +1034,7 @@ pub(in crate::import) struct Report {
     pub retained_graph_slots: usize,
 }
 #[cfg(test)]
-thread_local! { static REPORT: std::cell::Cell<Report> = const { std::cell::Cell::new(Report { header_work: 0, dimensions: Dimensions { nodes: 0, pins: 0, edges: 0, attributes: 0, decoded: 0, registered: 0 }, work: 0, text_work: 0, slots: 0, bytes: 0, limits: (0, 0, 0), frozen: false, retained_graph_slots: 0 }) }; }
+thread_local! { static REPORT: std::cell::Cell<Report> = const { std::cell::Cell::new(Report { header_work: 0, dimensions: Dimensions { nodes: 0, walk_nodes: 0, pins: 0, edges: 0, attributes: 0, decoded: 0, registered: 0 }, work: 0, text_work: 0, slots: 0, bytes: 0, limits: (0, 0, 0), frozen: false, retained_graph_slots: 0 }) }; }
 fn publish_header(header: Headers) {
     #[cfg(test)]
     REPORT.set(Report {
