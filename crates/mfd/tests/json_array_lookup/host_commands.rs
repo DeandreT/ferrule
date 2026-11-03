@@ -343,3 +343,30 @@ fn sdk_probe_requires_the_exact_locked_version_not_another_patch_or_band() {
         "dotnet --version returned non-UTF-8 output"
     );
 }
+
+#[test]
+fn process_receipts_keep_actual_command_stdout_stderr_and_status() {
+    let dir = super::TempDir::new();
+    let executable = std::env::current_exe().unwrap();
+    let mut command = Command::new(&executable);
+    command.current_dir(&dir.0).arg("--list");
+    let output = super::checked(&dir.0, "receipt-control", &mut command);
+    let recorded: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(dir.0.join("receipt-control-command.json")).unwrap())
+            .unwrap();
+    assert_eq!(recorded["command"], executable.to_string_lossy().as_ref());
+    assert_eq!(recorded["arguments"], serde_json::json!(["--list"]));
+    assert_eq!(recorded["cwd"], dir.0.to_string_lossy().as_ref());
+    assert_eq!(
+        std::fs::read(dir.0.join("receipt-control.stdout")).unwrap(),
+        output.stdout
+    );
+    assert_eq!(
+        std::fs::read(dir.0.join("receipt-control.stderr")).unwrap(),
+        output.stderr
+    );
+    let status: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(dir.0.join("receipt-control-status.json")).unwrap())
+            .unwrap();
+    assert_eq!(status, serde_json::json!({"success": true, "exit_code": 0}));
+}
