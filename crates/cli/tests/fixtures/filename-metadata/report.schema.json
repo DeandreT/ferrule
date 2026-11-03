@@ -1,0 +1,1 @@
+{"type":"object","properties":{"reading":{"type":"string"},"count":{"type":"string"}},"required":["reading","count"],"additionalProperties":false}

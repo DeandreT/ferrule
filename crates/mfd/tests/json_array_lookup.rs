@@ -3,6 +3,11 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use ir::{Instance, Value};
 
+#[path = "json_array_lookup/host_commands.rs"]
+mod host_commands;
+#[path = "json_array_lookup/root_scalars.rs"]
+mod root_scalars;
+
 struct TempDir(PathBuf);
 impl TempDir {
     fn new() -> Self {
@@ -18,7 +23,9 @@ impl TempDir {
 }
 impl Drop for TempDir {
     fn drop(&mut self) {
-        if std::thread::panicking() {
+        if std::thread::panicking()
+            || std::env::var_os("FERRULE_CODEGEN_KEEP_ARTIFACTS").is_some_and(|value| value == "1")
+        {
             eprintln!("retained lookup fixture: {}", self.0.display());
             return;
         }
@@ -773,7 +780,13 @@ fn generated_hosts(profile: &str) {
     let dir = TempDir::new();
     emit(&dir.0, profile);
     let shared = fixtures();
-    let hosts = shared.join(if profile.ends_with("edi") { "edi" } else { "" });
+    let hosts = shared.join(if profile.ends_with("edi") {
+        "edi"
+    } else if profile == "root-scalars" {
+        profile
+    } else {
+        ""
+    });
     let fixtures = shared.join(profile);
     let rust = dir.0.join("rust");
     let manifest = rust.join("Cargo.toml");
@@ -786,63 +799,85 @@ fn generated_hosts(profile: &str) {
     )
     .unwrap();
     std::fs::copy(hosts.join("rust_host.rs"), rust.join("host.rs")).unwrap();
-    checked(
-        std::process::Command::new("cargo")
-            .args(["run", "--release", "--offline", "--manifest-path"])
-            .env_remove("CARGO_ENCODED_RUSTFLAGS")
-            .env("RUSTFLAGS", "-D warnings")
-            .arg(manifest)
-            .args(["--bin", "lookup-host", "--"])
-            .arg(fixtures.join("cases.json"))
-            .arg(dir.0.join("source-schema.json"))
-            .arg(dir.0.join("target-schema.json")),
+    let sdk_version = host_commands::prepare_csharp_host(&dir.0, &hosts, &shared);
+    checked_generated_build(
+        &dir.0,
+        "rust-release",
+        &mut host_commands::rust_command(&dir.0, &fixtures),
     );
-    let host = dir.0.join("csharp/host");
-    std::fs::create_dir(&host).unwrap();
+    let executable = std::env::var_os("FERRULE_DOTNET_EXE").unwrap_or_else(|| "dotnet".into());
+    let (mut sdk, mut host) = host_commands::csharp_commands(&dir.0, &fixtures, &executable);
+    let output = checked(&dir.0, "csharp-sdk", &mut sdk, available_space(&dir.0));
+    host_commands::check_sdk_version(&output.stdout, &sdk_version)
+        .unwrap_or_else(|message| panic!("{message}"));
+    checked_generated_build(&dir.0, "csharp-release", &mut host);
+}
+const GENERATED_BUILD_RESERVE_BYTES: u64 = 45 * 1024 * 1024 * 1024;
+
+fn generated_build_space_admission(free_bytes: Option<u64>) -> Result<(), u64> {
+    match free_bytes {
+        Some(free) if free < GENERATED_BUILD_RESERVE_BYTES => Err(free),
+        _ => Ok(()),
+    }
+}
+
+fn available_space(root: &Path) -> Option<u64> {
+    #[cfg(unix)]
+    {
+        let space = rustix::fs::statvfs(root).unwrap();
+        Some(space.f_bavail.saturating_mul(space.f_frsize))
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = root;
+        None
+    }
+}
+
+fn checked_generated_build(
+    root: &Path,
+    label: &str,
+    command: &mut std::process::Command,
+) -> std::process::Output {
+    let free_bytes = available_space(root);
+    generated_build_space_admission(free_bytes)
+        .unwrap_or_else(|free| panic!("generated host requires 45 GiB free; available: {free}"));
+    checked(root, label, command, free_bytes)
+}
+
+fn checked(
+    root: &Path,
+    label: &str,
+    command: &mut std::process::Command,
+    free_bytes: Option<u64>,
+) -> std::process::Output {
     std::fs::write(
-        dir.0.join("NuGet.Config"),
-        r#"<configuration><packageSources><clear/></packageSources></configuration>"#,
+        root.join(format!("{label}-command.json")),
+        serde_json::to_vec_pretty(&serde_json::json!({
+            "command": command.get_program().to_string_lossy(),
+            "arguments": command.get_args().map(|arg| arg.to_string_lossy().into_owned()).collect::<Vec<_>>(),
+            "cwd": command.get_current_dir(),
+            "environment": command.get_envs().filter(|(name, _)| matches!(name.to_str(), Some(
+                "DOTNET_CLI_HOME" | "DOTNET_ADD_GLOBAL_TOOLS_TO_PATH" | "DOTNET_NOLOGO"
+                | "DOTNET_SKIP_FIRST_TIME_EXPERIENCE" | "DOTNET_CLI_USE_MSBUILD_SERVER"
+                | "MSBUILDDISABLENODEREUSE" | "RUSTFLAGS"
+            ))).map(|(name, value)| (name.to_string_lossy(), value.map(|value| value.to_string_lossy()))).collect::<std::collections::BTreeMap<_, _>>(),
+            "free_bytes_before": free_bytes,
+        }))
+        .unwrap(),
     )
     .unwrap();
-    std::fs::write(host.join("Host.csproj"), r#"<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><TreatWarningsAsErrors>true</TreatWarningsAsErrors><NuGetAudit>false</NuGetAudit></PropertyGroup><ItemGroup><ProjectReference Include="../Ferrule.Generated.csproj"/></ItemGroup></Project>"#).unwrap();
-    std::fs::copy(hosts.join("csharp_host.cs"), host.join("Program.cs")).unwrap();
-    std::fs::copy(shared.join("typed_assert.cs"), host.join("LookupOracle.cs")).unwrap();
-    let home = dir.0.join("dotnet-home");
-    checked(dotnet(&host, &home).arg("--version"));
-    checked(
-        dotnet(&host, &home)
-            .args([
-                "run",
-                "--configuration",
-                "Release",
-                "--disable-build-servers",
-                "-p:UseSharedCompilation=false",
-                "-p:BuildInParallel=false",
-                "--project",
-            ])
-            .arg(host.join("Host.csproj"))
-            .arg("--")
-            .arg(fixtures.join("cases.json"))
-            .arg(dir.0.join("source-schema.json"))
-            .arg(dir.0.join("target-schema.json")),
-    );
-}
-fn dotnet(directory: &Path, home: &Path) -> std::process::Command {
-    let mut command = std::process::Command::new(
-        std::env::var_os("FERRULE_DOTNET_EXE").unwrap_or_else(|| "dotnet".into()),
-    );
-    command
-        .current_dir(directory)
-        .env("DOTNET_CLI_HOME", home)
-        .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
-        .env("DOTNET_NOLOGO", "1")
-        .env("DOTNET_SKIP_FIRST_TIME_EXPERIENCE", "1")
-        .env("DOTNET_CLI_USE_MSBUILD_SERVER", "0")
-        .env("MSBUILDDISABLENODEREUSE", "1");
-    command
-}
-fn checked(command: &mut std::process::Command) {
     let output = command.output().unwrap();
+    std::fs::write(root.join(format!("{label}.stdout")), &output.stdout).unwrap();
+    std::fs::write(root.join(format!("{label}.stderr")), &output.stderr).unwrap();
+    std::fs::write(
+        root.join(format!("{label}-status.json")),
+        serde_json::to_vec(&serde_json::json!({
+            "success": output.status.success(), "exit_code": output.status.code()
+        }))
+        .unwrap(),
+    )
+    .unwrap();
     println!(
         "{command:?}\nstatus: {}\n{}\n{}",
         output.status,
@@ -855,4 +890,5 @@ fn checked(command: &mut std::process::Command) {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
+    output
 }
