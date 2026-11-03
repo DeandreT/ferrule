@@ -499,6 +499,7 @@ fn scalar_algorithm_project() -> Project {
     );
 
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Source",
             vec![

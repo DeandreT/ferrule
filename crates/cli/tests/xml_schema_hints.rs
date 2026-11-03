@@ -53,6 +53,7 @@ fn options(hints: XmlSchemaHints) -> FormatOptions {
 fn project() -> Project {
     let field = || SchemaNode::scalar("Code", ScalarType::String).attribute();
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Source", vec![field()]),
         target: SchemaNode::group("Root", vec![field()]),
         source_path: Some("input.xml".into()),

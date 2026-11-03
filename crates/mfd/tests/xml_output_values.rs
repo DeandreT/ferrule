@@ -159,6 +159,7 @@ fn nested_collection_find_writes_every_runtime_xml_name() -> Result<(), Box<dyn 
     };
     item_scope.set_source(Some(vec!["values".into()]));
     let project = Project {
+        execution_contract: None,
         source: source_schema,
         target: target_schema,
         source_path: None,

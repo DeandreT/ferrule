@@ -63,6 +63,7 @@ fn project_with_json_source(bound: f64) -> Project {
         .unwrap(),
     ));
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Source", vec![amount]),
         target: SchemaNode::group(
             "Target",

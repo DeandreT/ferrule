@@ -7,6 +7,7 @@ const DYNAMIC_CSV_MARKER: &str = "dynamic-csv-original-second-loader-failure";
 
 pub(in super::super) fn dynamic_csv_project(mixed: bool) -> Project {
     let mut project = Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Input",
             vec![

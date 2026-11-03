@@ -28,6 +28,7 @@ fn binding(field: &str, node: u32) -> Binding {
 
 fn clock_project() -> Project {
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Input", Vec::new()),
         target: SchemaNode::group(
             "Result",

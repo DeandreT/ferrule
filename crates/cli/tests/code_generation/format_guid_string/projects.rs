@@ -11,6 +11,7 @@ pub(super) fn project() -> Project {
     ])
     .expect("distinct authored types");
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Input", vec![SchemaNode::scalar_union("Hex", source_types)]),
         target: SchemaNode::group(
             "Output",

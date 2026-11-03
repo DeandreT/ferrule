@@ -128,6 +128,7 @@ fn project(default: bool) -> Project {
         code.default = Some("prior".into());
     }
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Input",
             vec![SchemaNode::scalar("Code", ScalarType::String).attribute()],

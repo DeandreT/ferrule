@@ -19,6 +19,7 @@ fn scope(node: u32) -> Scope {
 
 fn project() -> Project {
     Project {
+        execution_contract: None,
         source: schema("Source"),
         target: schema("Primary"),
         source_path: None,

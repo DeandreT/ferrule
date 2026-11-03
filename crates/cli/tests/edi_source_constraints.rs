@@ -24,6 +24,7 @@ impl Drop for Directory {
 
 fn project(explicit: bool) -> Project {
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Input",
             vec![

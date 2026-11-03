@@ -25,6 +25,7 @@ fn project(target_namespace: Option<&str>, hints: Option<XmlSchemaHints>) -> Pro
         );
     }
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Source", fields()),
         target,
         source_path: None,

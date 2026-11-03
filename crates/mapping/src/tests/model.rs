@@ -5,6 +5,7 @@ use std::num::NonZeroU32;
 #[test]
 fn failure_rules_roundtrip_in_declaration_order() {
     let project = Project {
+        execution_contract: None,
         source: ir::SchemaNode::group("Source", Vec::new()),
         target: ir::SchemaNode::group("Target", Vec::new()),
         source_path: None,
@@ -88,6 +89,7 @@ fn user_defined_functions_roundtrip_with_stable_identities() {
         output: 3,
     };
     let project = Project {
+        execution_contract: None,
         source: ir::SchemaNode::group("Source", Vec::new()),
         target: ir::SchemaNode::group("Target", Vec::new()),
         source_path: None,

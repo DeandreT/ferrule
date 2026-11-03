@@ -85,6 +85,7 @@ fn hierarchy(plan: OwnedPathHierarchyPlan) -> Scope {
 }
 fn project(root: Scope) -> Project {
     Project {
+        execution_contract: None,
         source: source_schema(),
         target: directory_schema(),
         source_path: None,

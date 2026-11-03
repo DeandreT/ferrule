@@ -171,6 +171,7 @@ fn extras() -> Vec<(String, Instance)> {
 /// 34 (Unicode) and 35/36 (named Cfg).
 fn project(owner: SourceOwner, target: ScalarType) -> Project {
     Project {
+        execution_contract: None,
         source: schema(),
         target: SchemaNode::group("Output", vec![SchemaNode::scalar("Value", target)]),
         source_path: None,

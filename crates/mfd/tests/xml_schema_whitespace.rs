@@ -59,6 +59,7 @@ fn schema(name: &str) -> SchemaNode {
 
 fn project() -> Project {
     Project {
+        execution_contract: None,
         source: schema("Source"),
         target: schema("Target"),
         source_path: Some("source.xml".into()),

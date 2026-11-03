@@ -54,6 +54,7 @@ fn functions() -> BTreeMap<FunctionId, UserFunction> {
 
 fn project(fx: &Fixture) -> Project {
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "row",
             vec![

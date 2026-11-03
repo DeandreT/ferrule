@@ -760,6 +760,7 @@ mod tests {
     fn csv_facade_project() -> mapping::Project {
         use ir::{ScalarType, SchemaNode};
         mapping::Project {
+            execution_contract: None,
             source: SchemaNode::group("Source", Vec::new()).repeating(),
             target: SchemaNode::group("Row", vec![SchemaNode::scalar("Value", ScalarType::String)]),
             source_path: None,

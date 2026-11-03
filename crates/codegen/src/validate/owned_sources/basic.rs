@@ -50,6 +50,11 @@ pub fn validate_basic_owned_emission_with_capabilities(
         ));
     }
     basic_failures(program, capabilities)?;
+    if let Some(contract) = program.execution_contract {
+        return Err(ProgramValidationError::UnsupportedExecutionContract(
+            contract,
+        ));
+    }
     let retained = basic_target_expressions(program, capabilities);
     for node in &program.expressions {
         if let Expression::SourceField { path, frame } = &node.expression

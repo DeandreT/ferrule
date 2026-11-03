@@ -54,6 +54,7 @@ fn group(side: u32, fixed_rows: &[u32]) -> Scope {
 /// Both declared Group branches reuse Left while their Row lineages stay distinct.
 pub fn project() -> Project {
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Source", vec![batch("Left", true), batch("Right", true)]),
         target: SchemaNode::group(
             "Result",

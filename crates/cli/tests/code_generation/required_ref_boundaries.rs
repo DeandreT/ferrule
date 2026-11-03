@@ -202,6 +202,7 @@ fn profiles(root: &Evidence, corpus: &Json) -> TestResult<Vec<SchemaNode>> {
 
 fn project(schema: &SchemaNode, fixture: &Json, corpus: &Json) -> TestResult<Project> {
     let mut candidate = Project {
+        execution_contract: None,
         source: schema.clone(),
         target: schema.clone(),
         source_path: None,

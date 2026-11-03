@@ -35,6 +35,18 @@ where
     Select: FnOnce(&str) -> Result<I, E> + 'a,
     Load: FnMut(&str) -> Result<SourceData, E> + 'a,
 {
+    if document.project().execution_contract.is_some() {
+        crate::admit_source_contract_bindings(document.project(), 0, Some(execution))
+            .map_err(|error| CsvAcquisitionError::Filename(error.into()))?;
+        // Row acquisition cannot supply the contract's singular primary group.
+        return Err(CsvAcquisitionError::Filename(
+            EngineError::from(mapping::SourceContractViolation {
+                path: Vec::new(),
+                reason: mapping::SourceContractReason::UnsupportedModel,
+            })
+            .into(),
+        ));
+    }
     let execution = *execution;
     CsvSourceAcquisition::new(
         move || evaluate_primary_filename(document, &execution),
@@ -108,9 +120,24 @@ pub fn run_primary_document<H: PrimarySourceHost, P>(
     maximum: usize,
     parse: impl FnMut(&str, SourceData) -> Result<Instance, P>,
 ) -> Result<Instance, PrimaryDocumentRunError<H::Error, P>> {
+    // Binding/model admission precedes acquisition. Actual input shape is
+    // checked by run_with_context after the primary document has been parsed.
+    crate::admit_source_contract_bindings(document.project(), 0, Some(execution))
+        .map_err(PrimaryDocumentRunError::Mapping)?;
     let route = document
         .primary_route()
         .map_err(PrimaryDocumentRunError::Route)?;
+    if document.project().execution_contract.is_some()
+        && route.shape != mapping::PrimaryDocumentShape::Document
+    {
+        return Err(PrimaryDocumentRunError::Mapping(
+            mapping::SourceContractViolation {
+                path: Vec::new(),
+                reason: mapping::SourceContractReason::UnsupportedModel,
+            }
+            .into(),
+        ));
+    }
     // Like document lowering, an unsupported filename is refused before the
     // mapping body is validated.
     if let Err(error) = document.global_filename() {
@@ -161,6 +188,8 @@ pub fn run_primary_csv_document<H: PrimarySourceHost>(
     decoding: CsvByteDecodingPolicy,
     maximum: usize,
 ) -> Result<Instance, PrimaryDocumentRunError<H::Error>> {
+    crate::admit_source_contract_bindings(document.project(), 0, Some(execution))
+        .map_err(PrimaryDocumentRunError::Mapping)?;
     match document.primary_route() {
         Ok(route) if route.format != PrimaryDocumentFormat::Csv => {
             return Err(PrimaryDocumentRunError::Route(

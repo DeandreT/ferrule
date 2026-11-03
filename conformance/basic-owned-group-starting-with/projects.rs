@@ -32,7 +32,7 @@ pub fn base()->Project{
   nodes.insert(offset+5,position(name,&["Rows"]));nodes.insert(offset+6,field(name,&["Marker"],Some(&[])));nodes.insert(offset+7,field(name,&["Limit"],Some(&[])));
  }
  nodes.insert(600,Node::Position{collection:vec![]});
- let mut p=Project{source:endpoint(),target:SchemaNode::group("Output",vec![groups_schema()]),source_path:None,target_path:None,source_options:Default::default(),target_options:Default::default(),
+ let mut p=Project{execution_contract:None,source:endpoint(),target:SchemaNode::group("Output",vec![groups_schema()]),source_path:None,target_path:None,source_options:Default::default(),target_options:Default::default(),
   extra_sources:["unusedStatic","Rows",EXACT,"unavailableDynamic"].into_iter().map(|name|NamedSource{name:name.into(),path:format!("unused/{name}.json"),schema:endpoint(),options:Default::default(),dynamic_path:(name=="unavailableDynamic").then_some(mapping::DynamicSourcePath::legacy(900, vec![]))}).collect(),
   extra_targets:[(AUDIT,"Rows",200),(UNICODE_TARGET,EXACT,300)].into_iter().map(|(name,own,offset)|NamedTarget{name:name.into(),path:None,schema:SchemaNode::group("Output",vec![groups_schema()]),options:Default::default(),root:Scope{children:vec![grouped(own,offset)],..Default::default()}}).collect(),
   graph:Graph{nodes},root:Scope{children:vec![grouped("Primary",0)],..Default::default()},failure_rules:vec![],user_functions:Default::default()};

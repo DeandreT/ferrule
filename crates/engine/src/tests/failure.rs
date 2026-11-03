@@ -22,6 +22,7 @@ fn rows_project(
     nodes: impl IntoIterator<Item = (u32, Node)>,
 ) -> Project {
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Source",
             vec![
@@ -200,6 +201,7 @@ fn rule_and_item_order_short_circuit_later_messages() {
 #[test]
 fn generated_sequence_message_uses_its_owned_item_context() {
     let mut project = Project {
+        execution_contract: None,
         source: SchemaNode::group("Source", Vec::new()),
         target: SchemaNode::group("Target", Vec::new()),
         source_path: None,
@@ -440,6 +442,7 @@ fn validation_rejects_dynamic_extra_source_selectors_and_dependencies() {
 #[test]
 fn validation_rejects_failure_item_reused_as_sequence_exists_predicate() {
     let project = Project {
+        execution_contract: None,
         source: SchemaNode::group("Source", Vec::new()),
         target: SchemaNode::group("Target", Vec::new()),
         source_path: None,
@@ -525,6 +528,7 @@ fn validation_rejects_failure_item_reused_as_sequence_exists_predicate() {
 #[test]
 fn validation_confines_an_unused_failure_item_from_external_roots() {
     let mut project = Project {
+        execution_contract: None,
         source: SchemaNode::group("Source", Vec::new()),
         target: SchemaNode::group("Target", Vec::new()),
         source_path: None,
@@ -586,6 +590,7 @@ fn validation_confines_an_unused_failure_item_from_external_roots() {
 #[test]
 fn validation_rejects_inactive_join_nodes_in_failure_expressions() {
     let project = Project {
+        execution_contract: None,
         source: SchemaNode::group("Source", Vec::new()),
         target: SchemaNode::group("Target", Vec::new()),
         source_path: None,
@@ -703,6 +708,7 @@ fn root_failure_project(owner: mapping::SourceOwner, frame: Option<Vec<String>>)
         ..Scope::default()
     };
     Project {
+        execution_contract: None,
         source: root_failure_schema(),
         target: target.clone(),
         source_path: None,

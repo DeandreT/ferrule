@@ -18,6 +18,7 @@ fn project() -> Project {
         .find(|case| case["id"] == "identity-all")
         .unwrap();
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Input", Vec::new()),
         target: SchemaNode::group(
             "Output",

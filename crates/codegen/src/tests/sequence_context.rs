@@ -3,6 +3,7 @@ use mapping::{AggregateOp, SequenceExpr, SequenceWindow, SortKey};
 
 fn project() -> Project {
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Input", Vec::new()),
         target: SchemaNode::group(
             "Output",

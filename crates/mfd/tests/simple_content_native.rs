@@ -43,6 +43,7 @@ fn project(simple: bool) -> Project {
     );
     result.xml_optional = true;
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Input",
             vec![

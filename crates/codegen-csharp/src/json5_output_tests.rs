@@ -8,6 +8,7 @@ use crate::generated_artifact_evidence::Evidence;
 
 fn program() -> Program {
     Program {
+        execution_contract: None,
         xml_boundary: None,
         source: SchemaNode::group("Input", vec![SchemaNode::scalar("n", ScalarType::Int)]),
         extra_sources: vec![],

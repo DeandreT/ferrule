@@ -42,6 +42,7 @@ mod runtime_dependency;
 mod scope_roots;
 mod scope_serde;
 mod sequence_levels;
+mod source_contract;
 mod source_owner;
 mod source_scope;
 mod sqlite_read;
@@ -125,15 +126,15 @@ pub use json5_interchange::{
 };
 pub use model::{
     AggregateOp, Binding, DynamicBinding, DynamicChild, DynamicSourcePath, EdiConfigDependency,
-    FailureIteration, FailureRule, FailureSelection, FormatOptions, FunctionId, FunctionParameter,
-    FunctionParameterId, Graph, IterationOutput, MAX_RUNTIME_PARAMETER_NAME_BYTES, NamedSource,
-    NamedTarget, Node, NodeId, OwnedAggregate, OwnedAggregateValue, OwnedCollectionFind,
-    OwnedJoinAggregate, OwnedJoinField, OwnedJoinSourcePosition, OwnedLookup, OwnedPosition,
-    OwnedRowDocumentPath, OwnedSourceDocumentPath, OwnedSourceField, Project, RuntimeValue, Scope,
-    ScopeConstruction, SequenceExpr, SequenceWindow, SortFilterOrder, SortKey, UserFunction,
-    XlsxColumn, XlsxCompositeLayout, XlsxFixedCell, XlsxFixedRecord, XlsxGridLayout,
-    XlsxGridRegion, XlsxRow, XlsxTableRegion, XlsxWorksheetSetLayout, XmlMixedContentElement,
-    XmlMixedContentReplacement,
+    ExecutionContract, FailureIteration, FailureRule, FailureSelection, FormatOptions, FunctionId,
+    FunctionParameter, FunctionParameterId, Graph, IterationOutput,
+    MAX_RUNTIME_PARAMETER_NAME_BYTES, NamedSource, NamedTarget, Node, NodeId, OwnedAggregate,
+    OwnedAggregateValue, OwnedCollectionFind, OwnedJoinAggregate, OwnedJoinField,
+    OwnedJoinSourcePosition, OwnedLookup, OwnedPosition, OwnedRowDocumentPath,
+    OwnedSourceDocumentPath, OwnedSourceField, Project, RuntimeValue, Scope, ScopeConstruction,
+    SequenceExpr, SequenceWindow, SortFilterOrder, SortKey, UserFunction, XlsxColumn,
+    XlsxCompositeLayout, XlsxFixedCell, XlsxFixedRecord, XlsxGridLayout, XlsxGridRegion, XlsxRow,
+    XlsxTableRegion, XlsxWorksheetSetLayout, XmlMixedContentElement, XmlMixedContentReplacement,
 };
 pub use node_inputs::{NodeInput, NodeInputRole, NodeInputSlot};
 pub use owned_join::{
@@ -157,6 +158,12 @@ pub use recursive_collect_owned::OwnedRecursiveCollect;
 pub use runtime_dependency::{RuntimeBoundary, RuntimeDependency};
 pub use scope_roots::{NestedScopeKind, ScopeRoot, ScopeRootRole, ScopeRootSlot};
 pub use sequence_levels::SequenceLevelInput;
+pub use source_contract::{
+    ClosedPrimarySourcePlan, MAX_SOURCE_CONTRACT_DEPTH, MAX_SOURCE_CONTRACT_METADATA_BYTES,
+    MAX_SOURCE_CONTRACT_PATH_BYTES, MAX_SOURCE_CONTRACT_SHAPE_NODES, MAX_SOURCE_CONTRACT_VISITS,
+    PRIMARY_SOURCE_SAFETY_GUARD_V1_CAPABILITY, PrimarySourceShapeKind, PrimarySourceShapeNode,
+    SourceContractReason, SourceContractViolation,
+};
 pub use source_owner::{
     OwnedSourceAccess, OwnedSourceRef, SourceOwner, SourceSelector, SourceSelectorMut,
     SourceSelectorRef,

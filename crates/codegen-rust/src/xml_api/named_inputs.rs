@@ -79,7 +79,19 @@ pub(super) fn render(program: &Program, plan: &XmlEmissionPlan<'_>) -> Result<St
             } else {
                 "execute_outputs_with_sources"
             };
-            output.push_str(&format!("pub fn {name}(source: {source_type}, inputs: &[{dto}<'_>]{context_arg}) -> Result<{result_type}, codegen_runtime::XmlExecutionError> {{\n    let _count = codegen_runtime::XmlInputSetBudget::new(inputs.len().saturating_add(1))?;\n    let supplied_names: Vec<&str> = inputs.iter().map(|input| input.name).collect();\n    let _indices = codegen_runtime::xml_input_indices(EXTRA_SOURCE_NAMES, &supplied_names)?;\n    let mut sizes = Vec::with_capacity(EXTRA_SOURCE_NAMES.len() + 1);\n    sizes.push((codegen_runtime::XmlInputSource::Primary, source.len()));\n"));
+            let guard = if program.execution_contract.is_some() {
+                let parameters = if context {
+                    "execution.runtime_parameter_count()"
+                } else {
+                    "0"
+                };
+                format!(
+                    "    codegen_runtime::validate_source_contract_bindings(inputs.len(), {parameters}).map_err(codegen_runtime::XmlBoundaryError::from)?;\n"
+                )
+            } else {
+                String::new()
+            };
+            output.push_str(&format!("pub fn {name}(source: {source_type}, inputs: &[{dto}<'_>]{context_arg}) -> Result<{result_type}, codegen_runtime::XmlExecutionError> {{\n{guard}    let _count = codegen_runtime::XmlInputSetBudget::new(inputs.len().saturating_add(1))?;\n    let supplied_names: Vec<&str> = inputs.iter().map(|input| input.name).collect();\n    let _indices = codegen_runtime::xml_input_indices(EXTRA_SOURCE_NAMES, &supplied_names)?;\n    let mut sizes = Vec::with_capacity(EXTRA_SOURCE_NAMES.len() + 1);\n    sizes.push((codegen_runtime::XmlInputSource::Primary, source.len()));\n"));
             for (static_index, (index, input)) in static_sources.iter().enumerate() {
                 let name = rust_string(&input.name);
                 output.push_str(&format!("    sizes.push((codegen_runtime::XmlInputSource::Named {{ index: {index}, name: {name} }}, inputs[_indices[{static_index}]].document.len()));\n"));

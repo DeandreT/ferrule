@@ -158,6 +158,7 @@ fn target_schema() -> SchemaNode {
 }
 fn project(nodes: Vec<(u32, Node)>, root: Scope) -> Project {
     Project {
+        execution_contract: None,
         source: endpoint_schema("Input"),
         target: target_schema(),
         source_path: None,

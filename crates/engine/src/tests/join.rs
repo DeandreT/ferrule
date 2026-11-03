@@ -54,6 +54,7 @@ fn project(
     fields: &[(&str, ScalarType)],
 ) -> Project {
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Source", Vec::new()),
         target: target(fields),
         source_path: None,
@@ -656,6 +657,7 @@ fn join_aggregates_reduce_naked_duplicate_tuples_and_empty_results() {
         .collect(),
     };
     let project = Project {
+        execution_contract: None,
         source: validation_source_with_values(),
         target: SchemaNode::group(
             "Target",
@@ -889,6 +891,7 @@ fn validation_rejects_duplicate_join_ids_and_invalid_plan_paths() {
         ..Scope::default()
     };
     let project = Project {
+        execution_contract: None,
         source: validation_source(),
         target: SchemaNode::group(
             "Target",
@@ -988,6 +991,7 @@ fn validation_enforces_join_dominance_and_terminal_collections() {
 fn validation_scopes_join_aggregate_expression_but_not_argument() {
     let plan = join_plan();
     let mut project = Project {
+        execution_contract: None,
         source: validation_source_with_values(),
         target: SchemaNode::group("Target", vec![SchemaNode::scalar("Value", ScalarType::Int)]),
         source_path: None,

@@ -668,6 +668,7 @@ mod tests {
         let schema =
             SchemaNode::group("Row", vec![SchemaNode::scalar("Value", ScalarType::String)]);
         Project {
+            execution_contract: None,
             source: SchemaNode::group(
                 "Input",
                 vec![

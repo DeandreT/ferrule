@@ -78,6 +78,7 @@ fn project(block_size: Value) -> Project {
         ..Scope::default()
     };
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Source", vec![]),
         target: SchemaNode::group("Target", vec![]),
         source_path: None,

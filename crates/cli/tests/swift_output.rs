@@ -178,6 +178,7 @@ fn project() -> Project {
     };
     message.set_source(Some(vec!["statements".into()]));
     Project {
+        execution_contract: None,
         source: source_schema(),
         target: swift_schema(),
         source_path: Some("input.json".into()),

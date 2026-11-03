@@ -10,6 +10,7 @@ fn repeated_scalar_bindings_concatenate_non_null_values_in_order() {
         vec![SchemaNode::scalar("line", ScalarType::String).repeating()],
     );
     let project = Project {
+        execution_contract: None,
         source: SchemaNode::group("Source", Vec::new()),
         target,
         source_path: None,
@@ -72,6 +73,7 @@ fn repeated_scalar_bindings_concatenate_non_null_values_in_order() {
 #[test]
 fn duplicate_non_repeating_scalar_bindings_remain_invalid() {
     let mut project = Project {
+        execution_contract: None,
         source: SchemaNode::group("Source", Vec::new()),
         target: SchemaNode::group(
             "Result",

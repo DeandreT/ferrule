@@ -43,6 +43,7 @@ fn project(value: &str) -> Project {
         vec![SchemaNode::scalar("Value", ScalarType::String)],
     );
     let mut project = Project {
+        execution_contract: None,
         source: schema.clone(),
         target: schema,
         source_path: None,

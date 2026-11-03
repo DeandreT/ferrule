@@ -35,6 +35,7 @@ fn qualified(node: SchemaNode, namespace: &str) -> Result<SchemaNode, Box<dyn Er
 
 fn project_with_source(source: SchemaNode) -> Project {
     Project {
+        execution_contract: None,
         source,
         target: SchemaNode::group(
             "Output",

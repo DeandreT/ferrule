@@ -193,6 +193,9 @@ pub enum XmlDocumentSetInputRefusal {
 /// A malformed backend-neutral program that an emitter must not publish.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProgramValidationError {
+    SourceContractViolation(mapping::SourceContractViolation),
+    /// Owned emission has no execution boundary for this contract yet.
+    UnsupportedExecutionContract(mapping::ExecutionContract),
     OwnedSource {
         diagnostic: Box<OwnedSourceDiagnostic>,
     },

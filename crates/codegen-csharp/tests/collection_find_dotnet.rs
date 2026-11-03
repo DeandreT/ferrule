@@ -86,6 +86,7 @@ fn fixture() -> Program {
     )
     .repeating();
     Program {
+        execution_contract: None,
         xml_boundary: None,
         source: SchemaNode::group("Source", vec![department]),
         extra_sources: vec![NamedSourceProgram {

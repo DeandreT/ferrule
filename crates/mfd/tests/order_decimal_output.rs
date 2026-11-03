@@ -174,6 +174,7 @@ fn project() -> Project {
     };
     root.set_source(Some(vec!["LineItems".into(), "LineItem".into()]));
     Project {
+        execution_contract: None,
         source,
         target,
         source_path: Some("order.xml".into()),

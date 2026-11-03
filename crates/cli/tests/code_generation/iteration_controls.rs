@@ -70,6 +70,7 @@ fn controls_project() -> Project {
     };
 
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Source", vec![source_parent]),
         target: SchemaNode::group("Target", vec![target_parent]),
         source_path: None,

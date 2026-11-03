@@ -15,6 +15,7 @@ fn dummy_schema() -> SchemaNode {
 #[test]
 fn mixed_content_validation_allows_names_owned_by_retained_metadata() {
     let project = Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Section",
             vec![SchemaNode::scalar(ir::XML_TEXT_FIELD, ScalarType::String).text()],
@@ -97,6 +98,7 @@ fn copy_current_source_preserves_the_complete_nested_group() {
         .into(),
     );
     let project = Project {
+        execution_contract: None,
         source: schema.clone(),
         target: schema,
         source_path: None,
@@ -121,6 +123,7 @@ fn copy_current_source_preserves_the_complete_nested_group() {
 
 fn runtime_project() -> Project {
     Project {
+        execution_contract: None,
         source: dummy_schema(),
         target: dummy_schema(),
         source_path: None,
@@ -287,6 +290,7 @@ fn evaluates_a_function_call_over_source_fields() {
         ),
     ]);
     let project = Project {
+        execution_contract: None,
         source: dummy_schema(),
         target: dummy_schema(),
         source_path: None,
@@ -350,6 +354,7 @@ fn scalar_bindings_follow_repeating_target_shape() {
         vec![SchemaNode::scalar("tag", ScalarType::String).repeating()],
     );
     let mut project = Project {
+        execution_contract: None,
         source: dummy_schema(),
         target,
         source_path: None,
@@ -416,6 +421,7 @@ fn missing_source_field_is_reported() {
         },
     )]);
     let project = Project {
+        execution_contract: None,
         source: dummy_schema(),
         target: dummy_schema(),
         source_path: None,
@@ -468,6 +474,7 @@ fn self_referential_node_is_a_cycle() {
         },
     )]);
     let project = Project {
+        execution_contract: None,
         source: dummy_schema(),
         target: dummy_schema(),
         source_path: None,
@@ -552,6 +559,7 @@ fn nested_repetition_flattens_with_broadcast_from_enclosing_scope() {
         ),
     ]);
     let project = Project {
+        execution_contract: None,
         source: dummy_schema(),
         target: dummy_schema(),
         source_path: None,
@@ -700,6 +708,7 @@ fn if_only_evaluates_the_taken_branch() {
         ),
     ]);
     let project = Project {
+        execution_contract: None,
         source: dummy_schema(),
         target: dummy_schema(),
         source_path: None,
@@ -768,6 +777,7 @@ fn value_map_falls_back_to_default_on_miss() {
         ),
     ]);
     let project = Project {
+        execution_contract: None,
         source: dummy_schema(),
         target: dummy_schema(),
         source_path: None,
@@ -833,6 +843,7 @@ fn value_map_without_a_default_returns_null_on_miss() {
         ),
     ]);
     let project = Project {
+        execution_contract: None,
         source: dummy_schema(),
         target: SchemaNode::group(
             "target",
@@ -884,6 +895,7 @@ fn value_map_coerces_input_to_its_declared_type() {
         ),
     ]);
     let project = Project {
+        execution_contract: None,
         source: dummy_schema(),
         target: dummy_schema(),
         source_path: None,
@@ -961,6 +973,7 @@ fn scope_filter_drops_items_that_fail_the_predicate() {
         ),
     ]);
     let project = Project {
+        execution_contract: None,
         source: dummy_schema(),
         target: dummy_schema(),
         source_path: None,
@@ -1058,6 +1071,7 @@ fn scope_sort_and_first_window_are_stable_and_reindex_positions() {
         ),
     ]);
     let project = Project {
+        execution_contract: None,
         source: dummy_schema(),
         target: dummy_schema(),
         source_path: None,
@@ -1155,6 +1169,7 @@ fn scope_sort_uses_mixed_direction_tie_breakers() {
         ),
     ]);
     let project = Project {
+        execution_contract: None,
         source: dummy_schema(),
         target: dummy_schema(),
         source_path: None,
@@ -1266,6 +1281,7 @@ fn scope_can_filter_in_source_order_before_sorting_survivors() {
         ),
     ]);
     let project = Project {
+        execution_contract: None,
         source: dummy_schema(),
         target: dummy_schema(),
         source_path: None,
@@ -1350,6 +1366,7 @@ fn scope_sort_totally_orders_mixed_and_non_finite_keys() {
         ),
     ]);
     let project = Project {
+        execution_contract: None,
         source: dummy_schema(),
         target: dummy_schema(),
         source_path: None,
@@ -1422,6 +1439,7 @@ fn uniterated_repeating_elements_resolve_to_their_first_item() {
         },
     )]);
     let project = Project {
+        execution_contract: None,
         source: dummy_schema(),
         target: dummy_schema(),
         source_path: None,
@@ -1506,6 +1524,7 @@ fn lookup_joins_rows_against_an_extra_source() {
         ),
     ]);
     let project = Project {
+        execution_contract: None,
         source: dummy_schema(),
         target: dummy_schema(),
         source_path: None,
@@ -1655,6 +1674,7 @@ fn collection_find_evaluates_composite_predicates_and_values_per_item() {
         ),
     ]);
     let project = Project {
+        execution_contract: None,
         source: dummy_schema(),
         target: dummy_schema(),
         source_path: None,
@@ -1744,6 +1764,7 @@ fn scope_source_path_reaches_an_extra_source() {
         },
     )]);
     let project = Project {
+        execution_contract: None,
         source: dummy_schema(),
         target: dummy_schema(),
         source_path: None,
@@ -1875,6 +1896,7 @@ fn recursive_collect_project() -> Project {
         ),
     ]);
     Project {
+        execution_contract: None,
         source,
         target,
         source_path: None,
@@ -1960,6 +1982,7 @@ fn whole_current_copy_retains_each_group_occurrences_own_xml_origin() {
             .unwrap(),
     );
     let project = Project {
+        execution_contract: None,
         source: schema.clone(),
         target: schema,
         source_path: None,
@@ -2007,6 +2030,7 @@ fn owned_scalar_construction_project(owner: mapping::SourceOwner, parts: &[&str]
         ],
     );
     Project {
+        execution_contract: None,
         source: source.clone(),
         target: SchemaNode::scalar("Output", ScalarType::String),
         source_path: None,

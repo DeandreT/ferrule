@@ -60,6 +60,7 @@ fn unvalidated_unpositioned_join_member_keeps_legacy_index_pairing() {
         path: path(&[field]),
     };
     let project = Project {
+        execution_contract: None,
         source: SchemaNode::group("Source", Vec::new()),
         target: SchemaNode::group(
             "Target",
@@ -994,6 +995,7 @@ fn the_document_path_is_the_latest_retained_one_whatever_the_frame_kind() {
 #[test]
 fn a_group_of_documents_reads_its_first_member_path() {
     let project = Project {
+        execution_contract: None,
         source: SchemaNode::group("Source", Vec::new()),
         target: SchemaNode::group(
             "Target",

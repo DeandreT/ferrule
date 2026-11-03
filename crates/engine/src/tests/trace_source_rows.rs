@@ -33,6 +33,7 @@ impl TraceSink for DecliningRowCollector {
 
 fn project(source: SchemaNode, target: SchemaNode, graph: Graph, root: Scope) -> Project {
     Project {
+        execution_contract: None,
         source,
         target,
         graph,

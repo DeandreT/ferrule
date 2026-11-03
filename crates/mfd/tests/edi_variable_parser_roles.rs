@@ -19,6 +19,7 @@ fn configured_parser_prefix_payload_preserves_complete_project_and_values() {
         ]
     };
     let expected = Project {
+        execution_contract: None,
         source: SchemaNode::group("Source", fields()),
         target: SchemaNode::group("Report", fields()),
         source_path: Some("source.json".into()),

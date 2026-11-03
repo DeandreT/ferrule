@@ -307,6 +307,7 @@ fn json_marker_project() -> Project {
     let source_field = "\n    private static global::Ferrule.Runtime.FerruleValue Node_1(";
     let target_field = "public static class GeneratedMapping\n{";
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Input", vec![string(source_field)]),
         target: SchemaNode::group("Output", vec![string(target_field), string("Copied")]),
         source_path: Some("input.json".into()),
@@ -381,6 +382,7 @@ fn x12_project(source_path: &str, target_path: &str) -> Project {
         ],
     );
     Project {
+        execution_contract: None,
         source: schema.clone(),
         target: schema,
         source_path: Some(source_path.into()),

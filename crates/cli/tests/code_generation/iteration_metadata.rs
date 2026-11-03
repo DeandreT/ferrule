@@ -19,6 +19,7 @@ fn metadata_project() -> Project {
         SchemaNode::group("DepartmentOut", vec![string("Department"), items]).repeating();
 
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Source", vec![bool_("InvalidFilter"), departments]),
         target: SchemaNode::group("Target", vec![department_out]),
         source_path: None,

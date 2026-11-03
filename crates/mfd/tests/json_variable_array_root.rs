@@ -26,6 +26,7 @@ fn selected_array_root_preserves_complete_project_and_ordered_values() {
         schema
     };
     let expected = Project {
+        execution_contract: None,
         source: SchemaNode::group("Source", vec![records("Rows")]),
         target: SchemaNode::group("Report", vec![records("Results")]),
         source_path: Some("source.json".into()),

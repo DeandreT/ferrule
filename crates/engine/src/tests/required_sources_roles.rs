@@ -136,6 +136,7 @@ fn every_sequence_input_still_names_its_source() {
         ));
         nodes.insert(12, read("Loaded"));
         let project = Project {
+            execution_contract: None,
             source: SchemaNode::group("Primary", Vec::new()),
             target: SchemaNode::group(
                 "Output",

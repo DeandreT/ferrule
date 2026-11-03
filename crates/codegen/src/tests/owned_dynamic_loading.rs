@@ -53,6 +53,7 @@ pub(crate) fn project(loading: bool) -> mapping::Project {
         }),
     );
     mapping::Project {
+        execution_contract: None,
         source: batch("Batch"),
         target: SchemaNode::group(
             "Out",

@@ -82,6 +82,7 @@ fn scope(fields: &[(&str, u32, ScalarType)]) -> TargetScope {
 }
 fn basic(nodes: Vec<ExpressionNode>, fields: &[(&str, u32, ScalarType)]) -> Program {
     Program {
+        execution_contract: None,
         xml_boundary: None,
         source: source_schema(),
         extra_sources: ["Unused", "Ref", " Ref 雪 ", "ref", "primary"]
@@ -7946,6 +7947,7 @@ fn sort668_leaf_program() -> Program {
 }
 fn sort668_scalar_project() -> mapping::Project {
     mapping::Project {
+        execution_contract: None,
         source: filter644_schema(),
         target: SchemaNode::scalar("Output", ScalarType::Int).repeating(),
         source_path: None,
@@ -8288,6 +8290,7 @@ fn p04_legacy_alias_position_matches_the_interpreter() {
         },
     );
     let project = mapping::Project {
+        execution_contract: None,
         source: p04.source.clone(),
         target: p04.target.clone(),
         source_path: None,

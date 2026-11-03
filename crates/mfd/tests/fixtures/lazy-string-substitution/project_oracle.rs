@@ -27,6 +27,7 @@ pub fn expected(design: &str) -> Project {
         ],
     );
     let mut project = Project {
+        execution_contract: None,
         source: SchemaNode::group("Source", vec![rows(vec![string("Value", true)], vec![])])
             .with_required_fields(vec!["Rows".into()])
             .unwrap(),

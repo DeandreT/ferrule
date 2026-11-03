@@ -165,6 +165,7 @@ fn target(name: &str, schema: SchemaNode, bound: &[(&str, NodeId)]) -> NamedTarg
 /// primary root field holding the mixed paragraph.
 pub fn base(target: SchemaNode, root: Scope, nodes: Vec<(NodeId, Node)>) -> Project {
     Project {
+        execution_contract: None,
         source: input_schema(),
         target,
         source_path: None,

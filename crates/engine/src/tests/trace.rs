@@ -40,6 +40,7 @@ fn control_value_previews_are_unicode_safe_and_bounded() {
 #[test]
 fn trace_records_post_order_values_with_iteration_positions() -> Result<(), Box<dyn Error>> {
     let project = Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Input",
             vec![
@@ -226,6 +227,7 @@ fn trace_records_post_order_values_with_iteration_positions() -> Result<(), Box<
 fn trace_records_generated_control_decisions_without_target_instances() -> Result<(), Box<dyn Error>>
 {
     let project = Project {
+        execution_contract: None,
         source: SchemaNode::group("Input", Vec::new()),
         target: SchemaNode::group(
             "Output",
@@ -439,6 +441,7 @@ fn trace_identifies_join_candidates_and_their_tuple_positions() -> Result<(), Bo
         )),
     )?;
     let project = Project {
+        execution_contract: None,
         source: SchemaNode::group("Input", Vec::new()),
         target: SchemaNode::group(
             "Output",
@@ -506,6 +509,7 @@ fn trace_identifies_join_candidates_and_their_tuple_positions() -> Result<(), Bo
 
 fn field_trace_project(target: SchemaNode, graph: Graph, root: Scope) -> Project {
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Input", Vec::new()),
         target,
         graph,

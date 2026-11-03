@@ -49,6 +49,7 @@ pub fn expected(ty: ScalarType, literal: Option<Value>) -> Project {
         },
     );
     Project {
+        execution_contract: None,
         source,
         target: SchemaNode::group(
             "Summary",
@@ -172,6 +173,7 @@ pub fn legacy_xml(substring: bool) -> Project {
 
 pub fn legacy_csv() -> Project {
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Feed", vec![SchemaNode::scalar("Key", ScalarType::String)]),
         target: SchemaNode::group(
             "Summary",

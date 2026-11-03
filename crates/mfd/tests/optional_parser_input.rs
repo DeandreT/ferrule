@@ -197,6 +197,7 @@ fn expected(design: &str) -> Project {
         }
     };
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Source", vec![rows(vec![string("Value", true)])]),
         target: SchemaNode::group(
             "Report",

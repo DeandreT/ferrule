@@ -31,6 +31,7 @@ fn project() -> Project {
     )
     .unwrap();
     Project {
+        execution_contract: None,
         source,
         target,
         source_path: None,

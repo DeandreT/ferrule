@@ -38,6 +38,7 @@ fn project() -> Project {
         },
     );
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Source",
             vec![SchemaNode::scalar("value", ScalarType::String)],

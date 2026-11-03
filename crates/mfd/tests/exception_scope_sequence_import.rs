@@ -96,6 +96,7 @@ fn field(name: &str) -> Node {
 }
 fn project() -> Project {
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Input",
             vec![

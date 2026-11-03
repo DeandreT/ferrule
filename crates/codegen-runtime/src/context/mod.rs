@@ -167,6 +167,14 @@ impl CollectionIdentity {
 }
 
 impl<'a> ScopeContext<'a> {
+    pub(crate) fn source_contract_input(&self) -> (&'a Instance, usize, usize) {
+        (
+            self.primary_source,
+            self.named_inputs.len(),
+            crate::source_contract::parameter_count(self.execution),
+        )
+    }
+
     /// Creates the root context for one generated mapping execution.
     pub fn new(source: &'a Instance) -> Self {
         Self {

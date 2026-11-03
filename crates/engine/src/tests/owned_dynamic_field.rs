@@ -127,6 +127,7 @@ fn project(values: Vec<Node>, extra: Vec<(u32, Node)>) -> Project {
     }
     graph.nodes.extend(extra);
     Project {
+        execution_contract: None,
         source: endpoint_schema("Input"),
         target: SchemaNode::group("Out", fields),
         source_path: None,
