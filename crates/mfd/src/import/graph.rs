@@ -168,9 +168,6 @@ pub(super) fn read_edges(
 
 pub(super) struct EdgeInputs {
     pub(super) feeds: BTreeMap<u32, u32>,
-    /// Noncollapsing numeric claims from this same edge-index construction.
-    /// Count refusal discovery must not infer absence from a selected feed.
-    pub(super) claims: BTreeMap<u32, BTreeSet<u32>>,
     pub(super) conflicts: Vec<String>,
     pub(super) complete: bool,
 }
@@ -181,6 +178,21 @@ pub(super) fn read_edge_inputs(
     structure: &roxmltree::Node<'_, '_>,
     legacy_parent: Option<&roxmltree::Node<'_, '_>>,
 ) -> EdgeInputs {
+    read_edge_inputs_with_probe(structure, legacy_parent, |_| ()).0
+}
+
+/// The complete transient claims may be borrowed here, never returned or cloned
+/// into the ordinary edge result. Selection and the original drop boundary stay
+/// shared with every pre-existing caller.
+pub(super) struct EdgeClaimView<'a> {
+    pub(super) sources: &'a BTreeMap<u32, BTreeSet<u32>>,
+}
+
+pub(super) fn read_edge_inputs_with_probe<R>(
+    structure: &roxmltree::Node<'_, '_>,
+    legacy_parent: Option<&roxmltree::Node<'_, '_>>,
+    probe: impl FnOnce(EdgeClaimView<'_>) -> R,
+) -> (EdgeInputs, R) {
     super::aggregate::filtered_count::count_visit(
         super::aggregate::filtered_count::Counter::EdgeIndex,
     );
@@ -254,7 +266,8 @@ pub(super) fn read_edge_inputs(
     let mut feeds = BTreeMap::new();
     let mut conflicts = Vec::new();
     let mut complete = true;
-    for (&input, sources) in &sources {
+    let result = probe(EdgeClaimView { sources: &sources });
+    for (input, sources) in sources {
         if sources.len() != 1 || !selected_inputs.contains(&input) {
             complete = false;
         }
@@ -262,7 +275,7 @@ pub(super) fn read_edge_inputs(
             feeds.insert(input, *sources.first().expect("one source"));
         } else if sources.len() > 1 {
             let sources = sources
-                .iter()
+                .into_iter()
                 .map(|source| source.to_string())
                 .collect::<Vec<_>>()
                 .join(", ");
@@ -271,12 +284,14 @@ pub(super) fn read_edge_inputs(
             ));
         }
     }
-    EdgeInputs {
-        feeds,
-        claims: sources,
-        conflicts,
-        complete,
-    }
+    (
+        EdgeInputs {
+            feeds,
+            conflicts,
+            complete,
+        },
+        result,
+    )
 }
 
 pub(super) fn read_copy_all_targets(

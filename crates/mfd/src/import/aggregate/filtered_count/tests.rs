@@ -1,6 +1,7 @@
 use super::*;
 use std::{cell::Cell, path::PathBuf};
 
+mod input_routing;
 mod receiver_contexts;
 mod review_regressions;
 
@@ -373,11 +374,11 @@ impl Drop for Package {
 const DESIGN: &str =
     include_str!("../../../../tests/fixtures/filtered-count-receivers/row-cell-fanout.mfd");
 
-fn counts() -> [usize; 20] {
+fn counts() -> [usize; 24] {
     COUNTERS.with(|c| *c.borrow())
 }
 fn reset() {
-    COUNTERS.with(|c| *c.borrow_mut() = [0; 20]);
+    COUNTERS.with(|c| *c.borrow_mut() = [0; 24]);
 }
 
 #[test]
