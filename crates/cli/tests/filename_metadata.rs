@@ -501,7 +501,12 @@ fn cli_uses_runtime_paths_and_publishes_only_after_complete_success() -> Result 
         .arg(fixture.0.join("design.mfd"))
         .arg("--out")
         .arg(fixture.0.join("mapping.json"));
-    checked(&fixture.0, "cli-import", &mut command)?;
+    checked(
+        &fixture.0,
+        "cli-import",
+        &mut command,
+        available_space(&fixture.0)?,
+    )?;
     let document = cli::load_document_project(&fixture.0.join("mapping.json"))?;
     assert_eq!(
         mapping::document_project_file::encode_pretty(&document)?,
@@ -605,14 +610,46 @@ fn cli_uses_runtime_paths_and_publishes_only_after_complete_success() -> Result 
     Ok(())
 }
 
-fn checked(root: &Path, label: &str, command: &mut Command) -> Result<std::process::Output> {
+const GENERATED_BUILD_RESERVE_BYTES: u64 = 45 * 1024 * 1024 * 1024;
+
+fn generated_build_space_admission(free_bytes: Option<u64>) -> std::result::Result<(), u64> {
+    match free_bytes {
+        Some(free) if free < GENERATED_BUILD_RESERVE_BYTES => Err(free),
+        _ => Ok(()),
+    }
+}
+
+fn available_space(root: &Path) -> Result<Option<u64>> {
     #[cfg(unix)]
-    let free_bytes = {
+    {
         let space = rustix::fs::statvfs(root)?;
-        Some(space.f_bavail.saturating_mul(space.f_frsize))
-    };
+        Ok(Some(space.f_bavail.saturating_mul(space.f_frsize)))
+    }
     #[cfg(not(unix))]
-    let free_bytes: Option<u64> = None;
+    {
+        let _ = root;
+        Ok(None)
+    }
+}
+
+fn checked_generated_build(
+    root: &Path,
+    label: &str,
+    command: &mut Command,
+) -> Result<std::process::Output> {
+    let free_bytes = available_space(root)?;
+    if let Err(free) = generated_build_space_admission(free_bytes) {
+        return Err(format!("generated host requires 45 GiB free; available: {free}").into());
+    }
+    checked(root, label, command, free_bytes)
+}
+
+fn checked(
+    root: &Path,
+    label: &str,
+    command: &mut Command,
+    free_bytes: Option<u64>,
+) -> Result<std::process::Output> {
     std::fs::write(
         root.join(format!("{label}-command.json")),
         serde_json::to_vec_pretty(&serde_json::json!({
@@ -627,12 +664,6 @@ fn checked(root: &Path, label: &str, command: &mut Command) -> Result<std::proce
             "free_bytes_before": free_bytes,
         }))?,
     )?;
-    if let Some(free) = free_bytes {
-        assert!(
-            free >= 45 * 1024 * 1024 * 1024,
-            "generated host requires 45 GiB free; available: {free}"
-        );
-    }
     let output = command.output()?;
     std::fs::write(root.join(format!("{label}.stdout")), &output.stdout)?;
     std::fs::write(root.join(format!("{label}.stderr")), &output.stderr)?;
@@ -649,6 +680,51 @@ fn checked(root: &Path, label: &str, command: &mut Command) -> Result<std::proce
         String::from_utf8_lossy(&output.stderr)
     );
     Ok(output)
+}
+
+#[test]
+fn generated_build_space_admission_keeps_the_exact_reserve_boundary() {
+    for free in [0, 1, GENERATED_BUILD_RESERVE_BYTES - 1] {
+        assert_eq!(generated_build_space_admission(Some(free)), Err(free));
+    }
+    for free in [
+        GENERATED_BUILD_RESERVE_BYTES,
+        GENERATED_BUILD_RESERVE_BYTES + 1,
+    ] {
+        assert_eq!(generated_build_space_admission(Some(free)), Ok(()));
+    }
+    assert_eq!(generated_build_space_admission(None), Ok(()));
+}
+
+#[test]
+fn ordinary_cli_receipts_execute_with_less_than_the_generated_build_reserve() -> Result {
+    let fixture = Fixture::new()?;
+    let output_path = fixture.0.join("low-space-project.json");
+    let mut command = Command::new(env!("CARGO_BIN_EXE_ferrule"));
+    command
+        .args(["import-mfd", "--filename-document", "--mfd"])
+        .arg(fixture.0.join("design.mfd"))
+        .arg("--out")
+        .arg(&output_path);
+    let output = checked(&fixture.0, "low-space-cli", &mut command, Some(1))?;
+    assert!(output.status.success());
+    assert!(output_path.is_file());
+    let recorded: serde_json::Value = serde_json::from_slice(&std::fs::read(
+        fixture.0.join("low-space-cli-command.json"),
+    )?)?;
+    assert_eq!(recorded["free_bytes_before"], 1);
+    assert_eq!(
+        std::fs::read(fixture.0.join("low-space-cli.stdout"))?,
+        output.stdout
+    );
+    assert_eq!(
+        std::fs::read(fixture.0.join("low-space-cli.stderr"))?,
+        output.stderr
+    );
+    let status: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(fixture.0.join("low-space-cli-status.json"))?)?;
+    assert_eq!(status, serde_json::json!({"success": true, "exit_code": 0}));
+    Ok(())
 }
 
 const CSHARP_HOST_PROJECT: &str = r#"<Project Sdk="Microsoft.NET.Sdk">
@@ -860,7 +936,7 @@ fn composed_metadata_generated_release_hosts_preserve_values_errors_and_filename
     .arg(fixture.0.join("rust-target"))
     .env_remove("RUSTFLAGS")
     .env_remove("CARGO_ENCODED_RUSTFLAGS");
-    checked(&fixture.0, "rust-release", &mut rust)?;
+    checked_generated_build(&fixture.0, "rust-release", &mut rust)?;
     prepare_csharp_host(&fixture.0)?;
     let executable = std::env::var_os("FERRULE_DOTNET_EXE").unwrap_or_else(|| "dotnet".into());
     let (mut sdk, mut dotnet) = csharp_commands(
@@ -869,7 +945,12 @@ fn composed_metadata_generated_release_hosts_preserve_values_errors_and_filename
         document.primary_source().filename,
         document.output_filename().unwrap(),
     );
-    let output = checked(&fixture.0, "csharp-sdk", &mut sdk)?;
+    let output = checked(
+        &fixture.0,
+        "csharp-sdk",
+        &mut sdk,
+        available_space(&fixture.0)?,
+    )?;
     let policy: serde_json::Value =
         serde_json::from_slice(&std::fs::read(fixture.0.join("global.json"))?)?;
     assert_eq!(
@@ -879,6 +960,6 @@ fn composed_metadata_generated_release_hosts_preserve_values_errors_and_filename
             .ok_or("SDK global.json must declare sdk.version")?,
         "dotnet --version must select the exact global.json sdk.version"
     );
-    checked(&fixture.0, "csharp-release", &mut dotnet)?;
+    checked_generated_build(&fixture.0, "csharp-release", &mut dotnet)?;
     Ok(())
 }
