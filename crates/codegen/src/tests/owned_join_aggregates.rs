@@ -85,6 +85,7 @@ fn aggregate_project() -> Project {
         graph.nodes.insert(id, node);
     }
     Project {
+        execution_contract: None,
         source: rows(),
         target: SchemaNode::group(
             "Target",

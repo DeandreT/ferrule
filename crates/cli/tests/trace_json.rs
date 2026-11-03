@@ -53,6 +53,7 @@ fn json_lines(path: &Path) -> Result<Vec<serde_json::Value>, Box<dyn std::error:
 
 fn control_project() -> Project {
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Input", Vec::new()),
         target: SchemaNode::group(
             "Output",
@@ -148,6 +149,7 @@ fn selected_target_project() -> Project {
         ..Scope::default()
     };
     Project {
+        execution_contract: None,
         source: schema("Input"),
         target: schema("Primary"),
         source_path: Some("input.json".into()),
@@ -180,6 +182,7 @@ fn selected_target_project() -> Project {
 
 fn failing_project() -> Project {
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Input", Vec::new()),
         target: SchemaNode::group("Output", Vec::new()),
         source_path: Some("input.json".into()),

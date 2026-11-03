@@ -77,6 +77,7 @@ fn conditional_chain_shares_the_existing_expansion_budget() {
     let mut budget = ExpansionBudget {
         remaining: 2,
         depth: 0,
+        shared: None,
     };
     assert!(lower(&function, &mut budget).is_err());
     assert_eq!(budget.remaining, 0);
@@ -353,6 +354,7 @@ fn repeated_nested_parameter_uses_share_the_callers_node_budget() {
     let mut budget = ExpansionBudget {
         remaining: setup_claims + 1 + argument_nodes,
         depth: 0,
+        shared: None,
     };
     let error = budget
         .at_depth(3, |budget| {
@@ -373,6 +375,7 @@ fn repeated_nested_parameter_uses_share_the_callers_node_budget() {
     let mut budget = ExpansionBudget {
         remaining: setup_claims + 1 + 2 * argument_nodes + outer_pairs,
         depth: 0,
+        shared: None,
     };
     let expression = budget
         .at_depth(3, |budget| {

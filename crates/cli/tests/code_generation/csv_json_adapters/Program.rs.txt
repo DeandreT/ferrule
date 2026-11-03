@@ -50,7 +50,7 @@ pub fn expected_program(project: &mapping::Project, family: &str) -> Program {
         vec![codegen::FailureRule { iteration:codegen::FailureIteration::Source(codegen::SourceIteration::new(vec![])),
             selection:codegen::FailureSelection::All,message:Some(9) }]
     } else { vec![] };
-    Program { xml_boundary:None, source:project.source.clone(),extra_sources:vec![],
+    Program { execution_contract:project.execution_contract, xml_boundary:None, source:project.source.clone(),extra_sources:vec![],
         target:project.target.clone(),expressions,user_functions:vec![],failure_rules,root,
         extra_targets:project.extra_targets.iter().zip(named_roots).map(|(target,root)|
             NamedTargetProgram {name:target.name.clone(),target:target.schema.clone(),root}).collect() }

@@ -32,6 +32,9 @@ pub(super) struct GraphBuilder<'a> {
     pub(super) warned_variable_constructions: BTreeSet<u32>,
     pub(super) rejected_join_paths: BTreeSet<Vec<String>>,
     pub(super) source_fields: BTreeMap<(Option<Vec<String>>, Vec<String>), NodeId>,
+    /// Speculative builders own their seal; discarded probes cannot certify
+    /// or poison the materialized graph that is actually published.
+    pub(super) materialized_arguments: super::udf::certificate::ArgumentSeal,
     pub(super) json_serializer_nodes: BTreeMap<u32, NodeId>,
     pub(super) xml_serializer_nodes: BTreeMap<u32, NodeId>,
     pub(super) external_scalar_nodes: BTreeMap<u32, NodeId>,

@@ -34,6 +34,7 @@ fn physical_xml_targets_explicitly_preserve_the_no_hint_default() {
         ],
     );
     let mut project = Project {
+        execution_contract: None,
         source: schema.clone(),
         target: schema,
         source_path: Some("input.xml".into()),

@@ -137,6 +137,7 @@ fn target_schema(scope: &TargetScope, name: &str) -> SchemaNode {
 }
 fn basic(expressions: Vec<ExpressionNode>, root: TargetScope) -> Program {
     Program {
+        execution_contract: None,
         xml_boundary: None,
         source: source_schema("Primary"),
         extra_sources: ["Unused", "Ref", " Ref 雪 ", "ref", "primary"]

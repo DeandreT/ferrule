@@ -8,6 +8,7 @@ use std::collections::BTreeMap;
 use std::path::Path;
 fn project() -> Project {
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Input", vec![]),
         target: SchemaNode::group("Output", vec![]),
         source_path: None,

@@ -15,6 +15,7 @@ fn adjacency_project() -> Project {
         panic!("valid adjacency-tree plan");
     };
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Types",
             vec![

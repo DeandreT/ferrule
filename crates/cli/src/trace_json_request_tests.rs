@@ -354,6 +354,7 @@ fn writer_refusal_does_not_change_mapping_result_or_published_output() {
         ],
     );
     let project = Project {
+        execution_contract: None,
         source: schema.clone(),
         target: SchemaNode::group(
             "Output",

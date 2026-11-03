@@ -33,6 +33,7 @@ fn project() -> Project {
         vec![SchemaNode::scalar("value", ScalarType::String)],
     );
     Project {
+        execution_contract: None,
         source: schema.clone(),
         target: schema,
         source_path: Some("missing-input.json".into()),

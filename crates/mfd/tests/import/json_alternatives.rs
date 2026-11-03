@@ -115,6 +115,7 @@ fn required_typed_and_null_const_json_alternatives_export_reimport_and_execute()
     .unwrap()
     .repeating();
     let project = Project {
+        execution_contract: None,
         source: SchemaNode::group("Events", vec![event]),
         target: SchemaNode::group(
             "Result",

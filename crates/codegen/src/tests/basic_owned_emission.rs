@@ -57,6 +57,7 @@ fn input_schema() -> SchemaNode {
 }
 fn program(owned: bool) -> Program {
     Program {
+        execution_contract: None,
         xml_boundary: None,
         source: input_schema(),
         extra_sources: ["Ref", " Ref 雪 ", "ref", "primary"]

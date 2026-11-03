@@ -181,6 +181,7 @@ pub fn base() -> Project {
         .nodes
         .insert(AUDIT_NODE, dynamic(LOOKUP, &["Props"], None, SIZE));
     Project {
+        execution_contract: None,
         source: endpoint_schema("Input"),
         target: SchemaNode::group("Out", vec![]),
         source_path: None,

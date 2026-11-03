@@ -489,6 +489,7 @@ fn selector_project(collection: Vec<String>) -> mapping::Project {
     );
     let root = serde_json::from_value(serde_json::json!({"target_field":"", "bindings":[],"children":[{"target_field":"Batch","source":["Batch"],"bindings":[],"children":[{"target_field":"Row","source":["Row"],"filter":1,"bindings":[{"target_field":"Index","node":3}],"children":[]}]}]})).unwrap();
     mapping::Project {
+        execution_contract: None,
         source,
         target,
         source_path: Some("input.xml".into()),

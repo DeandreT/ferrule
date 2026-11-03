@@ -5,6 +5,7 @@ use crate::{EngineError, run, validate};
 
 fn project(output_path: u32) -> Project {
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Source",
             vec![SchemaNode::scalar("Value", ScalarType::String)],

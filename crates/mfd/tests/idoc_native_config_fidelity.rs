@@ -71,6 +71,7 @@ fn project_with_leading_label() -> Project {
     let descriptor = IdocNativeConfig::new("TEST01", vec![IdocNativeNode::Group(group)]).unwrap();
     let (source, layout) = descriptor.project().unwrap();
     Project {
+        execution_contract: None,
         source,
         target: SchemaNode::group(
             "Target",

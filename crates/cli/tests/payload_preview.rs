@@ -11,6 +11,7 @@ fn project() -> Project {
         ..FormatOptions::default()
     };
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Input", Vec::new()),
         target: SchemaNode::group("Output", vec![SchemaNode::scalar("Value", ScalarType::Int)]),
         source_path: None,

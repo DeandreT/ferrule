@@ -48,6 +48,7 @@ fn scalar_scope(expression: u32) -> TargetScope {
 fn scalar_program() -> Program {
     // The minimum-policy case has a scalar primary, not a scalar target scope.
     Program {
+        execution_contract: None,
         xml_boundary: None,
         source: SchemaNode::scalar("Input", ScalarType::String),
         extra_sources: Vec::new(),

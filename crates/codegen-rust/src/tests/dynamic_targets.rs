@@ -86,6 +86,7 @@ fn project() -> Project {
     .with_dynamic_fields(person_target.repeating())
     .unwrap();
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Department",
             vec![

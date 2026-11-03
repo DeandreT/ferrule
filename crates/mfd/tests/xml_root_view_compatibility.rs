@@ -62,6 +62,7 @@ fn project(schema: SchemaNode, extra: bool) -> Project {
         });
     }
     Project {
+        execution_contract: None,
         source: schema.clone(),
         target: schema,
         source_path: Some("input.xml".into()),

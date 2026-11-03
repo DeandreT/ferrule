@@ -104,6 +104,7 @@ pub(super) fn project(owner: SourceOwner) -> mapping::Project {
         ..Default::default()
     };
     mapping::Project {
+        execution_contract: None,
         source: source_schema(),
         target: target_schema(),
         source_path: None,

@@ -11,6 +11,7 @@ fn project(explicit: bool) -> Project {
             .unwrap()
     };
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Input", vec![scalar()]),
         target: SchemaNode::group("Result", vec![scalar()]),
         source_path: None,

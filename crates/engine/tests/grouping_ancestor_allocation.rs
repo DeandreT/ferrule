@@ -77,6 +77,7 @@ fn field(frame: &[&str], name: &str) -> Node {
 
 fn project() -> Project {
     Project {
+        execution_contract: None,
         source: SchemaNode::group("root", vec![]),
         target: SchemaNode::group("root", vec![]),
         source_path: None,

@@ -7,6 +7,7 @@ fn failure_project() -> Project {
     let bad = SchemaNode::group("BadTrigger", vec![string("Value")]).repeating();
     let flag = SchemaNode::group("Flag", vec![string("Code"), bool_("Reject")]).repeating();
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Source",
             vec![string("Name"), bool_("FailGenerated"), row, trigger, bad],
@@ -481,6 +482,7 @@ fn tokenizer_cap_project(kind: TokenizerCapKind) -> Project {
         },
     };
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Source",
             vec![

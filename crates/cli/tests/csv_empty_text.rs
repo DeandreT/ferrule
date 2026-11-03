@@ -34,6 +34,7 @@ fn project() -> Project {
         ],
     );
     Project {
+        execution_contract: None,
         source: row.clone(),
         target: SchemaNode::group("Rows", vec![row.repeating()]),
         source_path: Some("input.csv".into()),

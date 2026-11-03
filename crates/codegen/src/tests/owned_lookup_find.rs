@@ -72,6 +72,7 @@ fn project() -> mapping::Project {
         node,
     };
     mapping::Project {
+        execution_contract: None,
         source: source.clone(),
         target,
         source_path: None,

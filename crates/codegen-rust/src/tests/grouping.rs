@@ -23,6 +23,7 @@ fn grouping_program() -> Program {
     )
     .repeating();
     Program {
+        execution_contract: None,
         xml_boundary: None,
         source: SchemaNode::group("Source", vec![rows]),
         extra_sources: Vec::new(),

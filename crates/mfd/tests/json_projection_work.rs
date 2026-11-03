@@ -127,6 +127,7 @@ fn project(count: usize) -> Project {
     }
     target_fields.push(SchemaNode::group("Records", fields(count)).repeating());
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Source", vec![]),
         target: SchemaNode::group("Report", target_fields),
         source_path: None,

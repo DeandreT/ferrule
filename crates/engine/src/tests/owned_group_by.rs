@@ -140,6 +140,7 @@ fn project(owner: SourceOwner) -> Project {
         ),
     ]);
     Project {
+        execution_contract: None,
         source: source_schema(),
         target: output_schema(),
         source_path: None,

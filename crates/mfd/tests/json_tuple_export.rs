@@ -64,6 +64,7 @@ fn document(name: &str, framed: bool) -> SchemaNode {
 
 fn project(source: SchemaNode, target: SchemaNode) -> Project {
     Project {
+        execution_contract: None,
         source,
         target,
         source_path: Some("source.json".into()),

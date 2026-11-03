@@ -51,6 +51,7 @@ fn row_schema(ty: ScalarType) -> SchemaNode {
 
 fn project() -> Project {
     Project {
+        execution_contract: None,
         source: SchemaNode::group("Input", Vec::new()),
         target: SchemaNode::group("Output", vec![row_schema(ScalarType::Int)]),
         source_path: None,

@@ -35,6 +35,7 @@ fn empty_constructed_scopes_compile_with_warnings_denied() -> TestResult<()> {
         ),
     ] {
         let project = Project {
+            execution_contract: None,
             source: SchemaNode::group("Source", vec![string("Text")]),
             target,
             source_path: None,

@@ -116,7 +116,7 @@ lower        err:5db4f66d7e51e24a ScopeControl
 lower        err:a0d5829ac87df68b ScopeControl
 
 ## basic-owned-occurrence/primary (project)
-lower        ok:9136978184ff5c14
+lower        ok:1e45a2f23a29d2bf
 validate     ok
 xml_mode     ok:None
 plan         ok:None
@@ -134,7 +134,7 @@ rust_json5   err:96698bd366daa822 JSON5_target_scope_iteration_is_outside
 csharp_json5 err:96698bd366daa822 JSON5_boundary:_JSON5_target_scope_iteration
 
 ## basic-owned-occurrence/named (project)
-lower        ok:c2a7da10212f9894
+lower        ok:de528a17900b7fc5
 validate     ok
 xml_mode     ok:None
 plan         ok:None
@@ -161,17 +161,17 @@ lower        err:94316444bfd86480 mapping_cannot_be_lowered_for_code
 lower        err:94316444bfd86480 mapping_cannot_be_lowered_for_code
 
 ## json-undeclared-members/open (project)
-lower        ok:35855fd141b3ec6b
+lower        ok:b2f433b61f28a1e2
 validate     ok
 xml_mode     ok:None
 plan         ok:None
 rust         ok:18a71becedc80d66
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:08066692b676424e
+csharp       ok:b240cfab14115713
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:0647e9365cdb04ba
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:a50b6463055bdea4
+csharp_typed ok:d313351c95ff9445
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:92a0a36876024dcb
 csharp_csv   err:92a0a36876024dcb
@@ -179,17 +179,17 @@ rust_json5   err:936448bb992a986e JSON5_Source_schema:_JSON5_schema_metadata
 csharp_json5 err:936448bb992a986e JSON5_boundary:_JSON5_Source_schema:_JSON5
 
 ## json-undeclared-members/typed (project)
-lower        ok:5c5d4f86087cd1b1
+lower        ok:177777cc079f79ca
 validate     ok
 xml_mode     ok:None
 plan         ok:None
 rust         ok:d2695f639855f60c
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:8f54815afb48feee
+csharp       ok:ee0514f64e300a73
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:f75c1153123fd9c8
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:2951fae44b36d370
+csharp_typed ok:a185a03077554dc1
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:92a0a36876024dcb
 csharp_csv   err:92a0a36876024dcb
@@ -197,17 +197,17 @@ rust_json5   err:936448bb992a986e JSON5_Source_schema:_JSON5_schema_metadata
 csharp_json5 err:936448bb992a986e JSON5_boundary:_JSON5_Source_schema:_JSON5
 
 ## json-undeclared-members/nested (project)
-lower        ok:82823a5de8ef483d
+lower        ok:4c0127fb11971646
 validate     ok
 xml_mode     ok:None
 plan         ok:None
 rust         ok:641eac3e7da36776
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:d0226c0f7ba9c25c
+csharp       ok:1ff9dfdbdac85a7d
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:ba993bcb376242ec
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:0f0f37558b4cdc1c
+csharp_typed ok:b1b4e0a0ca09c6bd
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:92a0a36876024dcb
 csharp_csv   err:92a0a36876024dcb
@@ -215,17 +215,17 @@ rust_json5   err:936448bb992a986e JSON5_Source_schema:_JSON5_schema_metadata
 csharp_json5 err:936448bb992a986e JSON5_boundary:_JSON5_Source_schema:_JSON5
 
 ## json-undeclared-members/matching (project)
-lower        ok:3edeb078af2a7822
+lower        ok:13c8370ac8e0947d
 validate     ok
 xml_mode     ok:None
 plan         ok:None
 rust         ok:4cb93e1d08a38523
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:6e1e7579586e83cf
+csharp       ok:bc1378f18f68297c
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:f75c1153123fd9c8
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:2951fae44b36d370
+csharp_typed ok:a185a03077554dc1
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:92a0a36876024dcb
 csharp_csv   err:92a0a36876024dcb
@@ -233,17 +233,17 @@ rust_json5   err:936448bb992a986e JSON5_Source_schema:_JSON5_schema_metadata
 csharp_json5 err:936448bb992a986e JSON5_boundary:_JSON5_Source_schema:_JSON5
 
 ## json-undeclared-members/closed (project)
-lower        ok:1cca0ef560f064fa
+lower        ok:b5b2cae4c9ba422f
 validate     ok
 xml_mode     ok:None
 plan         ok:None
 rust         ok:bb561abe40d9a0f8
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:dbe557d04afb5a02
+csharp       ok:6abbf5f8b93cc437
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:2d229e57bcb6e00a
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:71580f460b4a1e2a
+csharp_typed ok:cb9c7720fef2db9f
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:41ef6b7bb9a59294 generated_CSV_output_requires_a_repeated
 csharp_csv   err:41ef6b7bb9a59294 generated_CSV_output_requires_a_repeated
@@ -257,7 +257,7 @@ lower        err:b555bd979dfc5b8b FailureRule
 lower        err:5531b854b27a49cb FailureRule
 
 ## harness/basic-owned-row-failures/model-2 (project)
-lower        ok:7cd2cbb64cca62b9
+lower        ok:f0d2daad6c823732
 validate     ok
 xml_mode     ok:None
 plan         ok:None
@@ -275,7 +275,7 @@ rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
 ## harness/basic-owned-json-adapters/model-0 (project)
-lower        ok:c78893c5bde89c4d
+lower        ok:213e207da5dca710
 validate     ok
 xml_mode     ok:None
 plan         ok:None
@@ -293,7 +293,7 @@ rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
 ## harness/basic-owned-json-adapters/model-1 (project)
-lower        ok:99867d22eb6d2230
+lower        ok:29037a71e3e701b7
 validate     ok
 xml_mode     ok:None
 plan         ok:None
@@ -311,7 +311,7 @@ rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
 ## harness/basic-owned-json-adapters/model-2 (project)
-lower        ok:c05de76cfa6ea24b
+lower        ok:742680907a707d7e
 validate     ok
 xml_mode     ok:None
 plan         ok:None
@@ -329,7 +329,7 @@ rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
 ## basic-owned-scalar-construction/S01-primary-root (project)
-lower        ok:3204c692b96fbba4
+lower        ok:dbaa5a4eda725187
 validate     ok
 xml_mode     ok:None
 plan         ok:None
@@ -347,7 +347,7 @@ rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
 ## basic-owned-scalar-construction/S02-named-collision (project)
-lower        ok:632c47733cdc3e17
+lower        ok:61ec0f9442aa4dfe
 validate     ok
 xml_mode     ok:None
 plan         ok:None
@@ -365,7 +365,7 @@ rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
 ## basic-owned-scalar-construction/S03-literal-names (project)
-lower        ok:ae671d2b2d0a4b31
+lower        ok:c32903f4fc90297c
 validate     ok
 xml_mode     ok:None
 plan         ok:None
@@ -383,7 +383,7 @@ rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
 ## basic-owned-scalar-construction/S04-absent-owner (project)
-lower        ok:a9e7d0fa04cfb3e2
+lower        ok:91dd52cca4ec3c73
 validate     ok
 xml_mode     ok:None
 plan         ok:None
@@ -401,7 +401,7 @@ rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
 ## basic-owned-scalar-construction/S05-lazy-branch (project)
-lower        ok:88081df1b7a65f1f
+lower        ok:29c9b01f4ccbf4f4
 validate     ok
 xml_mode     ok:None
 plan         ok:None
@@ -419,7 +419,7 @@ rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
 ## basic-owned-scalar-construction/S06-argument-order (project)
-lower        ok:8029d60be84c1e65
+lower        ok:88e5ad4b75231768
 validate     ok
 xml_mode     ok:None
 plan         ok:None
@@ -437,7 +437,7 @@ rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
 ## basic-owned-scalar-construction/S07-numeric-adaptation (project)
-lower        ok:5b87d2a918a6ec14
+lower        ok:9984999f7c61dfe3
 validate     ok
 xml_mode     ok:None
 plan         ok:None
@@ -455,7 +455,7 @@ rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
 ## basic-owned-scalar-construction/S08-nested-repetitions (project)
-lower        ok:40ec3f561cee00bb
+lower        ok:64296d91197b4f16
 validate     ok
 xml_mode     ok:None
 plan         ok:None
@@ -473,7 +473,7 @@ rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
 ## basic-owned-scalar-construction/S09-scalar-primary (project)
-lower        ok:4cbed9c925c29ba0
+lower        ok:e43aa48ca5b8a9b3
 validate     ok
 xml_mode     ok:None
 plan         ok:None
@@ -497,7 +497,7 @@ lower        err:d56ddab692e290e9 GeneratedItem
 lower        err:d2d6a99aab843679 AggregateLookup
 
 ## basic-owned-scalar-construction/closed/K03-isolated-function (project)
-lower        ok:cc9cf82fcbe1a470
+lower        ok:7434b75cc6e76d77
 validate     ok
 xml_mode     ok:None
 plan         ok:None
@@ -1003,7 +1003,7 @@ lower        err:3c285ce296f2ce4a Grouping
 lower        err:3c285ce296f2ce4a Grouping
 
 ## basic-owned-group-adjacent-by/N10 (project)
-lower        ok:c6736440daa2703f
+lower        ok:f518f7ead153e71c
 validate     ok
 xml_mode     ok:None
 plan         ok:None
@@ -2090,17 +2090,17 @@ lower        err:5a2448e80593315b Grouping
 lower        err:e832b47ed336bc4c Grouping
 
 ## basic-owned-group-starting-with/S23-ordinary (project)
-lower        ok:21bda4db072999f0
+lower        ok:fac1f860eb51ce6f
 validate     ok
 xml_mode     ok:None
 plan         ok:None
 rust         ok:3a39c34978b5c171
 rust_api     ok:b60ffccc463ca052 n=60
-csharp       ok:6257429073fc0799
+csharp       ok:c93887693ec5107a
 csharp_api   ok:169f9d62d6cc906a n=52
 rust_typed   ok:29ecab241c71f102
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:23926fef1a9855b3
+csharp_typed ok:6d98b3a84ad9d1f0
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:b714713826e4f27b
 csharp_csv   err:b714713826e4f27b
@@ -2162,7 +2162,7 @@ lower        err:5d6934c00ff83972 Grouping
 lower        err:5d6934c00ff83972 Grouping
 
 ## basic-owned-group-starting-with/X10-ordinary (project)
-lower        ok:0aebae2fdaeef731
+lower        ok:f027aa12967e7776
 validate     ok
 xml_mode     ok:None
 plan         ok:None
@@ -4223,17 +4223,17 @@ lower        err:ceb8314fc79d3d9a TreeOperator
 lower        err:b8ad54f1e1aeb696 TreeOperator
 
 ## basic-owned-path-hierarchy/legacy (project)
-lower        ok:cbf6409c5d1772d8
+lower        ok:262ce621c05ce499
 validate     ok
 xml_mode     ok:None
 plan         ok:None
 rust         ok:e8002f5e4d1e61a8
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:6ca53ac600cd879c
+csharp       ok:1cef4a637702713d
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:79cc32c0f8b9db23
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:5f2d502b35951c2b
+csharp_typed ok:a47576de5a1a8a88
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:b7d3e821e420eced
 csharp_csv   err:b7d3e821e420eced
@@ -4361,17 +4361,17 @@ lower        err:4fe5ee3a00d13c5c TreeOperator
 lower        err:d98f287485c78ebd TreeOperator
 
 ## basic-owned-adjacency-tree/legacy (project)
-lower        ok:0b0f5858063a42b6
+lower        ok:90420f1cd8dd0c77
 validate     ok
 xml_mode     ok:None
 plan         ok:None
 rust         ok:1b9a944c0529266c
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:9095a198f902fa04
+csharp       ok:79a01d0505a16465
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:380d0ff6f38ccf7d
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:420b6b0048ccd14b
+csharp_typed ok:8ea76a3869bc3a68
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:191e077152937cf4
 csharp_csv   err:191e077152937cf4
@@ -4744,7 +4744,7 @@ rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
 ## basic-owned-lookup-find/L01-lookup-by-parent-needle (project)
-lower        ok:e91ba3a30140cfba
+lower        ok:51ed48d5c473e7ad
 validate     ok
 xml_mode     ok:None
 plan         ok:None
@@ -4762,7 +4762,7 @@ rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
 ## basic-owned-lookup-find/L02-find-with-owned-ordinal (project)
-lower        ok:b7aefd41e4b7159f
+lower        ok:60e8c3e9b7416ccc
 validate     ok
 xml_mode     ok:None
 plan         ok:None
@@ -4780,7 +4780,7 @@ rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
 ## basic-owned-lookup-find/L03-find-with-legacy-item-reads (project)
-lower        ok:31d060b37fb62ddd
+lower        ok:8ccc0435fab757dc
 validate     ok
 xml_mode     ok:None
 plan         ok:None
@@ -4798,7 +4798,7 @@ rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
 ## basic-owned-lookup-find/L04-nested-parent-lines (project)
-lower        ok:55d2430e3d913207
+lower        ok:67406f3d44245366
 validate     ok
 xml_mode     ok:None
 plan         ok:None
@@ -4816,7 +4816,7 @@ rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
 ## basic-owned-lookup-find/L05-find-reads-parent-and-root-pins (project)
-lower        ok:28c3c52986e400cb
+lower        ok:bf6b7dfe3c00e78e
 validate     ok
 xml_mode     ok:None
 plan         ok:None
@@ -4834,7 +4834,7 @@ rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
 ## basic-owned-lookup-find/L06-predicate-policy (project)
-lower        ok:884c69196345d22d
+lower        ok:df5a13c22d9a3b16
 validate     ok
 xml_mode     ok:None
 plan         ok:None
@@ -4852,7 +4852,7 @@ rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
 ## basic-owned-lookup-find/L07-repeated-named-root (project)
-lower        ok:0097502032595fd6
+lower        ok:45fdeffa5392a215
 validate     ok
 xml_mode     ok:None
 plan         ok:None
@@ -4876,7 +4876,7 @@ lower        err:796c0eaeb9a349bc Grouping
 lower        err:bcc61947afc081a7 FailureRule
 
 ## basic-owned-lookup-find/L10-root-identity-lookup (project)
-lower        ok:f618d0b00dfb71e0
+lower        ok:e141ce5e1b6bbf6b
 validate     ok
 xml_mode     ok:None
 plan         ok:None
@@ -5200,7 +5200,7 @@ rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
 ## basic-owned-collection-aggregates/C01-every-operator-root (project)
-lower        ok:caf56a6572e3d356
+lower        ok:2af00c256fd34fbd
 validate     ok
 xml_mode     ok:None
 plan         ok:None
@@ -5218,7 +5218,7 @@ rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
 ## basic-owned-collection-aggregates/C02-nested-and-scalar-collections (project)
-lower        ok:2b8b92a8959a2371
+lower        ok:86b9ee9e4d235e76
 validate     ok
 xml_mode     ok:None
 plan         ok:None
@@ -5236,7 +5236,7 @@ rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
 ## basic-owned-collection-aggregates/C03-computed-values-and-parent-arguments (project)
-lower        ok:0c88da90e4557315
+lower        ok:fae832cd20eb16c6
 validate     ok
 xml_mode     ok:None
 plan         ok:None
@@ -5257,7 +5257,7 @@ csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sour
 lower        err:796c0eaeb9a349bc Grouping
 
 ## basic-owned-collection-aggregates/C05-row-anchored-walks (project)
-lower        ok:53f619de0d352a11
+lower        ok:473ef0dd1cb89a40
 validate     ok
 xml_mode     ok:None
 plan         ok:None
@@ -5278,7 +5278,7 @@ csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sour
 lower        err:796c0eaeb9a349bc Grouping
 
 ## basic-owned-collection-aggregates/C07-repeated-named-root (project)
-lower        ok:7c7a9d5f96d45995
+lower        ok:8b3127d01823428a
 validate     ok
 xml_mode     ok:None
 plan         ok:None
@@ -5296,7 +5296,7 @@ rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
 ## basic-owned-collection-aggregates/C08-evaluation-order-and-failures (project)
-lower        ok:faacb09ee1500ff2
+lower        ok:ee702359849893c1
 validate     ok
 xml_mode     ok:None
 plan         ok:None
@@ -5314,7 +5314,7 @@ rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
 ## basic-owned-collection-aggregates/C09-empty-and-value-policies (project)
-lower        ok:30080fec7a598637
+lower        ok:5fcd7df3592fc7d6
 validate     ok
 xml_mode     ok:None
 plan         ok:None
@@ -5338,7 +5338,7 @@ lower        err:4995dec201c0217c FailureRule
 lower        err:0c422dda39298bea AggregateLookup
 
 ## basic-owned-collection-aggregates/closed/R03-legacy-aggregate (project)
-lower        ok:2bb77f46dd6a68be
+lower        ok:827092a97237968d
 validate     ok
 xml_mode     ok:None
 plan         ok:None
@@ -5693,17 +5693,17 @@ lower        err:2bd84e6fc455f096 Grouping
 lower        err:e28b855c7f87d8e5 XmlOperator
 
 ## basic-owned-xml-serialize/legacy (project)
-lower        ok:73b46d5ed7142333
+lower        ok:e5145be0e4f3268e
 validate     ok
 xml_mode     ok:None
 plan         ok:None
 rust         ok:170bdbacda1a636b
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:1f6bac71179d3493
+csharp       ok:c21ee37d9962ba90
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:4109c3cf6194b041
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:19f8d7acbec08007
+csharp_typed ok:53c78368aefe00f4
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:41ef6b7bb9a59294 generated_CSV_output_requires_a_repeated
 csharp_csv   err:41ef6b7bb9a59294 generated_CSV_output_requires_a_repeated
@@ -5888,17 +5888,17 @@ lower        err:c29cff6a6f5e277e XmlOperator
 lower        err:1f6ad1cf5fcf1c9a XmlOperator
 
 ## basic-owned-xml-mixed-content/legacy (project)
-lower        ok:fcb70b72a7d3a57a
+lower        ok:5f1acfc8685ee567
 validate     ok
 xml_mode     ok:None
 plan         ok:None
 rust         ok:993aeb5437f89152
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:70c1fb54e5c00f1e
+csharp       ok:049d8bcae5b4b4e3
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:36eb02d986681d05
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:adbd0f6b401d4fa7
+csharp_typed ok:d5e0faaed235c3d4
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:41ef6b7bb9a59294 generated_CSV_output_requires_a_repeated
 csharp_csv   err:41ef6b7bb9a59294 generated_CSV_output_requires_a_repeated
@@ -6080,17 +6080,17 @@ lower        err:6c44724bdb8226ca XmlOperator
 lower        err:3b377b721fe6716f XmlOperator
 
 ## basic-owned-xml-mixed-construction/legacy (project)
-lower        ok:c07e7f134af468aa
+lower        ok:7a8bc53beae5e93b
 validate     ok
 xml_mode     ok:None
 plan         ok:None
 rust         ok:91201ca39210c293
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:5310fc283e1cb332
+csharp       ok:97b54fa03dbca027
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:d89bc392f2aebf5a
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:36be5ac29205eec7
+csharp_typed ok:c923ab995b054334
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:f96aa88cec2d16d1
 csharp_csv   err:f96aa88cec2d16d1
@@ -6107,7 +6107,7 @@ lower        err:dc09e5d5eb4fa75c XmlOperator
 lower        err:3b377b721fe6716f XmlOperator
 
 ## basic-owned-document-path/nested (project)
-lower        ok:d1616705a74aff67
+lower        ok:1a907cc92c233a5c
 validate     ok
 xml_mode     ok:None
 plan         ok:None
@@ -6125,7 +6125,7 @@ rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
 ## basic-owned-document-path/cross (project)
-lower        ok:c342a9ec66f0b2cd
+lower        ok:3ce7d4e7ec618a2e
 validate     ok
 xml_mode     ok:None
 plan         ok:None
@@ -6143,7 +6143,7 @@ rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
 ## basic-owned-document-path/root (project)
-lower        ok:ccaee65f40e6a8cf
+lower        ok:efece38cd4a4edf8
 validate     ok
 xml_mode     ok:None
 plan         ok:None
@@ -6185,7 +6185,7 @@ lower        err:a34073f9d4b8e2b3 DynamicOwner
 lower        err:ce3200fd14fd5a72 DynamicOwner
 
 ## basic-owned-xml-document-set/nested (project)
-lower        ok:218850d19daba026
+lower        ok:d2775bcd8d93e959
 validate     ok
 xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/Structured/[]
@@ -6203,7 +6203,7 @@ rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## basic-owned-xml-document-set/cross (project)
-lower        ok:feff8f20ce218924
+lower        ok:08e3139cf217daab
 validate     ok
 xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/Structured/[]
@@ -6224,35 +6224,35 @@ csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_bounda
 lower        err:e49079596b5bf968 ScopeControl
 
 ## xml-requests/base/json (project)
-lower        ok:cc3dae45040adf22
+lower        ok:08f94d92d5b078ff
 validate     ok
 xml_mode     ok:None
 plan         ok:None
 rust         ok:cefd8e02dca3cab2
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:49c12fd9133c9440
+csharp       ok:847d91bf9e3cbb91
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:fe6255d4aee65655
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:13ed6f6c473ab1e7
+csharp_typed ok:c0e6a34afcb09494
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:91d642036b1a5463
 csharp_csv   err:91d642036b1a5463
 rust_json5   ok:c56fc6abcdb1ed5e
-csharp_json5 ok:3a24542750fbf213
+csharp_json5 ok:d36fc8a418867e06
 
 ## xml-requests/base/ordinary (project)
-lower        ok:219a78f6b3cd3b3c
+lower        ok:dd43262149120cbb
 validate     ok
 xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/Structured/[]
 rust         ok:6f5518447fc1f789
 rust_api     ok:c72f2116a409c1c9 n=79
-csharp       ok:593080a6e8f9c5bb
+csharp       ok:f3de2d494fe15498
 csharp_api   ok:0b20fdce8610ef67 n=70
 rust_typed   ok:fe6255d4aee65655
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:13ed6f6c473ab1e7
+csharp_typed ok:c0e6a34afcb09494
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -6260,17 +6260,17 @@ rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-requests/base/ordinary-hints (project)
-lower        ok:d65dacbc9cf165ec
+lower        ok:f4c0542e8f3d8385
 validate     ok
 xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/Structured/[]
 rust         ok:41df41457f5f968f
 rust_api     ok:c72f2116a409c1c9 n=79
-csharp       ok:e7c78a8d4030b3c7
+csharp       ok:64032d815dd18234
 csharp_api   ok:0b20fdce8610ef67 n=70
 rust_typed   ok:fe6255d4aee65655
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:13ed6f6c473ab1e7
+csharp_typed ok:c0e6a34afcb09494
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -6278,22 +6278,22 @@ rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-requests/base/ordinary-source-only (project)
-lower        ok:cc3dae45040adf22
+lower        ok:08f94d92d5b078ff
 validate     ok
 xml_mode     ok:None
 plan         ok:None
 rust         ok:cefd8e02dca3cab2
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:49c12fd9133c9440
+csharp       ok:847d91bf9e3cbb91
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:fe6255d4aee65655
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:13ed6f6c473ab1e7
+csharp_typed ok:c0e6a34afcb09494
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:91d642036b1a5463
 csharp_csv   err:91d642036b1a5463
 rust_json5   ok:c56fc6abcdb1ed5e
-csharp_json5 ok:3a24542750fbf213
+csharp_json5 ok:d36fc8a418867e06
 
 ## xml-requests/base/json-hints (project)
 lower        err:c9fbabc0e2955109 mapping_cannot_be_lowered_for_code
@@ -6314,17 +6314,17 @@ lower        err:1515168d3f70b978 mapping_cannot_be_lowered_for_code
 lower        err:1515168d3f70b978 mapping_cannot_be_lowered_for_code
 
 ## xml-requests/nested/json (project)
-lower        ok:8c9a664d6ed1987e
+lower        ok:f88316b486ae3ecf
 validate     ok
 xml_mode     ok:None
 plan         ok:None
 rust         ok:3bd4d8c68494ea15
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:ee753f814bd3c954
+csharp       ok:205f93694cdcf1f5
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:1894777ef714d4c7
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:e65d841f227113c8
+csharp_typed ok:5dcf07f4e4ead479
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:3bfec37f64f83f6a
 csharp_csv   err:3bfec37f64f83f6a
@@ -6332,17 +6332,17 @@ rust_json5   err:f3543d2f60b363d6 JSON5_Source_schema:_JSON5_schema_metadata
 csharp_json5 err:f3543d2f60b363d6 JSON5_boundary:_JSON5_Source_schema:_JSON5
 
 ## xml-requests/nested/ordinary (project)
-lower        ok:d681dc4cc6903cbc
+lower        ok:8abf2178319da953
 validate     ok
 xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/Structured/[]
 rust         ok:7a01c48b5d2f779d
 rust_api     ok:c72f2116a409c1c9 n=79
-csharp       ok:681893fcb1f9b9ba
+csharp       ok:f328fcfb5743996f
 csharp_api   ok:0b20fdce8610ef67 n=70
 rust_typed   ok:1894777ef714d4c7
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:e65d841f227113c8
+csharp_typed ok:5dcf07f4e4ead479
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -6350,17 +6350,17 @@ rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-requests/base/ordinary-depth-40 (project)
-lower        ok:ffff50e73c8ffae0
+lower        ok:8050faf63f8c7c97
 validate     ok
 xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/Structured/[]
 rust         ok:179848da960e4319
 rust_api     ok:c72f2116a409c1c9 n=79
-csharp       ok:5a2d514c3a681c91
+csharp       ok:fbe1ab2b747f6932
 csharp_api   ok:0b20fdce8610ef67 n=70
 rust_typed   ok:4c64b3815f177bc1
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:973adc7603699017
+csharp_typed ok:d9b6dcb5a1f44a84
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -6368,7 +6368,7 @@ rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-requests/base/ordinary-depth-65 (project)
-lower        ok:f1fadad7b1f47fb3
+lower        ok:fb5c38f4d6c9fd7a
 validate     ok
 xml_mode     ok:None
 plan         ok:None
@@ -6378,7 +6378,7 @@ csharp       err:b1939476afb1b1ce generated_runtime_cannot_read_embedded_schema
 csharp_api   err:b1939476afb1b1ce generated_runtime_cannot_read_embedded_schema
 rust_typed   ok:4c64b3815f177bc1
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:973adc7603699017
+csharp_typed ok:d9b6dcb5a1f44a84
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:41ef6b7bb9a59294 generated_CSV_output_requires_a_repeated
 csharp_csv   err:41ef6b7bb9a59294 generated_CSV_output_requires_a_repeated
@@ -6392,17 +6392,17 @@ lower        err:a51db5363c27fa9b mapping_cannot_be_lowered_for_code
 lower        err:a51db5363c27fa9b mapping_cannot_be_lowered_for_code
 
 ## xml-requests/dynamic_named_xml_input/named-json (project)
-lower        ok:de665003be8ceb91
+lower        ok:d0b9db8152768200
 validate     ok
 xml_mode     ok:None
 plan         ok:None
 rust         ok:cb3ada42c302f817
 rust_api     ok:b60ffccc463ca052 n=60
-csharp       ok:ba33ed477066d1d5
+csharp       ok:f4095f04f0b3e896
 csharp_api   ok:169f9d62d6cc906a n=52
 rust_typed   ok:927972df8b50e45c
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:bdac6be4bf9490d9
+csharp_typed ok:78d02d88612af53a
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -6410,17 +6410,17 @@ rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
 ## xml-requests/dynamic_named_xml_input/named-target-hints (project)
-lower        ok:c08890524e854a74
+lower        ok:9d086911b790fbd1
 validate     ok
 xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/Structured/[Single]
 rust         ok:ac03c07441a3e6e0
 rust_api     ok:0e5d3afd08c7af87 n=90
-csharp       ok:a05f0fdfa638bc6a
+csharp       ok:e2309540f47b485f
 csharp_api   ok:214188f171afd653 n=82
 rust_typed   ok:927972df8b50e45c
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:bdac6be4bf9490d9
+csharp_typed ok:78d02d88612af53a
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -6428,17 +6428,17 @@ rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-requests/dynamic_named_xml_input/named-target-json (project)
-lower        ok:de665003be8ceb91
+lower        ok:d0b9db8152768200
 validate     ok
 xml_mode     ok:None
 plan         ok:None
 rust         ok:cb3ada42c302f817
 rust_api     ok:b60ffccc463ca052 n=60
-csharp       ok:ba33ed477066d1d5
+csharp       ok:f4095f04f0b3e896
 csharp_api   ok:169f9d62d6cc906a n=52
 rust_typed   ok:927972df8b50e45c
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:bdac6be4bf9490d9
+csharp_typed ok:78d02d88612af53a
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -6446,17 +6446,17 @@ rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
 ## xml-requests/dynamic_named_xml_input/target-json (project)
-lower        ok:de665003be8ceb91
+lower        ok:d0b9db8152768200
 validate     ok
 xml_mode     ok:None
 plan         ok:None
 rust         ok:cb3ada42c302f817
 rust_api     ok:b60ffccc463ca052 n=60
-csharp       ok:ba33ed477066d1d5
+csharp       ok:f4095f04f0b3e896
 csharp_api   ok:169f9d62d6cc906a n=52
 rust_typed   ok:927972df8b50e45c
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:bdac6be4bf9490d9
+csharp_typed ok:78d02d88612af53a
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -6473,17 +6473,17 @@ lower        err:a51db5363c27fa9b mapping_cannot_be_lowered_for_code
 lower        err:a51db5363c27fa9b mapping_cannot_be_lowered_for_code
 
 ## xml-requests/dynamic_named_xml_input_mixed/named-json (project)
-lower        ok:963ed33a38d1fa72
+lower        ok:e191322a22f1c831
 validate     ok
 xml_mode     ok:None
 plan         ok:None
 rust         ok:0d7b8a6968a40717
 rust_api     ok:b60ffccc463ca052 n=60
-csharp       ok:122295bcf1baa8af
+csharp       ok:fb12305f7f23b49c
 csharp_api   ok:169f9d62d6cc906a n=52
 rust_typed   ok:c2145dab1d2cd1f1
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:9408eab0927f3a06
+csharp_typed ok:0c6e6af8162fba6b
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -6491,17 +6491,17 @@ rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
 ## xml-requests/dynamic_named_xml_input_mixed/named-target-hints (project)
-lower        ok:193c9637c117eae6
+lower        ok:df15d33d1eab5ab9
 validate     ok
 xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/Structured/[Single]
 rust         ok:11a4f62ebfaf70b5
 rust_api     ok:0e5d3afd08c7af87 n=90
-csharp       ok:c07c34f408ffedbf
+csharp       ok:2bbbf72f4d9a6c2c
 csharp_api   ok:214188f171afd653 n=82
 rust_typed   ok:c2145dab1d2cd1f1
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:9408eab0927f3a06
+csharp_typed ok:0c6e6af8162fba6b
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -6509,17 +6509,17 @@ rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-requests/dynamic_named_xml_input_mixed/named-target-json (project)
-lower        ok:963ed33a38d1fa72
+lower        ok:e191322a22f1c831
 validate     ok
 xml_mode     ok:None
 plan         ok:None
 rust         ok:0d7b8a6968a40717
 rust_api     ok:b60ffccc463ca052 n=60
-csharp       ok:122295bcf1baa8af
+csharp       ok:fb12305f7f23b49c
 csharp_api   ok:169f9d62d6cc906a n=52
 rust_typed   ok:c2145dab1d2cd1f1
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:9408eab0927f3a06
+csharp_typed ok:0c6e6af8162fba6b
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -6527,17 +6527,17 @@ rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
 ## xml-requests/dynamic_named_xml_input_mixed/target-json (project)
-lower        ok:963ed33a38d1fa72
+lower        ok:e191322a22f1c831
 validate     ok
 xml_mode     ok:None
 plan         ok:None
 rust         ok:0d7b8a6968a40717
 rust_api     ok:b60ffccc463ca052 n=60
-csharp       ok:122295bcf1baa8af
+csharp       ok:fb12305f7f23b49c
 csharp_api   ok:169f9d62d6cc906a n=52
 rust_typed   ok:c2145dab1d2cd1f1
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:9408eab0927f3a06
+csharp_typed ok:0c6e6af8162fba6b
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -6548,17 +6548,17 @@ csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sour
 lower        err:1515168d3f70b978 mapping_cannot_be_lowered_for_code
 
 ## xml-requests/dynamic_primary_xml_documents/target-json (project)
-lower        ok:e72bd3069eff51f5
+lower        ok:d719e7c67cf8568e
 validate     ok
 xml_mode     ok:None
 plan         ok:None
 rust         ok:5b11d7d443e79cd2
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:6d041959b2ce6bfa
+csharp       ok:4890c4bcb24d372f
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:c19d9888ff567dd6
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:db45218d8eef1f96
+csharp_typed ok:26cb9ac9756f103b
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:dc6ddf3b9c92bfaa generated_CSV_output_does_not_yet
 csharp_csv   err:dc6ddf3b9c92bfaa generated_CSV_output_does_not_yet
@@ -6575,17 +6575,17 @@ lower        err:a51db5363c27fa9b mapping_cannot_be_lowered_for_code
 lower        err:a51db5363c27fa9b mapping_cannot_be_lowered_for_code
 
 ## xml-requests/multiple_dynamic_named_inputs_dynamic_primary_xml_documents/named-json (project)
-lower        ok:89445d80992c29ec
+lower        ok:0f0bec820f662103
 validate     ok
 xml_mode     ok:None
 plan         ok:None
 rust         ok:f4063b13c1318cde
 rust_api     ok:b60ffccc463ca052 n=60
-csharp       ok:5a7c5bd91d818b4a
+csharp       ok:bfb6e37ddace03ff
 csharp_api   ok:169f9d62d6cc906a n=52
 rust_typed   ok:4c7cc5475e5b7361
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:d8db7cb3d36d7712
+csharp_typed ok:f98f0a78eda47847
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:82b6789ffc0019e9
 csharp_csv   err:82b6789ffc0019e9
@@ -6593,17 +6593,17 @@ rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
 ## xml-requests/multiple_dynamic_named_inputs_dynamic_primary_xml_documents/target-json (project)
-lower        ok:89445d80992c29ec
+lower        ok:0f0bec820f662103
 validate     ok
 xml_mode     ok:None
 plan         ok:None
 rust         ok:f4063b13c1318cde
 rust_api     ok:b60ffccc463ca052 n=60
-csharp       ok:5a7c5bd91d818b4a
+csharp       ok:bfb6e37ddace03ff
 csharp_api   ok:169f9d62d6cc906a n=52
 rust_typed   ok:4c7cc5475e5b7361
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:d8db7cb3d36d7712
+csharp_typed ok:f98f0a78eda47847
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:82b6789ffc0019e9
 csharp_csv   err:82b6789ffc0019e9
@@ -6620,17 +6620,17 @@ lower        err:a51db5363c27fa9b mapping_cannot_be_lowered_for_code
 lower        err:a51db5363c27fa9b mapping_cannot_be_lowered_for_code
 
 ## xml-requests/multiple_dynamic_named_inputs_static_primary_dynamic_named_xml_documents/named-json (project)
-lower        ok:29111296ee6c8eb8
+lower        ok:24578f8d17ec67ed
 validate     ok
 xml_mode     ok:None
 plan         ok:None
 rust         ok:8ee74e2c53085725
 rust_api     ok:b60ffccc463ca052 n=60
-csharp       ok:1296faf3e6a1cf0d
+csharp       ok:273b9c3a1426006e
 csharp_api   ok:169f9d62d6cc906a n=52
 rust_typed   ok:a6db98b029104543
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:f7239091a5f59be7
+csharp_typed ok:d2e891337d9b3294
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -6638,17 +6638,17 @@ rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
 ## xml-requests/multiple_dynamic_named_inputs_static_primary_dynamic_named_xml_documents/named-target-hints (project)
-lower        ok:2258794d10d006ee
+lower        ok:59ed2c55435438af
 validate     ok
 xml_mode     ok:Some(DynamicNamedInputStaticPrimaryDynamicNamedDocuments)
 plan         ok:DynamicNamedInputStaticPrimaryDynamicNamedDocuments/Structured/[List, List]
 rust         ok:668147e39216ac68
 rust_api     ok:b6956147feffbaf6 n=72
-csharp       ok:e081d3c37383a092
+csharp       ok:7c0a9d31dcac7f39
 csharp_api   ok:5eff987120b2499e n=64
 rust_typed   ok:a6db98b029104543
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:f7239091a5f59be7
+csharp_typed ok:d2e891337d9b3294
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -6656,17 +6656,17 @@ rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-requests/multiple_dynamic_named_inputs_static_primary_dynamic_named_xml_documents/named-target-json (project)
-lower        ok:29111296ee6c8eb8
+lower        ok:24578f8d17ec67ed
 validate     ok
 xml_mode     ok:None
 plan         ok:None
 rust         ok:8ee74e2c53085725
 rust_api     ok:b60ffccc463ca052 n=60
-csharp       ok:1296faf3e6a1cf0d
+csharp       ok:273b9c3a1426006e
 csharp_api   ok:169f9d62d6cc906a n=52
 rust_typed   ok:a6db98b029104543
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:f7239091a5f59be7
+csharp_typed ok:d2e891337d9b3294
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -6674,17 +6674,17 @@ rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
 ## xml-requests/multiple_dynamic_named_inputs_static_primary_dynamic_named_xml_documents/target-json (project)
-lower        ok:29111296ee6c8eb8
+lower        ok:24578f8d17ec67ed
 validate     ok
 xml_mode     ok:None
 plan         ok:None
 rust         ok:8ee74e2c53085725
 rust_api     ok:b60ffccc463ca052 n=60
-csharp       ok:1296faf3e6a1cf0d
+csharp       ok:273b9c3a1426006e
 csharp_api   ok:169f9d62d6cc906a n=52
 rust_typed   ok:a6db98b029104543
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:f7239091a5f59be7
+csharp_typed ok:d2e891337d9b3294
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -6701,17 +6701,17 @@ lower        err:a51db5363c27fa9b mapping_cannot_be_lowered_for_code
 lower        err:a51db5363c27fa9b mapping_cannot_be_lowered_for_code
 
 ## xml-requests/multiple_dynamic_named_xml_input_mixed/named-json (project)
-lower        ok:2cb1a6b13b40fb18
+lower        ok:d80e0e392b8308a1
 validate     ok
 xml_mode     ok:None
 plan         ok:None
 rust         ok:cd82c86cff1e71ff
 rust_api     ok:b60ffccc463ca052 n=60
-csharp       ok:d4c98f159e616c67
+csharp       ok:2deaeb9aa9d33c14
 csharp_api   ok:169f9d62d6cc906a n=52
 rust_typed   ok:8f01ffb3ccb9b3be
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:63871fe4d1b380c3
+csharp_typed ok:4a3651efb4d17cc0
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -6719,17 +6719,17 @@ rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
 ## xml-requests/multiple_dynamic_named_xml_input_mixed/named-target-hints (project)
-lower        ok:91fe6363eccc9493
+lower        ok:3412122a4aceeb6e
 validate     ok
 xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/Structured/[Single]
 rust         ok:f0b6b2821734589c
 rust_api     ok:0e5d3afd08c7af87 n=90
-csharp       ok:153b48882a4d89b6
+csharp       ok:927213ae8152779b
 csharp_api   ok:214188f171afd653 n=82
 rust_typed   ok:8f01ffb3ccb9b3be
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:63871fe4d1b380c3
+csharp_typed ok:4a3651efb4d17cc0
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -6737,17 +6737,17 @@ rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-requests/multiple_dynamic_named_xml_input_mixed/named-target-json (project)
-lower        ok:2cb1a6b13b40fb18
+lower        ok:d80e0e392b8308a1
 validate     ok
 xml_mode     ok:None
 plan         ok:None
 rust         ok:cd82c86cff1e71ff
 rust_api     ok:b60ffccc463ca052 n=60
-csharp       ok:d4c98f159e616c67
+csharp       ok:2deaeb9aa9d33c14
 csharp_api   ok:169f9d62d6cc906a n=52
 rust_typed   ok:8f01ffb3ccb9b3be
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:63871fe4d1b380c3
+csharp_typed ok:4a3651efb4d17cc0
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -6755,17 +6755,17 @@ rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
 ## xml-requests/multiple_dynamic_named_xml_input_mixed/target-json (project)
-lower        ok:2cb1a6b13b40fb18
+lower        ok:d80e0e392b8308a1
 validate     ok
 xml_mode     ok:None
 plan         ok:None
 rust         ok:cd82c86cff1e71ff
 rust_api     ok:b60ffccc463ca052 n=60
-csharp       ok:d4c98f159e616c67
+csharp       ok:2deaeb9aa9d33c14
 csharp_api   ok:169f9d62d6cc906a n=52
 rust_typed   ok:8f01ffb3ccb9b3be
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:63871fe4d1b380c3
+csharp_typed ok:4a3651efb4d17cc0
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -6776,17 +6776,17 @@ csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sour
 lower        err:1515168d3f70b978 mapping_cannot_be_lowered_for_code
 
 ## xml-requests/nested_document_collection/target-json (project)
-lower        ok:e25ab190350b9158
+lower        ok:f95b0bf2638f08fd
 validate     ok
 xml_mode     ok:None
 plan         ok:None
 rust         ok:6d98a48034d732d0
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:aba0abfeb396fbe6
+csharp       ok:eb91e0be9698df0b
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:a11fea98595c07c2
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:908f8da288f819fa
+csharp_typed ok:b781fead0af4e12f
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:7901c9c85d6be946
 csharp_csv   err:7901c9c85d6be946
@@ -6803,17 +6803,17 @@ lower        err:a51db5363c27fa9b mapping_cannot_be_lowered_for_code
 lower        err:a51db5363c27fa9b mapping_cannot_be_lowered_for_code
 
 ## xml-requests/one_dynamic_named_input_dynamic_primary_xml_documents/named-json (project)
-lower        ok:79a26d2315cb3449
+lower        ok:56c858e084c6abc2
 validate     ok
 xml_mode     ok:None
 plan         ok:None
 rust         ok:d80c3e9c55fde267
 rust_api     ok:b60ffccc463ca052 n=60
-csharp       ok:54680f730ff9613f
+csharp       ok:bb60438bcebaeeac
 csharp_api   ok:169f9d62d6cc906a n=52
 rust_typed   ok:db989ea47a0f131b
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:5b08344e8a6ba6d6
+csharp_typed ok:a0a570c414e0e4fb
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:82b6789ffc0019e9
 csharp_csv   err:82b6789ffc0019e9
@@ -6821,17 +6821,17 @@ rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
 ## xml-requests/one_dynamic_named_input_dynamic_primary_xml_documents/target-json (project)
-lower        ok:79a26d2315cb3449
+lower        ok:56c858e084c6abc2
 validate     ok
 xml_mode     ok:None
 plan         ok:None
 rust         ok:d80c3e9c55fde267
 rust_api     ok:b60ffccc463ca052 n=60
-csharp       ok:54680f730ff9613f
+csharp       ok:bb60438bcebaeeac
 csharp_api   ok:169f9d62d6cc906a n=52
 rust_typed   ok:db989ea47a0f131b
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:5b08344e8a6ba6d6
+csharp_typed ok:a0a570c414e0e4fb
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:82b6789ffc0019e9
 csharp_csv   err:82b6789ffc0019e9
@@ -6848,17 +6848,17 @@ lower        err:a51db5363c27fa9b mapping_cannot_be_lowered_for_code
 lower        err:a51db5363c27fa9b mapping_cannot_be_lowered_for_code
 
 ## xml-requests/one_dynamic_named_input_static_primary_dynamic_named_xml_documents/named-json (project)
-lower        ok:f09d90d8964b5f09
+lower        ok:ea29277ee2395dee
 validate     ok
 xml_mode     ok:None
 plan         ok:None
 rust         ok:2accf243ca8d7e59
 rust_api     ok:b60ffccc463ca052 n=60
-csharp       ok:28cda4b634c8df17
+csharp       ok:864a614f6dc60784
 csharp_api   ok:169f9d62d6cc906a n=52
 rust_typed   ok:5f3f03963296dc4e
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:97717d23caae448a
+csharp_typed ok:ea7bb86c58dc26bf
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -6866,17 +6866,17 @@ rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
 ## xml-requests/one_dynamic_named_input_static_primary_dynamic_named_xml_documents/named-target-hints (project)
-lower        ok:c88d78e84cab621f
+lower        ok:b4221f9dfdb49926
 validate     ok
 xml_mode     ok:Some(DynamicNamedInputStaticPrimaryDynamicNamedDocuments)
 plan         ok:DynamicNamedInputStaticPrimaryDynamicNamedDocuments/Structured/[List, List]
 rust         ok:fb90b32296505472
 rust_api     ok:b6956147feffbaf6 n=72
-csharp       ok:76da77a7c6c7dfa0
+csharp       ok:74400aac00418303
 csharp_api   ok:5eff987120b2499e n=64
 rust_typed   ok:5f3f03963296dc4e
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:97717d23caae448a
+csharp_typed ok:ea7bb86c58dc26bf
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -6884,17 +6884,17 @@ rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-requests/one_dynamic_named_input_static_primary_dynamic_named_xml_documents/named-target-json (project)
-lower        ok:f09d90d8964b5f09
+lower        ok:ea29277ee2395dee
 validate     ok
 xml_mode     ok:None
 plan         ok:None
 rust         ok:2accf243ca8d7e59
 rust_api     ok:b60ffccc463ca052 n=60
-csharp       ok:28cda4b634c8df17
+csharp       ok:864a614f6dc60784
 csharp_api   ok:169f9d62d6cc906a n=52
 rust_typed   ok:5f3f03963296dc4e
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:97717d23caae448a
+csharp_typed ok:ea7bb86c58dc26bf
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -6902,17 +6902,17 @@ rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
 ## xml-requests/one_dynamic_named_input_static_primary_dynamic_named_xml_documents/target-json (project)
-lower        ok:f09d90d8964b5f09
+lower        ok:ea29277ee2395dee
 validate     ok
 xml_mode     ok:None
 plan         ok:None
 rust         ok:2accf243ca8d7e59
 rust_api     ok:b60ffccc463ca052 n=60
-csharp       ok:28cda4b634c8df17
+csharp       ok:864a614f6dc60784
 csharp_api   ok:169f9d62d6cc906a n=52
 rust_typed   ok:5f3f03963296dc4e
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:97717d23caae448a
+csharp_typed ok:ea7bb86c58dc26bf
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -6923,17 +6923,17 @@ csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sour
 lower        err:1515168d3f70b978 mapping_cannot_be_lowered_for_code
 
 ## xml-requests/root_view_primary_static_named_xml_output/named-target-hints (project)
-lower        ok:5a989cb44677518f
+lower        ok:f7978173edefbc6e
 validate     ok
 xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/RootViewPrimary/[Single]
 rust         ok:33b6285197a29257
 rust_api     ok:ccc4a3e4f5245981 n=66
-csharp       ok:386c82e2332d47b3
+csharp       ok:f91fb9dd4d0c07f0
 csharp_api   ok:b731784593d685c4 n=58
 rust_typed   ok:2a277f9ce9e07006
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:3449e0b670c6b287
+csharp_typed ok:c15b5c94cc4d9074
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -6959,17 +6959,17 @@ lower        err:a51db5363c27fa9b mapping_cannot_be_lowered_for_code
 lower        err:60e68680d8d21eba mapping_cannot_be_lowered_for_code
 
 ## xml-requests/root_view_static_named_xml_inputs/target-json (project)
-lower        ok:93e313f26dcb629b
+lower        ok:824c07bb6d02824a
 validate     ok
 xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/RootViewWithNamedInputs/[]
 rust         ok:3216067c4ba16681
 rust_api     ok:60cabd49cc81e930 n=76
-csharp       ok:c6be2d37806b1f88
+csharp       ok:de96ecf0c4a6a2b9
 csharp_api   ok:92f050d859c881ad n=68
 rust_typed   ok:581a6ef2f3a5e084
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:895fb2b82fd96fa1
+csharp_typed ok:62f8fe2fa5af15c2
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -6977,17 +6977,17 @@ rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-requests/root_view_static_named_xml_inputs/flipped-input-profile (project)
-lower        ok:4a031adce85c1699
+lower        ok:8467552aa72ff8b4
 validate     ok
 xml_mode     ok:None
 plan         ok:None
 rust         ok:62bff2dc4bb1f9c9
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:0e439955361e2640
+csharp       ok:a94b76b77292d191
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:581a6ef2f3a5e084
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:895fb2b82fd96fa1
+csharp_typed ok:62f8fe2fa5af15c2
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:41ef6b7bb9a59294 generated_CSV_output_requires_a_repeated
 csharp_csv   err:41ef6b7bb9a59294 generated_CSV_output_requires_a_repeated
@@ -6995,17 +6995,17 @@ rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
 ## xml-requests/root_view_three_static_named_xml_outputs/named-target-hints (project)
-lower        ok:c52402e95feec32e
+lower        ok:561751322a860e2b
 validate     ok
 xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/RootViewPrimary/[Single, Single, Single]
 rust         ok:37a27b244501b49f
 rust_api     ok:ccc4a3e4f5245981 n=66
-csharp       ok:75b2da80a094717b
+csharp       ok:a5bf9f891713b1d8
 csharp_api   ok:b731784593d685c4 n=58
 rust_typed   ok:48e9dedf06a483e0
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:12a19f215373793e
+csharp_typed ok:2a8ac918306e4fc3
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -7022,17 +7022,17 @@ lower        err:62d41142bcc1276e mapping_cannot_be_lowered_for_code
 lower        err:62d41142bcc1276e mapping_cannot_be_lowered_for_code
 
 ## xml-requests/root_view_two_static_named_xml_outputs/named-target-hints (project)
-lower        ok:6ed3baefaa3a0176
+lower        ok:cb51f55b0a2148f9
 validate     ok
 xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/RootViewPrimary/[Single, Single]
 rust         ok:f9f8d8ca8c60171f
 rust_api     ok:ccc4a3e4f5245981 n=66
-csharp       ok:a983fac400be2699
+csharp       ok:aa3c3e2b43363d7a
 csharp_api   ok:b731784593d685c4 n=58
 rust_typed   ok:361a8caa4a04749d
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:a95a3396a628d055
+csharp_typed ok:ddd91b1a74f11c16
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -7049,17 +7049,17 @@ lower        err:7e81f889ed27ca5b mapping_cannot_be_lowered_for_code
 lower        err:7e81f889ed27ca5b mapping_cannot_be_lowered_for_code
 
 ## xml-requests/root_view_two_static_named_xml_outputs_reversed/named-target-hints (project)
-lower        ok:2d8049b9a5fbf90c
+lower        ok:61a17289a50c2743
 validate     ok
 xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/RootViewPrimary/[Single, Single]
 rust         ok:6c1af4a4c69a9f2f
 rust_api     ok:ccc4a3e4f5245981 n=66
-csharp       ok:d49ab2d1f90aa2b9
+csharp       ok:d768825ec8c5eeda
 csharp_api   ok:b731784593d685c4 n=58
 rust_typed   ok:81b1377d0e6b907d
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:fa6cd9c1e497f885
+csharp_typed ok:94fa53b8c72b5fc6
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -7085,17 +7085,17 @@ lower        err:e865b1a54eaa582e mapping_cannot_be_lowered_for_code
 lower        err:545b027a91152f97 mapping_cannot_be_lowered_for_code
 
 ## xml-requests/root_view_two_static_structured_inputs_1_static_named_outputs/named-target-hints (project)
-lower        ok:c663ed9268a46d04
+lower        ok:aea63cef5141ed6f
 validate     ok
 xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/RootViewWithNamedInputs/[Single]
 rust         ok:1cc860f4f89bdec6
 rust_api     ok:60cabd49cc81e930 n=76
-csharp       ok:c7786b8a6da92844
+csharp       ok:c5cab37bf5193625
 csharp_api   ok:92f050d859c881ad n=68
 rust_typed   ok:80db6715a00d75c6
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:d8ecf6017e1636dd
+csharp_typed ok:690fd75519cbc8fe
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -7121,17 +7121,17 @@ lower        err:764cd74c1c7f39fc mapping_cannot_be_lowered_for_code
 lower        err:963fda0564742a55 mapping_cannot_be_lowered_for_code
 
 ## xml-requests/root_view_two_static_structured_inputs_2_static_named_outputs/named-target-hints (project)
-lower        ok:423844f5407153f2
+lower        ok:f1df3e986b05fde9
 validate     ok
 xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/RootViewWithNamedInputs/[Single, Single]
 rust         ok:7721a245fe4605d5
 rust_api     ok:60cabd49cc81e930 n=76
-csharp       ok:a0422fe13bb6ad95
+csharp       ok:89040c96e7358fd6
 csharp_api   ok:92f050d859c881ad n=68
 rust_typed   ok:e872418fbda2c14d
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:7a0d0d4f894698f0
+csharp_typed ok:810fdef4038e2641
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -7154,17 +7154,17 @@ lower        err:23acd7b8663a4686 mapping_cannot_be_lowered_for_code
 lower        err:23acd7b8663a4686 mapping_cannot_be_lowered_for_code
 
 ## xml-requests/static_named_inputs_dynamic_primary_xml_documents/named-json (project)
-lower        ok:a2edb5478d479584
+lower        ok:32ab379e3fb7ed9d
 validate     ok
 xml_mode     ok:None
 plan         ok:None
 rust         ok:b5a83f46d6055e20
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:a29a7adcbc0d32c4
+csharp       ok:9fa1ac3cb2e2cda5
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:db5c0c0d8ab555e0
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:70ecdfc788482570
+csharp_typed ok:afc1a841ac6ea3c1
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:dc6ddf3b9c92bfaa generated_CSV_output_does_not_yet
 csharp_csv   err:dc6ddf3b9c92bfaa generated_CSV_output_does_not_yet
@@ -7172,17 +7172,17 @@ rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
 ## xml-requests/static_named_inputs_dynamic_primary_xml_documents/target-json (project)
-lower        ok:a2edb5478d479584
+lower        ok:32ab379e3fb7ed9d
 validate     ok
 xml_mode     ok:None
 plan         ok:None
 rust         ok:b5a83f46d6055e20
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:a29a7adcbc0d32c4
+csharp       ok:9fa1ac3cb2e2cda5
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:db5c0c0d8ab555e0
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:70ecdfc788482570
+csharp_typed ok:afc1a841ac6ea3c1
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:dc6ddf3b9c92bfaa generated_CSV_output_does_not_yet
 csharp_csv   err:dc6ddf3b9c92bfaa generated_CSV_output_does_not_yet
@@ -7199,17 +7199,17 @@ lower        err:55ed3da9a686e782 mapping_cannot_be_lowered_for_code
 lower        err:55ed3da9a686e782 mapping_cannot_be_lowered_for_code
 
 ## xml-requests/static_named_inputs_static_primary_dynamic_named_xml_documents/named-json (project)
-lower        ok:60763b690d8906a1
+lower        ok:2113831d6d5a5712
 validate     ok
 xml_mode     ok:None
 plan         ok:None
 rust         ok:0910ac6078120c88
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:278096fa2afdf2dc
+csharp       ok:47e16939c96b83fd
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:f9e8fed131fb9fa0
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:f502af852f957bcf
+csharp_typed ok:6be09f378c53917c
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -7217,17 +7217,17 @@ rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
 ## xml-requests/static_named_inputs_static_primary_dynamic_named_xml_documents/named-target-hints (project)
-lower        ok:7d6d54ecbdebf858
+lower        ok:ff4637ae30ea5831
 validate     ok
 xml_mode     ok:Some(StaticNamedInputsStaticPrimaryDynamicNamedDocuments)
 plan         ok:StaticNamedInputsStaticPrimaryDynamicNamedDocuments/Structured/[List, List]
 rust         ok:a1607e834abe704e
 rust_api     ok:03212f1c27ee709f n=66
-csharp       ok:550354603b6b6904
+csharp       ok:b7c389cc9ca48165
 csharp_api   ok:cdcd763ce6147a7c n=58
 rust_typed   ok:f9e8fed131fb9fa0
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:f502af852f957bcf
+csharp_typed ok:6be09f378c53917c
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -7235,17 +7235,17 @@ rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-requests/static_named_inputs_static_primary_dynamic_named_xml_documents/named-target-json (project)
-lower        ok:60763b690d8906a1
+lower        ok:2113831d6d5a5712
 validate     ok
 xml_mode     ok:None
 plan         ok:None
 rust         ok:0910ac6078120c88
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:278096fa2afdf2dc
+csharp       ok:47e16939c96b83fd
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:f9e8fed131fb9fa0
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:f502af852f957bcf
+csharp_typed ok:6be09f378c53917c
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -7253,17 +7253,17 @@ rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
 ## xml-requests/static_named_inputs_static_primary_dynamic_named_xml_documents/target-json (project)
-lower        ok:60763b690d8906a1
+lower        ok:2113831d6d5a5712
 validate     ok
 xml_mode     ok:None
 plan         ok:None
 rust         ok:0910ac6078120c88
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:278096fa2afdf2dc
+csharp       ok:47e16939c96b83fd
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:f9e8fed131fb9fa0
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:f502af852f957bcf
+csharp_typed ok:6be09f378c53917c
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -7280,17 +7280,17 @@ lower        err:a51db5363c27fa9b mapping_cannot_be_lowered_for_code
 lower        err:a51db5363c27fa9b mapping_cannot_be_lowered_for_code
 
 ## xml-requests/static_named_xml_inputs/named-json (project)
-lower        ok:2339a7645b38b287
+lower        ok:e0dfec0b63f66068
 validate     ok
 xml_mode     ok:None
 plan         ok:None
 rust         ok:33907a958ee19886
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:9d70f6b6d2e3b300
+csharp       ok:8d73e7c23611acd1
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:8b135b7d5da525fe
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:79bb4c51dd9dccda
+csharp_typed ok:fbdb8739458953cf
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -7298,17 +7298,17 @@ rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
 ## xml-requests/static_named_xml_inputs/named-target-hints (project)
-lower        ok:ed6f9266b9071a30
+lower        ok:c5c8a8654faef7cb
 validate     ok
 xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/Structured/[Single]
 rust         ok:f8487eeedd80bbf5
 rust_api     ok:c72f2116a409c1c9 n=79
-csharp       ok:7bd2040d9509af18
+csharp       ok:b7ad19ba3133afc9
 csharp_api   ok:0b20fdce8610ef67 n=70
 rust_typed   ok:8b135b7d5da525fe
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:79bb4c51dd9dccda
+csharp_typed ok:fbdb8739458953cf
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -7316,17 +7316,17 @@ rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-requests/static_named_xml_inputs/named-target-json (project)
-lower        ok:2339a7645b38b287
+lower        ok:e0dfec0b63f66068
 validate     ok
 xml_mode     ok:None
 plan         ok:None
 rust         ok:33907a958ee19886
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:9d70f6b6d2e3b300
+csharp       ok:8d73e7c23611acd1
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:8b135b7d5da525fe
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:79bb4c51dd9dccda
+csharp_typed ok:fbdb8739458953cf
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -7334,17 +7334,17 @@ rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
 ## xml-requests/static_named_xml_inputs/target-json (project)
-lower        ok:2339a7645b38b287
+lower        ok:e0dfec0b63f66068
 validate     ok
 xml_mode     ok:None
 plan         ok:None
 rust         ok:33907a958ee19886
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:9d70f6b6d2e3b300
+csharp       ok:8d73e7c23611acd1
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:8b135b7d5da525fe
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:79bb4c51dd9dccda
+csharp_typed ok:fbdb8739458953cf
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -7355,17 +7355,17 @@ csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sour
 lower        err:1515168d3f70b978 mapping_cannot_be_lowered_for_code
 
 ## xml-requests/static_named_xml_rootview/target-json (project)
-lower        ok:be3e2f8093d77acd
+lower        ok:c1792a433fbe63b8
 validate     ok
 xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/RootViewPrimary/[]
 rust         ok:2c6def76998b9525
 rust_api     ok:ccc4a3e4f5245981 n=66
-csharp       ok:3dc88e4eca35bc2a
+csharp       ok:343454d1328d559f
 csharp_api   ok:b731784593d685c4 n=58
 rust_typed   ok:95f759feb8147ea2
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:6c59a5c6f0587b40
+csharp_typed ok:958bc773b8a8c091
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -7373,17 +7373,17 @@ rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-requests/static_named_xml_rootview/flipped-input-profile (project)
-lower        ok:d0478d2bce1f2787
+lower        ok:7ebbf2795814db7c
 validate     ok
 xml_mode     ok:None
 plan         ok:None
 rust         ok:0571c324536e6bdc
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:226d0a85aa9968f6
+csharp       ok:190943134229b45b
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:95f759feb8147ea2
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:6c59a5c6f0587b40
+csharp_typed ok:958bc773b8a8c091
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:41ef6b7bb9a59294 generated_CSV_output_requires_a_repeated
 csharp_csv   err:41ef6b7bb9a59294 generated_CSV_output_requires_a_repeated
@@ -7391,17 +7391,17 @@ rust_json5   err:d4577c04ae099a32 JSON5_Source_schema:_JSON5_schema_metadata
 csharp_json5 err:d4577c04ae099a32 JSON5_boundary:_JSON5_Source_schema:_JSON5
 
 ## xml-requests/static_primary_dynamic_named_xml_documents/named-target-hints (project)
-lower        ok:423a977108ab050c
+lower        ok:3924ca654683508d
 validate     ok
 xml_mode     ok:Some(StaticPrimaryDynamicNamedDocuments)
 plan         ok:StaticPrimaryDynamicNamedDocuments/Structured/[List]
 rust         ok:822302fb71448a0a
 rust_api     ok:8c5a4ef99489545e n=64
-csharp       ok:8d3cc8745e48de2a
+csharp       ok:0ff9c21105f31b9f
 csharp_api   ok:0ed38a7212f89231 n=56
 rust_typed   ok:a953156ac1598b62
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:048d7e71554b3489
+csharp_typed ok:f0a45d3a14916aaa
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -7409,17 +7409,17 @@ rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-requests/static_primary_dynamic_named_xml_documents/named-target-json (project)
-lower        ok:e5fcafc74375b99f
+lower        ok:9d7cdb73e8c5013c
 validate     ok
 xml_mode     ok:None
 plan         ok:None
 rust         ok:edd1d6307f6f79ae
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:fe959351236a187d
+csharp       ok:fcf8c14a861fc25e
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:a953156ac1598b62
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:048d7e71554b3489
+csharp_typed ok:f0a45d3a14916aaa
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -7427,17 +7427,17 @@ rust_json5   err:23a6a4690295f07b JSON5_program_field_extra_targets_is_outside
 csharp_json5 err:23a6a4690295f07b JSON5_boundary:_JSON5_program_field_extra_targets
 
 ## xml-requests/static_primary_dynamic_named_xml_documents/target-json (project)
-lower        ok:e5fcafc74375b99f
+lower        ok:9d7cdb73e8c5013c
 validate     ok
 xml_mode     ok:None
 plan         ok:None
 rust         ok:edd1d6307f6f79ae
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:fe959351236a187d
+csharp       ok:fcf8c14a861fc25e
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:a953156ac1598b62
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:048d7e71554b3489
+csharp_typed ok:f0a45d3a14916aaa
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -7448,17 +7448,17 @@ csharp_json5 err:23a6a4690295f07b JSON5_boundary:_JSON5_program_field_extra_targ
 lower        err:1515168d3f70b978 mapping_cannot_be_lowered_for_code
 
 ## xml-requests/static_primary_mixed_multiple_named_xml_documents/named-target-hints (project)
-lower        ok:64c5968860c2a7c1
+lower        ok:53925438f58a069c
 validate     ok
 xml_mode     ok:Some(StaticPrimaryMixedNamedXmlOutputs)
 plan         ok:StaticPrimaryMixedNamedXmlOutputs/Structured/[Single, List, List]
 rust         ok:c3ac8ac04bc0b93a
 rust_api     ok:ce66d1c09bd93e48 n=66
-csharp       ok:0440cc7d7a51add2
+csharp       ok:de5e3bbbb7447887
 csharp_api   ok:6b855d266e167773 n=61
 rust_typed   ok:b5410b58b8748317
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:7cec44828b4fb70f
+csharp_typed ok:56283272f8b3273c
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -7466,17 +7466,17 @@ rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-requests/static_primary_mixed_multiple_named_xml_documents/named-target-json (project)
-lower        ok:88f236bf7fbbf94f
+lower        ok:40e268b439f53ec6
 validate     ok
 xml_mode     ok:None
 plan         ok:None
 rust         ok:bd2de64d21e52edc
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:8045a55a246f728c
+csharp       ok:8ab26e444a2242ad
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:b5410b58b8748317
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:7cec44828b4fb70f
+csharp_typed ok:56283272f8b3273c
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -7484,17 +7484,17 @@ rust_json5   err:23a6a4690295f07b JSON5_program_field_extra_targets_is_outside
 csharp_json5 err:23a6a4690295f07b JSON5_boundary:_JSON5_program_field_extra_targets
 
 ## xml-requests/static_primary_mixed_multiple_named_xml_documents/target-json (project)
-lower        ok:88f236bf7fbbf94f
+lower        ok:40e268b439f53ec6
 validate     ok
 xml_mode     ok:None
 plan         ok:None
 rust         ok:bd2de64d21e52edc
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:8045a55a246f728c
+csharp       ok:8ab26e444a2242ad
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:b5410b58b8748317
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:7cec44828b4fb70f
+csharp_typed ok:56283272f8b3273c
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -7505,17 +7505,17 @@ csharp_json5 err:23a6a4690295f07b JSON5_boundary:_JSON5_program_field_extra_targ
 lower        err:1515168d3f70b978 mapping_cannot_be_lowered_for_code
 
 ## xml-requests/static_primary_mixed_named_xml_documents/named-target-hints (project)
-lower        ok:9949cf824331f3c4
+lower        ok:6e660a370785943f
 validate     ok
 xml_mode     ok:Some(StaticPrimaryMixedNamedXmlOutputs)
 plan         ok:StaticPrimaryMixedNamedXmlOutputs/Structured/[Single, List]
 rust         ok:308c77d3a1a4ebc4
 rust_api     ok:ce66d1c09bd93e48 n=66
-csharp       ok:bfea982ae1789aab
+csharp       ok:e30af5282f843e08
 csharp_api   ok:6b855d266e167773 n=61
 rust_typed   ok:e3dc6eea0f209cc7
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:4497031ad15ca171
+csharp_typed ok:cf3ea346f643bb52
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -7523,17 +7523,17 @@ rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-requests/static_primary_mixed_named_xml_documents/named-target-json (project)
-lower        ok:ad054b70e69a7921
+lower        ok:7e929ea538061834
 validate     ok
 xml_mode     ok:None
 plan         ok:None
 rust         ok:a3b2ab1a81a5efae
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:243f76d3f1c8f42f
+csharp       ok:3e22c49be6333f1c
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:e3dc6eea0f209cc7
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:4497031ad15ca171
+csharp_typed ok:cf3ea346f643bb52
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -7541,17 +7541,17 @@ rust_json5   err:23a6a4690295f07b JSON5_program_field_extra_targets_is_outside
 csharp_json5 err:23a6a4690295f07b JSON5_boundary:_JSON5_program_field_extra_targets
 
 ## xml-requests/static_primary_mixed_named_xml_documents/target-json (project)
-lower        ok:ad054b70e69a7921
+lower        ok:7e929ea538061834
 validate     ok
 xml_mode     ok:None
 plan         ok:None
 rust         ok:a3b2ab1a81a5efae
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:243f76d3f1c8f42f
+csharp       ok:3e22c49be6333f1c
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:e3dc6eea0f209cc7
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:4497031ad15ca171
+csharp_typed ok:cf3ea346f643bb52
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -7562,17 +7562,17 @@ csharp_json5 err:23a6a4690295f07b JSON5_boundary:_JSON5_program_field_extra_targ
 lower        err:1515168d3f70b978 mapping_cannot_be_lowered_for_code
 
 ## xml-requests/static_primary_multiple_dynamic_named_xml_documents/named-target-hints (project)
-lower        ok:04ec50552c1fa007
+lower        ok:8616cde5073b2416
 validate     ok
 xml_mode     ok:Some(StaticPrimaryDynamicNamedDocuments)
 plan         ok:StaticPrimaryDynamicNamedDocuments/Structured/[List, List]
 rust         ok:5b70e05f6301e72b
 rust_api     ok:8c5a4ef99489545e n=64
-csharp       ok:414b3476ce659ec7
+csharp       ok:bd78300ca1a55334
 csharp_api   ok:0ed38a7212f89231 n=56
 rust_typed   ok:c1ed38a5581fcb71
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:2a84d66795b22da9
+csharp_typed ok:66cc09a15ca7cc8a
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -7580,17 +7580,17 @@ rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-requests/static_primary_multiple_dynamic_named_xml_documents/named-target-json (project)
-lower        ok:48eef672ce0dd153
+lower        ok:10b979ef09afb656
 validate     ok
 xml_mode     ok:None
 plan         ok:None
 rust         ok:007d4909f81e6cd1
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:84ca63a3917088b8
+csharp       ok:e0420a52aac38f29
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:c1ed38a5581fcb71
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:2a84d66795b22da9
+csharp_typed ok:66cc09a15ca7cc8a
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -7598,17 +7598,17 @@ rust_json5   err:23a6a4690295f07b JSON5_program_field_extra_targets_is_outside
 csharp_json5 err:23a6a4690295f07b JSON5_boundary:_JSON5_program_field_extra_targets
 
 ## xml-requests/static_primary_multiple_dynamic_named_xml_documents/target-json (project)
-lower        ok:48eef672ce0dd153
+lower        ok:10b979ef09afb656
 validate     ok
 xml_mode     ok:None
 plan         ok:None
 rust         ok:007d4909f81e6cd1
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:84ca63a3917088b8
+csharp       ok:e0420a52aac38f29
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:c1ed38a5581fcb71
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:2a84d66795b22da9
+csharp_typed ok:66cc09a15ca7cc8a
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -7619,17 +7619,17 @@ csharp_json5 err:23a6a4690295f07b JSON5_boundary:_JSON5_program_field_extra_targ
 lower        err:1515168d3f70b978 mapping_cannot_be_lowered_for_code
 
 ## xml-requests/unstable_float_project/target-json (project)
-lower        ok:b737026501197b19
+lower        ok:89abab5ed15bc2f6
 validate     ok
 xml_mode     ok:None
 plan         ok:None
 rust         ok:d5199c76037165f6
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:2319c1425be5a1c8
+csharp       ok:6b46a7fc7b1d1e79
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:fcc03ef501eedd89
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:d714e2a4cb800529
+csharp_typed ok:b13505f326a43b0a
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:41ef6b7bb9a59294 generated_CSV_output_requires_a_repeated
 csharp_csv   err:41ef6b7bb9a59294 generated_CSV_output_requires_a_repeated
@@ -7646,17 +7646,17 @@ lower        err:a51db5363c27fa9b mapping_cannot_be_lowered_for_code
 lower        err:a51db5363c27fa9b mapping_cannot_be_lowered_for_code
 
 ## xml-requests/unused_dynamic_named_xml_input/named-json (project)
-lower        ok:1b1bb254c5cb1377
+lower        ok:3d14e0834f0bbe8a
 validate     ok
 xml_mode     ok:None
 plan         ok:None
 rust         ok:29d051f879dc21c2
 rust_api     ok:b60ffccc463ca052 n=60
-csharp       ok:f88525c0b763f1b9
+csharp       ok:a5d867800865abda
 csharp_api   ok:169f9d62d6cc906a n=52
 rust_typed   ok:fc13fded1fa99cf1
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:39aa488a5a08c0fd
+csharp_typed ok:9e9b5a418740d3de
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -7664,17 +7664,17 @@ rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
 ## xml-requests/unused_dynamic_named_xml_input/named-target-hints (project)
-lower        ok:ec08ac6bbe64da56
+lower        ok:799b7860fd08ebb7
 validate     ok
 xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/Structured/[Single]
 rust         ok:59853b99404cddb5
 rust_api     ok:0e5d3afd08c7af87 n=90
-csharp       ok:f7a8bafcef7e703e
+csharp       ok:11e1cfec032a84c3
 csharp_api   ok:214188f171afd653 n=82
 rust_typed   ok:fc13fded1fa99cf1
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:39aa488a5a08c0fd
+csharp_typed ok:9e9b5a418740d3de
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -7682,17 +7682,17 @@ rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-requests/unused_dynamic_named_xml_input/named-target-json (project)
-lower        ok:1b1bb254c5cb1377
+lower        ok:3d14e0834f0bbe8a
 validate     ok
 xml_mode     ok:None
 plan         ok:None
 rust         ok:29d051f879dc21c2
 rust_api     ok:b60ffccc463ca052 n=60
-csharp       ok:f88525c0b763f1b9
+csharp       ok:a5d867800865abda
 csharp_api   ok:169f9d62d6cc906a n=52
 rust_typed   ok:fc13fded1fa99cf1
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:39aa488a5a08c0fd
+csharp_typed ok:9e9b5a418740d3de
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -7700,17 +7700,17 @@ rust_json5   err:110a678bf9dd389b JSON5_program_field_extra_sources_is_outside
 csharp_json5 err:110a678bf9dd389b JSON5_boundary:_JSON5_program_field_extra_sources
 
 ## xml-requests/unused_dynamic_named_xml_input/target-json (project)
-lower        ok:1b1bb254c5cb1377
+lower        ok:3d14e0834f0bbe8a
 validate     ok
 xml_mode     ok:None
 plan         ok:None
 rust         ok:29d051f879dc21c2
 rust_api     ok:b60ffccc463ca052 n=60
-csharp       ok:f88525c0b763f1b9
+csharp       ok:a5d867800865abda
 csharp_api   ok:169f9d62d6cc906a n=52
 rust_typed   ok:fc13fded1fa99cf1
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:39aa488a5a08c0fd
+csharp_typed ok:9e9b5a418740d3de
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -7726,11 +7726,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:cb3ada42c302f817
 rust_api     ok:b60ffccc463ca052 n=60
-csharp       ok:ba33ed477066d1d5
+csharp       ok:f4095f04f0b3e896
 csharp_api   ok:169f9d62d6cc906a n=52
 rust_typed   ok:927972df8b50e45c
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:bdac6be4bf9490d9
+csharp_typed ok:78d02d88612af53a
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -7845,11 +7845,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:0d7b8a6968a40717
 rust_api     ok:b60ffccc463ca052 n=60
-csharp       ok:122295bcf1baa8af
+csharp       ok:fb12305f7f23b49c
 csharp_api   ok:169f9d62d6cc906a n=52
 rust_typed   ok:c2145dab1d2cd1f1
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:9408eab0927f3a06
+csharp_typed ok:0c6e6af8162fba6b
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -7964,11 +7964,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:5b11d7d443e79cd2
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:6d041959b2ce6bfa
+csharp       ok:4890c4bcb24d372f
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:c19d9888ff567dd6
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:db45218d8eef1f96
+csharp_typed ok:26cb9ac9756f103b
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:dc6ddf3b9c92bfaa generated_CSV_output_does_not_yet
 csharp_csv   err:dc6ddf3b9c92bfaa generated_CSV_output_does_not_yet
@@ -8032,11 +8032,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:f4063b13c1318cde
 rust_api     ok:b60ffccc463ca052 n=60
-csharp       ok:5a7c5bd91d818b4a
+csharp       ok:bfb6e37ddace03ff
 csharp_api   ok:169f9d62d6cc906a n=52
 rust_typed   ok:4c7cc5475e5b7361
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:d8db7cb3d36d7712
+csharp_typed ok:f98f0a78eda47847
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:82b6789ffc0019e9
 csharp_csv   err:82b6789ffc0019e9
@@ -8117,11 +8117,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:8ee74e2c53085725
 rust_api     ok:b60ffccc463ca052 n=60
-csharp       ok:1296faf3e6a1cf0d
+csharp       ok:273b9c3a1426006e
 csharp_api   ok:169f9d62d6cc906a n=52
 rust_typed   ok:a6db98b029104543
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:f7239091a5f59be7
+csharp_typed ok:d2e891337d9b3294
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -8236,11 +8236,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:cd82c86cff1e71ff
 rust_api     ok:b60ffccc463ca052 n=60
-csharp       ok:d4c98f159e616c67
+csharp       ok:2deaeb9aa9d33c14
 csharp_api   ok:169f9d62d6cc906a n=52
 rust_typed   ok:8f01ffb3ccb9b3be
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:63871fe4d1b380c3
+csharp_typed ok:4a3651efb4d17cc0
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -8355,11 +8355,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:6d98a48034d732d0
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:aba0abfeb396fbe6
+csharp       ok:eb91e0be9698df0b
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:a11fea98595c07c2
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:908f8da288f819fa
+csharp_typed ok:b781fead0af4e12f
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:7901c9c85d6be946
 csharp_csv   err:7901c9c85d6be946
@@ -8423,11 +8423,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:d80c3e9c55fde267
 rust_api     ok:b60ffccc463ca052 n=60
-csharp       ok:54680f730ff9613f
+csharp       ok:bb60438bcebaeeac
 csharp_api   ok:169f9d62d6cc906a n=52
 rust_typed   ok:db989ea47a0f131b
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:5b08344e8a6ba6d6
+csharp_typed ok:a0a570c414e0e4fb
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:82b6789ffc0019e9
 csharp_csv   err:82b6789ffc0019e9
@@ -8508,11 +8508,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:2accf243ca8d7e59
 rust_api     ok:b60ffccc463ca052 n=60
-csharp       ok:28cda4b634c8df17
+csharp       ok:864a614f6dc60784
 csharp_api   ok:169f9d62d6cc906a n=52
 rust_typed   ok:5f3f03963296dc4e
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:97717d23caae448a
+csharp_typed ok:ea7bb86c58dc26bf
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -8729,11 +8729,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:62bff2dc4bb1f9c9
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:0e439955361e2640
+csharp       ok:a94b76b77292d191
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:581a6ef2f3a5e084
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:895fb2b82fd96fa1
+csharp_typed ok:62f8fe2fa5af15c2
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:41ef6b7bb9a59294 generated_CSV_output_requires_a_repeated
 csharp_csv   err:41ef6b7bb9a59294 generated_CSV_output_requires_a_repeated
@@ -9358,11 +9358,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:b5a83f46d6055e20
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:a29a7adcbc0d32c4
+csharp       ok:9fa1ac3cb2e2cda5
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:db5c0c0d8ab555e0
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:70ecdfc788482570
+csharp_typed ok:afc1a841ac6ea3c1
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:dc6ddf3b9c92bfaa generated_CSV_output_does_not_yet
 csharp_csv   err:dc6ddf3b9c92bfaa generated_CSV_output_does_not_yet
@@ -9443,11 +9443,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:0910ac6078120c88
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:278096fa2afdf2dc
+csharp       ok:47e16939c96b83fd
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:f9e8fed131fb9fa0
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:f502af852f957bcf
+csharp_typed ok:6be09f378c53917c
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -9562,11 +9562,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:33907a958ee19886
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:9d70f6b6d2e3b300
+csharp       ok:8d73e7c23611acd1
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:8b135b7d5da525fe
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:79bb4c51dd9dccda
+csharp_typed ok:fbdb8739458953cf
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -9681,11 +9681,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:0571c324536e6bdc
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:226d0a85aa9968f6
+csharp       ok:190943134229b45b
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:95f759feb8147ea2
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:6c59a5c6f0587b40
+csharp_typed ok:958bc773b8a8c091
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:41ef6b7bb9a59294 generated_CSV_output_requires_a_repeated
 csharp_csv   err:41ef6b7bb9a59294 generated_CSV_output_requires_a_repeated
@@ -9749,11 +9749,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:edd1d6307f6f79ae
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:fe959351236a187d
+csharp       ok:fcf8c14a861fc25e
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:a953156ac1598b62
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:048d7e71554b3489
+csharp_typed ok:f0a45d3a14916aaa
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -9851,11 +9851,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:bd2de64d21e52edc
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:8045a55a246f728c
+csharp       ok:8ab26e444a2242ad
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:b5410b58b8748317
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:7cec44828b4fb70f
+csharp_typed ok:56283272f8b3273c
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -9953,11 +9953,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:a3b2ab1a81a5efae
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:243f76d3f1c8f42f
+csharp       ok:3e22c49be6333f1c
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:e3dc6eea0f209cc7
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:4497031ad15ca171
+csharp_typed ok:cf3ea346f643bb52
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -10055,11 +10055,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:007d4909f81e6cd1
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:84ca63a3917088b8
+csharp       ok:e0420a52aac38f29
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:c1ed38a5581fcb71
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:2a84d66795b22da9
+csharp_typed ok:66cc09a15ca7cc8a
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -10157,11 +10157,11 @@ xml_mode     ok:None
 plan         ok:None
 rust         ok:29d051f879dc21c2
 rust_api     ok:b60ffccc463ca052 n=60
-csharp       ok:f88525c0b763f1b9
+csharp       ok:a5d867800865abda
 csharp_api   ok:169f9d62d6cc906a n=52
 rust_typed   ok:fc13fded1fa99cf1
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:39aa488a5a08c0fd
+csharp_typed ok:9e9b5a418740d3de
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
 csharp_csv   err:ed42c4c38c3037c2 generated_CSV_output_does_not_yet
@@ -10271,25 +10271,25 @@ rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## typed-only-controls/ordinary-descriptor (project)
-lower        ok:cc3dae45040adf22
+lower        ok:08f94d92d5b078ff
 validate     ok
 xml_mode     ok:None
 plan         ok:None
 rust         ok:cefd8e02dca3cab2
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:49c12fd9133c9440
+csharp       ok:847d91bf9e3cbb91
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:fe6255d4aee65655
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:13ed6f6c473ab1e7
+csharp_typed ok:c0e6a34afcb09494
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:91d642036b1a5463
 csharp_csv   err:91d642036b1a5463
 rust_json5   ok:c56fc6abcdb1ed5e
-csharp_json5 ok:3a24542750fbf213
+csharp_json5 ok:d36fc8a418867e06
 
 ## typed-only-controls/oversized-json-descriptor (project)
-lower        ok:afe55f06176d9662
+lower        ok:ca2e99340dd553bf
 validate     ok
 xml_mode     ok:None
 plan         ok:None
@@ -10299,7 +10299,7 @@ csharp       err:de83ff58769052ac embedded_schema_"Source"_is_2952365_bytes;
 csharp_api   err:de83ff58769052ac embedded_schema_"Source"_is_2952365_bytes;
 rust_typed   ok:fe6255d4aee65655
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:13ed6f6c473ab1e7
+csharp_typed ok:c0e6a34afcb09494
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:91d642036b1a5463
 csharp_csv   err:91d642036b1a5463
@@ -10307,17 +10307,17 @@ rust_json5   err:f3eabe9cbf534630 JSON5_Source_schema:_JSON5_schema_SchemaNodes
 csharp_json5 err:f3eabe9cbf534630 JSON5_boundary:_JSON5_Source_schema:_JSON5
 
 ## xml-fixtures/dynamic_named_xml_input (project)
-lower        ok:5172ed31faaaa514
+lower        ok:7abc4785399441bf
 validate     ok
 xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/Structured/[Single]
 rust         ok:7f28c64c06b67376
 rust_api     ok:0e5d3afd08c7af87 n=90
-csharp       ok:c4e885c992525044
+csharp       ok:af484adb06042e25
 csharp_api   ok:214188f171afd653 n=82
 rust_typed   ok:927972df8b50e45c
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:bdac6be4bf9490d9
+csharp_typed ok:78d02d88612af53a
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -10325,17 +10325,17 @@ rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-fixtures/dynamic_named_xml_input_mixed (project)
-lower        ok:c78624e3202bf0d0
+lower        ok:cda9f60f6df61339
 validate     ok
 xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/Structured/[Single]
 rust         ok:bc18b7f1838dc3db
 rust_api     ok:0e5d3afd08c7af87 n=90
-csharp       ok:e2806868e419a639
+csharp       ok:a9c9bb703862215a
 csharp_api   ok:214188f171afd653 n=82
 rust_typed   ok:c2145dab1d2cd1f1
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:9408eab0927f3a06
+csharp_typed ok:0c6e6af8162fba6b
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -10343,17 +10343,17 @@ rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-fixtures/dynamic_primary_xml_documents (project)
-lower        ok:474929d933313b3b
+lower        ok:ecd765fe72a098c2
 validate     ok
 xml_mode     ok:Some(DynamicPrimaryDocuments)
 plan         ok:DynamicPrimaryDocuments/Structured/[]
 rust         ok:f4262e0cdeabc896
 rust_api     ok:ba80083215ff1212 n=60
-csharp       ok:269d4d39212b4d6c
+csharp       ok:3200354ea4e6f7cd
 csharp_api   ok:9812803d50615171 n=52
 rust_typed   ok:c19d9888ff567dd6
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:db45218d8eef1f96
+csharp_typed ok:26cb9ac9756f103b
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -10361,17 +10361,17 @@ rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-fixtures/multiple_dynamic_named_inputs_dynamic_primary_xml_documents (project)
-lower        ok:654bec4cdff613a8
+lower        ok:38bd3126b77f8d81
 validate     ok
 xml_mode     ok:Some(DynamicNamedInputDynamicPrimaryDocuments)
 plan         ok:DynamicNamedInputDynamicPrimaryDocuments/Structured/[]
 rust         ok:38fa65ab0eba0c4e
 rust_api     ok:42269fecb77aea6e n=68
-csharp       ok:f43beae27ea4b247
+csharp       ok:9a8ed53c6384b5b4
 csharp_api   ok:2cbce27c0a0c121e n=60
 rust_typed   ok:4c7cc5475e5b7361
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:d8db7cb3d36d7712
+csharp_typed ok:f98f0a78eda47847
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -10379,17 +10379,17 @@ rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-fixtures/multiple_dynamic_named_inputs_static_primary_dynamic_named_xml_documents (project)
-lower        ok:bdc1cfab2227da36
+lower        ok:e7a9db0fb7db2fc9
 validate     ok
 xml_mode     ok:Some(DynamicNamedInputStaticPrimaryDynamicNamedDocuments)
 plan         ok:DynamicNamedInputStaticPrimaryDynamicNamedDocuments/Structured/[List, List]
 rust         ok:af6617a511a6aa0a
 rust_api     ok:b6956147feffbaf6 n=72
-csharp       ok:3fce06c805613c9a
+csharp       ok:0608a7ef3f4db461
 csharp_api   ok:5eff987120b2499e n=64
 rust_typed   ok:a6db98b029104543
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:f7239091a5f59be7
+csharp_typed ok:d2e891337d9b3294
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -10397,17 +10397,17 @@ rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-fixtures/multiple_dynamic_named_xml_input_mixed (project)
-lower        ok:b6d17a977a4afcb3
+lower        ok:ff6265e13744786c
 validate     ok
 xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/Structured/[Single]
 rust         ok:340df5a4d146e0e2
 rust_api     ok:0e5d3afd08c7af87 n=90
-csharp       ok:ac829950fd24beb4
+csharp       ok:0852805d92f88395
 csharp_api   ok:214188f171afd653 n=82
 rust_typed   ok:8f01ffb3ccb9b3be
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:63871fe4d1b380c3
+csharp_typed ok:4a3651efb4d17cc0
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -10415,17 +10415,17 @@ rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-fixtures/nested_document_collection (project)
-lower        ok:37470f6e1ed00fd2
+lower        ok:d82b1de2498f3ec1
 validate     ok
 xml_mode     ok:Some(DynamicPrimaryDocuments)
 plan         ok:DynamicPrimaryDocuments/Structured/[]
 rust         ok:1246783f9d1afb98
 rust_api     ok:ba80083215ff1212 n=60
-csharp       ok:6419798b74bb681c
+csharp       ok:2bfce382edd3aabd
 csharp_api   ok:9812803d50615171 n=52
 rust_typed   ok:a11fea98595c07c2
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:908f8da288f819fa
+csharp_typed ok:b781fead0af4e12f
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -10433,17 +10433,17 @@ rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-fixtures/one_dynamic_named_input_dynamic_primary_xml_documents (project)
-lower        ok:651b003e84d20583
+lower        ok:f809f690afde5fac
 validate     ok
 xml_mode     ok:Some(DynamicNamedInputDynamicPrimaryDocuments)
 plan         ok:DynamicNamedInputDynamicPrimaryDocuments/Structured/[]
 rust         ok:d3cb50d8f8030c13
 rust_api     ok:42269fecb77aea6e n=68
-csharp       ok:8293a0f1e0ec279a
+csharp       ok:28e17c29bc10900f
 csharp_api   ok:2cbce27c0a0c121e n=60
 rust_typed   ok:db989ea47a0f131b
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:5b08344e8a6ba6d6
+csharp_typed ok:a0a570c414e0e4fb
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -10451,17 +10451,17 @@ rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-fixtures/one_dynamic_named_input_static_primary_dynamic_named_xml_documents (project)
-lower        ok:a4a7d5a8d31f7f27
+lower        ok:197d7ea261333ba4
 validate     ok
 xml_mode     ok:Some(DynamicNamedInputStaticPrimaryDynamicNamedDocuments)
 plan         ok:DynamicNamedInputStaticPrimaryDynamicNamedDocuments/Structured/[List, List]
 rust         ok:65177391a62dbd80
 rust_api     ok:b6956147feffbaf6 n=72
-csharp       ok:8023ecb4d5465a90
+csharp       ok:e75b09c1b4c7d733
 csharp_api   ok:5eff987120b2499e n=64
 rust_typed   ok:5f3f03963296dc4e
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:97717d23caae448a
+csharp_typed ok:ea7bb86c58dc26bf
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -10469,17 +10469,17 @@ rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-fixtures/root_view_primary_static_named_xml_output (project)
-lower        ok:38ac924dc8fbc72f
+lower        ok:270685dc4a877d2c
 validate     ok
 xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/RootViewPrimary/[Single]
 rust         ok:7f6f97be265951d5
 rust_api     ok:ccc4a3e4f5245981 n=66
-csharp       ok:d117d34ee8159ef9
+csharp       ok:e052d2e73525d79a
 csharp_api   ok:b731784593d685c4 n=58
 rust_typed   ok:2a277f9ce9e07006
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:3449e0b670c6b287
+csharp_typed ok:c15b5c94cc4d9074
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -10487,17 +10487,17 @@ rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-fixtures/root_view_static_named_xml_inputs (project)
-lower        ok:93e313f26dcb629b
+lower        ok:824c07bb6d02824a
 validate     ok
 xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/RootViewWithNamedInputs/[]
 rust         ok:3216067c4ba16681
 rust_api     ok:60cabd49cc81e930 n=76
-csharp       ok:c6be2d37806b1f88
+csharp       ok:de96ecf0c4a6a2b9
 csharp_api   ok:92f050d859c881ad n=68
 rust_typed   ok:581a6ef2f3a5e084
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:895fb2b82fd96fa1
+csharp_typed ok:62f8fe2fa5af15c2
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -10505,17 +10505,17 @@ rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-fixtures/root_view_three_static_named_xml_outputs (project)
-lower        ok:571c15ae67bb64ac
+lower        ok:abb61049c332250b
 validate     ok
 xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/RootViewPrimary/[Single, Single, Single]
 rust         ok:0d77f8abf3e5e78d
 rust_api     ok:ccc4a3e4f5245981 n=66
-csharp       ok:7dad234346cb4155
+csharp       ok:7c78c297ceb89f16
 csharp_api   ok:b731784593d685c4 n=58
 rust_typed   ok:48e9dedf06a483e0
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:12a19f215373793e
+csharp_typed ok:2a8ac918306e4fc3
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -10523,17 +10523,17 @@ rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-fixtures/root_view_two_static_named_xml_outputs (project)
-lower        ok:c0a30cd2e79948f0
+lower        ok:ec0c849571b41799
 validate     ok
 xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/RootViewPrimary/[Single, Single]
 rust         ok:ed2bb5c44877884b
 rust_api     ok:ccc4a3e4f5245981 n=66
-csharp       ok:e35377ecf7ac9cc7
+csharp       ok:72669b8cf893ed34
 csharp_api   ok:b731784593d685c4 n=58
 rust_typed   ok:361a8caa4a04749d
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:a95a3396a628d055
+csharp_typed ok:ddd91b1a74f11c16
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -10541,17 +10541,17 @@ rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-fixtures/root_view_two_static_named_xml_outputs_reversed (project)
-lower        ok:6f5e58be1141fe20
+lower        ok:6ab20f198c389cf5
 validate     ok
 xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/RootViewPrimary/[Single, Single]
 rust         ok:d6bda133d7ae784b
 rust_api     ok:ccc4a3e4f5245981 n=66
-csharp       ok:227c6a4c6042104b
+csharp       ok:27565f83643cc768
 csharp_api   ok:b731784593d685c4 n=58
 rust_typed   ok:81b1377d0e6b907d
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:fa6cd9c1e497f885
+csharp_typed ok:94fa53b8c72b5fc6
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -10559,17 +10559,17 @@ rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-fixtures/root_view_two_static_structured_inputs_1_static_named_outputs (project)
-lower        ok:8b419208e4612ca6
+lower        ok:7090bc0066dc46eb
 validate     ok
 xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/RootViewWithNamedInputs/[Single]
 rust         ok:1e47da794210b59a
 rust_api     ok:60cabd49cc81e930 n=76
-csharp       ok:13fb089f1ec5be84
+csharp       ok:efcac8a2abe809e5
 csharp_api   ok:92f050d859c881ad n=68
 rust_typed   ok:80db6715a00d75c6
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:d8ecf6017e1636dd
+csharp_typed ok:690fd75519cbc8fe
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -10577,17 +10577,17 @@ rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-fixtures/root_view_two_static_structured_inputs_2_static_named_outputs (project)
-lower        ok:6089a1e74de67892
+lower        ok:67b948f8420efe1b
 validate     ok
 xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/RootViewWithNamedInputs/[Single, Single]
 rust         ok:fe77c3bb80a1a697
 rust_api     ok:60cabd49cc81e930 n=76
-csharp       ok:1bb97f2d64f12e61
+csharp       ok:1dbc476927f62b02
 csharp_api   ok:92f050d859c881ad n=68
 rust_typed   ok:e872418fbda2c14d
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:7a0d0d4f894698f0
+csharp_typed ok:810fdef4038e2641
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -10595,17 +10595,17 @@ rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-fixtures/static_named_inputs_dynamic_primary_xml_documents (project)
-lower        ok:f2b4be897f06a58c
+lower        ok:74712b2d933b2c91
 validate     ok
 xml_mode     ok:Some(StaticNamedInputsDynamicPrimaryDocuments)
 plan         ok:StaticNamedInputsDynamicPrimaryDocuments/Structured/[]
 rust         ok:ac989c05f314ccbe
 rust_api     ok:e63970709975cf1f n=62
-csharp       ok:7ded3bc094818807
+csharp       ok:61bd43ba9c4a98f4
 csharp_api   ok:128bbe9b6dc6856a n=54
 rust_typed   ok:db5c0c0d8ab555e0
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:70ecdfc788482570
+csharp_typed ok:afc1a841ac6ea3c1
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -10613,17 +10613,17 @@ rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-fixtures/static_named_inputs_static_primary_dynamic_named_xml_documents (project)
-lower        ok:e38ff4618201cd1a
+lower        ok:c5ebd5eff84dc99d
 validate     ok
 xml_mode     ok:Some(StaticNamedInputsStaticPrimaryDynamicNamedDocuments)
 plan         ok:StaticNamedInputsStaticPrimaryDynamicNamedDocuments/Structured/[List, List]
 rust         ok:980c7f842343a23e
 rust_api     ok:03212f1c27ee709f n=66
-csharp       ok:1b95e6d857b0fc16
+csharp       ok:1467071f700f7dbb
 csharp_api   ok:cdcd763ce6147a7c n=58
 rust_typed   ok:f9e8fed131fb9fa0
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:f502af852f957bcf
+csharp_typed ok:6be09f378c53917c
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -10631,17 +10631,17 @@ rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-fixtures/static_named_xml_inputs (project)
-lower        ok:e1cbc2b03602cf24
+lower        ok:106a984e7c0beaa9
 validate     ok
 xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/Structured/[Single]
 rust         ok:cff6160640cf8c5f
 rust_api     ok:c72f2116a409c1c9 n=79
-csharp       ok:c3fc991e1d787df8
+csharp       ok:686bd7ef78e746e9
 csharp_api   ok:0b20fdce8610ef67 n=70
 rust_typed   ok:8b135b7d5da525fe
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:79bb4c51dd9dccda
+csharp_typed ok:fbdb8739458953cf
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -10649,17 +10649,17 @@ rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-fixtures/static_named_xml_rootview (project)
-lower        ok:be3e2f8093d77acd
+lower        ok:c1792a433fbe63b8
 validate     ok
 xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/RootViewPrimary/[]
 rust         ok:2c6def76998b9525
 rust_api     ok:ccc4a3e4f5245981 n=66
-csharp       ok:3dc88e4eca35bc2a
+csharp       ok:343454d1328d559f
 csharp_api   ok:b731784593d685c4 n=58
 rust_typed   ok:95f759feb8147ea2
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:6c59a5c6f0587b40
+csharp_typed ok:958bc773b8a8c091
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -10667,17 +10667,17 @@ rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-fixtures/static_primary_dynamic_named_xml_documents (project)
-lower        ok:0f5f0f5a21bade20
+lower        ok:ec745d9a0d8adcd7
 validate     ok
 xml_mode     ok:Some(StaticPrimaryDynamicNamedDocuments)
 plan         ok:StaticPrimaryDynamicNamedDocuments/Structured/[List]
 rust         ok:7f6aa69407aba1aa
 rust_api     ok:8c5a4ef99489545e n=64
-csharp       ok:ad29990c607c0ca2
+csharp       ok:0d393715c1ee2317
 csharp_api   ok:0ed38a7212f89231 n=56
 rust_typed   ok:a953156ac1598b62
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:048d7e71554b3489
+csharp_typed ok:f0a45d3a14916aaa
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -10685,17 +10685,17 @@ rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-fixtures/static_primary_mixed_multiple_named_xml_documents (project)
-lower        ok:d1eff44799c17bf1
+lower        ok:ec8c011b70d66a0a
 validate     ok
 xml_mode     ok:Some(StaticPrimaryMixedNamedXmlOutputs)
 plan         ok:StaticPrimaryMixedNamedXmlOutputs/Structured/[Single, List, List]
 rust         ok:ae4862ef4cc9c8d4
 rust_api     ok:ce66d1c09bd93e48 n=66
-csharp       ok:f4cc213d6c611fd0
+csharp       ok:bc6021c7fbd4b161
 csharp_api   ok:6b855d266e167773 n=61
 rust_typed   ok:b5410b58b8748317
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:7cec44828b4fb70f
+csharp_typed ok:56283272f8b3273c
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -10703,17 +10703,17 @@ rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-fixtures/static_primary_mixed_named_xml_documents (project)
-lower        ok:34327f627eb46e74
+lower        ok:e4666a07822a1011
 validate     ok
 xml_mode     ok:Some(StaticPrimaryMixedNamedXmlOutputs)
 plan         ok:StaticPrimaryMixedNamedXmlOutputs/Structured/[Single, List]
 rust         ok:a2f46940bab16826
 rust_api     ok:ce66d1c09bd93e48 n=66
-csharp       ok:034b7cf93552f7fd
+csharp       ok:6b03ac22ff56c8de
 csharp_api   ok:6b855d266e167773 n=61
 rust_typed   ok:e3dc6eea0f209cc7
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:4497031ad15ca171
+csharp_typed ok:cf3ea346f643bb52
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -10721,17 +10721,17 @@ rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-fixtures/static_primary_multiple_dynamic_named_xml_documents (project)
-lower        ok:a21d287f857d67b5
+lower        ok:4c045ddbd9f0ef36
 validate     ok
 xml_mode     ok:Some(StaticPrimaryDynamicNamedDocuments)
 plan         ok:StaticPrimaryDynamicNamedDocuments/Structured/[List, List]
 rust         ok:c55cdb1cdd17eaa9
 rust_api     ok:8c5a4ef99489545e n=64
-csharp       ok:a52bde7d72d3ebfd
+csharp       ok:bfc8eac21fc364de
 csharp_api   ok:0ed38a7212f89231 n=56
 rust_typed   ok:c1ed38a5581fcb71
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:2a84d66795b22da9
+csharp_typed ok:66cc09a15ca7cc8a
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
@@ -10739,17 +10739,17 @@ rust_json5   err:35700377814f4434 JSON5_program_field_xml_boundary_is_outside
 csharp_json5 err:35700377814f4434 JSON5_boundary:_JSON5_program_field_xml_boundary
 
 ## xml-fixtures/unstable_float_project (project)
-lower        ok:b737026501197b19
+lower        ok:89abab5ed15bc2f6
 validate     ok
 xml_mode     ok:None
 plan         ok:None
 rust         ok:d5199c76037165f6
 rust_api     ok:0be616e87bc356ab n=54
-csharp       ok:2319c1425be5a1c8
+csharp       ok:6b46a7fc7b1d1e79
 csharp_api   ok:b5c6e28b22c59bc6 n=46
 rust_typed   ok:fcc03ef501eedd89
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:d714e2a4cb800529
+csharp_typed ok:b13505f326a43b0a
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:41ef6b7bb9a59294 generated_CSV_output_requires_a_repeated
 csharp_csv   err:41ef6b7bb9a59294 generated_CSV_output_requires_a_repeated
@@ -10757,17 +10757,17 @@ rust_json5   err:7ea79af708bdf772 JSON5_Target_schema:_JSON5_schema_metadata
 csharp_json5 err:7ea79af708bdf772 JSON5_boundary:_JSON5_Target_schema:_JSON5
 
 ## xml-fixtures/unused_dynamic_named_xml_input (project)
-lower        ok:f663be6925b0b636
+lower        ok:abfb690e58501221
 validate     ok
 xml_mode     ok:Some(SingleDocument)
 plan         ok:SingleDocument/Structured/[Single]
 rust         ok:e63fe577cdf084e3
 rust_api     ok:0e5d3afd08c7af87 n=90
-csharp       ok:76deeb8792955358
+csharp       ok:924d0e4e4ca97a89
 csharp_api   ok:214188f171afd653 n=82
 rust_typed   ok:fc13fded1fa99cf1
 rust_t_api   ok:b8799a3099ea6da7 n=22
-csharp_typed ok:39aa488a5a08c0fd
+csharp_typed ok:9e9b5a418740d3de
 csharp_t_api ok:3261d4b6cde0b5db n=20
 rust_csv     err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
 csharp_csv   err:0f026c8bf2861fb4 generated_CSV_output_cannot_be_combined
