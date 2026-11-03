@@ -1,0 +1,44 @@
+use codegen_runtime::{ExecutionContext, RuntimeError, RuntimeValue};
+use std::path::Path;
+mod oracle;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let paths: Vec<_> = std::env::args().skip(1).collect();
+    let cases: Vec<serde_json::Value> = serde_json::from_str(&std::fs::read_to_string(&paths[0])?)?;
+    let source = std::fs::read_to_string(&paths[1])?;
+    let target = std::fs::read_to_string(&paths[2])?;
+    let mut order: Vec<_> = (0..cases.len()).collect();
+    if cases.len() == 5 {
+        drop(order.splice(0..2, [0, 1, 0]));
+    }
+    order.extend((0..cases.len()).rev());
+    for index in order {
+        let case = &cases[index];
+        let input = codegen_runtime::parse_json(&source, &case["input"].to_string())?;
+        let mut context = ExecutionContext::new(Path::new("clock.mfd"));
+        if let Some(clock) = case["clock"].as_str() {
+            context = context.with_current_datetime(clock);
+        }
+        let result = ferrule_generated_mapping::execute_with_context(&input, &context);
+        println!("{}|{result:?}", case["name"]);
+        if case["missing_clock"] == true {
+            assert!(
+                matches!(
+                    result,
+                    Err(RuntimeError::MissingRuntimeValue {
+                        value: RuntimeValue::CurrentDateTime
+                    })
+                ),
+                "{case}: {result:?}"
+            );
+        } else {
+            let actual = result?;
+            assert_eq!(actual, oracle::literal(&case["expected"]), "{case}");
+            let json: serde_json::Value =
+                serde_json::from_str(&codegen_runtime::serialize_json(&target, &actual)?)?;
+            assert_eq!(json, case["expected"], "{case}");
+        }
+    }
+    println!("PASS complete grouped clock contracts");
+    Ok(())
+}
