@@ -91,6 +91,32 @@ every projection of that filter branch.
 UDF input admission is per pin: scalar arguments retain scalar handling, while
 structural catalog inputs refuse crossed filters that cannot be preserved.
 
+Physical scalar `count` over a filtered source has a separate bounded import
+profile. It preserves the selected predicate and proves each direct scalar
+receiver against the ordinary primary XML reader or configured X12 reader.
+Only specifically proved counted-field predicates and Boolean literals are
+admitted. Missing values are excluded before applying the filter's true/false
+branch; an absent value is not replaced with a default. Independent predicate
+fields, predicates that read XML nil, repeating X12 scalar selections, and
+unproved constructed or document receivers remain refused.
+
+The proof checks raw and registered producers without selecting away competing
+claims, then rechecks every materialized use after graph transformations. Both
+import profiles refuse an affected ambiguous or unsupported Count; neither
+publishes an unfiltered Count, zero, or an absent binding in its place. Existing
+ordinary Counts and earlier aggregate routes retain their own admission rules.
+
+Complete routing classification has separately accounted input-derived work
+and storage bounds. The positive ownership/construction proof shares a sticky
+65,536-work-unit and 32-MiB allowance; exhaustion cannot turn an affected Count
+into an ordinary one. Proved unrelated ordinary Counts do not need that proof.
+
+This profile is a theorem about those reader-created input trees, not a runtime
+contract for arbitrary hand-built `Instance` values. Its projects use the
+ordinary supported save/load codec without adding a guard capability. Count
+composition with guarded declared UDFs remains refused. This profile does not
+establish distinct-value Count behavior or MFD export/re-import equivalence.
+
 CSV, JSON and EDI document imports diagnose connected `FileInstance` filename
 inputs and outputs. Their document-loading and output-document behavior is not
 represented by the imported data mapping, so executable import refuses them.
@@ -725,8 +751,9 @@ Filtered predicates and computed values can use the generated item's 1-based
 `position()` as well as the item value.
 
 Import is deliberately resilient: unsupported constructs are skipped with one
-actionable warning where possible. A design is rejected only when no usable
-source or target can be recovered.
+actionable warning where possible. Producer-ownership and safety failures can
+remain hard errors in either profile; repair-oriented import does not waive
+those checks.
 
 A connected target that also supplies a later target cannot be represented as
 two independent targets in one `Project`. Ordinary `import-mfd` reports that

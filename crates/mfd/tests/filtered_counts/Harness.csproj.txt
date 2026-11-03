@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors><NuGetAudit>false</NuGetAudit>
+    <DisableTransitiveFrameworkReferenceDownloads>true</DisableTransitiveFrameworkReferenceDownloads>
+    <AutomaticallyUseReferenceAssemblyPackages>false</AutomaticallyUseReferenceAssemblyPackages>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Ferrule.Generated.csproj"/>
+    <None Include="../cases.json" Link="cases.json" CopyToOutputDirectory="PreserveNewest"/>
+    <None Include="../source-schema.json" Link="source-schema.json" CopyToOutputDirectory="PreserveNewest"/>
+    <None Include="../target-schema.json" Link="target-schema.json" CopyToOutputDirectory="PreserveNewest"/>
+    <None Include="../input-kind.txt" Link="input-kind.txt" CopyToOutputDirectory="PreserveNewest"/>
+  </ItemGroup>
+</Project>

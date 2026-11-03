@@ -118,8 +118,14 @@ fn assert_complete_typed_output(actual: &Instance, expected: &serde_json::Value)
                 panic!("expected whole group: {actual:?}")
             };
             assert_eq!(actual_fields.len(), fields.len());
-            for (name, expected) in fields {
-                assert_complete_typed_output(actual.field(name).unwrap(), expected);
+            for ((actual_name, actual_value), (expected_name, expected_value)) in
+                actual_fields.iter().zip(fields)
+            {
+                assert_eq!(
+                    actual_name, expected_name,
+                    "ordered typed output field differs"
+                );
+                assert_complete_typed_output(actual_value, expected_value);
             }
         }
         serde_json::Value::Array(items) => {
@@ -138,6 +144,40 @@ fn assert_complete_typed_output(actual: &Instance, expected: &serde_json::Value)
         }
         _ => panic!("outside the authored output domain"),
     }
+}
+
+#[test]
+fn ordered_typed_oracle_rejects_swapped_equal_valued_fields() {
+    let expected: serde_json::Value =
+        serde_json::from_str(r#"{"Included":0,"Excluded":0}"#).unwrap();
+    assert_eq!(
+        expected
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect::<Vec<_>>(),
+        ["Included", "Excluded"]
+    );
+    let ordered = Instance::Group(
+        vec![
+            ("Included".into(), Instance::Scalar(Value::Int(0))),
+            ("Excluded".into(), Instance::Scalar(Value::Int(0))),
+        ]
+        .into(),
+    );
+    let swapped = Instance::Group(
+        vec![
+            ("Excluded".into(), Instance::Scalar(Value::Int(0))),
+            ("Included".into(), Instance::Scalar(Value::Int(0))),
+        ]
+        .into(),
+    );
+    assert_complete_typed_output(&ordered, &expected);
+    assert!(
+        std::panic::catch_unwind(|| assert_complete_typed_output(&swapped, &expected)).is_err(),
+        "swapped equal-valued fields escaped native typed oracle"
+    );
 }
 
 #[test]
