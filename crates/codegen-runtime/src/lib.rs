@@ -6,6 +6,9 @@
 
 #![forbid(unsafe_code)]
 
+#[cfg(feature = "json-projection-instrumentation")]
+pub use functions::{json_projection_full_parse_count, reset_json_projection_full_parse_count};
+
 mod adjacency_tree;
 mod aggregate;
 mod context;

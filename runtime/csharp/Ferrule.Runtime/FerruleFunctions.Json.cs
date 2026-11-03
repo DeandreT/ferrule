@@ -10,6 +10,52 @@ public static partial class FerruleFunctions
     private const string JsonParseObjectExistsName = "json_parse_object_exists";
     private const string JsonSerializeObjectName = "json_serialize_object";
 
+    // Each generated root context owns one state; row contexts share it. A
+    // graph owner retains only its latest exact input/schema pair. No user
+    // function graph or other execution can use this state implicitly.
+    internal sealed class JsonArrayProjectionState
+    {
+        private sealed record Document(string Input, string Schema, FerruleInstance Instance);
+        private readonly Dictionary<uint, Document> _documents = new();
+
+        internal FerruleInstance Parse(uint source, string schema, string input)
+        {
+            lock (_documents)
+            {
+                if (_documents.TryGetValue(source, out var previous) &&
+                    string.Equals(previous.Input, input, StringComparison.Ordinal) &&
+                    string.Equals(previous.Schema, schema, StringComparison.Ordinal))
+                    return previous.Instance;
+                // FerruleJson returns an owned immutable instance, not a
+                // JsonElement borrowing the disposed decoder document. A
+                // concurrent replacement cannot invalidate a caller's value.
+                var parsed = ParseArrayDocument(schema, input);
+                _documents[source] = new Document(input, schema, parsed);
+                return parsed;
+            }
+        }
+    }
+
+    internal static FerruleValue CallJsonArrayProjection(JsonArrayProjectionState state,
+        uint source, string function, IReadOnlyList<FerruleValue> arguments) => function switch
+        {
+            "json_parse_array_length" => JsonParseArrayLength(arguments, state, source),
+            "json_parse_array_field" => JsonParseArrayField(arguments, state, source),
+            "json_parse_field" => JsonParseField(arguments, state, source),
+            "json_parse_object_exists" => JsonParseObjectExists(arguments, state, source),
+            _ => Call(function, arguments),
+        };
+
+    private static FerruleInstance ParseArrayDocument(string schema, string input)
+    {
+        return FerruleJson.ParseFunctionInput(schema, input);
+    }
+
+#if FERRULE_JSON_PROJECTION_INSTRUMENTATION
+    public static int JsonProjectionFullParseCount => FerruleJson.DocumentDomDecodeAttemptCount;
+    public static void ResetJsonProjectionFullParseCount() => FerruleJson.ResetDocumentDomDecodeAttemptCount();
+#endif
+
     // Graph-level schema descriptors carry no file capability or descriptor
     // version, so a reader that predates tuple frames would read a frame as an
     // object; frames are therefore refused here.
@@ -23,7 +69,8 @@ public static partial class FerruleFunctions
     }
 
     private static (FerruleRepeated Array, string Schema, IReadOnlyList<string> Path) ParseJsonArray(
-        IReadOnlyList<FerruleValue> arguments, string function)
+        IReadOnlyList<FerruleValue> arguments, string function,
+        JsonArrayProjectionState? state, uint source)
     {
         var input = RequireString(arguments[0], function);
         var schema = RequireString(arguments[1], function);
@@ -31,7 +78,8 @@ public static partial class FerruleFunctions
         RequireFunctionSchema(schema, function);
         var segments = ParseJsonStringArray(path, function, "array path descriptor is invalid");
         FerruleInstance current;
-        try { current = FerruleJson.ParseFunctionInput(schema, input); }
+        try { current = state is null ? ParseArrayDocument(schema, input)
+            : state.Parse(source, schema, input); }
         catch (FerruleRuntimeException error) when (error.Error == FerruleRuntimeError.JsonBoundary)
         { throw InvalidArgument(function, "input does not match the JSON schema"); }
         if (!FerruleJson.IsFunctionArrayPath(schema, segments))
@@ -52,18 +100,20 @@ public static partial class FerruleFunctions
             : throw InvalidArgument(function, "array path does not resolve to an array");
     }
 
-    private static FerruleValue JsonParseArrayLength(IReadOnlyList<FerruleValue> arguments)
+    private static FerruleValue JsonParseArrayLength(IReadOnlyList<FerruleValue> arguments,
+        JsonArrayProjectionState? state = null, uint source = 0)
     {
         const string function = "json_parse_array_length";
         RequireArity(function, arguments, 3);
-        return FerruleValue.FromInt64(ParseJsonArray(arguments, function).Array.Items.Count);
+        return FerruleValue.FromInt64(ParseJsonArray(arguments, function, state, source).Array.Items.Count);
     }
 
-    private static FerruleValue JsonParseArrayField(IReadOnlyList<FerruleValue> arguments)
+    private static FerruleValue JsonParseArrayField(IReadOnlyList<FerruleValue> arguments,
+        JsonArrayProjectionState? state = null, uint source = 0)
     {
         const string function = "json_parse_array_field";
         RequireArity(function, arguments, 5);
-        var parsed = ParseJsonArray(arguments, function);
+        var parsed = ParseJsonArray(arguments, function, state, source);
         var array = parsed.Array;
         var segments = ParseJsonStringArray(RequireString(arguments[3], function), function,
             "field path descriptor is invalid");
@@ -87,7 +137,8 @@ public static partial class FerruleFunctions
             : throw InvalidArgument(function, "field path does not resolve to a scalar");
     }
 
-    private static FerruleValue JsonParseObjectExists(IReadOnlyList<FerruleValue> arguments)
+    private static FerruleValue JsonParseObjectExists(IReadOnlyList<FerruleValue> arguments,
+        JsonArrayProjectionState? state = null, uint source = 0)
     {
         const string function = JsonParseObjectExistsName;
         RequireArity(function, arguments, 3);
@@ -111,7 +162,8 @@ public static partial class FerruleFunctions
         FerruleInstance current;
         try
         {
-            current = FerruleJson.ParseFunctionInput(schema, input.StringValue);
+            current = state is null ? ParseArrayDocument(schema, input.StringValue)
+                : state.Parse(source, schema, input.StringValue);
         }
         catch (FerruleRuntimeException error) when (error.Error == FerruleRuntimeError.JsonBoundary)
         {
@@ -138,7 +190,8 @@ public static partial class FerruleFunctions
         };
     }
 
-    private static FerruleValue JsonParseField(IReadOnlyList<FerruleValue> arguments)
+    private static FerruleValue JsonParseField(IReadOnlyList<FerruleValue> arguments,
+        JsonArrayProjectionState? state = null, uint source = 0)
     {
         RequireArity(JsonParseFieldName, arguments, 3);
         var schema = RequireString(arguments[1], JsonParseFieldName);
@@ -162,7 +215,8 @@ public static partial class FerruleFunctions
         FerruleInstance parsed;
         try
         {
-            parsed = FerruleJson.ParseFunctionInput(schema, input.StringValue);
+            parsed = state is null ? ParseArrayDocument(schema, input.StringValue)
+                : state.Parse(source, schema, input.StringValue);
         }
         catch (FerruleRuntimeException error) when (error.Error == FerruleRuntimeError.JsonBoundary)
         {
