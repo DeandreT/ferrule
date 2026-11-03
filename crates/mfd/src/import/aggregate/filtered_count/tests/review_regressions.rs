@@ -25,7 +25,7 @@ pub(super) fn audit_disjoint(table: &CountProofTable) {
 const INPUT: &str = "<Source><Row><Text>keep</Text><Cell><Label>a</Label></Cell><Cell><Label>b</Label></Cell></Row><Row><Text>drop</Text></Row></Source>";
 const ORDINARY: &str = "<Results><Total>2</Total><Row><Cell><Label>a</Label></Cell><Cell><Label>b</Label></Cell></Row><Row/></Results>";
 
-fn ordinary_design(design: &str) -> String {
+pub(super) fn ordinary_design(design: &str) -> String {
     // A root-only ordinary Count has an independent two-row oracle; it does
     // not make a new claim about legacy empty-driver receiver reductions.
     design
@@ -61,7 +61,7 @@ pub(super) fn reverse_sections(design: &str) -> String {
     result
 }
 
-fn filter_outputs(design: &str, count: usize) -> String {
+pub(super) fn filter_outputs(design: &str, count: usize) -> String {
     let pins = (0..count)
         .map(|i| {
             let key = match i {
@@ -78,7 +78,7 @@ fn filter_outputs(design: &str, count: usize) -> String {
     )
 }
 
-fn outcome(package: &Package, strict: bool) -> Result<crate::Imported, crate::MfdError> {
+pub(super) fn outcome(package: &Package, strict: bool) -> Result<crate::Imported, crate::MfdError> {
     if strict {
         crate::import_with_profile(
             &package.0.join("map.mfd"),
@@ -91,11 +91,11 @@ fn outcome(package: &Package, strict: bool) -> Result<crate::Imported, crate::Mf
     }
 }
 
-fn is_count_refusal(result: &Result<crate::Imported, crate::MfdError>) -> bool {
+pub(super) fn is_count_refusal(result: &Result<crate::Imported, crate::MfdError>) -> bool {
     matches!(result, Err(crate::MfdError::UnsupportedImport(reason)) if reason.contains("physical filtered count"))
 }
 
-fn whole_ordinary(imported: &crate::Imported, expected: &str) {
+pub(super) fn whole_ordinary(imported: &crate::Imported, expected: &str) {
     let project = &imported.project;
     let input = format_xml::from_str(INPUT, &project.source).unwrap();
     let output = engine::run(project, &input).unwrap();
@@ -318,9 +318,7 @@ fn review_p2_ordinary_and_filtered_counts_keep_disjoint_authority_with_unrelated
 fn review_budget_partitions_and_decoded_metadata_limits_are_exact_and_sticky() {
     let budget = CountConstruction::default();
     let proof = budget.remaining_for_test();
-    let refusal = budget.discovery().remaining_for_test();
-    assert_eq!(proof.0 + refusal.0, 65_536);
-    assert_eq!(proof.1 + refusal.1, 32 * 1024 * 1024);
+    assert_eq!(proof, (65_536, 32 * 1024 * 1024));
     for text in [
         r#"<datapoint key="00051"/>"#,
         r#"<edge from="00042" to="00050"/>"#,
