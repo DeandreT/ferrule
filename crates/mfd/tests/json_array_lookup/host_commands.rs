@@ -350,13 +350,15 @@ fn process_receipts_keep_actual_command_stdout_stderr_and_status() {
     let executable = std::env::current_exe().unwrap();
     let mut command = Command::new(&executable);
     command.current_dir(&dir.0).arg("--list");
-    let output = super::checked(&dir.0, "receipt-control", &mut command);
+    // Receipt capture must not turn a small TMPDIR into a build prerequisite.
+    let output = super::checked(&dir.0, "receipt-control", &mut command, Some(1));
     let recorded: serde_json::Value =
         serde_json::from_slice(&std::fs::read(dir.0.join("receipt-control-command.json")).unwrap())
             .unwrap();
     assert_eq!(recorded["command"], executable.to_string_lossy().as_ref());
     assert_eq!(recorded["arguments"], serde_json::json!(["--list"]));
     assert_eq!(recorded["cwd"], dir.0.to_string_lossy().as_ref());
+    assert_eq!(recorded["free_bytes_before"], 1);
     assert_eq!(
         std::fs::read(dir.0.join("receipt-control.stdout")).unwrap(),
         output.stdout
@@ -369,4 +371,19 @@ fn process_receipts_keep_actual_command_stdout_stderr_and_status() {
         serde_json::from_slice(&std::fs::read(dir.0.join("receipt-control-status.json")).unwrap())
             .unwrap();
     assert_eq!(status, serde_json::json!({"success": true, "exit_code": 0}));
+}
+
+#[test]
+fn generated_build_space_admission_keeps_the_exact_reserve_boundary() {
+    let minimum = super::GENERATED_BUILD_RESERVE_BYTES;
+    for free in [0, 1, minimum - 1] {
+        assert_eq!(
+            super::generated_build_space_admission(Some(free)),
+            Err(free)
+        );
+    }
+    for free in [minimum, minimum + 1] {
+        assert_eq!(super::generated_build_space_admission(Some(free)), Ok(()));
+    }
+    assert_eq!(super::generated_build_space_admission(None), Ok(()));
 }

@@ -800,26 +800,57 @@ fn generated_hosts(profile: &str) {
     .unwrap();
     std::fs::copy(hosts.join("rust_host.rs"), rust.join("host.rs")).unwrap();
     let sdk_version = host_commands::prepare_csharp_host(&dir.0, &hosts, &shared);
-    checked(
+    checked_generated_build(
         &dir.0,
         "rust-release",
         &mut host_commands::rust_command(&dir.0, &fixtures),
     );
     let executable = std::env::var_os("FERRULE_DOTNET_EXE").unwrap_or_else(|| "dotnet".into());
     let (mut sdk, mut host) = host_commands::csharp_commands(&dir.0, &fixtures, &executable);
-    let output = checked(&dir.0, "csharp-sdk", &mut sdk);
+    let output = checked(&dir.0, "csharp-sdk", &mut sdk, available_space(&dir.0));
     host_commands::check_sdk_version(&output.stdout, &sdk_version)
         .unwrap_or_else(|message| panic!("{message}"));
-    checked(&dir.0, "csharp-release", &mut host);
+    checked_generated_build(&dir.0, "csharp-release", &mut host);
 }
-fn checked(root: &Path, label: &str, command: &mut std::process::Command) -> std::process::Output {
+const GENERATED_BUILD_RESERVE_BYTES: u64 = 45 * 1024 * 1024 * 1024;
+
+fn generated_build_space_admission(free_bytes: Option<u64>) -> Result<(), u64> {
+    match free_bytes {
+        Some(free) if free < GENERATED_BUILD_RESERVE_BYTES => Err(free),
+        _ => Ok(()),
+    }
+}
+
+fn available_space(root: &Path) -> Option<u64> {
     #[cfg(unix)]
-    let free_bytes = {
+    {
         let space = rustix::fs::statvfs(root).unwrap();
         Some(space.f_bavail.saturating_mul(space.f_frsize))
-    };
+    }
     #[cfg(not(unix))]
-    let free_bytes: Option<u64> = None;
+    {
+        let _ = root;
+        None
+    }
+}
+
+fn checked_generated_build(
+    root: &Path,
+    label: &str,
+    command: &mut std::process::Command,
+) -> std::process::Output {
+    let free_bytes = available_space(root);
+    generated_build_space_admission(free_bytes)
+        .unwrap_or_else(|free| panic!("generated host requires 45 GiB free; available: {free}"));
+    checked(root, label, command, free_bytes)
+}
+
+fn checked(
+    root: &Path,
+    label: &str,
+    command: &mut std::process::Command,
+    free_bytes: Option<u64>,
+) -> std::process::Output {
     std::fs::write(
         root.join(format!("{label}-command.json")),
         serde_json::to_vec_pretty(&serde_json::json!({
@@ -836,12 +867,6 @@ fn checked(root: &Path, label: &str, command: &mut std::process::Command) -> std
         .unwrap(),
     )
     .unwrap();
-    if let Some(free) = free_bytes {
-        assert!(
-            free >= 45 * 1024 * 1024 * 1024,
-            "generated host requires 45 GiB free; available: {free}"
-        );
-    }
     let output = command.output().unwrap();
     std::fs::write(root.join(format!("{label}.stdout")), &output.stdout).unwrap();
     std::fs::write(root.join(format!("{label}.stderr")), &output.stderr).unwrap();
