@@ -13,6 +13,7 @@ pub fn project() -> Project {
     let text = |name| SchemaNode::scalar(name, ScalarType::String);
     let tick = |name| SchemaNode::scalar(name, ScalarType::Int);
     Project {
+        execution_contract: None,
         source: SchemaNode::group(
             "Input",
             vec![SchemaNode::group("Rows", vec![text("Key"), text("Label")]).repeating()],

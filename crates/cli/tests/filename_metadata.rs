@@ -605,7 +605,14 @@ fn cli_uses_runtime_paths_and_publishes_only_after_complete_success() -> Result 
     Ok(())
 }
 
-fn checked(root: &Path, label: &str, command: &mut Command) -> Result {
+fn checked(root: &Path, label: &str, command: &mut Command) -> Result<std::process::Output> {
+    #[cfg(unix)]
+    let free_bytes = {
+        let space = rustix::fs::statvfs(root)?;
+        Some(space.f_bavail.saturating_mul(space.f_frsize))
+    };
+    #[cfg(not(unix))]
+    let free_bytes: Option<u64> = None;
     std::fs::write(
         root.join(format!("{label}-command.json")),
         serde_json::to_vec_pretty(&serde_json::json!({
@@ -617,8 +624,15 @@ fn checked(root: &Path, label: &str, command: &mut Command) -> Result {
                 | "DOTNET_NOLOGO" | "DOTNET_SKIP_FIRST_TIME_EXPERIENCE" | "DOTNET_CLI_USE_MSBUILD_SERVER"
                 | "MSBUILDDISABLENODEREUSE" | "UseSharedCompilation"
             ))).map(|(name, value)| (name.to_string_lossy(), value.map(|value| value.to_string_lossy()))).collect::<BTreeMap<_, _>>(),
+            "free_bytes_before": free_bytes,
         }))?,
     )?;
+    if let Some(free) = free_bytes {
+        assert!(
+            free >= 45 * 1024 * 1024 * 1024,
+            "generated host requires 45 GiB free; available: {free}"
+        );
+    }
     let output = command.output()?;
     std::fs::write(root.join(format!("{label}.stdout")), &output.stdout)?;
     std::fs::write(root.join(format!("{label}.stderr")), &output.stderr)?;
@@ -634,7 +648,7 @@ fn checked(root: &Path, label: &str, command: &mut Command) -> Result {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
-    Ok(())
+    Ok(output)
 }
 
 const CSHARP_HOST_PROJECT: &str = r#"<Project Sdk="Microsoft.NET.Sdk">
@@ -656,6 +670,10 @@ fn prepare_csharp_host(root: &Path) -> Result {
     std::fs::copy(
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../../global.json"),
         root.join("global.json"),
+    )?;
+    std::fs::write(
+        root.join("NuGet.Config"),
+        "<configuration><packageSources><clear/></packageSources></configuration>",
     )?;
     std::fs::write(
         host.join("Program.cs"),
@@ -717,6 +735,18 @@ fn csharp_host_copies_exact_sdk_policy_and_constructs_matching_offline_commands(
     assert_ne!(std::fs::read(&policy_path)?, policy);
     prepare_csharp_host(&fixture.0)?;
     assert_eq!(std::fs::read(&policy_path)?, policy);
+    let feeds = std::fs::read_to_string(fixture.0.join("NuGet.Config"))?;
+    let feeds = roxmltree::Document::parse(&feeds)?;
+    let sources = feeds
+        .descendants()
+        .find(|node| node.has_tag_name("packageSources"))
+        .unwrap();
+    let children: Vec<_> = sources
+        .children()
+        .filter(roxmltree::Node::is_element)
+        .collect();
+    assert_eq!(children.len(), 1);
+    assert!(children[0].has_tag_name("clear"));
     let project = std::fs::read_to_string(fixture.0.join("csharp/Harness/Harness.csproj"))?;
     for property in [
         "<DisableTransitiveFrameworkReferenceDownloads>true</DisableTransitiveFrameworkReferenceDownloads>",
@@ -839,7 +869,16 @@ fn composed_metadata_generated_release_hosts_preserve_values_errors_and_filename
         document.primary_source().filename,
         document.output_filename().unwrap(),
     );
-    checked(&fixture.0, "csharp-sdk", &mut sdk)?;
+    let output = checked(&fixture.0, "csharp-sdk", &mut sdk)?;
+    let policy: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(fixture.0.join("global.json"))?)?;
+    assert_eq!(
+        std::str::from_utf8(&output.stdout)?.trim(),
+        policy["sdk"]["version"]
+            .as_str()
+            .ok_or("SDK global.json must declare sdk.version")?,
+        "dotnet --version must select the exact global.json sdk.version"
+    );
     checked(&fixture.0, "csharp-release", &mut dotnet)?;
     Ok(())
 }
