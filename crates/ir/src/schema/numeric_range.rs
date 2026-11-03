@@ -246,11 +246,30 @@ fn stricter_maximum(left: Option<NumberBound>, right: Option<NumberBound>) -> Op
 
 /// One exact numeric interval attached to a concrete numeric scalar schema
 /// or to the Int member of an exact String-or-Int scalar union.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", content = "bounds", rename_all = "snake_case")]
 pub enum NumericRange {
     Integer(IntegerRange),
     Number(NumberRange),
+}
+
+impl<'de> Deserialize<'de> for NumericRange {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(
+            remote = "NumericRange",
+            rename = "NumericRange",
+            tag = "kind",
+            content = "bounds",
+            rename_all = "snake_case"
+        )]
+        enum Repr {
+            Integer(IntegerRange),
+            Number(NumberRange),
+        }
+
+        Repr::deserialize(super::number_serde::NumberDeserializer(deserializer))
+    }
 }
 
 impl NumericRange {

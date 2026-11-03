@@ -41,6 +41,39 @@ non-finite values produce typed errors. NaN and infinity cannot be saved as
 JSON values without losing their identity; saving rejects them instead of
 turning them into null. Failed encoding occurs before file publication.
 
+### Rust schema metadata consumers
+
+Ordinary `ir::SchemaNode` Serde decoding also supports JSON consumers that
+enable `serde_json/arbitrary_precision`. Numeric bounds, allowed values and
+alternative discriminators retain their finite binary64 domain; the feature
+does not introduce arbitrary-precision runtime values. Schema metadata, tag
+field ordering, validation and serialization stay unchanged. Consumers that
+need correctly rounded JSON-to-binary64 parsing should also enable
+`serde_json/float_roundtrip`, as Ferrule does.
+
+IR remains independent of serde_json as a runtime dependency. A small Serde
+forwarding adapter handles serde_json's live numeric transport before IR-owned
+tagged enums buffer it. It distinguishes that transport from real object keys
+using their newtype visitor dispatch, not just a private marker's spelling.
+Ordinary objects, including objects named `$serde_json::private::Number`, do
+not become numeric metadata. Typed numeric requests still go to the original
+deserializer. The bridge covers JSON text, slices, readers, streams and
+explicit `serde_json::Value` objects. This is a compatibility bridge for
+serde_json's version-sensitive transport behavior, not a guarantee about every
+custom Serde deserializer. Dependency upgrades must retain the separate default
+and arbitrary-precision consumer regressions, including malicious objects and
+nested adapters (`cargo test -p ir --test external_consumers`).
+
+There are two upstream information-loss limits. An application-owned internally
+tagged or untagged wrapper can buffer a number before IR is called, making it
+indistinguishable from a forged object; ambiguous maps are rejected rather than
+trusted. Decode a schema at its live boundary instead. Also, parsing a private
+marker object into `serde_json::Value` can already turn it into a `Number`;
+IR cannot recover that earlier object identity. Tests of object rejection must
+construct `Value::Object` explicitly. With arbitrary precision, an untyped
+`Number` read can classify the stored token `-0` as integer zero; use `-0.0`
+when signed zero must survive an intervening `Value` or untyped buffer.
+
 ### File capabilities
 
 Some options or schema metadata must never be silently ignored by a reader
