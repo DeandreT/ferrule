@@ -21,8 +21,10 @@ public sealed partial class ScopeContext
     private readonly FerruleExecutionContext? _executionContext;
     private readonly IFerruleDynamicSourceLoader? _dynamicSourceLoader;
     private readonly FerruleInvocationCounters? _invocationCounters;
+    private readonly FerruleFunctions.JsonArrayProjectionState _jsonProjections;
 
     private ScopeContext(
+        FerruleFunctions.JsonArrayProjectionState jsonProjections,
         FerruleInstance primarySource,
         IReadOnlyList<FerruleInstance> frames,
         IReadOnlyList<CollectionIdentity> collections,
@@ -34,6 +36,10 @@ public sealed partial class ScopeContext
         FerruleInvocationCounters? invocationCounters = null)
     {
         _primarySource = primarySource;
+        ArgumentNullException.ThrowIfNull(jsonProjections);
+        // Only actual invocation root factories allocate this state. Requiring
+        // it here also covers target-typed new(...) in descendant contexts.
+        _jsonProjections = jsonProjections;
         _frames = frames;
         _collections = collections;
         _executionContext = executionContext;
@@ -51,6 +57,11 @@ public sealed partial class ScopeContext
             throw new FerruleRuntimeException(FerruleRuntimeError.MissingInvocationCounters,
                 "invocation counters require explicit host limits", node: node);
     }
+
+    /// <summary>Shares validated array documents within this main-graph invocation only.</summary>
+    public FerruleValue CallJsonArrayProjection(uint source, string function,
+        IReadOnlyList<FerruleValue> arguments) =>
+        FerruleFunctions.CallJsonArrayProjection(_jsonProjections, source, function, arguments);
 
     public FerruleValue NextInvocationCounter(uint node, string key, long start, long step, string? restart)
     {
@@ -71,7 +82,7 @@ public sealed partial class ScopeContext
     public ScopeContext WithDynamicSourceLoader(IFerruleDynamicSourceLoader loader)
     {
         ArgumentNullException.ThrowIfNull(loader);
-        return new ScopeContext(_primarySource, _frames, _collections, _executionContext, loader,
+        return new ScopeContext(_jsonProjections, _primarySource, _frames, _collections, _executionContext, loader,
             _filterMapRunState, _filterMapBoundary, _filterMapCallDepth, _invocationCounters);
     }
 
@@ -81,6 +92,7 @@ public sealed partial class ScopeContext
     {
         ArgumentNullException.ThrowIfNull(source);
         return new ScopeContext(
+            new FerruleFunctions.JsonArrayProjectionState(),
             source,
             new ReadOnlyCollection<FerruleInstance>(new[] { source }),
             Array.Empty<CollectionIdentity>(),
@@ -101,6 +113,7 @@ public sealed partial class ScopeContext
         ArgumentNullException.ThrowIfNull(extraSources);
         var extras = new FerruleGroup(extraSources);
         return new ScopeContext(
+            new FerruleFunctions.JsonArrayProjectionState(),
             source,
             new ReadOnlyCollection<FerruleInstance>(new FerruleInstance[] { extras, source }),
             Array.Empty<CollectionIdentity>(),
@@ -690,6 +703,7 @@ public sealed partial class ScopeContext
             ? collections[^1] with { JoinPosition = index }
             : collections[^1] with { Index = index };
         return new ScopeContext(
+            _jsonProjections,
             _primarySource,
             _frames,
             new ReadOnlyCollection<CollectionIdentity>(collections),
@@ -802,6 +816,7 @@ public sealed partial class ScopeContext
         collections.AddRange(_collections);
         collections.Add(new CollectionIdentity(Array.Empty<string>(), item, index, GeneratedOwner: owner, GeneratedIndex: owner.HasValue ? index : null));
         return new ScopeContext(
+            _jsonProjections,
             _primarySource,
             new ReadOnlyCollection<FerruleInstance>(frames),
             new ReadOnlyCollection<CollectionIdentity>(collections),
@@ -1013,6 +1028,7 @@ public sealed partial class ScopeContext
         allCollections.AddRange(_collections);
         allCollections.AddRange(collections);
         var candidate = new ScopeContext(
+            _jsonProjections,
             _primarySource,
             new ReadOnlyCollection<FerruleInstance>(allFrames),
             new ReadOnlyCollection<CollectionIdentity>(allCollections),
@@ -2412,7 +2428,7 @@ public sealed partial class ScopeContext
     {
         budget.Charge(5); // two frame cells, read-only wrapper, legacy view and root helper state
         var frames = new FerruleInstance[] { projection, primary };
-        return new ScopeContext(primary, new ReadOnlyCollection<FerruleInstance>(frames),
+        return new ScopeContext(new FerruleFunctions.JsonArrayProjectionState(), primary, new ReadOnlyCollection<FerruleInstance>(frames),
             Array.Empty<CollectionIdentity>(), execution);
     }
     internal ScopeContext CloneBasicLegacy(BasicSourceBudget budget, int? slot = null, int index = 0)
@@ -2430,7 +2446,7 @@ public sealed partial class ScopeContext
         for (var i = 0; i < frames.Length; i++) frames[i] = _frames[i];
         for (var i = 0; i < collections.Length; i++) collections[i] = _collections[i];
         if (slot.HasValue) collections[slot.Value] = collections[slot.Value] with { Index = index };
-        return new ScopeContext(_primarySource, new ReadOnlyCollection<FerruleInstance>(frames),
+        return new ScopeContext(_jsonProjections, _primarySource, new ReadOnlyCollection<FerruleInstance>(frames),
             new ReadOnlyCollection<CollectionIdentity>(collections), _executionContext,
             _dynamicSourceLoader, _filterMapRunState, _filterMapBoundary, _filterMapCallDepth, _invocationCounters);
     }
@@ -2474,7 +2490,7 @@ public sealed partial class ScopeContext
             collections[_collections.Count + i] = new CollectionIdentity(path, f.Item, checked((int)f.Index));
         }
         if (plain) frames[^1] = terminal;
-        return new ScopeContext(_primarySource, new ReadOnlyCollection<FerruleInstance>(frames),
+        return new ScopeContext(_jsonProjections, _primarySource, new ReadOnlyCollection<FerruleInstance>(frames),
             new ReadOnlyCollection<CollectionIdentity>(collections), _executionContext,
             _dynamicSourceLoader, _filterMapRunState, _filterMapBoundary, _filterMapCallDepth, _invocationCounters);
     }
