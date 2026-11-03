@@ -5,7 +5,7 @@ use crate::import::schema::SchemaComponent;
 
 /// Session-local immutable XML identity. Never serialized, dereferenced as a
 /// pointer, or compared across imports. Main XML remains alive through lowering.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub(in crate::import) struct RawOwner {
     document: usize,
     structure: (usize, usize),
@@ -40,9 +40,7 @@ pub(in crate::import) enum Origin {
 /// Optional Count work has its own sticky quota. It never enables declared
 /// libraries and its exhaustion must not alter ordinary registration.
 #[derive(Clone, Debug)]
-#[cfg_attr(not(test), derive(Default))]
-pub(in crate::import) struct CountConstruction(ConstructionBudget);
-#[cfg(test)]
+pub(in crate::import) struct CountConstruction(ConstructionBudget, ConstructionBudget);
 impl Default for CountConstruction {
     fn default() -> Self {
         #[cfg(test)]
@@ -51,11 +49,23 @@ impl Default for CountConstruction {
         {
             return Self::for_test(work, text);
         }
-        Self(ConstructionBudget::default())
+        let proof = ConstructionBudget::default();
+        // Reserve refusal-only connectivity before optional origin/proof work.
+        // The two non-renewable partitions still total 65,536 work / 32 MiB.
+        let _ = proof.claim(16_384, 8 * 1024 * 1024, 0);
+        Self(proof, Self::refusal_partition())
     }
 }
 
 impl CountConstruction {
+    fn refusal_partition() -> ConstructionBudget {
+        let budget = ConstructionBudget::default();
+        let _ = budget.claim(49_152, 24 * 1024 * 1024, 0);
+        budget
+    }
+    pub(in crate::import) fn discovery(&self) -> Self {
+        Self(self.1.clone(), self.1.clone())
+    }
     pub(in crate::import) fn claim(
         &self,
         work: usize,
@@ -74,7 +84,10 @@ impl CountConstruction {
     }
     #[cfg(test)]
     pub(in crate::import) fn for_test(work: usize, text: usize) -> Self {
-        Self(ConstructionBudget::for_test(work, text))
+        Self(
+            ConstructionBudget::for_test(work, text),
+            Self::refusal_partition(),
+        )
     }
     #[cfg(test)]
     pub(in crate::import) fn remaining_for_test(&self) -> (usize, usize) {
@@ -100,6 +113,7 @@ pub(in crate::import) struct RegisteredVec<T> {
     count_capture: OriginCapture,
     count_origins: Vec<Origin>,
     count_complete: bool,
+    count_refusal_complete: bool,
 }
 
 impl<T> RegisteredVec<T> {
@@ -118,6 +132,7 @@ impl<T> RegisteredVec<T> {
             count_capture: capture,
             count_origins: Vec::new(),
             count_complete: true,
+            count_refusal_complete: true,
         }
     }
     pub(in crate::import) fn set_active(&mut self, component: roxmltree::Node<'_, '_>) {
@@ -134,12 +149,17 @@ impl<T> RegisteredVec<T> {
             self.origins.push(origin);
         }
         if let OriginCapture::Count(budget) = &self.count_capture {
-            if self.count_complete && budget.claim(2, 0, 0).is_ok() {
+            if self.count_refusal_complete && budget.discovery().claim(2, 0, 0).is_ok() {
                 self.count_origins.push(origin);
                 crate::import::aggregate::filtered_count::count_visit(
                     crate::import::aggregate::filtered_count::Counter::Origin,
                 );
             } else {
+                self.count_refusal_complete = false;
+            }
+            if self.count_complete
+                && (!self.count_refusal_complete || budget.claim(2, 0, 0).is_err())
+            {
                 self.count_complete = false;
             }
         }
@@ -147,6 +167,14 @@ impl<T> RegisteredVec<T> {
     }
     pub(in crate::import) fn count_origin_at(&self, index: usize) -> Origin {
         if !self.count_complete {
+            return Origin::SyntheticOrUnproved;
+        }
+        self.count_refusal_origin_at(index)
+    }
+    /// Registration identity for refusal/unchanged-earlier-route discovery only.
+    /// Positive producer authority must continue to use `count_origin_at`.
+    pub(in crate::import) fn count_refusal_origin_at(&self, index: usize) -> Origin {
+        if !self.count_refusal_complete {
             return Origin::SyntheticOrUnproved;
         }
         self.count_origins

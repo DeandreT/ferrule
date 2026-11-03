@@ -168,6 +168,9 @@ pub(super) fn read_edges(
 
 pub(super) struct EdgeInputs {
     pub(super) feeds: BTreeMap<u32, u32>,
+    /// Noncollapsing numeric claims from this same edge-index construction.
+    /// Count refusal discovery must not infer absence from a selected feed.
+    pub(super) claims: BTreeMap<u32, BTreeSet<u32>>,
     pub(super) conflicts: Vec<String>,
     pub(super) complete: bool,
 }
@@ -251,7 +254,7 @@ pub(super) fn read_edge_inputs(
     let mut feeds = BTreeMap::new();
     let mut conflicts = Vec::new();
     let mut complete = true;
-    for (input, sources) in sources {
+    for (&input, sources) in &sources {
         if sources.len() != 1 || !selected_inputs.contains(&input) {
             complete = false;
         }
@@ -259,7 +262,7 @@ pub(super) fn read_edge_inputs(
             feeds.insert(input, *sources.first().expect("one source"));
         } else if sources.len() > 1 {
             let sources = sources
-                .into_iter()
+                .iter()
                 .map(|source| source.to_string())
                 .collect::<Vec<_>>()
                 .join(", ");
@@ -270,6 +273,7 @@ pub(super) fn read_edge_inputs(
     }
     EdgeInputs {
         feeds,
+        claims: sources,
         conflicts,
         complete,
     }
