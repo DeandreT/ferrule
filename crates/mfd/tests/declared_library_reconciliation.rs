@@ -10,6 +10,8 @@ mod authority;
 mod certification;
 #[path = "declared_library_reconciliation/lifetimes.rs"]
 mod lifetimes;
+#[path = "declared_library_reconciliation/public_hosts.rs"]
+mod public_hosts;
 #[path = "declared_library_reconciliation/security.rs"]
 mod security;
 

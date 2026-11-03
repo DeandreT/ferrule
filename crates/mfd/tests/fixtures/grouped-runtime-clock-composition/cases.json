@@ -1,0 +1,7 @@
+[
+  {"name":"C1","input":{"Row":[{"Value":"a","End":false},{"Value":"b","End":true},{"Value":"c","End":false}]},"clock":"2026-07-12T12:01:02.345-07:00","expected":{"RunStamp":"2026-07-12T12:01:02.345-07:00","Group":[{"First":"a","Stamp":"2026-07-12T12:01:02.345-07:00"},{"First":"c","Stamp":"2026-07-12T12:01:02.345-07:00"}],"Audit":{"Stamp":"2026-07-12T12:01:02.345-07:00"}}},
+  {"name":"C2","input":{"Row":[{"Value":"a","End":false},{"Value":"b","End":true},{"Value":"c","End":false}]},"clock":"2031-02-03T04:05:06.000000007Z","expected":{"RunStamp":"2031-02-03T04:05:06.000000007Z","Group":[{"First":"a","Stamp":"2031-02-03T04:05:06.000000007Z"},{"First":"c","Stamp":"2031-02-03T04:05:06.000000007Z"}],"Audit":{"Stamp":"2031-02-03T04:05:06.000000007Z"}}},
+  {"name":"empty supplied","input":{"Row":[]},"clock":"2026-07-12T12:01:02.345-07:00","expected":{"RunStamp":"2026-07-12T12:01:02.345-07:00","Group":[],"Audit":{"Stamp":"2026-07-12T12:01:02.345-07:00"}}},
+  {"name":"root demand empty","input":{"Row":[]},"missing_clock":true},
+  {"name":"root demand nonempty","input":{"Row":[{"Value":"a","End":true}]},"missing_clock":true}
+]

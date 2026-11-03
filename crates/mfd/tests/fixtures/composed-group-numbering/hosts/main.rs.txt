@@ -1,0 +1,19 @@
+use ferrule_generated_mapping::execute;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let paths: Vec<_> = std::env::args().skip(1).collect();
+    let cases: Vec<serde_json::Value> = serde_json::from_slice(&std::fs::read(&paths[0])?)?;
+    let source_schema = std::fs::read_to_string(&paths[1])?;
+    let target_schema = std::fs::read_to_string(&paths[2])?;
+    for index in [0, 1, 2, 3, 4, 2, 0, 3, 1, 4] {
+        let case = &cases[index];
+        let source = codegen_runtime::parse_json(&source_schema, &case["input"].to_string())?;
+        let before = source.clone();
+        let expected = codegen_runtime::parse_json(&target_schema, &case["expected"].to_string())?;
+        let actual = execute(&source)?;
+        assert_eq!(actual, expected, "{}: complete document", case["id"]);
+        assert_eq!(source, before, "{}: unchanged input", case["id"]);
+        println!("{}: {actual:?}", case["id"]);
+    }
+    Ok(())
+}

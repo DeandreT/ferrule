@@ -316,6 +316,7 @@
         "FoundInstance": null,
         "OwnedSourceFailure": null,
         "BasicSourceBridgeFailure": null,
+        "SourceContractViolation": null,
         "PrimaryRoot": null
       },
       "inner_type": null
@@ -463,6 +464,7 @@
         "FoundInstance": null,
         "OwnedSourceFailure": null,
         "BasicSourceBridgeFailure": null,
+        "SourceContractViolation": null,
         "PrimaryRoot": null
       },
       "inner_type": null

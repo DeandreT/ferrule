@@ -1,0 +1,41 @@
+using System.Text.Json.Nodes;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+var cases = JsonNode.Parse(File.ReadAllText(args[0]))!.AsArray();
+var source = File.ReadAllText(args[1]);
+var target = File.ReadAllText(args[2]);
+foreach (var item in cases.Concat(cases.Reverse()))
+{
+    var test = item!;
+    var failure = test["parameter_failure"]?.GetValue<string>();
+    var parameters = new Dictionary<string, FerruleValue>();
+    if (failure != "missing") parameters["LookupText"] = failure switch {
+        "null" => FerruleValue.Null,
+        "int" => FerruleValue.FromInt64(7),
+        _ => FerruleValue.FromString(test["lookup"]!.GetValue<string>())
+    };
+    var context = FerruleExecutionContext.WithParameters("lookup.mfd", new FerruleRuntimeParameters(parameters));
+    var input = FerruleJson.ParseEmbedded(source, test["primary"]!.ToJsonString());
+    try {
+        var actual = GeneratedMapping.Execute(input, context);
+        Console.WriteLine(test["name"] + "|" + FerruleJson.SerializeEmbedded(target, actual));
+        if (test["error"] is not null || failure is not null) throw new Exception("Expected typed error: " + test);
+        Oracle.Equal(actual, FerruleJson.ParseEmbedded(target, test["expected"]!.ToJsonString()));
+        Oracle.Json(FerruleJson.SerializeEmbedded(target, actual), test["expected"]!);
+    } catch (FerruleRuntimeException error) when (test["error"] is not null) {
+        Console.WriteLine(test["name"] + "|" + error.Error + "|" + error.Function + "|" + error.Detail);
+        if (error.Error != FerruleRuntimeError.FunctionInvalidArgument || error.Function != "json_parse_array_length" || error.Detail != test["error"]!.GetValue<string>()) throw;
+    } catch (FerruleRuntimeException error) when (failure is not null) {
+        Console.WriteLine(test["name"] + "|" + error.Error + "|" + error.Function + "|" + error.RuntimeParameter + "|" + error.FoundKind + "|" + error.Detail);
+        if (failure == "missing") {
+            if (error.RuntimeParameter != "LookupText" || error.Error != FerruleRuntimeError.MissingRuntimeParameter) throw;
+        } else {
+            if (error.Function != "json_parse_array_length") throw;
+            if (failure == "null") {
+                if (error.Error != FerruleRuntimeError.FunctionType || error.FoundKind != FerruleValueKind.Null) throw;
+            } else if (error.Error != FerruleRuntimeError.FunctionInvalidArgument || error.Detail != "input does not match the JSON schema") throw;
+        }
+    }
+}
+Console.WriteLine("PASS complete parsed lookup syntax contracts");

@@ -1,0 +1,206 @@
+use codegen_runtime::{
+    ExecutionContext, Instance, RuntimeError, RuntimeParameters, ScalarType,
+    SourceContractReason as Reason, SourceContractViolation, Value,
+};
+use imported_udf_host::*;
+use serde_json::{Value as Json, json};
+use std::error::Error;
+mod xml_tree;
+
+// Schema-free conversion preserves a host's deliberate omission of Cell.
+fn raw(value: &Json) -> Instance {
+    match value {
+        Json::Object(fields) => Instance::Group(
+            fields
+                .iter()
+                .map(|(name, value)| (name.clone(), raw(value)))
+                .collect::<Vec<_>>()
+                .into(),
+        ),
+        Json::Array(items) => Instance::Repeated(items.iter().map(raw).collect()),
+        Json::String(text) => Instance::Scalar(Value::String(text.clone())),
+        Json::Number(number) => Instance::Scalar(Value::Int(number.as_i64().unwrap())),
+        _ => panic!("outside authored raw input domain"),
+    }
+}
+
+fn whole(actual: &Instance, expected: &Json) {
+    match expected {
+        Json::Object(fields) => {
+            let Instance::Group(actual_fields) = actual else {
+                panic!("expected whole group")
+            };
+            assert_eq!(actual_fields.len(), fields.len());
+            for ((actual_name, actual_value), (expected_name, expected_value)) in
+                actual_fields.iter().zip(fields.iter())
+            {
+                assert_eq!(
+                    actual_name, expected_name,
+                    "ordered typed output field differs"
+                );
+                whole(actual_value, expected_value);
+            }
+        }
+        Json::Array(items) => {
+            let Instance::Repeated(actual) = actual else {
+                panic!("expected repeated output")
+            };
+            assert_eq!(actual.len(), items.len());
+            for (actual, expected) in actual.iter().zip(items) {
+                whole(actual, expected);
+            }
+        }
+        Json::String(text) => assert_eq!(actual.as_scalar(), Some(&Value::String(text.clone()))),
+        _ => panic!("outside independently authored output domain"),
+    }
+}
+
+fn plain(value: &Instance) -> Json {
+    match value {
+        Instance::Group(fields) => Json::Object(
+            fields
+                .iter()
+                .map(|(name, value)| (name.clone(), plain(value)))
+                .collect(),
+        ),
+        Instance::Repeated(items) => Json::Array(items.iter().map(plain).collect()),
+        Instance::Scalar(Value::String(value)) => json!(value),
+        Instance::Scalar(Value::Int(value)) => json!(value),
+        Instance::Scalar(Value::Bool(value)) => json!(value),
+        Instance::Scalar(Value::Null) => Json::Null,
+        _ => json!({"unexpected_typed_output":format!("{value:?}")}),
+    }
+}
+
+fn reason(name: &str) -> Reason {
+    match name {
+        "MissingRepeatedSlot" => Reason::MissingRepeatedSlot,
+        "WrongScalarDomain" => Reason::WrongScalarDomain,
+        "UnexpectedField" => Reason::UnexpectedField,
+        _ => panic!("unknown authored guard category"),
+    }
+}
+
+fn reject<T, E: Error + 'static>(id: &str, outcome: Result<T, E>, expected: Reason) {
+    let error = match outcome {
+        Err(error) => error,
+        Ok(_) => panic!("{id}: guarded public entry succeeded"),
+    };
+    let mut current: &(dyn Error + 'static) = &error;
+    loop {
+        if let Some(violation) = current.downcast_ref::<SourceContractViolation>() {
+            println!(
+                "{}",
+                json!({"kind":"refusal","case":id,
+                "reason":format!("{:?}",violation.reason),"path":violation.path,"boundary":"guard"})
+            );
+            assert_eq!(violation.reason, expected);
+            if id == "sparse-with-root-donor" {
+                assert_eq!(violation.path, ["Row".to_owned(), "Cell".to_owned()]);
+            }
+            assert!(violation.path.iter().all(|part| !part.contains("secret")));
+            return;
+        }
+        current = current
+            .source()
+            .unwrap_or_else(|| panic!("{id}: no typed guard violation: {error:?}"));
+    }
+}
+
+fn udf_error<T, E: Error + 'static>(outcome: Result<T, E>, spec: &Json) {
+    let error = match outcome {
+        Err(error) => error,
+        Ok(_) => panic!("typed imported UDF argument was not adapted"),
+    };
+    let mut current: &(dyn Error + 'static) = &error;
+    loop {
+        if let Some(RuntimeError::UserFunctionType {
+            function,
+            parameter,
+            expected,
+            found,
+        }) = current.downcast_ref::<RuntimeError>()
+        {
+            println!(
+                "{}",
+                json!({"kind":"refusal","case":"typed-udf-error","reason":"UserFunctionType",
+                "function":function,"parameter":parameter,"expected":format!("{expected:?}"),"found":found})
+            );
+            assert_eq!(*function, spec["udf_function"].as_u64().unwrap());
+            assert_eq!(*parameter, spec["udf_parameter"].as_u64());
+            assert_eq!(*expected, ScalarType::Int);
+            assert_eq!(*found, "string");
+            return;
+        }
+        current = current
+            .source()
+            .unwrap_or_else(|| panic!("not the typed imported UDF error: {error:?}"));
+    }
+}
+
+fn main() {
+    let path = std::env::args()
+        .nth(1)
+        .expect("authored cases.json argument");
+    let spec: Json = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+    for case in spec["valid"].as_array().unwrap() {
+        let source = raw(&case["input"]);
+        let before = source.clone();
+        for repeat in 0..3 {
+            let actual = execute(&source).unwrap();
+            let json = execute_json(&case["input"].to_string()).unwrap();
+            let xml = execute_xml(case["input_xml"].as_str().unwrap()).unwrap();
+            // Preserve complete actual output before semantic assertions.
+            println!(
+                "{}",
+                json!({"kind":"valid","case":case["id"],"repeat":repeat,
+                "typed":plain(&actual),"typed_debug":format!("{actual:?}"),"json":json,"xml":xml})
+            );
+            whole(&actual, &case["expected"]);
+            assert_eq!(
+                serde_json::from_str::<Json>(&json).unwrap(),
+                case["expected"]
+            );
+            xml_tree::assert_xml(&xml, case["expected_xml"].as_str().unwrap());
+            assert_eq!(source, before);
+        }
+    }
+    for case in spec["guards"].as_array().unwrap() {
+        reject(
+            case["id"].as_str().unwrap(),
+            execute(&raw(&case["input"])),
+            reason(case["reason"].as_str().unwrap()),
+        );
+    }
+    let source = raw(&spec["valid"][0]["input"]);
+    let mut parameters = RuntimeParameters::new();
+    parameters
+        .insert("undeclared", Value::String("secret".into()))
+        .unwrap();
+    let context = ExecutionContext::new(std::path::Path::new("imported.mapping.json"))
+        .with_parameters(&parameters);
+    reject(
+        "parameters",
+        execute_with_context(&source, &context),
+        Reason::UnexpectedParameter,
+    );
+    let extras = [NamedInput {
+        name: "undeclared",
+        instance: &source,
+    }];
+    reject(
+        "extras",
+        execute_with_sources(&source, &extras),
+        Reason::UnexpectedBinding,
+    );
+    let mut duplicate = source.clone();
+    let Instance::Group(fields) = &mut duplicate else {
+        panic!("authored root is a group")
+    };
+    let extra = fields[0].clone();
+    fields.push(extra);
+    reject("duplicate", execute(&duplicate), Reason::DuplicateField);
+    if spec["kind"] == "root" {
+        udf_error(execute(&raw(&spec["udf_error"])), &spec);
+    }
+}
