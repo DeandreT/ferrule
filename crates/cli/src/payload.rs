@@ -955,6 +955,15 @@ fn read_payload_with_profile(
             .context("parsing XBRL input payload");
     }
     if let SelectedFormat::Idoc(layout) = selected {
+        if !options.edi_value_constraints.is_empty() {
+            return format_edi::document::parse(
+                schema,
+                options,
+                EdiBoundaryKind::Idoc,
+                document.bytes,
+            )
+            .context("parsing SAP IDoc input payload");
+        }
         let mut instance =
             format_edi::idoc::from_bytes(document.bytes, schema, layout, options.lenient_segments)
                 .context("parsing SAP IDoc input payload")?;
@@ -992,6 +1001,10 @@ fn read_payload_with_profile(
             .context("parsing Protocol Buffers input payload");
     }
     if let SelectedFormat::Edi(Some(kind)) = selected {
+        if !options.edi_value_constraints.is_empty() {
+            return format_edi::document::parse(schema, options, kind, document.bytes)
+                .context("parsing EDI input payload");
+        }
         let text = utf8(document, "EDI")?;
         let mut instance = match kind {
             EdiBoundaryKind::X12 => format_edi::x12::from_str_with_separators(
@@ -1093,6 +1106,16 @@ fn read_payload_with_profile(
             bail!("SQLite input requires a persistent database and is unavailable as a payload")
         }
         SelectedFormat::Edi(None) => {
+            if !options.edi_value_constraints.is_empty() {
+                let kind = match format_edi::dialect_of(schema)? {
+                    format_edi::Dialect::X12 => EdiBoundaryKind::X12,
+                    format_edi::Dialect::Edifact => EdiBoundaryKind::Edifact,
+                    format_edi::Dialect::Hl7 => EdiBoundaryKind::Hl7,
+                    format_edi::Dialect::Tradacoms => EdiBoundaryKind::Tradacoms,
+                };
+                return format_edi::document::parse(schema, options, kind, document.bytes)
+                    .context("parsing EDI input payload");
+            }
             let text = utf8(document, "EDI")?;
             match format_edi::dialect_of(schema)? {
                 format_edi::Dialect::X12 => {

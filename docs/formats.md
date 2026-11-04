@@ -634,6 +634,18 @@ reloading a project starts from that project's saved headers.
 - EDI output validates every present configured field after wire lexical
   formatting. The bounded report includes all length and code-list violations
   it finds, and validation failures do not replace the destination.
+- Native X12, EDIFACT, HL7, TRADACOMS and IDoc input enforces retained
+  `edi_value_constraints` on decoded field spellings before scalar conversion
+  or implied-decimal scaling. Lengths count decoded characters, code lists keep
+  leading zeros, and diagnostics identify each failing repeated occurrence.
+  Escapes, service characters and IDoc padding retain their native decoding
+  rules. Null or absent values retain the existing segment/cardinality policy;
+  these lexical constraints do not add required fields. Invalid constraint
+  paths are refused during admission. File, payload and standard-input runs
+  share this behavior and publish no output after a source refusal. Reads with
+  no configured value constraints keep their existing direct conversion path.
+  Low-level family readers without `FormatOptions` do not apply saved options;
+  use `format_edi::document` for a configured source document.
 
 The [workflow-parity roadmap](../ROADMAP.md) tracks the remaining format and
 connector work.

@@ -15,6 +15,7 @@ pub mod document;
 pub mod edifact;
 pub mod hl7;
 pub mod idoc;
+mod lexical_input;
 mod segments;
 pub mod swift;
 #[cfg(test)]

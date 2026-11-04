@@ -204,6 +204,7 @@ mod edifact_group_classification_regressions {
     }
 }
 
+#[derive(Clone, Copy)]
 enum Shape<'a> {
     Segment(&'a [SchemaNode]),
     Container(&'a [SchemaNode]),
@@ -855,6 +856,114 @@ fn parse_element(
         }
         ScalarType::Bool => Value::Bool(raw.parse().map_err(|_| bad())?),
     })
+}
+
+pub(crate) fn restore_lexical_types(
+    schema: &SchemaNode,
+    instance: &mut Instance,
+) -> Result<(), EdiFormatError> {
+    restore_lexical_node(schema, instance, NodePosition::Root)
+}
+
+#[derive(Clone, Copy)]
+enum NodePosition {
+    Root,
+    Nested,
+}
+
+fn restore_lexical_node(
+    schema: &SchemaNode,
+    instance: &mut Instance,
+    position: NodePosition,
+) -> Result<(), EdiFormatError> {
+    if let Instance::Repeated(items) = instance {
+        for item in items {
+            restore_lexical_node(schema, item, position)?;
+        }
+        return Ok(());
+    }
+    let Instance::Group(fields) = instance else {
+        return Err(instance_shape_error(schema, "a parsed group", instance));
+    };
+    let shape = shape_of(schema, matches!(position, NodePosition::Root))?;
+    let children = match shape {
+        Shape::Container(children) | Shape::Segment(children) => children,
+    };
+    if fields.len() != children.len() {
+        return Err(EdiFormatError::UnsupportedSchema(format!(
+            "parsed source group `{}` does not match its admitted fields",
+            schema.name
+        )));
+    }
+    for (index, ((name, value), child)) in fields.iter_mut().zip(children).enumerate() {
+        if name.as_str() != child.name.as_str() {
+            return Err(EdiFormatError::UnsupportedSchema(format!(
+                "parsed source field `{name}` does not match `{}`",
+                child.name
+            )));
+        }
+        match shape {
+            Shape::Container(_) => restore_lexical_node(child, value, NodePosition::Nested)?,
+            Shape::Segment(_) => {
+                let segment = schema_segment_id(&schema.name)
+                    .ok_or_else(|| EdiFormatError::UnsupportedSchema(schema.name.clone()))?;
+                restore_lexical_element(child, value, segment, index + 1)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn restore_lexical_element(
+    schema: &SchemaNode,
+    instance: &mut Instance,
+    segment: &str,
+    element: usize,
+) -> Result<(), EdiFormatError> {
+    if let Instance::Repeated(items) = instance {
+        for item in items {
+            restore_lexical_element(schema, item, segment, element)?;
+        }
+        return Ok(());
+    }
+    match &schema.kind {
+        SchemaKind::Scalar { ty } => {
+            let Instance::Scalar(value) = instance else {
+                return Err(instance_shape_error(schema, "a parsed scalar", instance));
+            };
+            match value {
+                Value::Null => Ok(()),
+                Value::String(_) if *ty == ScalarType::String => Ok(()),
+                Value::String(raw) => {
+                    *value = parse_element(segment, element, *ty, raw)?;
+                    Ok(())
+                }
+                other => Err(EdiFormatError::ValueType {
+                    element: schema.name.clone(),
+                    expected: *ty,
+                    got: other.type_name(),
+                }),
+            }
+        }
+        SchemaKind::Group { children, .. } => {
+            let Instance::Group(fields) = instance else {
+                return Err(instance_shape_error(schema, "a parsed composite", instance));
+            };
+            if fields.len() != children.len() {
+                return Err(EdiFormatError::UnsupportedSchema(schema.name.clone()));
+            }
+            for ((name, value), child) in fields.iter_mut().zip(children) {
+                if name.as_str() != child.name.as_str() {
+                    return Err(EdiFormatError::UnsupportedSchema(schema.name.clone()));
+                }
+                restore_lexical_element(child, value, segment, element)?;
+            }
+            Ok(())
+        }
+        SchemaKind::ScalarUnion { .. } => {
+            Err(EdiFormatError::UnsupportedSchema(schema.name.clone()))
+        }
+    }
 }
 
 /// Serializes an [`Instance`] shaped by `schema`, one segment per line.

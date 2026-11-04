@@ -1,5 +1,7 @@
 //! Complete, explicitly identified EDI document boundaries shared by hosts.
 
+use std::path::Path;
+
 use ir::{Instance, SchemaKind, SchemaNode};
 use mapping::{EdiAutocomplete, EdiBoundaryKind, FormatOptions};
 
@@ -235,7 +237,7 @@ pub fn validate(
     Ok(())
 }
 
-/// Source-only constraints are checked during plan admission, not after a load.
+/// Validates input-only metadata before loading source bytes.
 pub fn validate_input(
     schema: &SchemaNode,
     options: &FormatOptions,
@@ -301,6 +303,19 @@ pub fn validate_input(
     Ok(())
 }
 
+/// Reads one bounded document and enforces its configured source constraints.
+pub fn read(
+    path: &Path,
+    schema: &SchemaNode,
+    options: &FormatOptions,
+    kind: EdiBoundaryKind,
+) -> Result<Instance, EdiFormatError> {
+    validate_input(schema, options, kind)?;
+    let bytes = crate::read_bounded_input(path, invalid("EDI input exceeds 64 MiB"))?;
+    parse(schema, options, kind, &bytes)
+}
+
+/// Parses a complete document, checking source spellings before numeric conversion.
 pub fn parse(
     schema: &SchemaNode,
     options: &FormatOptions,
@@ -311,33 +326,39 @@ pub fn parse(
     if bytes.len() > crate::MAX_RUNTIME_INPUT_BYTES {
         return Err(invalid("EDI input exceeds 64 MiB"));
     }
-    let mut instance = if kind == EdiBoundaryKind::Idoc {
-        let layout = options
-            .idoc
-            .as_ref()
-            .ok_or_else(|| invalid("missing IDoc layout"))?;
-        // Like the ordinary payload route, the descriptor certifies the
-        // schema/layout pair; explicit native validation remains a separate API.
-        crate::idoc::from_bytes(bytes, schema, layout, options.lenient_segments)?
-    } else {
-        let text = std::str::from_utf8(bytes).map_err(|_| invalid("EDI input is not UTF-8"))?;
-        match kind {
-            EdiBoundaryKind::X12 => crate::x12::from_str_with_separators(
-                text,
-                schema,
-                options.lenient_segments,
-                options.x12_separators.map(syntax),
-            )?,
-            EdiBoundaryKind::Edifact => {
-                crate::edifact::from_str(text, schema, options.lenient_segments)?
+    let mut instance =
+        crate::lexical_input::read(schema, &options.edi_value_constraints, |read_schema| {
+            if kind == EdiBoundaryKind::Idoc {
+                let layout = options
+                    .idoc
+                    .as_ref()
+                    .ok_or_else(|| invalid("missing IDoc layout"))?;
+                // Like the ordinary payload route, the descriptor certifies the
+                // schema/layout pair; explicit native validation remains a separate API.
+                crate::idoc::from_bytes(bytes, read_schema, layout, options.lenient_segments)
+            } else {
+                let text =
+                    std::str::from_utf8(bytes).map_err(|_| invalid("EDI input is not UTF-8"))?;
+                match kind {
+                    EdiBoundaryKind::X12 => crate::x12::from_str_with_separators(
+                        text,
+                        read_schema,
+                        options.lenient_segments,
+                        options.x12_separators.map(syntax),
+                    ),
+                    EdiBoundaryKind::Edifact => {
+                        crate::edifact::from_str(text, read_schema, options.lenient_segments)
+                    }
+                    EdiBoundaryKind::Hl7 => {
+                        crate::hl7::from_str(text, read_schema, options.lenient_segments)
+                    }
+                    EdiBoundaryKind::Tradacoms => {
+                        crate::tradacoms::from_str(text, read_schema, options.lenient_segments)
+                    }
+                    _ => Err(invalid("unsupported EDI family")),
+                }
             }
-            EdiBoundaryKind::Hl7 => crate::hl7::from_str(text, schema, options.lenient_segments)?,
-            EdiBoundaryKind::Tradacoms => {
-                crate::tradacoms::from_str(text, schema, options.lenient_segments)?
-            }
-            _ => return Err(invalid("unsupported EDI family")),
-        }
-    };
+        })?;
     crate::apply_implied_decimals(&mut instance, &options.edi_implied_decimals)?;
     Ok(instance)
 }
