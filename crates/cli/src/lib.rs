@@ -863,6 +863,10 @@ fn read_instance_with_pdf_reader(
     }
 
     if let SelectedFormat::Idoc(layout) = selected {
+        if !options.edi_value_constraints.is_empty() {
+            return format_edi::document::read(path, schema, options, EdiBoundaryKind::Idoc)
+                .with_context(|| format!("reading SAP IDoc input {}", path.display()));
+        }
         let mut instance = format_edi::idoc::read(path, schema, layout, options.lenient_segments)
             .with_context(|| format!("reading SAP IDoc input {}", path.display()))?;
         format_edi::apply_implied_decimals(&mut instance, &options.edi_implied_decimals)
@@ -1064,6 +1068,15 @@ fn read_instance_with_pdf_reader(
         SelectedFormat::Sqlite => format_db::read_instance(path, schema)
             .with_context(|| format!("reading input {}", path.display()))?,
         SelectedFormat::Edi(None) => {
+            if !options.edi_value_constraints.is_empty() {
+                let kind = match format_edi::dialect_of(schema)? {
+                    format_edi::Dialect::X12 => EdiBoundaryKind::X12,
+                    format_edi::Dialect::Edifact => EdiBoundaryKind::Edifact,
+                    format_edi::Dialect::Hl7 => EdiBoundaryKind::Hl7,
+                    format_edi::Dialect::Tradacoms => EdiBoundaryKind::Tradacoms,
+                };
+                return read_edi_input(path, schema, options, kind);
+            }
             let read = match format_edi::dialect_of(schema)? {
                 format_edi::Dialect::X12 => format_edi::x12::read,
                 format_edi::Dialect::Edifact => format_edi::edifact::read,
@@ -1865,6 +1878,10 @@ fn read_edi_input(
     options: &FormatOptions,
     kind: EdiBoundaryKind,
 ) -> anyhow::Result<Instance> {
+    if !options.edi_value_constraints.is_empty() {
+        return format_edi::document::read(path, schema, options, kind)
+            .with_context(|| format!("reading input {}", path.display()));
+    }
     let mut instance = match kind {
         EdiBoundaryKind::X12 => format_edi::x12::read_with_separators(
             path,
