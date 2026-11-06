@@ -91,7 +91,7 @@ impl NativeRecursiveFilter {
         let fields = closed_group_children(source.schema)?;
         if source.schema.repeating
             || source.schema.recursive_ref.is_some()
-            || source.schema.xml_namespace.is_some()
+            || !source.schema.xml_name_in_no_namespace()
             || source.schema.xml_type_alternatives
             || fields.len() != 3
         {
@@ -120,11 +120,11 @@ impl NativeRecursiveFilter {
             )
             || !item.repeating
             || item.recursive_ref.is_some()
-            || item.xml_namespace.is_some()
+            || !item.xml_name_in_no_namespace()
             || !item.xml_repeating_choices.is_empty()
             || !recursive.repeating
             || recursive.recursive_ref.as_deref() != Some(source.schema.name.as_str())
-            || recursive.xml_namespace.is_some()
+            || !recursive.xml_name_in_no_namespace()
             || !recursive.xml_repeating_choices.is_empty()
             || !closed_group_children(recursive).is_some_and(|children| children.is_empty())
         {

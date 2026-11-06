@@ -236,6 +236,9 @@ pub(super) fn plain_shape(node: &SchemaNode) -> bool {
     };
     plain.repeating = node.repeating;
     plain.xml_optional = node.xml_optional;
+    if node.xml_name_in_no_namespace() {
+        plain.xml_namespace.clone_from(&node.xml_namespace);
+    }
     *node == plain
 }
 

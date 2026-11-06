@@ -307,7 +307,7 @@ fn source_shape(root: &SchemaNode) -> bool {
     };
     if root.name != "directory"
         || root.repeating
-        || root.xml_namespace.is_some()
+        || !root.xml_name_in_no_namespace()
         || !root.xml_name_alternatives.is_empty()
         || !root.xml_repeating_sequences.is_empty()
         || root.xml_repeating_choices.len() != 1
@@ -328,11 +328,11 @@ fn source_shape(root: &SchemaNode) -> bool {
     if file.name != "file"
         || !file.repeating
         || file.recursive_ref.is_some()
-        || file.xml_namespace.is_some()
+        || !file.xml_name_in_no_namespace()
         || directory.name != "directory"
         || !directory.repeating
         || directory.recursive_ref.as_deref() != Some("directory")
-        || directory.xml_namespace.is_some()
+        || !directory.xml_name_in_no_namespace()
         || !matches!(&directory.kind, SchemaKind::Group { children, alternatives, required, xml_restricted_alternatives, dynamic: None } if children.is_empty() && alternatives.is_empty() && required.is_empty() && xml_restricted_alternatives.is_empty())
         || !plain_attribute(name, "name", ScalarType::String)
     {
@@ -374,7 +374,7 @@ fn target_shape(root: &SchemaNode) -> bool {
     };
     root.name == "FileList"
         && !root.repeating
-        && root.xml_namespace.is_none()
+        && root.xml_name_in_no_namespace()
         && root.xml_repeating_choices.is_empty()
         && root.xml_repeating_sequences.is_empty()
         && alternatives.is_empty()
@@ -383,7 +383,7 @@ fn target_shape(root: &SchemaNode) -> bool {
         && file.name == "File"
         && file.repeating
         && !file.attribute
-        && file.xml_namespace.is_none()
+        && file.xml_name_in_no_namespace()
         && matches!(
             file.kind,
             SchemaKind::Scalar {

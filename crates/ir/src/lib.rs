@@ -1540,6 +1540,14 @@ impl SchemaNode {
         Some(self)
     }
 
+    /// Whether this single XML name is in no namespace: explicitly unqualified,
+    /// or without namespace identity, which writers emit without a namespace
+    /// under an unqualified parent.
+    pub fn xml_name_in_no_namespace(&self) -> bool {
+        self.xml_name_alternatives.is_empty()
+            && matches!(self.xml_namespace, None | Some(XmlNamespace::Unqualified))
+    }
+
     /// Adds exact namespace identities for XML elements that share this
     /// mapping-port local name and complete typed shape.
     pub fn with_xml_name_alternatives(mut self, alternatives: Vec<XmlNamespace>) -> Option<Self> {

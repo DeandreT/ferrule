@@ -101,8 +101,8 @@ impl NativePathHierarchy {
                     ty: ScalarType::String
                 }
             )
-            || source.schema.xml_namespace.is_some()
-            || source_value.xml_namespace.is_some()
+            || !source.schema.xml_name_in_no_namespace()
+            || !source_value.xml_name_in_no_namespace()
         {
             return None;
         }
@@ -113,7 +113,7 @@ impl NativePathHierarchy {
         else {
             return None;
         };
-        if target_fields.len() != 3 || target.schema.xml_namespace.is_some() {
+        if target_fields.len() != 3 || !target.schema.xml_name_in_no_namespace() {
             return None;
         }
         let directories = target.schema.child(plan.directories())?;
@@ -122,11 +122,11 @@ impl NativePathHierarchy {
         if !directories.repeating
             || directories.recursive_ref.as_deref() != Some(target.schema.name.as_str())
             || !matches!(directories.kind, SchemaKind::Group { .. })
-            || directories.xml_namespace.is_some()
+            || !directories.xml_name_in_no_namespace()
             || !files.repeating
             || files.recursive_ref.is_some()
             || !matches!(files.kind, SchemaKind::Group { .. })
-            || files.xml_namespace.is_some()
+            || !files.xml_name_in_no_namespace()
             || !plain_string_attribute(name)
             || !files.child(plan.name()).is_some_and(plain_string_attribute)
         {
