@@ -117,18 +117,22 @@ static void OracleControls()
 static void Refuses(Action action, JsonElement test, string boundary)
 {
     try { action(); }
+#if FERRULE_XML_INPUT
     catch (FerruleXmlBoundaryException error)
     {
         Console.WriteLine(JsonSerializer.Serialize(new { name = test.GetProperty("name").GetString(), boundary, stage = "input", category = error.Kind.ToString(), error = error.ToString() }));
         if (error.Kind.ToString() != test.GetProperty("runtimeCategory").GetString()) throw new Exception("Wrong XML error category", error);
         return;
     }
+#endif
+#if FERRULE_X12_INPUT
     catch (FerruleX12Exception error)
     {
         Console.WriteLine(JsonSerializer.Serialize(new { name = test.GetProperty("name").GetString(), boundary, stage = "input", category = error.Error.ToString(), error = error.ToString() }));
         if (error.Error.ToString() != test.GetProperty("runtimeCategory").GetString()) throw new Exception("Wrong X12 error category", error);
         return;
     }
+#endif
     throw new Exception("Invalid input reached mapping");
 }
 
@@ -141,13 +145,21 @@ foreach (var test in cases.RootElement.EnumerateArray())
 {
     string document = test.GetProperty("input").GetString()!;
     FerruleInstance Text() => kind switch {
+#if FERRULE_XML_INPUT
         "xml" => FerruleXml.ParseStructuredEmbedded(source, document),
+#endif
+#if FERRULE_X12_INPUT
         "x12" => FerruleX12.ParseEmbedded(source, document),
+#endif
         _ => throw new Exception("Unknown authored input cohort"),
     };
     FerruleInstance Bytes() => kind switch {
+#if FERRULE_XML_INPUT
         "xml" => FerruleXml.ParseStructuredEmbeddedBytes(source, Encoding.UTF8.GetBytes(document)),
+#endif
+#if FERRULE_X12_INPUT
         "x12" => FerruleX12.ParseEmbeddedBytes(source, Encoding.UTF8.GetBytes(document)),
+#endif
         _ => throw new Exception("Unknown authored input cohort"),
     };
     if (test.TryGetProperty("reject", out var reject) && reject.GetBoolean())
@@ -167,12 +179,19 @@ foreach (var test in cases.RootElement.EnumerateArray())
             catch (Exception error) { Console.Error.WriteLine(JsonSerializer.Serialize(new { name = test.GetProperty("name").GetString(), boundary, attempt, stage = "mapping", error = error.ToString() })); throw; }
             Console.Error.WriteLine(JsonSerializer.Serialize(new { name = test.GetProperty("name").GetString(), boundary, attempt, typed = Typed(output) }));
             string json = FerruleJson.SerializeEmbedded(target, output);
+#if FERRULE_XML_INPUT
             string? xml = test.TryGetProperty("expectedXml", out var expectedXml)
                 ? FerruleXml.SerializeDocumentEmbedded(target, output, true, false, null, null) : null;
+#else
+            // Only XML-input cohorts declare XML output literals.
+            if (test.TryGetProperty("expectedXml", out _)) throw new Exception("XML output literal in a non-XML cohort");
+            string? xml = null;
+#endif
             Console.WriteLine(JsonSerializer.Serialize(new { name = test.GetProperty("name").GetString(), boundary, attempt, stage = "mapping", output = JsonNode.Parse(json), xml }));
             if (JsonSerializer.Serialize(Typed(input)) != before) throw new Exception("Caller input changed");
             Verify(output, test.GetProperty("expected"));
             if (!JsonNode.DeepEquals(JsonNode.Parse(json), JsonNode.Parse(test.GetProperty("expected").GetRawText()))) throw new Exception($"Whole output differs: {json}");
+#if FERRULE_XML_INPUT
             if (xml is not null)
             {
                 AssertXml(xml, expectedXml.GetString()!);
@@ -182,6 +201,7 @@ foreach (var test in cases.RootElement.EnumerateArray())
                     JsonSerializer.Serialize(Typed(actualTree)) != JsonSerializer.Serialize(Typed(output)))
                     throw new Exception("Complete literal XML tree differs");
             }
+#endif
         }
     }
 }
