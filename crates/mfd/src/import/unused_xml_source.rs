@@ -276,8 +276,16 @@ fn plain_scalar_document(schema: &SchemaNode) -> Option<(&str, ScalarType)> {
     let SchemaKind::Scalar { ty } = field.kind else {
         return None;
     };
-    if *schema != SchemaNode::group(schema.name.clone(), children.clone())
-        || *field != SchemaNode::scalar(field.name.clone(), ty)
+    let plain = |node: &SchemaNode, mut expected: SchemaNode| {
+        if node.xml_name_in_no_namespace() {
+            expected.xml_namespace.clone_from(&node.xml_namespace);
+        }
+        *node == expected
+    };
+    if !plain(
+        schema,
+        SchemaNode::group(schema.name.clone(), children.clone()),
+    ) || !plain(field, SchemaNode::scalar(field.name.clone(), ty))
     {
         return None;
     }

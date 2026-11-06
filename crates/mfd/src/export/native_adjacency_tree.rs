@@ -107,8 +107,8 @@ impl NativeAdjacencyTree {
         let [key, parent] = row_fields.as_slice() else {
             return None;
         };
-        if source.schema.xml_namespace.is_some()
-            || rows.xml_namespace.is_some()
+        if !source.schema.xml_name_in_no_namespace()
+            || !rows.xml_name_in_no_namespace()
             || !rows.repeating
             || rows.recursive_ref.is_some()
             || rows.name != plan.collection()[0]
@@ -127,7 +127,7 @@ impl NativeAdjacencyTree {
         else {
             return None;
         };
-        if target.schema.xml_namespace.is_some() || target_fields.len() != 2 {
+        if !target.schema.xml_name_in_no_namespace() || target_fields.len() != 2 {
             return None;
         }
         let target_key = target.schema.child(plan.target_key())?;
@@ -136,7 +136,7 @@ impl NativeAdjacencyTree {
             || !target_children.repeating
             || !matches!(target_children.kind, SchemaKind::Group { .. })
             || target_children.recursive_ref.as_deref() != Some(target.schema.name.as_str())
-            || target_children.xml_namespace.is_some()
+            || !target_children.xml_name_in_no_namespace()
         {
             return None;
         }

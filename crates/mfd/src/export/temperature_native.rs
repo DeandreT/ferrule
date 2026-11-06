@@ -572,14 +572,18 @@ fn group_boundary(project: &Project) -> bool {
             .is_some_and(|b| Some(b.node) == row.group_by)
 }
 
-// Required-use decorates an already matched ordinary attribute. Keep every other
-// schema field exact, and preserve the original schema for artifact rendering.
+// Required-use decorates an already matched ordinary attribute, and a name in
+// no namespace is the plain name. Keep every other schema field exact, and
+// preserve the original schema for artifact rendering.
 fn schema_matches_required_use(actual: &SchemaNode, expected: &SchemaNode) -> bool {
     fn clear_required_use(node: &mut SchemaNode) -> bool {
         if !node.xml_attribute_required_is_valid() {
             return false;
         }
         node.xml_attribute_required = false;
+        if node.xml_name_in_no_namespace() {
+            node.xml_namespace = None;
+        }
         if let SchemaKind::Group { children, .. } = &mut node.kind {
             return children.iter_mut().all(clear_required_use);
         }
