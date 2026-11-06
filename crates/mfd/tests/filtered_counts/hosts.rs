@@ -238,33 +238,41 @@ fn emit_cohort(directory: &Path, cohort: super::Cohort) {
         )
         .unwrap(),
     );
+    let x12_policy = (cohort.kind == "x12").then(|| {
+        let mut source =
+            codegen::X12BoundaryOptions::from_format_options(&project.source_options).unwrap();
+        source.envelope_profile = codegen::X12EnvelopeProfile::GroupedTransactions;
+        source.lenient_segments = false;
+        codegen::X12BoundaryPolicy {
+            source: Some(source),
+            target: None,
+        }
+    });
+    // The typed library carries only the XML reader; the X12 profile adds the
+    // X12 reader runtime the host parses with, beside the same typed Execute.
     write_artifacts(
         &csharp,
-        &codegen_csharp::emit_with_companions(&program, codegen::CompanionSelection::TypedOnly)
+        &match &x12_policy {
+            None => codegen_csharp::emit_with_companions(
+                &program,
+                codegen::CompanionSelection::TypedOnly,
+            )
             .unwrap(),
+            Some(policy) => codegen_csharp::emit_with_x12(&program, policy).unwrap(),
+        },
     );
     let mut cases: Vec<serde_json::Value> = serde_json::from_str(cohort.cases).unwrap();
     cases.extend(serde_json::from_str::<Vec<serde_json::Value>>(cohort.rejections).unwrap());
-    let source = match cohort.kind {
-        "xml" => codegen::serialize_embedded_schema(
+    let source = match (cohort.kind, &x12_policy) {
+        ("xml", None) => codegen::serialize_embedded_schema(
             &project.source,
             codegen::MAX_EMBEDDED_XML_SCHEMA_BYTES,
         )
         .unwrap(),
-        "x12" => {
-            let mut source =
-                codegen::X12BoundaryOptions::from_format_options(&project.source_options).unwrap();
-            source.envelope_profile = codegen::X12EnvelopeProfile::GroupedTransactions;
-            source.lenient_segments = false;
-            codegen::prepare_x12_boundary(
-                &program,
-                &codegen::X12BoundaryPolicy {
-                    source: Some(source),
-                    target: None,
-                },
-            )
-            .unwrap()
-            .source_descriptor
+        ("x12", Some(policy)) => {
+            codegen::prepare_x12_boundary(&program, policy)
+                .unwrap()
+                .source_descriptor
         }
         _ => panic!("unknown authored input cohort"),
     };
@@ -313,9 +321,21 @@ fn emit_cohort(directory: &Path, cohort: super::Cohort) {
     .unwrap();
     let harness = csharp.join("Harness");
     std::fs::create_dir(&harness).unwrap();
+    // The generated runtime contains only this cohort's reader, so the host
+    // compiles only that reader's calls.
+    let reader = match cohort.kind {
+        "xml" => "FERRULE_XML_INPUT",
+        "x12" => "FERRULE_X12_INPUT",
+        _ => panic!("unknown authored input cohort"),
+    };
+    let harness_project = include_str!("Harness.csproj.txt");
+    assert_eq!(harness_project.matches("</PropertyGroup>").count(), 1);
     std::fs::write(
         harness.join("Harness.csproj"),
-        include_str!("Harness.csproj.txt"),
+        harness_project.replace(
+            "</PropertyGroup>",
+            &format!("  <DefineConstants>$(DefineConstants);{reader}</DefineConstants>\n  </PropertyGroup>"),
+        ),
     )
     .unwrap();
     std::fs::write(
