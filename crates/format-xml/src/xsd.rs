@@ -244,7 +244,7 @@ impl ParseState {
         path
     }
 
-    fn finish(self, mut schema: SchemaNode) -> Result<SchemaNode, XmlFormatError> {
+    fn finish(self, schema: SchemaNode) -> Result<SchemaNode, XmlFormatError> {
         // Checked first: the levels past the limit were not imported, so the
         // other refusals may only describe the truncated schema.
         if self.depth_limit_reached {
@@ -284,7 +284,6 @@ impl ParseState {
                 "##definedSibling was not resolved against a complete complex type",
             ));
         }
-        qualify_wildcard_siblings(&mut schema);
         if let Some(group) = invalid_repeating_sequence_group(&schema) {
             return Err(XmlFormatError::InvalidRepeatingSequenceSchema {
                 group: group.to_string(),
@@ -321,46 +320,6 @@ impl ParseState {
     fn reject_wildcard(&mut self, error: XmlFormatError) {
         self.unsupported_wildcard.get_or_insert(error);
     }
-}
-
-/// Beside a `lax` or `strict` element wildcard, a qualified element with a
-/// declared local name is a valid wildcard item rather than that declaration.
-/// Element declarations without namespace identity, which only a schema
-/// without a target namespace yields there, therefore take their explicit
-/// unqualified identity. Closed content keeps the legacy local-name match,
-/// since no valid instance has such a look-alike.
-fn qualify_wildcard_siblings(node: &mut SchemaNode) {
-    if is_virtual_wildcard(node) {
-        return;
-    }
-    let SchemaKind::Group {
-        children, dynamic, ..
-    } = &mut node.kind
-    else {
-        return;
-    };
-    let open = children.iter().any(|child| {
-        child.name == XML_ELEMENTS_FIELD
-            && child.xml_wildcard_process_contents != XmlWildcardProcessContents::Skip
-    });
-    for child in children.iter_mut() {
-        if open
-            && !child.attribute
-            && !child.text
-            && !is_virtual_wildcard(child)
-            && child.xml_namespace.is_none()
-        {
-            child.xml_namespace = Some(XmlNamespace::Unqualified);
-        }
-        qualify_wildcard_siblings(child);
-    }
-    if let Some(dynamic) = dynamic {
-        qualify_wildcard_siblings(dynamic);
-    }
-}
-
-fn is_virtual_wildcard(node: &SchemaNode) -> bool {
-    node.name == XML_ELEMENTS_FIELD || node.name == XML_ATTRIBUTES_FIELD
 }
 
 /// Reads one XML Schema document with bounded UTF-8/UTF-16 decoding.
@@ -810,13 +769,8 @@ fn parse_element_level(
     } else {
         SchemaNode::scalar(name, ScalarType::String)
     };
-    node.xml_namespace = declaration_namespace(
-        el,
-        schema_el,
-        state.substitutions.effective_namespace(schema_path),
-        false,
-    );
-    record_ambiguous_namespace(&node, schema_el, schema_path, state);
+    let namespace = element_declaration_namespace(el, schema_el, schema_path, &node.name, state);
+    node.xml_namespace = namespace;
     apply_exported_alternative_view(el, &mut node, schema_el, schema_path, state);
     apply_fixed_value(el, &mut node);
     apply_default_value(el, &mut node, state);
@@ -830,22 +784,34 @@ fn parse_element_level(
     }
 }
 
-/// Records an element declaration whose namespace is unknowable because its
-/// chameleon document is reached through several namespace contexts.
-fn record_ambiguous_namespace(
-    node: &SchemaNode,
+/// The namespace identity of one element declaration. A declaration in a
+/// schema without a target namespace names an unqualified element. Only a
+/// legacy-marked name, and a chameleon declaration whose document is reached
+/// through several namespace contexts, keep no namespace identity; the latter
+/// is recorded because its namespace is unknowable.
+fn element_declaration_namespace(
+    declaration: &Node,
     schema_el: &Node,
     schema_path: &Path,
+    name: &str,
     state: &mut ParseState,
-) {
-    if node.xml_namespace.is_none()
-        && schema_el.attribute("targetNamespace").is_none()
+) -> Option<XmlNamespace> {
+    let inherited = state.substitutions.effective_namespace(schema_path);
+    let namespace = declaration_namespace(declaration, schema_el, inherited, false);
+    if namespace.is_some() || is_legacy_name(declaration) {
+        return namespace;
+    }
+    if schema_el.attribute("targetNamespace").is_none()
         && state.substitutions.namespace_contexts(schema_path) > 1
     {
-        state
-            .ambiguous_unqualified_elements
-            .insert(node.name.clone());
+        state.ambiguous_unqualified_elements.insert(name.to_owned());
+        return None;
     }
+    Some(XmlNamespace::Unqualified)
+}
+
+fn is_legacy_name(declaration: &Node<'_, '_>) -> bool {
+    declaration.attribute((LEGACY_NAME_NAMESPACE, "namespace")) == Some("legacy")
 }
 
 fn declaration_namespace(
@@ -854,7 +820,7 @@ fn declaration_namespace(
     inherited_namespace: Option<&str>,
     attribute: bool,
 ) -> Option<XmlNamespace> {
-    if declaration.attribute((LEGACY_NAME_NAMESPACE, "namespace")) == Some("legacy") {
+    if is_legacy_name(declaration) {
         return None;
     }
     let global = declaration.parent() == Some(*schema);
@@ -1542,13 +1508,8 @@ fn parse_element_declaration_inner(
 ) -> Option<SchemaNode> {
     if !state.enter(schema_path, "element", name) {
         let mut node = SchemaNode::recursive_group(name, name);
-        node.xml_namespace = declaration_namespace(
-            declaration,
-            schema_el,
-            state.substitutions.effective_namespace(schema_path),
-            false,
-        );
-        record_ambiguous_namespace(&node, schema_el, schema_path, state);
+        node.xml_namespace =
+            element_declaration_namespace(declaration, schema_el, schema_path, name, state);
         return Some(node);
     }
     let mut node = parse_element(declaration, schema_el, schema_path, state);
