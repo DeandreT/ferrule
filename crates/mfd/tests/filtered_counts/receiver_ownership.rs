@@ -5,6 +5,9 @@ use std::path::{Path, PathBuf};
 use ir::{Instance, Value};
 use mapping::{AggregateOp, Node, NodeId, Project, Scope, ScopeIteration};
 
+#[path = "../declared_library_reconciliation/public_hosts/xml_tree.rs"]
+mod xml_tree;
+
 fn fixture(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/filtered-count-receivers")
@@ -179,22 +182,58 @@ fn root_sum(project: &Project, driver: &[&str], owner: &[&str]) -> NodeId {
     *expression
 }
 
-fn whole_output(project: &Project, case: &serde_json::Value) -> Instance {
+/// Raw engine groups keep construction order (bindings, then child scopes, in
+/// target-pin order), not schema order; only the writers walk the schema. A
+/// target-entry permutation therefore changes raw field order without changing
+/// any output. Each expected field must still occur exactly once with its exact
+/// typed value, and repeated items keep their exact order.
+fn assert_complete_typed_output_by_name(actual: &Instance, expected: &serde_json::Value) {
+    match expected {
+        serde_json::Value::Object(fields) => {
+            let Instance::Group(actual_fields) = actual else {
+                panic!("expected whole group: {actual:?}")
+            };
+            assert_eq!(actual_fields.len(), fields.len());
+            for (name, expected_value) in fields {
+                let mut matches = actual_fields
+                    .iter()
+                    .filter(|(actual_name, _)| actual_name == name);
+                let (_, actual_value) = matches
+                    .next()
+                    .unwrap_or_else(|| panic!("typed output lacks field {name}"));
+                assert!(matches.next().is_none(), "duplicate typed field {name}");
+                assert_complete_typed_output_by_name(actual_value, expected_value);
+            }
+        }
+        serde_json::Value::Array(items) => {
+            let actual = actual.as_repeated().unwrap();
+            assert_eq!(actual.len(), items.len());
+            for (actual, expected) in actual.iter().zip(items) {
+                assert_complete_typed_output_by_name(actual, expected);
+            }
+        }
+        scalar => super::assert_complete_typed_output(actual, scalar),
+    }
+}
+
+fn whole_output(project: &Project, case: &serde_json::Value, order: usize) -> Instance {
     let input = format_xml::from_str(case["input"].as_str().unwrap(), &project.source).unwrap();
     let before = input.clone();
     let output = engine::run(project, &input).unwrap();
     assert_eq!(input, before);
-    super::assert_complete_typed_output(&output, &case["expected"]);
+    if permutes_target_entries(order) {
+        assert_complete_typed_output_by_name(&output, &case["expected"]);
+    } else {
+        super::assert_complete_typed_output(&output, &case["expected"]);
+    }
     let json: serde_json::Value =
         serde_json::from_str(&format_json::to_string(&project.target, &output).unwrap()).unwrap();
     assert_eq!(json, case["expected"], "{}", case["name"]);
+    let serialized = format_xml::to_string(&project.target, &output).unwrap();
+    xml_tree::assert_xml(&serialized, case["expectedXml"].as_str().unwrap());
     let expected_xml =
         format_xml::from_str(case["expectedXml"].as_str().unwrap(), &project.target).unwrap();
-    let actual_xml = format_xml::from_str(
-        &format_xml::to_string(&project.target, &output).unwrap(),
-        &project.target,
-    )
-    .unwrap();
+    let actual_xml = format_xml::from_str(&serialized, &project.target).unwrap();
     assert_eq!(actual_xml, expected_xml, "{}", case["name"]);
     // XML serialization uses schema field order; binding declaration order is
     // not an object-value difference. Repeated item order remains exact.
@@ -251,7 +290,7 @@ fn ordered(design: &str, order: usize) -> String {
     if order == 2 || order == 4 {
         result = reverse_children(&result, "connections");
     }
-    if order == 3 || order == 4 {
+    if permutes_target_entries(order) {
         let document = roxmltree::Document::parse(&result).unwrap();
         let targets = document
             .descendants()
@@ -288,6 +327,10 @@ fn ordered(design: &str, order: usize) -> String {
     }
     roxmltree::Document::parse(&result).unwrap();
     result
+}
+
+fn permutes_target_entries(order: usize) -> bool {
+    order == 3 || order == 4
 }
 
 fn with_unsafe_use(kind: &str) -> String {
@@ -370,7 +413,7 @@ fn one_count_has_fresh_root_exact_owner_and_distinct_child_proofs_in_all_orders(
             }
         )));
         for case in &cases {
-            let input = whole_output(&project, case);
+            let input = whole_output(&project, case, order);
             let rows = input.field("Row").unwrap().as_repeated().unwrap();
             if let Some(last) = rows.last() {
                 assert!(
@@ -406,7 +449,7 @@ fn a_separately_owned_pin_for_the_same_physical_field_keeps_the_same_oracles() {
         let package = Package::new(&ordered(&design, order));
         let project = executable(&package.path());
         for case in &cases {
-            whole_output(&project, case);
+            whole_output(&project, case, order);
         }
     }
 }
@@ -469,7 +512,7 @@ fn safe_second_target_uses_keep_their_registered_slot_when_targets_reorder() {
         assert_eq!(project.extra_targets.len(), 1);
         let descriptor = &project.extra_targets[0];
         assert_eq!(descriptor.schema.name, "OtherResults");
-        let input = whole_output(&project, &cases[0]);
+        let input = whole_output(&project, &cases[0], order);
         let outputs = engine::run_outputs(&project, &input).unwrap();
         assert_eq!(outputs.extras.len(), 1);
         let extra = &outputs.extras[0];
@@ -502,7 +545,7 @@ fn singleton_before_repeat_refuses_by_shape_even_for_present_and_empty_controls(
         let project = executable(&control.path());
         root_sum(&project, &["Row", "Wrap", "Leaf"], &["Row", "Wrap", "Leaf"]);
         for case in &cases {
-            let input = whole_output(&project, case);
+            let input = whole_output(&project, case, order);
             assert!(
                 input.field("Wrap").is_some(),
                 "outer donor is real reader data"
@@ -566,7 +609,7 @@ fn actual_group_by_receiver_with_the_same_source_path_cannot_reuse_ordinary_proo
         );
         root_sum(&project, &["Row"], &["Row"]);
         contribution(&project, binding(ordinary, "Count"), &["Row"]);
-        whole_output(&project, &case);
+        whole_output(&project, &case, order);
         let unsafe_use = Package::new(&ordered(&with_unsafe_use("group"), order));
         terminal_refusal(&unsafe_use.path());
     }
@@ -591,6 +634,6 @@ fn an_innermost_row_self_pin_is_not_rejected_merely_for_colliding_names() {
             binding(child(child(&project.root, "Row"), "Inner"), "Count"),
             &["Row", "Row"],
         );
-        whole_output(&project, &case);
+        whole_output(&project, &case, order);
     }
 }
