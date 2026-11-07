@@ -101,8 +101,6 @@ impl Failure {
         }
     }
 }
-pub type PrelaunchFailure = Failure;
-pub type JobIdentity = crate::RequestIdentity;
 pub type CleanupFailure = Failure;
 #[derive(Clone, Debug, Serialize)]
 pub struct CleanupReceipt {

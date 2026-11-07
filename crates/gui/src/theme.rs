@@ -134,7 +134,6 @@ impl FieldWidth {
 }
 
 /// Maximum height of a scrolling list.
-#[allow(dead_code, reason = "list heights for area B–E views")]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ListHeight {
     Short,
@@ -153,7 +152,6 @@ impl ListHeight {
 }
 
 /// Width of a dialog or tool window.
-#[allow(dead_code, reason = "dialog widths for area B–E windows")]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DialogWidth {
     Narrow,
@@ -172,7 +170,6 @@ impl DialogWidth {
 }
 
 /// Typographic role of a piece of editor chrome text.
-#[allow(dead_code, reason = "text roles for area B–E views")]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TextRole {
     /// Dialog and view titles.
