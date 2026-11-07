@@ -138,6 +138,12 @@ focused tests does not replace them.
   consumers, which the default run skips, with `--run-ignored only`; use the
   commands from those workflow steps. Locally, run each suite unpartitioned. The pinned .NET SDK is
   in [Toolchain baselines](toolchains.md).
+  A weekly codegen job, also available as the `ignored-compiled-tests` manual
+  dispatch, runs every ignored test in that target that does not need the
+  private `samples/ReferenceSamples` corpus, through
+  `scripts/ci/ignored-codegen-tests.py`. A new `#[ignore]` test is selected
+  automatically; add it to that script's tables only when it needs its own
+  environment or cannot run in CI.
 - [ ] `scripts/ci/`: `bash -n scripts/ci/*.sh` and the `scripts/ci/test-*.py`
   suites the workflows run.
 - [ ] Generated technical references: `cargo test -p reference-docs`.
