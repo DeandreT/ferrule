@@ -398,7 +398,7 @@ impl Compiler<'_, '_, '_> {
     }
     fn plan(&self, index: usize) -> Result<Plan, String> {
         let count = &self.n.functions[index];
-        if !count.raw_count_signature_valid {
+        if !count.raw_filtered_count_signature_valid {
             return Err("malformed Count signature".into());
         }
         self.raw

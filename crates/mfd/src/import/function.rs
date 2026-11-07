@@ -229,6 +229,9 @@ pub(super) struct FnComponent {
     /// Exact `core` `count` signature: keyless context slot, keyed sequence
     /// input, and one keyed output. Separate from general aggregate lowering.
     pub(super) raw_count_signature_valid: bool,
+    /// The Count signature with saved layout children admitted, for filtered
+    /// Count lowering only.
+    pub(super) raw_filtered_count_signature_valid: bool,
     /// Local grammar only; raw/final ownership is proved once at registration freeze.
     pub(super) raw_filtered_count_pins_valid: bool,
     /// Dedicated raw owner and source-position proof for String group-by keys.
@@ -377,7 +380,7 @@ pub(super) fn read(component: &roxmltree::Node) -> FnComponent {
         .then(|| parse_date::ownership(component))
         .flatten();
     let raw_clock_signature_valid = clock::signature_valid(component, &output_pins);
-    let raw_count_signature_valid = component
+    let count_pins_bounded = component
         .children()
         .filter(|node| node.has_tag_name("sources") || node.has_tag_name("targets"))
         .all(|container| {
@@ -387,8 +390,11 @@ pub(super) fn read(component: &roxmltree::Node) -> FnComponent {
                 .take(4)
                 .count()
                 <= 3
-        })
-        && count::signature_valid(component, &inputs, &output_pins);
+        });
+    let raw_count_signature_valid =
+        count_pins_bounded && count::signature_valid(component, &inputs, &output_pins);
+    let raw_filtered_count_signature_valid =
+        count_pins_bounded && count::filtered_signature_valid(component, &inputs, &output_pins);
 
     let data = component
         .children()
@@ -542,6 +548,7 @@ pub(super) fn read(component: &roxmltree::Node) -> FnComponent {
         parse_date_ownership,
         raw_clock_signature_valid,
         raw_count_signature_valid,
+        raw_filtered_count_signature_valid,
         raw_filtered_count_pins_valid: filtered_count_signature(component),
         group_by_ownership: group_by::ownership(component),
         presence_operator: presence::operator(component),

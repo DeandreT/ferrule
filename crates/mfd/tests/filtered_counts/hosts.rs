@@ -11,6 +11,12 @@ mod sdk_policy;
 #[path = "../declared_library_reconciliation/public_hosts/xml_tree.rs"]
 mod xml_tree;
 
+/// The maintained element-tree oracle, shared with the receiver tests so the
+/// helper file is compiled once.
+pub(super) fn assert_xml(actual: &str, expected: &str) {
+    xml_tree::assert_xml(actual, expected);
+}
+
 const XML_TREE_HELPER: &[u8] =
     include_bytes!("../declared_library_reconciliation/public_hosts/xml_tree.rs");
 
