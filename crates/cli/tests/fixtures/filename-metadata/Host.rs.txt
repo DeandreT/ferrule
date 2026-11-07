@@ -1,0 +1,63 @@
+use codegen_runtime::{CsvSourceData, ExecutionContext, PrimaryAcquisitionError, PrimaryEdiDocumentError, PrimaryFileSelection, PrimarySourceHost, RuntimeError, RuntimeParameters, Value};
+use ferrule_generated_mapping::{evaluate_output_filename, execute_primary_edi_document_bytes};
+use std::{cell::RefCell, path::Path};
+
+const INPUT_NODE: u32 = __INPUT_NODE__;
+const OUTPUT_NODE: u32 = __OUTPUT_NODE__;
+
+#[derive(Default)]
+struct Host { calls: RefCell<Vec<String>>, count: Option<usize> }
+impl PrimarySourceHost for Host {
+    type Error = std::io::Error;
+    fn select(&self, name: &str, selection: PrimaryFileSelection) -> Result<Vec<String>, Self::Error> {
+        assert_eq!(selection, PrimaryFileSelection::Direct);
+        self.calls.borrow_mut().push(format!("select:{name}"));
+        Ok((0..self.count.unwrap_or(1)).map(|_| name.to_string()).collect())
+    }
+    fn load(&self, name: &str) -> Result<CsvSourceData, Self::Error> {
+        self.calls.borrow_mut().push(format!("load:{name}"));
+        Ok(CsvSourceData { bytes: "MSH|^~\\&|\rZRD|café 雪|007\r".as_bytes().to_vec(), resolved_path: None })
+    }
+}
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    for (source, target, invalid_input, missing) in [
+        (Some(" ./雪/source.hl7 "), Some(" ./β/report.json "), false, None),
+        (None, Some("report.json"), true, Some("SourcePath")),
+        (Some("source.hl7"), None, false, Some("TargetPath")),
+        (Some("*.hl7"), Some("report.json"), true, None),
+        (Some("source.hl7"), Some("*.json"), false, None),
+        (Some(""), Some("report.json"), true, None),
+        (Some("source.hl7"), Some(""), false, None),
+        (Some("bad\nname.hl7"), Some("report.json"), true, None),
+        (Some("source.hl7"), Some("bad\nname.json"), false, None),
+    ] {
+        let mut parameters = RuntimeParameters::new();
+        for (name, value) in [("SourcePath", source), ("TargetPath", target)] {
+            if let Some(value) = value { parameters.insert(name, Value::String(value.into()))?; }
+        }
+        let context = ExecutionContext::new(Path::new("mapping.json")).with_parameters(&parameters);
+        let host = Host::default();
+        let outcome = execute_primary_edi_document_bytes(&context, &host, 1);
+        if source == Some(" ./雪/source.hl7 ") {
+            assert_eq!(outcome?, "{\n  \"reading\": \"café 雪\",\n  \"count\": \"007\"\n}\n".as_bytes());
+            assert_eq!(evaluate_output_filename(&context)?, target.unwrap());
+            assert_eq!(*host.calls.borrow(), [format!("select:{}", source.unwrap()), format!("load:{}", source.unwrap())]);
+            for count in [0, 2] {
+                let host = Host { count: Some(count), ..Default::default() };
+                assert!(matches!(execute_primary_edi_document_bytes(&context, &host, 3), Err(PrimaryEdiDocumentError::Acquisition(PrimaryAcquisitionError::DirectSelection { found })) if found == count));
+                assert_eq!(*host.calls.borrow(), [format!("select:{}", source.unwrap())]);
+            }
+        } else {
+            let PrimaryEdiDocumentError::Acquisition(PrimaryAcquisitionError::Filename(error)) = outcome.unwrap_err() else { panic!("wrong filename failure stage") };
+            let expected_node = if invalid_input { INPUT_NODE } else { OUTPUT_NODE };
+            match (missing, error) {
+                (Some(expected), RuntimeError::MissingRuntimeParameter { name, node }) => { assert_eq!(name, expected); assert_eq!(node, expected_node); },
+                (None, RuntimeError::InvalidFilenameEndpoint { node }) => assert_eq!(node, expected_node),
+                other => panic!("wrong filename failure: {other:?}"),
+            }
+            assert!(host.calls.borrow().is_empty());
+        }
+    }
+    println!("filename metadata Rust Release host passed");
+    Ok(())
+}
