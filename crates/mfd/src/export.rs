@@ -224,11 +224,6 @@ fn require_plain_record_scope(root: &Scope) -> Result<(), MfdError> {
 }
 
 fn explicit_scope_text_ports(schema: &SchemaNode, root: &Scope) -> BTreeSet<Vec<String>> {
-    fn schema_node_at<'a>(schema: &'a SchemaNode, path: &[String]) -> Option<&'a SchemaNode> {
-        path.iter()
-            .try_fold(schema, |node, segment| node.child(segment))
-    }
-
     fn collect(
         schema: &SchemaNode,
         scope: &Scope,
@@ -243,8 +238,9 @@ fn explicit_scope_text_ports(schema: &SchemaNode, root: &Scope) -> BTreeSet<Vec<
             .bindings
             .iter()
             .any(|binding| binding.target_field == ir::XML_TEXT_FIELD);
-        let has_element_content =
-            schema_node_at(schema, path).is_some_and(|node| match &node.kind {
+        let has_element_content = schema
+            .descendant(path)
+            .is_some_and(|node| match &node.kind {
                 SchemaKind::Group { children, .. } => {
                     children.iter().any(|child| !child.text && !child.attribute)
                 }

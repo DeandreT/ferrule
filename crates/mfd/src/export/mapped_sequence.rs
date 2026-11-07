@@ -250,7 +250,7 @@ fn mapped_scope_plan(
     if target_path.is_empty() {
         return None;
     }
-    let target_group = schema_node_at(target_schema, target_path)?;
+    let target_group = target_schema.descendant(target_path)?;
     if !matches!(target_group.kind, SchemaKind::Group { .. }) {
         return None;
     }
@@ -449,7 +449,7 @@ fn validate_first_outputs(
                 "first-item scope `{display_path}` requires an XML or XBRL target for lossless .mfd export"
             ));
         }
-        let Some(target_group) = schema_node_at(target, path) else {
+        let Some(target_group) = target.descendant(path) else {
             return Err(format!(
                 "first-item scope `{display_path}` has no matching target schema group"
             ));
@@ -626,14 +626,6 @@ fn collect_mapped_bindings(
         relative.pop();
     }
     Some(())
-}
-
-fn schema_node_at<'a>(schema: &'a SchemaNode, path: &[String]) -> Option<&'a SchemaNode> {
-    let mut node = schema;
-    for segment in path {
-        node = node.child(segment)?;
-    }
-    Some(node)
 }
 
 fn collect_matching_scalars(

@@ -1,3 +1,4 @@
+use format_json::json_schema::json_schema_type_name;
 use ir::{ScalarType, SchemaKind, Value};
 use mapping::{Node, NodeId};
 
@@ -110,7 +111,7 @@ impl GraphBuilder<'_> {
                 value: Value::String(path),
             }));
             args.push(self.alloc(Node::Const {
-                value: Value::String(scalar_type_name(field.scalar_type).to_string()),
+                value: Value::String(json_schema_type_name(field.scalar_type).to_string()),
             }));
             args.push(
                 self.edge_from
@@ -126,14 +127,5 @@ impl GraphBuilder<'_> {
         });
         self.json_serializer_nodes.insert(output, node);
         Some(node)
-    }
-}
-
-fn scalar_type_name(scalar_type: ScalarType) -> &'static str {
-    match scalar_type {
-        ScalarType::String => "string",
-        ScalarType::Int => "integer",
-        ScalarType::Float => "number",
-        ScalarType::Bool => "boolean",
     }
 }

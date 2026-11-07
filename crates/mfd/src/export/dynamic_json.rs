@@ -186,7 +186,7 @@ impl SourcePlan {
                     "dynamic source field node {field_id} requires an ordinary JSON source component"
                 )));
             }
-            let owner_schema = schema_node_at(source.schema, owner).ok_or_else(|| {
+            let owner_schema = source.schema.descendant(owner).ok_or_else(|| {
                 MfdError::Unsupported(format!(
                     "dynamic source field node {field_id} references missing open object `{}`",
                     absolute.join("/")
@@ -809,7 +809,7 @@ fn collect_nested_targets(
                 ));
             }
         };
-        let owner_schema = schema_node_at(schema, path).ok_or_else(|| {
+        let owner_schema = schema.descendant(path).ok_or_else(|| {
             dynamic_target_error("nested computed property owner is missing from the target schema")
         })?;
         let Some(value_schema) = owner_schema.dynamic_fields() else {
@@ -973,14 +973,6 @@ fn dynamic_target_error(reason: &str) -> MfdError {
     MfdError::Unsupported(format!(
         "computed JSON property mapping is not exportable: {reason}"
     ))
-}
-
-fn schema_node_at<'a>(schema: &'a SchemaNode, path: &[String]) -> Option<&'a SchemaNode> {
-    let mut current = schema;
-    for segment in path {
-        current = current.child(segment)?;
-    }
-    Some(current)
 }
 
 fn render_root_target_entries(root: &RootTarget, indent: usize) -> String {
