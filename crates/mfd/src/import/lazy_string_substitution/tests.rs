@@ -32,6 +32,9 @@ fn builder<'a>(
         rejected_join_paths: BTreeSet::new(),
         source_fields: BTreeMap::new(),
         materialized_arguments: Default::default(),
+        filtered_counts: crate::import::aggregate::filtered_count::CountProofTable::empty_for_test(
+        ),
+        materialized_counts: Default::default(),
         json_serializer_nodes: BTreeMap::new(),
         xml_serializer_nodes: BTreeMap::new(),
         external_scalar_nodes: BTreeMap::new(),

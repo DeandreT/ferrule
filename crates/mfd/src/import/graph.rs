@@ -35,6 +35,8 @@ pub(super) struct GraphBuilder<'a> {
     /// Speculative builders own their seal; discarded probes cannot certify
     /// or poison the materialized graph that is actually published.
     pub(super) materialized_arguments: super::udf::certificate::ArgumentSeal,
+    pub(super) filtered_counts: &'a super::aggregate::filtered_count::CountProofTable,
+    pub(super) materialized_counts: super::aggregate::filtered_count::CountSeal,
     pub(super) json_serializer_nodes: BTreeMap<u32, NodeId>,
     pub(super) xml_serializer_nodes: BTreeMap<u32, NodeId>,
     pub(super) external_scalar_nodes: BTreeMap<u32, NodeId>,
@@ -176,6 +178,24 @@ pub(super) fn read_edge_inputs(
     structure: &roxmltree::Node<'_, '_>,
     legacy_parent: Option<&roxmltree::Node<'_, '_>>,
 ) -> EdgeInputs {
+    read_edge_inputs_with_probe(structure, legacy_parent, |_| ()).0
+}
+
+/// The complete transient claims may be borrowed here, never returned or cloned
+/// into the ordinary edge result. Selection and the original drop boundary stay
+/// shared with every pre-existing caller.
+pub(super) struct EdgeClaimView<'a> {
+    pub(super) sources: &'a BTreeMap<u32, BTreeSet<u32>>,
+}
+
+pub(super) fn read_edge_inputs_with_probe<R>(
+    structure: &roxmltree::Node<'_, '_>,
+    legacy_parent: Option<&roxmltree::Node<'_, '_>>,
+    probe: impl FnOnce(EdgeClaimView<'_>) -> R,
+) -> (EdgeInputs, R) {
+    super::aggregate::filtered_count::count_visit(
+        super::aggregate::filtered_count::Counter::EdgeIndex,
+    );
     let mut sources = BTreeMap::<u32, BTreeSet<u32>>::new();
     if let Some(graph) = structure
         .children()
@@ -246,6 +266,7 @@ pub(super) fn read_edge_inputs(
     let mut feeds = BTreeMap::new();
     let mut conflicts = Vec::new();
     let mut complete = true;
+    let result = probe(EdgeClaimView { sources: &sources });
     for (input, sources) in sources {
         if sources.len() != 1 || !selected_inputs.contains(&input) {
             complete = false;
@@ -263,11 +284,14 @@ pub(super) fn read_edge_inputs(
             ));
         }
     }
-    EdgeInputs {
-        feeds,
-        conflicts,
-        complete,
-    }
+    (
+        EdgeInputs {
+            feeds,
+            conflicts,
+            complete,
+        },
+        result,
+    )
 }
 
 pub(super) fn read_copy_all_targets(

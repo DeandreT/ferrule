@@ -12,6 +12,7 @@ use crate::import::{
     source_node_function, xml_serializer,
 };
 
+#[derive(Clone, Copy)]
 pub(in crate::import) struct Normalized<'a> {
     pub(in crate::import) schemas: &'a RegisteredVec<SchemaComponent>,
     pub(in crate::import) sources: &'a [&'a SchemaComponent],
@@ -45,6 +46,53 @@ struct Claim<'a> {
 /// Every competing route remains present; unsupported domains are blockers.
 struct MainProducerView<'a> {
     claims: BTreeMap<u32, Vec<Claim<'a>>>,
+}
+
+/// Count consumes the census, not the declared-call profile or resolver order.
+pub(in crate::import) struct CountProducerView<'a>(MainProducerView<'a>);
+pub(in crate::import) enum CountProducer<'a> {
+    Source(&'a SchemaComponent, &'a [String]),
+    Function(&'a function::FnComponent),
+}
+impl<'a> CountProducerView<'a> {
+    pub(in crate::import) fn build(
+        n: &Normalized<'a>,
+        budget: &super::CountConstruction,
+    ) -> Result<Self, String> {
+        let view = MainProducerView::build(n, budget.budget(), true)?;
+        for claims in view.claims.values() {
+            for _ in claims {
+                crate::import::aggregate::filtered_count::count_visit(
+                    crate::import::aggregate::filtered_count::Counter::FinalClaim,
+                );
+            }
+        }
+        Ok(Self(view))
+    }
+    pub(in crate::import) fn get(
+        &self,
+        key: u32,
+        owner: super::RawOwner,
+        budget: &super::CountConstruction,
+    ) -> Result<CountProducer<'a>, String> {
+        budget.claim(1, 0, 0)?;
+        let claims = self
+            .0
+            .claims
+            .get(&key)
+            .ok_or("no final registered producer")?;
+        let [claim] = claims.as_slice() else {
+            return Err("competing final registered producers".into());
+        };
+        if claim.origin != Origin::ActiveMain(owner) {
+            return Err("non-active or mismatched final producer origin".into());
+        }
+        match &claim.kind {
+            Kind::Source(source, path) => Ok(CountProducer::Source(source, path)),
+            Kind::Function(function) => Ok(CountProducer::Function(function)),
+            _ => Err("unsupported final producer domain".into()),
+        }
+    }
 }
 
 fn exact_path<'a>(root: &'a ir::SchemaNode, path: &[String]) -> Option<&'a ir::SchemaNode> {
@@ -95,12 +143,26 @@ impl<'a> MainProducerView<'a> {
     ) -> Result<(), String> {
         self.add(key, origin, Kind::Blocking(domain), budget)
     }
-    fn build(n: &Normalized<'a>, budget: &ConstructionBudget) -> Result<Self, String> {
+    fn build(n: &Normalized<'a>, budget: &ConstructionBudget, count: bool) -> Result<Self, String> {
+        fn at<T>(values: &RegisteredVec<T>, index: usize, count: bool) -> Origin {
+            if count {
+                values.count_origin_at(index)
+            } else {
+                values.origin_at(index)
+            }
+        }
+        let schema_origin = |source| {
+            if count {
+                n.schemas.count_origin_of(source, budget)
+            } else {
+                n.schemas.origin_of(source, budget)
+            }
+        };
         let mut view = Self {
             claims: BTreeMap::new(),
         };
         for source in n.sources {
-            let origin = n.schemas.origin_of(*source, budget)?;
+            let origin = schema_origin(*source)?;
             // ALL normalized source ports participate, including input aliases.
             for (&key, path) in &source.ports {
                 view.add(key, origin, Kind::Source(source, path), budget)?;
@@ -112,7 +174,7 @@ impl<'a> MainProducerView<'a> {
             }
         }
         for component in n.intermediates {
-            let origin = n.schemas.origin_of(*component, budget)?;
+            let origin = schema_origin(*component)?;
             for &key in &component.output_keys {
                 view.blocking(
                     key,
@@ -133,7 +195,7 @@ impl<'a> MainProducerView<'a> {
         for (index, recipe) in n.external_scalar.iter().enumerate() {
             view.blocking(
                 recipe.output,
-                n.external_scalar.origin_at(index),
+                at(n.external_scalar, index, count),
                 "external scalar",
                 budget,
             )?;
@@ -141,7 +203,7 @@ impl<'a> MainProducerView<'a> {
         for (index, recipe) in n.external_xslt.iter().enumerate() {
             view.blocking(
                 recipe.output,
-                n.external_xslt.origin_at(index),
+                at(n.external_xslt, index, count),
                 "external XSLT",
                 budget,
             )?;
@@ -149,7 +211,7 @@ impl<'a> MainProducerView<'a> {
         for (index, recipe) in n.json_serializers.iter().enumerate() {
             view.blocking(
                 recipe.output,
-                n.json_serializers.origin_at(index),
+                at(n.json_serializers, index, count),
                 "JSON serializer",
                 budget,
             )?;
@@ -157,21 +219,21 @@ impl<'a> MainProducerView<'a> {
         for (index, recipe) in n.xml_serializers.iter().enumerate() {
             view.blocking(
                 recipe.output,
-                n.xml_serializers.origin_at(index),
+                at(n.xml_serializers, index, count),
                 "XML serializer",
                 budget,
             )?;
         }
         for (index, recipe) in n.json_parsers.iter().enumerate() {
             for &key in recipe.outputs.keys().chain(recipe.object_outputs.keys()) {
-                view.blocking(key, n.json_parsers.origin_at(index), "JSON parser", budget)?;
+                view.blocking(key, at(n.json_parsers, index, count), "JSON parser", budget)?;
             }
         }
         for (index, recipe) in n.flextext_parsers.iter().enumerate() {
             for &key in recipe.outputs.keys() {
                 view.blocking(
                     key,
-                    n.flextext_parsers.origin_at(index),
+                    at(n.flextext_parsers, index, count),
                     "FlexText/fixed parser",
                     budget,
                 )?;
@@ -181,11 +243,11 @@ impl<'a> MainProducerView<'a> {
         for (index, call) in n.calls.iter().enumerate() {
             for &key in call.outputs.keys() {
                 if call.certificate.is_some() {
-                    view.add(key, n.calls.origin_at(index), Kind::DeclaredCall, budget)?;
+                    view.add(key, at(n.calls, index, count), Kind::DeclaredCall, budget)?;
                 } else {
                     view.blocking(
                         key,
-                        n.calls.origin_at(index),
+                        at(n.calls, index, count),
                         "local/structured UDF",
                         budget,
                     )?;
@@ -196,7 +258,7 @@ impl<'a> MainProducerView<'a> {
             for &key in &function.outputs {
                 view.add(
                     key,
-                    n.functions.origin_at(index),
+                    at(n.functions, index, count),
                     Kind::Function(function),
                     budget,
                 )?;
@@ -205,7 +267,7 @@ impl<'a> MainProducerView<'a> {
                 if !function.outputs.contains(&key) {
                     view.blocking(
                         key,
-                        n.functions.origin_at(index),
+                        at(n.functions, index, count),
                         "unrepresented function output",
                         budget,
                     )?;
@@ -407,7 +469,7 @@ pub(in crate::import) fn certify(
         .construction
         .as_ref()
         .ok_or("declared-library certificate has no construction authority")?;
-    let view = MainProducerView::build(&normalized, budget)?;
+    let view = MainProducerView::build(&normalized, budget, false)?;
     for call in calls {
         let Some(closure) = &call.certificate else {
             continue;

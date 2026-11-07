@@ -1,0 +1,17 @@
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:element name="Source"><xs:complexType><xs:sequence>
+    <xs:element name="Wrap" minOccurs="0"><xs:complexType><xs:sequence>
+      <xs:element name="Leaf" minOccurs="0" maxOccurs="unbounded"><xs:complexType><xs:sequence>
+        <xs:element name="Text" type="xs:string" minOccurs="0"/>
+      </xs:sequence></xs:complexType></xs:element>
+    </xs:sequence></xs:complexType></xs:element>
+    <xs:element name="Row" minOccurs="0" maxOccurs="unbounded"><xs:complexType><xs:sequence>
+      <xs:element name="Label" type="xs:string"/>
+      <xs:element name="Wrap" minOccurs="0"><xs:complexType><xs:sequence>
+        <xs:element name="Leaf" minOccurs="0" maxOccurs="unbounded"><xs:complexType><xs:sequence>
+          <xs:element name="Text" type="xs:string" minOccurs="0"/>
+        </xs:sequence></xs:complexType></xs:element>
+      </xs:sequence></xs:complexType></xs:element>
+    </xs:sequence></xs:complexType></xs:element>
+  </xs:sequence></xs:complexType></xs:element>
+</xs:schema>
