@@ -1,0 +1,6 @@
+{
+  "name":"ordinary_and_group_members_share_source_path_not_receiver_authority",
+  "input":"<Source><Row><Key>A</Key><Text>keep</Text></Row><Row><Key>A</Key><Text>drop</Text></Row><Row><Key>B</Key><Text>keep</Text></Row></Source>",
+  "expected":{"Total":2,"Ordinary":[{"Count":1},{"Count":0},{"Count":1}],"Grouped":[{"Key":"A"},{"Key":"B"}]},
+  "expectedXml":"<Results><Total>2</Total><Ordinary><Count>1</Count></Ordinary><Ordinary><Count>0</Count></Ordinary><Ordinary><Count>1</Count></Ordinary><Grouped><Key>A</Key></Grouped><Grouped><Key>B</Key></Grouped></Results>"
+}

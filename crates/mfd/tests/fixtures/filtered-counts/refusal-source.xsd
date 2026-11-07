@@ -1,0 +1,9 @@
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:element name="Source"><xs:complexType><xs:sequence>
+    <xs:element name="Record" minOccurs="0" maxOccurs="unbounded"><xs:complexType><xs:sequence>
+      <xs:element name="Text" type="xs:string" minOccurs="0"/>
+      <xs:element name="Other" type="xs:string"/>
+      <xs:element name="Gate" type="xs:boolean" minOccurs="0" nillable="true"/>
+    </xs:sequence></xs:complexType></xs:element>
+  </xs:sequence></xs:complexType></xs:element>
+</xs:schema>

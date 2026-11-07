@@ -569,6 +569,8 @@ mod tests {
             parse_date_ownership: None,
             raw_clock_signature_valid: false,
             raw_count_signature_valid: false,
+            raw_filtered_count_signature_valid: false,
+            raw_filtered_count_pins_valid: false,
             presence_operator: None,
             group_by_ownership: None,
             input_type: None,

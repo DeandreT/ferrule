@@ -1,0 +1,5 @@
+[
+  {"name":"missing_singleton_with_outer_donor","input":"<Source><Wrap><Leaf><Text>keep</Text></Leaf><Leaf><Text>keep</Text></Leaf></Wrap><Row><Label>missing</Label></Row></Source>","expected":{"Total":0,"Row":[{"Label":"missing"}]},"expectedXml":"<Results><Total>0</Total><Row><Label>missing</Label></Row></Results>"},
+  {"name":"present_singleton_with_nonempty_repeat","input":"<Source><Wrap><Leaf><Text>keep</Text></Leaf><Leaf><Text>keep</Text></Leaf></Wrap><Row><Label>present</Label><Wrap><Leaf><Text>keep</Text></Leaf><Leaf><Text>drop</Text></Leaf></Wrap></Row></Source>","expected":{"Total":1,"Row":[{"Label":"present"}]},"expectedXml":"<Results><Total>1</Total><Row><Label>present</Label></Row></Results>"},
+  {"name":"present_singleton_with_empty_repeat","input":"<Source><Wrap><Leaf><Text>keep</Text></Leaf></Wrap><Row><Label>empty</Label><Wrap/></Row></Source>","expected":{"Total":0,"Row":[{"Label":"empty"}]},"expectedXml":"<Results><Total>0</Total><Row><Label>empty</Label></Row></Results>"}
+]
