@@ -700,7 +700,9 @@ pub(in crate::import) fn finish(
     let mut safe = Buffer::new();
     for i in 0..state.filters.0.len() {
         let filter = state.filters.0[i];
-        if state.ordinary_group_filter(filter.slot, n)? {
+        if state.ordinary_group_filter(filter.slot, n)?
+            || state.variable_input_filter(filter.slot, n)?
+        {
             safe.push(filter.slot, &mut state.ledger)?;
         } else {
             starts.push(Key::Registered(1, filter.slot), &mut state.ledger)?;
@@ -839,6 +841,38 @@ impl Routing {
             )?;
         }
         Ok(())
+    }
+    /// A filter whose every output feeds only inputs of intermediate variable
+    /// components selects that variable's items. Ordinary variable lowering
+    /// keeps that selection, so Counts over the variable are not filtered-Count
+    /// uses of this filter.
+    fn variable_input_filter(&mut self, slot: usize, n: &Normalized<'_>) -> Result<bool, String> {
+        self.ledger.work(1)?;
+        let Some(function) = n.functions.get(slot) else {
+            return Ok(false);
+        };
+        let mut consumed = false;
+        for &output in function.output_pins.iter().flatten() {
+            for &(from, to) in &self.links.0 {
+                self.ledger.work(1)?;
+                if from != Key::Port(output) {
+                    continue;
+                }
+                let Key::Port(input) = to else {
+                    return Ok(false);
+                };
+                self.ledger.lookup(n.schemas.len())?;
+                if !n
+                    .schemas
+                    .iter()
+                    .any(|schema| schema.is_variable && schema.input_keys.contains(&input))
+                {
+                    return Ok(false);
+                }
+                consumed = true;
+            }
+        }
+        Ok(consumed)
     }
     fn ordinary_group_filter(&mut self, slot: usize, n: &Normalized<'_>) -> Result<bool, String> {
         self.ledger.work(4)?;
