@@ -608,7 +608,7 @@ fn format_value(
         (ScalarType::Float, Value::Float(_)) => {
             Err(value_type_error(row, field, ty, "non-finite float"))
         }
-        (ScalarType::Float, Value::Int(value)) if exact_f64(*value).is_some() => {
+        (ScalarType::Float, Value::Int(value)) if ir::i64_to_exact_f64(*value).is_some() => {
             Ok(value.to_string())
         }
         (ScalarType::Float, Value::Int(_)) => Err(value_type_error(
@@ -638,15 +638,6 @@ fn boolean_lexical(value: &str) -> Option<bool> {
         "false" | "0" => Some(false),
         _ => None,
     }
-}
-
-fn exact_f64(value: i64) -> Option<f64> {
-    let magnitude = value.unsigned_abs();
-    if magnitude == 0 {
-        return Some(0.0);
-    }
-    let significant_bits = u64::BITS - magnitude.leading_zeros() - magnitude.trailing_zeros();
-    (significant_bits <= f64::MANTISSA_DIGITS).then_some(value as f64)
 }
 
 fn value_type_error(
