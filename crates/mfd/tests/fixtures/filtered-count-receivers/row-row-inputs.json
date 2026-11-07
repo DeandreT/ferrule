@@ -1,0 +1,5 @@
+[
+  {"name":"unequal_outer_and_inner_text","input":"<Source><Row><Text>keep</Text><Cell><Label>safe</Label></Cell><Row><Text>drop</Text></Row></Row></Source>"},
+  {"name":"equal_values_still_do_not_prove_the_outer_owner","input":"<Source><Row><Text>keep</Text><Cell><Label>safe</Label></Cell><Row><Text>keep</Text></Row></Row></Source>"},
+  {"name":"absent_outer_text_cannot_be_borrowed_from_inner_row","input":"<Source><Row><Cell><Label>safe</Label></Cell><Row><Text>keep</Text></Row></Row></Source>"}
+]

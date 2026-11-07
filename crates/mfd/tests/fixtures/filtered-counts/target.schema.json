@@ -1,0 +1,22 @@
+{
+  "type":"object",
+  "properties":{
+    "Included":{"type":"integer"},
+    "Excluded":{"type":"integer"},
+    "Nonblank":{"type":"integer"},
+    "Repeated":{"type":"integer"},
+    "Present":{"type":"integer"},
+    "Batches":{"type":"array","items":{"type":"object","properties":{
+      "Name":{"type":"string"},
+      "Included":{"type":"integer"},
+      "Excluded":{"type":"integer"},
+      "Nonblank":{"type":"integer"},
+      "Repeated":{"type":"integer"},
+      "Present":{"type":"integer"},
+      "Records":{"type":"array","items":{"type":"object","properties":{
+        "Included":{"type":"integer"},
+        "Nonblank":{"type":"integer"}
+      }}}
+    }}}
+  }
+}

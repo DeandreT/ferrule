@@ -1,0 +1,40 @@
+<mapping version="26"><component name="map"><structure><children>
+  <component name="source" library="xml" kind="14"><data><root><entry name="Source"><entry name="Record" outkey="10">
+    <entry name="Flag" outkey="11"/><entry name="Qualifier" outkey="12"/><entry name="Enabled" outkey="13"/><entry name="Toggle" outkey="14"/><entry name="Gate" outkey="15"/>
+  </entry></entry></root><document schema="bool-source.xsd" inputinstance="bool-source.xml" instanceroot="{}Source"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint key="20"/></targets><data><constant value="keep" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint key="21"/></targets><data><constant value="block" datatype="string"/></data></component>
+  <component name="trim" library="lang" kind="5"><sources><datapoint key="30"/></sources><targets><datapoint key="31"/></targets></component>
+  <component name="equal" library="core" kind="5"><sources><datapoint pos="0" key="32"/><datapoint pos="1" key="33"/></sources><targets><datapoint key="34"/></targets></component>
+  <component name="trim" library="lang" kind="5"><sources><datapoint key="35"/></sources><targets><datapoint key="36"/></targets></component>
+  <component name="not-equal" library="core" kind="5"><sources><datapoint pos="0" key="37"/><datapoint pos="1" key="38"/></sources><targets><datapoint key="39"/></targets></component>
+  <component name="logical-or" library="core" kind="5"><sources><datapoint pos="0" key="40"/><datapoint pos="1" key="41"/></sources><targets><datapoint key="42"/></targets></component>
+  <component name="filter" library="core" kind="3"><sources><datapoint pos="0" key="43"/><datapoint pos="1" key="44"/></sources><targets><datapoint pos="0" key="45"/><datapoint pos="1" key="46"/></targets></component>
+  <component name="count" library="core" kind="5"><sources><datapoint/><datapoint pos="1" key="50"/></sources><targets><datapoint key="51"/></targets></component>
+  <component name="count" library="core" kind="5"><sources><datapoint/><datapoint pos="1" key="52"/></sources><targets><datapoint key="53"/></targets></component>
+  <component name="filter" library="core" kind="3"><sources><datapoint pos="0" key="54"/><datapoint pos="1" key="55"/></sources><targets><datapoint key="56"/></targets></component>
+  <component name="count" library="core" kind="5"><sources><datapoint/><datapoint pos="1" key="57"/></sources><targets><datapoint key="58"/></targets></component>
+  <component name="filter" library="core" kind="3"><sources><datapoint pos="0" key="60"/><datapoint pos="1" key="61"/></sources><targets><datapoint key="62"/></targets></component>
+  <component name="count" library="core" kind="5"><sources><datapoint/><datapoint pos="1" key="63"/></sources><targets><datapoint key="64"/></targets></component>
+  <component name="target" library="json" kind="31"><properties XSLTDefaultOutput="1"/><data><root><entry name="document"><entry name="root"><entry name="object">
+    <entry name="Included" type="json-property"><entry name="number" inpkey="100"/></entry>
+    <entry name="Excluded" type="json-property"><entry name="number" inpkey="101"/></entry>
+    <entry name="Repeated" type="json-property"><entry name="number" inpkey="102"/></entry>
+    <entry name="Gated" type="json-property"><entry name="number" inpkey="103"/></entry>
+    <entry name="Records" type="json-property"><entry name="array"><entry name="item" type="json-item"><entry name="object" inpkey="110">
+      <entry name="Included" type="json-property"><entry name="number" inpkey="111"/></entry>
+      <entry name="Excluded" type="json-property"><entry name="number" inpkey="112"/></entry>
+      <entry name="Repeated" type="json-property"><entry name="number" inpkey="113"/></entry>
+      <entry name="Gated" type="json-property"><entry name="number" inpkey="114"/></entry>
+    </entry></entry></entry></entry>
+  </entry></entry></entry></root><json schema="bool-target.schema.json"/></data></component>
+</children><connections>
+  <edge from="11" to="30"/><edge from="31" to="32"/><edge from="20" to="33"/>
+  <edge from="12" to="35"/><edge from="36" to="37"/><edge from="21" to="38"/>
+  <edge from="34" to="40"/><edge from="39" to="41"/>
+  <edge from="13" to="43"/><edge from="42" to="44"/><edge from="45" to="50"/><edge from="46" to="52"/>
+  <edge from="14" to="54"/><edge from="42" to="55"/><edge from="56" to="57"/>
+  <edge from="13" to="60"/><edge from="15" to="61"/><edge from="62" to="63"/>
+  <edge from="51" to="100"/><edge from="53" to="101"/><edge from="58" to="102"/><edge from="64" to="103"/>
+  <edge from="10" to="110"/><edge from="51" to="111"/><edge from="53" to="112"/><edge from="58" to="113"/><edge from="64" to="114"/>
+</connections></structure></component></mapping>

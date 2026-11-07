@@ -229,6 +229,11 @@ pub(super) struct FnComponent {
     /// Exact `core` `count` signature: keyless context slot, keyed sequence
     /// input, and one keyed output. Separate from general aggregate lowering.
     pub(super) raw_count_signature_valid: bool,
+    /// The Count signature with saved layout children admitted, for filtered
+    /// Count lowering only.
+    pub(super) raw_filtered_count_signature_valid: bool,
+    /// Local grammar only; raw/final ownership is proved once at registration freeze.
+    pub(super) raw_filtered_count_pins_valid: bool,
     /// Dedicated raw owner and source-position proof for String group-by keys.
     pub(super) group_by_ownership: Option<RawGroupByOwnership>,
     /// Exact raw pins of a group-presence operand operator, retaining keyless
@@ -375,7 +380,21 @@ pub(super) fn read(component: &roxmltree::Node) -> FnComponent {
         .then(|| parse_date::ownership(component))
         .flatten();
     let raw_clock_signature_valid = clock::signature_valid(component, &output_pins);
-    let raw_count_signature_valid = count::signature_valid(component, &inputs, &output_pins);
+    let count_pins_bounded = component
+        .children()
+        .filter(|node| node.has_tag_name("sources") || node.has_tag_name("targets"))
+        .all(|container| {
+            container
+                .children()
+                .filter(roxmltree::Node::is_element)
+                .take(4)
+                .count()
+                <= 3
+        });
+    let raw_count_signature_valid =
+        count_pins_bounded && count::signature_valid(component, &inputs, &output_pins);
+    let raw_filtered_count_signature_valid =
+        count_pins_bounded && count::filtered_signature_valid(component, &inputs, &output_pins);
 
     let data = component
         .children()
@@ -529,6 +548,8 @@ pub(super) fn read(component: &roxmltree::Node) -> FnComponent {
         parse_date_ownership,
         raw_clock_signature_valid,
         raw_count_signature_valid,
+        raw_filtered_count_signature_valid,
+        raw_filtered_count_pins_valid: filtered_count_signature(component),
         group_by_ownership: group_by::ownership(component),
         presence_operator: presence::operator(component),
         input_type,
@@ -631,6 +652,63 @@ fn exact_component_children(component: &roxmltree::Node, allowed: &[&str]) -> bo
         && !component
             .children()
             .any(|node| node.is_text() && node.text().is_some_and(|text| !text.trim().is_empty()))
+}
+
+fn filtered_count_signature(component: &roxmltree::Node) -> bool {
+    super::aggregate::filtered_count::count_visit(
+        super::aggregate::filtered_count::Counter::Grammar,
+    );
+    let arity = match (
+        component.attribute("library"),
+        component.attribute("kind"),
+        component.attribute("name"),
+    ) {
+        (Some("core"), Some("3"), Some("filter")) => 2,
+        (Some("core"), Some("5"), Some("equal" | "not-equal" | "logical-and" | "logical-or")) => 2,
+        (Some("core"), Some("5"), Some("logical-not")) => 1,
+        (Some("core" | "lang"), Some("5"), Some("normalize-space" | "trim" | "empty")) => 1,
+        _ => return false,
+    };
+    if !exact_component_children(component, &["sources", "targets", "view", "properties"]) {
+        return false;
+    }
+    let mut seen = BTreeSet::new();
+    for child in component.children().filter(roxmltree::Node::is_element) {
+        if !seen.insert(child.tag_name().name())
+            || child.has_tag_name("properties")
+                && (child.attributes().len() != 0
+                    || child.children().any(|n| {
+                        n.is_element()
+                            || n.is_text() && n.text().is_some_and(|s| !s.trim().is_empty())
+                    }))
+        {
+            return false;
+        }
+        if matches!(child.tag_name().name(), "sources" | "targets")
+            && child
+                .children()
+                .filter(roxmltree::Node::is_element)
+                .take(4)
+                .count()
+                > 2
+        {
+            return false;
+        }
+    }
+    let Some(inputs) = exact_substitution_pins(component, "sources", arity) else {
+        return false;
+    };
+    let outputs = if component.attribute("kind") == Some("3") {
+        exact_substitution_pins(component, "targets", 2)
+            .or_else(|| exact_substitution_pins(component, "targets", 1))
+    } else {
+        exact_substitution_pins(component, "targets", 1)
+    };
+    let Some(outputs) = outputs else {
+        return false;
+    };
+    let mut keys = BTreeSet::new();
+    inputs.iter().chain(&outputs).all(|key| keys.insert(*key))
 }
 
 fn exact_substitution_pins(

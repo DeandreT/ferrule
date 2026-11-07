@@ -1,0 +1,10 @@
+[
+  {"name":"bool_empty_sequence","input":"<Source/>","expected":{"Included":0,"Excluded":0,"Repeated":0,"Gated":0,"Records":[]}},
+  {
+    "name":"bool_false_true_nil_missing_and_all_or_branches",
+    "input":"<Source xmlns:xsi='http://www.w3.org/2001/XMLSchema-instance'><Record><Flag> keep </Flag><Qualifier> block </Qualifier><Enabled>false</Enabled><Toggle>false</Toggle><Toggle>true</Toggle><Gate>false</Gate></Record><Record><Flag>hold</Flag><Qualifier>allow</Qualifier><Enabled>true</Enabled><Toggle xsi:nil='true'/><Gate>true</Gate></Record><Record><Flag>keep</Flag><Qualifier>allow</Qualifier><Enabled xsi:nil='true'/><Toggle>false</Toggle><Gate>true</Gate></Record><Record><Flag>hold</Flag><Qualifier>block</Qualifier><Enabled>false</Enabled><Toggle>true</Toggle><Gate>true</Gate></Record><Record><Flag>keep</Flag><Qualifier>block</Qualifier><Toggle>false</Toggle><Gate>true</Gate></Record><Record><Qualifier>block</Qualifier><Enabled>true</Enabled></Record></Source>",
+    "expected":{"Included":3,"Excluded":2,"Repeated":5,"Gated":3,"Records":[{"Included":1,"Excluded":0,"Repeated":2,"Gated":0},{"Included":1,"Excluded":0,"Repeated":1,"Gated":1},{"Included":1,"Excluded":0,"Repeated":1,"Gated":1},{"Included":0,"Excluded":1,"Repeated":0,"Gated":1},{"Included":0,"Excluded":0,"Repeated":1,"Gated":0},{"Included":0,"Excluded":1,"Repeated":0,"Gated":0}]}
+  },
+  {"name":"bool_false_is_a_selected_occurrence","input":"<Source><Record><Flag>keep</Flag><Qualifier>block</Qualifier><Enabled>false</Enabled><Toggle>false</Toggle><Toggle>false</Toggle><Gate>true</Gate></Record></Source>","expected":{"Included":1,"Excluded":0,"Repeated":2,"Gated":1,"Records":[{"Included":1,"Excluded":0,"Repeated":2,"Gated":1}]}},
+  {"name":"bool_false_predicate_excludes_present_false","input":"<Source><Record><Flag>hold</Flag><Qualifier>block</Qualifier><Enabled>false</Enabled><Gate>false</Gate></Record></Source>","expected":{"Included":0,"Excluded":1,"Repeated":0,"Gated":0,"Records":[{"Included":0,"Excluded":1,"Repeated":0,"Gated":0}]}}
+]

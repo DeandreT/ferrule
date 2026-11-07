@@ -1607,7 +1607,13 @@ fn import_resolved(
         .unwrap_or_default()
         .to_ascii_lowercase();
 
-    let edges = read_edge_inputs(&structure, Some(&wrapper));
+    let count_headers =
+        aggregate::filtered_count::routing::Headers::read(structure).map_err(MfdError::Resource)?;
+    let (edges, count_routing) =
+        graph::read_edge_inputs_with_probe(&structure, Some(&wrapper), |claims| {
+            aggregate::filtered_count::routing::Routing::prepare(count_headers, structure, claims)
+        });
+    let count_routing = count_routing.map_err(MfdError::Resource)?;
     if retain_primary_filename && (!edges.complete || !edges.conflicts.is_empty()) {
         return Err(MfdError::UnsupportedImport(
             if filename_import == FilenameImport::CsvRetention {
@@ -1627,13 +1633,28 @@ fn import_resolved(
     let csv_occurrence_raw_authority =
         edges.complete && target_iteration::csv_raw_authority(&structure, &edges.feeds);
     let mut udf_registry = UdfRegistry::read_in_package(&mapping_el, resources, &mut warnings);
-    use udf::certificate::RegisteredVec;
-    let mut schema_components = RegisteredVec::new(&udf_registry);
-    let mut fn_components = RegisteredVec::new(&udf_registry);
-    let mut json_serializers = RegisteredVec::new(&udf_registry);
-    let mut xml_serializers = RegisteredVec::new(&udf_registry);
-    let mut json_parsers = RegisteredVec::new(&udf_registry);
-    let mut flextext_parsers = RegisteredVec::new(&udf_registry);
+    use udf::certificate::{CountConstruction, OriginCapture, RegisteredVec};
+    // Negative routing is complete under its separate input-derived policy;
+    // only provisionally demanded owners receive optional positive origins.
+    let count_construction = count_routing
+        .as_ref()
+        .map(|routing| CountConstruction::default().with_routing(routing.clone()));
+    let count_capture = count_construction
+        .as_ref()
+        .map_or(OriginCapture::Existing, |b| OriginCapture::Count(b.clone()));
+    let mut schema_components = match &count_capture {
+        OriginCapture::Existing => RegisteredVec::new(&udf_registry),
+        _ => RegisteredVec::with_origin_capture(&udf_registry, count_capture.clone()),
+    };
+    let mut fn_components =
+        RegisteredVec::with_origin_capture(&udf_registry, count_capture.clone());
+    let mut json_serializers =
+        RegisteredVec::with_origin_capture(&udf_registry, count_capture.clone());
+    let mut xml_serializers =
+        RegisteredVec::with_origin_capture(&udf_registry, count_capture.clone());
+    let mut json_parsers = RegisteredVec::with_origin_capture(&udf_registry, count_capture.clone());
+    let mut flextext_parsers =
+        RegisteredVec::with_origin_capture(&udf_registry, count_capture.clone());
     let mut output_parameters = Vec::new();
     if resources.package().is_some() && udf_registry.has_declared_mapping_libraries() {
         return Err(MfdError::UnsupportedImport("declared mapping libraries are unsupported in immutable byte packages; no filesystem fallback".into()));
@@ -1641,10 +1662,12 @@ fn import_resolved(
     udf_registry
         .finish_construction()
         .map_err(MfdError::Resource)?;
-    let mut udf_calls = RegisteredVec::new(&udf_registry);
+    let mut udf_calls = RegisteredVec::with_origin_capture(&udf_registry, count_capture.clone());
     let mut external_udf_candidates = Vec::new();
-    let mut external_scalar_recipes = RegisteredVec::new(&udf_registry);
-    let mut external_xslt_aggregates = RegisteredVec::new(&udf_registry);
+    let mut external_scalar_recipes =
+        RegisteredVec::with_origin_capture(&udf_registry, count_capture.clone());
+    let mut external_xslt_aggregates =
+        RegisteredVec::with_origin_capture(&udf_registry, count_capture);
     let pipeline_exceptions = if matches!(selection, StageSelection::Ordinary) {
         None
     } else {
@@ -2303,7 +2326,7 @@ fn import_resolved(
     }
 
     // Only inputs with one distinct physical feed enter the lowering map.
-    let edge_from = edges.feeds;
+    let edge_from = &edges.feeds;
     let connected_outputs = edge_from.values().copied().collect::<BTreeSet<_>>();
     for component in &schema_components {
         if matches!(selection, StageSelection::Ordinary)
@@ -2323,18 +2346,13 @@ fn import_resolved(
             ));
         }
     }
-    refine_database_roles(&mut schema_components, &edge_from);
-    udf::refine_source_schemas(
-        &mut schema_components,
-        &udf_calls,
-        &udf_registry,
-        &edge_from,
-    );
-    refine_wsdl_target_schemas(&mut schema_components, &fn_components, &edge_from);
+    refine_database_roles(&mut schema_components, edge_from);
+    udf::refine_source_schemas(&mut schema_components, &udf_calls, &udf_registry, edge_from);
+    refine_wsdl_target_schemas(&mut schema_components, &fn_components, edge_from);
     let copy_all_targets = read_copy_all_targets(&structure, Some(&wrapper));
     refine_copied_fallback_source_shapes(
         &mut schema_components,
-        &edge_from,
+        edge_from,
         &copy_all_targets,
         &fallback_xml_source_outputs,
         &fallback_xml_target_inputs,
@@ -2342,19 +2360,19 @@ fn import_resolved(
     );
     refine_copied_fallback_target_groups(
         &mut schema_components,
-        &edge_from,
+        edge_from,
         &copy_all_targets,
         &fallback_xml_source_outputs,
         &fallback_xml_target_inputs,
         &mut warnings,
     );
-    schema::restore_connected_structural_ports(&mut schema_components, &edge_from);
-    refine_copied_json_root_schemas(&mut schema_components, &edge_from, &copy_all_targets);
+    schema::restore_connected_structural_ports(&mut schema_components, edge_from);
+    refine_copied_json_root_schemas(&mut schema_components, edge_from, &copy_all_targets);
 
     let output_failed = output_parameter::install_fallback(
         &mut schema_components,
         output_parameters,
-        &edge_from,
+        edge_from,
         &mut warnings,
     );
 
@@ -2371,7 +2389,7 @@ fn import_resolved(
         &mut schema_components,
         external_udf_candidates,
         &target_inputs,
-        &edge_from,
+        edge_from,
         &fn_components,
         &mut warnings,
     );
@@ -2491,7 +2509,7 @@ fn import_resolved(
         _ => primary_source_hint
             .as_ref()
             .and_then(|hint| hinted_primary_index(&sources, hint))
-            .unwrap_or_else(|| primary_index(&sources, target, &edge_from, &fn_components)),
+            .unwrap_or_else(|| primary_index(&sources, target, edge_from, &fn_components)),
     };
     sources.swap(0, primary_source);
     let source_components = sources
@@ -2505,7 +2523,7 @@ fn import_resolved(
     let primary = sources[0];
     let joins = pending_joins.resolve(
         &join::KeyContext {
-            edge_from: &edge_from,
+            edge_from,
             sources: &sources,
             source_names: &source_names,
             fn_components: &fn_components,
@@ -2525,28 +2543,42 @@ fn import_resolved(
     let xml_serializers = xml_serializers;
     let json_parsers = json_parsers;
     let flextext_parsers = flextext_parsers;
-    let certificate = udf::certificate::certify(
-        &udf_registry,
-        &udf_calls,
-        udf::certificate::Normalized {
-            schemas: &schema_components,
-            sources: &sources,
-            source_names: &source_names,
-            intermediates: &intermediates,
-            targets: &targets,
-            functions: &fn_components,
-            calls: &udf_calls,
-            external_scalar: &external_scalar_recipes,
-            external_xslt: &external_xslt_aggregates,
-            json_serializers: &json_serializers,
-            xml_serializers: &xml_serializers,
-            json_parsers: &json_parsers,
-            flextext_parsers: &flextext_parsers,
-            joins: &joins,
-            rules: &source_node_functions,
-        },
+    let normalized = udf::certificate::Normalized {
+        schemas: &schema_components,
+        sources: &sources,
+        source_names: &source_names,
+        intermediates: &intermediates,
+        targets: &targets,
+        functions: &fn_components,
+        calls: &udf_calls,
+        external_scalar: &external_scalar_recipes,
+        external_xslt: &external_xslt_aggregates,
+        json_serializers: &json_serializers,
+        xml_serializers: &xml_serializers,
+        json_parsers: &json_parsers,
+        flextext_parsers: &flextext_parsers,
+        joins: &joins,
+        rules: &source_node_functions,
+    };
+    let count_demand =
+        aggregate::filtered_count::routing::finish(count_routing.as_ref(), &normalized).map_err(
+            |reason| {
+                if reason.starts_with("physical filtered count:") {
+                    MfdError::UnsupportedImport(reason)
+                } else {
+                    MfdError::Resource(reason)
+                }
+            },
+        )?;
+    let filtered_counts = aggregate::filtered_count::CountProofTable::compile(
         structure,
+        &edges,
+        &normalized,
+        count_construction.as_ref(),
+        count_demand,
+        matches!(selection, StageSelection::Ordinary) && filename_import == FilenameImport::None,
     );
+    let certificate = udf::certificate::certify(&udf_registry, &udf_calls, normalized, structure);
     udf_registry
         .finish_construction()
         .map_err(MfdError::Resource)?;
@@ -2598,6 +2630,8 @@ fn import_resolved(
         rejected_join_paths: BTreeSet::new(),
         source_fields: BTreeMap::new(),
         materialized_arguments: Default::default(),
+        filtered_counts: &filtered_counts,
+        materialized_counts: Default::default(),
         json_serializer_nodes: BTreeMap::new(),
         xml_serializer_nodes: BTreeMap::new(),
         external_scalar_nodes: BTreeMap::new(),
@@ -2610,7 +2644,7 @@ fn import_resolved(
         warned_unscoped_queries: BTreeSet::new(),
         xml_type_conditions,
         xml_condition_ports,
-        edge_from: &edge_from,
+        edge_from,
         csv_occurrence_raw_authority,
         sources: &sources,
         source_names: &source_names,
@@ -2749,8 +2783,8 @@ fn import_resolved(
         extra_targets.push(NamedTarget {
             name: target_names[index].clone(),
             path: extra_path,
-            schema: runtime_target_schema(extra, &edge_from),
-            options: target_format_options(extra, &edge_from),
+            schema: runtime_target_schema(extra, edge_from),
+            options: target_format_options(extra, edge_from),
             root: extra_root,
         });
     }
@@ -2888,7 +2922,7 @@ fn import_resolved(
     }) {
         document_paths::warn_with_admitted_outputs(
             component,
-            &edge_from,
+            edge_from,
             "CSV",
             &admitted_csv_outputs,
             &mut warnings,
@@ -2903,14 +2937,15 @@ fn import_resolved(
     source_options.mfd_json5_string_dependencies = json5_string_dependencies;
     let declared_call_nodes = std::mem::take(&mut builder.udf_nodes);
     let materialized_arguments = std::mem::take(&mut builder.materialized_arguments);
+    let materialized_counts = std::mem::take(&mut builder.materialized_counts);
     let mut project = Project {
         execution_contract: None,
         source: primary.schema.clone(),
-        target: runtime_target_schema(target, &edge_from),
+        target: runtime_target_schema(target, edge_from),
         source_path,
         target_path,
         source_options,
-        target_options: target_format_options(target, &edge_from),
+        target_options: target_format_options(target, edge_from),
         extra_sources,
         extra_targets,
         failure_rules,
@@ -3022,6 +3057,16 @@ fn import_resolved(
         .finish_construction()
         .map_err(MfdError::Resource)?;
     context_audit.map_err(MfdError::UnsupportedImport)?;
+    filtered_counts
+        .audit(
+            &materialized_counts,
+            &project,
+            &connected_targets,
+            context_certificate.enabled(),
+        )
+        .map_err(|reason| {
+            MfdError::UnsupportedImport(format!("physical filtered count: {reason}"))
+        })?;
     if context_certificate.enabled() {
         project.execution_contract = Some(mapping::ExecutionContract::ClosedPrimarySourceV1);
         project.validate_execution_contract().map_err(|error| MfdError::UnsupportedImport(format!("declared-library primary-source safety guard refused the materialized model: {error}")))?;
@@ -3474,13 +3519,26 @@ fn build_target_scope_inner(
         {
             continue;
         }
-        if install_repeating_scalar_iteration(target, &target_leaf, from, builder, &mut scopes) {
-            continue;
-        }
-        let active_anchor = scopes.enclosing_anchor(&target_path);
-        let node = match target.db_xml_columns.get(&input) {
-            Some(column) => builder.database_xml_column_node(from, column),
-            None => builder.binding_node_at_anchor(from, &target_path, &active_anchor),
+        let node = match builder.filtered_count_binding(target, input, from, &target_path, &scopes)
+        {
+            aggregate::filtered_count::CountBinding::Handled(node) => Some(node),
+            aggregate::filtered_count::CountBinding::Refused => continue,
+            aggregate::filtered_count::CountBinding::Legacy => {
+                if install_repeating_scalar_iteration(
+                    target,
+                    &target_leaf,
+                    from,
+                    builder,
+                    &mut scopes,
+                ) {
+                    continue;
+                }
+                let active_anchor = scopes.enclosing_anchor(&target_path);
+                match target.db_xml_columns.get(&input) {
+                    Some(column) => builder.database_xml_column_node(from, column),
+                    None => builder.binding_node_at_anchor(from, &target_path, &active_anchor),
+                }
+            }
         };
         let Some(node) = node else {
             continue;

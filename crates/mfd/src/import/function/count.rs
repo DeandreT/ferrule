@@ -9,6 +9,46 @@ pub(super) fn signature_valid(
     inputs: &[Option<u32>],
     output_pins: &[Option<u32>],
 ) -> bool {
+    signature(component, inputs, output_pins, &["sources", "targets"])
+}
+
+/// The same signature as [`signature_valid`], also admitting the layout-only
+/// children saved designs carry: at most one `view` and an empty `properties`.
+/// Filtered Count lowering refuses anything else, so it uses this spelling;
+/// constructed-record admission keeps the strict one.
+pub(super) fn filtered_signature_valid(
+    component: &roxmltree::Node<'_, '_>,
+    inputs: &[Option<u32>],
+    output_pins: &[Option<u32>],
+) -> bool {
+    let mut seen = BTreeSet::new();
+    component
+        .children()
+        .filter(roxmltree::Node::is_element)
+        .all(|child| {
+            seen.insert(child.tag_name().name())
+                && (!child.has_tag_name("properties")
+                    || child.attributes().len() == 0
+                        && !child.children().any(|node| {
+                            node.is_element()
+                                || node.is_text()
+                                    && node.text().is_some_and(|s| !s.trim().is_empty())
+                        }))
+        })
+        && signature(
+            component,
+            inputs,
+            output_pins,
+            &["sources", "targets", "view", "properties"],
+        )
+}
+
+fn signature(
+    component: &roxmltree::Node<'_, '_>,
+    inputs: &[Option<u32>],
+    output_pins: &[Option<u32>],
+    children: &[&str],
+) -> bool {
     if !matches!(
         (
             component.attribute("library"),
@@ -16,7 +56,7 @@ pub(super) fn signature_valid(
             component.attribute("name"),
         ),
         (Some("core"), Some("5"), Some("count"))
-    ) || !exact_component_children(component, &["sources", "targets"])
+    ) || !exact_component_children(component, children)
     {
         return false;
     }
@@ -106,6 +146,44 @@ mod tests {
             count.replace(" key=\"60\"", ""),
         ] {
             assert!(!valid(&text), "{text}");
+        }
+    }
+
+    #[test]
+    fn filtered_count_signature_admits_only_saved_layout_children() {
+        let count = r#"<component name="count" library="core" kind="5"><sources><datapoint/><datapoint pos="1" key="61"/></sources><targets><datapoint pos="0" key="60"/></targets></component>"#;
+        let filtered = |text: &str| {
+            let document = roxmltree::Document::parse(text).unwrap();
+            let component = read(&document.root_element());
+            (
+                component.raw_count_signature_valid,
+                component.raw_filtered_count_signature_valid,
+            )
+        };
+        let view = r#"<view ltx="20" lty="20" rbx="120" rby="60"/>"#;
+        assert_eq!(filtered(count), (true, true));
+        for text in [
+            count.replace("</component>", &format!("{view}</component>")),
+            count.replace("<sources>", &format!("{view}<sources>")),
+            count.replace("</component>", "<properties/></component>"),
+            count.replace(
+                "</component>",
+                &format!("{view}<properties> </properties></component>"),
+            ),
+        ] {
+            assert_eq!(filtered(&text), (false, true), "{text}");
+        }
+        for text in [
+            count.replace("</component>", &format!("{view}{view}</component>")),
+            count.replace("</component>", "<properties/><properties/></component>"),
+            count.replace("</component>", "<properties kind=\"x\"/></component>"),
+            count.replace("</component>", "<properties><x/></properties></component>"),
+            count.replace("</component>", "<properties>text</properties></component>"),
+            count.replace("</component>", "<data/></component>"),
+            count.replace("</sources>", "</sources><sources/>"),
+            count.replace("<datapoint/>", "<datapoint key=\"62\"/>"),
+        ] {
+            assert_eq!(filtered(&text), (false, false), "{text}");
         }
     }
 }

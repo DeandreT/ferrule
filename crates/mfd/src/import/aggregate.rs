@@ -8,6 +8,20 @@ use super::iteration::{compatible_collection, split_at_innermost_repeating};
 use super::schema::{ComponentFormat, schema_node_at};
 use super::source::SourcePath;
 
+pub(super) mod filtered_count;
+
+// This short-lived route transfers the existing Node without a new heap box.
+#[allow(clippy::large_enum_variant)]
+pub(super) enum AggregateRoute {
+    Existing(Option<Node>),
+    Physical {
+        input_count: usize,
+        sequence_feed: u32,
+        arg_feed: Option<u32>,
+        arg: Option<NodeId>,
+    },
+}
+
 impl GraphBuilder<'_> {
     pub(super) fn unsupported_aggregate_call(&mut self, name: &str, detail: &str) -> Node {
         self.warnings.push(format!(
@@ -41,6 +55,68 @@ impl GraphBuilder<'_> {
         self.aggregate_node_inner(op, idx, None)
     }
 
+    fn aggregate_node_inner(
+        &mut self,
+        op: AggregateOp,
+        idx: usize,
+        active_anchor: Option<&[String]>,
+    ) -> Result<Option<Node>, String> {
+        let earlier = match self.aggregate_earlier(op, idx) {
+            Ok(route) => route,
+            Err(reason) if op == AggregateOp::Count && self.filtered_counts.owns_index(idx) => {
+                let node = self.unsupported_aggregate_call(
+                    "count",
+                    &format!("cannot import its sequence: {reason}"),
+                );
+                if let Some(&id) = self.fn_nodes.get(&idx) {
+                    self.materialized_counts.earlier(idx, id);
+                }
+                return Ok(Some(node));
+            }
+            Err(reason) => return Err(reason),
+        };
+        let (input_count, sequence_feed, arg_feed, arg) = match earlier {
+            AggregateRoute::Existing(node) => {
+                if node.is_none() && op == AggregateOp::Count && self.owns_filtered_count_index(idx)
+                {
+                    return Err(self
+                        .refuse_filtered_count("unresolved Count sequence has no earlier route"));
+                }
+                if node.is_some()
+                    && self.filtered_counts.owns_index(idx)
+                    && let Some(&id) = self.fn_nodes.get(&idx)
+                {
+                    self.materialized_counts.earlier(idx, id);
+                }
+                return Ok(node);
+            }
+            AggregateRoute::Physical {
+                input_count,
+                sequence_feed,
+                arg_feed,
+                arg,
+            } => (input_count, sequence_feed, arg_feed, arg),
+        };
+        if op == AggregateOp::Count && self.owns_filtered_count_index(idx) {
+            if active_anchor.is_some() {
+                return Err(
+                    self.refuse_filtered_count("anchored Count requested without ReceiverProof")
+                );
+            }
+            return self.filtered_count_template(idx).map(Some);
+        }
+
+        self.aggregate_physical_legacy(
+            op,
+            idx,
+            active_anchor,
+            input_count,
+            sequence_feed,
+            arg_feed,
+            arg,
+        )
+    }
+
     pub(super) fn aggregate_node_at_anchor(
         &mut self,
         op: AggregateOp,
@@ -50,12 +126,11 @@ impl GraphBuilder<'_> {
         self.aggregate_node_inner(op, idx, Some(active_anchor))
     }
 
-    fn aggregate_node_inner(
+    pub(super) fn aggregate_earlier(
         &mut self,
         op: AggregateOp,
         idx: usize,
-        active_anchor: Option<&[String]>,
-    ) -> Result<Option<Node>, String> {
+    ) -> Result<AggregateRoute, String> {
         let input_count = self.fn_components[idx].inputs.len();
         let two_pin_item_at = op == AggregateOp::ItemAt
             && input_count == 2
@@ -71,7 +146,7 @@ impl GraphBuilder<'_> {
             })
         };
         let Some(sequence_feed) = sequence_feed else {
-            return Ok(None);
+            return Ok(AggregateRoute::Existing(None));
         };
         let arg_feed = self.input_feed(idx, if two_pin_item_at { 1 } else { 2 });
         if arg_feed.is_some_and(|feed| self.join_dependency_any(feed)) {
@@ -81,39 +156,57 @@ impl GraphBuilder<'_> {
             && let Some(node) = arg_feed
                 .and_then(|index_feed| self.sequence_item_at_node(sequence_feed, index_feed))
         {
-            return Ok(Some(node));
+            return Ok(AggregateRoute::Existing(Some(node)));
         }
         let arg = arg_feed.and_then(|feed| self.value_node(feed));
         if op != AggregateOp::ItemAt
             && let Some(node) = self.sequence_aggregate_node(op, sequence_feed, arg)
         {
-            return Ok(Some(node));
+            return Ok(AggregateRoute::Existing(Some(node)));
         }
 
         if let Some((join, plan, expression)) = self.join_aggregate_sequence(sequence_feed)? {
             if expression.is_none() && op != AggregateOp::Count {
                 return Err("only count can reduce a raw joined tuple sequence".to_string());
             }
-            return Ok(Some(Node::JoinAggregate {
+            return Ok(AggregateRoute::Existing(Some(Node::JoinAggregate {
                 function: op,
                 join,
                 plan,
                 expression,
                 arg,
-            }));
+            })));
         }
         if let Some((join, plan, expression)) =
             self.filtered_equality_join_aggregate(sequence_feed, op != AggregateOp::Count)
         {
-            return Ok(Some(Node::JoinAggregate {
+            return Ok(AggregateRoute::Existing(Some(Node::JoinAggregate {
                 function: op,
                 join,
                 plan,
                 expression,
                 arg,
-            }));
+            })));
         }
+        Ok(AggregateRoute::Physical {
+            input_count,
+            sequence_feed,
+            arg_feed,
+            arg,
+        })
+    }
 
+    #[allow(clippy::too_many_arguments)]
+    fn aggregate_physical_legacy(
+        &mut self,
+        op: AggregateOp,
+        idx: usize,
+        active_anchor: Option<&[String]>,
+        input_count: usize,
+        sequence_feed: u32,
+        arg_feed: Option<u32>,
+        arg: Option<NodeId>,
+    ) -> Result<Option<Node>, String> {
         if op == AggregateOp::Count
             && let Some(source_path) = self.source_abs_path(sequence_feed)
             && let Some(source) = self.sources.get(source_path.source)

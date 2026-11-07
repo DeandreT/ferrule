@@ -1,0 +1,208 @@
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Xml.Linq;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+static object Typed(FerruleInstance node) => node switch
+{
+    FerruleGroup group => new { kind = "group", fields = group.Fields.Select(field => new { name = field.Name, value = Typed(field.Value) }).ToArray() },
+    FerruleRepeated repeated => new { kind = "repeated", items = repeated.Items.Select(Typed).ToArray() },
+    FerruleScalar scalar => new { kind = scalar.Value.Kind.ToString(), value = scalar.Value.Kind switch {
+        FerruleValueKind.Int64 => (object?)scalar.Value.Int64Value,
+        FerruleValueKind.String => scalar.Value.StringValue,
+        FerruleValueKind.Bool => scalar.Value.BooleanValue,
+        _ => null,
+    } },
+    _ => throw new Exception("Unexpected mapped instance shape"),
+};
+
+static void Verify(FerruleInstance actual, JsonElement expected)
+{
+    switch (expected.ValueKind)
+    {
+        case JsonValueKind.Object:
+            if (actual is not FerruleGroup group || group.Fields.Count != expected.EnumerateObject().Count()) throw new Exception("Whole group differs");
+            foreach (var (actualField, expectedField) in group.Fields.Zip(expected.EnumerateObject()))
+            {
+                if (!StringComparer.Ordinal.Equals(actualField.Name, expectedField.Name))
+                    throw new Exception("Ordered typed output field differs");
+                Verify(actualField.Value, expectedField.Value);
+            }
+            break;
+        case JsonValueKind.Array:
+            if (actual is not FerruleRepeated repeated || repeated.Items.Count != expected.GetArrayLength()) throw new Exception("Whole sequence differs");
+            for (int index = 0; index < repeated.Items.Count; index++) Verify(repeated.Items[index], expected[index]);
+            break;
+        case JsonValueKind.Number:
+            if (actual is not FerruleScalar number || number.Value.Kind != FerruleValueKind.Int64 || number.Value.Int64Value != expected.GetInt64()) throw new Exception("Integer count differs");
+            break;
+        case JsonValueKind.String:
+            if (actual is not FerruleScalar text || text.Value.Kind != FerruleValueKind.String || text.Value.StringValue != expected.GetString()) throw new Exception("String differs");
+            break;
+        default: throw new Exception("Outside authored output domain");
+    }
+}
+
+// XElement/XNode comparison reused from the frozen imported public host. Explicit
+// normalization ignores only four ASCII layout characters between child elements.
+static XElement XmlTree(XElement element)
+{
+    bool hasElements = element.Elements().Any();
+    object Part(XNode node) => node switch
+    {
+        XElement child => XmlTree(child),
+        XText text => new XText(text.Value),
+        XComment comment => new XComment(comment.Value),
+        XProcessingInstruction instruction => new XProcessingInstruction(instruction.Target, instruction.Data),
+        _ => throw new Exception("Unexpected XML element-tree node"),
+    };
+    return new XElement(element.Name,
+        element.Attributes().Where(attribute => !attribute.IsNamespaceDeclaration)
+            .OrderBy(attribute => attribute.Name.NamespaceName, StringComparer.Ordinal)
+            .ThenBy(attribute => attribute.Name.LocalName, StringComparer.Ordinal)
+            .Select(attribute => new XAttribute(attribute.Name, attribute.Value)),
+        element.Nodes().Where(node => !(hasElements && node is XText text &&
+            text.Value.All(character => character is ' ' or '\t' or '\r' or '\n'))).Select(Part));
+}
+
+static void AssertXml(string actual, string expected)
+{
+    var actualRoot = XDocument.Parse(actual, LoadOptions.PreserveWhitespace).Root!;
+    var expectedRoot = XDocument.Parse(expected, LoadOptions.PreserveWhitespace).Root!;
+    if (!XNode.DeepEquals(XmlTree(actualRoot), XmlTree(expectedRoot)))
+        throw new Exception("Complete schema-independent XML tree differs");
+}
+
+static void RejectOracle(Action action, string label)
+{
+    try { action(); }
+    catch (Exception error) when (error.Message is "Ordered typed output field differs" or "Complete schema-independent XML tree differs")
+    { return; }
+    throw new Exception($"Oracle accepted {label}");
+}
+
+static void OracleControls()
+{
+    using var expected = JsonDocument.Parse("{\"Included\":0,\"Excluded\":0}");
+    var included = new FerruleField("Included", new FerruleScalar(FerruleValue.FromInt64(0)));
+    var excluded = new FerruleField("Excluded", new FerruleScalar(FerruleValue.FromInt64(0)));
+    Verify(new FerruleGroup(new[] { included, excluded }), expected.RootElement);
+    RejectOracle(() => Verify(new FerruleGroup(new[] { excluded, included }), expected.RootElement), "swapped equal-valued fields");
+    const string compact = "<Results><Included>0</Included><Excluded>0</Excluded></Results>";
+    AssertXml("<Results> \t\r\n<Included>0</Included>\n \t<Excluded>0</Excluded>\r\n</Results>", compact);
+    foreach (string actual in new[] {
+        "<Results><Excluded>0</Excluded><Included>0</Included></Results>",
+        "<Results><Included>0</Included><Excluded>0</Excluded><Extra/></Results>",
+        "<Results><Included>0</Included><Included>0</Included><Excluded>0</Excluded></Results>",
+        "<Results><Included>0</Included>\u00a0<Excluded>0</Excluded></Results>",
+        "<Results><Included>0</Included>\u2003<Excluded>0</Excluded></Results>",
+    }) RejectOracle(() => AssertXml(actual, compact), "XML order/shape/Unicode character-data drift");
+    AssertXml("<a:R xmlns:a='urn:r' a:k='v' z='1'><!--keep--><?guard ok?><a:A>v</a:A></a:R>",
+              "<b:R xmlns:b='urn:r' z='1' b:k='v'><!--keep--><?guard ok?><b:A>v</b:A></b:R>");
+    const string nodes = "<R marker='yes'><!--keep--><?guard ok?><A>v</A></R>";
+    foreach (string actual in new[] {
+        "<R marker='yes'><!--changed--><?guard ok?><A>v</A></R>",
+        "<R marker='yes'><!--keep--><?guard changed?><A>v</A></R>",
+        "<R marker='yes'><?guard ok?><!--keep--><A>v</A></R>",
+        "<R marker='no'><!--keep--><?guard ok?><A>v</A></R>",
+        "<R xmlns='urn:changed' marker='yes'><!--keep--><?guard ok?><A>v</A></R>",
+    }) RejectOracle(() => AssertXml(actual, nodes), "expanded name/attribute/comment/PI drift");
+    AssertXml("<R><A>\u00a0\u2003</A></R>", "<R><A>\u00a0\u2003</A></R>");
+    RejectOracle(() => AssertXml("<R><A> </A></R>", "<R><A/></R>"), "meaningful leaf space");
+    Console.Error.WriteLine("filtered-count oracle controls completed: ordered typed group and schema-independent XML");
+}
+
+static void Refuses(Action action, JsonElement test, string boundary)
+{
+    try { action(); }
+#if FERRULE_XML_INPUT
+    catch (FerruleXmlBoundaryException error)
+    {
+        Console.WriteLine(JsonSerializer.Serialize(new { name = test.GetProperty("name").GetString(), boundary, stage = "input", category = error.Kind.ToString(), error = error.ToString() }));
+        if (error.Kind.ToString() != test.GetProperty("runtimeCategory").GetString()) throw new Exception("Wrong XML error category", error);
+        return;
+    }
+#endif
+#if FERRULE_X12_INPUT
+    catch (FerruleX12Exception error)
+    {
+        Console.WriteLine(JsonSerializer.Serialize(new { name = test.GetProperty("name").GetString(), boundary, stage = "input", category = error.Error.ToString(), error = error.ToString() }));
+        if (error.Error.ToString() != test.GetProperty("runtimeCategory").GetString()) throw new Exception("Wrong X12 error category", error);
+        return;
+    }
+#endif
+    throw new Exception("Invalid input reached mapping");
+}
+
+OracleControls();
+string source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "source-schema.json"));
+string target = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "target-schema.json"));
+string kind = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "input-kind.txt"));
+using var cases = JsonDocument.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "cases.json")));
+foreach (var test in cases.RootElement.EnumerateArray())
+{
+    string document = test.GetProperty("input").GetString()!;
+    FerruleInstance Text() => kind switch {
+#if FERRULE_XML_INPUT
+        "xml" => FerruleXml.ParseStructuredEmbedded(source, document),
+#endif
+#if FERRULE_X12_INPUT
+        "x12" => FerruleX12.ParseEmbedded(source, document),
+#endif
+        _ => throw new Exception("Unknown authored input cohort"),
+    };
+    FerruleInstance Bytes() => kind switch {
+#if FERRULE_XML_INPUT
+        "xml" => FerruleXml.ParseStructuredEmbeddedBytes(source, Encoding.UTF8.GetBytes(document)),
+#endif
+#if FERRULE_X12_INPUT
+        "x12" => FerruleX12.ParseEmbeddedBytes(source, Encoding.UTF8.GetBytes(document)),
+#endif
+        _ => throw new Exception("Unknown authored input cohort"),
+    };
+    if (test.TryGetProperty("reject", out var reject) && reject.GetBoolean())
+    {
+        if (test.GetProperty("stage").GetString() != "input") throw new Exception("Wrong expected error stage");
+        Refuses(() => Text(), test, "text");
+        Refuses(() => Bytes(), test, "utf8");
+        continue;
+    }
+    foreach (var (boundary, input) in new[] { ("text", Text()), ("utf8", Bytes()) })
+    {
+        string before = JsonSerializer.Serialize(Typed(input));
+        for (int attempt = 1; attempt <= 2; attempt++)
+        {
+            FerruleInstance output;
+            try { output = GeneratedMapping.Execute(input); }
+            catch (Exception error) { Console.Error.WriteLine(JsonSerializer.Serialize(new { name = test.GetProperty("name").GetString(), boundary, attempt, stage = "mapping", error = error.ToString() })); throw; }
+            Console.Error.WriteLine(JsonSerializer.Serialize(new { name = test.GetProperty("name").GetString(), boundary, attempt, typed = Typed(output) }));
+            string json = FerruleJson.SerializeEmbedded(target, output);
+#if FERRULE_XML_INPUT
+            string? xml = test.TryGetProperty("expectedXml", out var expectedXml)
+                ? FerruleXml.SerializeDocumentEmbedded(target, output, true, false, null, null) : null;
+#else
+            // Only XML-input cohorts declare XML output literals.
+            if (test.TryGetProperty("expectedXml", out _)) throw new Exception("XML output literal in a non-XML cohort");
+            string? xml = null;
+#endif
+            Console.WriteLine(JsonSerializer.Serialize(new { name = test.GetProperty("name").GetString(), boundary, attempt, stage = "mapping", output = JsonNode.Parse(json), xml }));
+            if (JsonSerializer.Serialize(Typed(input)) != before) throw new Exception("Caller input changed");
+            Verify(output, test.GetProperty("expected"));
+            if (!JsonNode.DeepEquals(JsonNode.Parse(json), JsonNode.Parse(test.GetProperty("expected").GetRawText()))) throw new Exception($"Whole output differs: {json}");
+#if FERRULE_XML_INPUT
+            if (xml is not null)
+            {
+                AssertXml(xml, expectedXml.GetString()!);
+                var actualTree = FerruleXml.ParseStructuredEmbedded(target, xml);
+                var expectedTree = FerruleXml.ParseStructuredEmbedded(target, expectedXml.GetString()!);
+                if (JsonSerializer.Serialize(Typed(actualTree)) != JsonSerializer.Serialize(Typed(expectedTree)) ||
+                    JsonSerializer.Serialize(Typed(actualTree)) != JsonSerializer.Serialize(Typed(output)))
+                    throw new Exception("Complete literal XML tree differs");
+            }
+#endif
+        }
+    }
+}
+Console.WriteLine($"filtered-count {kind} Release cases: {cases.RootElement.GetArrayLength()}");
