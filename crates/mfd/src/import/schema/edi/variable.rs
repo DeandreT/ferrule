@@ -9,7 +9,7 @@ pub(super) fn validate_parser_error_ports(
 ) -> Result<(), &'static str> {
     if ports.values().any(|path| {
         path.iter().any(|name| name.starts_with("ParserErrors_"))
-            && super::schema_node_at(schema, path).is_none()
+            && schema.descendant(path).is_none()
     }) {
         return Err("has parser-error ports absent from its compiled variable schema");
     }
