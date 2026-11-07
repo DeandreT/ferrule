@@ -52,7 +52,7 @@ class RoutingTests(unittest.TestCase):
     def test_primary_backup_overrides_and_forks(self):
         root = Path(__file__).resolve().parents[2]
         choices = ("", "auto", "cleo", "over", "github-hosted", "unknown", "AUTO", "Over")
-        for workflow, count in (("ci.yml", 2), ("codegen.yml", 1)):
+        for workflow, count in (("ci.yml", 2), ("codegen.yml", 2)):
             source = (root / ".github/workflows" / workflow).read_text()
             expressions = re.findall(r"^    runs-on: \$\{\{ (.+) \}\}$", source, re.M)
             self.assertEqual(len(expressions), count)
