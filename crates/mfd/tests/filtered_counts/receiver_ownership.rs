@@ -5,9 +5,6 @@ use std::path::{Path, PathBuf};
 use ir::{Instance, Value};
 use mapping::{AggregateOp, Node, NodeId, Project, Scope, ScopeIteration};
 
-#[path = "../declared_library_reconciliation/public_hosts/xml_tree.rs"]
-mod xml_tree;
-
 fn fixture(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/filtered-count-receivers")
@@ -230,7 +227,7 @@ fn whole_output(project: &Project, case: &serde_json::Value, order: usize) -> In
         serde_json::from_str(&format_json::to_string(&project.target, &output).unwrap()).unwrap();
     assert_eq!(json, case["expected"], "{}", case["name"]);
     let serialized = format_xml::to_string(&project.target, &output).unwrap();
-    xml_tree::assert_xml(&serialized, case["expectedXml"].as_str().unwrap());
+    super::hosts::assert_xml(&serialized, case["expectedXml"].as_str().unwrap());
     let expected_xml =
         format_xml::from_str(case["expectedXml"].as_str().unwrap(), &project.target).unwrap();
     let actual_xml = format_xml::from_str(&serialized, &project.target).unwrap();
