@@ -595,19 +595,19 @@ fn error(message: &str) -> MfdError {
     MfdError::Resource(message.into())
 }
 
-fn checked_path(path: &Path) -> Result<(), MfdError> {
+/// The path's UTF-8 text, after the shared length and NUL checks.
+fn checked_path(path: &Path) -> Result<&str, MfdError> {
     let Some(s) = path.to_str() else {
         return Err(error("binding paths must be UTF-8"));
     };
     if s.is_empty() || s.len() > MAX_PATH || s.contains('\0') {
         return Err(error("binding path is empty, oversized, or contains NUL"));
     }
-    Ok(())
+    Ok(s)
 }
 
 fn relative(path: &Path) -> Result<PathBuf, MfdError> {
-    checked_path(path)?;
-    let text = path.to_str().expect("checked UTF-8").replace('\\', "/");
+    let text = checked_path(path)?.replace('\\', "/");
     if text.contains(':') || text.starts_with('/') {
         return Err(error("binding target must be root-relative"));
     }
