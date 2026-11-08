@@ -186,7 +186,7 @@ impl SourcePlan {
                     "dynamic source field node {field_id} requires an ordinary JSON source component"
                 )));
             }
-            let owner_schema = schema_node_at(source.schema, owner).ok_or_else(|| {
+            let owner_schema = source.schema.descendant(owner).ok_or_else(|| {
                 MfdError::Unsupported(format!(
                     "dynamic source field node {field_id} references missing open object `{}`",
                     absolute.join("/")
@@ -602,10 +602,7 @@ fn build_root_target(
     };
     if root.construction != ScopeConstruction::Constructed
         || root.iteration_output != mapping::IterationOutput::Repeated
-        || root
-            .source()
-            .expect("legacy path after ownership boundary")
-            .is_none()
+        || crate::export::legacy_source(root)?.is_none()
         || root.sequence().is_some()
         || root.join().is_some()
         || root.filter.is_some()
@@ -627,10 +624,7 @@ fn build_root_target(
     let item_scope = &child.scope;
     if item_scope.construction != ScopeConstruction::Constructed
         || item_scope.iteration_output != mapping::IterationOutput::Repeated
-        || item_scope
-            .source()
-            .expect("legacy path after ownership boundary")
-            .is_none()
+        || crate::export::legacy_source(item_scope)?.is_none()
         || item_scope.sequence().is_some()
         || item_scope.join().is_some()
         || item_scope.filter.is_some()
@@ -677,9 +671,7 @@ fn build_root_target(
             "root computed array item values cannot repeat",
         ));
     }
-    let outer_source = root
-        .source()
-        .expect("legacy path after ownership boundary")
+    let outer_source = crate::export::legacy_source(root)?
         .unwrap_or_default()
         .to_vec();
     if sources.schema_node_at(&outer_source).is_none() {
@@ -691,9 +683,7 @@ fn build_root_target(
         outer_source.clone()
     };
     item_source.extend(
-        item_scope
-            .source()
-            .expect("legacy path after ownership boundary")
+        crate::export::legacy_source(item_scope)?
             .unwrap_or_default()
             .iter()
             .cloned(),
@@ -736,10 +726,7 @@ fn collect_nested_targets(
     anchor: &[String],
     targets: &mut Vec<NestedTarget>,
 ) -> Result<(), MfdError> {
-    let current_anchor = if let Some(source) = scope
-        .source()
-        .expect("legacy path after ownership boundary")
-    {
+    let current_anchor = if let Some(source) = crate::export::legacy_source(scope)? {
         if sources.is_named_extra_path(source) {
             source.to_vec()
         } else {
@@ -809,7 +796,7 @@ fn collect_nested_targets(
                 ));
             }
         };
-        let owner_schema = schema_node_at(schema, path).ok_or_else(|| {
+        let owner_schema = schema.descendant(path).ok_or_else(|| {
             dynamic_target_error("nested computed property owner is missing from the target schema")
         })?;
         let Some(value_schema) = owner_schema.dynamic_fields() else {
@@ -973,14 +960,6 @@ fn dynamic_target_error(reason: &str) -> MfdError {
     MfdError::Unsupported(format!(
         "computed JSON property mapping is not exportable: {reason}"
     ))
-}
-
-fn schema_node_at<'a>(schema: &'a SchemaNode, path: &[String]) -> Option<&'a SchemaNode> {
-    let mut current = schema;
-    for segment in path {
-        current = current.child(segment)?;
-    }
-    Some(current)
 }
 
 fn render_root_target_entries(root: &RootTarget, indent: usize) -> String {

@@ -41,7 +41,7 @@ pub use error::{
 };
 pub use owned_sources::{
     OwnedDynamicLoading, is_basic_owned_primary_row_failure, owned_dynamic_loading,
-    owned_expression_emission_error, owned_sequence_emission_error,
+    owned_expression_emission_error, owned_sequence_emission_error, unrendered_iteration,
     validate_basic_owned_emission_with_capabilities, validate_owned_emission,
 };
 use sources::{SchemaCursor, SourceCatalog};
@@ -370,7 +370,7 @@ fn follow_schema_from<'a>(
     let mut current = current;
     for segment in path {
         if let Some(anchor) = &current.recursive_ref {
-            current = find_concrete_schema_group(root, anchor)?;
+            current = root.find_concrete_group(anchor)?;
         }
         current = current.child(segment)?;
     }
@@ -383,21 +383,6 @@ fn scalar_target_domain(schema: &SchemaNode) -> Option<ScalarTargetDomain> {
         SchemaKind::ScalarUnion { types } => Some(ScalarTargetDomain::Union(types)),
         SchemaKind::Group { .. } => None,
     }
-}
-
-fn find_concrete_schema_group<'a>(current: &'a SchemaNode, anchor: &str) -> Option<&'a SchemaNode> {
-    if current.recursive_ref.is_none()
-        && current.name == anchor
-        && matches!(current.kind, SchemaKind::Group { .. })
-    {
-        return Some(current);
-    }
-    let SchemaKind::Group { children, .. } = &current.kind else {
-        return None;
-    };
-    children
-        .iter()
-        .find_map(|child| find_concrete_schema_group(child, anchor))
 }
 
 #[derive(Clone, Copy)]

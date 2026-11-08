@@ -7,7 +7,7 @@ fn rendered(project: &Project) -> (String, String, String) {
     let plan = RootTypeViewPlan::build(project, 211, 307).unwrap().unwrap();
     let allocated = plan.allocate(&mut KeyAlloc { next: 1001 }).unwrap();
     (
-        render::mapping_xml(project, &plan, &allocated, "source.xsd", "target.xsd"),
+        render::mapping_xml(project, &plan, &allocated, "source.xsd", "target.xsd").unwrap(),
         format_xml::xsd::export(&project.source).unwrap(),
         format_xml::xsd::export(&project.target).unwrap(),
     )

@@ -56,7 +56,7 @@ pub(super) fn validate(project: &Project) -> Result<(), MfdError> {
                 "secondary-source failures cannot own native exception filters",
             ));
         }
-        let matches = matching_scopes(project, collection, predicate);
+        let matches = matching_scopes(project, collection, predicate)?;
         if matches != 1 {
             return Err(unsupported_rule(
                 index,
@@ -73,18 +73,18 @@ pub(super) fn validate(project: &Project) -> Result<(), MfdError> {
 /// Omit only a complementary negation whose sole use becomes a native filter
 /// branch. Keep every other graph consumer, even a disconnected one, intact.
 /// Called after preflight has validated the original, unchanged project.
-pub(super) fn absorbed_filter_nodes(project: &Project) -> BTreeSet<NodeId> {
+pub(super) fn absorbed_filter_nodes(project: &Project) -> Result<BTreeSet<NodeId>, MfdError> {
     let [rule] = project.failure_rules.as_slice() else {
-        return BTreeSet::new();
+        return Ok(BTreeSet::new());
     };
     let (FailureIteration::Source { collection }, FailureSelection::WhenTrue { predicate }) =
         (&rule.iteration, rule.selection)
     else {
-        return BTreeSet::new();
+        return Ok(BTreeSet::new());
     };
-    let filters = complementary_filters(project, collection, predicate);
+    let filters = complementary_filters(project, collection, predicate)?;
     let [filter] = filters.as_slice() else {
-        return BTreeSet::new();
+        return Ok(BTreeSet::new());
     };
     if project
         .graph
@@ -97,7 +97,7 @@ pub(super) fn absorbed_filter_nodes(project: &Project) -> BTreeSet<NodeId> {
             .chain(project.extra_targets.iter().map(|target| &target.options))
             .any(|options| options.mfd_decimal_input_names.contains_key(filter))
     {
-        return BTreeSet::new();
+        return Ok(BTreeSet::new());
     }
     // The existing project-root traversal covers scalar bindings, every scope
     // control, failure predicates/messages, and dynamic source path expressions.
@@ -110,14 +110,14 @@ pub(super) fn absorbed_filter_nodes(project: &Project) -> BTreeSet<NodeId> {
             .map(|target| clear_filter_references(&mut target.root, *filter))
             .sum::<usize>();
     if uses != 1 {
-        return BTreeSet::new();
+        return Ok(BTreeSet::new());
     }
     ordinary.prune_unreachable_nodes();
-    if ordinary.graph.nodes.contains_key(filter) {
+    Ok(if ordinary.graph.nodes.contains_key(filter) {
         BTreeSet::new()
     } else {
         BTreeSet::from([*filter])
-    }
+    })
 }
 
 fn clear_filter_references(scope: &mut Scope, filter: NodeId) -> usize {
@@ -182,7 +182,7 @@ fn validate_true_branch(
             "when-true failures require an exact repeating primary-source schema path",
         ));
     }
-    let matches = complementary_filters(project, collection, predicate).len();
+    let matches = complementary_filters(project, collection, predicate)?.len();
     if matches != 1 {
         return Err(unsupported_rule(
             index,
@@ -199,7 +199,7 @@ fn complementary_filters(
     project: &Project,
     collection: &[String],
     predicate: NodeId,
-) -> Vec<NodeId> {
+) -> Result<Vec<NodeId>, MfdError> {
     let mut filters = Vec::new();
     for root in std::iter::once(&project.root)
         .chain(project.extra_targets.iter().map(|target| &target.root))
@@ -212,9 +212,9 @@ fn complementary_filters(
             &project.graph,
             true,
             &mut filters,
-        );
+        )?;
     }
-    filters
+    Ok(filters)
 }
 
 fn collect_complementary_filters(
@@ -225,18 +225,16 @@ fn collect_complementary_filters(
     graph: &Graph,
     ancestors_preserve_items: bool,
     filters: &mut Vec<NodeId>,
-) {
+) -> Result<(), MfdError> {
     if scope.concatenated().is_some() {
-        return;
+        return Ok(());
     }
-    let collection = scope
-        .source()
-        .expect("legacy path after ownership boundary")
-        .map(|source| {
-            let mut collection = parent_collection.to_vec();
-            collection.extend(source.iter().cloned());
-            collection
-        });
+    let source = crate::export::legacy_source(scope)?;
+    let collection = source.map(|source| {
+        let mut collection = parent_collection.to_vec();
+        collection.extend(source.iter().cloned());
+        collection
+    });
     let current = collection.as_deref().unwrap_or(parent_collection);
     let plain = scope.construction == ScopeConstruction::Constructed
         && matches!(
@@ -255,10 +253,7 @@ fn collect_complementary_filters(
         && scope.dynamic_bindings.is_empty()
         && scope.dynamic_children.is_empty()
         && !scope.merge_dynamic_fields;
-    if scope
-        .source()
-        .expect("legacy path after ownership boundary")
-        .is_some()
+    if source.is_some()
         && ancestors_preserve_items
         && plain
         && current == expected_collection
@@ -278,8 +273,9 @@ fn collect_complementary_filters(
             graph,
             descendants_preserve_items,
             filters,
-        );
+        )?;
     }
+    Ok(())
 }
 
 fn validate_node(
@@ -309,7 +305,11 @@ fn display_collection(collection: &[String]) -> String {
     }
 }
 
-fn matching_scopes(project: &Project, collection: &[String], predicate: NodeId) -> usize {
+fn matching_scopes(
+    project: &Project,
+    collection: &[String],
+    predicate: NodeId,
+) -> Result<usize, MfdError> {
     std::iter::once(&project.root)
         .chain(project.extra_targets.iter().map(|target| &target.root))
         .map(|root| count_scope_matches(root, &[], collection, predicate, true))
@@ -322,7 +322,7 @@ fn count_scope_matches(
     expected_collection: &[String],
     predicate: NodeId,
     ancestors_preserve_items: bool,
-) -> usize {
+) -> Result<usize, MfdError> {
     if let Some(segments) = scope.concatenated() {
         return segments
             .iter()
@@ -337,9 +337,7 @@ fn count_scope_matches(
             })
             .sum();
     }
-    let explicit_source = scope
-        .source()
-        .expect("legacy path after ownership boundary");
+    let explicit_source = crate::export::legacy_source(scope)?;
     let collection = explicit_source.map(|source| {
         let mut collection = parent_collection.to_vec();
         collection.extend(source.iter().cloned());
@@ -356,7 +354,7 @@ fn count_scope_matches(
             && filter_precedes_sort,
     );
     let descendants_preserve_items = ancestors_preserve_items && preserves_descendant_items(scope);
-    own_match
+    Ok(own_match
         + scope
             .children
             .iter()
@@ -369,7 +367,7 @@ fn count_scope_matches(
                     descendants_preserve_items,
                 )
             })
-            .sum::<usize>()
+            .sum::<Result<usize, MfdError>>()?)
 }
 
 fn preserves_descendant_items(scope: &Scope) -> bool {
@@ -411,7 +409,7 @@ pub(super) struct RenderArgs<'a> {
 }
 
 impl Branches {
-    pub(super) fn new(project: &Project) -> Self {
+    pub(super) fn new(project: &Project) -> Result<Self, MfdError> {
         let mut by_key = BTreeMap::<BranchKey, Vec<usize>>::new();
         let mut true_predicates = BTreeMap::new();
         let mut sinks = Vec::with_capacity(project.failure_rules.len());
@@ -431,7 +429,7 @@ impl Branches {
                 FailureSelection::WhenTrue { predicate },
             ) = (&rule.iteration, rule.selection)
             {
-                for filter in complementary_filters(project, collection, predicate) {
+                for filter in complementary_filters(project, collection, predicate)? {
                     let key = (collection.clone(), filter);
                     by_key.entry(key.clone()).or_default().push(index);
                     true_predicates.insert(key, predicate);
@@ -443,11 +441,11 @@ impl Branches {
                 trigger_output: None,
             });
         }
-        Self {
+        Ok(Self {
             by_key,
             true_predicates,
             sinks,
-        }
+        })
     }
 
     pub(super) fn filter_predicate(&self, collection: &[String], filter: NodeId) -> NodeId {

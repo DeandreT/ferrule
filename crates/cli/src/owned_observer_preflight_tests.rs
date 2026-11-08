@@ -444,7 +444,7 @@ fn basic_observers_execute_payload_file_and_stdio_routes_without_bypassing_input
         std::fs::remove_file(path)?;
         std::fs::remove_file(input)?;
         std::fs::remove_file(output)?;
-        std::fs::remove_dir(directory)?;
+        directory.remove_empty()?;
     }
     Ok(())
 }
@@ -490,7 +490,7 @@ fn file_unsupported_observer_profile_precedes_input_and_publication() -> anyhow:
     }
     std::fs::remove_file(input)?;
     std::fs::remove_file(output)?;
-    std::fs::remove_dir(directory)?;
+    directory.remove_empty()?;
     Ok(())
 }
 
@@ -530,7 +530,7 @@ fn stdio_unsupported_trace_profile_leaves_input_unread_and_retains_output_policy
         assert_eq!(observers.0.get(), 0);
     }
     std::fs::remove_file(path)?;
-    std::fs::remove_dir(directory)?;
+    directory.remove_empty()?;
     Ok(())
 }
 
@@ -613,7 +613,7 @@ fn file_pipeline_refuses_later_unpublished_owned_target_before_earlier_callbacks
     std::fs::remove_file(path)?;
     std::fs::remove_file(input)?;
     std::fs::remove_file(output)?;
-    std::fs::remove_dir(directory)?;
+    directory.remove_empty()?;
     Ok(())
 }
 
