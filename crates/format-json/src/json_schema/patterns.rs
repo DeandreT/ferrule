@@ -1,6 +1,6 @@
 use ir::{JsonPatternConstraints, JsonPatternConstraintsError, ScalarType, SchemaKind, SchemaNode};
 
-use super::unsupported_union;
+use super::{json_schema_type_name, unsupported_union};
 use crate::JsonFormatError;
 
 pub(super) fn has_keyword(schema: &serde_json::Value) -> bool {
@@ -208,7 +208,7 @@ pub(super) fn render(
         SchemaKind::ScalarUnion { types } => {
             for ty in [ScalarType::Int, ScalarType::Float, ScalarType::Bool] {
                 if types.contains(ty) {
-                    branches.push(serde_json::json!({ "type": scalar_type_name(ty) }));
+                    branches.push(serde_json::json!({ "type": json_schema_type_name(ty) }));
                 }
             }
         }
@@ -223,15 +223,6 @@ pub(super) fn render(
         serde_json::Value::Object(branch)
     }));
     out.insert("anyOf".into(), branches.into());
-}
-
-fn scalar_type_name(ty: ScalarType) -> &'static str {
-    match ty {
-        ScalarType::String => "string",
-        ScalarType::Int => "integer",
-        ScalarType::Float => "number",
-        ScalarType::Bool => "boolean",
-    }
 }
 
 fn render_conjunction(terms: &[String], out: &mut serde_json::Map<String, serde_json::Value>) {

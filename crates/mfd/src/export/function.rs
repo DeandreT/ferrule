@@ -35,15 +35,6 @@ pub(super) fn value_text(value: &Value) -> String {
     constant_parts(value).0
 }
 
-pub(super) fn scalar_type_name(ty: ScalarType) -> &'static str {
-    match ty {
-        ScalarType::String => "string",
-        ScalarType::Int => "integer",
-        ScalarType::Float => "decimal",
-        ScalarType::Bool => "boolean",
-    }
-}
-
 pub(super) fn value_scalar_type(value: &Value) -> Option<ScalarType> {
     match value {
         Value::Null | Value::JsonNull(_) | Value::XmlNil(_) | Value::Decimal(_) => None,
