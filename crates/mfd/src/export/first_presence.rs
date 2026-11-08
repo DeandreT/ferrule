@@ -33,7 +33,7 @@ impl Plan {
         graph: &Graph,
         sources: &SourceExports<'_>,
         targets: &[TargetExport<'_>],
-    ) -> Self {
+    ) -> Result<Self, MfdError> {
         let mut plan = Self {
             requests: Vec::new(),
             issues: Vec::new(),
@@ -50,9 +50,9 @@ impl Plan {
                 &mut Vec::new(),
                 &[],
                 None,
-            );
+            )?;
         }
-        plan
+        Ok(plan)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -65,20 +65,18 @@ impl Plan {
         path: &mut Vec<String>,
         anchor: &[String],
         parent: Option<(&Scope, &[String])>,
-    ) {
-        let collection = scope
-            .source()
-            .expect("legacy path after ownership boundary")
-            .map_or_else(
-                || anchor.to_vec(),
-                |source| {
-                    if sources.is_named_extra_path(source) {
-                        source.to_vec()
-                    } else {
-                        sources.resolve_scope_path(anchor, source).0
-                    }
-                },
-            );
+    ) -> Result<(), MfdError> {
+        let scope_source = crate::export::legacy_source(scope)?;
+        let collection = scope_source.map_or_else(
+            || anchor.to_vec(),
+            |source| {
+                if sources.is_named_extra_path(source) {
+                    source.to_vec()
+                } else {
+                    sources.resolve_scope_path(anchor, source).0
+                }
+            },
+        );
         if scope.iteration_output == IterationOutput::First {
             let label = if path.is_empty() {
                 "<root>".into()
@@ -93,22 +91,20 @@ impl Plan {
                     "first-item scope `{label}` has no qualified construction for a present empty group"
                 ),
             };
+            let parent_scope_source = parent
+                .map(|(parent, _)| crate::export::legacy_source(parent))
+                .transpose()?
+                .flatten();
             let qualified = (|| {
                 if path.is_empty()
-                    || scope
-                        .source()
-                        .expect("legacy path after ownership boundary")
-                        .is_none()
+                    || scope_source.is_none()
                     || scope.construction != ScopeConstruction::Constructed
                     || !scope.children.is_empty()
                 {
                     return None;
                 }
                 let (parent, parent_collection) = parent?;
-                if parent
-                    .source()
-                    .expect("legacy path after ownership boundary")
-                    .is_none()
+                if parent_scope_source.is_none()
                     || parent.construction != ScopeConstruction::Constructed
                     || parent.iteration_output != IterationOutput::Repeated
                     || parent.filter.is_some()
@@ -162,10 +158,7 @@ impl Plan {
                         Node::Position {
                             collection: position_collection,
                         } if position_collection == &collection
-                            || scope
-                                .source()
-                                .expect("legacy path after ownership boundary")
-                                == Some(position_collection.as_slice()) =>
+                            || scope_source == Some(position_collection.as_slice()) =>
                         {
                             position = true;
                             fields.push((port, None));
@@ -176,10 +169,7 @@ impl Plan {
                             {
                                 &path[0]
                             } else if frame.is_none()
-                                && scope
-                                    .source()
-                                    .expect("legacy path after ownership boundary")
-                                    == Some(collection.as_slice())
+                                && scope_source == Some(collection.as_slice())
                                 && path.len() == collection.len() + 1
                                 && path.starts_with(&collection)
                             {
@@ -247,7 +237,7 @@ impl Plan {
         }
         if let Some(segments) = scope.concatenated() {
             for segment in segments.iter() {
-                self.collect(graph, sources, target, segment, path, anchor, None);
+                self.collect(graph, sources, target, segment, path, anchor, None)?;
             }
         }
         for child in &scope.children {
@@ -260,9 +250,10 @@ impl Plan {
                 path,
                 &collection,
                 Some((scope, &collection)),
-            );
+            )?;
             path.pop();
         }
+        Ok(())
     }
 
     pub(super) fn rewrite(

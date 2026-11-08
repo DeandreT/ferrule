@@ -134,7 +134,8 @@ fn read_candidate(args: &[NodeId], graph: &Graph) -> Result<Candidate, String> {
         ));
     }
     let schema = layout.schema();
-    let field = schema_node_at(&schema, &path)
+    let field = schema
+        .descendant(&path)
         .ok_or_else(|| format!("field path `{}` is absent from its layout", path.join("/")))?;
     if !matches!(field.kind, SchemaKind::Scalar { .. }) {
         return Err(format!("field path `{}` is not scalar", path.join("/")));
@@ -377,11 +378,6 @@ fn literal_string<'a>(graph: &'a Graph, node: NodeId, label: &str) -> Result<&'a
         ));
     };
     Ok(value)
-}
-
-fn schema_node_at<'a>(schema: &'a SchemaNode, path: &[String]) -> Option<&'a SchemaNode> {
-    path.iter()
-        .try_fold(schema, |node, segment| node.child(segment))
 }
 
 fn scalar_type(ty: ScalarType) -> &'static str {
