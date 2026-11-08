@@ -13,32 +13,19 @@ pub(super) struct Syntax {
 }
 
 impl Syntax {
-    pub(super) fn selected(value: &Json, version: &str) -> Result<Option<Self>, X12BoundaryError> {
-        if value.is_null() {
+    pub(super) fn selected(
+        value: Option<X12DescriptorSeparators>,
+        version: &str,
+    ) -> Result<Option<Self>, X12BoundaryError> {
+        let Some(value) = value else {
             return Ok(None);
-        }
-        let character = |name: &str| {
-            let text = value[name]
-                .as_str()
-                .ok_or_else(|| descriptor("invalid separator"))?;
-            let mut chars = text.chars();
-            let value = chars.next().ok_or_else(|| descriptor("empty separator"))?;
-            if chars.next().is_some() {
-                return Err(descriptor("separator must be one character"));
-            }
-            Ok(value)
         };
+        // ISA11 is a repetition separator only after 004010.
         let syntax = Self {
-            element: character("element")?,
-            component: character("component")?,
-            segment: character("segment")?,
-            repetition: if version == "00401" {
-                None
-            } else if value.get("repetition").is_some() {
-                Some(character("repetition")?)
-            } else {
-                None
-            },
+            element: value.element,
+            component: value.component,
+            segment: value.segment,
+            repetition: value.repetition.filter(|_| version != "00401"),
         };
         syntax.check()?;
         Ok(Some(syntax))

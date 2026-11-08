@@ -13,6 +13,7 @@ use super::position::connect_scope_position_roots;
 use super::schema::{KeyAlloc, PortTree};
 use super::scoped_exception::Branches as ScopedExceptionBranches;
 use super::source::SourceExports;
+use crate::MfdError;
 
 pub(super) struct ConnectArgs<'a> {
     pub(super) scope: &'a Scope,
@@ -36,7 +37,7 @@ pub(super) struct ConnectArgs<'a> {
     pub(super) scoped_exception_branches: &'a mut ScopedExceptionBranches,
 }
 
-pub(super) fn connect(args: ConnectArgs<'_>) {
+pub(super) fn connect(args: ConnectArgs<'_>) -> Result<(), MfdError> {
     let ConnectArgs {
         scope,
         sources,
@@ -82,7 +83,7 @@ pub(super) fn connect(args: ConnectArgs<'_>) {
         exception_branches,
         scoped_exception_branches,
         None,
-    );
+    )
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -817,7 +818,7 @@ fn collect_scope_edges(
     exception_branches: &mut ExceptionBranches,
     scoped_exception_branches: &mut ScopedExceptionBranches,
     target_branch: Option<(&[String], usize)>,
-) {
+) -> Result<(), MfdError> {
     if let Some(segments) = scope.concatenated() {
         let branch_root = chain.clone();
         let parent_anchor = anchor.clone();
@@ -847,21 +848,17 @@ fn collect_scope_edges(
                 exception_branches,
                 scoped_exception_branches,
                 Some((&branch_root, index)),
-            );
+            )?;
         }
         anchor.clone_from(&parent_anchor);
-        return;
+        return Ok(());
     }
+    let scope_source = crate::export::legacy_source(scope)?;
     let mapped_plan = mapped_scope_plans.get(chain, target_branch.map(|(_, index)| index));
     let suppress_mapped_bindings =
         suppress_mapped_bindings || mapped_plan.is_some_and(|plan| plan.copy_all());
     let anchor_len = anchor.len();
-    if scope.construction == ScopeConstruction::CopyCurrentSource
-        && scope
-            .source()
-            .expect("legacy path after ownership boundary")
-            .is_none()
-    {
+    if scope.construction == ScopeConstruction::CopyCurrentSource && scope_source.is_none() {
         match (
             sources.key_for_abs(anchor),
             target_key(target_ports, target_branches, target_branch, chain),
@@ -981,10 +978,7 @@ fn collect_scope_edges(
                 )),
             }
         }
-    } else if scope
-        .source()
-        .expect("legacy path after ownership boundary")
-        .is_some()
+    } else if scope_source.is_some()
         && chain.is_empty()
         && !target_root_iterable
         && scope.iteration_output != mapping::IterationOutput::First
@@ -995,20 +989,14 @@ fn collect_scope_edges(
                  shaped in native .mfd terms; the iteration wire is skipped"
                     .to_string(),
             );
-        } else if let Some(source) = scope
-            .source()
-            .expect("legacy path after ownership boundary")
-        {
+        } else if let Some(source) = scope_source {
             if sources.is_named_extra_path(source) {
                 anchor.clone_from(&source.to_vec());
             } else {
                 anchor.extend(source.iter().cloned());
             }
         }
-    } else if let Some(source) = scope
-        .source()
-        .expect("legacy path after ownership boundary")
-    {
+    } else if let Some(source) = scope_source {
         let mapped_source =
             mapped_plan.and_then(|plan| plan.source().map(|(collection, _)| collection.to_vec()));
         let named_extra_path = sources.is_named_extra_path(source);
@@ -1157,10 +1145,11 @@ fn collect_scope_edges(
             exception_branches,
             scoped_exception_branches,
             target_branch,
-        );
+        )?;
         chain.pop();
     }
     anchor.truncate(anchor_len);
+    Ok(())
 }
 
 fn target_key(
