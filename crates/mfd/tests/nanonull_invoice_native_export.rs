@@ -2,34 +2,14 @@
 mod private_corpus;
 
 use std::error::Error;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::path::Path;
 
 use ir::Instance;
 use mapping::Project;
 
 const FIXED_TIME: &str = "2026-09-29T12:00:00-07:00";
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Result<Self, std::io::Error> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_nanonull_invoice_native_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn mapped_json(project: &Project, source: &Instance) -> Result<(Instance, String), Box<dyn Error>> {
     // Use one logical project identity and clock value across all export cycles.
@@ -56,16 +36,16 @@ fn nanonull_invoice_native_roundtrip_preserves_pdf_and_json() -> Result<(), Box<
         format_pdf::read(&pdf, imported.project.source_options.pdf.as_ref().unwrap())?;
     let (baseline_output, baseline_json) = mapped_json(&imported.project, &baseline_source)?;
 
-    let temp = TempDir::new()?;
+    let temp = TempDir::new("nanonull_invoice_native")?;
     let mut current = imported.project;
     for cycle in 0..2 {
-        let exported = temp.0.join(format!("nanonull-{cycle}.mfd"));
+        let exported = temp.path().join(format!("nanonull-{cycle}.mfd"));
         let report = mfd::preflight_export(&current, &exported)?;
         assert!(report.is_native_compatible(), "{report}");
         mfd::export_with_profile(&current, &exported, mfd::ExportProfile::NativeMfd)?;
 
         let template =
-            std::fs::read_to_string(temp.0.join(format!("nanonull-{cycle}-source.pxt")))?;
+            std::fs::read_to_string(temp.path().join(format!("nanonull-{cycle}-source.pxt")))?;
         assert!(template.contains("<BoundaryFindVertical"));
         assert!(template.contains("<HorizontalAnchorAssignment"));
         assert!(template.contains("<Splitter"));

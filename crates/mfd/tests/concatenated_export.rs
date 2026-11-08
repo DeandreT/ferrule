@@ -1,34 +1,12 @@
 use std::collections::BTreeMap;
 use std::error::Error;
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{GroupAlternative, Instance, ScalarType, SchemaKind, SchemaNode, Value, XML_TYPE_FIELD};
 use mapping::{
     Binding, Graph, IterationOutput, Node, Project, Scope, ScopeIteration, ScopeSequence,
 };
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> std::io::Result<Self> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_concatenated_export_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn source_schema() -> SchemaNode {
     SchemaNode::group(
@@ -724,8 +702,8 @@ fn conditioned_repeating_filter_project() -> Project {
 }
 
 fn export_import(project: &Project) -> Result<Project, Box<dyn Error>> {
-    let dir = TempDir::new()?;
-    let design = dir.0.join("mapping.mfd");
+    let dir = TempDir::new("mfd_concatenated_export")?;
+    let design = dir.path().join("mapping.mfd");
     let warnings = mfd::export(project, &design)?;
     assert!(warnings.is_empty(), "{warnings:?}");
     let imported = mfd::import(&design)?;
@@ -780,8 +758,8 @@ fn csv_singleton_and_repeated_rows_roundtrip_in_order() -> Result<(), Box<dyn Er
 
 #[test]
 fn csv_rejects_multiple_repeated_segments_before_writing() -> Result<(), Box<dyn Error>> {
-    let dir = TempDir::new()?;
-    let design = dir.0.join("mapping.mfd");
+    let dir = TempDir::new("mfd_concatenated_export")?;
+    let design = dir.path().join("mapping.mfd");
     std::fs::write(&design, "keep")?;
     let mut project = csv_project();
     project.root.iteration = ScopeIteration::Concatenate(ScopeSequence::new(
@@ -899,8 +877,8 @@ fn conditioned_source_type_filters_roundtrip_on_repeating_parents() -> Result<()
 #[test]
 fn concatenation_container_rejects_secondary_only_sort_before_writing() -> Result<(), Box<dyn Error>>
 {
-    let dir = TempDir::new()?;
-    let design = dir.0.join("mapping.mfd");
+    let dir = TempDir::new("mfd_concatenated_export")?;
+    let design = dir.path().join("mapping.mfd");
     std::fs::write(&design, "keep")?;
     let mut project = xml_project();
     project.root.children[0].sort_then_by = vec![mapping::SortKey {

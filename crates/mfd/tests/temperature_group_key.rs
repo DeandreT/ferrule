@@ -4,8 +4,6 @@ use mapping::{
     Node, NodeId, Project, Scope, ScopeIteration, UserFunction,
 };
 use std::collections::BTreeMap;
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
 fn insert(nodes: &mut BTreeMap<NodeId, Node>, node: Node) -> NodeId {
     let id = nodes.keys().next_back().copied().unwrap_or(0) + 1;
     nodes.insert(id, node);
@@ -207,24 +205,9 @@ impl ChildMut for SchemaNode {
         }
     }
 }
-struct Directory(PathBuf);
-impl Directory {
-    fn new() -> Self {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_temperature_group_key_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir(&path).unwrap();
-        Self(path)
-    }
-}
-impl Drop for Directory {
-    fn drop(&mut self) {
-        std::fs::remove_dir_all(&self.0).unwrap();
-    }
-}
+
+use test_support::TempDir as Directory;
+
 fn required(project: &mut Project, mask: u8) {
     let source = project.source.child_mut("data").unwrap();
     for (bit, name) in [(1, "temp"), (2, "month"), (4, "desc")] {
@@ -323,11 +306,11 @@ fn wire(xml: &str) -> (u32, u32, u32, u32) {
 }
 #[test]
 fn exact_matched_group_key_and_required_metadata_survive_two_public_roundtrips() {
-    let dir = Directory::new();
+    let dir = Directory::new("temperature_group_key").unwrap();
     for mask in 0..16 {
         let mut p = project();
         required(&mut p, mask);
-        let folder = dir.0.join(format!("mask-{mask}"));
+        let folder = dir.path().join(format!("mask-{mask}"));
         std::fs::create_dir(&folder).unwrap();
         for pass in 0..2 {
             let path = folder.join(format!("pass-{pass}.mfd"));
@@ -350,10 +333,10 @@ fn exact_matched_group_key_and_required_metadata_survive_two_public_roundtrips()
 }
 #[test]
 fn same_distinct_multiple_groups_and_empty_input_keep_exact_authored_results() {
-    let dir = Directory::new();
+    let dir = Directory::new("temperature_group_key").unwrap();
     let mut p = project();
     required(&mut p, 11);
-    let path = dir.0.join("mapping.mfd");
+    let path = dir.path().join("mapping.mfd");
     mfd::export_with_profile(&p, &path, mfd::ExportProfile::NativeMfd).unwrap();
     wire(&std::fs::read_to_string(&path).unwrap());
     let r = mfd::import_with_profile(
@@ -363,14 +346,14 @@ fn same_distinct_multiple_groups_and_empty_input_keep_exact_authored_results() {
     )
     .unwrap();
     for (i,xml) in ["<Temperatures><data temp=\"0\" month=\"2026-01\"/><data temp=\"10\" month=\"2026-02\"/></Temperatures>","<Temperatures><data temp=\"0\" month=\"2026-01\"/><data temp=\"10\" month=\"2027-02\"/></Temperatures>","<Temperatures><data temp=\"0\" month=\"2026-01\"/><data temp=\"10\" month=\"2026-02\"/><data temp=\"-10\" month=\"2027-01\"/><data temp=\"20\" month=\"2027-02\"/></Temperatures>","<Temperatures/>"] .into_iter().enumerate(){
-        let inputpath=dir.0.join(format!("input-{i}.xml"));std::fs::write(&inputpath,xml).unwrap();let input=format_xml::read(&inputpath,&p.source).unwrap();let before=engine::run(&p,&input).unwrap();let after=engine::run(&r.imported.project,&input).unwrap();let a=dir.0.join("expected.xml");let b=dir.0.join("replayed.xml");format_xml::write(&a,&p.target,&before).unwrap();format_xml::write(&b,&r.imported.project.target,&after).unwrap();assert_eq!(std::fs::read(a).unwrap(),std::fs::read(b).unwrap());
+        let inputpath=dir.path().join(format!("input-{i}.xml"));std::fs::write(&inputpath,xml).unwrap();let input=format_xml::read(&inputpath,&p.source).unwrap();let before=engine::run(&p,&input).unwrap();let after=engine::run(&r.imported.project,&input).unwrap();let a=dir.path().join("expected.xml");let b=dir.path().join("replayed.xml");format_xml::write(&a,&p.target,&before).unwrap();format_xml::write(&b,&r.imported.project.target,&after).unwrap();assert_eq!(std::fs::read(a).unwrap(),std::fs::read(b).unwrap());
     }
 }
 #[test]
 fn absent_month_retains_typed_engine_failure_and_no_fake_output_claim() {
-    let dir = Directory::new();
+    let dir = Directory::new("temperature_group_key").unwrap();
     let p = project();
-    let path = dir.0.join("mapping.mfd");
+    let path = dir.path().join("mapping.mfd");
     mfd::export_with_profile(&p, &path, mfd::ExportProfile::NativeMfd).unwrap();
     let r = mfd::import_with_profile(
         &path,
@@ -378,7 +361,7 @@ fn absent_month_retains_typed_engine_failure_and_no_fake_output_claim() {
         mfd::ImportProfile::Executable,
     )
     .unwrap();
-    let inputpath = dir.0.join("input.xml");
+    let inputpath = dir.path().join("input.xml");
     std::fs::write(
         &inputpath,
         "<Temperatures><data temp=\"0\"/></Temperatures>",
@@ -392,7 +375,7 @@ fn absent_month_retains_typed_engine_failure_and_no_fake_output_claim() {
 }
 #[test]
 fn unqualified_generic_grouping_and_context_sensitive_changes_are_not_rewritten() {
-    let dir = Directory::new();
+    let dir = Directory::new("temperature_group_key").unwrap();
     for i in 0..3 {
         let mut p = project();
         let group = p.root.children[0].group_by.unwrap();
@@ -412,7 +395,7 @@ fn unqualified_generic_grouping_and_context_sensitive_changes_are_not_rewritten(
                 p.root.children[0].sort_by = Some(group);
             }
         }
-        let path = dir.0.join(format!("rejected-{i}/mapping.mfd"));
+        let path = dir.path().join(format!("rejected-{i}/mapping.mfd"));
         let report = mfd::preflight_export(&p, &path).unwrap();
         assert!(!report.is_native_compatible());
         assert!(mfd::export_with_profile(&p, &path, mfd::ExportProfile::NativeMfd).is_err());
@@ -432,7 +415,7 @@ fn unqualified_generic_grouping_and_context_sensitive_changes_are_not_rewritten(
         target_field: "Year".into(),
         node: 0,
     }];
-    let path = dir.0.join("ordinary.mfd");
+    let path = dir.path().join("ordinary.mfd");
     mfd::export(&p, &path).unwrap();
     let xml = std::fs::read_to_string(path).unwrap();
     let doc = roxmltree::Document::parse(&xml).unwrap();

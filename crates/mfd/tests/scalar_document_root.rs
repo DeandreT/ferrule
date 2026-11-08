@@ -1,6 +1,5 @@
 use std::error::Error;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{Instance, Value};
 use mfd::{ImportOptions, ImportProfile, MfdError};
@@ -34,31 +33,10 @@ fn record_import(
     )
 }
 /// Removes the per-test directory on drop, including after a panic.
-struct TempDir(PathBuf);
-
-impl std::ops::Deref for TempDir {
-    type Target = Path;
-
-    fn deref(&self) -> &Path {
-        &self.0
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn package() -> Result<TempDir, Box<dyn Error>> {
-    static NEXT: AtomicUsize = AtomicUsize::new(0);
-    let root = std::env::temp_dir().join(format!(
-        "ferrule_scalar_root339_native_{}_{}",
-        std::process::id(),
-        NEXT.fetch_add(1, Ordering::Relaxed)
-    ));
-    std::fs::create_dir(&root)?;
-    let root = TempDir(root);
+    let root = TempDir::new("mfd-scalar-document-root")?;
     for file in std::fs::read_dir(fixtures())? {
         let file = file?;
         std::fs::copy(file.path(), root.join(file.file_name()))?;

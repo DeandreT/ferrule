@@ -3,26 +3,9 @@ use mapping::{
     Binding, Graph, IterationOutput, Node, Project, Scope, ScopeIteration, SequenceWindow,
 };
 use std::collections::BTreeMap;
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
-struct TempDir(PathBuf);
-impl TempDir {
-    fn new() -> Self {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_first_presence_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+
+use test_support::TempDir;
+
 fn project() -> Project {
     let source = SchemaNode::group(
         "Source",
@@ -185,8 +168,8 @@ fn assert_guard(project: &Project) {
         "{:?}",
         engine::validate(project)
     );
-    let dir = TempDir::new();
-    let path = dir.0.join("mapping.mfd");
+    let dir = TempDir::new("first_presence").unwrap();
+    let path = dir.path().join("mapping.mfd");
     let report = mfd::preflight_export(project, &path).unwrap();
     assert!(!report.is_native_compatible());
     assert!(
@@ -201,7 +184,7 @@ fn assert_guard(project: &Project) {
         Err(mfd::MfdError::IncompatibleExport(_))
     ));
     assert!(!path.exists());
-    assert_eq!(std::fs::read_dir(&dir.0).unwrap().count(), 0);
+    assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
     let extensions =
         mfd::export_with_profile(project, &path, mfd::ExportProfile::FerruleExtensions).unwrap();
     assert!(
@@ -215,8 +198,8 @@ fn assert_guard(project: &Project) {
 #[test]
 fn qualified_first_separates_parent_presence_from_selected_payload() {
     let p = project();
-    let d = TempDir::new();
-    let path = d.0.join("mapping.mfd");
+    let d = TempDir::new("first_presence").unwrap();
+    let path = d.path().join("mapping.mfd");
     let report = mfd::export_with_profile(&p, &path, mfd::ExportProfile::NativeMfd).unwrap();
     assert!(report.is_native_compatible());
     let text = std::fs::read_to_string(&path).unwrap();
@@ -315,8 +298,8 @@ fn first_empty_candidates_remain_a_present_empty_group_for_each_empty_cause() {
         }
         let written = format_xml::to_string(&p.target, &output).unwrap();
         assert!(written.contains("<Selected"));
-        let d = TempDir::new();
-        let report = mfd::preflight_export(&p, &d.0.join("mapping.mfd")).unwrap();
+        let d = TempDir::new("first_presence").unwrap();
+        let report = mfd::preflight_export(&p, &d.path().join("mapping.mfd")).unwrap();
         assert!(report.is_native_compatible(), "{report:?}");
     }
 }
@@ -444,8 +427,8 @@ fn absolute_selected_scalar_fields_keep_the_qualified_payload_context() {
             .field("Name"),
         Some(&Instance::Scalar(Value::String("selected".into())))
     );
-    let d = TempDir::new();
-    let report = mfd::preflight_export(&p, &d.0.join("mapping.mfd")).unwrap();
+    let d = TempDir::new("first_presence").unwrap();
+    let report = mfd::preflight_export(&p, &d.path().join("mapping.mfd")).unwrap();
     assert!(report.is_native_compatible(), "{report:?}");
 }
 
@@ -460,11 +443,11 @@ fn optional_payload_fields_do_not_change_the_group_presence_qualification() {
             field.set_xml_optional(true);
         }
     }
-    let d = TempDir::new();
-    let path = d.0.join("mapping.mfd");
+    let d = TempDir::new("first_presence").unwrap();
+    let path = d.path().join("mapping.mfd");
     let report = mfd::export_with_profile(&p, &path, mfd::ExportProfile::NativeMfd).unwrap();
     assert!(report.is_native_compatible(), "{report:?}");
-    let target = std::fs::read_to_string(d.0.join("mapping-target.xsd")).unwrap();
+    let target = std::fs::read_to_string(d.path().join("mapping-target.xsd")).unwrap();
     assert!(
         target.contains(r#"name="Name" type="xs:string" minOccurs="0""#),
         "{target}"
@@ -480,13 +463,13 @@ fn non_xml_first_targets_keep_their_existing_typed_rejection() {
     let mut p = project();
     for extension in ["json", "csv"] {
         p.target_path = Some(format!("target.{extension}"));
-        let d = TempDir::new();
-        let error = mfd::preflight_export(&p, &d.0.join("mapping.mfd")).unwrap_err();
+        let d = TempDir::new("first_presence").unwrap();
+        let error = mfd::preflight_export(&p, &d.path().join("mapping.mfd")).unwrap_err();
         assert!(
             matches!(&error, mfd::MfdError::Unsupported(message) if message.contains("requires an XML or XBRL target")),
             "{error:?}"
         );
-        assert_eq!(std::fs::read_dir(&d.0).unwrap().count(), 0);
+        assert_eq!(std::fs::read_dir(d.path()).unwrap().count(), 0);
     }
 }
 

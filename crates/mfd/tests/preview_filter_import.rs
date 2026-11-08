@@ -1,29 +1,8 @@
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{Instance, Value};
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Self {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_preview_filter_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn write_design(dir: &Path, optional: bool) -> PathBuf {
     std::fs::write(
@@ -76,8 +55,8 @@ fn row_count(output: &Instance) -> usize {
 
 #[test]
 fn optional_preview_only_filter_skips_iteration_instead_of_unfiltering() {
-    let dir = TempDir::new();
-    let design = write_design(&dir.0, true);
+    let dir = TempDir::new("mfd_preview_filter").unwrap();
+    let design = write_design(dir.path(), true);
     let imported = mfd::import(&design).unwrap();
     assert!(
         imported.warnings.iter().any(|warning| {
@@ -99,7 +78,7 @@ fn optional_preview_only_filter_skips_iteration_instead_of_unfiltering() {
         engine::ExecutionContext::new(&design).with_purpose(engine::ExecutionPurpose::Preview);
     let output = engine::run_with_context(
         &imported.project,
-        &input(&imported.project, &dir.0),
+        &input(&imported.project, dir.path()),
         &preview,
     )
     .unwrap();
@@ -112,8 +91,8 @@ fn optional_preview_only_filter_skips_iteration_instead_of_unfiltering() {
 
 #[test]
 fn optional_without_preview_or_default_skips_iteration_even_with_host_value() {
-    let dir = TempDir::new();
-    let design = write_design(&dir.0, true);
+    let dir = TempDir::new("mfd_preview_filter").unwrap();
+    let design = write_design(dir.path(), true);
     let text = std::fs::read_to_string(&design)
         .unwrap()
         .replace(" previewvalue=\"true\" usepreviewvalue=\"1\"", "");
@@ -142,7 +121,7 @@ fn optional_without_preview_or_default_skips_iteration_even_with_host_value() {
             if name == "KeepRows"
     )));
     assert!(engine::validate(&imported.project).is_empty());
-    let source = input(&imported.project, &dir.0);
+    let source = input(&imported.project, dir.path());
     let mut hosts = engine::RuntimeParameters::new();
     hosts.insert("KeepRows", Value::Bool(true)).unwrap();
     for execution in [
@@ -156,8 +135,8 @@ fn optional_without_preview_or_default_skips_iteration_even_with_host_value() {
 
 #[test]
 fn disconnected_filter_predicate_skips_iteration_instead_of_unfiltering() {
-    let dir = TempDir::new();
-    let design = write_design(&dir.0, false);
+    let dir = TempDir::new("mfd_preview_filter").unwrap();
+    let design = write_design(dir.path(), false);
     let text = std::fs::read_to_string(&design).unwrap().replace(
         "<vertex vertexkey=\"20\"><edges><edge vertexkey=\"31\"/></edges></vertex>",
         "<vertex vertexkey=\"20\"><edges/></vertex>",
@@ -173,7 +152,7 @@ fn disconnected_filter_predicate_skips_iteration_instead_of_unfiltering() {
         "{:?}",
         imported.warnings
     );
-    let output = engine::run(&imported.project, &input(&imported.project, &dir.0)).unwrap();
+    let output = engine::run(&imported.project, &input(&imported.project, dir.path())).unwrap();
     assert!(
         matches!(&output, Instance::Group(fields) if fields.is_empty())
             || matches!(&output, Instance::Repeated(rows) if rows.is_empty()),
@@ -183,12 +162,12 @@ fn disconnected_filter_predicate_skips_iteration_instead_of_unfiltering() {
 
 #[test]
 fn required_preview_filter_uses_preview_only_for_preview_purpose() {
-    let dir = TempDir::new();
-    let design = write_design(&dir.0, false);
+    let dir = TempDir::new("mfd_preview_filter").unwrap();
+    let design = write_design(dir.path(), false);
     let imported = mfd::import(&design).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
-    let source = input(&imported.project, &dir.0);
+    let source = input(&imported.project, dir.path());
     assert!(matches!(
         engine::run(&imported.project, &source),
         Err(engine::EngineError::MissingRuntimeParameter { name, .. }) if name == "KeepRows"

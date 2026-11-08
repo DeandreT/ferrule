@@ -1,37 +1,7 @@
-use std::fs;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
-
 use ir::{Instance, Value};
 use mapping::Node;
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Self {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule-mfd-sequence-exists-{}-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map_or(0, |duration| duration.as_nanos()),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
-    }
-}
-
-fn write(path: &Path, contents: &str) {
-    fs::write(path, contents).unwrap();
-}
+use test_support::TempDir;
 
 fn mapping() -> &'static str {
     r#"<mapping version="26"><component name="map"><structure><children>
@@ -66,16 +36,10 @@ fn collection_mapping() -> &'static str {
 }
 
 fn setup(mfd: &str) -> TempDir {
-    let dir = TempDir::new();
-    write(
-        &dir.0.join("source.xsd"),
-        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Source"><xs:complexType><xs:sequence><xs:element name="Tool" maxOccurs="unbounded"><xs:complexType><xs:attribute name="Code" type="xs:string"/></xs:complexType></xs:element><xs:element name="MissionKit" maxOccurs="unbounded"><xs:complexType><xs:attribute name="Edition" type="xs:string"/><xs:attribute name="ToolCodes" type="xs:string"/></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
-    );
-    write(
-        &dir.0.join("target.xsd"),
-        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Target"><xs:complexType><xs:sequence><xs:element name="Row" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Code" type="xs:string"/><xs:element name="Member" type="xs:boolean"/><xs:element name="Raw" type="xs:string"/></xs:sequence></xs:complexType></xs:element><xs:element name="Token" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Value" type="xs:string"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
-    );
-    write(&dir.0.join("mapping.mfd"), mfd);
+    let dir = TempDir::new("mfd-sequence-exists").unwrap();
+    dir.write("source.xsd", r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Source"><xs:complexType><xs:sequence><xs:element name="Tool" maxOccurs="unbounded"><xs:complexType><xs:attribute name="Code" type="xs:string"/></xs:complexType></xs:element><xs:element name="MissionKit" maxOccurs="unbounded"><xs:complexType><xs:attribute name="Edition" type="xs:string"/><xs:attribute name="ToolCodes" type="xs:string"/></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#).unwrap();
+    dir.write("target.xsd", r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Target"><xs:complexType><xs:sequence><xs:element name="Row" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Code" type="xs:string"/><xs:element name="Member" type="xs:boolean"/><xs:element name="Raw" type="xs:string"/></xs:sequence></xs:complexType></xs:element><xs:element name="Token" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Value" type="xs:string"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#).unwrap();
+    dir.write("mapping.mfd", mfd).unwrap();
     dir
 }
 
@@ -92,7 +56,7 @@ fn record(fields: &[(&str, Value)]) -> Instance {
 #[test]
 fn imports_filtered_token_existence_and_sibling_scalar_lookup() {
     let dir = setup(mapping());
-    let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+    let imported = mfd::import(&dir.path().join("mapping.mfd")).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(imported.project.graph.nodes.values().any(|node| matches!(node, Node::Lookup { collection, key, value, .. } if collection == &["MissionKit"] && key == &["Edition"] && value == &["ToolCodes"])));
     assert!(
@@ -151,7 +115,7 @@ fn imports_filtered_token_existence_and_sibling_scalar_lookup() {
 #[test]
 fn imports_repeating_source_existence_as_a_collection_reducer() {
     let dir = setup(collection_mapping());
-    let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+    let imported = mfd::import(&dir.path().join("mapping.mfd")).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(imported.project.graph.nodes.values().any(|node| {
         matches!(node, Node::Aggregate {
@@ -189,7 +153,7 @@ fn non_equality_scalar_filter_imports_as_collection_find() {
         "<component name=\"greater\" library=\"core\" uid=\"21\"",
     );
     let dir = setup(&non_equality);
-    let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+    let imported = mfd::import(&dir.path().join("mapping.mfd")).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(
         imported
@@ -216,7 +180,7 @@ fn extra_scalar_sequence_consumer_keeps_the_unsupported_use_warning() {
         "<edge vertexkey=\"32\"/><edge vertexkey=\"34\"/><edge vertexkey=\"53\"/>",
     );
     let dir = setup(&with_scalar_consumer);
-    let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+    let imported = mfd::import(&dir.path().join("mapping.mfd")).unwrap();
 
     let scalar_warnings: Vec<_> = imported
         .warnings
@@ -245,7 +209,7 @@ fn reducer_and_generated_iteration_own_distinct_sequence_items() {
         "<edge vertexkey=\"32\"/><edge vertexkey=\"34\"/><edge vertexkey=\"54\"/><edge vertexkey=\"55\"/>",
     );
     let dir = setup(&with_generated_iteration);
-    let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+    let imported = mfd::import(&dir.path().join("mapping.mfd")).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
 
     let reducer_item = imported
@@ -279,7 +243,7 @@ fn non_core_exists_is_not_lowered_as_a_sequence_reducer() {
         "<component name=\"exists\" library=\"lang\"",
     );
     let dir = setup(&non_core);
-    let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+    let imported = mfd::import(&dir.path().join("mapping.mfd")).unwrap();
 
     assert!(
         !imported

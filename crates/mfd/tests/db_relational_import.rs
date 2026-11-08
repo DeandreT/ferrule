@@ -1,28 +1,10 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use ir::{Instance, ScalarType, SchemaKind, Value, ValueGeneration};
 use mapping::Node;
 use rusqlite::Connection;
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new(tag: &str) -> Self {
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_relational_{tag}_{}",
-            std::process::id()
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn write_design(path: &Path, table_entries: &str, source_key: u32) {
     let text = format!(
@@ -125,8 +107,8 @@ fn field<'a>(instance: &'a Instance, name: &str) -> &'a Instance {
 
 #[test]
 fn imports_nested_tables_with_relational_names_ports_and_types() {
-    let dir = TempDir::new("nested");
-    let db_path = dir.0.join("test.sqlite");
+    let dir = TempDir::new("nested").unwrap();
+    let db_path = dir.path().join("test.sqlite");
     let connection = Connection::open(&db_path).unwrap();
     connection
         .execute_batch(
@@ -139,7 +121,7 @@ fn imports_nested_tables_with_relational_names_ports_and_types() {
         )
         .unwrap();
     drop(connection);
-    let design = dir.0.join("nested.mfd");
+    let design = dir.path().join("nested.mfd");
     write_design(
         &design,
         r#"<entry name="departments" type="table" outkey="1" expanded="1">
@@ -210,8 +192,8 @@ fn imports_nested_tables_with_relational_names_ports_and_types() {
 
 #[test]
 fn imports_multiple_top_level_tables_below_a_composite_root() {
-    let dir = TempDir::new("composite");
-    let db_path = dir.0.join("test.sqlite");
+    let dir = TempDir::new("composite").unwrap();
+    let db_path = dir.path().join("test.sqlite");
     let connection = Connection::open(&db_path).unwrap();
     connection
         .execute_batch(
@@ -222,7 +204,7 @@ fn imports_multiple_top_level_tables_below_a_composite_root() {
         )
         .unwrap();
     drop(connection);
-    let design = dir.0.join("composite.mfd");
+    let design = dir.path().join("composite.mfd");
     write_design(
         &design,
         r#"<entry name="departments" type="table" outkey="1" expanded="1">
@@ -265,8 +247,8 @@ fn imports_multiple_top_level_tables_below_a_composite_root() {
 
 #[test]
 fn ignores_disconnected_selected_tables_when_connected_tables_exist() {
-    let dir = TempDir::new("disconnected_table");
-    let db_path = dir.0.join("test.sqlite");
+    let dir = TempDir::new("disconnected_table").unwrap();
+    let db_path = dir.path().join("test.sqlite");
     let connection = Connection::open(&db_path).unwrap();
     connection
         .execute_batch(
@@ -276,7 +258,7 @@ fn ignores_disconnected_selected_tables_when_connected_tables_exist() {
         )
         .unwrap();
     drop(connection);
-    let design = dir.0.join("disconnected-table.mfd");
+    let design = dir.path().join("disconnected-table.mfd");
     write_design(
         &design,
         r#"<entry name="unused" type="table"/>
@@ -295,8 +277,8 @@ fn ignores_disconnected_selected_tables_when_connected_tables_exist() {
 
 #[test]
 fn missing_untyped_database_reports_package_resolution_fallback() {
-    let dir = TempDir::new("missing_untyped");
-    let design = dir.0.join("missing-untyped.mfd");
+    let dir = TempDir::new("missing_untyped").unwrap();
+    let design = dir.path().join("missing-untyped.mfd");
     write_design(
         &design,
         r#"<entry name="departments" type="table" outkey="1">
@@ -320,8 +302,8 @@ fn missing_untyped_database_reports_package_resolution_fallback() {
 
 #[test]
 fn warns_when_nested_relationship_metadata_is_missing() {
-    let dir = TempDir::new("missing_relation");
-    let db_path = dir.0.join("test.sqlite");
+    let dir = TempDir::new("missing_relation").unwrap();
+    let db_path = dir.path().join("test.sqlite");
     let connection = Connection::open(&db_path).unwrap();
     connection
         .execute_batch(
@@ -330,7 +312,7 @@ fn warns_when_nested_relationship_metadata_is_missing() {
         )
         .unwrap();
     drop(connection);
-    let design = dir.0.join("missing-relation.mfd");
+    let design = dir.path().join("missing-relation.mfd");
     write_design(
         &design,
         r#"<entry name="departments" type="table" outkey="1">
@@ -352,8 +334,8 @@ fn warns_when_nested_relationship_metadata_is_missing() {
 
 #[test]
 fn local_relation_metadata_executes_without_a_physical_foreign_key_and_round_trips() {
-    let dir = TempDir::new("local_relation");
-    let db_path = dir.0.join("sales.sqlite");
+    let dir = TempDir::new("local_relation").unwrap();
+    let db_path = dir.path().join("sales.sqlite");
     let connection = Connection::open(&db_path).unwrap();
     connection
         .execute_batch(
@@ -364,7 +346,7 @@ fn local_relation_metadata_executes_without_a_physical_foreign_key_and_round_tri
         )
         .unwrap();
     drop(connection);
-    let design = dir.0.join("local-relation.mfd");
+    let design = dir.path().join("local-relation.mfd");
     write_local_relation_design(&design);
 
     let imported = mfd::import(&design).unwrap();
@@ -389,7 +371,7 @@ fn local_relation_metadata_executes_without_a_physical_foreign_key_and_round_tri
         2
     );
 
-    let exported_path = dir.0.join("roundtrip.mfd");
+    let exported_path = dir.path().join("roundtrip.mfd");
     let export_warnings = mfd::export(&imported.project, &exported_path).unwrap();
     assert!(export_warnings.is_empty(), "{export_warnings:?}");
     let reimported = mfd::import(&exported_path).unwrap();
@@ -400,8 +382,8 @@ fn local_relation_metadata_executes_without_a_physical_foreign_key_and_round_tri
 
 #[test]
 fn relational_database_targets_use_the_executable_writer() {
-    let dir = TempDir::new("target");
-    let db_path = dir.0.join("test.sqlite");
+    let dir = TempDir::new("target").unwrap();
+    let db_path = dir.path().join("test.sqlite");
     let connection = Connection::open(&db_path).unwrap();
     connection
         .execute_batch(
@@ -412,7 +394,7 @@ fn relational_database_targets_use_the_executable_writer() {
         )
         .unwrap();
     drop(connection);
-    let design = dir.0.join("target.mfd");
+    let design = dir.path().join("target.mfd");
     write_relational_target_design(&design);
 
     let imported = mfd::import(&design).unwrap();
@@ -424,14 +406,14 @@ fn relational_database_targets_use_the_executable_writer() {
 
 #[test]
 fn database_max_number_columns_roundtrip_as_generated_metadata() {
-    let dir = TempDir::new("max_number");
-    let db_path = dir.0.join("test.sqlite");
+    let dir = TempDir::new("max_number").unwrap();
+    let db_path = dir.path().join("test.sqlite");
     let connection = Connection::open(&db_path).unwrap();
     connection
         .execute_batch("CREATE TABLE People (Id INTEGER PRIMARY KEY, Name TEXT NOT NULL);")
         .unwrap();
     drop(connection);
-    let design = dir.0.join("generated.mfd");
+    let design = dir.path().join("generated.mfd");
     std::fs::write(
         &design,
         r#"<?xml version="1.0" encoding="UTF-8"?>
@@ -477,7 +459,7 @@ fn database_max_number_columns_roundtrip_as_generated_metadata() {
         Some(ValueGeneration::MaxNumber)
     );
 
-    let exported_path = dir.0.join("generated-roundtrip.mfd");
+    let exported_path = dir.path().join("generated-roundtrip.mfd");
     let warnings = mfd::export(&imported.project, &exported_path).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
     let text = std::fs::read_to_string(&exported_path).unwrap();

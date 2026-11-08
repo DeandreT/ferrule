@@ -3,39 +3,13 @@
 //! and export and re-import without semantic drift.
 
 use std::error::Error;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::path::Path;
 
 use format_xml::XmlFormatError;
 use ir::{Instance, Value};
 use mapping::Project;
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> std::io::Result<Self> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule-mfd-wildcard-exclusion-import-{}-{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir(&path)?;
-        Ok(Self(path))
-    }
-
-    fn write(&self, name: &str, contents: &str) -> std::io::Result<PathBuf> {
-        let path = self.0.join(name);
-        std::fs::write(&path, contents)?;
-        Ok(path)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 const T: &str = "urn:ferrule:wx:t";
 
@@ -185,7 +159,7 @@ fn round_trip(
     accepted: &[String],
     refused: &[Refusal],
 ) -> Result<(), Box<dyn Error>> {
-    let path = directory.write(&format!("{label}.mfd"), design)?;
+    let path = directory.write(format!("{label}.mfd"), design)?;
     let imported = import_executable(&path)?;
     let outputs = accepted
         .iter()
@@ -204,7 +178,7 @@ fn round_trip(
         assert!(matches(&error), "{label}: {input}: {error}");
     }
 
-    let exported_dir = directory.0.join(format!("{label}-export"));
+    let exported_dir = directory.path().join(format!("{label}-export"));
     std::fs::create_dir(&exported_dir)?;
     let exported = exported_dir.join("mapping.mfd");
     let warnings = mfd::export(&imported, &exported)?;
@@ -227,7 +201,7 @@ fn round_trip(
 
 #[test]
 fn e1_designs_import_run_export_and_reimport_without_drift() -> Result<(), Box<dyn Error>> {
-    let directory = TempDir::new()?;
+    let directory = TempDir::new("mfd-wildcard-exclusion-import")?;
     directory.write("a.xsd", A_XSD)?;
     directory.write("e1.xsd", E1_XSD)?;
     let accepted = [
@@ -274,7 +248,7 @@ fn e1_designs_import_run_export_and_reimport_without_drift() -> Result<(), Box<d
     round_trip(&directory, "e1-fields", &explicit, &accepted, &refused)?;
 
     // The written document keeps the generic item's expanded name.
-    let project = import_executable(&directory.0.join("e1-root.mfd"))?;
+    let project = import_executable(&directory.path().join("e1-root.mfd"))?;
     let (output, written) = run(&project, &accepted[0])?;
     assert!(written.contains("Extra"), "{written}");
     let generic = output
@@ -293,7 +267,7 @@ fn e1_designs_import_run_export_and_reimport_without_drift() -> Result<(), Box<d
 
 #[test]
 fn a1_designs_import_run_export_and_reimport_without_drift() -> Result<(), Box<dyn Error>> {
-    let directory = TempDir::new()?;
+    let directory = TempDir::new("mfd-wildcard-exclusion-import")?;
     directory.write("a.xsd", A_XSD)?;
     directory.write("a1.xsd", A1_XSD)?;
     let accepted = [input("", r#" id="1" mode="m" b:z="z" xml:lang="en""#)];
@@ -332,7 +306,7 @@ fn a1_designs_import_run_export_and_reimport_without_drift() -> Result<(), Box<d
     );
     round_trip(&directory, "a1-fields", &explicit, &accepted, &refused)?;
 
-    let project = import_executable(&directory.0.join("a1-root.mfd"))?;
+    let project = import_executable(&directory.path().join("a1-root.mfd"))?;
     let (_, written) = run(&project, &accepted[0])?;
     for expected in [r#"id="1""#, r#"mode="m""#, "lang=\"en\"", "z=\"z\""] {
         assert!(written.contains(expected), "{expected}: {written}");
@@ -342,7 +316,7 @@ fn a1_designs_import_run_export_and_reimport_without_drift() -> Result<(), Box<d
 
 #[test]
 fn selections_cannot_name_what_the_wildcard_excludes() -> Result<(), Box<dyn Error>> {
-    let directory = TempDir::new()?;
+    let directory = TempDir::new("mfd-wildcard-exclusion-import")?;
     directory.write("a.xsd", A_XSD)?;
     directory.write("e1.xsd", E1_XSD)?;
 
@@ -368,7 +342,7 @@ fn selections_cannot_name_what_the_wildcard_excludes() -> Result<(), Box<dyn Err
             r#"><entry name="Head" ns="1" inpkey="21"/>"#,
             &[(11, 21, false)],
         );
-        let imported = mfd::import(&directory.write(&format!("{label}.mfd"), &selecting)?)?;
+        let imported = mfd::import(&directory.write(format!("{label}.mfd"), &selecting)?)?;
         assert!(
             imported.warnings.iter().any(|warning| {
                 warning.contains(&format!(

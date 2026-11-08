@@ -1,49 +1,14 @@
 use std::error::Error;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use ir::{Instance, Value};
 
-struct TempDir(PathBuf);
-
-static NEXT_DIR: AtomicU64 = AtomicU64::new(0);
-
-impl TempDir {
-    fn new() -> Self {
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_record_udf_{}_{}",
-            std::process::id(),
-            NEXT_DIR.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
-
-fn write(path: &Path, contents: &str) {
-    std::fs::write(path, contents).unwrap();
-}
+use test_support::TempDir;
 
 fn setup() -> TempDir {
-    let dir = TempDir::new();
-    write(
-        &dir.0.join("source.xsd"),
-        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Source"><xs:complexType><xs:sequence><xs:element name="Profile"><xs:complexType><xs:sequence><xs:element name="First" type="xs:string"/><xs:element name="Last" type="xs:string"/><xs:element name="Code" type="xs:string"/><xs:element name="UseNil" type="xs:boolean"/><xs:element name="State" type="xs:string"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
-    );
-    write(
-        &dir.0.join("target.xsd"),
-        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Target"><xs:complexType><xs:sequence><xs:element name="Details"><xs:complexType><xs:sequence><xs:element name="Display" type="xs:string"/><xs:element name="Code" type="xs:string"/><xs:element name="State" type="xs:string" nillable="true"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
-    );
-    write(
-        &dir.0.join("mapping.mfd"),
-        r#"<mapping version="26"><component name="map"><structure><children>
+    let dir = TempDir::new("mfd_record_udf").unwrap();
+    dir.write("source.xsd", r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Source"><xs:complexType><xs:sequence><xs:element name="Profile"><xs:complexType><xs:sequence><xs:element name="First" type="xs:string"/><xs:element name="Last" type="xs:string"/><xs:element name="Code" type="xs:string"/><xs:element name="UseNil" type="xs:boolean"/><xs:element name="State" type="xs:string"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#).unwrap();
+    dir.write("target.xsd", r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Target"><xs:complexType><xs:sequence><xs:element name="Details"><xs:complexType><xs:sequence><xs:element name="Display" type="xs:string"/><xs:element name="Code" type="xs:string"/><xs:element name="State" type="xs:string" nillable="true"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#).unwrap();
+    dir.write("mapping.mfd", r#"<mapping version="26"><component name="map"><structure><children>
   <component name="source" library="xml" kind="14"><data><root><entry name="Source"><entry name="Profile" outkey="10"><entry name="First" outkey="11"/><entry name="Last" outkey="12"/><entry name="Code" outkey="13"/><entry name="UseNil" outkey="14"/><entry name="State" outkey="15"/></entry></entry></root><document schema="source.xsd" inputinstance="source.xml" instanceroot="{}Source"/></data></component>
   <component name="FormatProfile" library="user" kind="19"><data>
     <root><entry name="Profile" inpkey="30" componentid="101"/></root>
@@ -69,8 +34,7 @@ fn setup() -> TempDir {
   <vertex vertexkey="210"><edges><edge vertexkey="214"/></edges></vertex>
   <vertex vertexkey="211"><edges><edge vertexkey="213"/></edges></vertex>
   <vertex vertexkey="215"><edges><edge vertexkey="216"/></edges></vertex>
-</vertices></graph></structure></component></mapping>"#,
-    );
+</vertices></graph></structure></component></mapping>"#).unwrap();
     dir
 }
 
@@ -78,7 +42,7 @@ fn setup() -> TempDir {
 fn unsupported_internal_cast_requests_do_not_escape_through_udf_lowering() {
     for mode in ["suppress-cast-in-subtree", "unknown-mode"] {
         let dir = setup();
-        let path = dir.0.join("mapping.mfd");
+        let path = dir.path().join("mapping.mfd");
         let text = std::fs::read_to_string(&path).unwrap();
         let needle = "<entry name=\"Details\"><entry name=\"Display\" inpkey=\"207\"/>";
         assert!(text.contains(needle));
@@ -149,12 +113,12 @@ fn assert_output(project: &mapping::Project) -> Result<(), Box<dyn Error>> {
 fn flat_record_parameter_udf_imports_executes_and_roundtrips_xml_nil() -> Result<(), Box<dyn Error>>
 {
     let dir = setup();
-    let imported = mfd::import(&dir.0.join("mapping.mfd"))?;
+    let imported = mfd::import(&dir.path().join("mapping.mfd"))?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
     assert_output(&imported.project)?;
 
-    let exported = dir.0.join("round-trip.mfd");
+    let exported = dir.path().join("round-trip.mfd");
     let warnings = mfd::export(&imported.project, &exported)?;
     assert!(warnings.is_empty(), "{warnings:?}");
     let design = std::fs::read_to_string(&exported)?;

@@ -1,30 +1,13 @@
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::path::Path;
 
 use ir::{ScalarType, SchemaKind, SchemaNode};
 use mapping::{
     Binding, FormatOptions, Graph, NamedTarget, Node, Project, Scope, WsdlMessageOptions,
 };
 
-struct Directory(PathBuf);
-impl Directory {
-    fn new() -> Self {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_wsdl_required_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir(&path).unwrap();
-        Self(path)
-    }
-}
-impl Drop for Directory {
-    fn drop(&mut self) {
-        std::fs::remove_dir_all(&self.0).unwrap();
-    }
-}
+use test_support::TempDir as Directory;
+
 fn project(required_source: bool, required_target: bool) -> Project {
     let schema = |name: &str, required| {
         let mut id = SchemaNode::scalar("ID", ScalarType::String).attribute();
@@ -191,7 +174,7 @@ fn change_entry(xml: &str, name: &str, index: usize, f: impl FnOnce(&str) -> Str
 #[test]
 fn wsdl_source_response_and_deep_required_attribute_masks_roundtrip_twice() {
     for mask in 0u8..16 {
-        let d = Directory::new();
+        let d = Directory::new("wsdl_required").unwrap();
         let mut p = project(false, false);
         for (schema, offset) in [(&mut p.source, 0), (&mut p.target, 2)] {
             let SchemaKind::Group { children, .. } = &mut schema.kind else {
@@ -203,12 +186,12 @@ fn wsdl_source_response_and_deep_required_attribute_masks_roundtrip_twice() {
             };
             children[0].xml_attribute_required = mask & (1 << (offset + 1)) != 0;
         }
-        let first = publish_and_import(&p, &d.0.join("mapping.mfd"));
+        let first = publish_and_import(&p, &d.path().join("mapping.mfd"));
         assert_eq!(first.source, p.source);
         assert_eq!(first.target, p.target);
         assert_eq!(first.source_options.wsdl, p.source_options.wsdl);
         assert_eq!(first.target_options.wsdl, p.target_options.wsdl);
-        let twice = publish_and_import(&first, &d.0.join("second.mfd"));
+        let twice = publish_and_import(&first, &d.path().join("second.mfd"));
         assert_eq!(twice.source, p.source);
         assert_eq!(twice.target, p.target);
     }
@@ -217,9 +200,9 @@ fn wsdl_source_response_and_deep_required_attribute_masks_roundtrip_twice() {
 #[test]
 fn required_use_is_an_owned_typed_atomic_native_guard() {
     for (source, target, owners) in [(true, false, 1), (false, true, 1), (true, true, 2)] {
-        let d = Directory::new();
+        let d = Directory::new("wsdl_required").unwrap();
         let p = project(source, target);
-        let absent = d.0.join("absent/mapping.mfd");
+        let absent = d.path().join("absent/mapping.mfd");
         let report = mfd::preflight_export(&p, &absent).unwrap();
         assert!(report.warnings.is_empty());
         assert!(!report.is_native_compatible());
@@ -236,9 +219,9 @@ fn required_use_is_an_owned_typed_atomic_native_guard() {
             Err(mfd::MfdError::IncompatibleExport(_))
         ));
         assert!(!absent.parent().unwrap().exists());
-        let sentinel = d.0.join("sentinel.mfd");
+        let sentinel = d.path().join("sentinel.mfd");
         std::fs::write(&sentinel, "old-design").unwrap();
-        let schema = d.0.join("source.xsd");
+        let schema = d.path().join("source.xsd");
         std::fs::write(&schema, "old-schema").unwrap();
         assert!(matches!(
             mfd::export_with_profile(&p, &sentinel, mfd::ExportProfile::NativeMfd),
@@ -251,8 +234,8 @@ fn required_use_is_an_owned_typed_atomic_native_guard() {
 
 #[test]
 fn malformed_values_reject_all_public_paths_before_fallback() {
-    let d = Directory::new();
-    let path = d.0.join("mapping.mfd");
+    let d = Directory::new("wsdl_required").unwrap();
+    let path = d.path().join("mapping.mfd");
     mfd::export(&project(true, true), &path).unwrap();
     let original = std::fs::read_to_string(&path).unwrap();
     assert_eq!(
@@ -277,8 +260,8 @@ fn malformed_values_reject_all_public_paths_before_fallback() {
 
 #[test]
 fn annotations_require_ordinary_attribute_roles_even_when_zero() {
-    let d = Directory::new();
-    let path = d.0.join("mapping.mfd");
+    let d = Directory::new("wsdl_required").unwrap();
+    let path = d.path().join("mapping.mfd");
     mfd::export(&project(true, false), &path).unwrap();
     let original = std::fs::read_to_string(&path).unwrap();
     for value in ["0", "1"] {
@@ -334,8 +317,8 @@ fn annotations_require_ordinary_attribute_roles_even_when_zero() {
 
 #[test]
 fn exact_zero_one_legacy_attribute_names_and_absence_have_a_fixed_point() {
-    let d = Directory::new();
-    let path = d.0.join("mapping.mfd");
+    let d = Directory::new("wsdl_required").unwrap();
+    let path = d.path().join("mapping.mfd");
     mfd::export(&project(true, false), &path).unwrap();
     let original = std::fs::read_to_string(&path).unwrap();
     for value in [None, Some("0"), Some("1")] {
@@ -358,10 +341,10 @@ fn exact_zero_one_legacy_attribute_names_and_absence_have_a_fixed_point() {
         let expected = project(value == Some("1"), false);
         assert_eq!(p.source, expected.source);
         assert_eq!(p.target, expected.target);
-        let twice = publish_and_import(&p, &d.0.join("second.mfd"));
+        let twice = publish_and_import(&p, &d.path().join("second.mfd"));
         assert_eq!(twice.source, expected.source);
         assert!(
-            !std::fs::read_to_string(d.0.join("second.mfd"))
+            !std::fs::read_to_string(d.path().join("second.mfd"))
                 .unwrap()
                 .contains("ferrule-xml-attribute-required=\"0\"")
         );
@@ -381,7 +364,7 @@ fn exact_zero_one_legacy_attribute_names_and_absence_have_a_fixed_point() {
 
 #[test]
 fn fault_attributes_and_optional_elements_preserve_independent_flags() {
-    let d = Directory::new();
+    let d = Directory::new("wsdl_required").unwrap();
     let mut p = project(false, false);
     let mut code = SchemaNode::scalar("Code", ScalarType::String).attribute();
     code.xml_attribute_required = true;
@@ -419,9 +402,9 @@ fn fault_attributes_and_optional_elements_preserve_independent_flags() {
             ..Default::default()
         },
     });
-    let actual = publish_and_import(&p, &d.0.join("mapping.mfd"));
+    let actual = publish_and_import(&p, &d.path().join("mapping.mfd"));
     assert_eq!(actual.extra_targets[0].schema, p.extra_targets[0].schema);
-    let report = mfd::preflight_export(&p, &d.0.join("native.mfd")).unwrap();
+    let report = mfd::preflight_export(&p, &d.path().join("native.mfd")).unwrap();
     assert_eq!(report.issues.len(), 2);
     assert!(
         report
@@ -435,14 +418,14 @@ fn fault_attributes_and_optional_elements_preserve_independent_flags() {
             .iter()
             .any(|i| i.feature == mfd::ExportCompatibilityFeature::XmlOptionalOccurrence)
     );
-    let xml = std::fs::read_to_string(d.0.join("mapping.mfd")).unwrap();
-    std::fs::write(d.0.join("bad.mfd"), replace_flag(&xml, 0, "true")).unwrap();
-    assert_metadata_error(&d.0.join("bad.mfd"));
+    let xml = std::fs::read_to_string(d.path().join("mapping.mfd")).unwrap();
+    std::fs::write(d.path().join("bad.mfd"), replace_flag(&xml, 0, "true")).unwrap();
+    assert_metadata_error(&d.path().join("bad.mfd"));
 }
 
 #[test]
 fn ordinary_xml_uses_authoritative_xsd_without_private_required_annotation() {
-    let d = Directory::new();
+    let d = Directory::new("wsdl_required").unwrap();
     let mut p = project(true, true);
     p.source_options.wsdl = None;
     p.target_options.wsdl = None;
@@ -455,13 +438,13 @@ fn ordinary_xml_uses_authoritative_xsd_without_private_required_annotation() {
         };
         children.swap(0, 1);
     }
-    let actual = publish_and_import(&p, &d.0.join("mapping.mfd"));
+    let actual = publish_and_import(&p, &d.path().join("mapping.mfd"));
     assert_eq!(actual.source, p.source);
     assert_eq!(actual.target, p.target);
-    let xml = std::fs::read_to_string(d.0.join("mapping.mfd")).unwrap();
+    let xml = std::fs::read_to_string(d.path().join("mapping.mfd")).unwrap();
     assert!(!xml.contains("ferrule-xml-attribute-required"));
     assert!(
-        mfd::preflight_export(&p, &d.0.join("native.mfd"))
+        mfd::preflight_export(&p, &d.path().join("native.mfd"))
             .unwrap()
             .is_native_compatible()
     );
@@ -473,10 +456,10 @@ fn ordinary_xml_uses_authoritative_xsd_without_private_required_annotation() {
                 1,
             )
         });
-        std::fs::write(d.0.join("mapping.mfd"), changed).unwrap();
+        std::fs::write(d.path().join("mapping.mfd"), changed).unwrap();
         // A valid private flag never overrides the authoritative physical XSD.
         assert_eq!(
-            mfd::import(&d.0.join("mapping.mfd"))
+            mfd::import(&d.path().join("mapping.mfd"))
                 .unwrap()
                 .project
                 .source,
@@ -490,16 +473,17 @@ fn ordinary_xml_uses_authoritative_xsd_without_private_required_annotation() {
             1,
         )
     });
-    std::fs::write(d.0.join("mapping.mfd"), invalid).unwrap();
-    assert_metadata_error(&d.0.join("mapping.mfd"));
+    std::fs::write(d.path().join("mapping.mfd"), invalid).unwrap();
+    assert_metadata_error(&d.path().join("mapping.mfd"));
 }
 
 #[test]
 fn projected_attribute_refs_and_default_fields_keep_the_bounded_wsdl_contract() {
-    let d = Directory::new();
+    let d = Directory::new("wsdl_required").unwrap();
     let xsd = r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:attribute name="Code" type="xs:string"/><xs:element name="Request"><xs:complexType><xs:attribute ref="Code" use="required"/><xs:attribute name="Label" type="xs:string" default="fallback"/><xs:attribute name="Fixed" type="xs:string" fixed="stable"/></xs:complexType></xs:element></xs:schema>"#;
-    std::fs::write(d.0.join("authored.xsd"), xsd).unwrap();
-    let schema = format_xml::xsd::import_root(&d.0.join("authored.xsd"), Some("Request")).unwrap();
+    std::fs::write(d.path().join("authored.xsd"), xsd).unwrap();
+    let schema =
+        format_xml::xsd::import_root(&d.path().join("authored.xsd"), Some("Request")).unwrap();
     assert!(schema.child("Code").unwrap().xml_attribute_required);
     assert_eq!(
         schema.child("Label").unwrap().default.as_deref(),
@@ -523,7 +507,7 @@ fn projected_attribute_refs_and_default_fields_keep_the_bounded_wsdl_contract() 
         }],
         ..Default::default()
     };
-    let actual = publish_and_import(&p, &d.0.join("mapping.mfd"));
+    let actual = publish_and_import(&p, &d.path().join("mapping.mfd"));
     for side in [&actual.source, &actual.target] {
         for name in ["Code", "Label", "Fixed"] {
             let expected = schema.child(name).unwrap();
@@ -542,8 +526,8 @@ fn projected_attribute_refs_and_default_fields_keep_the_bounded_wsdl_contract() 
 
 #[test]
 fn annotation_ownership_and_scalar_domains_are_bounded_without_inference() {
-    let d = Directory::new();
-    let path = d.0.join("mapping.mfd");
+    let d = Directory::new("wsdl_required").unwrap();
+    let path = d.path().join("mapping.mfd");
     for ty in [
         ScalarType::String,
         ScalarType::Int,
@@ -585,8 +569,8 @@ fn annotation_ownership_and_scalar_domains_are_bounded_without_inference() {
 
 #[test]
 fn fully_untyped_legacy_attribute_entry_keeps_required_use_without_warnings() {
-    let d = Directory::new();
-    let path = d.0.join("mapping.mfd");
+    let d = Directory::new("wsdl_required").unwrap();
+    let path = d.path().join("mapping.mfd");
     let mut p = project(true, false);
     p.source = SchemaNode::group("Request", vec![p.source.child("ID").unwrap().clone()]);
     p.target = SchemaNode::group("Response", vec![p.target.child("ID").unwrap().clone()]);
@@ -614,7 +598,7 @@ fn fully_untyped_legacy_attribute_entry_keeps_required_use_without_warnings() {
     assert!(actual.imported.warnings.is_empty());
     assert_eq!(actual.imported.project.source, p.source);
     assert_eq!(actual.imported.project.target, p.target);
-    let twice = publish_and_import(&actual.imported.project, &d.0.join("second.mfd"));
+    let twice = publish_and_import(&actual.imported.project, &d.path().join("second.mfd"));
     assert_eq!(twice.source, p.source);
     assert_eq!(twice.target, p.target);
 }

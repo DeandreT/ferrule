@@ -1,34 +1,6 @@
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
-
 use ir::{Instance, ScalarType, SchemaKind, Value};
 
-struct TempDir(PathBuf);
-
-static NEXT_DIR: AtomicU64 = AtomicU64::new(0);
-
-impl TempDir {
-    fn new() -> std::io::Result<Self> {
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_external_udf_{}_{}",
-            std::process::id(),
-            NEXT_DIR.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
-
-fn write(path: &Path, contents: &str) -> std::io::Result<()> {
-    std::fs::write(path, contents)
-}
+use test_support::TempDir;
 
 fn scalar<'a>(instance: &'a Instance, field: &str) -> Option<&'a Value> {
     instance.field(field).and_then(Instance::as_scalar)
@@ -37,9 +9,9 @@ fn scalar<'a>(instance: &'a Instance, field: &str) -> Option<&'a Value> {
 #[test]
 fn opaque_json_udf_result_becomes_an_executable_external_source()
 -> Result<(), Box<dyn std::error::Error>> {
-    let dir = TempDir::new()?;
-    write(
-        &dir.0.join("target.xsd"),
+    let dir = TempDir::new("mfd_external_udf")?;
+    dir.write(
+        "target.xsd",
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:element name="Target"><xs:complexType><xs:sequence>
     <xs:element name="Row" maxOccurs="unbounded"><xs:complexType><xs:sequence>
@@ -50,9 +22,7 @@ fn opaque_json_udf_result_becomes_an_executable_external_source()
   </xs:sequence></xs:complexType></xs:element>
 </xs:schema>"#,
     )?;
-    write(
-        &dir.0.join("mapping.mfd"),
-        r#"<mapping version="26">
+    dir.write("mapping.mfd", r#"<mapping version="26">
   <component name="map"><structure><children>
     <component name="FetchInventory" library="user" kind="19"><data>
       <root><entry name="result" componentid="23"><entry name="object">
@@ -81,10 +51,9 @@ fn opaque_json_udf_result_becomes_an_executable_external_source()
   <component name="FetchInventory" library="user"><structure><children>
     <component name="opaque-runtime" library="custom" kind="99"/>
   </children></structure></component>
-</mapping>"#,
-    )?;
+</mapping>"#)?;
 
-    let mut imported = mfd::import(&dir.0.join("mapping.mfd"))?;
+    let mut imported = mfd::import(&dir.path().join("mapping.mfd"))?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(imported.project.source_options.external_source.is_some());
     assert!(engine::validate(&imported.project).is_empty());
@@ -145,7 +114,7 @@ fn opaque_json_udf_result_becomes_an_executable_external_source()
             mapping::ExternalPayloadFormat::Json,
         )?);
 
-    let exported = dir.0.join("roundtrip.mfd");
+    let exported = dir.path().join("roundtrip.mfd");
     assert!(mfd::export(&imported.project, &exported)?.is_empty());
     let rendered = std::fs::read_to_string(&exported)?;
     assert!(rendered.contains("library=\"json\""));
@@ -166,18 +135,10 @@ fn opaque_json_udf_result_becomes_an_executable_external_source()
 #[test]
 fn ordinary_source_takes_precedence_over_an_opaque_udf_candidate()
 -> Result<(), Box<dyn std::error::Error>> {
-    let dir = TempDir::new()?;
-    write(
-        &dir.0.join("source.xsd"),
-        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Source"><xs:complexType><xs:sequence><xs:element name="Value" type="xs:string"/></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
-    )?;
-    write(
-        &dir.0.join("target.xsd"),
-        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Target"><xs:complexType><xs:sequence><xs:element name="Value" type="xs:string"/></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
-    )?;
-    write(
-        &dir.0.join("mapping.mfd"),
-        r#"<mapping version="26">
+    let dir = TempDir::new("mfd_external_udf")?;
+    dir.write("source.xsd", r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Source"><xs:complexType><xs:sequence><xs:element name="Value" type="xs:string"/></xs:sequence></xs:complexType></xs:element></xs:schema>"#)?;
+    dir.write("target.xsd", r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Target"><xs:complexType><xs:sequence><xs:element name="Value" type="xs:string"/></xs:sequence></xs:complexType></xs:element></xs:schema>"#)?;
+    dir.write("mapping.mfd", r#"<mapping version="26">
   <component name="map"><structure><children>
     <component name="source" library="xml" kind="14"><data>
       <root><entry name="FileInstance"><entry name="document"><entry name="Source"><entry name="Value" outkey="40"/></entry></entry></entry></root>
@@ -195,10 +156,9 @@ fn ordinary_source_takes_precedence_over_an_opaque_udf_candidate()
   <component name="FetchUnused" library="user"><structure><children>
     <component name="opaque-runtime" library="custom" kind="99"/>
   </children></structure></component>
-</mapping>"#,
-    )?;
+</mapping>"#)?;
 
-    let imported = mfd::import(&dir.0.join("mapping.mfd"))?;
+    let imported = mfd::import(&dir.path().join("mapping.mfd"))?;
     assert_eq!(imported.project.source.name, "Source");
     assert!(imported.project.source_options.external_source.is_none());
     assert_eq!(imported.warnings.len(), 1, "{:?}", imported.warnings);
@@ -208,7 +168,7 @@ fn ordinary_source_takes_precedence_over_an_opaque_udf_candidate()
 
     // The unused exists call still has a valid ordinary-source input. Removing
     // only the opaque call and its definition must preserve the whole Project.
-    let design = std::fs::read_to_string(dir.0.join("mapping.mfd"))?;
+    let design = std::fs::read_to_string(dir.path().join("mapping.mfd"))?;
     let document = roxmltree::Document::parse(&design)?;
     let mut opaque_components = document
         .descendants()
@@ -223,8 +183,8 @@ fn ordinary_source_takes_precedence_over_an_opaque_udf_candidate()
     for range in opaque_components.into_iter().rev() {
         ordinary_design.replace_range(range, "");
     }
-    write(&dir.0.join("mapping.mfd"), &ordinary_design)?;
-    let ordinary = mfd::import(&dir.0.join("mapping.mfd"))?;
+    dir.write("mapping.mfd", &ordinary_design)?;
+    let ordinary = mfd::import(&dir.path().join("mapping.mfd"))?;
     assert!(ordinary.warnings.is_empty(), "{:?}", ordinary.warnings);
     assert!(engine::validate(&ordinary.project).is_empty());
     assert_eq!(

@@ -1,24 +1,13 @@
 use std::error::Error;
-use std::path::PathBuf;
 
 use mfd::{ImportIssueKind, ImportOptions, ImportProfile, MfdError};
 
-struct TempDir(PathBuf);
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 #[test]
 fn narrowed_transparent_pdf_regions_reject_executable_import() -> Result<(), Box<dyn Error>> {
-    let temp = TempDir(std::env::temp_dir().join(format!(
-        "ferrule-transparent-pdf-region-{}",
-        std::process::id()
-    )));
-    std::fs::create_dir_all(&temp.0)?;
-    let path = temp.0.join("mapping.mfd");
+    let temp = TempDir::new("transparent-pdf-region")?;
+    let path = temp.path().join("mapping.mfd");
     std::fs::write(
         &path,
         r#"<mapping version="26"><component name="map"><structure><children>
@@ -41,7 +30,7 @@ fn narrowed_transparent_pdf_regions_reject_executable_import() -> Result<(), Box
     )?;
     for filter in ["", "1", "2"] {
         std::fs::write(
-            temp.0.join("layout.pxt"),
+            temp.path().join("layout.pxt"),
             format!(
                 "<Document><Template><Model><Root><Label>Document</Label><Children>\
                  <Grouping><Label/><Region>{{ Left: Left + 5pt, Top: Top, Right: Right, Bottom: Bottom }}</Region>\

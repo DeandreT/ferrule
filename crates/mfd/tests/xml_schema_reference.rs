@@ -1,28 +1,9 @@
 use std::collections::BTreeMap;
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{ScalarType, SchemaNode, Value};
 use mapping::{Binding, FormatOptions, Graph, Node, Project, Scope};
 
-struct Directory(PathBuf);
-impl Directory {
-    fn new() -> Self {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule-xml-schema-reference-{}-{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir(&path).unwrap();
-        Self(path)
-    }
-}
-impl Drop for Directory {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir as Directory;
 
 #[test]
 fn physical_xml_targets_explicitly_preserve_the_no_hint_default() {
@@ -90,8 +71,8 @@ fn physical_xml_targets_explicitly_preserve_the_no_hint_default() {
         options: Default::default(),
         root: project.root.clone(),
     });
-    let directory = Directory::new();
-    let path = directory.0.join("mapping.mfd");
+    let directory = Directory::new("xml-schema-reference").unwrap();
+    let path = directory.path().join("mapping.mfd");
     let report = mfd::export_with_profile(&project, &path, mfd::ExportProfile::NativeMfd).unwrap();
     assert!(report.is_native_compatible());
     let xml = std::fs::read_to_string(&path).unwrap();

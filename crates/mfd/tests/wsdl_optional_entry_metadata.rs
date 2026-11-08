@@ -1,30 +1,13 @@
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::path::Path;
 
 use ir::{ScalarType, SchemaKind, SchemaNode};
 use mapping::{
     Binding, FormatOptions, Graph, NamedTarget, Node, Project, Scope, WsdlMessageOptions,
 };
 
-struct Directory(PathBuf);
-impl Directory {
-    fn new() -> Self {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_wsdl_optional_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir(&path).unwrap();
-        Self(path)
-    }
-}
-impl Drop for Directory {
-    fn drop(&mut self) {
-        std::fs::remove_dir_all(&self.0).unwrap();
-    }
-}
+use test_support::TempDir as Directory;
+
 fn project(optional_source: bool, optional_target: bool) -> Project {
     let schema = |name: &str, optional| {
         let mut value = SchemaNode::scalar("Value", ScalarType::String);
@@ -154,8 +137,8 @@ fn replace_optional_flag(xml: &str, index: usize, value: &str) -> String {
 
 #[test]
 fn malformed_optional_flags_are_typed_errors_in_every_public_import_path() {
-    let directory = Directory::new();
-    let path = directory.0.join("mapping.mfd");
+    let directory = Directory::new("wsdl_optional").unwrap();
+    let path = directory.path().join("mapping.mfd");
     mfd::export(&project(true, true), &path).unwrap();
     let original = std::fs::read_to_string(&path).unwrap();
     assert_eq!(original.matches("ferrule-xml-optional=\"1\"").count(), 4);
@@ -197,8 +180,8 @@ fn malformed_optional_flags_are_typed_errors_in_every_public_import_path() {
 
 #[test]
 fn exact_zero_one_and_legacy_absence_retain_the_occurrence_contract() {
-    let directory = Directory::new();
-    let path = directory.0.join("mapping.mfd");
+    let directory = Directory::new("wsdl_optional").unwrap();
+    let path = directory.path().join("mapping.mfd");
     let original_project = project(true, false);
     mfd::export(&original_project, &path).unwrap();
     let original = std::fs::read_to_string(&path).unwrap();
@@ -221,7 +204,7 @@ fn exact_zero_one_and_legacy_absence_retain_the_occurrence_contract() {
         let expected = project(encoding == Some("1"), false);
         assert_eq!(imported.imported.project.source, expected.source);
         assert_eq!(imported.imported.project.target, expected.target);
-        let second = directory.0.join("second.mfd");
+        let second = directory.path().join("second.mfd");
         mfd::export(&imported.imported.project, &second).unwrap();
         let twice = mfd::import(&second).unwrap();
         assert!(twice.warnings.is_empty());
@@ -237,8 +220,8 @@ fn exact_zero_one_and_legacy_absence_retain_the_occurrence_contract() {
 
 #[test]
 fn malformed_optional_flags_cannot_hide_behind_untyped_fallback_or_authoritative_xsd() {
-    let directory = Directory::new();
-    let path = directory.0.join("mapping.mfd");
+    let directory = Directory::new("wsdl_optional").unwrap();
+    let path = directory.path().join("mapping.mfd");
     let p = project(true, false);
     mfd::export(&p, &path).unwrap();
     let xml = std::fs::read_to_string(&path)
@@ -272,8 +255,8 @@ fn malformed_optional_flags_cannot_hide_behind_untyped_fallback_or_authoritative
 
 #[test]
 fn typed_generic_entry_does_not_silently_discard_a_valid_optional_flag() {
-    let directory = Directory::new();
-    let path = directory.0.join("mapping.mfd");
+    let directory = Directory::new("wsdl_optional").unwrap();
+    let path = directory.path().join("mapping.mfd");
     mfd::export(&project(false, false), &path).unwrap();
     let original = std::fs::read_to_string(&path).unwrap();
     let doc = roxmltree::Document::parse(&original).unwrap();
@@ -317,23 +300,23 @@ fn typed_generic_entry_does_not_silently_discard_a_valid_optional_flag() {
 #[test]
 fn wsdl_optional_source_and_response_roundtrip_with_typed_native_guard() {
     for (source, target, owners) in [(true, false, 1), (false, true, 1), (true, true, 2)] {
-        let directory = Directory::new();
+        let directory = Directory::new("wsdl_optional").unwrap();
         let p = project(source, target);
-        let imported = publish_and_import(&p, &directory.0.join("mapping.mfd"));
+        let imported = publish_and_import(&p, &directory.path().join("mapping.mfd"));
         assert_eq!(imported.source, p.source);
         assert_eq!(imported.target, p.target);
         assert_eq!(imported.source_options.wsdl, p.source_options.wsdl);
         assert_eq!(imported.target_options.wsdl, p.target_options.wsdl);
-        let twice = publish_and_import(&imported, &directory.0.join("second.mfd"));
+        let twice = publish_and_import(&imported, &directory.path().join("second.mfd"));
         assert_eq!(twice.source, p.source);
         assert_eq!(twice.target, p.target);
-        assert_native_guard(&p, &directory.0, owners);
+        assert_native_guard(&p, directory.path(), owners);
     }
 }
 
 #[test]
 fn wsdl_fault_optional_leaf_is_preserved_and_guarded() {
-    let directory = Directory::new();
+    let directory = Directory::new("wsdl_optional").unwrap();
     let mut p = project(false, false);
     let mut reason = SchemaNode::scalar("Reason", ScalarType::String);
     reason.xml_optional = true;
@@ -363,32 +346,32 @@ fn wsdl_fault_optional_leaf_is_preserved_and_guarded() {
             ..Default::default()
         },
     });
-    let imported = publish_and_import(&p, &directory.0.join("mapping.mfd"));
+    let imported = publish_and_import(&p, &directory.path().join("mapping.mfd"));
     assert_eq!(imported.extra_targets[0].schema, p.extra_targets[0].schema);
-    assert_native_guard(&p, &directory.0, 1);
+    assert_native_guard(&p, directory.path(), 1);
 }
 
 #[test]
 fn legacy_wsdl_without_optional_annotation_keeps_required_defaults() {
-    let directory = Directory::new();
+    let directory = Directory::new("wsdl_optional").unwrap();
     let p = project(false, false);
-    let imported = publish_and_import(&p, &directory.0.join("mapping.mfd"));
+    let imported = publish_and_import(&p, &directory.path().join("mapping.mfd"));
     assert_eq!(imported.source, p.source);
     assert_eq!(imported.target, p.target);
-    let text = std::fs::read_to_string(directory.0.join("mapping.mfd")).unwrap();
+    let text = std::fs::read_to_string(directory.path().join("mapping.mfd")).unwrap();
     assert!(!text.contains("ferrule-xml-optional"));
     assert!(
-        mfd::preflight_export(&p, &directory.0.join("check.mfd"))
+        mfd::preflight_export(&p, &directory.path().join("check.mfd"))
             .unwrap()
             .is_native_compatible()
     );
     let p = project(true, true);
-    publish_and_import(&p, &directory.0.join("optional.mfd"));
-    let text = std::fs::read_to_string(directory.0.join("optional.mfd"))
+    publish_and_import(&p, &directory.path().join("optional.mfd"));
+    let text = std::fs::read_to_string(directory.path().join("optional.mfd"))
         .unwrap()
         .replace(" ferrule-xml-optional=\"1\"", "");
-    std::fs::write(directory.0.join("legacy.mfd"), text).unwrap();
-    let imported = mfd::import(&directory.0.join("legacy.mfd")).unwrap();
+    std::fs::write(directory.path().join("legacy.mfd"), text).unwrap();
+    let imported = mfd::import(&directory.path().join("legacy.mfd")).unwrap();
     assert!(imported.warnings.is_empty());
     assert!(!imported.project.source.child("Value").unwrap().xml_optional);
     assert!(
@@ -403,18 +386,18 @@ fn legacy_wsdl_without_optional_annotation_keeps_required_defaults() {
 
 #[test]
 fn ordinary_xsd_optional_occurrence_emits_no_new_private_annotation_or_guard() {
-    let directory = Directory::new();
+    let directory = Directory::new("wsdl_optional").unwrap();
     let mut p = project(true, true);
     p.source_options.wsdl = None;
     p.target_options.wsdl = None;
     p.target_path = Some("output.xml".into());
-    let imported = publish_and_import(&p, &directory.0.join("mapping.mfd"));
+    let imported = publish_and_import(&p, &directory.path().join("mapping.mfd"));
     assert_eq!(imported.source, p.source);
     assert_eq!(imported.target, p.target);
-    let text = std::fs::read_to_string(directory.0.join("mapping.mfd")).unwrap();
+    let text = std::fs::read_to_string(directory.path().join("mapping.mfd")).unwrap();
     assert!(!text.contains("ferrule-xml-optional"));
     assert!(
-        mfd::preflight_export(&p, &directory.0.join("check.mfd"))
+        mfd::preflight_export(&p, &directory.path().join("check.mfd"))
             .unwrap()
             .is_native_compatible()
     );
@@ -422,7 +405,7 @@ fn ordinary_xsd_optional_occurrence_emits_no_new_private_annotation_or_guard() {
 
 #[test]
 fn optional_leaf_inside_repeated_wsdl_group_roundtrips() {
-    let directory = Directory::new();
+    let directory = Directory::new("wsdl_optional").unwrap();
     let mut p = project(false, false);
     for schema in [&mut p.source, &mut p.target] {
         let SchemaKind::Group { children, .. } = &mut schema.kind else {
@@ -443,8 +426,8 @@ fn optional_leaf_inside_repeated_wsdl_group_roundtrips() {
             frame: Some(vec!["Details".into()]),
         },
     );
-    let imported = publish_and_import(&p, &directory.0.join("mapping.mfd"));
+    let imported = publish_and_import(&p, &directory.path().join("mapping.mfd"));
     assert_eq!(imported.source, p.source);
     assert_eq!(imported.target, p.target);
-    assert_native_guard(&p, &directory.0, 2);
+    assert_native_guard(&p, directory.path(), 2);
 }

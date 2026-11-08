@@ -1,38 +1,17 @@
 use std::collections::BTreeSet;
 use std::error::Error;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::path::Path;
 
 use mapping::{Node, Project, Scope};
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Result<Self, std::io::Error> {
-        static NEXT: AtomicU64 = AtomicU64::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_unresolved_edi_export_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 #[test]
 fn unresolved_edi_record_parameter_ports_survive_export_and_reimport() -> Result<(), Box<dyn Error>>
 {
-    let directory = TempDir::new()?;
-    write_fixture(&directory.0)?;
-    let imported = mfd::import(&directory.0.join("mapping.mfd"))?;
+    let directory = TempDir::new("mfd_unresolved_edi_export")?;
+    write_fixture(directory.path())?;
+    let imported = mfd::import(&directory.path().join("mapping.mfd"))?;
 
     assert_eq!(imported.warnings.len(), 1, "{:?}", imported.warnings);
     assert!(imported.warnings[0].contains("could not compile external configuration"));
@@ -67,7 +46,7 @@ fn unresolved_edi_record_parameter_ports_survive_export_and_reimport() -> Result
     );
     let expected_source_fields = source_fields(&imported.project);
 
-    let roundtrip = directory.0.join("roundtrip.mfd");
+    let roundtrip = directory.path().join("roundtrip.mfd");
     assert!(
         mfd::export(&imported.project, &roundtrip)?.is_empty(),
         "the enriched opaque ports must make every connection exportable"
@@ -97,7 +76,7 @@ fn unresolved_edi_record_parameter_ports_survive_export_and_reimport() -> Result
     assert!(
         mfd::export(
             &reimported.project,
-            &directory.0.join("second-roundtrip.mfd")
+            &directory.path().join("second-roundtrip.mfd")
         )?
         .is_empty()
     );
@@ -107,9 +86,9 @@ fn unresolved_edi_record_parameter_ports_survive_export_and_reimport() -> Result
 #[test]
 fn malformed_unresolved_config_metadata_warns_and_resolves_normally() -> Result<(), Box<dyn Error>>
 {
-    let directory = TempDir::new()?;
-    write_fixture(&directory.0)?;
-    let path = directory.0.join("mapping.mfd");
+    let directory = TempDir::new("mfd_unresolved_edi_export")?;
+    write_fixture(directory.path())?;
+    let path = directory.path().join("mapping.mfd");
     let design = std::fs::read_to_string(&path)?.replace(
         "config=\"Unavailable/Envelope.Config\"",
         "config=\"Unavailable/Envelope.Config\" ferrule-unresolved-config=\"maybe\"",
@@ -137,9 +116,9 @@ fn malformed_unresolved_config_metadata_warns_and_resolves_normally() -> Result<
 #[test]
 fn missing_edi_configuration_metadata_roundtrips_as_a_typed_dependency()
 -> Result<(), Box<dyn Error>> {
-    let directory = TempDir::new()?;
-    write_fixture(&directory.0)?;
-    let design_path = directory.0.join("mapping.mfd");
+    let directory = TempDir::new("mfd_unresolved_edi_export")?;
+    write_fixture(directory.path())?;
+    let design_path = directory.path().join("mapping.mfd");
     let design = std::fs::read_to_string(&design_path)?
         .replace(r#" config="Unavailable/Envelope.Config""#, "");
     std::fs::write(&design_path, design)?;
@@ -158,7 +137,7 @@ fn missing_edi_configuration_metadata_roundtrips_as_a_typed_dependency()
     assert_eq!(imported.project.runtime_dependencies().len(), 1);
     assert!(engine::validate(&imported.project).is_empty());
 
-    let roundtrip = directory.0.join("missing-roundtrip.mfd");
+    let roundtrip = directory.path().join("missing-roundtrip.mfd");
     assert!(mfd::export(&imported.project, &roundtrip)?.is_empty());
     let exported = std::fs::read_to_string(&roundtrip)?;
     let document = roxmltree::Document::parse(&exported)?;

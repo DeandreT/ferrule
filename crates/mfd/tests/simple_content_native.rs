@@ -1,30 +1,11 @@
 use std::collections::BTreeMap;
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{Instance, ScalarType, SchemaKind, SchemaNode, Value, XML_TEXT_FIELD};
 use mapping::{
     Binding, Graph, IterationOutput, Node, Project, Scope, ScopeIteration, SequenceExpr,
 };
 
-struct Fixture(PathBuf);
-impl Fixture {
-    fn new() -> Self {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_simple_content_native_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-impl Drop for Fixture {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir as Fixture;
 
 fn project(simple: bool) -> Project {
     let value = if simple {
@@ -177,7 +158,7 @@ fn run_roundtrip(project: &Project, fixture: &Fixture) -> String {
     let input = "<Input><Item><Key>A</Key><Value>alpha &amp; beta</Value></Item><Item><Key>B</Key><Value/></Item><Item><Key>C</Key></Item></Input>";
     let source = format_xml::from_str(input, &project.source).unwrap();
     let expected = engine::run(project, &source).unwrap();
-    let path = fixture.0.join("mapping.mfd");
+    let path = fixture.path().join("mapping.mfd");
     let report = mfd::export_with_profile(project, &path, mfd::ExportProfile::NativeMfd).unwrap();
     assert!(report.warnings.is_empty(), "{:?}", report.warnings);
     let xml = std::fs::read_to_string(&path).unwrap();
@@ -224,7 +205,7 @@ fn run_roundtrip(project: &Project, fixture: &Fixture) -> String {
             .and_then(Instance::as_mapped_sequence),
         Some(&[][..])
     );
-    let second = fixture.0.join("second.mfd");
+    let second = fixture.path().join("second.mfd");
     let warnings = mfd::export(&imported.project, &second).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
     let imported_twice = mfd::import(&second).unwrap();
@@ -244,7 +225,7 @@ fn run_roundtrip(project: &Project, fixture: &Fixture) -> String {
 #[test]
 fn scalar_and_simple_content_keep_empty_and_absent_distinct() {
     for simple in [false, true] {
-        let fixture = Fixture::new();
+        let fixture = Fixture::new("simple_content_native").unwrap();
         let xml = run_roundtrip(&project(simple), &fixture);
         assert!(!xml.contains("name=\"exists\""));
         assert!(!xml.contains("name=\"if-else\""));
@@ -273,22 +254,22 @@ fn shared_count_and_predicate_consumers_are_preserved() {
             node: 5,
         },
     ]);
-    let xml = run_roundtrip(&project, &Fixture::new());
+    let xml = run_roundtrip(&project, &Fixture::new("simple_content_native").unwrap());
     assert!(xml.contains("name=\"exists\""));
     assert!(xml.contains("name=\"if-else\""));
 }
 
 fn assert_rejected(project: &Project) {
-    let fixture = Fixture::new();
-    let native = fixture.0.join("native.mfd");
+    let fixture = Fixture::new("simple_content_native").unwrap();
+    let native = fixture.path().join("native.mfd");
     let rejected = mfd::export_with_profile(project, &native, mfd::ExportProfile::NativeMfd);
     assert!(
         matches!(rejected, Err(mfd::MfdError::IncompatibleExport(_))),
         "{rejected:?}"
     );
     assert!(!native.exists());
-    assert!(std::fs::read_dir(&fixture.0).unwrap().next().is_none());
-    let extension = fixture.0.join("extension.mfd");
+    assert!(std::fs::read_dir(fixture.path()).unwrap().next().is_none());
+    let extension = fixture.path().join("extension.mfd");
     let report = mfd::preflight_export(project, &extension).unwrap();
     assert!(report.warnings.is_empty(), "{report:?}");
     assert!(
@@ -401,11 +382,11 @@ fn filtered_parent_position_keeps_lowered_text_in_its_selected_item() {
         target_field: "Position".into(),
         node: 7,
     });
-    let fixture = Fixture::new();
+    let fixture = Fixture::new("simple_content_native").unwrap();
     let input = "<Input><Item><Key>A</Key></Item><Item><Key>B</Key><Value/></Item><Item><Key>C</Key><Value>selected</Value></Item></Input>";
     let source = format_xml::from_str(input, &p.source).unwrap();
     let expected = engine::run(&p, &source).unwrap();
-    let path = fixture.0.join("mapping.mfd");
+    let path = fixture.path().join("mapping.mfd");
     let report = mfd::export_with_profile(&p, &path, mfd::ExportProfile::NativeMfd).unwrap();
     assert!(report.warnings.is_empty(), "{:?}", report.warnings);
     let imported = mfd::import(&path).unwrap();
@@ -418,5 +399,5 @@ fn filtered_parent_position_keeps_lowered_text_in_its_selected_item() {
 fn required_target_keeps_graph_fidelity_for_empty_and_absent_values() {
     let mut p = project(false);
     schema_child_mut(&mut p.target, &["Item", "Result"]).xml_optional = false;
-    run_roundtrip(&p, &Fixture::new());
+    run_roundtrip(&p, &Fixture::new("simple_content_native").unwrap());
 }

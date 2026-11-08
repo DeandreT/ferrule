@@ -1,35 +1,7 @@
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
-
 use ir::{Instance, Value};
 use mapping::IterationOutput;
 
-struct TempDir(PathBuf);
-
-static NEXT_DIR: AtomicU64 = AtomicU64::new(0);
-
-impl TempDir {
-    fn new() -> Self {
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_mapped_record_udf_{}_{}",
-            std::process::id(),
-            NEXT_DIR.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
-
-fn write(path: &Path, contents: &str) {
-    std::fs::write(path, contents).unwrap();
-}
+use test_support::TempDir;
 
 fn mapping() -> &'static str {
     r#"<mapping version="26"><component name="map"><structure><children>
@@ -64,26 +36,20 @@ fn mapping() -> &'static str {
 }
 
 fn setup(design: &str) -> TempDir {
-    let dir = TempDir::new();
-    write(
-        &dir.0.join("source.xsd"),
-        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Source"><xs:complexType><xs:sequence><xs:element name="Item" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Meta"><xs:complexType><xs:sequence><xs:element name="Code" type="xs:string"/></xs:sequence></xs:complexType></xs:element><xs:element name="Qty" type="xs:integer"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
-    );
-    write(
-        &dir.0.join("target.xsd"),
-        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Target"><xs:complexType><xs:sequence><xs:element name="Line" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Label" type="xs:string"/><xs:element name="Doubled" type="xs:integer"/></xs:sequence></xs:complexType></xs:element><xs:element name="Spare" minOccurs="0" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Value" type="xs:string"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
-    );
-    write(&dir.0.join("mapping.mfd"), design);
+    let dir = TempDir::new("mfd_mapped_record_udf").unwrap();
+    dir.write("source.xsd", r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Source"><xs:complexType><xs:sequence><xs:element name="Item" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Meta"><xs:complexType><xs:sequence><xs:element name="Code" type="xs:string"/></xs:sequence></xs:complexType></xs:element><xs:element name="Qty" type="xs:integer"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#).unwrap();
+    dir.write("target.xsd", r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Target"><xs:complexType><xs:sequence><xs:element name="Line" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Label" type="xs:string"/><xs:element name="Doubled" type="xs:integer"/></xs:sequence></xs:complexType></xs:element><xs:element name="Spare" minOccurs="0" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Value" type="xs:string"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#).unwrap();
+    dir.write("mapping.mfd", design).unwrap();
     dir
 }
 
 fn add_optional_extra_field(dir: &TempDir) {
-    let path = dir.0.join("target.xsd");
+    let path = dir.path().join("target.xsd");
     let schema = std::fs::read_to_string(&path).unwrap().replace(
         r#"<xs:element name="Doubled" type="xs:integer"/>"#,
         r#"<xs:element name="Doubled" type="xs:integer"/><xs:element name="Extra" type="xs:string" minOccurs="0"/>"#,
     );
-    write(&path, &schema);
+    std::fs::write(&path, &schema).unwrap();
 }
 
 fn target_with_extra(design: &str, prefix: &str) -> String {
@@ -183,7 +149,7 @@ fn colliding_projection_mapping() -> String {
 }
 
 fn use_integer_extra(dir: &TempDir) -> std::io::Result<()> {
-    let path = dir.0.join("target.xsd");
+    let path = dir.path().join("target.xsd");
     let schema = std::fs::read_to_string(&path)?.replace(
         r#"<xs:element name="Extra" type="xs:string" minOccurs="0"/>"#,
         r#"<xs:element name="Extra" type="xs:integer" minOccurs="0"/>"#,
@@ -228,7 +194,7 @@ fn repeated_field<'a>(instance: &'a Instance, field: &str) -> std::io::Result<&'
 #[test]
 fn mapped_sequence_record_udf_preserves_items_and_executes_scalar_expressions() {
     let dir = setup(mapping());
-    let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+    let imported = mfd::import(&dir.path().join("mapping.mfd")).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
     let line = &imported.project.root.children[0];
@@ -260,7 +226,7 @@ fn mapped_sequence_record_udf_preserves_items_and_executes_scalar_expressions() 
             .is_some_and(<[Instance]>::is_empty)
     );
 
-    let exported = dir.0.join("roundtrip.mfd");
+    let exported = dir.path().join("roundtrip.mfd");
     assert!(
         mfd::export(&imported.project, &exported)
             .unwrap()
@@ -290,7 +256,7 @@ fn mapped_sequence_record_preserves_an_ordinary_extra_scalar_binding() {
     );
     let dir = setup(&design);
     add_optional_extra_field(&dir);
-    let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+    let imported = mfd::import(&dir.path().join("mapping.mfd")).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
 
@@ -309,7 +275,7 @@ fn mapped_sequence_record_composes_disjoint_outputs_from_calls_sharing_driver()
     let dir = setup(&composed_sequence_mapping());
     add_optional_extra_field(&dir);
     use_integer_extra(&dir)?;
-    let imported = mfd::import(&dir.0.join("mapping.mfd"))?;
+    let imported = mfd::import(&dir.path().join("mapping.mfd"))?;
 
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
@@ -351,7 +317,7 @@ fn mapped_sequence_record_composes_disjoint_outputs_from_calls_sharing_driver()
     assert_eq!(scalar(&lines[2], "Label"), &Value::String("B!".into()));
     assert_eq!(scalar(&lines[2], "Extra"), &Value::Int(1));
 
-    let exported = dir.0.join("composed-roundtrip.mfd");
+    let exported = dir.path().join("composed-roundtrip.mfd");
     assert!(mfd::export(&imported.project, &exported)?.is_empty());
     let reimported = mfd::import(&exported)?;
     assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
@@ -392,7 +358,7 @@ fn mapped_sequence_record_composition_is_component_and_edge_order_independent()
     add_optional_extra_field(&dir);
     use_integer_extra(&dir)?;
 
-    let imported = mfd::import(&dir.0.join("mapping.mfd"))?;
+    let imported = mfd::import(&dir.path().join("mapping.mfd"))?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
     let output = engine::run(
@@ -431,7 +397,7 @@ fn mapped_sequence_record_projection_collisions_use_stable_output_pin_precedence
         let dir = setup(&design);
         add_optional_extra_field(&dir);
         use_integer_extra(&dir)?;
-        let imported = mfd::import(&dir.0.join("mapping.mfd"))?;
+        let imported = mfd::import(&dir.path().join("mapping.mfd"))?;
         assert_eq!(imported.warnings.len(), 1, "{:?}", imported.warnings);
         assert!(
             imported.warnings[0].contains("lowest output-pin projection was retained"),
@@ -475,7 +441,7 @@ fn mapped_sequence_record_composition_rejects_different_control_on_the_same_coll
     add_optional_extra_field(&dir);
     use_integer_extra(&dir)?;
 
-    let imported = mfd::import(&dir.0.join("mapping.mfd"))?;
+    let imported = mfd::import(&dir.path().join("mapping.mfd"))?;
     assert_eq!(imported.warnings.len(), 1, "{:?}", imported.warnings);
     assert!(
         imported.warnings[0].contains("does not use the structural owner's collection feed"),
@@ -523,7 +489,7 @@ fn mapped_sequence_record_composition_retains_owner_for_duplicate_field()
     let dir = setup(&design);
     add_optional_extra_field(&dir);
 
-    let imported = mfd::import(&dir.0.join("mapping.mfd"))?;
+    let imported = mfd::import(&dir.path().join("mapping.mfd"))?;
     assert_eq!(imported.warnings.len(), 1, "{:?}", imported.warnings);
     assert!(
         imported.warnings[0].contains("the structural owner was retained"),
@@ -553,7 +519,7 @@ fn mapped_sequence_record_requires_its_structural_edge() {
         "",
     );
     let dir = setup(&design);
-    let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+    let imported = mfd::import(&dir.path().join("mapping.mfd")).unwrap();
     assert!(
         imported.warnings.iter().any(|warning| warning.contains(
             "mapped sequence record requires exactly one direct collection-to-record edge"
@@ -567,7 +533,7 @@ fn mapped_sequence_record_requires_its_structural_edge() {
 #[test]
 fn mapped_sequence_record_rejects_sequence_operations() {
     let dir = setup(&mapping().replace("name=\"multiply\"", "name=\"sum\""));
-    let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+    let imported = mfd::import(&dir.path().join("mapping.mfd")).unwrap();
     assert!(
         imported.warnings.iter().any(|warning| warning
             .contains("mapped sequence record uses unsupported sequence operation `sum`")),
@@ -589,7 +555,7 @@ fn mapped_sequence_record_rejects_multiple_output_records() {
             r#"<document schema="target.xsd" instanceroot="{}Target"/>"#,
         );
     let dir = setup(&design);
-    let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+    let imported = mfd::import(&dir.path().join("mapping.mfd")).unwrap();
     assert!(
         imported.warnings.iter().any(|warning| warning.contains(
             "mapped sequence record requires one input collection and one output record"
@@ -603,14 +569,14 @@ fn mapped_sequence_record_rejects_multiple_output_records() {
 #[test]
 fn mapped_sequence_record_rejects_nested_source_repetition() {
     let dir = setup(mapping());
-    let source_schema = std::fs::read_to_string(dir.0.join("source.xsd"))
+    let source_schema = std::fs::read_to_string(dir.path().join("source.xsd"))
         .unwrap()
         .replace(
             r#"<xs:element name="Meta">"#,
             r#"<xs:element name="Meta" maxOccurs="unbounded">"#,
         );
-    write(&dir.0.join("source.xsd"), &source_schema);
-    let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+    dir.write("source.xsd", &source_schema).unwrap();
+    let imported = mfd::import(&dir.path().join("mapping.mfd")).unwrap();
     assert!(
         imported.warnings.iter().any(|warning| warning.contains(
             "structured sequence expressions must read scalar fields without crossing a nested repetition"
@@ -633,7 +599,7 @@ fn mapped_sequence_record_requires_one_caller_collection_input() {
             r#"<vertex vertexkey="10"><edges><edge vertexkey="30"/><edge vertexkey="31"/></edges></vertex>"#,
         );
     let dir = setup(&design);
-    let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+    let imported = mfd::import(&dir.path().join("mapping.mfd")).unwrap();
     assert!(
         imported.warnings.iter().any(|warning| warning
             .contains("its mapped sequence parameter must have one collection input")),
@@ -650,7 +616,7 @@ fn mapped_sequence_record_rejects_a_descendant_as_its_public_input() {
         r#"<root><entry name="Item" componentid="101"><entry name="Wrong" inpkey="30"/></entry></root>"#,
     );
     let dir = setup(&design);
-    let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+    let imported = mfd::import(&dir.path().join("mapping.mfd")).unwrap();
     assert!(
         imported
             .warnings
@@ -669,7 +635,7 @@ fn mapped_sequence_record_rejects_a_descendant_as_its_public_output() {
         r#"<root rootindex="1"><entry name="Line" componentid="102"><entry name="Wrong" outkey="40"/><entry name="Label" outkey="41"/><entry name="Doubled" outkey="42"/></entry></root>"#,
     );
     let dir = setup(&design);
-    let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+    let imported = mfd::import(&dir.path().join("mapping.mfd")).unwrap();
     assert!(
         imported
             .warnings
@@ -688,7 +654,7 @@ fn mapped_sequence_record_executes_into_a_database_root_scope() {
         r#"<component name="target" library="db" kind="15"><data><root><entry name="document"><entry name="Line" type="table" inpkey="20"><entry name="Label" inpkey="21"/><entry name="Doubled" inpkey="22"/></entry></entry></root><database ref="missing"/></data></component>"#,
     );
     let dir = setup(&design);
-    let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+    let imported = mfd::import(&dir.path().join("mapping.mfd")).unwrap();
     assert_eq!(imported.warnings.len(), 1, "{:?}", imported.warnings);
     assert!(imported.warnings[0].contains("has no resolvable connection"));
     assert!(engine::validate(&imported.project).is_empty());

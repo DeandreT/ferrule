@@ -2,34 +2,13 @@
 //! expression `core.replace` and `xpath2.replace` spellings keep their meaning.
 
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{Instance, Value};
 use mapping::{Node, Project};
 
 type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Result<Self, std::io::Error> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_lang_replace_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 /// One `library.replace` component whose three inputs are source fields.
 fn write_design(directory: &Path, library: &str) -> Result<PathBuf, std::io::Error> {
@@ -115,13 +94,13 @@ fn called_functions(project: &Project) -> Vec<&str> {
 
 #[test]
 fn connected_lang_replace_is_literal_through_export_and_reimport() -> TestResult {
-    let directory = TempDir::new()?;
-    let imported = mfd::import(&write_design(&directory.0, "lang")?)?;
+    let directory = TempDir::new("mfd_lang_replace")?;
+    let imported = mfd::import(&write_design(directory.path(), "lang")?)?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
     assert_eq!(called_functions(&imported.project), ["replace_literal"]);
 
-    let exported_path = directory.0.join("roundtrip.mfd");
+    let exported_path = directory.path().join("roundtrip.mfd");
     assert!(mfd::export(&imported.project, &exported_path)?.is_empty());
     let exported = std::fs::read_to_string(&exported_path)?;
     assert!(exported.contains("SelectedLanguage=\"builtin\""));
@@ -159,8 +138,8 @@ fn connected_lang_replace_is_literal_through_export_and_reimport() -> TestResult
 #[test]
 fn regular_expression_replace_spellings_are_unchanged() -> TestResult {
     for library in ["core", "xpath2"] {
-        let directory = TempDir::new()?;
-        let imported = mfd::import(&write_design(&directory.0, library)?)?;
+        let directory = TempDir::new("mfd_lang_replace")?;
+        let imported = mfd::import(&write_design(directory.path(), library)?)?;
         assert!(
             imported.warnings.is_empty(),
             "{library}: {:?}",
@@ -181,7 +160,7 @@ fn regular_expression_replace_spellings_are_unchanged() -> TestResult {
             Value::String("Ferr-ule".into()),
             "{library}"
         );
-        let error = mfd::export(&imported.project, &directory.0.join("roundtrip.mfd"))
+        let error = mfd::export(&imported.project, &directory.path().join("roundtrip.mfd"))
             .unwrap_err()
             .to_string();
         assert!(

@@ -224,14 +224,13 @@ fn looks_like_windows_absolute(path: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::atomic::{AtomicU64, Ordering};
 
     use super::*;
 
     #[test]
     fn resolves_ordered_portable_catalogs_inside_package() -> Result<(), Box<dyn std::error::Error>>
     {
-        let directory = TempDir::new()?;
+        let directory = TempDir::new("package_manifest")?;
         let edi = directory.path().join("resources/edi");
         let json = directory.path().join("resources/json");
         std::fs::create_dir_all(&edi)?;
@@ -271,7 +270,7 @@ mod tests {
     #[test]
     fn rejects_invalid_identity_paths_and_unknown_fields() -> Result<(), Box<dyn std::error::Error>>
     {
-        let directory = TempDir::new()?;
+        let directory = TempDir::new("package_manifest")?;
         let manifest_path = directory.path().join("ferrule-package.json");
         for (document, expected) in [
             (
@@ -308,8 +307,8 @@ mod tests {
     fn rejects_catalog_symlink_escape() -> Result<(), Box<dyn std::error::Error>> {
         use std::os::unix::fs::symlink;
 
-        let directory = TempDir::new()?;
-        let outside = TempDir::new()?;
+        let directory = TempDir::new("package_manifest")?;
+        let outside = TempDir::new("package_manifest")?;
         symlink(outside.path(), directory.path().join("catalog"))?;
         let manifest_path = directory.path().join("ferrule-package.json");
         std::fs::write(
@@ -325,29 +324,5 @@ mod tests {
         Ok(())
     }
 
-    struct TempDir(PathBuf);
-
-    impl TempDir {
-        fn new() -> Result<Self, std::io::Error> {
-            static NEXT: AtomicU64 = AtomicU64::new(0);
-            let path = std::env::temp_dir().join(format!(
-                "ferrule_package_manifest_{}_{}",
-                std::process::id(),
-                NEXT.fetch_add(1, Ordering::Relaxed)
-            ));
-            let _ = std::fs::remove_dir_all(&path);
-            std::fs::create_dir_all(&path)?;
-            Ok(Self(path))
-        }
-
-        fn path(&self) -> &Path {
-            &self.0
-        }
-    }
-
-    impl Drop for TempDir {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_dir_all(&self.0);
-        }
-    }
+    use test_support::TempDir;
 }

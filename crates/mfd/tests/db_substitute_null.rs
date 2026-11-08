@@ -1,29 +1,8 @@
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::path::Path;
 
 use ir::{Instance, ScalarType, SchemaNode, Value};
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Self {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_db_substitute_null_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn row(present: &str, optional: Value) -> Instance {
     Instance::Group(
@@ -96,7 +75,7 @@ fn write_design(path: &Path) {
 
 #[test]
 fn database_substitute_null_preserves_values_and_replaces_nulls() {
-    let dir = TempDir::new();
+    let dir = TempDir::new("mfd_db_substitute_null").unwrap();
     let schema = SchemaNode::group(
         "People",
         vec![
@@ -106,7 +85,7 @@ fn database_substitute_null_preserves_values_and_replaces_nulls() {
     )
     .repeating();
     format_db::write(
-        &dir.0.join("people.sqlite"),
+        &dir.path().join("people.sqlite"),
         &schema,
         &[
             row("kept-1", Value::String("also-present".into())),
@@ -114,13 +93,14 @@ fn database_substitute_null_preserves_values_and_replaces_nulls() {
         ],
     )
     .unwrap();
-    let design = dir.0.join("mapping.mfd");
+    let design = dir.path().join("mapping.mfd");
     write_design(&design);
 
     let imported = mfd::import(&design).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     let source =
-        format_db::read_instance(&dir.0.join("people.sqlite"), &imported.project.source).unwrap();
+        format_db::read_instance(&dir.path().join("people.sqlite"), &imported.project.source)
+            .unwrap();
     let target = engine::run(&imported.project, &source).unwrap();
     let rows = target.as_repeated().unwrap();
 

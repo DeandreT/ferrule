@@ -1,42 +1,15 @@
 use ir::{Instance, Value};
 use mapping::Project;
-use std::{
-    error::Error,
-    fs,
-    path::{Path, PathBuf},
-    sync::atomic::{AtomicUsize, Ordering},
-    time::{SystemTime, UNIX_EPOCH},
-};
+use std::error::Error;
+use std::fs;
 
 const PROJECT: &str = include_str!("fixtures/nested_array_wrappers/project.json");
 
 /// Removes the per-test directory on drop, including after a panic.
-struct TempDir(PathBuf);
-
-impl std::ops::Deref for TempDir {
-    type Target = Path;
-
-    fn deref(&self) -> &Path {
-        &self.0
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn evidence() -> Result<TempDir, Box<dyn Error>> {
-    static NEXT: AtomicUsize = AtomicUsize::new(0);
-    let path = std::env::temp_dir().join(format!(
-        "ferrule-nested-array-mfd-{}-{}-{}",
-        std::process::id(),
-        SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos(),
-        NEXT.fetch_add(1, Ordering::Relaxed)
-    ));
-    fs::create_dir(&path)?;
-    let path = TempDir(path);
+    let path = TempDir::new("mfd-nested-array-wrappers")?;
     fs::write(path.join("independent-project.json"), PROJECT)?;
     Ok(path)
 }

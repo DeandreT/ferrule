@@ -1,32 +1,10 @@
 use std::collections::BTreeMap;
 use std::error::Error;
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{ScalarType, SchemaNode};
 use mapping::{Binding, Graph, Node, Project, Scope, ScopeIteration};
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> std::io::Result<Self> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_recursive_schema_export_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn section_schema() -> SchemaNode {
     let mut text = SchemaNode::scalar("#text", ScalarType::String);
@@ -155,8 +133,8 @@ fn project() -> Project {
 fn recursive_descendant_ports_export_and_reimport_without_warnings() -> Result<(), Box<dyn Error>> {
     let project = project();
     assert!(engine::validate(&project).is_empty());
-    let temp = TempDir::new()?;
-    let design = temp.0.join("recursive-sections.mfd");
+    let temp = TempDir::new("mfd_recursive_schema_export")?;
+    let design = temp.path().join("recursive-sections.mfd");
 
     let export_warnings = mfd::export(&project, &design)?;
     assert!(export_warnings.is_empty(), "{export_warnings:?}");

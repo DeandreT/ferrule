@@ -1,32 +1,11 @@
 use std::error::Error;
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{Instance, ScalarType, SchemaKind, Value};
 use mapping::Project;
 
 const FIELDS: &str = "<field0 name=\"A\" type=\"string\"/><field1 name=\"B\" type=\"integer\"/>";
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> std::io::Result<Self> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule-csv-indexes-{}-{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn source_component(name: &str, root: &str, base: usize, fields: &str) -> String {
     format!(
@@ -85,8 +64,8 @@ fn execute(project: &Project) -> Result<String, Box<dyn Error>> {
 #[test]
 fn shuffled_declarations_execute_in_numeric_order_through_two_strict_cycles()
 -> Result<(), Box<dyn Error>> {
-    let temp = TempDir::new()?;
-    let path = temp.0.join("shuffled.mfd");
+    let temp = TempDir::new("csv-indexes")?;
+    let path = temp.path().join("shuffled.mfd");
     std::fs::write(
         &path,
         design(
@@ -112,7 +91,7 @@ fn shuffled_declarations_execute_in_numeric_order_through_two_strict_cycles()
     let target_schema = project.target.clone();
     for cycle in 0..2 {
         assert_eq!(execute(&project)?, "alpha,7\nbeta,11\n");
-        let exported = temp.0.join(format!("strict-{cycle}.mfd"));
+        let exported = temp.path().join(format!("strict-{cycle}.mfd"));
         let report = mfd::export_with_profile(&project, &exported, mfd::ExportProfile::NativeMfd)?;
         assert!(report.is_native_compatible());
         assert!(report.warnings.is_empty());
@@ -129,7 +108,7 @@ fn shuffled_declarations_execute_in_numeric_order_through_two_strict_cycles()
 #[test]
 fn invalid_declarations_skip_the_component_with_actionable_diagnostics()
 -> Result<(), Box<dyn Error>> {
-    let temp = TempDir::new()?;
+    let temp = TempDir::new("csv-indexes")?;
     for (index, (fields, reason)) in [
         ("<field name=\"A\"/>", "valid numeric suffix"),
         ("<fieldword name=\"A\"/>", "valid numeric suffix"),
@@ -155,7 +134,7 @@ fn invalid_declarations_skip_the_component_with_actionable_diagnostics()
     .into_iter()
     .enumerate()
     {
-        let path = temp.0.join(format!("invalid-{index}.mfd"));
+        let path = temp.path().join(format!("invalid-{index}.mfd"));
         std::fs::write(
             &path,
             design(FIELDS, &source_component("broken", "Broken", 100, fields)),
@@ -188,8 +167,8 @@ fn invalid_declarations_skip_the_component_with_actionable_diagnostics()
 
 #[test]
 fn noncontiguous_numeric_indexes_follow_the_fixed_width_convention() -> Result<(), Box<dyn Error>> {
-    let temp = TempDir::new()?;
-    let path = temp.0.join("gaps.mfd");
+    let temp = TempDir::new("csv-indexes")?;
+    let path = temp.path().join("gaps.mfd");
     std::fs::write(
         &path,
         design(

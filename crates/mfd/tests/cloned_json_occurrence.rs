@@ -1,30 +1,9 @@
 use std::error::Error;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{Instance, Value};
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> std::io::Result<Self> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_cloned_json_occurrence_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn write_fixture(dir: &Path) -> std::io::Result<PathBuf> {
     std::fs::write(
@@ -64,8 +43,8 @@ fn write_fixture(dir: &Path) -> std::io::Result<PathBuf> {
 }
 
 fn verify_occurrences(reverse_feed_order: bool) -> Result<(), Box<dyn Error>> {
-    let dir = TempDir::new()?;
-    let design = write_fixture(&dir.0)?;
+    let dir = TempDir::new("mfd_cloned_json_occurrence")?;
+    let design = write_fixture(dir.path())?;
     if reverse_feed_order {
         let mut text = std::fs::read_to_string(&design)?;
         for (original, reversed) in [(10, 200), (11, 201), (20, 100), (21, 101), (22, 102)] {

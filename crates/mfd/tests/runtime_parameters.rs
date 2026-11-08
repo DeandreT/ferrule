@@ -1,31 +1,10 @@
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use engine::{ExecutionContext, ExecutionPurpose, RuntimeParameters};
 use ir::{Instance, ScalarType, Value};
 use mapping::Node;
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Result<Self, std::io::Error> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_runtime_parameters_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn write_design(directory: &Path) -> Result<PathBuf, std::io::Error> {
     std::fs::write(
@@ -116,14 +95,14 @@ fn assert_output(output: &Instance) {
 #[test]
 fn unconnected_input_parameters_become_typed_host_inputs_and_roundtrip()
 -> Result<(), Box<dyn std::error::Error>> {
-    let directory = TempDir::new()?;
-    let imported = mfd::import(&write_design(&directory.0)?)?;
+    let directory = TempDir::new("mfd_runtime_parameters")?;
+    let imported = mfd::import(&write_design(directory.path())?)?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
     assert_declarations(&imported.project);
     assert_output(&execute(&imported.project)?);
 
-    let exported_path = directory.0.join("roundtrip.mfd");
+    let exported_path = directory.path().join("roundtrip.mfd");
     assert!(mfd::export(&imported.project, &exported_path)?.is_empty());
     let exported = std::fs::read_to_string(&exported_path)?;
     assert!(exported.contains("name=\"correlation_id\""));
@@ -141,8 +120,8 @@ fn unconnected_input_parameters_become_typed_host_inputs_and_roundtrip()
 #[test]
 fn optional_input_without_preview_or_default_skips_scalar_and_rejects_executable_import()
 -> Result<(), Box<dyn std::error::Error>> {
-    let directory = TempDir::new()?;
-    let design = write_design(&directory.0)?;
+    let directory = TempDir::new("mfd_runtime_parameters")?;
+    let design = write_design(directory.path())?;
     let text = std::fs::read_to_string(&design)?.replace(
         "name=\"correlation_id\"/>",
         "name=\"correlation_id\" optional=\"1\"/>",
@@ -203,14 +182,14 @@ fn optional_input_without_preview_or_default_skips_scalar_and_rejects_executable
 #[test]
 fn required_host_input_graph_stays_bounded_across_repeated_native_roundtrips()
 -> Result<(), Box<dyn std::error::Error>> {
-    let directory = TempDir::new()?;
-    let imported = mfd::import(&write_design(&directory.0)?)?;
+    let directory = TempDir::new("mfd_runtime_parameters")?;
+    let imported = mfd::import(&write_design(directory.path())?)?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     let count = imported.project.graph.nodes.len();
     let expected = execute(&imported.project)?;
     let mut project = imported.project;
     for round in 0..5 {
-        let path = directory.0.join(format!("round-{round}.mfd"));
+        let path = directory.path().join(format!("round-{round}.mfd"));
         mfd::export_with_profile(&project, &path, mfd::ExportProfile::NativeMfd)?;
         let restored = mfd::import(&path)?;
         assert!(restored.warnings.is_empty(), "{:?}", restored.warnings);
@@ -408,8 +387,8 @@ fn run_optional_for_purpose(
 #[test]
 fn connected_optional_inputs_preserve_defaults_and_host_override_through_native_roundtrip()
 -> Result<(), Box<dyn std::error::Error>> {
-    let directory = TempDir::new()?;
-    let imported = mfd::import(&write_optional_design(&directory.0)?)?;
+    let directory = TempDir::new("mfd_runtime_parameters")?;
+    let imported = mfd::import(&write_optional_design(directory.path())?)?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
     assert_optional_declarations(&imported.project);
@@ -418,7 +397,7 @@ fn connected_optional_inputs_preserve_defaults_and_host_override_through_native_
     let serialized: mapping::Project = serde_json::from_str(&serialized)?;
     assert_optional_declarations(&serialized);
 
-    let exported_path = directory.0.join("optional-roundtrip.mfd");
+    let exported_path = directory.path().join("optional-roundtrip.mfd");
     assert!(
         mfd::export_with_profile(&serialized, &exported_path, mfd::ExportProfile::NativeMfd,)?
             .is_native_compatible()
@@ -432,7 +411,7 @@ fn connected_optional_inputs_preserve_defaults_and_host_override_through_native_
     assert!(roundtrip.warnings.is_empty(), "{:?}", roundtrip.warnings);
     assert!(engine::validate(&roundtrip.project).is_empty());
     assert_optional_declarations(&roundtrip.project);
-    let second_path = directory.0.join("optional-second-roundtrip.mfd");
+    let second_path = directory.path().join("optional-second-roundtrip.mfd");
     assert!(
         mfd::export_with_profile(
             &roundtrip.project,
@@ -614,15 +593,15 @@ fn connected_optional_inputs_preserve_defaults_and_host_override_through_native_
 #[test]
 fn preview_text_is_preserved_raw_and_checked_only_during_preview()
 -> Result<(), Box<dyn std::error::Error>> {
-    let directory = TempDir::new()?;
-    let design = write_optional_design(&directory.0)?;
+    let directory = TempDir::new("mfd_runtime_parameters")?;
+    let design = write_optional_design(directory.path())?;
     let text = std::fs::read_to_string(&design)?
         .replace("previewvalue=\"9\"", "previewvalue=\"not-an-integer\"")
         .replace("previewvalue=\"legacy\"", "previewvalue=\"\"");
     std::fs::write(&design, text)?;
     let imported = mfd::import(&design)?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
-    let exported = directory.0.join("raw-preview-roundtrip.mfd");
+    let exported = directory.path().join("raw-preview-roundtrip.mfd");
     assert!(
         mfd::export_with_profile(&imported.project, &exported, mfd::ExportProfile::NativeMfd,)?
             .is_native_compatible()
@@ -694,8 +673,8 @@ fn preview_text_is_preserved_raw_and_checked_only_during_preview()
 #[test]
 fn preview_attribute_roundtrips_xml_whitespace_and_escapes()
 -> Result<(), Box<dyn std::error::Error>> {
-    let directory = TempDir::new()?;
-    let design = write_optional_design(&directory.0)?;
+    let directory = TempDir::new("mfd_runtime_parameters")?;
+    let design = write_optional_design(directory.path())?;
     let text = std::fs::read_to_string(&design)?.replace(
         "previewvalue=\"legacy\"",
         "previewvalue=\"A&#xD;&#xA;&#x9;&amp;&quot;&lt;\"",
@@ -709,7 +688,7 @@ fn preview_attribute_roundtrips_xml_whitespace_and_escapes()
         Node::RuntimeParameter { name, preview: Some(preview), .. }
             if name == "RequiredPreview" && preview == expected
     )));
-    let exported = directory.0.join("escaped-preview.mfd");
+    let exported = directory.path().join("escaped-preview.mfd");
     assert!(
         mfd::export_with_profile(&imported.project, &exported, mfd::ExportProfile::NativeMfd,)?
             .is_native_compatible()
@@ -728,8 +707,8 @@ fn preview_attribute_roundtrips_xml_whitespace_and_escapes()
 #[test]
 fn optional_preview_without_connected_runtime_default_is_diagnosed_and_not_frozen()
 -> Result<(), Box<dyn std::error::Error>> {
-    let directory = TempDir::new()?;
-    let design = write_optional_design(&directory.0)?;
+    let directory = TempDir::new("mfd_runtime_parameters")?;
+    let design = write_optional_design(directory.path())?;
     let text = std::fs::read_to_string(&design)?.replace(
         "  <vertex vertexkey=\"103\"><edges><edge vertexkey=\"120\"/></edges></vertex>\n",
         "",

@@ -1,32 +1,11 @@
 use std::error::Error;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{Instance, Value};
 use mapping::{Node, ScopeIteration};
 use rusqlite::Connection;
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Result<Self, Box<dyn Error>> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_hierarchical_join_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn prepare_database(dir: &Path) -> Result<PathBuf, Box<dyn Error>> {
     let database = dir.join("test.sqlite");
@@ -160,9 +139,9 @@ fn assert_home_rows(output: &Instance) {
 #[test]
 fn keyless_join_over_hierarchical_db_relation_imports_as_plain_iteration()
 -> Result<(), Box<dyn Error>> {
-    let dir = TempDir::new()?;
-    let database = prepare_database(&dir.0)?;
-    let design = dir.0.join("hierarchical-join.mfd");
+    let dir = TempDir::new("mfd_hierarchical_join")?;
+    let database = prepare_database(dir.path())?;
+    let design = dir.path().join("hierarchical-join.mfd");
     write_design(&design)?;
 
     let imported = mfd::import(&design)?;
@@ -207,7 +186,7 @@ fn keyless_join_over_hierarchical_db_relation_imports_as_plain_iteration()
     let output = run_preview(&imported.project, &database)?;
     assert_home_rows(&output);
 
-    let exported = dir.0.join("roundtrip.mfd");
+    let exported = dir.path().join("roundtrip.mfd");
     assert!(mfd::export(&imported.project, &exported)?.is_empty());
     let roundtrip = mfd::import(&exported)?;
     assert!(roundtrip.warnings.is_empty(), "{:?}", roundtrip.warnings);
