@@ -12,7 +12,7 @@ const MAX_TREE_CHILDREN: usize = 8;
 /// A bounded structural source snapshot. Field names and portable document
 /// paths label children; collection items have no name and retain their order.
 /// All names and scalar previews share one 512-byte UTF-8 budget for the tree.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct TraceSourceTree {
     pub name: Option<String>,
     pub name_truncated: bool,
