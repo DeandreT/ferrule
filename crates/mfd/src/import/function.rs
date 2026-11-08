@@ -33,6 +33,8 @@ pub(super) struct ValueMapData {
     pub(super) input_type: Option<ScalarType>,
     /// Retains an unsupported native fallback mode until import admission.
     pub(super) unsupported_input_mode: bool,
+    /// String-to-String input mode: a table miss returns the input itself.
+    pub(super) pass_through_input: bool,
     /// Exact bounded raw metadata for total enclosing-frame String maps.
     /// General value-map parsing keeps its independent compatibility rules.
     pub(super) total_string: Option<TotalStringValueMap>,
@@ -53,24 +55,59 @@ impl ValueMapData {
 pub(super) fn unsupported_value_map_input_mode(
     component: &roxmltree::Node<'_, '_>,
 ) -> Option<&'static str> {
-    (component.has_tag_name("component")
+    let mut maps = input_mode_value_maps(component).peekable();
+    let declared = maps.peek().is_some();
+    // `read` lowers only the first saved map, so pass-through must own the only one.
+    let saved_maps = component
+        .children()
+        .filter(|node| node.has_tag_name("data"))
+        .flat_map(|data| data.children())
+        .filter(|node| node.has_tag_name("valuemap"))
+        .count();
+    (maps.any(|map| !string_to_string(map)) || declared && saved_maps != 1)
+        .then_some(VALUE_MAP_INPUT_MODE_UNSUPPORTED)
+}
+
+/// Every input-mode declaration is String to String, so a miss can return
+/// the input unchanged. Other pairs need an unestablished conversion.
+fn value_map_input_pass_through(component: &roxmltree::Node<'_, '_>) -> bool {
+    input_mode_value_maps(component).next().is_some()
+        && unsupported_value_map_input_mode(component).is_none()
+}
+
+fn input_mode_value_maps<'a, 'input>(
+    component: &roxmltree::Node<'a, 'input>,
+) -> impl Iterator<Item = roxmltree::Node<'a, 'input>> {
+    let physical = component.has_tag_name("component")
         && component.tag_name().namespace().is_none()
         && component.attribute("library") == Some("core")
-        && parse_u32(component.attribute("kind")) == Some(23)
-        && component
-            .children()
-            .filter(|node| node.has_tag_name("data") && node.tag_name().namespace().is_none())
-            .flat_map(|data| data.children())
-            .any(|node| {
-                node.has_tag_name("valuemap")
-                    && node.tag_name().namespace().is_none()
-                    && node.attributes().any(|attribute| {
-                        attribute.namespace().is_none()
-                            && attribute.name() == "defaultValueMode"
-                            && attribute.value() == "input"
-                    })
-            }))
-    .then_some(VALUE_MAP_INPUT_MODE_UNSUPPORTED)
+        && parse_u32(component.attribute("kind")) == Some(23);
+    component
+        .children()
+        .filter(move |node| {
+            physical && node.has_tag_name("data") && node.tag_name().namespace().is_none()
+        })
+        .flat_map(|data| data.children())
+        .filter(|node| {
+            node.has_tag_name("valuemap")
+                && node.tag_name().namespace().is_none()
+                && node.attributes().any(|attribute| {
+                    attribute.namespace().is_none()
+                        && attribute.name() == "defaultValueMode"
+                        && attribute.value() == "input"
+                })
+        })
+}
+
+/// Explicit exact `string` only; `read` also maps absent or unknown names such
+/// as `dateTime` to String, which is not an established identity conversion.
+fn string_to_string(map: roxmltree::Node<'_, '_>) -> bool {
+    ["input", "result"].into_iter().all(|role| {
+        map.descendants()
+            .find(|node| node.has_tag_name(role))
+            .and_then(|node| node.attribute("type"))
+            == Some("string")
+    })
 }
 
 fn body_components<'a, 'input>(
@@ -462,6 +499,7 @@ pub(super) fn read(component: &roxmltree::Node) -> FnComponent {
         })
         .map(|vm| {
             let unsupported_input_mode = unsupported_value_map_input_mode(component).is_some();
+            let pass_through_input = value_map_input_pass_through(component);
             let input_type = vm
                 .descendants()
                 .find(|node| node.has_tag_name("input"))
@@ -497,6 +535,7 @@ pub(super) fn read(component: &roxmltree::Node) -> FnComponent {
                 .map(|value| parse_constant(value, mfd_type_name(result_type)))
                 .filter(|_| {
                     !unsupported_input_mode
+                        && !pass_through_input
                         && (vm.attribute("defaultValueMode") == Some("custom")
                             || vm.attribute("enableDefaultValue") == Some("1"))
                 });
@@ -505,6 +544,7 @@ pub(super) fn read(component: &roxmltree::Node) -> FnComponent {
                 default,
                 input_type,
                 unsupported_input_mode,
+                pass_through_input,
                 total_string: exact_total_string_value_map(component, vm),
             }
         });
@@ -1840,14 +1880,38 @@ mod tests {
         )
         .unwrap();
         let value_map = read(&document.root_element()).valuemap.unwrap();
-        assert!(value_map.unsupported_input_mode);
+        assert!(!value_map.unsupported_input_mode && value_map.pass_through_input);
+        assert_eq!(value_map.default, None);
         assert!(value_map.total_string.is_none());
+    }
+
+    #[test]
+    fn value_map_input_mode_beside_another_saved_map_refuses() {
+        let input = r#"<valuemap defaultValueMode="input"><valuemapTable><entry from="a" to="b"/></valuemapTable><input name="input" type="string"/><result name="result" type="string"/></valuemap>"#;
+        let custom = r#"<valuemap defaultValueMode="custom"><valuemapTable><entry from="a" to="c"/></valuemapTable><input name="input" type="string"/><result name="result" type="string" defaultValue="d"/></valuemap>"#;
+        for data in [
+            format!("<data>{custom}{input}</data>"),
+            format!("<data>{input}{custom}</data>"),
+            format!("<data>{custom}</data><data>{input}</data>"),
+        ] {
+            let xml = format!(
+                r#"<component name="value-map" library="core" kind="23">{data}</component>"#
+            );
+            let document = roxmltree::Document::parse(&xml).unwrap();
+            let value_map = read(&document.root_element()).valuemap.unwrap();
+            assert!(!value_map.pass_through_input, "{data}");
+            assert_eq!(
+                value_map.unsupported_reason(),
+                Some(VALUE_MAP_INPUT_MODE_UNSUPPORTED),
+                "{data}"
+            );
+        }
     }
 
     #[test]
     fn value_map_input_mode_uses_the_lowerers_parsed_kind() {
         for kind in ["23", "023", "+23"] {
-            let xml = format!(
+            let string = format!(
                 r#"<component name="value-map" library="core" kind="{kind}">
                     <data><valuemap defaultValueMode="input" enableDefaultValue="1">
                         <valuemapTable><entry from="A" to="B"/></valuemapTable>
@@ -1855,6 +1919,15 @@ mod tests {
                         <result name="result" type="string" defaultValue="stale"/>
                     </valuemap></data>
                 </component>"#
+            );
+            let document = roxmltree::Document::parse(&string).unwrap();
+            let value_map = read(&document.root_element()).valuemap.unwrap();
+            assert!(value_map.pass_through_input, "{kind}");
+            assert_eq!(value_map.unsupported_reason(), None, "{kind}");
+            assert_eq!(value_map.default, None, "{kind}");
+            let xml = string.replace(
+                r#"<input name="input" type="string"/>"#,
+                r#"<input name="input" type="integer"/>"#,
             );
             let document = roxmltree::Document::parse(&xml).unwrap();
             let component = document.root_element();
