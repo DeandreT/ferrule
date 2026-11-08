@@ -11,8 +11,10 @@ use std::fmt;
 use std::sync::Arc;
 
 use ir::{Instance, SchemaKind, SchemaNode, Value};
-use mapping::{EdiImpliedDecimal, EdiLexicalFormat, EdiValueConstraint, X12Autocomplete};
-use serde_json::Value as Json;
+use mapping::{
+    EdiImpliedDecimal, EdiLexicalFormat, EdiValueConstraint, X12Autocomplete, X12Descriptor,
+    X12DescriptorEnvelope, X12DescriptorSeparators,
+};
 
 use crate::descriptor_registry::DescriptorRegistry;
 use crate::{ExecutionContext, JsonBoundaryError, RuntimeError, RuntimeValue};
@@ -197,59 +199,17 @@ impl Profile {
         if text.len() > MAX_EMBEDDED_X12_SCHEMA_BYTES {
             return Err(descriptor("descriptor exceeds 1 MiB"));
         }
-        let value: Json = serde_json::from_str(text).map_err(|e| descriptor(e.to_string()))?;
-        let object = value
-            .as_object()
-            .ok_or_else(|| descriptor("expected an object"))?;
-        if object.keys().any(|key| {
-            !matches!(
-                key.as_str(),
-                "schema"
-                    | "version"
-                    | "envelope_profile"
-                    | "separators"
-                    | "constraints"
-                    | "lenient_segments"
-                    | "implied_decimals"
-                    | "lexical_formats"
-                    | "autocomplete"
-            )
-        }) {
-            return Err(descriptor("unknown descriptor member"));
-        }
-        let schema = codegen_schema::decode(
-            value["schema"]
-                .as_str()
-                .ok_or_else(|| descriptor("missing schema"))?,
-            MAX_EMBEDDED_X12_SCHEMA_BYTES,
-        )
-        .map_err(X12BoundaryError::Schema)?;
-        let version = match value["version"].as_str() {
-            Some("004010") => "00401",
-            Some("005010") => "00501",
-            Some("006040") => "00604",
-            _ => return Err(descriptor("unsupported version")),
+        let value: X12Descriptor =
+            serde_json::from_str(text).map_err(|e| descriptor(e.to_string()))?;
+        let schema = codegen_schema::decode(&value.schema, MAX_EMBEDDED_X12_SCHEMA_BYTES)
+            .map_err(X12BoundaryError::Schema)?;
+        let version = value.version.interchange();
+        let envelope = match value.envelope_profile {
+            None => EnvelopeProfile::Single,
+            Some(X12DescriptorEnvelope::GroupedTransactions) => EnvelopeProfile::Grouped,
+            Some(X12DescriptorEnvelope::MapForceInterchanges) => EnvelopeProfile::MapForce,
         };
-        let envelope = match value.get("envelope_profile").and_then(Json::as_str) {
-            None if value.get("envelope_profile").is_none() => EnvelopeProfile::Single,
-            Some("grouped_transactions") => EnvelopeProfile::Grouped,
-            Some("mapforce_interchanges") => EnvelopeProfile::MapForce,
-            _ => return Err(descriptor("unsupported envelope profile")),
-        };
-        let decode = |key: &str| {
-            value
-                .get(key)
-                .cloned()
-                .ok_or_else(|| descriptor(format!("missing {key}")))
-        };
-        let implied = serde_json::from_value(decode("implied_decimals")?)
-            .map_err(|e| descriptor(e.to_string()))?;
-        let lexical = serde_json::from_value(decode("lexical_formats")?)
-            .map_err(|e| descriptor(e.to_string()))?;
-        let autocomplete = serde_json::from_value(decode("autocomplete")?)
-            .map_err(|e| descriptor(e.to_string()))?;
-        let constraints: Vec<EdiValueConstraint> = serde_json::from_value(decode("constraints")?)
-            .map_err(|e| descriptor(e.to_string()))?;
+        let constraints = value.constraints;
         let mut indexed = BTreeMap::new();
         for constraint in constraints {
             if indexed
@@ -275,14 +235,12 @@ impl Profile {
             schema,
             version,
             envelope,
-            syntax: wire::Syntax::selected(&value["separators"], version)?,
-            lenient: value["lenient_segments"]
-                .as_bool()
-                .ok_or_else(|| descriptor("missing lenient_segments"))?,
-            implied,
-            lexical,
+            syntax: wire::Syntax::selected(value.separators, version)?,
+            lenient: value.lenient_segments,
+            implied: value.implied_decimals,
+            lexical: value.lexical_formats,
             constraints: indexed,
-            autocomplete,
+            autocomplete: value.autocomplete,
         })
     }
 }
