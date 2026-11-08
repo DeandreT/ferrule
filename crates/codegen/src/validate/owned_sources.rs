@@ -12,8 +12,8 @@ use super::{
     OwnedSourceStructureReason as Structure, ProgramValidationError, graph_dependencies,
 };
 use crate::{
-    Expression, FailureIteration, IterationOutput, IterationSource, OwnedCapabilities, OwnedPreset,
-    Program, TargetConstruction, TargetScope,
+    Expression, FailureIteration, IterationOutput, IterationPlan, IterationSource,
+    OwnedCapabilities, OwnedPreset, Program, TargetConstruction, TargetScope,
 };
 use ir::{SchemaKind, SchemaNode};
 use mapping::{NodeId, SourceScopeLocation, SourceScopeStep, SourceScopeTarget};
@@ -601,6 +601,38 @@ pub fn owned_expression_emission_error(
         },
         request(expression),
         closed,
+    )
+}
+/// The refusal for an iteration a renderer's emission path cannot render.
+/// Validation and admission refuse such plans before rendering; renderers
+/// return this rather than panic if one reaches them.
+pub fn unrendered_iteration(
+    program: &Program,
+    iteration: &IterationPlan,
+) -> ProgramValidationError {
+    let route = all_scopes(program)
+        .into_iter()
+        .find(|(scope, _)| {
+            scope
+                .iteration
+                .as_ref()
+                .is_some_and(|candidate| std::ptr::eq(candidate, iteration))
+        })
+        .map_or_else(
+            || SourceScopeLocation::root(SourceScopeTarget::Primary),
+            |(_, route)| route,
+        );
+    failure(
+        Location::Iteration {
+            scope: route.clone(),
+        },
+        iteration
+            .owned_source_iteration()
+            .map(|source| iteration_request(source.source())),
+        Closed {
+            reason: Capability::UnsupportedBasicContext,
+            origin: Origin::Scope { scope: route },
+        },
     )
 }
 /// Closed Stage-A gate, after the caller's unchanged Program/package/profile checks.
