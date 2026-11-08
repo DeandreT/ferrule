@@ -6,14 +6,14 @@ use ir::{Value, XML_TEXT_FIELD};
 use mapping::{AggregateOp, Graph, Node, NodeId, Project, RuntimeValue, SequenceExpr};
 
 use crate::MfdError;
+use crate::datatype::mfd_type_name;
 
 use super::aggregate_cardinality::expression_reads_collection;
 use super::auto_number::{self, AutoNumbers};
 use super::database_xml::DirectColumns;
 use super::decimal_input::{self, DecimalInputs};
 use super::function::{
-    aggregate_component_name, constant_parts, native_function, scalar_type_name, value_scalar_type,
-    value_text,
+    aggregate_component_name, constant_parts, native_function, value_scalar_type, value_text,
 };
 use super::join::JoinExports;
 use super::node_frames::NodeFrames;
@@ -1047,7 +1047,7 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<RenderedNodes, MfdError> {
                 let out = keys.next();
                 node_out_key.insert(id, out);
                 *uid += 1;
-                let datatype = scalar_type_name(*ty);
+                let datatype = mfd_type_name(*ty);
                 let escaped_name = xml_escape(name);
                 let preview_attr = preview.as_ref().map_or_else(String::new, |value| {
                     format!(
@@ -1072,7 +1072,7 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<RenderedNodes, MfdError> {
                 node_out_key.insert(id, out);
                 fn_inputs.insert(id, vec![input]);
                 *uid += 1;
-                let datatype = scalar_type_name(*ty);
+                let datatype = mfd_type_name(*ty);
                 let escaped_name = xml_escape(name);
                 let preview_attr = preview.as_ref().map_or_else(String::new, |value| {
                     format!(
@@ -1238,12 +1238,12 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<RenderedNodes, MfdError> {
                 } else {
                     ""
                 };
-                let input_type = scalar_type_name(input_type.unwrap_or(ir::ScalarType::String));
+                let input_type = mfd_type_name(input_type.unwrap_or(ir::ScalarType::String));
                 let result_type = table
                     .iter()
                     .find_map(|(_, value)| value_scalar_type(value))
                     .or_else(|| default.as_ref().and_then(value_scalar_type))
-                    .map(scalar_type_name)
+                    .map(mfd_type_name)
                     .unwrap_or("string");
                 let _ = write!(
                     components,

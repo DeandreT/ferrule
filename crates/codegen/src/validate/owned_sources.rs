@@ -119,24 +119,15 @@ fn endpoint<'a>(program: &'a Program, owner: &Owner) -> Result<&'a SchemaNode, S
             .ok_or(Structure::UnknownOwner),
     }
 }
-fn anchor<'a>(node: &'a SchemaNode, name: &str) -> Option<&'a SchemaNode> {
-    if node.recursive_ref.is_none()
-        && node.name == name
-        && matches!(node.kind, SchemaKind::Group { .. })
-    {
-        return Some(node);
-    }
-    match &node.kind {
-        SchemaKind::Group { children, .. } => children.iter().find_map(|child| anchor(child, name)),
-        _ => None,
-    }
-}
 fn resolved<'a>(root: &'a SchemaNode, node: &'a SchemaNode) -> Result<&'a SchemaNode, Structure> {
     match &node.recursive_ref {
         None => Ok(node),
-        Some(name) => anchor(root, name).ok_or_else(|| Structure::UnresolvedRecursiveAnchor {
-            anchor: name.clone(),
-        }),
+        Some(name) => {
+            root.find_concrete_group(name)
+                .ok_or_else(|| Structure::UnresolvedRecursiveAnchor {
+                    anchor: name.clone(),
+                })
+        }
     }
 }
 fn follow<'a>(root: &'a SchemaNode, path: &[String]) -> Result<&'a SchemaNode, Structure> {

@@ -2,10 +2,11 @@ use std::collections::BTreeSet;
 use std::fmt::Write as _;
 use std::path::Path;
 
-use ir::{ScalarType, SchemaKind, SchemaNode};
+use ir::{SchemaKind, SchemaNode};
 use mapping::{EdiAutocomplete, EdiBoundaryKind, EdiConfigDependency, FormatOptions};
 
 use crate::MfdError;
+use crate::datatype::mfd_type_name;
 
 use super::concatenation::TargetBranches;
 use super::schema::{GeneratedSibling, PortTree, RenderedSchemaComponent, Side, xml_escape};
@@ -560,7 +561,7 @@ fn entries_xml(
                 .unwrap_or_default();
             let scalar_type = match &node.kind {
                 SchemaKind::Scalar { ty } => {
-                    format!(" datatype=\"{}\"", scalar_type_name(*ty))
+                    format!(" datatype=\"{}\"", mfd_type_name(*ty))
                 }
                 SchemaKind::ScalarUnion { .. } => {
                     return Err(MfdError::Unsupported(format!(
@@ -735,14 +736,5 @@ const fn mfd_kind(kind: EdiBoundaryKind) -> &'static str {
         EdiBoundaryKind::Tradacoms => "EDITRADACOMS",
         EdiBoundaryKind::Idoc => "EDIFIXED",
         EdiBoundaryKind::SwiftMt => "SWIFTMT",
-    }
-}
-
-const fn scalar_type_name(ty: ScalarType) -> &'static str {
-    match ty {
-        ScalarType::String => "string",
-        ScalarType::Int => "integer",
-        ScalarType::Float => "decimal",
-        ScalarType::Bool => "boolean",
     }
 }
