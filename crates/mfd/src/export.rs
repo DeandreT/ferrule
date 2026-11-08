@@ -201,6 +201,17 @@ impl<'a> TargetExport<'a> {
     }
 }
 
+/// The legacy source path of a scope. `preflight::validate_source_ownership`
+/// refuses every owned source iteration before any export pass runs, so the
+/// error is unreachable for an admitted project.
+fn legacy_source(scope: &Scope) -> Result<Option<&[String]>, MfdError> {
+    scope.source().map_err(|_| {
+        MfdError::Unsupported(
+            "owned source iteration reached .mfd export after the ownership boundary".to_string(),
+        )
+    })
+}
+
 fn transposed_target(format: SideFormat, options: &FormatOptions) -> bool {
     format == SideFormat::Xlsx && !options.xlsx_rows.is_empty()
 }
@@ -224,11 +235,6 @@ fn require_plain_record_scope(root: &Scope) -> Result<(), MfdError> {
 }
 
 fn explicit_scope_text_ports(schema: &SchemaNode, root: &Scope) -> BTreeSet<Vec<String>> {
-    fn schema_node_at<'a>(schema: &'a SchemaNode, path: &[String]) -> Option<&'a SchemaNode> {
-        path.iter()
-            .try_fold(schema, |node, segment| node.child(segment))
-    }
-
     fn collect(
         schema: &SchemaNode,
         scope: &Scope,
@@ -243,8 +249,9 @@ fn explicit_scope_text_ports(schema: &SchemaNode, root: &Scope) -> BTreeSet<Vec<
             .bindings
             .iter()
             .any(|binding| binding.target_field == ir::XML_TEXT_FIELD);
-        let has_element_content =
-            schema_node_at(schema, path).is_some_and(|node| match &node.kind {
+        let has_element_content = schema
+            .descendant(path)
+            .is_some_and(|node| match &node.kind {
                 SchemaKind::Group { children, .. } => {
                     children.iter().any(|child| !child.text && !child.attribute)
                 }
@@ -490,7 +497,7 @@ fn prepare_export_mode(
     for (target, hinted) in targets.iter_mut().zip(&hinted) {
         target.schema_hint = *hinted;
     }
-    let first_presence = first_presence::Plan::build(&project.graph, &sources, &targets);
+    let first_presence = first_presence::Plan::build(&project.graph, &sources, &targets)?;
     scoped_exception_branches.validate_ports(&sources, &targets[0].ports)?;
 
     let native_datetime_casts = native_datetime_cast::NativeDatetimeCasts::plan(project, &targets);
@@ -560,7 +567,7 @@ fn prepare_export_mode(
         warnings: &mut warnings,
     })?;
     let mut blocked_nodes = dynamic_sources.owned_nodes().clone();
-    blocked_nodes.extend(exception::absorbed_filter_nodes(project));
+    blocked_nodes.extend(exception::absorbed_filter_nodes(project)?);
     blocked_nodes.extend(scoped_exception_branches.owned_nodes());
     if let Some(plan) = &native_database_where {
         blocked_nodes.extend(plan.absorbed_nodes());
@@ -690,7 +697,7 @@ fn prepare_export_mode(
             &mut warnings,
         );
     }
-    let mut exception_branches = exception::Branches::new(project);
+    let mut exception_branches = exception::Branches::new(project)?;
     let mut native_path_hierarchy_definition = None;
     let mut native_adjacency_tree_definition = None;
     let mut native_recursive_filter_definition = None;
@@ -797,7 +804,7 @@ fn prepare_export_mode(
                 target_branches: &target.branches,
                 exception_branches: &mut exception_branches,
                 scoped_exception_branches: &mut scoped_exception_branches,
-            });
+            })?;
         }
         if let Some(plan) = &target.dynamic_json {
             plan.connect(dynamic_json::ConnectArgs {

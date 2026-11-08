@@ -127,6 +127,59 @@ fn owned_basic_iteration_getters_retain_wire_discriminants_and_old_constructors(
     let legacy = IterationPlan::source(vec!["Ref".into(), "Values".into()]);
     assert_eq!(legacy.source_iteration().unwrap().path(), ["Ref", "Values"]);
     assert_eq!(legacy.owned_source_iteration(), None);
+    // Only path-addressed inputs reach a candidate loop.
+    assert_eq!(
+        owned.kind(),
+        crate::IterationKind::Owned(crate::OwnedIteration::Source(&OwnedSourceIteration::new(
+            source.clone()
+        )))
+    );
+    let crate::IterationKind::Candidates(candidates) = legacy.kind() else {
+        panic!("a source iteration walks candidates");
+    };
+    assert_eq!(
+        candidates.source_path(),
+        Some(["Ref".to_owned(), "Values".to_owned()].as_slice())
+    );
+    assert_eq!(
+        IterationPlan::optional_presence(4).kind(),
+        crate::IterationKind::OptionalPresence(crate::OptionalPresence::new(4))
+    );
+}
+
+#[test]
+fn unrendered_iteration_names_the_scope_that_reached_the_renderer() {
+    let mut program = lower(&supported_project()).expect("supported project lowers");
+    let source = ref_at(SourceOwner::Primary, &["Values"]);
+    let child = program.root.children.first_mut().expect("a child scope");
+    child.iteration = Some(IterationPlan::owned_source(source));
+    let iteration = program.root.children[0].iteration.as_ref().unwrap();
+    let ProgramValidationError::OwnedSource { diagnostic } =
+        crate::unrendered_iteration(&program, iteration)
+    else {
+        panic!("an owned-source refusal");
+    };
+    let crate::OwnedSourceDiagnostic::Capability {
+        location,
+        request,
+        reason,
+        ..
+    } = *diagnostic
+    else {
+        panic!("a capability refusal");
+    };
+    assert_eq!(
+        location,
+        crate::OwnedSourceDiagnosticLocation::Iteration {
+            scope: mapping::SourceScopeLocation::root(mapping::SourceScopeTarget::Primary)
+                .descendant(mapping::SourceScopeStep::Child(0))
+        }
+    );
+    assert!(request.is_some());
+    assert_eq!(
+        reason,
+        crate::OwnedSourceCapabilityReason::UnsupportedBasicContext
+    );
 }
 #[test]
 fn owned_basic_valid_dead_nodes_are_omitted_and_both_if_branches_are_retained() {

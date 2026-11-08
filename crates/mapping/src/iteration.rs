@@ -759,7 +759,8 @@ pub enum ScopeIteration {
     #[default]
     None,
     Source(Vec<String>),
-    /// Explicit endpoint-relative collection identity; execution remains unavailable.
+    /// Iterates a collection of an explicitly owned source endpoint (the
+    /// primary input or a named source), rather than a primary-relative path.
     OwnedSource {
         source: OwnedSourceRef,
         output_path: Option<NodeId>,

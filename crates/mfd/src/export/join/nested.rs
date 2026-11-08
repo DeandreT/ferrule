@@ -4,7 +4,6 @@ use ir::{SchemaKind, SchemaNode};
 use mapping::{CollectionJoinSource, JoinSourceCardinality};
 
 use super::super::source::{SourceExport, SourceExports};
-use super::schema_node_at;
 
 /// Resolves the source paths of a join nested inside one ordinary source
 /// iteration whose item path is `anchor`.
@@ -150,7 +149,9 @@ impl<'s, 'a> AnchorFrames<'s, 'a> {
         let mut frames = (0..=local.len())
             .rev()
             .map(|length| {
-                schema_node_at(component.schema, &local[..length])
+                component
+                    .schema
+                    .descendant(&local[..length])
                     .ok_or("nested join anchor has an unresolved source frame")
             })
             .collect::<Result<Vec<_>, _>>()?;
