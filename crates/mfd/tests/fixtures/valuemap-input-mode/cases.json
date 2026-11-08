@@ -1,0 +1,38 @@
+[
+  {
+    "name": "matched input uses the table result",
+    "input": "{\"Rows\":[{\"Value\":\"A\"}]}",
+    "parameters": {},
+    "expected": {"Rows": [{"Label": "B"}]}
+  },
+  {
+    "name": "unmatched input passes through, not the saved custom default",
+    "input": "{\"Rows\":[{\"Value\":\"MISS\"}]}",
+    "parameters": {},
+    "expected": {"Rows": [{"Label": "MISS"}]}
+  },
+  {
+    "name": "empty String is a present miss",
+    "input": "{\"Rows\":[{\"Value\":\"\"}]}",
+    "parameters": {},
+    "expected": {"Rows": [{"Label": ""}]}
+  },
+  {
+    "name": "JSON null input stays null",
+    "input": "{\"Rows\":[{\"Value\":null}]}",
+    "parameters": {},
+    "expected": {"Rows": [{"Label": null}]}
+  },
+  {
+    "name": "absent input stays absent",
+    "input": "{\"Rows\":[{}]}",
+    "parameters": {},
+    "expected": {"Rows": [{}]}
+  },
+  {
+    "name": "mixed rows keep positions",
+    "input": "{\"Rows\":[{\"Value\":\"A\"},{\"Value\":\"MISS\"},{},{\"Value\":\"\"}]}",
+    "parameters": {},
+    "expected": {"Rows": [{"Label": "B"}, {"Label": "MISS"}, {}, {"Label": ""}]}
+  }
+]
