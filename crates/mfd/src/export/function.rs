@@ -1,8 +1,6 @@
 use ir::{ScalarType, Value};
 use mapping::AggregateOp;
 
-use crate::canonical_function;
-
 pub(super) fn aggregate_component_name(op: AggregateOp) -> &'static str {
     match op {
         AggregateOp::Count => "count",
@@ -46,63 +44,7 @@ pub(super) fn value_scalar_type(value: &Value) -> Option<ScalarType> {
 }
 
 pub(super) fn unmap_function_name(name: &str) -> String {
-    match name {
-        "not_equal" => "not-equal",
-        "greater_than" => "greater",
-        "less_than" => "less",
-        "greater_or_equal" => "equal-or-greater",
-        "less_or_equal" => "equal-or-less",
-        "and" => "logical-and",
-        "or" => "logical-or",
-        "not" => "logical-not",
-        "length" => "string-length",
-        "starts_with" => "starts-with",
-        "ends_with" => "ends-with",
-        "upper" => "uppercase",
-        "lower" => "lowercase",
-        "left_trim" => "left-trim",
-        "right_trim" => "right-trim",
-        "pad_string_left" => "pad-string-left",
-        "pad_string_right" => "pad-string-right",
-        "format_guid_string" => "format-guid-string",
-        "replace_literal" => "replace",
-        "substring_before" => "substring-before",
-        "substring_after" => "substring-after",
-        "normalize_space" => "normalize-space",
-        "is_numeric" => "numeric",
-        "is_empty" => "empty",
-        "get_folder" => "get-folder",
-        "remove_folder" => "remove-folder",
-        "resolve_filepath" => "resolve-filepath",
-        "is_xml_nil" => "is-xsi-nil",
-        "substitute_missing_with_xml_nil" => "substitute-missing-with-xsi-nil",
-        "date_from_datetime" => "date-from-datetime",
-        "year_from_datetime" => "year-from-datetime",
-        "month_from_datetime" => "month-from-datetime",
-        "day_from_datetime" => "day-from-datetime",
-        "weekday" => "weekday",
-        "hours_from_datetime" => "hour-from-datetime",
-        "minutes_from_datetime" => "minute-from-datetime",
-        "time_from_datetime" => "time-from-datetime",
-        "datetime_from_date_and_time" => "datetime-from-date-and-time",
-        "datetime_from_parts" => "datetime-from-parts",
-        "duration_from_parts" => "duration-from-parts",
-        "datetime_add" => "datetime-add",
-        "parse_date" => "parse-date",
-        "parse_datetime" => "parse-dateTime",
-        "parse_time" => "parse-time",
-        "edifact_to_datetime" => "to-datetime",
-        "substitute_missing" => "substitute-missing",
-        "get_fileext" => "get-fileext",
-        "delay_passthrough" => "sleep",
-        "create_guid" => "create-guid",
-        "format_number" => "format-number",
-        "format_date" => "format-date",
-        "format_datetime" => "format-dateTime",
-        "format_time" => "format-time",
-        other => other,
-    }
-    .to_string()
+    crate::function_names::unmap_function_name(name)
 }
 
 /// Native component name and library for a canonical function called with
@@ -169,37 +111,7 @@ pub(super) fn native_function(
 /// (`upper-case`, `lower-case`) exists only for XSLT 2.0, XSLT 3.0 and XQuery,
 /// and core has no case functions; import still accepts those spellings.
 pub(super) fn function_library(name: &str) -> &'static str {
-    if canonical_function::is_internal(name) {
-        return "ferrule";
-    }
-    match name {
-        "left" | "right" | "upper" | "lower" => "lang",
-        "left_trim"
-        | "right_trim"
-        | "pad_string_left"
-        | "pad_string_right"
-        | "format_guid_string"
-        | "replace_literal"
-        | "is_numeric"
-        | "is_empty"
-        | "date_from_datetime"
-        | "year_from_datetime"
-        | "month_from_datetime"
-        | "day_from_datetime"
-        | "weekday"
-        | "hours_from_datetime"
-        | "minutes_from_datetime"
-        | "time_from_datetime"
-        | "datetime_from_date_and_time"
-        | "datetime_from_parts"
-        | "duration_from_parts"
-        | "datetime_add"
-        | "create_guid"
-        | "random"
-        | "delay_passthrough" => "lang",
-        "edifact_to_datetime" => "edifact",
-        _ => "core",
-    }
+    crate::function_names::function_library(name)
 }
 
 #[cfg(test)]
