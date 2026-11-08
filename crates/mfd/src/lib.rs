@@ -50,6 +50,7 @@
 //! the application that produces those files.
 
 mod canonical_function;
+mod datatype;
 mod design;
 mod export;
 mod float_cast_shape;

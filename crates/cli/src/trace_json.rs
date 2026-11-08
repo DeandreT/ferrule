@@ -5,12 +5,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use anyhow::{Context, bail};
-use engine::{
-    TraceEvent, TraceFilterPhase, TraceGrouping, TraceIteration, TraceOutputKind, TracePosition,
-    TraceScope, TraceSink, TraceSourceRow, TraceSourceTree, TraceTarget, TraceTargetFieldBinding,
-    TraceValue, TraceWindow,
-};
-use serde_json::{Value as JsonValue, json};
+use engine::{TraceEvent, TraceSink};
 
 use crate::WrittenOutput;
 
@@ -383,374 +378,47 @@ fn resolved_file_identity(path: &Path) -> anyhow::Result<PathBuf> {
     }
 }
 
-fn trace_line(sequence: u64, event: &TraceEvent) -> JsonValue {
-    json!({
-        "schema_version": TRACE_SCHEMA_VERSION,
-        "sequence": sequence,
-        "event": event_value(event),
-    })
+/// One JSON Lines record. Field order is fixed by the struct declaration.
+#[derive(serde::Serialize)]
+struct TraceLine<'a> {
+    schema_version: u64,
+    sequence: u64,
+    event: &'a TraceEvent,
 }
 
-fn event_value(event: &TraceEvent) -> JsonValue {
-    match event {
-        TraceEvent::NodeValue {
-            node,
-            positions,
-            value,
-        } => json!({
-            "kind": "node_value",
-            "node": node,
-            "positions": positions_value(positions),
-            "value": trace_value(value),
-        }),
-        TraceEvent::NodeInputValue {
-            consumer,
-            input,
-            input_index,
-            positions,
-            value,
-        } => json!({
-            "kind": "node_input_value",
-            "consumer": consumer,
-            "input": input,
-            "input_index": input_index,
-            "positions": positions_value(positions),
-            "value": trace_value(value),
-        }),
-        TraceEvent::FunctionNodeValue {
-            function,
-            node,
-            positions,
-            value,
-        } => json!({
-            "kind": "function_node_value",
-            "function": function.get(),
-            "node": node,
-            "positions": positions_value(positions),
-            "value": trace_value(value),
-        }),
-        TraceEvent::FunctionNodeInputValue {
-            function,
-            consumer,
-            input,
-            input_index,
-            positions,
-            value,
-        } => json!({
-            "kind": "function_node_input_value",
-            "function": function.get(),
-            "consumer": consumer,
-            "input": input,
-            "input_index": input_index,
-            "positions": positions_value(positions),
-            "value": trace_value(value),
-        }),
-        TraceEvent::ScopeStarted {
-            scope,
-            iteration,
-            positions,
-        } => json!({
-            "kind": "scope_started",
-            "scope": scope_value(scope),
-            "iteration": iteration_value(iteration),
-            "positions": positions_value(positions),
-        }),
-        TraceEvent::IterationCandidate {
-            scope,
-            ordinal,
-            positions,
-            source_row,
-        } => {
-            let mut value = json!({
-                "kind": "iteration_candidate",
-                "scope": scope_value(scope),
-                "ordinal": ordinal,
-                "positions": positions_value(positions),
-            });
-            if let Some(source_row) = source_row {
-                value["source_row"] = source_row_value(source_row);
-            }
-            value
-        }
-        TraceEvent::FilterDecision {
-            scope,
-            node,
-            phase,
-            positions,
-            passed,
-        } => json!({
-            "kind": "filter_decision",
-            "scope": scope_value(scope),
-            "node": node,
-            "phase": filter_phase(*phase),
-            "positions": positions_value(positions),
-            "passed": passed,
-        }),
-        TraceEvent::SortCandidate {
-            scope,
-            positions,
-            keys,
-        } => json!({
-            "kind": "sort_candidate",
-            "scope": scope_value(scope),
-            "positions": positions_value(positions),
-            "keys": keys.iter().map(|key| json!({
-                "node": key.node,
-                "descending": key.descending,
-                "value": trace_value(&key.value),
-            })).collect::<Vec<_>>(),
-        }),
-        TraceEvent::SortPosition {
-            scope,
-            positions,
-            output_index,
-        } => json!({
-            "kind": "sort_position",
-            "scope": scope_value(scope),
-            "positions": positions_value(positions),
-            "output_index": output_index,
-        }),
-        TraceEvent::GroupProduced {
-            scope,
-            grouping,
-            group_index,
-            member_count,
-            key,
-            retained,
-            positions,
-        } => json!({
-            "kind": "group_produced",
-            "scope": scope_value(scope),
-            "grouping": grouping_value(*grouping),
-            "group_index": group_index,
-            "member_count": member_count,
-            "key": key.as_ref().map(trace_value),
-            "retained": retained,
-            "positions": positions_value(positions),
-        }),
-        TraceEvent::WindowApplied {
-            scope,
-            window_index,
-            window,
-            before,
-            after,
-        } => json!({
-            "kind": "window_applied",
-            "scope": scope_value(scope),
-            "window_index": window_index,
-            "window": window_value(*window),
-            "before": before,
-            "after": after,
-        }),
-        TraceEvent::TargetFieldWritten {
-            scope,
-            field,
-            binding,
-            positions,
-            kind,
-            value,
-        } => json!({
-            "kind": "target_field_written",
-            "scope": scope_value(scope),
-            "field": field,
-            "binding": target_field_binding(*binding),
-            "positions": positions_value(positions),
-            "output_kind": output_kind(*kind),
-            "value": value.as_ref().map(trace_value),
-        }),
-        TraceEvent::TargetProduced {
-            scope,
-            positions,
-            output_path,
-            kind,
-        } => json!({
-            "kind": "target_produced",
-            "scope": scope_value(scope),
-            "positions": positions_value(positions),
-            "output_path": output_path,
-            "output_kind": output_kind(*kind),
-        }),
-        TraceEvent::ScopeFinished {
-            scope,
-            candidates,
-            produced,
-            kind,
-        } => json!({
-            "kind": "scope_finished",
-            "scope": scope_value(scope),
-            "candidates": candidates,
-            "produced": produced,
-            "output_kind": output_kind(*kind),
-        }),
-    }
-}
-
-fn positions_value(positions: &[TracePosition]) -> Vec<JsonValue> {
-    positions
-        .iter()
-        .map(|position| {
-            json!({
-                "collection": position.collection,
-                "index": position.index,
-                "grouped": position.grouped,
-                "join": position.join.map(mapping::JoinId::get),
-                "join_position": position.join_position.map(|(join, index)| json!({
-                    "join": join.get(),
-                    "index": index,
-                })),
-                "document_path": position.document_path,
-            })
-        })
-        .collect()
-}
-
-fn scope_value(scope: &TraceScope) -> JsonValue {
-    json!({
-        "target": match &scope.target {
-            TraceTarget::Primary => json!({"kind": "primary"}),
-            TraceTarget::Named(name) => json!({"kind": "named", "name": name}),
-        },
-        "target_path": scope.target_path,
-        "structural_path": scope.structural_path,
-    })
-}
-
-fn iteration_value(iteration: &TraceIteration) -> JsonValue {
-    match iteration {
-        TraceIteration::Once => json!({"kind": "once"}),
-        TraceIteration::Source { path } => json!({"kind": "source", "path": path}),
-        TraceIteration::OwnedSource { source } => json!({
-            "kind": "owned_source",
-            "owner": match &source.owner {
-                mapping::SourceOwner::Primary => json!({"kind": "primary"}),
-                mapping::SourceOwner::Named { name } => json!({"kind": "named", "name": name}),
-            },
-            "path": source.path,
-        }),
-        TraceIteration::DynamicDocuments { source } => {
-            json!({"kind": "dynamic_documents", "source": source})
-        }
-        TraceIteration::Generated { kind } => {
-            json!({"kind": "generated", "sequence": kind})
-        }
-        TraceIteration::Join { join } => json!({"kind": "join", "join": join.get()}),
-        TraceIteration::Concatenate { segments } => {
-            json!({"kind": "concatenate", "segments": segments})
-        }
-        TraceIteration::OptionalPresence { condition } => {
-            json!({"kind": "optional_presence", "condition": condition})
-        }
-    }
-}
-
-fn filter_phase(phase: TraceFilterPhase) -> &'static str {
-    match phase {
-        TraceFilterPhase::BeforeSort => "before_sort",
-        TraceFilterPhase::AfterSort => "after_sort",
-        TraceFilterPhase::Selection => "selection",
-        TraceFilterPhase::GroupStarting => "group_starting",
-        TraceFilterPhase::GroupEnding => "group_ending",
-        TraceFilterPhase::PostGroupMember => "post_group_member",
-    }
-}
-
-fn grouping_value(grouping: TraceGrouping) -> JsonValue {
-    match grouping {
-        TraceGrouping::By { node } => json!({"kind": "by", "node": node}),
-        TraceGrouping::AdjacentBy { node } => {
-            json!({"kind": "adjacent_by", "node": node})
-        }
-        TraceGrouping::StartingWith { node } => {
-            json!({"kind": "starting_with", "node": node})
-        }
-        TraceGrouping::EndingWith { node } => {
-            json!({"kind": "ending_with", "node": node})
-        }
-        TraceGrouping::IntoBlocks { node, size } => {
-            json!({"kind": "into_blocks", "node": node, "size": size})
-        }
-    }
-}
-
-fn trace_value(value: &TraceValue) -> JsonValue {
-    json!({
-        "type": value.value_type,
-        "preview": value.preview,
-        "truncated": value.truncated,
-    })
-}
-
-fn source_row_value(row: &TraceSourceRow) -> JsonValue {
-    let mut value = json!({
-        "kind": output_kind(row.kind),
-        "value": row.value.as_ref().map(trace_value),
-        "fields": row.fields.iter().map(|field| json!({
-            "name": field.name,
-            "name_truncated": field.name_truncated,
-            "kind": output_kind(field.kind),
-            "value": field.value.as_ref().map(trace_value),
-        })).collect::<Vec<_>>(),
-        "omitted_fields": row.omitted_fields,
-    });
-    if let Some(tree) = &row.structure {
-        value["structure"] = source_tree_value(tree);
-    }
-    value
-}
-
-fn source_tree_value(tree: &TraceSourceTree) -> JsonValue {
-    json!({
-        "name": tree.name,
-        "name_truncated": tree.name_truncated,
-        "kind": output_kind(tree.kind),
-        "value": tree.value.as_ref().map(trace_value),
-        "children": tree.children.iter().map(source_tree_value).collect::<Vec<_>>(),
-        "omitted_children": tree.omitted_children,
-        "depth_limited": tree.depth_limited,
-    })
-}
-
-fn window_value(window: TraceWindow) -> JsonValue {
-    match window {
-        TraceWindow::SkipFirst(count) => json!({"kind": "skip_first", "count": count}),
-        TraceWindow::First(count) => json!({"kind": "first", "count": count}),
-        TraceWindow::From(first) => json!({"kind": "from", "first": first}),
-        TraceWindow::FromTo { first, last } => {
-            json!({"kind": "from_to", "first": first, "last": last})
-        }
-        TraceWindow::Last(count) => json!({"kind": "last", "count": count}),
-    }
-}
-
-fn output_kind(kind: TraceOutputKind) -> &'static str {
-    match kind {
-        TraceOutputKind::Scalar => "scalar",
-        TraceOutputKind::Group => "group",
-        TraceOutputKind::Repeated => "repeated",
-        TraceOutputKind::MappedSequence => "mapped_sequence",
-        TraceOutputKind::DocumentSet => "document_set",
-    }
-}
-
-fn target_field_binding(binding: TraceTargetFieldBinding) -> JsonValue {
-    match binding {
-        TraceTargetFieldBinding::StaticBinding { value } => {
-            json!({"kind": "static_binding", "value_node": value})
-        }
-        TraceTargetFieldBinding::DynamicBinding { key, value } => {
-            json!({"kind": "dynamic_binding", "key_node": key, "value_node": value})
-        }
-        TraceTargetFieldBinding::StaticChild => json!({"kind": "static_child"}),
-        TraceTargetFieldBinding::DynamicChild { key } => {
-            json!({"kind": "dynamic_child", "key_node": key})
-        }
+fn trace_line(sequence: u64, event: &TraceEvent) -> TraceLine<'_> {
+    TraceLine {
+        schema_version: TRACE_SCHEMA_VERSION,
+        sequence,
+        event,
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use engine::{TraceSortKey, TraceSourceField, TraceTarget};
+    use engine::{
+        TraceFilterPhase, TraceGrouping, TraceIteration, TraceOutputKind, TracePosition,
+        TraceScope, TraceSortKey, TraceSourceField, TraceSourceRow, TraceTarget,
+        TraceTargetFieldBinding, TraceValue, TraceWindow,
+    };
+    use serde_json::{Value as JsonValue, json};
+
+    fn to_json(value: impl serde::Serialize) -> JsonValue {
+        serde_json::to_value(value).expect("trace values serialize")
+    }
+
+    fn trace_line(sequence: u64, event: &TraceEvent) -> JsonValue {
+        to_json(super::trace_line(sequence, event))
+    }
+
+    fn event_value(event: &TraceEvent) -> JsonValue {
+        to_json(event)
+    }
+
+    fn iteration_value(iteration: &TraceIteration) -> JsonValue {
+        to_json(iteration)
+    }
 
     fn scope() -> TraceScope {
         TraceScope {
@@ -1174,3 +842,7 @@ mod tests {
 #[cfg(test)]
 #[path = "trace_json_request_tests.rs"]
 mod request_tests;
+
+#[cfg(test)]
+#[path = "trace_json_serialize_tests.rs"]
+mod serialize_tests;
