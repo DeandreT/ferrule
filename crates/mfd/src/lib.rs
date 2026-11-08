@@ -53,6 +53,7 @@ mod canonical_function;
 mod design;
 mod export;
 mod float_cast_shape;
+mod function_names;
 mod import;
 mod json_parser_recipe;
 mod node_inputs;
