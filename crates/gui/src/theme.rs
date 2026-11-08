@@ -134,7 +134,6 @@ impl FieldWidth {
 }
 
 /// Maximum height of a scrolling list.
-#[allow(dead_code, reason = "list heights for area B–E views")]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ListHeight {
     Short,
@@ -153,7 +152,6 @@ impl ListHeight {
 }
 
 /// Width of a dialog or tool window.
-#[allow(dead_code, reason = "dialog widths for area B–E windows")]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DialogWidth {
     Narrow,
@@ -172,26 +170,22 @@ impl DialogWidth {
 }
 
 /// Typographic role of a piece of editor chrome text.
-#[allow(dead_code, reason = "text roles for area B–E views")]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TextRole {
     /// Dialog and view titles.
     Title,
     /// Section headings inside a panel or dialog.
     Section,
-    Body,
     /// Secondary explanations and hints.
     Help,
-    Mono,
 }
 
 impl TextRole {
     pub fn font(self) -> FontId {
         match self {
             Self::Title => FontId::proportional(16.0),
-            Self::Section | Self::Body => FontId::proportional(14.0),
+            Self::Section => FontId::proportional(14.0),
             Self::Help => FontId::proportional(12.0),
-            Self::Mono => FontId::monospace(13.0),
         }
     }
 
@@ -200,7 +194,6 @@ impl TextRole {
         match self {
             Self::Title | Self::Section => text.strong(),
             Self::Help => text.weak(),
-            Self::Body | Self::Mono => text,
         }
     }
 }

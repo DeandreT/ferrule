@@ -1,4 +1,6 @@
 use super::*;
+use engine::TraceValue;
+use serde_json::{Value as JsonValue, json};
 
 struct TestDir(PathBuf);
 

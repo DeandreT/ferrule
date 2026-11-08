@@ -109,9 +109,6 @@ impl CodecError {
     pub fn byte_offset(&self) -> Option<usize> {
         self.byte_offset
     }
-    pub fn bounded_detail(&self) -> &str {
-        &self.detail
-    }
 }
 
 fn parse_hex<const N: usize>(s: &str, kind: CodecErrorKind) -> Result<[u8; N], CodecError> {
