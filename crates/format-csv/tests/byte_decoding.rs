@@ -108,6 +108,12 @@ fn malformed_interior_and_pending_terminal_state_are_different() {
     let mut bytes = utf16("Value\nV", true);
     bytes.extend_from_slice(&[0xdc, 0, 0, b'\n']);
     cases.push((bytes, "V\u{fffd}"));
+    let mut bytes = utf16("Value\nV", false);
+    bytes.extend_from_slice(&[0x00, 0xd8, 0x00, 0xd8, 0x00, 0xdc, b'\n', 0]);
+    cases.push((bytes, "V\u{fffd}\u{10000}"));
+    let mut bytes = utf16("Value\nV", true);
+    bytes.extend_from_slice(&[0xd8, 0x00, 0xd8, 0x00, 0x41]);
+    cases.push((bytes, "V\u{fffd}"));
     let mut bytes = utf32("Value\nV", false);
     bytes.extend_from_slice(&[0, 0, 0x11, 0, b'\n', 0, 0, 0]);
     cases.push((bytes, "V\u{fffd}"));

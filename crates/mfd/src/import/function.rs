@@ -4,6 +4,7 @@ use ir::{ScalarType, Value};
 use mapping::AggregateOp;
 
 use crate::canonical_function;
+use crate::datatype::mfd_type_name;
 
 use super::schema::parse_u32;
 
@@ -480,11 +481,11 @@ pub(super) fn read(component: &roxmltree::Node) -> FnComponent {
                     (
                         parse_constant(
                             e.attribute("from").unwrap_or_default(),
-                            scalar_type_name(input_type.unwrap_or(ScalarType::String)),
+                            mfd_type_name(input_type.unwrap_or(ScalarType::String)),
                         ),
                         parse_constant(
                             e.attribute("to").unwrap_or_default(),
-                            scalar_type_name(result_type),
+                            mfd_type_name(result_type),
                         ),
                     )
                 })
@@ -493,7 +494,7 @@ pub(super) fn read(component: &roxmltree::Node) -> FnComponent {
                 .descendants()
                 .find(|n| n.has_tag_name("result"))
                 .and_then(|r| r.attribute("defaultValue"))
-                .map(|value| parse_constant(value, scalar_type_name(result_type)))
+                .map(|value| parse_constant(value, mfd_type_name(result_type)))
                 .filter(|_| {
                     !unsupported_input_mode
                         && (vm.attribute("defaultValueMode") == Some("custom")
@@ -1401,15 +1402,6 @@ fn parse_scalar_type(datatype: &str) -> ScalarType {
         "decimal" | "double" | "float" | "number" => ScalarType::Float,
         "boolean" => ScalarType::Bool,
         _ => ScalarType::String,
-    }
-}
-
-fn scalar_type_name(ty: ScalarType) -> &'static str {
-    match ty {
-        ScalarType::String => "string",
-        ScalarType::Int => "integer",
-        ScalarType::Float => "decimal",
-        ScalarType::Bool => "boolean",
     }
 }
 

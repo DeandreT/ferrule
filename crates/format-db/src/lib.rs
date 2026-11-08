@@ -442,7 +442,7 @@ fn read_value(column: &str, value: ValueRef, ty: ScalarType) -> Result<Value, Db
         (ScalarType::Bool, ValueRef::Integer(0)) => Ok(Value::Bool(false)),
         (ScalarType::Bool, ValueRef::Integer(1)) => Ok(Value::Bool(true)),
         (ScalarType::Int, ValueRef::Integer(i)) => Ok(Value::Int(i)),
-        (ScalarType::Float, ValueRef::Integer(i)) => exact_f64(i)
+        (ScalarType::Float, ValueRef::Integer(i)) => ir::i64_to_exact_f64(i)
             .map(Value::Float)
             .ok_or_else(|| incompatible("integer outside the exact f64 range")),
         (ScalarType::Float, ValueRef::Real(f)) if f.is_finite() => Ok(Value::Float(f)),
@@ -451,15 +451,6 @@ fn read_value(column: &str, value: ValueRef, ty: ScalarType) -> Result<Value, Db
             .map_err(|_| incompatible("non-UTF-8 text")),
         (_, other) => Err(incompatible(sqlite_type_name(other))),
     }
-}
-
-fn exact_f64(value: i64) -> Option<f64> {
-    let magnitude = value.unsigned_abs();
-    if magnitude == 0 {
-        return Some(0.0);
-    }
-    let significant_bits = u64::BITS - magnitude.leading_zeros() - magnitude.trailing_zeros();
-    (significant_bits <= f64::MANTISSA_DIGITS).then_some(value as f64)
 }
 
 fn sqlite_type_name(value: ValueRef) -> &'static str {
@@ -715,7 +706,7 @@ fn to_sql_value(
             got: "non-finite float",
         }),
         (ScalarType::Float, Value::Int(i)) => {
-            exact_f64(*i)
+            ir::i64_to_exact_f64(*i)
                 .map(Sql::Real)
                 .ok_or_else(|| DbFormatError::ValueType {
                     column: column.to_string(),
@@ -1001,7 +992,7 @@ mod tests {
             rows[0].field("score").and_then(Instance::as_scalar),
             Some(&Value::Float(42.0))
         );
-        assert_eq!(exact_f64(i64::MIN), Some(i64::MIN as f64));
+        assert_eq!(ir::i64_to_exact_f64(i64::MIN), Some(i64::MIN as f64));
 
         let mismatch = write(&path, &schema, &[row(Value::Float(1.0), Value::Int(1))]).unwrap_err();
         assert!(matches!(
