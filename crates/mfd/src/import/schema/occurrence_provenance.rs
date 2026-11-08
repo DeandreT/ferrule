@@ -140,23 +140,23 @@ fn ordinary(component: roxmltree::Node<'_, '_>, json: bool) -> bool {
     {
         return false;
     }
-    let data = children
+    let Some(data) = children
         .iter()
         .find(|node| node.has_tag_name("data"))
         .copied()
-        .unwrap();
+    else {
+        return false;
+    };
     let format = if json { "json" } else { "text" };
     if !attributes(data, &[]) || !exact_children(data, &["root", format]) {
         return false;
     }
-    let root = data
-        .children()
-        .find(|node| node.has_tag_name("root"))
-        .unwrap();
-    let text = data
-        .children()
-        .find(|node| node.has_tag_name(format))
-        .unwrap();
+    let Some(root) = crate::import::child_element(data, "root") else {
+        return false;
+    };
+    let Some(text) = crate::import::child_element(data, format) else {
+        return false;
+    };
     if !attributes(root, &[])
         || elements(root).len() != 1
         || !root

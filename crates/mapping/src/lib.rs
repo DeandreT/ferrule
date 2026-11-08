@@ -50,6 +50,7 @@ mod stored_schemas;
 mod swift;
 mod tabular;
 mod wsdl;
+mod x12_descriptor;
 mod xbrl;
 mod xlsx_output;
 mod xml_mixed_content_owned;
@@ -139,7 +140,7 @@ pub use model::{
 pub use node_inputs::{NodeInput, NodeInputRole, NodeInputSlot};
 pub use owned_join::{
     OwnedJoinConditions, OwnedJoinKey, OwnedJoinPlan, OwnedJoinPlanError, OwnedJoinSource,
-    describe_owned_collection,
+    OwnedJoinStageKey, describe_owned_collection,
 };
 pub use path_hierarchy::PathHierarchyPlan;
 pub use path_hierarchy_owned::OwnedPathHierarchyPlan;
@@ -189,6 +190,10 @@ pub use swift::{
 };
 pub use tabular::TabularBoundaryKind;
 pub use wsdl::{WsdlMessageOptions, WsdlMessageOptionsError, WsdlMessageRole};
+pub use x12_descriptor::{
+    X12Descriptor, X12DescriptorEnvelope, X12DescriptorSeparators, X12DescriptorVersion,
+    X12DescriptorView,
+};
 pub use xbrl::{
     XBRL_UNIT_FIELD_PREFIX, XbrlBoundaryMode, XbrlBoundaryOptions, XbrlBoundaryOptionsError,
     XbrlFactBinding, XbrlFactType, XbrlNamespaceBinding,

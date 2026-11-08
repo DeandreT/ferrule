@@ -12,8 +12,8 @@ use super::{
     OwnedSourceStructureReason as Structure, ProgramValidationError, graph_dependencies,
 };
 use crate::{
-    Expression, FailureIteration, IterationOutput, IterationSource, OwnedCapabilities, OwnedPreset,
-    Program, TargetConstruction, TargetScope,
+    Expression, FailureIteration, IterationOutput, IterationPlan, IterationSource,
+    OwnedCapabilities, OwnedPreset, Program, TargetConstruction, TargetScope,
 };
 use ir::{SchemaKind, SchemaNode};
 use mapping::{NodeId, SourceScopeLocation, SourceScopeStep, SourceScopeTarget};
@@ -119,24 +119,15 @@ fn endpoint<'a>(program: &'a Program, owner: &Owner) -> Result<&'a SchemaNode, S
             .ok_or(Structure::UnknownOwner),
     }
 }
-fn anchor<'a>(node: &'a SchemaNode, name: &str) -> Option<&'a SchemaNode> {
-    if node.recursive_ref.is_none()
-        && node.name == name
-        && matches!(node.kind, SchemaKind::Group { .. })
-    {
-        return Some(node);
-    }
-    match &node.kind {
-        SchemaKind::Group { children, .. } => children.iter().find_map(|child| anchor(child, name)),
-        _ => None,
-    }
-}
 fn resolved<'a>(root: &'a SchemaNode, node: &'a SchemaNode) -> Result<&'a SchemaNode, Structure> {
     match &node.recursive_ref {
         None => Ok(node),
-        Some(name) => anchor(root, name).ok_or_else(|| Structure::UnresolvedRecursiveAnchor {
-            anchor: name.clone(),
-        }),
+        Some(name) => {
+            root.find_concrete_group(name)
+                .ok_or_else(|| Structure::UnresolvedRecursiveAnchor {
+                    anchor: name.clone(),
+                })
+        }
     }
 }
 fn follow<'a>(root: &'a SchemaNode, path: &[String]) -> Result<&'a SchemaNode, Structure> {
@@ -601,6 +592,38 @@ pub fn owned_expression_emission_error(
         },
         request(expression),
         closed,
+    )
+}
+/// The refusal for an iteration a renderer's emission path cannot render.
+/// Validation and admission refuse such plans before rendering; renderers
+/// return this rather than panic if one reaches them.
+pub fn unrendered_iteration(
+    program: &Program,
+    iteration: &IterationPlan,
+) -> ProgramValidationError {
+    let route = all_scopes(program)
+        .into_iter()
+        .find(|(scope, _)| {
+            scope
+                .iteration
+                .as_ref()
+                .is_some_and(|candidate| std::ptr::eq(candidate, iteration))
+        })
+        .map_or_else(
+            || SourceScopeLocation::root(SourceScopeTarget::Primary),
+            |(_, route)| route,
+        );
+    failure(
+        Location::Iteration {
+            scope: route.clone(),
+        },
+        iteration
+            .owned_source_iteration()
+            .map(|source| iteration_request(source.source())),
+        Closed {
+            reason: Capability::UnsupportedBasicContext,
+            origin: Origin::Scope { scope: route },
+        },
     )
 }
 /// Closed Stage-A gate, after the caller's unchanged Program/package/profile checks.

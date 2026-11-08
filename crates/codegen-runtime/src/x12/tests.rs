@@ -48,6 +48,249 @@ fn descriptor_for(profile: &Profile) -> String {
     serde_json::json!({"schema":codegen_schema::encode(&profile.schema,MAX_EMBEDDED_X12_SCHEMA_BYTES).unwrap(),"version":"004010","separators":null,"lenient_segments":false,"constraints":[],"implied_decimals":[],"lexical_formats":[],"autocomplete":null}).to_string()
 }
 
+fn descriptor_boundary_errors(text: &str) -> [X12BoundaryError; 2] {
+    [
+        parse_x12(text, WIRE).unwrap_err(),
+        serialize_x12(text, &Instance::Group(Vec::new().into()), None).unwrap_err(),
+    ]
+}
+
+#[test]
+fn descriptor_refuses_noncanonical_shapes_and_duplicate_members_at_both_boundaries() {
+    let base: serde_json::Value =
+        serde_json::from_str(&descriptor_for(&test_profile(fields("NTE", 1).repeating()))).unwrap();
+    let positional =
+        serde_json::Value::Array(base.as_object().unwrap().values().cloned().collect());
+    for error in descriptor_boundary_errors(&positional.to_string()) {
+        assert!(matches!(error, X12BoundaryError::Descriptor(_)), "{error}");
+    }
+    for (field, malformed) in [
+        ("version", serde_json::json!({"004010": null})),
+        (
+            "envelope_profile",
+            serde_json::json!({"grouped_transactions": null}),
+        ),
+        (
+            "envelope_profile",
+            serde_json::json!({"mapforce_interchanges": null}),
+        ),
+        ("separators", serde_json::json!(["*", ":", "~", "^"])),
+    ] {
+        let mut value = base.clone();
+        value[field] = malformed;
+        for error in descriptor_boundary_errors(&value.to_string()) {
+            assert!(matches!(error, X12BoundaryError::Descriptor(_)), "{error}");
+        }
+    }
+    for version in ["004010", "005010", "006040"] {
+        for repetition in [serde_json::Value::Null, true.into(), "^^".into()] {
+            let mut value = base.clone();
+            value["version"] = version.into();
+            value["separators"] = serde_json::json!({
+                "element":"*", "component":":", "segment":"~", "repetition":repetition,
+            });
+            for error in descriptor_boundary_errors(&value.to_string()) {
+                assert!(matches!(error, X12BoundaryError::Descriptor(_)), "{error}");
+            }
+        }
+    }
+    let mut value = base.clone();
+    value["separators"] = serde_json::json!({
+        "element":"*", "component":":", "segment":"~", "repetition":"^",
+    });
+    let text = value.to_string();
+    for text in [
+        text.replacen("{", r#"{"version":"004010","#, 1),
+        text.replacen(r#""element":"*""#, r#""element":"*","element":"*""#, 1),
+        text.replacen(
+            r#""repetition":"^""#,
+            r#""repetition":"^","repetition":"^""#,
+            1,
+        ),
+    ] {
+        for error in descriptor_boundary_errors(&text) {
+            assert!(matches!(error, X12BoundaryError::Descriptor(_)), "{error}");
+            assert!(error.to_string().contains("duplicate field"), "{error}");
+        }
+    }
+}
+
+#[test]
+fn descriptor_preserves_optional_separator_and_repetition_behavior() {
+    let base: serde_json::Value =
+        serde_json::from_str(&descriptor_for(&test_profile(fields("NTE", 1).repeating()))).unwrap();
+    for version in ["004010", "005010", "006040"] {
+        let mut value = base.clone();
+        value["version"] = version.into();
+        let wire = WIRE
+            .replace("00401", &version[..5])
+            .replace("004010", version);
+        // In modern profiles ISA11 is the selected repetition separator.
+        let wire = if version == "004010" {
+            wire
+        } else {
+            wire.replace("*U*", "*^*")
+        };
+        // Omission and null both mean discovery/defaults for the outer member.
+        value.as_object_mut().unwrap().remove("separators");
+        for separators in [
+            None,
+            Some(serde_json::Value::Null),
+            Some(serde_json::json!({
+                "element":"*", "component":":", "segment":"~", "extra":true,
+            })),
+            Some(serde_json::json!({
+                "element":"*", "component":":", "segment":"~", "repetition":"^",
+            })),
+        ] {
+            if let Some(separators) = separators {
+                value["separators"] = separators;
+            }
+            let text = value.to_string();
+            let parsed = parse_x12(&text, &wire).unwrap();
+            let output = serialize_x12(&text, &parsed, None);
+            if version != "004010"
+                && value["separators"].is_object()
+                && value["separators"].get("repetition").is_none()
+            {
+                // Omission is admitted, but the native writer still requires a
+                // repetition character in explicitly selected modern syntax.
+                assert!(matches!(
+                    output,
+                    Err(X12BoundaryError::Native(
+                        format_edi::EdiFormatError::InvalidX12Separators(_)
+                    ))
+                ));
+            } else {
+                assert_eq!(output.unwrap(), wire);
+            }
+        }
+    }
+}
+
+#[test]
+fn descriptor_schema_errors_precede_malformed_or_missing_option_values() {
+    let mut base: serde_json::Value =
+        serde_json::from_str(&descriptor_for(&test_profile(fields("NTE", 1).repeating()))).unwrap();
+    base["schema"] = "not an embedded schema".into();
+    let schema_error =
+        codegen_schema::decode("not an embedded schema", MAX_EMBEDDED_X12_SCHEMA_BYTES)
+            .unwrap_err()
+            .to_string();
+    for field in [
+        "version",
+        "envelope_profile",
+        "implied_decimals",
+        "lexical_formats",
+        "autocomplete",
+        "constraints",
+        "separators",
+        "lenient_segments",
+    ] {
+        for missing in [false, true] {
+            let mut value = base.clone();
+            if missing {
+                value.as_object_mut().unwrap().remove(field);
+            } else {
+                value[field] = false.into();
+            }
+            for error in descriptor_boundary_errors(&value.to_string()) {
+                assert!(
+                    matches!(error, X12BoundaryError::Schema(_)),
+                    "{field}: {error}"
+                );
+                assert_eq!(error.to_string(), schema_error);
+                assert!(error.source().is_some());
+            }
+        }
+    }
+    base["extra"] = true.into();
+    for error in descriptor_boundary_errors(&base.to_string()) {
+        assert!(matches!(error, X12BoundaryError::Descriptor(_)), "{error}");
+        assert!(error.to_string().contains("unknown field"), "{error}");
+    }
+    base.as_object_mut().unwrap().remove("extra");
+    // Raw member capture must not defer the whole-JSON depth limit past schema
+    // decoding (nor accept a deeper descriptor than the original Value parser).
+    let text = base.to_string().replacen(
+        r#""constraints":[]"#,
+        &format!(r#""constraints":{}0{}"#, "[".repeat(130), "]".repeat(130)),
+        1,
+    );
+    for error in descriptor_boundary_errors(&text) {
+        assert!(matches!(error, X12BoundaryError::Descriptor(_)), "{error}");
+        assert!(error.to_string().contains("recursion limit"), "{error}");
+    }
+}
+
+#[test]
+fn descriptor_retains_validation_order_after_schema_decoding_and_size_before_json() {
+    let mut value: serde_json::Value =
+        serde_json::from_str(&descriptor_for(&test_profile(fields("NTE", 1).repeating()))).unwrap();
+    value["version"] = "unsupported".into();
+    value["envelope_profile"] = "unsupported".into();
+    value["implied_decimals"] = true.into();
+    value["lexical_formats"] = 1.into();
+    value["autocomplete"] = "invalid".into();
+    value["constraints"] = false.into();
+    value["separators"] = false.into();
+    value["lenient_segments"] = "invalid".into();
+    for (field, replacement, expected) in [
+        ("version", "004010".into(), "unsupported version"),
+        (
+            "envelope_profile",
+            "grouped_transactions".into(),
+            "unsupported envelope profile",
+        ),
+        ("implied_decimals", serde_json::json!([]), "boolean `true`"),
+        ("lexical_formats", serde_json::json!([]), "integer `1`"),
+        (
+            "autocomplete",
+            serde_json::Value::Null,
+            "string \"invalid\"",
+        ),
+        ("constraints", serde_json::json!([]), "boolean `false`"),
+        ("separators", serde_json::Value::Null, "boolean `false`"),
+        ("lenient_segments", false.into(), "missing lenient_segments"),
+    ] {
+        for error in descriptor_boundary_errors(&value.to_string()) {
+            assert!(matches!(error, X12BoundaryError::Descriptor(_)), "{error}");
+            assert!(error.to_string().contains(expected), "{field}: {error}");
+        }
+        value[field] = replacement;
+    }
+    let profile = test_profile(fields("SG1", 1).repeating());
+    // The native schema refusal must still precede malformed separator/lenient
+    // fields, even though both now have shared typed deserializers.
+    let mut value: serde_json::Value = serde_json::from_str(&descriptor_for(&profile)).unwrap();
+    value["separators"] = false.into();
+    value["lenient_segments"] = "invalid".into();
+    for error in descriptor_boundary_errors(&value.to_string()) {
+        assert!(
+            error.to_string().contains("SGn wire segment IDs"),
+            "{error}"
+        );
+    }
+    // A duplicate constraint also precedes native schema/separator validation.
+    let constraint =
+        EdiValueConstraint::new(vec!["NTE".into(), "E01".into()], 0, 10, Vec::new()).unwrap();
+    value["constraints"] = serde_json::to_value([&constraint, &constraint]).unwrap();
+    for error in descriptor_boundary_errors(&value.to_string()) {
+        assert!(
+            error.to_string().contains("duplicate constraint"),
+            "{error}"
+        );
+    }
+    // Invalid JSON larger than the descriptor ceiling must be refused by size.
+    let oversized = "[".repeat(MAX_EMBEDDED_X12_SCHEMA_BYTES + 1);
+    for error in descriptor_boundary_errors(&oversized) {
+        assert!(
+            error.to_string().contains("descriptor exceeds 1 MiB"),
+            "{error}"
+        );
+    }
+}
+
 #[test]
 fn materialized_names_count_each_occurrence_and_synthesized_slots_before_native() {
     let note = SchemaNode::group(
