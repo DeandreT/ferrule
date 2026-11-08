@@ -114,13 +114,14 @@ fn owned_plan_structure(
     for source in plan.sources() {
         structure(program, location(), source_request(source))?;
     }
-    for (right, conditions) in plan.stages() {
-        for key in conditions.iter() {
-            let left = plan
-                .sources()
-                .find(|source| source.collection() == key.left_collection())
-                .expect("owned plans name joined left sources by construction");
-            structure(program, location(), member_request(left, key.left_path()))?;
+    for (right, keys) in plan.keyed_stages() {
+        for stage_key in keys {
+            let key = stage_key.key();
+            structure(
+                program,
+                location(),
+                member_request(stage_key.left_source(), key.left_path()),
+            )?;
             structure(program, location(), member_request(right, key.right_path()))?;
         }
     }
