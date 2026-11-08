@@ -73,6 +73,13 @@ impl TempDir {
                 "fixture paths must stay inside the temporary directory",
             ));
         }
+        let root = std::fs::symlink_metadata(&self.path)?;
+        if !root.is_dir() || root.is_symlink() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "the fixture root must be a directory, not a symlink",
+            ));
+        }
         let path = self.path.join(relative);
         if let Some(parent) = path.parent() {
             let mut directory = self.path.clone();
@@ -271,6 +278,17 @@ mod tests {
         }
         assert!(!outside.join("nested").exists());
         assert_eq!(std::fs::read_to_string(file).unwrap(), "original");
+
+        let replaced = temporary("root-symlink");
+        std::fs::remove_dir(replaced.path()).unwrap();
+        symlink(outside.path(), replaced.path()).unwrap();
+        assert_eq!(
+            replaced.write("outside.txt", "changed").unwrap_err().kind(),
+            io::ErrorKind::InvalidInput
+        );
+        assert!(!outside.join("outside.txt").exists());
+        drop(replaced);
+        assert!(outside.path().is_dir());
     }
 
     #[test]
