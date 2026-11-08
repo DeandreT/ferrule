@@ -63,16 +63,11 @@ pub(super) fn enrich_unresolved_source_schemas(project: &mut mapping::Project) {
 
 fn enrich_schema(schema: &mut SchemaNode, paths: &BTreeMap<Vec<String>, bool>) {
     for (path, pinned) in paths {
-        if schema_node_at(schema, path).is_some() || (!pinned && schema_has_suffix(schema, path)) {
+        if schema.descendant(path).is_some() || (!pinned && schema_has_suffix(schema, path)) {
             continue;
         }
         insert_opaque_string_path(schema, path);
     }
-}
-
-fn schema_node_at<'a>(schema: &'a SchemaNode, path: &[String]) -> Option<&'a SchemaNode> {
-    path.iter()
-        .try_fold(schema, |node, segment| node.child(segment))
 }
 
 fn schema_has_suffix(schema: &SchemaNode, suffix: &[String]) -> bool {

@@ -72,10 +72,6 @@ impl RevisionChange {
         semantic: ComponentChange::Unchanged,
         layout: ComponentChange::Unchanged,
     };
-
-    pub fn is_unchanged(self) -> bool {
-        self == Self::NONE
-    }
 }
 
 /// Current and saved revisions of one editor document.

@@ -799,7 +799,8 @@ fn resolve_recursive_schema(
     root: &SchemaNode,
     anchor: &str,
 ) -> Result<SchemaNode, XmlFormatError> {
-    let mut resolved = find_concrete_group(root, anchor)
+    let mut resolved = root
+        .find_concrete_group(anchor)
         .cloned()
         .ok_or_else(|| XmlFormatError::MissingElement(format!("recursive anchor `{anchor}`")))?;
     resolved.name.clone_from(&occurrence.name);
@@ -891,21 +892,6 @@ fn expanded_name(namespace: Option<&str>, local: &str) -> String {
         || local.to_string(),
         |namespace| format!("{{{namespace}}}{local}"),
     )
-}
-
-fn find_concrete_group<'a>(schema: &'a SchemaNode, anchor: &str) -> Option<&'a SchemaNode> {
-    if schema.recursive_ref.is_none()
-        && schema.name == anchor
-        && matches!(schema.kind, SchemaKind::Group { .. })
-    {
-        return Some(schema);
-    }
-    let SchemaKind::Group { children, .. } = &schema.kind else {
-        return None;
-    };
-    children
-        .iter()
-        .find_map(|child| find_concrete_group(child, anchor))
 }
 
 fn has_xml_nil(
@@ -2459,7 +2445,7 @@ fn format_scalar(name: &str, ty: ScalarType, value: &Value) -> Result<String, Xm
             .ok_or_else(|| incompatible("string")),
         (ScalarType::Float, Value::Float(value)) if value.is_finite() => Ok(value.to_string()),
         (ScalarType::Float, Value::Float(_)) => Err(incompatible("non-finite float")),
-        (ScalarType::Float, Value::Int(value)) if exact_f64(*value).is_some() => {
+        (ScalarType::Float, Value::Int(value)) if ir::i64_to_exact_f64(*value).is_some() => {
             Ok(value.to_string())
         }
         (ScalarType::Float, Value::Int(_)) => Err(incompatible("int outside the exact f64 range")),
@@ -2484,15 +2470,6 @@ fn xml_boolean(value: &str) -> Option<bool> {
         "false" | "0" => Some(false),
         _ => None,
     }
-}
-
-fn exact_f64(value: i64) -> Option<f64> {
-    let magnitude = value.unsigned_abs();
-    if magnitude == 0 {
-        return Some(0.0);
-    }
-    let significant_bits = u64::BITS - magnitude.leading_zeros() - magnitude.trailing_zeros();
-    (significant_bits <= f64::MANTISSA_DIGITS).then_some(value as f64)
 }
 
 fn integral_i64(value: f64) -> Option<i64> {

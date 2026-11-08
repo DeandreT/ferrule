@@ -1,7 +1,6 @@
-use ir::{
-    GroupAlternativeConstraintValue, GroupAlternativeMode, ScalarType, SchemaKind, SchemaNode,
-};
+use ir::{GroupAlternativeConstraintValue, GroupAlternativeMode, SchemaKind, SchemaNode};
 
+use super::json_schema_type_name;
 use crate::JsonFormatError;
 use crate::null_layers::{JsonLayers, layers};
 
@@ -84,12 +83,7 @@ fn render_non_nullable_shape(
             if node.json_any {
                 return Ok(());
             }
-            let name = match ty {
-                ScalarType::String => "string",
-                ScalarType::Int => "integer",
-                ScalarType::Float => "number",
-                ScalarType::Bool => "boolean",
-            };
+            let name = json_schema_type_name(*ty);
             let ty = if layers.value_null {
                 serde_json::Value::Array(vec![name.into(), "null".into()])
             } else {
@@ -109,7 +103,7 @@ fn render_non_nullable_shape(
         SchemaKind::ScalarUnion { types } => {
             let mut types = types
                 .iter()
-                .map(scalar_type_name)
+                .map(json_schema_type_name)
                 .map(serde_json::Value::from)
                 .collect::<Vec<_>>();
             if layers.value_null {
@@ -217,15 +211,6 @@ fn render_non_nullable_shape(
         }
     }
     Ok(())
-}
-
-fn scalar_type_name(ty: ScalarType) -> &'static str {
-    match ty {
-        ScalarType::String => "string",
-        ScalarType::Int => "integer",
-        ScalarType::Float => "number",
-        ScalarType::Bool => "boolean",
-    }
 }
 
 fn constraint_value_to_json(value: &GroupAlternativeConstraintValue) -> serde_json::Value {

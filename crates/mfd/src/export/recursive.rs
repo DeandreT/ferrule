@@ -221,18 +221,15 @@ fn validate_scope(
     chain: &mut Vec<String>,
     source_anchor: &[String],
 ) -> Result<(), MfdError> {
-    let source_collection = scope
-        .source()
-        .expect("legacy path after ownership boundary")
-        .map(|source| {
-            if is_named_source_path(project, source) {
-                source.to_vec()
-            } else {
-                let mut absolute = source_anchor.to_vec();
-                absolute.extend_from_slice(source);
-                absolute
-            }
-        });
+    let source_collection = crate::export::legacy_source(scope)?.map(|source| {
+        if is_named_source_path(project, source) {
+            source.to_vec()
+        } else {
+            let mut absolute = source_anchor.to_vec();
+            absolute.extend_from_slice(source);
+            absolute
+        }
+    });
     match &scope.construction {
         ScopeConstruction::Scalar { value } => match scope.sequence() {
             Some(SequenceExpr::RecursiveCollect {
@@ -265,7 +262,7 @@ fn validate_scope(
                         "recursive-collect must produce one repeating scalar target",
                     ));
                 }
-                if has_controls_or_content(scope) {
+                if has_controls_or_content(scope)? {
                     return Err(unsupported(
                         "recursive-collect with controls or descendant content is not exportable canonically",
                     ));
@@ -443,7 +440,7 @@ fn node_inputs(node: &Node) -> Vec<NodeId> {
 }
 
 fn require_root_only(chain: &[String], scope: &Scope, kind: &str) -> Result<(), MfdError> {
-    if !chain.is_empty() || has_controls_or_content(scope) || scope.sequence().is_some() {
+    if !chain.is_empty() || has_controls_or_content(scope)? || scope.sequence().is_some() {
         return Err(unsupported(&format!(
             "{kind} export currently requires one uncontrolled document-root construction"
         )));
@@ -451,11 +448,8 @@ fn require_root_only(chain: &[String], scope: &Scope, kind: &str) -> Result<(), 
     Ok(())
 }
 
-fn has_controls_or_content(scope: &Scope) -> bool {
-    scope
-        .source()
-        .expect("legacy path after ownership boundary")
-        .is_some()
+fn has_controls_or_content(scope: &Scope) -> Result<bool, MfdError> {
+    Ok(crate::export::legacy_source(scope)?.is_some()
         || scope.join().is_some()
         || scope.filter.is_some()
         || scope.post_group_filter.is_some()
@@ -469,7 +463,7 @@ fn has_controls_or_content(scope: &Scope) -> bool {
         || !scope.bindings.is_empty()
         || !scope.children.is_empty()
         || !scope.dynamic_children.is_empty()
-        || scope.concatenated().is_some()
+        || scope.concatenated().is_some())
 }
 
 fn source_node<'a>(project: &'a Project, path: &[String]) -> Option<&'a SchemaNode> {
@@ -490,29 +484,14 @@ fn target_node<'a>(root: &'a SchemaNode, path: &[String]) -> Option<&'a SchemaNo
     let mut node = root;
     for segment in path {
         if let Some(anchor) = &node.recursive_ref {
-            node = find_concrete_schema_group(root, anchor)?;
+            node = root.find_concrete_group(anchor)?;
         }
         node = node.child(segment)?;
     }
     match &node.recursive_ref {
-        Some(anchor) => find_concrete_schema_group(root, anchor),
+        Some(anchor) => root.find_concrete_group(anchor),
         None => Some(node),
     }
-}
-
-fn find_concrete_schema_group<'a>(schema: &'a SchemaNode, anchor: &str) -> Option<&'a SchemaNode> {
-    if schema.recursive_ref.is_none()
-        && schema.name == anchor
-        && matches!(schema.kind, SchemaKind::Group { .. })
-    {
-        return Some(schema);
-    }
-    let SchemaKind::Group { children, .. } = &schema.kind else {
-        return None;
-    };
-    children
-        .iter()
-        .find_map(|child| find_concrete_schema_group(child, anchor))
 }
 
 fn render_component(

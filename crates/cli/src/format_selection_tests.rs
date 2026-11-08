@@ -483,7 +483,7 @@ fn inferred_edi_output_formats_values_before_detecting_the_dialect() -> anyhow::
         assert_eq!(error.to_string(), "applying EDI output lexical formats");
     }
     assert_eq!(std::fs::read(&path)?, b"unchanged");
-    std::fs::remove_dir_all(directory)?;
+    directory.close()?;
     Ok(())
 }
 
@@ -578,7 +578,7 @@ fn conflicting_outputs_leave_existing_bytes_untouched() -> anyhow::Result<()> {
         assert!(error.to_string().contains(first), "{first}: {error:#}");
         assert_eq!(std::fs::read(&path)?, b"unchanged");
     }
-    std::fs::remove_dir_all(directory)?;
+    directory.close()?;
     Ok(())
 }
 
@@ -634,6 +634,6 @@ fn explicit_jsonl_document_matches_payload_and_filesystem_bytes() -> anyhow::Res
             instance
         );
     }
-    std::fs::remove_dir_all(directory)?;
+    directory.close()?;
     Ok(())
 }
