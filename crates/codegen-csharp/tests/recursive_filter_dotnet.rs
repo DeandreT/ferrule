@@ -1,11 +1,8 @@
-#[path = "../../codegen/tests/fixtures/dotnet_temp.rs"]
-mod dotnet_temp;
-use dotnet_temp::DotnetTemp;
+use test_support::{DotnetTemp, TempDir};
 
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use ir::{Instance, ScalarType, SchemaNode, Value};
 use mapping::{Graph, Node, Project, RecursiveFilterPlan, Scope, ScopeConstruction};
@@ -184,14 +181,11 @@ fn generated_mapping_matches_engine_recursive_filter_and_typed_errors() {
 fn run_generated(program: &codegen::Program, harness: &str) -> String {
     let artifacts = codegen_csharp::emit(program)
         .unwrap_or_else(|error| panic!("recursive-filter fixture emits: {error}"));
-    let directory = TempDirectory::new();
+    let directory =
+        TempDir::new("csharp-recursive-filter").expect("temporary directory is created");
     for file in artifacts.files() {
-        let path = directory.path().join(file.path.as_str());
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)
-                .unwrap_or_else(|error| panic!("create artifact parent: {error}"));
-        }
-        std::fs::write(path, &file.contents)
+        directory
+            .write(file.path.as_str(), &file.contents)
             .unwrap_or_else(|error| panic!("write generated artifact: {error}"));
     }
     write_harness(directory.path(), harness);
@@ -261,32 +255,6 @@ fn assert_command_succeeded(name: &str, output: &std::process::Output) {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr),
     );
-}
-
-struct TempDirectory(PathBuf);
-
-impl TempDirectory {
-    fn new() -> Self {
-        static COUNTER: AtomicU64 = AtomicU64::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule-csharp-recursive-filter-{}-{}",
-            std::process::id(),
-            COUNTER.fetch_add(1, Ordering::Relaxed),
-        ));
-        std::fs::create_dir_all(&path)
-            .unwrap_or_else(|error| panic!("create temporary directory: {error}"));
-        Self(path)
-    }
-
-    fn path(&self) -> &Path {
-        &self.0
-    }
-}
-
-impl Drop for TempDirectory {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
 }
 
 const HARNESS: &str = r##"using Ferrule.Generated;

@@ -7,6 +7,9 @@ use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+mod dotnet;
+pub use dotnet::DotnetTemp;
+
 /// Set to keep every test directory for inspection instead of removing it.
 pub const KEEP_ENV: &str = "FERRULE_KEEP_TEST_DIRS";
 
@@ -27,7 +30,10 @@ impl TempDir {
         Self::with_retention(label, std::env::var_os(KEEP_ENV).is_some())
     }
 
-    fn with_retention(label: &str, retain: bool) -> io::Result<Self> {
+    /// Creates a directory with an explicit retention policy, overriding
+    /// [`KEEP_ENV`]. This lets suites preserve their own artifact policy without
+    /// changing the process environment.
+    pub fn with_retention(label: &str, retain: bool) -> io::Result<Self> {
         if label.contains(['/', '\\']) {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
@@ -240,6 +246,28 @@ mod tests {
     }
 
     #[test]
+    fn explicit_retention_applies_to_drop_close_and_remove_empty() {
+        let dropped = TempDir::with_retention("explicit-drop", true).unwrap();
+        let file = dropped.write("nested/file", "retained").unwrap();
+        let path = dropped.path().to_owned();
+        drop(dropped);
+        assert_eq!(std::fs::read_to_string(file).unwrap(), "retained");
+        std::fs::remove_dir_all(path).unwrap();
+
+        let closed = TempDir::with_retention("explicit-close", true).unwrap();
+        let path = closed.path().to_owned();
+        closed.close().unwrap();
+        assert!(path.is_dir());
+        std::fs::remove_dir(path).unwrap();
+
+        let empty = TempDir::with_retention("explicit-empty", true).unwrap();
+        let path = empty.path().to_owned();
+        empty.remove_empty().unwrap();
+        assert!(path.is_dir());
+        std::fs::remove_dir(path).unwrap();
+    }
+
+    #[test]
     fn fixture_paths_cannot_escape_the_directory() {
         let directory = temporary("paths");
         let outside = temporary("outside");
@@ -323,6 +351,11 @@ mod tests {
         let Some(report) = std::env::var_os("FERRULE_TEST_SUPPORT_RETENTION_REPORT") else {
             return;
         };
+        // An explicit suite policy overrides the ambient retention switch.
+        let explicit = TempDir::with_retention("explicit-cleanup", false).unwrap();
+        let explicit_path = explicit.path().to_owned();
+        drop(explicit);
+        assert!(!explicit_path.exists());
         let mut paths = Vec::new();
         let drop_directory = TempDir::new("retention-drop").unwrap();
         drop_directory.write("file", "kept").unwrap();

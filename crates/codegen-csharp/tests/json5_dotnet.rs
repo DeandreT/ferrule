@@ -1,6 +1,4 @@
-#[path = "../../codegen/tests/fixtures/dotnet_temp.rs"]
-mod dotnet_temp;
-use dotnet_temp::DotnetTemp;
+use test_support::DotnetTemp;
 
 use codegen::{
     Binding, Expression, ExpressionNode, Program, RuntimeValue, ScalarFunction, TargetScope,

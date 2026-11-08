@@ -1,10 +1,9 @@
-//! Self-authored the X12 `Envelope.Config` interchanges. Native format-edi
+//! Self-authored `Envelope.Config` interchanges. Native format-edi
 //! reading, writing and completion define each positive oracle; generated C#
 //! enforces declared ownership. Native negative parity is claimed explicitly.
 use super::*;
 use codegen::X12EnvelopeProfile;
 use ir::{Instance, Value};
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 const CONTRACT: &str = include_str!("repeating-envelope/contract.json");
 const HOST: &str = include_str!("repeating-envelope/Host.cs");
@@ -129,25 +128,15 @@ fn isa_of(version: &str) -> String {
         .0
 }
 fn evidence(label: &str) -> TempDir {
-    static NEXT: AtomicUsize = AtomicUsize::new(0);
-    let root = std::env::temp_dir().join(format!(
-        "ferrule_x12_repeating_{label}_{}_{}_{}",
-        std::process::id(),
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos(),
-        NEXT.fetch_add(1, Ordering::Relaxed)
-    ));
-    fs::create_dir(&root).unwrap();
+    let root = TempDir::new(&format!("x12-repeating-envelope-{label}")).unwrap();
     eprintln!(
-        "complete authored repeating-interchange X12 evidence: {}",
+        "complete authored RepeatingEnvelope X12 evidence: {}",
         root.display()
     );
     for (name, contents) in FIXTURES {
-        fs::write(root.join(name), contents).unwrap();
+        root.write(name, contents).unwrap();
     }
-    TempDir(root)
+    root
 }
 pub(super) fn identity(schema: &SchemaNode) -> Project {
     project(
@@ -202,7 +191,7 @@ pub(super) fn expected(schema: &SchemaNode, literal: &serde_json::Value) -> Inst
 }
 fn options(isa: &str, completion: bool) -> X12BoundaryOptions {
     X12BoundaryOptions {
-        envelope_profile: X12EnvelopeProfile::MapForceInterchanges,
+        envelope_profile: X12EnvelopeProfile::REPEATING_INTERCHANGES,
         interchange_version: Some(isa.into()),
         autocomplete: completion.then_some(mapping::X12Autocomplete {
             request_acknowledgement: false,
@@ -369,7 +358,7 @@ fn materialize_cases(root: &Path) -> Vec<serde_json::Value> {
 }
 
 #[test]
-fn repeating_envelope_profiles_match_complete_values_and_wire_oracles() {
+fn repeating_envelope_native_profiles_match_complete_values_and_wire_oracles() {
     let root = evidence("native");
     let mut comparisons = Vec::new();
     for (isa, version) in versions() {
