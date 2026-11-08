@@ -1,5 +1,4 @@
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use std::collections::BTreeMap;
 
@@ -9,27 +8,7 @@ use mapping::{
     WsdlMessageOptions,
 };
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Result<Self, std::io::Error> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_wsdl_message_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn write_design(directory: &Path) -> Result<PathBuf, std::io::Error> {
     let design = directory.join("lookup.mfd");
@@ -64,8 +43,8 @@ fn mapped_value<'a>(instance: &'a Instance, field: &str) -> Option<&'a Value> {
 #[test]
 fn wsdl_messages_import_as_executable_xml_boundaries_and_roundtrip()
 -> Result<(), Box<dyn std::error::Error>> {
-    let directory = TempDir::new()?;
-    let imported = mfd::import(&write_design(&directory.0)?)?;
+    let directory = TempDir::new("mfd_wsdl_message")?;
+    let imported = mfd::import(&write_design(directory.path())?)?;
 
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert_eq!(
@@ -111,7 +90,7 @@ fn wsdl_messages_import_as_executable_xml_boundaries_and_roundtrip()
         "{output_xml}"
     );
 
-    let exported = directory.0.join("roundtrip.mfd");
+    let exported = directory.path().join("roundtrip.mfd");
     let export_warnings = mfd::export(&imported.project, &exported)?;
     assert!(export_warnings.is_empty(), "{export_warnings:?}");
     let exported_text = std::fs::read_to_string(&exported)?;
@@ -120,8 +99,8 @@ fn wsdl_messages_import_as_executable_xml_boundaries_and_roundtrip()
     assert_eq!(exported_text.matches("library=\"wsdl\"").count(), 2);
     assert!(exported_text.contains("kind=\"output\""));
     assert!(exported_text.contains("previewRequestInstanceFile=\"lookup-request.xml\""));
-    assert!(!directory.0.join("roundtrip-source.xsd").exists());
-    assert!(!directory.0.join("roundtrip-target.xsd").exists());
+    assert!(!directory.path().join("roundtrip-source.xsd").exists());
+    assert!(!directory.path().join("roundtrip-target.xsd").exists());
     let reimported = mfd::import(&exported)?;
     assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
     assert!(engine::validate(&reimported.project).is_empty());
@@ -137,7 +116,7 @@ fn wsdl_messages_import_as_executable_xml_boundaries_and_roundtrip()
 
     let mut nonstandard_preview = imported.project.clone();
     nonstandard_preview.source_path = Some("lookup-request.json".to_string());
-    let nonstandard_design = directory.0.join("nonstandard-preview.mfd");
+    let nonstandard_design = directory.path().join("nonstandard-preview.mfd");
     mfd::export(&nonstandard_preview, &nonstandard_design)?;
     let nonstandard_text = std::fs::read_to_string(nonstandard_design)?;
     assert!(nonstandard_text.contains("library=\"wsdl\""));
@@ -268,8 +247,8 @@ fn exported_wsdl_messages_retain_typed_sequences_and_case_sensitive_target_names
     };
     assert!(engine::validate(&project).is_empty());
 
-    let directory = TempDir::new()?;
-    let design = directory.0.join("typed-roundtrip.mfd");
+    let directory = TempDir::new("mfd_wsdl_message")?;
+    let design = directory.path().join("typed-roundtrip.mfd");
     assert!(mfd::export(&project, &design)?.is_empty());
     let exported = std::fs::read_to_string(&design)?;
     assert!(exported.contains("ferrule-repeating=\"1\""));

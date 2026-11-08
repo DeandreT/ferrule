@@ -20,25 +20,7 @@ fn fixture(name: &str) -> PathBuf {
         .join(name)
 }
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new(label: &str) -> std::io::Result<Self> {
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_json_undeclared_{}_{label}",
-            std::process::id()
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn int(name: &str) -> SchemaNode {
     SchemaNode::scalar(name, ScalarType::Int)
@@ -324,7 +306,7 @@ fn members_roundtrip_through_mfd_export() -> TestResult<()> {
     let dir = TempDir::new("roundtrip")?;
     for design in EXECUTABLE_DESIGNS {
         let project = mfd::import(&fixture(&format!("{design}.mfd")))?.project;
-        let exported = dir.0.join(format!("{design}.mfd"));
+        let exported = dir.path().join(format!("{design}.mfd"));
         let warnings = mfd::export(&project, &exported)?;
         assert!(warnings.is_empty(), "{design}: {warnings:?}");
         let reimported = mfd::import(&exported)?;

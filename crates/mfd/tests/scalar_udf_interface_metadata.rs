@@ -1,6 +1,5 @@
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::path::Path;
 
 use ir::{Instance, ScalarType, SchemaNode, Value};
 use mapping::{
@@ -8,24 +7,7 @@ use mapping::{
     Project, Scope, UserFunction,
 };
 
-struct Directory(PathBuf);
-impl Directory {
-    fn new() -> Self {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_udf_interface_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir(&path).unwrap();
-        Self(path)
-    }
-}
-impl Drop for Directory {
-    fn drop(&mut self) {
-        std::fs::remove_dir_all(&self.0).unwrap();
-    }
-}
+use test_support::TempDir as Directory;
 
 fn function(ty: ScalarType, parameter: &str, output: &str) -> UserFunction {
     UserFunction {
@@ -187,7 +169,7 @@ fn roundtrip(p: &Project, path: &Path, profile: mfd::ExportProfile) -> Project {
 }
 #[test]
 fn all_four_scalar_interfaces_have_explicit_names_and_keep_typed_results_twice() {
-    let dir = Directory::new();
+    let dir = Directory::new("udf_interface").unwrap();
     for (i, ty, value) in [
         (0, ScalarType::String, Value::String("authored".into())),
         (1, ScalarType::Int, Value::Int(7)),
@@ -199,13 +181,13 @@ fn all_four_scalar_interfaces_have_explicit_names_and_keep_typed_results_twice()
         let expected = engine::run(&p, &input).unwrap();
         let restored = roundtrip(
             &p,
-            &dir.0.join(format!("scalar-{i}.mfd")),
+            &dir.path().join(format!("scalar-{i}.mfd")),
             mfd::ExportProfile::NativeMfd,
         );
         assert_eq!(engine::run(&restored, &input).unwrap(), expected);
         let twice = roundtrip(
             &restored,
-            &dir.0.join(format!("second-{i}.mfd")),
+            &dir.path().join(format!("second-{i}.mfd")),
             mfd::ExportProfile::NativeMfd,
         );
         assert_eq!(engine::run(&twice, &input).unwrap(), expected);
@@ -213,7 +195,7 @@ fn all_four_scalar_interfaces_have_explicit_names_and_keep_typed_results_twice()
 }
 #[test]
 fn escaped_and_unicode_names_are_preserved_as_metadata_without_native_grammar_claims() {
-    let dir = Directory::new();
+    let dir = Directory::new("udf_interface").unwrap();
     let p = project(
         ScalarType::String,
         "value & <tag> \"' λ",
@@ -221,18 +203,18 @@ fn escaped_and_unicode_names_are_preserved_as_metadata_without_native_grammar_cl
     );
     let restored = roundtrip(
         &p,
-        &dir.0.join("escaped.mfd"),
+        &dir.path().join("escaped.mfd"),
         mfd::ExportProfile::FerruleExtensions,
     );
     roundtrip(
         &restored,
-        &dir.0.join("escaped-second.mfd"),
+        &dir.path().join("escaped-second.mfd"),
         mfd::ExportProfile::FerruleExtensions,
     );
 }
 #[test]
 fn zero_and_unused_ascii_parameters_retain_declared_interfaces() {
-    let dir = Directory::new();
+    let dir = Directory::new("udf_interface").unwrap();
     for unused in [false, true] {
         let mut p = project(ScalarType::String, "value", "result");
         let f = p.user_functions.get_mut(&FunctionId::new(1)).unwrap();
@@ -274,20 +256,20 @@ fn zero_and_unused_ascii_parameters_retain_declared_interfaces() {
         let expected = engine::run(&p, &input).unwrap();
         let restored = roundtrip(
             &p,
-            &dir.0.join(format!("unused-{unused}.mfd")),
+            &dir.path().join(format!("unused-{unused}.mfd")),
             mfd::ExportProfile::NativeMfd,
         );
         assert_eq!(engine::run(&restored, &input).unwrap(), expected);
         roundtrip(
             &restored,
-            &dir.0.join(format!("unused-second-{unused}.mfd")),
+            &dir.path().join(format!("unused-second-{unused}.mfd")),
             mfd::ExportProfile::NativeMfd,
         );
     }
 }
 #[test]
 fn nested_and_multi_parameter_ascii_interfaces_keep_identity_and_connections() {
-    let dir = Directory::new();
+    let dir = Directory::new("udf_interface").unwrap();
     let mut p = project(ScalarType::String, "left", "result");
     let inner = function(ScalarType::String, "value", "wrapped");
     let mut inner = inner;
@@ -346,18 +328,22 @@ fn nested_and_multi_parameter_ascii_interfaces_keep_identity_and_connections() {
         .into(),
     );
     let expected = engine::run(&p, &input).unwrap();
-    let restored = roundtrip(&p, &dir.0.join("nested.mfd"), mfd::ExportProfile::NativeMfd);
+    let restored = roundtrip(
+        &p,
+        &dir.path().join("nested.mfd"),
+        mfd::ExportProfile::NativeMfd,
+    );
     assert_eq!(engine::run(&restored, &input).unwrap(), expected);
     let twice = roundtrip(
         &restored,
-        &dir.0.join("nested-second.mfd"),
+        &dir.path().join("nested-second.mfd"),
         mfd::ExportProfile::NativeMfd,
     );
     assert_eq!(engine::run(&twice, &input).unwrap(), expected);
 }
 #[test]
 fn empty_and_duplicate_interface_names_still_reject_before_publication() {
-    let dir = Directory::new();
+    let dir = Directory::new("udf_interface").unwrap();
     for i in 0..3 {
         let mut p = project(ScalarType::String, "value", "result");
         let f = p.user_functions.get_mut(&FunctionId::new(1)).unwrap();
@@ -372,7 +358,7 @@ fn empty_and_duplicate_interface_names_still_reject_before_publication() {
                 });
             }
         }
-        let path = dir.0.join(format!("invalid-{i}/mapping.mfd"));
+        let path = dir.path().join(format!("invalid-{i}/mapping.mfd"));
         assert!(mfd::export_with_profile(&p, &path, mfd::ExportProfile::NativeMfd).is_err());
         assert!(!path.parent().unwrap().exists());
     }

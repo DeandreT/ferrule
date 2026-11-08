@@ -1,33 +1,12 @@
 use std::error::Error;
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> std::io::Result<Self> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule-mfd-connected-file-paths-{}-{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 #[test]
 fn constant_input_parameters_become_static_source_and_target_paths() -> Result<(), Box<dyn Error>> {
-    let directory = TempDir::new()?;
+    let directory = TempDir::new("mfd-connected-file-paths")?;
     std::fs::write(
-        directory.0.join("document.xsd"),
+        directory.path().join("document.xsd"),
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
           <xs:element name="Document"><xs:complexType><xs:sequence>
             <xs:element name="Value" type="xs:string"/>
@@ -35,7 +14,7 @@ fn constant_input_parameters_become_static_source_and_target_paths() -> Result<(
         </xs:schema>"#,
     )?;
     std::fs::write(
-        directory.0.join("mapping.mfd"),
+        directory.path().join("mapping.mfd"),
         r#"<mapping version="26"><component name="map"><structure><children>
           <component name="constant" library="core" kind="2"><targets><datapoint key="1"/></targets><data><constant value="input.xml" datatype="string"/></data></component>
           <component name="input-parameter" library="core" kind="6"><sources><datapoint key="2"/></sources><targets><datapoint key="3"/></targets><data><input datatype="string"/><parameter usageKind="input" name="InputFile"/></data></component>
@@ -56,14 +35,14 @@ fn constant_input_parameters_become_static_source_and_target_paths() -> Result<(
         </vertices></graph></structure></component></mapping>"#,
     )?;
 
-    let imported = mfd::import(&directory.0.join("mapping.mfd"))?;
+    let imported = mfd::import(&directory.path().join("mapping.mfd"))?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert_eq!(imported.project.source_path.as_deref(), Some("input.xml"));
     assert_eq!(imported.project.target_path.as_deref(), Some("output.xml"));
     assert!(imported.project.root.output_path().is_none());
     assert!(engine::validate(&imported.project).is_empty());
 
-    let exported = directory.0.join("roundtrip.mfd");
+    let exported = directory.path().join("roundtrip.mfd");
     assert!(mfd::export(&imported.project, &exported)?.is_empty());
     let roundtrip = mfd::import(&exported)?;
     assert!(roundtrip.warnings.is_empty(), "{:?}", roundtrip.warnings);

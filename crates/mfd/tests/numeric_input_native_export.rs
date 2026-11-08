@@ -2,30 +2,9 @@
 mod private_corpus;
 
 use std::error::Error;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::path::Path;
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Result<Self, std::io::Error> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_numeric_input_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn compact_xml(
     project: &mapping::Project,
@@ -88,8 +67,8 @@ fn finite_numeric_input_preview_strictly_roundtrips_top_ten_xml() -> Result<(), 
     assert_eq!(rows[0]["month"], "2008-07");
     assert_eq!(rows[9]["month"], "2007-08");
 
-    let directory = TempDir::new()?;
-    let exported = directory.0.join("highest.mfd");
+    let directory = TempDir::new("mfd_numeric_input")?;
+    let exported = directory.path().join("highest.mfd");
     let report = mfd::preflight_export(&imported.project, &exported)?;
     assert!(report.is_native_compatible(), "{report}");
     let report =
@@ -141,8 +120,8 @@ fn integer_input_preview_clears_input_is_sequence_strict_preflight() -> Result<(
         0,
         "integer input preview needs no conversion"
     );
-    let directory = TempDir::new()?;
-    let report = mfd::preflight_export(&imported.project, &directory.0.join("sequence.mfd"))?;
+    let directory = TempDir::new("mfd_numeric_input")?;
+    let report = mfd::preflight_export(&imported.project, &directory.path().join("sequence.mfd"))?;
     assert!(report.is_native_compatible(), "{report}");
     Ok(())
 }

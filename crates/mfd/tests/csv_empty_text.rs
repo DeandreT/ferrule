@@ -1,27 +1,7 @@
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
-
 use ir::{Instance, Value};
 use mfd::{ExportProfile, ImportOptions, ImportProfile, MfdError};
 
-struct TempDir(PathBuf);
-impl TempDir {
-    fn new() -> std::io::Result<Self> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_csv_empty_text_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn design(policy: &str, second_type: &str) -> String {
     format!(
@@ -38,7 +18,7 @@ fn design(policy: &str, second_type: &str) -> String {
 
 #[test]
 fn native_empty_text_policy_survives_two_strict_cycles() -> Result<(), Box<dyn std::error::Error>> {
-    let temp = TempDir::new()?;
+    let temp = TempDir::new("mfd_csv_empty_text")?;
     for (case, policy, preserve) in [
         ("present", "removeempty=\"false\"", true),
         ("absent", "removeempty=\"true\"", false),
@@ -46,7 +26,7 @@ fn native_empty_text_policy_survives_two_strict_cycles() -> Result<(), Box<dyn s
         ("zero", "removeempty=\"0\"", true),
         ("legacy", "", false),
     ] {
-        let path = temp.0.join(format!("{case}.mfd"));
+        let path = temp.path().join(format!("{case}.mfd"));
         std::fs::write(&path, design(policy, "string"))?;
         let imported =
             mfd::import_with_profile(&path, &ImportOptions::default(), ImportProfile::Executable)?;
@@ -79,7 +59,7 @@ fn native_empty_text_policy_survives_two_strict_cycles() -> Result<(), Box<dyn s
                 Some(&Value::Null)
             );
             if cycle < 2 {
-                let path = temp.0.join(format!("{case}-cycle-{cycle}.mfd"));
+                let path = temp.path().join(format!("{case}-cycle-{cycle}.mfd"));
                 let report = mfd::export_with_profile(&project, &path, ExportProfile::NativeMfd)?;
                 assert!(report.is_native_compatible());
                 let encoded = std::fs::read_to_string(&path)?;
@@ -99,7 +79,7 @@ fn native_empty_text_policy_survives_two_strict_cycles() -> Result<(), Box<dyn s
 #[test]
 fn invalid_or_unverified_typed_empty_policy_rejects_executable_import_and_faithful_export()
 -> Result<(), Box<dyn std::error::Error>> {
-    let temp = TempDir::new()?;
+    let temp = TempDir::new("mfd_csv_empty_text")?;
     for (name, policy, ty, message) in [
         (
             "invalid",
@@ -114,7 +94,7 @@ fn invalid_or_unverified_typed_empty_policy_rejects_executable_import_and_faithf
             "non-text columns",
         ),
     ] {
-        let path = temp.0.join(format!("{name}.mfd"));
+        let path = temp.path().join(format!("{name}.mfd"));
         std::fs::write(&path, design(policy, ty))?;
         let imported = mfd::import(&path)?;
         assert!(
@@ -129,13 +109,13 @@ fn invalid_or_unverified_typed_empty_policy_rejects_executable_import_and_faithf
         ));
         if name == "typed" {
             for profile in [ExportProfile::NativeMfd, ExportProfile::FerruleExtensions] {
-                let path = temp.0.join(format!("blocked-{profile:?}/mapping.mfd"));
+                let path = temp.path().join(format!("blocked-{profile:?}/mapping.mfd"));
                 assert!(mfd::export_with_profile(&imported.project, &path, profile).is_err());
                 assert!(!path.parent().unwrap().exists());
             }
         }
     }
-    let path = temp.0.join("bounded.mfd");
+    let path = temp.path().join("bounded.mfd");
     std::fs::write(
         &path,
         design(&format!("removeempty=\"{}\"", "x".repeat(16384)), "string"),

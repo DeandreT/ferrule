@@ -1,6 +1,5 @@
 use std::error::Error;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use mfd::{ImportIssueKind, ImportOptions, ImportProfile, MfdError};
 use serde::Deserialize;
@@ -58,24 +57,12 @@ fn expected_output(value: &serde_json::Value) -> Result<ir::Instance, Box<dyn Er
 }
 
 /// Removes a per-test directory on drop, including after a panic.
-struct TempDir(std::path::PathBuf);
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 #[test]
 fn physical_input_conflicts_never_select_a_feed() -> Result<(), Box<dyn Error>> {
-    static NEXT: AtomicUsize = AtomicUsize::new(0);
-    let root = std::env::temp_dir().join(format!(
-        "ferrule_input_guard335_{}_{}",
-        std::process::id(),
-        NEXT.fetch_add(1, Ordering::Relaxed)
-    ));
-    std::fs::create_dir(&root)?;
-    let _cleanup = TempDir(root.clone());
+    let _cleanup = TempDir::new("input_guard335")?;
+    let root = _cleanup.path().to_path_buf();
     eprintln!("INPUT_GUARD335_ORIGINALS={}", root.display());
     let cases: Vec<Case> = serde_json::from_str(include_str!("fixtures/input_guard/cases.json"))?;
     assert_eq!(cases.len(), 29);

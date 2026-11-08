@@ -1,6 +1,5 @@
 use std::error::Error;
 use std::ffi::OsString;
-use std::path::{Path, PathBuf};
 
 #[path = "support/survey_import_options.rs"]
 mod survey_import_options;
@@ -179,35 +178,4 @@ fn direct_catalog_roots_must_exist_when_the_survey_starts() -> Result<(), Box<dy
     Ok(())
 }
 
-struct TestDir(PathBuf);
-
-impl TestDir {
-    fn new(label: &str) -> Result<Self, std::io::Error> {
-        let base = std::env::temp_dir();
-        for attempt in 0..1_024 {
-            let path = base.join(format!(
-                "ferrule-survey-options-{label}-{}-{attempt}",
-                std::process::id()
-            ));
-            match std::fs::create_dir(&path) {
-                Ok(()) => return Ok(Self(path)),
-                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
-                Err(error) => return Err(error),
-            }
-        }
-        Err(std::io::Error::new(
-            std::io::ErrorKind::AlreadyExists,
-            "could not allocate survey options test directory",
-        ))
-    }
-
-    fn path(&self) -> &Path {
-        &self.0
-    }
-}
-
-impl Drop for TestDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir as TestDir;

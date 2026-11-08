@@ -1,29 +1,9 @@
 use ir::{ScalarType, SchemaNode};
 use mapping::{Binding, Graph, Node, Project, Scope};
 use mfd::{ExportProfile, ImportIssueKind, ImportOptions, ImportProfile, MfdError};
-use std::{
-    collections::BTreeMap,
-    path::PathBuf,
-    sync::atomic::{AtomicUsize, Ordering},
-};
-static NEXT: AtomicUsize = AtomicUsize::new(0);
-struct Dir(PathBuf);
-impl Dir {
-    fn new() -> Self {
-        let p = std::env::temp_dir().join(format!(
-            "ferrule_attribute_mapping_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir_all(&p).unwrap();
-        Self(p)
-    }
-}
-impl Drop for Dir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+
+use test_support::TempDir as Dir;
+
 fn source(root: &str, profile: &str) -> String {
     let body = match profile {
         "default" => format!(
@@ -55,18 +35,18 @@ fn design() -> String {
 fn rejected_required_profiles_keep_complete_entry_tree_and_executable_warning_gate() {
     for profile in ["default", "view"] {
         for side in ["source", "target"] {
-            let d = Dir::new();
+            let d = Dir::new("attribute_mapping").unwrap();
             for (name, root) in [("source", "Input"), ("target", "Output")] {
                 std::fs::write(
-                    d.0.join(format!("{name}.xsd")),
+                    d.path().join(format!("{name}.xsd")),
                     source(root, if name == side { profile } else { "plain" }),
                 )
                 .unwrap();
             }
-            let path = d.0.join("mapping.mfd");
+            let path = d.path().join("mapping.mfd");
             std::fs::write(&path, design()).unwrap();
             let typed = format_xml::xsd::import_root(
-                &d.0.join(format!("{side}.xsd")),
+                &d.path().join(format!("{side}.xsd")),
                 Some(if side == "source" { "Input" } else { "Output" }),
             )
             .unwrap_err();
@@ -165,8 +145,8 @@ fn project(default: bool) -> Project {
 fn native_schema_export_rejection_is_atomic_for_missing_and_existing_artifacts() {
     let p = project(true);
     assert!(engine::validate(&p).is_empty());
-    let d = Dir::new();
-    let path = d.0.join("missing/mapping.mfd");
+    let d = Dir::new("attribute_mapping").unwrap();
+    let path = d.path().join("missing/mapping.mfd");
     for result in [
         mfd::preflight_export(&p, &path),
         mfd::export_with_profile(&p, &path, ExportProfile::NativeMfd),
@@ -179,11 +159,11 @@ fn native_schema_export_rejection_is_atomic_for_missing_and_existing_artifacts()
         ));
         assert!(!path.parent().unwrap().exists());
     }
-    let path = d.0.join("mapping.mfd");
+    let path = d.path().join("mapping.mfd");
     let files = [
         path.clone(),
-        d.0.join("mapping-source.xsd"),
-        d.0.join("mapping-target.xsd"),
+        d.path().join("mapping-source.xsd"),
+        d.path().join("mapping-target.xsd"),
     ];
     for (index, file) in files.iter().enumerate() {
         std::fs::write(file, format!("sentinel-{index}")).unwrap();
@@ -200,14 +180,14 @@ fn native_schema_export_rejection_is_atomic_for_missing_and_existing_artifacts()
             format!("sentinel-{index}")
         );
     }
-    assert_eq!(std::fs::read_dir(&d.0).unwrap().count(), 3);
+    assert_eq!(std::fs::read_dir(d.path()).unwrap().count(), 3);
 }
 
 #[test]
 fn ordinary_required_attribute_native_export_reimport_and_lenient_mapping_are_exact() {
-    let d = Dir::new();
+    let d = Dir::new("attribute_mapping").unwrap();
     let p = project(false);
-    let path = d.0.join("mapping.mfd");
+    let path = d.path().join("mapping.mfd");
     let report = mfd::export_with_profile(&p, &path, ExportProfile::NativeMfd).unwrap();
     assert!(report.is_native_compatible());
     let imported = mfd::import(&path).unwrap();
@@ -236,3 +216,4 @@ fn ordinary_required_attribute_native_export_reimport_and_lenient_mapping_are_ex
         );
     }
 }
+use std::collections::BTreeMap;

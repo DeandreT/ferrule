@@ -124,7 +124,7 @@ fn imports_hl7_without_external_config_as_non_executable_graph() {
 
 #[test]
 fn imports_self_describing_edi_entry_tree_without_external_config() {
-    let directory = TempDir::new("embedded_schema");
+    let directory = TempDir::new("embedded_schema").unwrap();
     let design = directory.path().join("mapping.mfd");
     std::fs::write(
         &design,
@@ -171,7 +171,7 @@ fn imports_self_describing_edi_entry_tree_without_external_config() {
 
 #[test]
 fn retains_nested_edifact_output_instance_through_export() {
-    let directory = TempDir::new("nested_edifact_output");
+    let directory = TempDir::new("nested_edifact_output").unwrap();
     let design = directory.path().join("mapping.mfd");
     std::fs::write(
         &design,
@@ -231,7 +231,7 @@ fn retains_nested_edifact_output_instance_through_export() {
 
 #[test]
 fn cloned_edi_target_segments_keep_branch_local_bindings() {
-    let directory = TempDir::new("cloned_target_branches");
+    let directory = TempDir::new("cloned_target_branches").unwrap();
     let x12 = directory.path().join("X12");
     std::fs::create_dir_all(&x12).unwrap();
     std::fs::write(
@@ -359,7 +359,7 @@ fn cloned_edi_target_segments_keep_branch_local_bindings() {
 
 #[test]
 fn compiles_windows_parent_x12_path_inside_declared_package() {
-    let directory = TempDir::new("x12_config");
+    let directory = TempDir::new("x12_config").unwrap();
     let config_directory = directory.path().join("X12");
     let mapping_directory = directory.path().join("Maps");
     std::fs::create_dir_all(&config_directory).unwrap();
@@ -553,7 +553,7 @@ fn compiles_windows_parent_x12_path_inside_declared_package() {
 
 #[test]
 fn compiles_and_embeds_relative_idoc_configuration() {
-    let directory = TempDir::new("idoc_config");
+    let directory = TempDir::new("idoc_config").unwrap();
     std::fs::write(
         directory.path().join("parser.txt"),
         "BEGIN_SEGMENT_SECTION\nBEGIN_IDOC TEST\nBEGIN_SEGMENT HEADER0001\nSTATUS MANDATORY\nLOOPMAX 1\nBEGIN_FIELDS\nNAME DOCNO\nTYPE CHARACTER\nBYTE_FIRST 12\nBYTE_LAST 16\nEND_FIELDS\nEND_SEGMENT\nEND_IDOC\nEND_SEGMENT_SECTION\n",
@@ -598,7 +598,7 @@ fn compiles_and_embeds_relative_idoc_configuration() {
 
 #[test]
 fn compiles_and_embeds_selected_swift_configuration() {
-    let directory = TempDir::new("swift_config");
+    let directory = TempDir::new("swift_config").unwrap();
     let config = directory.path().join("SWIFT");
     std::fs::create_dir_all(&config).unwrap();
     std::fs::write(
@@ -687,7 +687,7 @@ fn compiles_and_embeds_selected_swift_configuration() {
 
 #[test]
 fn retains_unavailable_swift_configuration_for_design_roundtrips() {
-    let directory = TempDir::new("swift_missing_config");
+    let directory = TempDir::new("swift_missing_config").unwrap();
     let design = directory.path().join("mapping.mfd");
     std::fs::write(
         &design,
@@ -766,7 +766,7 @@ fn retains_unavailable_swift_configuration_for_design_roundtrips() {
 
 #[test]
 fn compiles_and_executes_tradacoms_implied_decimals() {
-    let directory = TempDir::new("tradacoms_implicit_decimal");
+    let directory = TempDir::new("tradacoms_implicit_decimal").unwrap();
     let config = directory.path().join("TRADACOMS");
     std::fs::create_dir_all(&config).unwrap();
     std::fs::write(
@@ -840,7 +840,7 @@ fn compiles_and_executes_tradacoms_implied_decimals() {
 
 #[test]
 fn malformed_embedded_implied_decimals_warn_and_disable_scaling() {
-    let directory = TempDir::new("invalid_implied_decimal_metadata");
+    let directory = TempDir::new("invalid_implied_decimal_metadata").unwrap();
     let design = directory.path().join("mapping.mfd");
     std::fs::write(
         &design,
@@ -892,24 +892,4 @@ fn malformed_embedded_implied_decimals_warn_and_disable_scaling() {
     );
 }
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new(label: &str) -> Self {
-        let path =
-            std::env::temp_dir().join(format!("ferrule_mfd_edi_{label}_{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-
-    fn path(&self) -> &Path {
-        &self.0
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;

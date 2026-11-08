@@ -1,31 +1,10 @@
 use std::error::Error;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{Instance, Value, XML_TEXT_FIELD};
 use mapping::Node;
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> std::io::Result<Self> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_dynamic_xml_lookup_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn write_fixture(dir: &Path) -> Result<PathBuf, Box<dyn Error>> {
     std::fs::write(
@@ -114,8 +93,8 @@ fn write_fixture(dir: &Path) -> Result<PathBuf, Box<dyn Error>> {
 
 #[test]
 fn generic_elements_pivot_key_value_rows_into_variable_fields() -> Result<(), Box<dyn Error>> {
-    let dir = TempDir::new()?;
-    let imported = mfd::import(&write_fixture(&dir.0)?)?;
+    let dir = TempDir::new("mfd_dynamic_xml_lookup")?;
+    let imported = mfd::import(&write_fixture(dir.path())?)?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
 
@@ -162,7 +141,7 @@ fn generic_elements_pivot_key_value_rows_into_variable_fields() -> Result<(), Bo
         Some(&Value::String("Ada Lovelace, Grace Hopper".into()))
     );
 
-    let exported_path = dir.0.join("exported.mfd");
+    let exported_path = dir.path().join("exported.mfd");
     let export_warnings = mfd::export(&imported.project, &exported_path)?;
     assert!(export_warnings.is_empty(), "{export_warnings:?}");
     let roundtripped = mfd::import(&exported_path)?;

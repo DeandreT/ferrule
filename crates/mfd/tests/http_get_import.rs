@@ -1,5 +1,4 @@
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{Instance, Value};
 
@@ -9,27 +8,7 @@ fn fixture(name: &str) -> PathBuf {
         .join(name)
 }
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Self {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_http_export_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn scalar<'a>(instance: &'a Instance, field: &str) -> &'a Value {
     instance.field(field).and_then(Instance::as_scalar).unwrap()
@@ -85,8 +64,8 @@ fn dtd_described_http_document_copy_preserves_present_choice_branches() {
 #[test]
 fn static_get_xml_export_generates_a_canonical_response_component() {
     let imported = mfd::import(&fixture("http-get.mfd")).unwrap();
-    let dir = TempDir::new();
-    let design = dir.0.join("feed.mfd");
+    let dir = TempDir::new("mfd_http_export").unwrap();
+    let design = dir.path().join("feed.mfd");
 
     let warnings = mfd::export(&imported.project, &design).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
@@ -98,7 +77,7 @@ fn static_get_xml_export_generates_a_canonical_response_component() {
     assert!(text.contains(r#"timeout="40""#), "{text}");
     assert!(text.contains(r#"url="http://127.0.0.1:9/feed""#), "{text}");
     assert!(text.contains(r#"type="doc-xml""#), "{text}");
-    assert!(dir.0.join("feed-source.xsd").is_file());
+    assert!(dir.path().join("feed-source.xsd").is_file());
 
     let reimported = mfd::import(&design).unwrap();
     assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
@@ -122,8 +101,8 @@ fn static_get_xml_export_generates_a_canonical_response_component() {
 #[test]
 fn whole_http_document_copy_export_roundtrips_as_a_structural_edge() {
     let imported = mfd::import(&fixture("http-copy.mfd")).unwrap();
-    let dir = TempDir::new();
-    let design = dir.0.join("copy.mfd");
+    let dir = TempDir::new("mfd_http_export").unwrap();
+    let design = dir.path().join("copy.mfd");
 
     let warnings = mfd::export(&imported.project, &design).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
@@ -145,14 +124,14 @@ fn http_transport_on_a_target_is_rejected_without_artifacts() {
     let mut project = mfd::import(&fixture("http-get.mfd")).unwrap().project;
     project.target_path = Some("https://example.invalid/result".to_string());
     project.target_options.http_get = project.source_options.http_get;
-    let dir = TempDir::new();
-    let design = dir.0.join("invalid.mfd");
+    let dir = TempDir::new("mfd_http_export").unwrap();
+    let design = dir.path().join("invalid.mfd");
 
     assert!(matches!(
         mfd::export(&project, &design),
         Err(mfd::MfdError::Unsupported(message)) if message.contains("only for mapping sources")
     ));
     assert!(!design.exists());
-    assert!(!dir.0.join("invalid-source.xsd").exists());
-    assert!(!dir.0.join("invalid-target.xsd").exists());
+    assert!(!dir.path().join("invalid-source.xsd").exists());
+    assert!(!dir.path().join("invalid-target.xsd").exists());
 }

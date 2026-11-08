@@ -1,7 +1,5 @@
 use std::collections::BTreeMap;
 use std::num::NonZeroU32;
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use ir::{Instance, ScalarType, SchemaNode, Value};
 use mapping::{
@@ -14,26 +12,7 @@ use mfd::{ExportCompatibilityFeature, ExportProfile};
 
 const UNSTABLE: u64 = 0x3feffffffffffc19;
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> std::io::Result<Self> {
-        static NEXT: AtomicU64 = AtomicU64::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule-native-pdf-merge-{}-{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn two_page_pdf() -> Vec<u8> {
     let stream = |company: Option<&str>, first: &str, second: &str| {
@@ -319,7 +298,7 @@ fn changed_layout(edit: impl FnOnce(&mut Vec<PdfCommand>)) -> PdfLayout {
 #[test]
 fn first_page_heading_and_independent_merge_map_physical_rows_through_two_strict_cycles()
 -> Result<(), Box<dyn std::error::Error>> {
-    let temp = TempDir::new()?;
+    let temp = TempDir::new("native-pdf-merge")?;
     let pdf = two_page_pdf();
     let expected = expected_output();
     let mut current = project(layout());
@@ -330,11 +309,12 @@ fn first_page_heading_and_independent_merge_map_physical_rows_through_two_strict
         if cycle == 2 {
             break;
         }
-        let design = temp.0.join(format!("merge-{cycle}.mfd"));
+        let design = temp.path().join(format!("merge-{cycle}.mfd"));
         let report = mfd::preflight_export(&current, &design)?;
         assert!(report.is_native_compatible(), "{report}");
         mfd::export_with_profile(&current, &design, ExportProfile::NativeMfd)?;
-        let template = std::fs::read_to_string(temp.0.join(format!("merge-{cycle}-source.pxt")))?;
+        let template =
+            std::fs::read_to_string(temp.path().join(format!("merge-{cycle}-source.pxt")))?;
         assert!(template.contains("<MergeSource id="));
         assert!(template.contains("<MergeTarget id="));
         assert!(template.contains("<Splitter id="));
@@ -417,7 +397,7 @@ fn incompatible_merge_controls_reject_native_export_atomically()
         );
     });
 
-    let temp = TempDir::new()?;
+    let temp = TempDir::new("native-pdf-merge")?;
     for (name, layout) in [
         ("second-page-capture", second_page_capture),
         ("reversed-merge-sources", reversed_merge_sources),
@@ -429,8 +409,8 @@ fn incompatible_merge_controls_reject_native_export_atomically()
         ("extra-group-child", extra_group_child),
     ] {
         let project = project(layout);
-        let design = temp.0.join(format!("{name}.mfd"));
-        let sibling = temp.0.join(format!("{name}-source.pxt"));
+        let design = temp.path().join(format!("{name}.mfd"));
+        let sibling = temp.path().join(format!("{name}-source.pxt"));
         let report = mfd::preflight_export(&project, &design)?;
         assert!(report.issues.iter().any(|issue| {
             issue.feature == ExportCompatibilityFeature::PdfLayout && issue.component == "Document"

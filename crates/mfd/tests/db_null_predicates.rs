@@ -1,32 +1,11 @@
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{Instance, Value};
 use mapping::Node;
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Result<Self, std::io::Error> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_db_null_predicates_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn write_fixture(dir: &Path) -> Result<PathBuf, std::io::Error> {
     std::fs::write(
@@ -121,8 +100,8 @@ fn repeated_names<'a>(output: &'a Instance, field: &str) -> Option<Vec<&'a str>>
 
 #[test]
 fn db_null_predicates_import_as_filtered_scalar_expressions() -> TestResult {
-    let dir = TempDir::new()?;
-    let design = write_fixture(&dir.0)?;
+    let dir = TempDir::new("mfd_db_null_predicates")?;
+    let design = write_fixture(dir.path())?;
     let imported = mfd::import(&design)?;
 
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);

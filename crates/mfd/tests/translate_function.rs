@@ -1,29 +1,8 @@
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{Instance, Value};
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Result<Self, std::io::Error> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_translate_function_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 /// A self-authored design with one `translate` fed by source fields and one
 /// fed by constants that strips digits through an empty replacement string.
@@ -110,8 +89,8 @@ fn function_components(xml: &str) -> Result<Vec<(String, String)>, roxmltree::Er
 fn translate_imports_executes_and_round_trips_under_the_core_library()
 -> Result<(), Box<dyn std::error::Error>> {
     for language in ["builtin", "xslt2"] {
-        let directory = TempDir::new()?;
-        let imported = mfd::import(&write_design(&directory.0, language)?)?;
+        let directory = TempDir::new("mfd_translate_function")?;
+        let imported = mfd::import(&write_design(directory.path(), language)?)?;
         assert!(
             imported.warnings.is_empty(),
             "{language}: {:?}",
@@ -130,7 +109,7 @@ fn translate_imports_executes_and_round_trips_under_the_core_library()
             "{language}"
         );
 
-        let exported_path = directory.0.join("roundtrip.mfd");
+        let exported_path = directory.path().join("roundtrip.mfd");
         let warnings = mfd::export(&imported.project, &exported_path)?;
         assert!(warnings.is_empty(), "{language}: {warnings:?}");
         let exported = std::fs::read_to_string(&exported_path)?;

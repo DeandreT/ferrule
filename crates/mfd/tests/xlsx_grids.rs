@@ -12,24 +12,7 @@ fn fixture(name: &str) -> PathBuf {
         .join(name)
 }
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new(tag: &str) -> Self {
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_xlsx_grids_{tag}_{}",
-            std::process::id()
-        ));
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn composite(project: &Project) -> &XlsxCompositeLayout {
     project.source_options.xlsx_composite.as_ref().unwrap()
@@ -293,8 +276,8 @@ fn combined_grid_layouts_export_and_reimport_without_drift() {
         ),
     ] {
         let project = mfd::import(&fixture(name)).unwrap().project;
-        let dir = TempDir::new(name.trim_end_matches(".mfd"));
-        let design = dir.0.join("mapping.mfd");
+        let dir = TempDir::new(name.trim_end_matches(".mfd")).unwrap();
+        let design = dir.path().join("mapping.mfd");
         let warnings = mfd::export(&project, &design).unwrap();
         assert!(warnings.is_empty(), "{name}: {warnings:?}");
 

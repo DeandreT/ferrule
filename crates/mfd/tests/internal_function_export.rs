@@ -1,7 +1,6 @@
 use std::collections::BTreeMap;
 use std::error::Error;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::path::Path;
 
 use ir::{Instance, ScalarType, SchemaNode, Value};
 use mapping::{
@@ -9,27 +8,7 @@ use mapping::{
     Graph, Node, Project, Scope,
 };
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Result<Self, std::io::Error> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_internal_functions_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn project() -> Result<Project, Box<dyn Error>> {
     let layout = FlexTextLayout::new(
@@ -223,8 +202,8 @@ fn assert_output(output: &Instance) {
 
 #[test]
 fn internal_functions_export_reimport_and_execute_without_warnings() -> Result<(), Box<dyn Error>> {
-    let dir = TempDir::new()?;
-    let design = dir.0.join("internal-functions.mfd");
+    let dir = TempDir::new("mfd_internal_functions")?;
+    let design = dir.path().join("internal-functions.mfd");
     let project = project()?;
     assert!(engine::validate(&project).is_empty());
     assert_output(&engine::run(&project, &source())?);
@@ -255,8 +234,8 @@ fn internal_functions_export_reimport_and_execute_without_warnings() -> Result<(
 #[test]
 fn invalid_flextext_parser_descriptor_warns_without_generic_fallback() -> Result<(), Box<dyn Error>>
 {
-    let dir = TempDir::new()?;
-    let design = dir.0.join("invalid-flextext-parser.mfd");
+    let dir = TempDir::new("mfd_internal_functions")?;
+    let design = dir.path().join("invalid-flextext-parser.mfd");
     let mut project = project()?;
     project.graph.nodes.insert(
         12,
@@ -278,8 +257,8 @@ fn invalid_flextext_parser_descriptor_warns_without_generic_fallback() -> Result
 
 #[test]
 fn unowned_core_name_remains_unsupported() -> Result<(), Box<dyn Error>> {
-    let dir = TempDir::new()?;
-    let design = dir.0.join("unowned.mfd");
+    let dir = TempDir::new("mfd_internal_functions")?;
+    let design = dir.path().join("unowned.mfd");
     std::fs::write(
         &design,
         r#"<mapping version="26"><component name="map"><structure><children>

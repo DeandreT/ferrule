@@ -1,36 +1,14 @@
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use ir::{Instance, Value};
 use mapping::Node;
 
-struct TempDir(PathBuf);
-
-static TEMP_ID: AtomicU64 = AtomicU64::new(0);
-
-impl TempDir {
-    fn new() -> Self {
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_target_node_functions_{}_{}",
-            std::process::id(),
-            TEMP_ID.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn setup() -> TempDir {
-    let directory = TempDir::new();
+    let directory = TempDir::new("mfd_target_node_functions").unwrap();
     std::fs::write(
-        directory.0.join("source.xsd"),
+        directory.path().join("source.xsd"),
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
           <xs:element name="Source"><xs:complexType><xs:sequence>
             <xs:element name="Item" maxOccurs="unbounded"><xs:complexType><xs:sequence>
@@ -41,7 +19,7 @@ fn setup() -> TempDir {
     )
     .unwrap();
     std::fs::write(
-        directory.0.join("target.xsd"),
+        directory.path().join("target.xsd"),
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
           <xs:simpleType name="Amount"><xs:restriction base="xs:decimal"><xs:fractionDigits value="2"/></xs:restriction></xs:simpleType>
           <xs:complexType name="ResultItem"><xs:sequence><xs:element name="Amount" type="Amount"/></xs:sequence></xs:complexType>
@@ -50,7 +28,7 @@ fn setup() -> TempDir {
     )
     .unwrap();
     std::fs::write(
-        directory.0.join("mapping.mfd"),
+        directory.path().join("mapping.mfd"),
         r#"<mapping version="31">
           <component name="map"><structure><children>
             <component name="source" library="xml" kind="14"><data>
@@ -95,7 +73,7 @@ fn setup() -> TempDir {
 #[test]
 fn target_descendant_rule_inlines_nested_scalar_udf_and_uses_fraction_digits() {
     let directory = setup();
-    let imported = mfd::import(&directory.0.join("mapping.mfd")).unwrap();
+    let imported = mfd::import(&directory.path().join("mapping.mfd")).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
 
@@ -134,7 +112,7 @@ fn target_descendant_rule_inlines_nested_scalar_udf_and_uses_fraction_digits() {
 #[test]
 fn target_node_function_reads_utf16_fraction_digit_metadata() {
     let directory = setup();
-    let target_schema = directory.0.join("target.xsd");
+    let target_schema = directory.path().join("target.xsd");
     let text = std::fs::read_to_string(&target_schema).unwrap();
     let mut bytes = vec![0xfe, 0xff];
     for unit in text.encode_utf16() {
@@ -142,7 +120,7 @@ fn target_node_function_reads_utf16_fraction_digit_metadata() {
     }
     std::fs::write(target_schema, bytes).unwrap();
 
-    let imported = mfd::import(&directory.0.join("mapping.mfd")).unwrap();
+    let imported = mfd::import(&directory.path().join("mapping.mfd")).unwrap();
 
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     let output = engine::run(&imported.project, &decimal_source(1.235)).unwrap();
@@ -155,9 +133,9 @@ fn target_node_function_reads_utf16_fraction_digit_metadata() {
 
 #[test]
 fn target_descendant_rule_treats_the_csv_row_block_as_transparent() {
-    let directory = TempDir::new();
+    let directory = TempDir::new("mfd_target_node_functions").unwrap();
     std::fs::write(
-        directory.0.join("source.xsd"),
+        directory.path().join("source.xsd"),
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
           <xs:element name="Source"><xs:complexType><xs:sequence>
             <xs:element name="Item" maxOccurs="unbounded"><xs:complexType><xs:sequence>
@@ -168,7 +146,7 @@ fn target_descendant_rule_treats_the_csv_row_block_as_transparent() {
     )
     .unwrap();
     std::fs::write(
-        directory.0.join("mapping.mfd"),
+        directory.path().join("mapping.mfd"),
         r#"<mapping version="31">
           <component name="map"><structure><children>
             <component name="source" library="xml" kind="14"><data>
@@ -198,7 +176,7 @@ fn target_descendant_rule_treats_the_csv_row_block_as_transparent() {
     )
     .unwrap();
 
-    let imported = mfd::import(&directory.0.join("mapping.mfd")).unwrap();
+    let imported = mfd::import(&directory.path().join("mapping.mfd")).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
     let source = Instance::Group(
@@ -227,9 +205,12 @@ fn move_node_function_design_into_package(
     let schemas = package.join("schemas");
     std::fs::create_dir_all(&maps)?;
     std::fs::create_dir_all(&schemas)?;
-    std::fs::rename(directory.0.join("source.xsd"), maps.join("source.xsd"))?;
-    std::fs::rename(directory.0.join("target.xsd"), schemas.join("target.xsd"))?;
-    let mapping = std::fs::read_to_string(directory.0.join("mapping.mfd"))?.replace(
+    std::fs::rename(directory.path().join("source.xsd"), maps.join("source.xsd"))?;
+    std::fs::rename(
+        directory.path().join("target.xsd"),
+        schemas.join("target.xsd"),
+    )?;
+    let mapping = std::fs::read_to_string(directory.path().join("mapping.mfd"))?.replace(
         "schema=\"target.xsd\"",
         &format!("schema=\"{target_schema_reference}\""),
     );
@@ -260,10 +241,10 @@ fn sequence_items(instance: &Instance) -> Option<&[Instance]> {
 fn relocated_package_resolves_windows_parent_node_function_schema()
 -> Result<(), Box<dyn std::error::Error>> {
     let directory = setup();
-    let original = directory.0.join("original");
+    let original = directory.path().join("original");
     let design =
         move_node_function_design_into_package(&directory, &original, r"..\..\schemas\target.xsd")?;
-    let relocated = directory.0.join("relocated");
+    let relocated = directory.path().join("relocated");
     std::fs::rename(&original, &relocated)?;
     let relocated_design = relocated.join(design.strip_prefix(&original)?);
     let options = mfd::ImportOptions::default().with_package_root(&relocated);
@@ -291,11 +272,11 @@ fn target_node_function_schema_symlink_escape_uses_missing_metadata_fallback()
     use std::os::unix::fs::symlink;
 
     let directory = setup();
-    let package = directory.0.join("package");
+    let package = directory.path().join("package");
     let design =
         move_node_function_design_into_package(&directory, &package, r"..\..\schemas\target.xsd")?;
     let target_schema = package.join("schemas/target.xsd");
-    let outside_schema = directory.0.join("outside-target.xsd");
+    let outside_schema = directory.path().join("outside-target.xsd");
     std::fs::rename(&target_schema, &outside_schema)?;
     symlink(&outside_schema, &target_schema)?;
     let mapping = std::fs::read_to_string(&design)?

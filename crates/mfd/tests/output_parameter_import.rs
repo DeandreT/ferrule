@@ -1,31 +1,7 @@
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
-
 use ir::{Instance, ScalarType, SchemaKind, Value};
 use mapping::{AggregateOp, Node};
 
-struct TempDir(PathBuf);
-
-static TEMP_ID: AtomicU64 = AtomicU64::new(0);
-
-impl TempDir {
-    fn new() -> Self {
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_output_parameter_{}_{}",
-            std::process::id(),
-            TEMP_ID.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn output(name: &str, input: &str, datatype: &str) -> String {
     format!(
@@ -89,9 +65,9 @@ fn item_at_mapping(pins: &str) -> String {
 }
 
 fn setup(design: &str) -> TempDir {
-    let dir = TempDir::new();
+    let dir = TempDir::new("mfd_output_parameter").unwrap();
     std::fs::write(
-        dir.0.join("source.xsd"),
+        dir.path().join("source.xsd"),
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
           <xs:element name="Source"><xs:complexType><xs:sequence>
             <xs:element name="Item" maxOccurs="unbounded"><xs:complexType><xs:sequence>
@@ -102,7 +78,7 @@ fn setup(design: &str) -> TempDir {
         </xs:schema>"#,
     )
     .unwrap();
-    std::fs::write(dir.0.join("mapping.mfd"), design).unwrap();
+    std::fs::write(dir.path().join("mapping.mfd"), design).unwrap();
     dir
 }
 
@@ -120,7 +96,7 @@ fn item(quantity: i64, price: i64) -> Instance {
 fn connected_output_parameter_becomes_an_executable_typed_target() {
     let design = mapping(&output("total", " key=\"11\"", "integer"));
     let dir = setup(&design);
-    let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+    let imported = mfd::import(&dir.path().join("mapping.mfd")).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert_eq!(imported.project.target.name, "Outputs");
     assert!(imported.project.target_path.is_none());
@@ -170,7 +146,7 @@ fn connected_output_parameter_becomes_an_executable_typed_target() {
         Some(&Value::Int(22))
     );
 
-    let exported_path = dir.0.join("roundtrip.mfd");
+    let exported_path = dir.path().join("roundtrip.mfd");
     let export_warnings = mfd::export(&imported.project, &exported_path).unwrap();
     assert!(export_warnings.is_empty(), "{export_warnings:?}");
     let reimported = mfd::import(&exported_path).unwrap();
@@ -190,7 +166,7 @@ fn item_at_accepts_two_data_pins_and_canonical_three_pins() {
         r#"<datapoint pos="0"/><datapoint pos="1" key="3"/><datapoint pos="2" key="4"/>"#,
     ] {
         let dir = setup(&item_at_mapping(pins));
-        let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+        let imported = mfd::import(&dir.path().join("mapping.mfd")).unwrap();
         assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
 
         let binding = imported
@@ -234,7 +210,7 @@ fn duplicate_output_name_keeps_the_first_connected_parameter() {
         output("total", " key=\"12\"", "integer")
     );
     let dir = setup(&mapping(&outputs));
-    let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+    let imported = mfd::import(&dir.path().join("mapping.mfd")).unwrap();
     assert!(matches!(
         &imported.project.target.kind,
         SchemaKind::Group { children, .. } if children.len() == 1
@@ -253,7 +229,7 @@ fn invalid_output_parameters_do_not_bypass_the_missing_target_error() {
     for design in cases.map(|output| mapping(&output)) {
         let dir = setup(&design);
         assert!(matches!(
-            mfd::import(&dir.0.join("mapping.mfd")),
+            mfd::import(&dir.path().join("mapping.mfd")),
             Err(mfd::MfdError::UnsupportedImport(message))
                 if message.contains("output parameters were present but none")
         ));
@@ -261,7 +237,7 @@ fn invalid_output_parameters_do_not_bypass_the_missing_target_error() {
 
     let dir = setup(&mapping(""));
     assert!(matches!(
-        mfd::import(&dir.0.join("mapping.mfd")),
+        mfd::import(&dir.path().join("mapping.mfd")),
         Err(mfd::MfdError::UnsupportedImport(message))
             if message.contains("no importable target component")
                 && !message.contains("output parameters were present")

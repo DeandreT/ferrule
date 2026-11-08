@@ -1,11 +1,11 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use ir::{Instance, Value};
 use mapping::{EdiAutocomplete, X12Autocomplete};
 
 #[test]
 fn x12_autocomplete_is_boundary_metadata_not_a_fixed_schema_value() {
-    let directory = TempDir::new("boundary_metadata");
+    let directory = TempDir::new("boundary_metadata").unwrap();
     let design = directory.path().join("mapping.mfd");
     std::fs::write(&design, self_describing_design()).unwrap();
 
@@ -45,7 +45,7 @@ fn x12_autocomplete_is_boundary_metadata_not_a_fixed_schema_value() {
 
 #[test]
 fn imported_x12_autocomplete_completes_unbound_isa_fields_with_the_run_clock() {
-    let directory = TempDir::new("runtime_defaults");
+    let directory = TempDir::new("runtime_defaults").unwrap();
     let design = directory.path().join("mapping.mfd");
     std::fs::write(&design, self_describing_design()).unwrap();
     let imported = mfd::import(&design).unwrap();
@@ -77,7 +77,7 @@ fn imported_x12_autocomplete_completes_unbound_isa_fields_with_the_run_clock() {
 
 #[test]
 fn x12_line_break_terminators_round_trip_through_design_and_runtime() {
-    let directory = TempDir::new("line_break_terminators");
+    let directory = TempDir::new("line_break_terminators").unwrap();
     let design = directory.path().join("mapping.mfd");
     for (encoded, terminator) in [("%0A", '\n'), ("%0D", '\r')] {
         let text =
@@ -129,7 +129,7 @@ fn x12_line_break_terminators_round_trip_through_design_and_runtime() {
 
 #[test]
 fn unrepresentable_x12_terminators_are_refused_at_import() {
-    let directory = TempDir::new("unrepresentable_terminators");
+    let directory = TempDir::new("unrepresentable_terminators").unwrap();
     let design = directory.path().join("mapping.mfd");
     // CR or LF followed by a requested line feed would be CR LF or a blank line.
     for (from, to, line_feed) in [
@@ -239,26 +239,4 @@ fn self_describing_design() -> &'static str {
     </vertices></graph></structure></component></mapping>"#
 }
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new(label: &str) -> Self {
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_x12_autocomplete_{label}_{}",
-            std::process::id()
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-
-    fn path(&self) -> &Path {
-        &self.0
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;

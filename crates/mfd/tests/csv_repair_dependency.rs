@@ -1,32 +1,12 @@
 use std::collections::BTreeMap;
 use std::error::Error;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{Instance, Value};
 use mapping::{CsvTextRepairCause as Cause, NamedSource, NamedTarget};
 use mfd::{ExportProfile, ImportIssueKind, ImportOptions, ImportProfile, MfdError};
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> std::io::Result<Self> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule-csv-encoding-{}-{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn component(name: &str, source: bool, encoding: Option<&str>, extra_attrs: &str) -> String {
     let port = if source { "outkey" } else { "inpkey" };
@@ -73,7 +53,7 @@ fn design_with_text_attrs(
 #[test]
 fn unsupported_text_settings_persist_and_never_requalify_after_warning_clear()
 -> Result<(), Box<dyn Error>> {
-    let temp = TempDir::new()?;
+    let temp = TempDir::new("csv-encoding")?;
     for (case, source_encoding, attrs, cause) in [
         ("encoding", Some("52"), "", Cause::Encoding),
         (
@@ -91,7 +71,7 @@ fn unsupported_text_settings_persist_and_never_requalify_after_warning_clear()
         ("malformed", Some("not-an-encoding"), "", Cause::Encoding),
     ] {
         for source in [true, false] {
-            let path = temp.0.join(format!("{case}-{source}.mfd"));
+            let path = temp.path().join(format!("{case}-{source}.mfd"));
             let (source_encoding, target_encoding, source_attrs, target_attrs) = if source {
                 (source_encoding, Some("1000"), attrs, "")
             } else {
@@ -143,12 +123,12 @@ fn unsupported_text_settings_persist_and_never_requalify_after_warning_clear()
             );
             for profile in [ExportProfile::FerruleExtensions, ExportProfile::NativeMfd] {
                 let output = temp
-                    .0
+                    .path()
                     .join(format!("absent-{case}-{source}-{profile:?}/mapping.mfd"));
                 assert!(mfd::export_with_profile(&clean.project, &output, profile).is_err());
                 assert!(!output.parent().unwrap().exists());
                 let existing = temp
-                    .0
+                    .path()
                     .join(format!("sentinel-{case}-{source}-{profile:?}.mfd"));
                 std::fs::write(&existing, b"sentinel")?;
                 assert!(mfd::export_with_profile(&clean.project, &existing, profile).is_err());
@@ -162,8 +142,8 @@ fn unsupported_text_settings_persist_and_never_requalify_after_warning_clear()
 #[test]
 fn named_boundary_repairs_survive_reload_and_block_both_export_profiles()
 -> Result<(), Box<dyn Error>> {
-    let temp = TempDir::new()?;
-    let path = temp.0.join("mapping.mfd");
+    let temp = TempDir::new("csv-encoding")?;
+    let path = temp.path().join("mapping.mfd");
     std::fs::write(
         &path,
         design_with_text_attrs(Some("1000"), Some("1000"), "", ""),
@@ -202,7 +182,7 @@ fn named_boundary_repairs_survive_reload_and_block_both_export_profiles()
     );
     for profile in [ExportProfile::FerruleExtensions, ExportProfile::NativeMfd] {
         let output = temp
-            .0
+            .path()
             .join(format!("named-blocked-{profile:?}/mapping.mfd"));
         assert!(mfd::export_with_profile(&imported.project, &output, profile).is_err());
         assert!(!output.parent().unwrap().exists());
@@ -212,8 +192,8 @@ fn named_boundary_repairs_survive_reload_and_block_both_export_profiles()
 
 #[test]
 fn independent_unsupported_text_settings_keep_all_three_causes() -> Result<(), Box<dyn Error>> {
-    let temp = TempDir::new()?;
-    let path = temp.0.join("all-causes.mfd");
+    let temp = TempDir::new("csv-encoding")?;
+    let path = temp.path().join("all-causes.mfd");
     std::fs::write(
         &path,
         design_with_text_attrs(
@@ -333,8 +313,8 @@ fn assert_repair_rejection(result: Result<mfd::ExportReport, MfdError>) {
 #[test]
 fn csv_repair_rejects_single_and_pipeline_exports_before_existing_artifacts_change()
 -> Result<(), Box<dyn Error>> {
-    let temp = TempDir::new()?;
-    let pipeline = supported_xml_to_csv_pipeline(&temp.0)?;
+    let temp = TempDir::new("csv-encoding")?;
+    let pipeline = supported_xml_to_csv_pipeline(temp.path())?;
     let last = pipeline.stages.last().ok_or("missing CSV final stage")?;
     assert_eq!(last.project.target_path.as_deref(), Some("target.csv"));
     assert!(
@@ -344,7 +324,7 @@ fn csv_repair_rejects_single_and_pipeline_exports_before_existing_artifacts_chan
             .is_none()
     );
     for profile in [ExportProfile::FerruleExtensions, ExportProfile::NativeMfd] {
-        let single_dir = temp.0.join(format!("single-{profile:?}"));
+        let single_dir = temp.path().join(format!("single-{profile:?}"));
         std::fs::create_dir_all(&single_dir)?;
         let single_design = single_dir.join("mapping.mfd");
         mfd::export_with_profile(&last.project, &single_design, profile)?;
@@ -360,7 +340,7 @@ fn csv_repair_rejects_single_and_pipeline_exports_before_existing_artifacts_chan
         ));
         assert_snapshot_unchanged(&single_design, &single_before)?;
 
-        let pipeline_dir = temp.0.join(format!("pipeline-{profile:?}"));
+        let pipeline_dir = temp.path().join(format!("pipeline-{profile:?}"));
         std::fs::create_dir_all(&pipeline_dir)?;
         let pipeline_design = pipeline_dir.join("pipeline.mfd");
         mfd::export_pipeline_with_profile(&pipeline, &pipeline_design, profile)?;

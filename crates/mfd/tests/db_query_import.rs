@@ -2,32 +2,11 @@
 mod private_corpus;
 
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{Instance, Value};
 use rusqlite::Connection;
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Self {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_db_query_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn prepare_database(dir: &Path) {
     let connection = Connection::open(dir.join("people.sqlite")).unwrap();
@@ -210,9 +189,9 @@ fn prepare_required_host_joined_query(dir: &Path) -> PathBuf {
 
 #[test]
 fn static_single_table_query_imports_and_executes() {
-    let dir = TempDir::new();
-    prepare_database(&dir.0);
-    let design = dir.0.join("query.mfd");
+    let dir = TempDir::new("mfd_db_query").unwrap();
+    prepare_database(dir.path());
+    let design = dir.path().join("query.mfd");
     write_design(&design);
 
     let imported = mfd::import(&design).unwrap();
@@ -221,7 +200,8 @@ fn static_single_table_query_imports_and_executes() {
     assert!(imported.project.source.child("DepartmentID").is_some());
 
     let source =
-        format_db::read_instance(&dir.0.join("people.sqlite"), &imported.project.source).unwrap();
+        format_db::read_instance(&dir.path().join("people.sqlite"), &imported.project.source)
+            .unwrap();
     let output = engine::run(&imported.project, &source).unwrap();
     let names = output
         .as_repeated()
@@ -242,9 +222,9 @@ fn static_single_table_query_imports_and_executes() {
 
 #[test]
 fn static_query_limit_offset_lowers_to_sequence_windows() {
-    let dir = TempDir::new();
-    prepare_database(&dir.0);
-    let design = dir.0.join("query-window.mfd");
+    let dir = TempDir::new("mfd_db_query").unwrap();
+    prepare_database(dir.path());
+    let design = dir.path().join("query-window.mfd");
     write_design(&design);
     let text = std::fs::read_to_string(&design).unwrap().replace(
         "AND &quot;Title&quot; LIKE '%Manager%'",
@@ -256,7 +236,8 @@ fn static_query_limit_offset_lowers_to_sequence_windows() {
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
 
     let source =
-        format_db::read_instance(&dir.0.join("people.sqlite"), &imported.project.source).unwrap();
+        format_db::read_instance(&dir.path().join("people.sqlite"), &imported.project.source)
+            .unwrap();
     let output = engine::run(&imported.project, &source).unwrap();
     let names = output
         .as_repeated()
@@ -277,9 +258,9 @@ fn static_query_limit_offset_lowers_to_sequence_windows() {
 
 #[test]
 fn static_query_top_lowers_to_first_window() {
-    let dir = TempDir::new();
-    prepare_database(&dir.0);
-    let design = dir.0.join("query-top-window.mfd");
+    let dir = TempDir::new("mfd_db_query").unwrap();
+    prepare_database(dir.path());
+    let design = dir.path().join("query-top-window.mfd");
     write_design(&design);
     let text = std::fs::read_to_string(&design)
         .unwrap()
@@ -290,7 +271,8 @@ fn static_query_top_lowers_to_first_window() {
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
 
     let source =
-        format_db::read_instance(&dir.0.join("people.sqlite"), &imported.project.source).unwrap();
+        format_db::read_instance(&dir.path().join("people.sqlite"), &imported.project.source)
+            .unwrap();
     let output = engine::run(&imported.project, &source).unwrap();
     let names = output
         .as_repeated()
@@ -311,9 +293,9 @@ fn static_query_top_lowers_to_first_window() {
 
 #[test]
 fn static_query_sql_server_identifiers_and_parameters_import() {
-    let dir = TempDir::new();
-    prepare_database(&dir.0);
-    let design = dir.0.join("query-sql-server-syntax.mfd");
+    let dir = TempDir::new("mfd_db_query").unwrap();
+    prepare_database(dir.path());
+    let design = dir.path().join("query-sql-server-syntax.mfd");
     write_design(&design);
     let text = std::fs::read_to_string(&design).unwrap().replace(
         "SELECT &quot;Name&quot;, &quot;Title&quot; FROM &quot;Person&quot; WHERE &quot;DepartmentID&quot; = :DepartmentID AND &quot;Title&quot; LIKE '%Manager%'",
@@ -325,7 +307,8 @@ fn static_query_sql_server_identifiers_and_parameters_import() {
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
 
     let source =
-        format_db::read_instance(&dir.0.join("people.sqlite"), &imported.project.source).unwrap();
+        format_db::read_instance(&dir.path().join("people.sqlite"), &imported.project.source)
+            .unwrap();
     let output = engine::run(&imported.project, &source).unwrap();
     let names = output
         .as_repeated()
@@ -346,9 +329,9 @@ fn static_query_sql_server_identifiers_and_parameters_import() {
 
 #[test]
 fn static_query_qualified_columns_import() {
-    let dir = TempDir::new();
-    prepare_database(&dir.0);
-    let design = dir.0.join("query-qualified-columns.mfd");
+    let dir = TempDir::new("mfd_db_query").unwrap();
+    prepare_database(dir.path());
+    let design = dir.path().join("query-qualified-columns.mfd");
     write_design(&design);
     let text = std::fs::read_to_string(&design).unwrap().replace(
         "SELECT &quot;Name&quot;, &quot;Title&quot; FROM &quot;Person&quot; WHERE &quot;DepartmentID&quot; = :DepartmentID AND &quot;Title&quot; LIKE '%Manager%'",
@@ -360,7 +343,8 @@ fn static_query_qualified_columns_import() {
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
 
     let source =
-        format_db::read_instance(&dir.0.join("people.sqlite"), &imported.project.source).unwrap();
+        format_db::read_instance(&dir.path().join("people.sqlite"), &imported.project.source)
+            .unwrap();
     let output = engine::run(&imported.project, &source).unwrap();
     let names = output
         .as_repeated()
@@ -381,9 +365,9 @@ fn static_query_qualified_columns_import() {
 
 #[test]
 fn static_query_numeric_not_equal_imports_and_executes() {
-    let dir = TempDir::new();
-    prepare_database(&dir.0);
-    let design = dir.0.join("query-not-equal.mfd");
+    let dir = TempDir::new("mfd_db_query").unwrap();
+    prepare_database(dir.path());
+    let design = dir.path().join("query-not-equal.mfd");
     write_design(&design);
     let text = std::fs::read_to_string(&design)
         .unwrap()
@@ -401,7 +385,8 @@ fn static_query_numeric_not_equal_imports_and_executes() {
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
 
     let source =
-        format_db::read_instance(&dir.0.join("people.sqlite"), &imported.project.source).unwrap();
+        format_db::read_instance(&dir.path().join("people.sqlite"), &imported.project.source)
+            .unwrap();
     let output = engine::run(&imported.project, &source).unwrap();
     let names = output
         .as_repeated()
@@ -422,9 +407,9 @@ fn static_query_numeric_not_equal_imports_and_executes() {
 
 #[test]
 fn static_query_numeric_ordering_predicate_imports_and_executes() {
-    let dir = TempDir::new();
-    prepare_database(&dir.0);
-    let design = dir.0.join("query-numeric-ordering-predicate.mfd");
+    let dir = TempDir::new("mfd_db_query").unwrap();
+    prepare_database(dir.path());
+    let design = dir.path().join("query-numeric-ordering-predicate.mfd");
     write_design(&design);
     let text = std::fs::read_to_string(&design).unwrap().replace(
         "&quot;DepartmentID&quot; = :DepartmentID",
@@ -436,7 +421,8 @@ fn static_query_numeric_ordering_predicate_imports_and_executes() {
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
 
     let source =
-        format_db::read_instance(&dir.0.join("people.sqlite"), &imported.project.source).unwrap();
+        format_db::read_instance(&dir.path().join("people.sqlite"), &imported.project.source)
+            .unwrap();
     let output = engine::run(&imported.project, &source).unwrap();
     let names = output
         .as_repeated()
@@ -457,9 +443,9 @@ fn static_query_numeric_ordering_predicate_imports_and_executes() {
 
 #[test]
 fn static_query_numeric_between_imports_and_executes() {
-    let dir = TempDir::new();
-    prepare_database(&dir.0);
-    let design = dir.0.join("query-between.mfd");
+    let dir = TempDir::new("mfd_db_query").unwrap();
+    prepare_database(dir.path());
+    let design = dir.path().join("query-between.mfd");
     write_design(&design);
     let text = std::fs::read_to_string(&design).unwrap().replace(
         "&quot;DepartmentID&quot; = :DepartmentID",
@@ -471,7 +457,8 @@ fn static_query_numeric_between_imports_and_executes() {
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
 
     let source =
-        format_db::read_instance(&dir.0.join("people.sqlite"), &imported.project.source).unwrap();
+        format_db::read_instance(&dir.path().join("people.sqlite"), &imported.project.source)
+            .unwrap();
     let output = engine::run(&imported.project, &source).unwrap();
     let names = output
         .as_repeated()
@@ -492,16 +479,16 @@ fn static_query_numeric_between_imports_and_executes() {
 
 #[test]
 fn static_query_is_null_imports_and_executes() {
-    let dir = TempDir::new();
-    prepare_database(&dir.0);
-    Connection::open(dir.0.join("people.sqlite"))
+    let dir = TempDir::new("mfd_db_query").unwrap();
+    prepare_database(dir.path());
+    Connection::open(dir.path().join("people.sqlite"))
         .unwrap()
         .execute(
             "UPDATE Person SET DepartmentID = NULL WHERE Name = 'Bob'",
             [],
         )
         .unwrap();
-    let design = dir.0.join("query-is-null.mfd");
+    let design = dir.path().join("query-is-null.mfd");
     write_design(&design);
     let text = std::fs::read_to_string(&design).unwrap().replace(
         "&quot;DepartmentID&quot; = :DepartmentID",
@@ -513,7 +500,8 @@ fn static_query_is_null_imports_and_executes() {
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
 
     let source =
-        format_db::read_instance(&dir.0.join("people.sqlite"), &imported.project.source).unwrap();
+        format_db::read_instance(&dir.path().join("people.sqlite"), &imported.project.source)
+            .unwrap();
     let output = engine::run(&imported.project, &source).unwrap();
     let names = output
         .as_repeated()
@@ -534,9 +522,9 @@ fn static_query_is_null_imports_and_executes() {
 
 #[test]
 fn static_query_in_list_imports_and_executes() {
-    let dir = TempDir::new();
-    prepare_database(&dir.0);
-    let design = dir.0.join("query-in-list.mfd");
+    let dir = TempDir::new("mfd_db_query").unwrap();
+    prepare_database(dir.path());
+    let design = dir.path().join("query-in-list.mfd");
     write_design(&design);
     let text = std::fs::read_to_string(&design).unwrap().replace(
         "&quot;DepartmentID&quot; = :DepartmentID",
@@ -548,7 +536,8 @@ fn static_query_in_list_imports_and_executes() {
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
 
     let source =
-        format_db::read_instance(&dir.0.join("people.sqlite"), &imported.project.source).unwrap();
+        format_db::read_instance(&dir.path().join("people.sqlite"), &imported.project.source)
+            .unwrap();
     let output = engine::run(&imported.project, &source).unwrap();
     let names = output
         .as_repeated()
@@ -569,9 +558,9 @@ fn static_query_in_list_imports_and_executes() {
 
 #[test]
 fn static_query_sqlite_comma_limit_lowers_to_sequence_windows() {
-    let dir = TempDir::new();
-    prepare_database(&dir.0);
-    let design = dir.0.join("query-comma-window.mfd");
+    let dir = TempDir::new("mfd_db_query").unwrap();
+    prepare_database(dir.path());
+    let design = dir.path().join("query-comma-window.mfd");
     write_design(&design);
     let text = std::fs::read_to_string(&design).unwrap().replace(
         "AND &quot;Title&quot; LIKE '%Manager%'",
@@ -583,7 +572,8 @@ fn static_query_sqlite_comma_limit_lowers_to_sequence_windows() {
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
 
     let source =
-        format_db::read_instance(&dir.0.join("people.sqlite"), &imported.project.source).unwrap();
+        format_db::read_instance(&dir.path().join("people.sqlite"), &imported.project.source)
+            .unwrap();
     let output = engine::run(&imported.project, &source).unwrap();
     let names = output
         .as_repeated()
@@ -604,15 +594,17 @@ fn static_query_sqlite_comma_limit_lowers_to_sequence_windows() {
 
 #[test]
 fn many_to_one_joined_query_imports_computed_projection_and_filter() {
-    let dir = TempDir::new();
-    let design = prepare_joined_query_with_runtime_literal(&dir.0);
+    let dir = TempDir::new("mfd_db_query").unwrap();
+    let design = prepare_joined_query_with_runtime_literal(dir.path());
 
     let imported = mfd::import(&design).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
-    let source =
-        format_db::read_instance(&dir.0.join("purchases.sqlite"), &imported.project.source)
-            .unwrap();
+    let source = format_db::read_instance(
+        &dir.path().join("purchases.sqlite"),
+        &imported.project.source,
+    )
+    .unwrap();
     let output = engine::run(&imported.project, &source).unwrap();
     let rows = output.as_repeated().unwrap();
     assert_eq!(rows.len(), 3);
@@ -637,7 +629,7 @@ fn many_to_one_joined_query_imports_computed_projection_and_filter() {
         Some(&Value::Float(7.0))
     );
 
-    let exported = dir.0.join("joined-query-roundtrip.mfd");
+    let exported = dir.path().join("joined-query-roundtrip.mfd");
     assert!(
         mfd::export(&imported.project, &exported)
             .unwrap()
@@ -646,16 +638,18 @@ fn many_to_one_joined_query_imports_computed_projection_and_filter() {
     let roundtrip = mfd::import(&exported).unwrap();
     assert!(roundtrip.warnings.is_empty(), "{:?}", roundtrip.warnings);
     assert!(engine::validate(&roundtrip.project).is_empty());
-    let source =
-        format_db::read_instance(&dir.0.join("purchases.sqlite"), &roundtrip.project.source)
-            .unwrap();
+    let source = format_db::read_instance(
+        &dir.path().join("purchases.sqlite"),
+        &roundtrip.project.source,
+    )
+    .unwrap();
     assert_eq!(engine::run(&roundtrip.project, &source).unwrap(), output);
 }
 
 #[test]
 fn joined_query_recovers_native_select_without_internal_multiply() {
-    let dir = TempDir::new();
-    let design = prepare_joined_query_with_runtime_literal(&dir.0);
+    let dir = TempDir::new("mfd_db_query").unwrap();
+    let design = prepare_joined_query_with_runtime_literal(dir.path());
     let mut text = std::fs::read_to_string(&design).unwrap();
     let begin = text.find("<outputnodefunctions>").unwrap();
     let end = text.find("</outputnodefunctions>").unwrap() + "</outputnodefunctions>".len();
@@ -664,10 +658,10 @@ fn joined_query_recovers_native_select_without_internal_multiply() {
 
     let imported = mfd::import(&design).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
-    let database = dir.0.join("purchases.sqlite");
+    let database = dir.path().join("purchases.sqlite");
     let input = format_db::read_instance(&database, &imported.project.source).unwrap();
     let expected = engine::run(&imported.project, &input).unwrap();
-    let exported = dir.0.join("native-joined-query.mfd");
+    let exported = dir.path().join("native-joined-query.mfd");
     let report =
         mfd::export_with_profile(&imported.project, &exported, mfd::ExportProfile::NativeMfd)
             .unwrap();
@@ -695,7 +689,7 @@ fn joined_query_recovers_native_select_without_internal_multiply() {
         panic!("expected comparison call");
     };
     *function = "greater_or_equal".into();
-    let report = mfd::preflight_export(&altered, &dir.0.join("mutated.mfd")).unwrap();
+    let report = mfd::preflight_export(&altered, &dir.path().join("mutated.mfd")).unwrap();
     assert!(
         report
             .issues
@@ -707,8 +701,8 @@ fn joined_query_recovers_native_select_without_internal_multiply() {
 
 #[test]
 fn optional_typed_query_threshold_keeps_host_override_through_native_export() {
-    let dir = TempDir::new();
-    let design = prepare_joined_query_with_runtime_literal(&dir.0);
+    let dir = TempDir::new("mfd_db_query").unwrap();
+    let design = prepare_joined_query_with_runtime_literal(dir.path());
     let mut text = std::fs::read_to_string(&design)
         .unwrap()
         .replace(
@@ -740,7 +734,7 @@ fn optional_typed_query_threshold_keeps_host_override_through_native_export() {
         if name == "MinimumUnits"
     )));
 
-    let exported = dir.0.join("optional-threshold.mfd");
+    let exported = dir.path().join("optional-threshold.mfd");
     let report =
         mfd::export_with_profile(&imported.project, &exported, mfd::ExportProfile::NativeMfd)
             .unwrap();
@@ -753,7 +747,7 @@ fn optional_typed_query_threshold_keeps_host_override_through_native_export() {
     assert!(restored.warnings.is_empty(), "{:?}", restored.warnings);
     assert!(engine::validate(&restored.project).is_empty());
 
-    let database = dir.0.join("purchases.sqlite");
+    let database = dir.path().join("purchases.sqlite");
     for (value, rows) in [
         (None, 3),
         (Some(Value::Int(4)), 1),
@@ -821,7 +815,7 @@ fn optional_typed_query_threshold_keeps_host_override_through_native_export() {
             value: Value::Int(-1),
         },
     );
-    let rejected = dir.0.join("changed-threshold.mfd");
+    let rejected = dir.path().join("changed-threshold.mfd");
     assert!(matches!(
         mfd::export_with_profile(&changed, &rejected, mfd::ExportProfile::NativeMfd),
         Err(mfd::MfdError::IncompatibleExport(_))
@@ -831,13 +825,13 @@ fn optional_typed_query_threshold_keeps_host_override_through_native_export() {
 
 #[test]
 fn required_host_only_query_threshold_survives_two_native_cycles() {
-    let dir = TempDir::new();
-    let design = prepare_required_host_joined_query(&dir.0);
+    let dir = TempDir::new("mfd_db_query").unwrap();
+    let design = prepare_required_host_joined_query(dir.path());
     let first = mfd::import(&design).unwrap();
     assert!(first.warnings.is_empty(), "{:?}", first.warnings);
     let mut projects = vec![first.project];
     for cycle in 0..2 {
-        let exported = dir.0.join(format!("required-host-{cycle}.mfd"));
+        let exported = dir.path().join(format!("required-host-{cycle}.mfd"));
         let report = mfd::export_with_profile(
             projects.last().unwrap(),
             &exported,
@@ -853,7 +847,7 @@ fn required_host_only_query_threshold_survives_two_native_cycles() {
         assert!(restored.warnings.is_empty(), "{:?}", restored.warnings);
         projects.push(restored.project);
     }
-    let database = dir.0.join("purchases.sqlite");
+    let database = dir.path().join("purchases.sqlite");
     for project in &projects {
         assert!(engine::validate(project).is_empty());
         assert_eq!(
@@ -921,8 +915,8 @@ fn required_host_only_query_threshold_survives_two_native_cycles() {
 
 #[test]
 fn required_host_query_types_and_cross_type_preview_fail_closed() {
-    let dir = TempDir::new();
-    let design = prepare_required_host_joined_query(&dir.0);
+    let dir = TempDir::new("mfd_db_query").unwrap();
+    let design = prepare_required_host_joined_query(dir.path());
     let host_only = std::fs::read_to_string(&design).unwrap();
     let text = host_only.replace(
         "name=\"MinimumUnits\" type=\"integer\"",
@@ -933,8 +927,11 @@ fn required_host_query_types_and_cross_type_preview_fail_closed() {
     assert!(mismatch.warnings.iter().any(|warning| warning.contains(
         "required host query parameter, SQL declaration, and compared column must have the same scalar type"
     )));
-    let input = format_db::read_instance(&dir.0.join("purchases.sqlite"), &mismatch.project.source)
-        .unwrap();
+    let input = format_db::read_instance(
+        &dir.path().join("purchases.sqlite"),
+        &mismatch.project.source,
+    )
+    .unwrap();
     let output = engine::run(&mismatch.project, &input).unwrap();
     assert!(
         matches!(&output, Instance::Group(fields) if fields.is_empty())
@@ -997,7 +994,7 @@ fn required_host_query_types_and_cross_type_preview_fail_closed() {
         optional_preview_only.warnings
     );
     let input = format_db::read_instance(
-        &dir.0.join("purchases.sqlite"),
+        &dir.path().join("purchases.sqlite"),
         &optional_preview_only.project.source,
     )
     .unwrap();
@@ -1011,8 +1008,8 @@ fn required_host_query_types_and_cross_type_preview_fail_closed() {
         "an optional preview without a runtime default must not unfilter the query: {output:?}"
     );
 
-    let dir = TempDir::new();
-    let design = prepare_joined_query(&dir.0);
+    let dir = TempDir::new("mfd_db_query").unwrap();
+    let design = prepare_joined_query(dir.path());
     let preview = mfd::import(&design).unwrap();
     assert!(preview.warnings.iter().any(|warning| {
         warning.contains("required host query parameter")
@@ -1025,8 +1022,11 @@ fn required_host_query_types_and_cross_type_preview_fail_closed() {
             | mapping::Node::RuntimeParameterDefault { name, .. }
             if name == "MinimumUnits"
     )));
-    let input =
-        format_db::read_instance(&dir.0.join("purchases.sqlite"), &preview.project.source).unwrap();
+    let input = format_db::read_instance(
+        &dir.path().join("purchases.sqlite"),
+        &preview.project.source,
+    )
+    .unwrap();
     let mut parameters = engine::RuntimeParameters::new();
     parameters.insert("MinimumUnits", Value::Int(4)).unwrap();
     let context = engine::ExecutionContext::new(&design).with_parameters(&parameters);
@@ -1040,8 +1040,8 @@ fn required_host_query_types_and_cross_type_preview_fail_closed() {
 
 #[test]
 fn exact_required_preview_query_is_host_required_at_runtime_and_previewed_only_by_purpose() {
-    let dir = TempDir::new();
-    let design = prepare_joined_query(&dir.0);
+    let dir = TempDir::new("mfd_db_query").unwrap();
+    let design = prepare_joined_query(dir.path());
     let mut text = std::fs::read_to_string(&design)
         .unwrap()
         .replace(
@@ -1060,7 +1060,7 @@ fn exact_required_preview_query_is_host_required_at_runtime_and_previewed_only_b
     assert!(first.warnings.is_empty(), "{:?}", first.warnings);
     let mut projects = vec![first.project];
     for cycle in 0..2 {
-        let exported = dir.0.join(format!("preview-threshold-{cycle}.mfd"));
+        let exported = dir.path().join(format!("preview-threshold-{cycle}.mfd"));
         let report = mfd::export_with_profile(
             projects.last().unwrap(),
             &exported,
@@ -1084,8 +1084,8 @@ fn exact_required_preview_query_is_host_required_at_runtime_and_previewed_only_b
                 preview: Some(preview),
             } if name == "MinimumUnits" && preview == "2"
         )));
-        let input =
-            format_db::read_instance(&dir.0.join("purchases.sqlite"), &project.source).unwrap();
+        let input = format_db::read_instance(&dir.path().join("purchases.sqlite"), &project.source)
+            .unwrap();
         assert!(matches!(
             engine::run(project, &input),
             Err(engine::EngineError::MissingRuntimeParameter { name, .. })
@@ -1119,8 +1119,8 @@ fn exact_required_preview_query_is_host_required_at_runtime_and_previewed_only_b
 
 #[test]
 fn optional_connected_query_default_keeps_host_override() {
-    let dir = TempDir::new();
-    let design = prepare_joined_query(&dir.0);
+    let dir = TempDir::new("mfd_db_query").unwrap();
+    let design = prepare_joined_query(dir.path());
     let mut text = std::fs::read_to_string(&design).unwrap()
         .replace("name=\"MinimumUnits\" type=\"text\"", "name=\"MinimumUnits\" type=\"integer\"")
         .replace("datatype=\"string\" previewvalue=\"2\" usepreviewvalue=\"1\"", "datatype=\"integer\" previewvalue=\"2\" usepreviewvalue=\"1\"")
@@ -1135,7 +1135,7 @@ fn optional_connected_query_default_keeps_host_override() {
     let imported = mfd::import(&design).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
-    let exported = dir.0.join("optional-preview-threshold.mfd");
+    let exported = dir.path().join("optional-preview-threshold.mfd");
     let report =
         mfd::export_with_profile(&imported.project, &exported, mfd::ExportProfile::NativeMfd)
             .unwrap();
@@ -1157,8 +1157,8 @@ fn optional_connected_query_default_keeps_host_override() {
                 ..
             } if name == "MinimumUnits" && preview == "2"
         )));
-        let input =
-            format_db::read_instance(&dir.0.join("purchases.sqlite"), &project.source).unwrap();
+        let input = format_db::read_instance(&dir.path().join("purchases.sqlite"), &project.source)
+            .unwrap();
         assert_eq!(
             engine::run(project, &input)
                 .unwrap()
@@ -1197,9 +1197,9 @@ fn optional_connected_query_default_keeps_host_override() {
 
 #[test]
 fn native_joined_select_keeps_sqlite_integer_overflow_promotion() {
-    let dir = TempDir::new();
-    let design = prepare_joined_query_with_runtime_literal(&dir.0);
-    let database = dir.0.join("purchases.sqlite");
+    let dir = TempDir::new("mfd_db_query").unwrap();
+    let design = prepare_joined_query_with_runtime_literal(dir.path());
+    let database = dir.path().join("purchases.sqlite");
     let connection = Connection::open(&database).unwrap();
     let large = 4_000_000_000_i64;
     connection
@@ -1230,7 +1230,7 @@ fn native_joined_select_keeps_sqlite_integer_overflow_promotion() {
     let expected = engine::run(&imported.project, &input).unwrap();
     assert_eq!(expected.as_repeated().unwrap().len(), 4);
     assert_eq!(sqlite_product, 16_000_000_000_000_000_000.0);
-    let exported = dir.0.join("native-overflow.mfd");
+    let exported = dir.path().join("native-overflow.mfd");
     let report =
         mfd::export_with_profile(&imported.project, &exported, mfd::ExportProfile::NativeMfd)
             .unwrap();
@@ -1244,12 +1244,12 @@ fn native_joined_select_keeps_sqlite_integer_overflow_promotion() {
 #[ignore = "requires the optional local reference sample corpus"]
 fn local_select_component_cross_type_preview_is_diagnosed_without_unfiltered_rows() {
     private_corpus::require(&[&private_corpus::root()]);
-    let dir = TempDir::new();
+    let dir = TempDir::new("mfd_db_query").unwrap();
     let sample = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../samples/ReferenceSamples/Tutorial/select-component.mfd");
     let sample_db = sample.with_file_name("Altova-Products.sqlite");
-    let design = dir.0.join("select-component.mfd");
-    let database = dir.0.join("Altova-Products.sqlite");
+    let design = dir.path().join("select-component.mfd");
+    let database = dir.path().join("Altova-Products.sqlite");
     std::fs::copy(&sample, &design).unwrap();
     std::fs::copy(sample_db, &database).unwrap();
 
@@ -1272,9 +1272,9 @@ fn local_select_component_cross_type_preview_is_diagnosed_without_unfiltered_row
 
 #[test]
 fn scalar_only_query_outputs_are_skipped_once() {
-    let dir = TempDir::new();
-    prepare_database(&dir.0);
-    let design = dir.0.join("scalar-query.mfd");
+    let dir = TempDir::new("mfd_db_query").unwrap();
+    prepare_database(dir.path());
+    let design = dir.path().join("scalar-query.mfd");
     write_design(&design);
     let text = std::fs::read_to_string(&design).unwrap().replace(
         "<vertex vertexkey=\"30\"><edges><edge vertexkey=\"40\"/></edges></vertex>",
@@ -1290,8 +1290,8 @@ fn scalar_only_query_outputs_are_skipped_once() {
 
 #[test]
 fn computed_only_query_outputs_cannot_bypass_query_scope() {
-    let dir = TempDir::new();
-    let design = prepare_joined_query_with_runtime_literal(&dir.0);
+    let dir = TempDir::new("mfd_db_query").unwrap();
+    let design = prepare_joined_query_with_runtime_literal(dir.path());
     let text = std::fs::read_to_string(&design).unwrap().replace(
         "<vertex vertexkey=\"30\"><edges><edge vertexkey=\"40\"/></edges></vertex>",
         "<vertex vertexkey=\"30\"><edges/></vertex>",
@@ -1306,9 +1306,9 @@ fn computed_only_query_outputs_cannot_bypass_query_scope() {
 
 #[test]
 fn joined_integer_multiplication_matches_sqlite_overflow_promotion() {
-    let dir = TempDir::new();
-    let design = prepare_joined_query_with_runtime_literal(&dir.0);
-    let database = dir.0.join("purchases.sqlite");
+    let dir = TempDir::new("mfd_db_query").unwrap();
+    let design = prepare_joined_query_with_runtime_literal(dir.path());
+    let database = dir.path().join("purchases.sqlite");
     let connection = Connection::open(&database).unwrap();
     let large = 4_000_000_000_i64;
     connection
@@ -1349,9 +1349,9 @@ fn joined_integer_multiplication_matches_sqlite_overflow_promotion() {
 
 #[test]
 fn query_output_casing_is_canonicalized_to_the_sqlite_schema() {
-    let dir = TempDir::new();
-    prepare_database(&dir.0);
-    let design = dir.0.join("query-casing.mfd");
+    let dir = TempDir::new("mfd_db_query").unwrap();
+    prepare_database(dir.path());
+    let design = dir.path().join("query-casing.mfd");
     write_design(&design);
     let text = std::fs::read_to_string(&design)
         .unwrap()
@@ -1419,9 +1419,9 @@ fn run_csv_names(project: &mapping::Project, db: &Path, fields: &[&str]) -> Vec<
 
 #[test]
 fn nested_query_correlation_preserves_parent_fields_and_controls() {
-    let dir = TempDir::new();
-    prepare_relational_database(&dir.0);
-    let design = dir.0.join("selected-office.mfd");
+    let dir = TempDir::new("mfd_db_query").unwrap();
+    prepare_relational_database(dir.path());
+    let design = dir.path().join("selected-office.mfd");
     let text = r#"<mapping version="26"><resources><datasources><datasource name="company">
       <database_connection database_kind="SQLite" import_kind="SQLite" ConnectionString="company.sqlite" name="company">
         <LocalViewStorage>
@@ -1466,7 +1466,7 @@ fn nested_query_correlation_preserves_parent_fields_and_controls() {
     assert_eq!(
         run_csv_names(
             &imported.project,
-            &dir.0.join("company.sqlite"),
+            &dir.path().join("company.sqlite"),
             &["Department", "First", "Title"]
         ),
         [
@@ -1486,7 +1486,7 @@ fn nested_query_correlation_preserves_parent_fields_and_controls() {
     assert_eq!(
         run_csv_names(
             &imported.project,
-            &dir.0.join("company.sqlite"),
+            &dir.path().join("company.sqlite"),
             &["Department", "First", "Title"]
         ),
         [["Engineering", "Ada", "Manager"]]
@@ -1495,9 +1495,9 @@ fn nested_query_correlation_preserves_parent_fields_and_controls() {
 
 #[test]
 fn table_parent_correlation_uses_relation_key_and_static_child_parameter() {
-    let dir = TempDir::new();
-    prepare_relational_database(&dir.0);
-    let design = dir.0.join("employees-by-title.mfd");
+    let dir = TempDir::new("mfd_db_query").unwrap();
+    prepare_relational_database(dir.path());
+    let design = dir.path().join("employees-by-title.mfd");
     let text = r#"<mapping version="26"><resources><datasources><datasource name="company">
       <database_connection database_kind="SQLite" import_kind="SQLite" ConnectionString="company.sqlite" name="company">
         <LocalViewStorage><LocalViewElement SQL="SELECT &quot;first&quot;, &quot;title&quot; FROM &quot;person&quot; WHERE &quot;foreignkey&quot; = :DepartmentID AND &quot;title&quot; LIKE :patternForTitle"><PathElement Name="main" Kind="Database"/><PathElement Name="PersonsByDepartmentAndTitle" Kind="Select Statement"/><Parameters><Parameter name="DepartmentID" type="integer"/><Parameter name="patternForTitle" type="text"/></Parameters></LocalViewElement></LocalViewStorage>
@@ -1520,7 +1520,7 @@ fn table_parent_correlation_uses_relation_key_and_static_child_parameter() {
     assert_eq!(
         run_csv_names(
             &imported.project,
-            &dir.0.join("company.sqlite"),
+            &dir.path().join("company.sqlite"),
             &["Department", "First"]
         ),
         [["Engineering", "Linus"]]
@@ -1529,9 +1529,9 @@ fn table_parent_correlation_uses_relation_key_and_static_child_parameter() {
 
 #[test]
 fn reverse_correlation_uses_the_parent_side_foreign_key_column() {
-    let dir = TempDir::new();
-    prepare_relational_database(&dir.0);
-    let design = dir.0.join("offices-by-department.mfd");
+    let dir = TempDir::new("mfd_db_query").unwrap();
+    prepare_relational_database(dir.path());
+    let design = dir.path().join("offices-by-department.mfd");
     let text = r#"<mapping version="26"><resources><datasources><datasource name="company">
       <database_connection database_kind="SQLite" import_kind="SQLite" ConnectionString="company.sqlite" name="company">
         <LocalViewStorage><LocalViewElement SQL="SELECT &quot;PrimaryKey&quot;, &quot;Name&quot; FROM &quot;Office&quot; WHERE &quot;PrimaryKey&quot; = :OfficeID"><PathElement Name="main" Kind="Database"/><PathElement Name="OfficesByDepartment" Kind="Select Statement"/><Parameters><Parameter name="OfficeID" type="integer"/></Parameters></LocalViewElement></LocalViewStorage>
@@ -1551,7 +1551,7 @@ fn reverse_correlation_uses_the_parent_side_foreign_key_column() {
     assert_eq!(
         run_csv_names(
             &imported.project,
-            &dir.0.join("company.sqlite"),
+            &dir.path().join("company.sqlite"),
             &["Department", "Office"]
         ),
         [

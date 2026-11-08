@@ -2,32 +2,12 @@
 mod private_corpus;
 
 use std::error::Error;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::path::Path;
 
 use ir::{Instance, Value};
 use mapping::{Node, Project};
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Result<Self, std::io::Error> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_temperature_native_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn conversion_count(project: &Project) -> (usize, usize) {
     let count = |nodes: &std::collections::BTreeMap<_, _>| {
@@ -75,10 +55,10 @@ fn annual_pdf_native_roundtrip_keeps_148_csv_rows() -> Result<(), Box<dyn Error>
         imported.project.source_options.pdf.as_ref().unwrap(),
     )?;
     let before = engine::run(&imported.project, &source)?;
-    let dir = TempDir::new()?;
-    let design = dir.0.join("annual.mfd");
+    let dir = TempDir::new("temperature_native")?;
+    let design = dir.path().join("annual.mfd");
     let restored = native_roundtrip(&imported.project, &design)?;
-    let template = std::fs::read_to_string(dir.0.join("annual-source.pxt"))?;
+    let template = std::fs::read_to_string(dir.path().join("annual-source.pxt"))?;
     assert!(template.contains("<BoundaryFindVertical id=\"2\">"));
     assert!(template.contains("<Splitter id=\"3\">"));
     assert!(!template.contains("FerruleLayout"));
@@ -88,8 +68,8 @@ fn annual_pdf_native_roundtrip_keeps_148_csv_rows() -> Result<(), Box<dyn Error>
     )?;
     assert_eq!(source, restored_source);
     let after = engine::run(&restored, &restored_source)?;
-    let before_csv = dir.0.join("before.csv");
-    let after_csv = dir.0.join("after.csv");
+    let before_csv = dir.path().join("before.csv");
+    let after_csv = dir.path().join("after.csv");
     format_csv::write(
         &before_csv,
         &imported.project.target,
@@ -160,15 +140,15 @@ fn grouped_xml_native_roundtrip_keeps_five_years_and_numeric_errors() -> Result<
     assert_eq!(conversion_count(&imported.project), (21, 6));
     let source = format_xml::read(&samples.join("Temperatures.xml"), &imported.project.source)?;
     let before = engine::run(&imported.project, &source)?;
-    let dir = TempDir::new()?;
-    let design = dir.0.join("group.mfd");
+    let dir = TempDir::new("temperature_native")?;
+    let design = dir.path().join("group.mfd");
     let restored = native_roundtrip(&imported.project, &design)?;
     let xml = std::fs::read_to_string(&design)?;
     assert!(xml.contains("library=\"mapforce_nodefunction\""));
     assert!(xml.contains("<inputnodefunctions inherit=\"block\"/>"));
     let after = engine::run(&restored, &source)?;
-    let before_path = dir.0.join("before.xml");
-    let after_path = dir.0.join("after.xml");
+    let before_path = dir.path().join("before.xml");
+    let after_path = dir.path().join("after.xml");
     format_xml::write(&before_path, &imported.project.target, &before)?;
     format_xml::write(&after_path, &restored.target, &after)?;
     let output = std::fs::read(&before_path)?;
@@ -184,7 +164,7 @@ fn grouped_xml_native_roundtrip_keeps_five_years_and_numeric_errors() -> Result<
     let original_input = std::fs::read_to_string(samples.join("Temperatures.xml"))?;
     let extreme_input = original_input.replacen("temp=\"-3.6\"", "temp=\"1e308\"", 1);
     assert_ne!(extreme_input, original_input);
-    let extreme_path = dir.0.join("extreme.xml");
+    let extreme_path = dir.path().join("extreme.xml");
     std::fs::write(&extreme_path, extreme_input)?;
     let extreme = format_xml::read(&extreme_path, &imported.project.source)?;
     let before_error = engine::run(&imported.project, &extreme)

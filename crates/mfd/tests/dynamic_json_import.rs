@@ -2,26 +2,7 @@ use std::path::{Path, PathBuf};
 
 use mapping::{IterationOutput, Node};
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new(label: &str) -> Self {
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_dynamic_json_{}_{}",
-            std::process::id(),
-            label
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn write_fixture(dir: &Path) -> PathBuf {
     std::fs::write(
@@ -218,17 +199,20 @@ fn write_nested_fixture(dir: &Path) -> PathBuf {
 
 #[test]
 fn imports_executes_and_serializes_computed_json_properties_in_order() {
-    let dir = TempDir::new("executes");
-    let design = write_fixture(&dir.0);
+    let dir = TempDir::new("executes").unwrap();
+    let design = write_fixture(dir.path());
     let imported = mfd::import(&design).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
     assert!(imported.project.target.dynamic_fields().is_some());
 
-    let source =
-        format_json::read(&dir.0.join("departments.json"), &imported.project.source).unwrap();
+    let source = format_json::read(
+        &dir.path().join("departments.json"),
+        &imported.project.source,
+    )
+    .unwrap();
     let output = engine::run(&imported.project, &source).unwrap();
-    let output_path = dir.0.join("out.json");
+    let output_path = dir.path().join("out.json");
     format_json::write(&output_path, &imported.project.target, &output).unwrap();
     let value: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(output_path).unwrap()).unwrap();
@@ -244,8 +228,8 @@ fn imports_executes_and_serializes_computed_json_properties_in_order() {
 
 #[test]
 fn computed_dynamic_item_values_keep_the_current_nested_source_frame() {
-    let dir = TempDir::new("computed_item_frame");
-    let design = write_fixture(&dir.0);
+    let dir = TempDir::new("computed_item_frame").unwrap();
+    let design = write_fixture(dir.path());
     let text = std::fs::read_to_string(&design)
         .unwrap()
         .replace(
@@ -265,10 +249,13 @@ fn computed_dynamic_item_values_keep_the_current_nested_source_frame() {
     let imported = mfd::import(&design).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
-    let source =
-        format_json::read(&dir.0.join("departments.json"), &imported.project.source).unwrap();
+    let source = format_json::read(
+        &dir.path().join("departments.json"),
+        &imported.project.source,
+    )
+    .unwrap();
     let output = engine::run(&imported.project, &source).unwrap();
-    let output_path = dir.0.join("out.json");
+    let output_path = dir.path().join("out.json");
     format_json::write(&output_path, &imported.project.target, &output).unwrap();
     let value: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(output_path).unwrap()).unwrap();
@@ -279,8 +266,8 @@ fn computed_dynamic_item_values_keep_the_current_nested_source_frame() {
 
 #[test]
 fn nested_computed_objects_merge_per_parent_without_leaking_fields() {
-    let dir = TempDir::new("nested");
-    let design = write_nested_fixture(&dir.0);
+    let dir = TempDir::new("nested").unwrap();
+    let design = write_nested_fixture(dir.path());
     let imported = mfd::import(&design).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(
@@ -309,9 +296,9 @@ fn nested_computed_objects_merge_per_parent_without_leaking_fields() {
     assert_eq!(available.dynamic_bindings.len(), 1);
 
     let source =
-        format_json::read(&dir.0.join("inventory.json"), &imported.project.source).unwrap();
+        format_json::read(&dir.path().join("inventory.json"), &imported.project.source).unwrap();
     let output = engine::run(&imported.project, &source).unwrap();
-    let output_path = dir.0.join("nested-output.json");
+    let output_path = dir.path().join("nested-output.json");
     format_json::write(&output_path, &imported.project.target, &output).unwrap();
     let value: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(output_path).unwrap()).unwrap();
@@ -329,7 +316,7 @@ fn nested_computed_objects_merge_per_parent_without_leaking_fields() {
     assert_eq!(value[1]["Stores"][0]["Available"]["XL"], 1.0);
     assert!(value[1]["Stores"][0]["Available"].get("S").is_none());
 
-    let export_path = dir.0.join("nested-dynamic-export.mfd");
+    let export_path = dir.path().join("nested-dynamic-export.mfd");
     let warnings = mfd::export(&imported.project, &export_path).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
     let roundtrip = mfd::import(&export_path).unwrap();
@@ -341,9 +328,9 @@ fn nested_computed_objects_merge_per_parent_without_leaking_fields() {
 #[test]
 fn omitted_additional_properties_refines_a_nested_dynamic_target()
 -> Result<(), Box<dyn std::error::Error>> {
-    let dir = TempDir::new("nested_default_open");
-    let design = write_nested_fixture(&dir.0);
-    let schema_path = dir.0.join("nested-target.schema.json");
+    let dir = TempDir::new("nested_default_open").unwrap();
+    let design = write_nested_fixture(dir.path());
+    let schema_path = dir.path().join("nested-target.schema.json");
     let schema = std::fs::read_to_string(&schema_path)?;
     let default_open = schema.replace(
         ",\n            \"additionalProperties\": { \"type\": \"number\" }",
@@ -368,15 +355,15 @@ fn omitted_additional_properties_refines_a_nested_dynamic_target()
         })
     ));
 
-    let source = format_json::read(&dir.0.join("inventory.json"), &imported.project.source)?;
+    let source = format_json::read(&dir.path().join("inventory.json"), &imported.project.source)?;
     let output = engine::run(&imported.project, &source)?;
-    let output_path = dir.0.join("nested-default-open-output.json");
+    let output_path = dir.path().join("nested-default-open-output.json");
     format_json::write(&output_path, &imported.project.target, &output)?;
     let value: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(output_path)?)?;
     assert_eq!(value[0]["Stores"][0]["Available"]["S"], 4.0);
     assert_eq!(value[0]["Stores"][0]["Available"]["M"], 2.0);
 
-    let export_path = dir.0.join("nested-default-open-export.mfd");
+    let export_path = dir.path().join("nested-default-open-export.mfd");
     let warnings = mfd::export(&imported.project, &export_path)?;
     assert!(warnings.is_empty(), "{warnings:?}");
     let roundtrip = mfd::import(&export_path)?;
@@ -388,8 +375,8 @@ fn omitted_additional_properties_refines_a_nested_dynamic_target()
 
 #[test]
 fn nested_dynamic_values_preserve_source_position_on_export() {
-    let dir = TempDir::new("nested_position");
-    let design = write_nested_fixture(&dir.0);
+    let dir = TempDir::new("nested_position").unwrap();
+    let design = write_nested_fixture(dir.path());
     let mut project = mfd::import(&design).unwrap().project;
     let position = project
         .graph
@@ -412,9 +399,9 @@ fn nested_dynamic_values_preserve_source_position_on_export() {
     available.dynamic_bindings[0].value = position;
     assert!(engine::validate(&project).is_empty());
 
-    let source = format_json::read(&dir.0.join("inventory.json"), &project.source).unwrap();
+    let source = format_json::read(&dir.path().join("inventory.json"), &project.source).unwrap();
     let expected = engine::run(&project, &source).unwrap();
-    let export_path = dir.0.join("nested-position-export.mfd");
+    let export_path = dir.path().join("nested-position-export.mfd");
     let warnings = mfd::export(&project, &export_path).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
 
@@ -427,8 +414,8 @@ fn nested_dynamic_values_preserve_source_position_on_export() {
 #[test]
 fn nested_dynamic_filtered_sequences_export_reimport_and_execute()
 -> Result<(), Box<dyn std::error::Error>> {
-    let dir = TempDir::new("nested_filtered_export");
-    let design = write_nested_fixture(&dir.0);
+    let dir = TempDir::new("nested_filtered_export").unwrap();
+    let design = write_nested_fixture(dir.path());
     let mut project = mfd::import(&design)?.project;
     let available = project
         .root
@@ -473,9 +460,9 @@ fn nested_dynamic_filtered_sequences_export_reimport_and_execute()
         return Err(format!("filtered dynamic project is invalid: {issues:#?}").into());
     }
 
-    let source = format_json::read(&dir.0.join("inventory.json"), &project.source)?;
+    let source = format_json::read(&dir.path().join("inventory.json"), &project.source)?;
     let expected = engine::run(&project, &source)?;
-    let expected_path = dir.0.join("nested-filtered.json");
+    let expected_path = dir.path().join("nested-filtered.json");
     format_json::write(&expected_path, &project.target, &expected)?;
     let value: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(expected_path)?)?;
     assert_eq!(
@@ -488,7 +475,7 @@ fn nested_dynamic_filtered_sequences_export_reimport_and_execute()
     );
     assert_eq!(value[1]["Stores"][0]["Available"], serde_json::json!({}));
 
-    let export_path = dir.0.join("nested-filtered-export.mfd");
+    let export_path = dir.path().join("nested-filtered-export.mfd");
     let warnings = mfd::export(&project, &export_path)?;
     assert!(warnings.is_empty(), "{warnings:?}");
     let exported = std::fs::read_to_string(&export_path)?;
@@ -517,8 +504,8 @@ fn nested_dynamic_filtered_sequences_export_reimport_and_execute()
 #[test]
 fn mapped_sequences_cannot_be_silently_exported_as_computed_json_properties()
 -> Result<(), Box<dyn std::error::Error>> {
-    let dir = TempDir::new("nested_mapped_sequence_rejected");
-    let design = write_nested_fixture(&dir.0);
+    let dir = TempDir::new("nested_mapped_sequence_rejected").unwrap();
+    let design = write_nested_fixture(dir.path());
     let mut project = mfd::import(&design)?.project;
     let available = project
         .root
@@ -533,7 +520,7 @@ fn mapped_sequences_cannot_be_silently_exported_as_computed_json_properties()
         .ok_or("nested Available scope is missing")?;
     available.iteration_output = IterationOutput::MappedSequence;
 
-    let output = dir.0.join("invalid-dynamic.mfd");
+    let output = dir.path().join("invalid-dynamic.mfd");
     let error = match mfd::export(&project, &output) {
         Ok(_) => return Err("invalid dynamic mapping exported successfully".into()),
         Err(error) => error,
@@ -548,8 +535,8 @@ fn mapped_sequences_cannot_be_silently_exported_as_computed_json_properties()
 
 #[test]
 fn late_nested_failure_does_not_reframe_ordinary_source_fields() {
-    let dir = TempDir::new("nested_atomic");
-    let design = write_nested_fixture(&dir.0);
+    let dir = TempDir::new("nested_atomic").unwrap();
+    let design = write_nested_fixture(dir.path());
     let text = std::fs::read_to_string(&design).unwrap().replace(
         r#"<vertex vertexkey="7"><edges><edge vertexkey="16"/></edges></vertex>"#,
         r#"<vertex vertexkey="7"><edges><edge vertexkey="999"/></edges></vertex>"#,
@@ -597,8 +584,8 @@ fn late_nested_failure_does_not_reframe_ordinary_source_fields() {
 
 #[test]
 fn late_dynamic_resolution_failure_leaves_root_scope_unchanged() {
-    let dir = TempDir::new("atomic");
-    let design = write_fixture(&dir.0);
+    let dir = TempDir::new("atomic").unwrap();
+    let design = write_fixture(dir.path());
     let text = std::fs::read_to_string(&design).unwrap().replace(
         r#"<vertex vertexkey="4"><edges><edge vertexkey="36"/></edges></vertex>"#,
         r#"<vertex vertexkey="4"><edges><edge vertexkey="999"/></edges></vertex>"#,
@@ -620,8 +607,8 @@ fn late_dynamic_resolution_failure_leaves_root_scope_unchanged() {
 
 #[test]
 fn group_starting_control_rejects_computed_json_properties() {
-    let dir = TempDir::new("group_starting");
-    let design = write_fixture(&dir.0);
+    let dir = TempDir::new("group_starting").unwrap();
+    let design = write_fixture(dir.path());
     let text = std::fs::read_to_string(&design)
         .unwrap()
         .replace("name=\"group-by\"", "name=\"group-starting-with\"");
@@ -641,9 +628,9 @@ fn group_starting_control_rejects_computed_json_properties() {
 
 #[test]
 fn grouped_dynamic_mapping_exports_reimports_and_executes() {
-    let dir = TempDir::new("export");
-    let project = mfd::import(&write_fixture(&dir.0)).unwrap().project;
-    let output = dir.0.join("dynamic-export.mfd");
+    let dir = TempDir::new("export").unwrap();
+    let project = mfd::import(&write_fixture(dir.path())).unwrap().project;
+    let output = dir.path().join("dynamic-export.mfd");
 
     let warnings = mfd::export(&project, &output).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
@@ -653,7 +640,7 @@ fn grouped_dynamic_mapping_exports_reimports_and_executes() {
     let roundtrip = mfd::import(&output).unwrap();
     assert!(roundtrip.warnings.is_empty(), "{:?}", roundtrip.warnings);
     assert!(engine::validate(&roundtrip.project).is_empty());
-    let source = format_json::read(&dir.0.join("departments.json"), &project.source).unwrap();
+    let source = format_json::read(&dir.path().join("departments.json"), &project.source).unwrap();
     assert_eq!(
         engine::run(&project, &source).unwrap(),
         engine::run(&roundtrip.project, &source).unwrap()
@@ -662,8 +649,8 @@ fn grouped_dynamic_mapping_exports_reimports_and_executes() {
 
 #[test]
 fn grouped_dynamic_item_fields_preserve_position_on_export() {
-    let dir = TempDir::new("grouped_position_export");
-    let mut project = mfd::import(&write_fixture(&dir.0)).unwrap().project;
+    let dir = TempDir::new("grouped_position_export").unwrap();
+    let mut project = mfd::import(&write_fixture(dir.path())).unwrap().project;
     let position = project
         .graph
         .nodes
@@ -680,9 +667,9 @@ fn grouped_dynamic_item_fields_preserve_position_on_export() {
     project.root.dynamic_children[0].scope.dynamic_bindings[0].value = position;
     assert!(engine::validate(&project).is_empty());
 
-    let source = format_json::read(&dir.0.join("departments.json"), &project.source).unwrap();
+    let source = format_json::read(&dir.path().join("departments.json"), &project.source).unwrap();
     let expected = engine::run(&project, &source).unwrap();
-    let output = dir.0.join("grouped-position-export.mfd");
+    let output = dir.path().join("grouped-position-export.mfd");
     let warnings = mfd::export(&project, &output).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
 
@@ -694,8 +681,8 @@ fn grouped_dynamic_item_fields_preserve_position_on_export() {
 
 #[test]
 fn grouped_dynamic_property_names_preserve_group_position_on_export() {
-    let dir = TempDir::new("grouped_property_position_export");
-    let mut project = mfd::import(&write_fixture(&dir.0)).unwrap().project;
+    let dir = TempDir::new("grouped_property_position_export").unwrap();
+    let mut project = mfd::import(&write_fixture(dir.path())).unwrap().project;
     let position = project
         .graph
         .nodes
@@ -720,9 +707,9 @@ fn grouped_dynamic_property_names_preserve_group_position_on_export() {
     project.root.dynamic_children[0].key = property_name;
     assert!(engine::validate(&project).is_empty());
 
-    let source = format_json::read(&dir.0.join("departments.json"), &project.source).unwrap();
+    let source = format_json::read(&dir.path().join("departments.json"), &project.source).unwrap();
     let expected = engine::run(&project, &source).unwrap();
-    let expected_path = dir.0.join("grouped-property-position.json");
+    let expected_path = dir.path().join("grouped-property-position.json");
     format_json::write(&expected_path, &project.target, &expected).unwrap();
     let value: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(expected_path).unwrap()).unwrap();
@@ -732,7 +719,7 @@ fn grouped_dynamic_property_names_preserve_group_position_on_export() {
         "computed property names use the 1-based group position"
     );
 
-    let output = dir.0.join("grouped-property-position-export.mfd");
+    let output = dir.path().join("grouped-property-position-export.mfd");
     let warnings = mfd::export(&project, &output).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
 
@@ -759,8 +746,8 @@ fn grouped_dynamic_property_names_preserve_group_position_on_export() {
 
 #[test]
 fn grouped_dynamic_group_keys_preserve_source_position_on_export() {
-    let dir = TempDir::new("grouped_key_position_export");
-    let mut project = mfd::import(&write_fixture(&dir.0)).unwrap().project;
+    let dir = TempDir::new("grouped_key_position_export").unwrap();
+    let mut project = mfd::import(&write_fixture(dir.path())).unwrap().project;
     let position = project
         .graph
         .nodes
@@ -777,9 +764,9 @@ fn grouped_dynamic_group_keys_preserve_source_position_on_export() {
     project.root.group_by = Some(position);
     assert!(engine::validate(&project).is_empty());
 
-    let source = format_json::read(&dir.0.join("departments.json"), &project.source).unwrap();
+    let source = format_json::read(&dir.path().join("departments.json"), &project.source).unwrap();
     let expected = engine::run(&project, &source).unwrap();
-    let output = dir.0.join("grouped-key-position-export.mfd");
+    let output = dir.path().join("grouped-key-position-export.mfd");
     let warnings = mfd::export(&project, &output).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
 

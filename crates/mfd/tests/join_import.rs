@@ -1,53 +1,16 @@
 use std::fs;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{Instance, Value};
 use mapping::{Node, ScopeIteration};
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Self {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule-mfd-join-{}-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map_or(0, |duration| duration.as_nanos()),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
-    }
-}
-
-fn write(path: &Path, contents: &str) {
-    fs::write(path, contents).unwrap();
-}
+use test_support::TempDir;
 
 fn setup() -> TempDir {
-    let dir = TempDir::new();
-    write(
-        &dir.0.join("left.xsd"),
-        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="LeftRoot"><xs:complexType><xs:sequence><xs:element name="Left" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Id" type="xs:string"/><xs:element name="Label" type="xs:string"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
-    );
-    write(
-        &dir.0.join("right.xsd"),
-        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="RightRoot"><xs:complexType><xs:sequence><xs:element name="Right" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Code" type="xs:string"/><xs:element name="Description" type="xs:string"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
-    );
-    write(
-        &dir.0.join("target.xsd"),
-        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Target"><xs:complexType><xs:sequence><xs:element name="Row" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Label" type="xs:string"/><xs:element name="Description" type="xs:string"/><xs:element name="Position" type="xs:integer"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
-    );
-    write(&dir.0.join("mapping.mfd"), mapping());
+    let dir = TempDir::new("mfd-join").unwrap();
+    dir.write("left.xsd", r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="LeftRoot"><xs:complexType><xs:sequence><xs:element name="Left" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Id" type="xs:string"/><xs:element name="Label" type="xs:string"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#).unwrap();
+    dir.write("right.xsd", r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="RightRoot"><xs:complexType><xs:sequence><xs:element name="Right" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Code" type="xs:string"/><xs:element name="Description" type="xs:string"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#).unwrap();
+    dir.write("target.xsd", r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Target"><xs:complexType><xs:sequence><xs:element name="Row" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Label" type="xs:string"/><xs:element name="Description" type="xs:string"/><xs:element name="Position" type="xs:integer"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#).unwrap();
+    dir.write("mapping.mfd", mapping()).unwrap();
     dir
 }
 
@@ -109,18 +72,9 @@ fn sources() -> (Instance, Instance) {
 
 fn aggregate_setup() -> TempDir {
     let dir = setup();
-    write(
-        &dir.0.join("left.xsd"),
-        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="LeftRoot"><xs:complexType><xs:sequence><xs:element name="Left" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Id" type="xs:string"/><xs:element name="Label" type="xs:string"/><xs:element name="Weight" type="xs:integer"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
-    );
-    write(
-        &dir.0.join("right.xsd"),
-        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="RightRoot"><xs:complexType><xs:sequence><xs:element name="Right" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Code" type="xs:string"/><xs:element name="Description" type="xs:string"/><xs:element name="Price" type="xs:integer"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
-    );
-    write(
-        &dir.0.join("target.xsd"),
-        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Target"><xs:complexType><xs:sequence><xs:element name="Row" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Label" type="xs:string"/><xs:element name="Description" type="xs:string"/><xs:element name="Position" type="xs:integer"/></xs:sequence></xs:complexType></xs:element><xs:element name="TotalSum" type="xs:integer"/><xs:element name="TotalCount" type="xs:integer"/></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
-    );
+    dir.write("left.xsd", r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="LeftRoot"><xs:complexType><xs:sequence><xs:element name="Left" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Id" type="xs:string"/><xs:element name="Label" type="xs:string"/><xs:element name="Weight" type="xs:integer"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#).unwrap();
+    dir.write("right.xsd", r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="RightRoot"><xs:complexType><xs:sequence><xs:element name="Right" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Code" type="xs:string"/><xs:element name="Description" type="xs:string"/><xs:element name="Price" type="xs:integer"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#).unwrap();
+    dir.write("target.xsd", r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Target"><xs:complexType><xs:sequence><xs:element name="Row" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Label" type="xs:string"/><xs:element name="Description" type="xs:string"/><xs:element name="Position" type="xs:integer"/></xs:sequence></xs:complexType></xs:element><xs:element name="TotalSum" type="xs:integer"/><xs:element name="TotalCount" type="xs:integer"/></xs:sequence></xs:complexType></xs:element></xs:schema>"#).unwrap();
     let mapping = mapping()
         .replace(
             "<entry name=\"Label\" outkey=\"12\"/>",
@@ -146,7 +100,7 @@ fn aggregate_setup() -> TempDir {
             "</vertices></graph>",
             "<vertex vertexkey=\"13\"><edges><edge vertexkey=\"50\"/></edges></vertex><vertex vertexkey=\"23\"><edges><edge vertexkey=\"51\"/></edges></vertex><vertex vertexkey=\"52\"><edges><edge vertexkey=\"53\"/></edges></vertex><vertex vertexkey=\"54\"><edges><edge vertexkey=\"44\"/></edges></vertex><vertex vertexkey=\"56\"><edges><edge vertexkey=\"45\"/></edges></vertex></vertices></graph>",
         );
-    write(&dir.0.join("mapping.mfd"), &mapping);
+    dir.write("mapping.mfd", &mapping).unwrap();
     dir
 }
 
@@ -230,7 +184,7 @@ fn aggregate_only_mapping(mapping: &str) -> String {
 #[test]
 fn imports_join_fields_position_and_first_items_control() {
     let dir = setup();
-    let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+    let imported = mfd::import(&dir.path().join("mapping.mfd")).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     let row_scope = &imported.project.root.children[0];
     let ScopeIteration::InnerJoin { id, .. } = row_scope.iteration else {
@@ -281,8 +235,8 @@ fn inner_join_preserves_duplicate_matches() {
     let direct = mapping()
         .replace("<component name=\"first-items\" library=\"core\" uid=\"33\" kind=\"5\"><sources><datapoint pos=\"0\" key=\"30\"/></sources><targets><datapoint pos=\"0\" key=\"31\"/></targets></component>", "")
         .replace("<vertex vertexkey=\"31\"><edges><edge vertexkey=\"40\"/></edges></vertex>", "<vertex vertexkey=\"90\"><edges><edge vertexkey=\"40\"/></edges></vertex>");
-    write(&dir.0.join("mapping.mfd"), &direct);
-    let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+    dir.write("mapping.mfd", &direct).unwrap();
+    let imported = mfd::import(&dir.path().join("mapping.mfd")).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     let (left, right) = sources();
     let output = engine::run_with_sources(
@@ -325,9 +279,9 @@ fn structural_join_branch_projects_compatible_descendants() {
             "<vertex vertexkey=\"12\"><edges><edge vertexkey=\"41\"/></edges></vertex><vertex vertexkey=\"22\"><edges><edge vertexkey=\"42\"/></edges></vertex><vertex vertexkey=\"33\"><edges><edge vertexkey=\"43\"/></edges></vertex>",
             "",
         );
-    write(&dir.0.join("mapping.mfd"), &structural);
+    dir.write("mapping.mfd", &structural).unwrap();
 
-    let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+    let imported = mfd::import(&dir.path().join("mapping.mfd")).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     let validation = engine::validate(&imported.project);
     assert!(validation.is_empty(), "{validation:?}");
@@ -363,7 +317,7 @@ fn structural_join_branch_projects_compatible_descendants() {
         ]
     );
 
-    let exported = dir.0.join("roundtrip.mfd");
+    let exported = dir.path().join("roundtrip.mfd");
     let warnings = mfd::export(&imported.project, &exported).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
     let reimported = mfd::import(&exported).unwrap();
@@ -380,7 +334,7 @@ fn structural_join_branch_projects_compatible_descendants() {
 #[test]
 fn joined_tuple_count_and_computed_sum_import_and_execute() {
     let dir = aggregate_setup();
-    let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+    let imported = mfd::import(&dir.path().join("mapping.mfd")).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     let aggregates = imported
         .project
@@ -421,13 +375,11 @@ fn joined_tuple_count_and_computed_sum_import_and_execute() {
 #[test]
 fn aggregate_only_join_builds_an_independent_root_plan() {
     let dir = aggregate_setup();
-    let mapping = fs::read_to_string(dir.0.join("mapping.mfd")).unwrap();
-    write(
-        &dir.0.join("mapping.mfd"),
-        &aggregate_only_mapping(&mapping),
-    );
+    let mapping = fs::read_to_string(dir.path().join("mapping.mfd")).unwrap();
+    dir.write("mapping.mfd", aggregate_only_mapping(&mapping))
+        .unwrap();
 
-    let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+    let imported = mfd::import(&dir.path().join("mapping.mfd")).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     let validation = engine::validate(&imported.project);
     assert!(validation.is_empty(), "{validation:?}");
@@ -453,14 +405,14 @@ fn aggregate_only_join_builds_an_independent_root_plan() {
 #[test]
 fn mixed_join_and_physical_sequence_provenance_is_rejected_once() {
     let dir = aggregate_setup();
-    let mapping = fs::read_to_string(dir.0.join("mapping.mfd")).unwrap();
+    let mapping = fs::read_to_string(dir.path().join("mapping.mfd")).unwrap();
     let mixed = aggregate_only_mapping(&mapping).replace(
         "<vertex vertexkey=\"13\"><edges><edge vertexkey=\"50\"/></edges></vertex>",
         "<vertex vertexkey=\"2\"><edges><edge vertexkey=\"50\"/></edges></vertex>",
     );
-    write(&dir.0.join("mapping.mfd"), &mixed);
+    dir.write("mapping.mfd", &mixed).unwrap();
 
-    let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+    let imported = mfd::import(&dir.path().join("mapping.mfd")).unwrap();
     assert_eq!(imported.warnings.len(), 1, "{:?}", imported.warnings);
     assert!(imported.warnings[0].contains("mixes joined tuples"));
     assert!(imported.project.graph.nodes.values().all(|node| !matches!(
@@ -475,14 +427,14 @@ fn mixed_join_and_physical_sequence_provenance_is_rejected_once() {
 #[test]
 fn raw_join_tuples_are_only_reduced_by_count() {
     let dir = aggregate_setup();
-    let mapping = fs::read_to_string(dir.0.join("mapping.mfd")).unwrap();
+    let mapping = fs::read_to_string(dir.path().join("mapping.mfd")).unwrap();
     let invalid = aggregate_only_mapping(&mapping).replace(
         "<component name=\"count\" library=\"core\" uid=\"37\"",
         "<component name=\"avg\" library=\"core\" uid=\"37\"",
     );
-    write(&dir.0.join("mapping.mfd"), &invalid);
+    dir.write("mapping.mfd", &invalid).unwrap();
 
-    let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+    let imported = mfd::import(&dir.path().join("mapping.mfd")).unwrap();
     assert_eq!(imported.warnings.len(), 1, "{:?}", imported.warnings);
     assert!(imported.warnings[0].contains("only count can reduce a raw joined tuple"));
 }
@@ -490,7 +442,7 @@ fn raw_join_tuples_are_only_reduced_by_count() {
 #[test]
 fn joined_tuple_aggregate_arguments_must_come_from_the_parent_context() {
     let dir = aggregate_setup();
-    let mapping = fs::read_to_string(dir.0.join("mapping.mfd")).unwrap();
+    let mapping = fs::read_to_string(dir.path().join("mapping.mfd")).unwrap();
     let invalid = aggregate_only_mapping(&mapping)
         .replace(
             "<component name=\"sum\" library=\"core\" uid=\"36\"",
@@ -504,9 +456,9 @@ fn joined_tuple_aggregate_arguments_must_come_from_the_parent_context() {
             "<vertex vertexkey=\"13\"><edges><edge vertexkey=\"50\"/></edges></vertex>",
             "<vertex vertexkey=\"13\"><edges><edge vertexkey=\"50\"/><edge vertexkey=\"57\"/></edges></vertex>",
         );
-    write(&dir.0.join("mapping.mfd"), &invalid);
+    dir.write("mapping.mfd", &invalid).unwrap();
 
-    let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+    let imported = mfd::import(&dir.path().join("mapping.mfd")).unwrap();
     assert_eq!(imported.warnings.len(), 1, "{:?}", imported.warnings);
     assert!(
         imported.warnings[0].contains("argument depends on a joined tuple"),
@@ -527,8 +479,8 @@ fn grouping_a_join_is_rejected_once_with_an_actionable_warning() {
             "<vertex vertexkey=\"12\"><edges><edge vertexkey=\"41\"/></edges></vertex>",
             "<vertex vertexkey=\"12\"><edges><edge vertexkey=\"34\"/><edge vertexkey=\"41\"/></edges></vertex>",
         );
-    write(&dir.0.join("mapping.mfd"), &grouped);
-    let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+    dir.write("mapping.mfd", &grouped).unwrap();
+    let imported = mfd::import(&dir.path().join("mapping.mfd")).unwrap();
     assert_eq!(imported.warnings.len(), 1, "{:?}", imported.warnings);
     assert!(imported.warnings[0].contains("followed by grouping"));
 }
@@ -545,8 +497,8 @@ fn branch_root_output_can_feed_joined_rows_without_a_tuple_port() {
             "<entry name=\"Left\" inpkey=\"10\">",
             "<entry name=\"Left\" inpkey=\"10\" outkey=\"90\">",
         );
-    write(&dir.0.join("mapping.mfd"), &branch_output);
-    let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+    dir.write("mapping.mfd", &branch_output).unwrap();
+    let imported = mfd::import(&dir.path().join("mapping.mfd")).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(matches!(
         imported.project.root.children[0].iteration,
@@ -557,10 +509,7 @@ fn branch_root_output_can_feed_joined_rows_without_a_tuple_port() {
 #[test]
 fn nested_non_repeating_join_projection_reuses_the_parent_tuple() {
     let dir = setup();
-    write(
-        &dir.0.join("target.xsd"),
-        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Target"><xs:complexType><xs:sequence><xs:element name="Row" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Label" type="xs:string"/><xs:element name="Article"><xs:complexType><xs:sequence><xs:element name="Description" type="xs:string"/></xs:sequence></xs:complexType></xs:element><xs:element name="Position" type="xs:integer"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
-    );
+    dir.write("target.xsd", r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Target"><xs:complexType><xs:sequence><xs:element name="Row" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Label" type="xs:string"/><xs:element name="Article"><xs:complexType><xs:sequence><xs:element name="Description" type="xs:string"/></xs:sequence></xs:complexType></xs:element><xs:element name="Position" type="xs:integer"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#).unwrap();
     let nested = mapping()
         .replace(
             "<entry name=\"Right\" inpkey=\"20\">",
@@ -574,9 +523,9 @@ fn nested_non_repeating_join_projection_reuses_the_parent_tuple() {
             "<vertex vertexkey=\"22\"><edges>",
             "<vertex vertexkey=\"21\"><edges><edge vertexkey=\"44\"/></edges></vertex><vertex vertexkey=\"22\"><edges>",
         );
-    write(&dir.0.join("mapping.mfd"), &nested);
+    dir.write("mapping.mfd", &nested).unwrap();
 
-    let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+    let imported = mfd::import(&dir.path().join("mapping.mfd")).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     let row_scope = &imported.project.root.children[0];
     assert!(matches!(
@@ -608,12 +557,12 @@ fn nested_non_repeating_join_projection_reuses_the_parent_tuple() {
 #[test]
 fn rejected_join_shape_suppresses_downstream_warning_cascades() {
     let dir = setup();
-    let schema = fs::read_to_string(dir.0.join("right.xsd"))
+    let schema = fs::read_to_string(dir.path().join("right.xsd"))
         .unwrap()
         .replace(" name=\"Right\" maxOccurs=\"unbounded\"", " name=\"Right\"");
-    write(&dir.0.join("right.xsd"), &schema);
+    dir.write("right.xsd", &schema).unwrap();
 
-    let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+    let imported = mfd::import(&dir.path().join("mapping.mfd")).unwrap();
     assert_eq!(imported.warnings.len(), 1, "{:?}", imported.warnings);
     assert!(imported.warnings[0].contains("must be a repeating structural source"));
 }
@@ -625,9 +574,9 @@ fn parse_time_join_rejection_retains_output_ownership() {
         "<keypaths><entry><condition/><entry name=\"Id\" outkey=\"101\"><condition/></entry><entry name=\"Code\" outkey=\"102\"><condition/></entry></entry></keypaths>",
         "<keypaths/>",
     );
-    write(&dir.0.join("mapping.mfd"), &invalid);
+    dir.write("mapping.mfd", &invalid).unwrap();
 
-    let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+    let imported = mfd::import(&dir.path().join("mapping.mfd")).unwrap();
     assert_eq!(imported.warnings.len(), 1, "{:?}", imported.warnings);
     assert!(
         imported.warnings[0].contains("join equality references unknown key path id 101"),
@@ -643,9 +592,9 @@ fn malformed_join_filter_is_not_silently_dropped() {
         "<component name=\"first-items\" library=\"core\" uid=\"33\" kind=\"5\"><sources><datapoint pos=\"0\" key=\"30\"/></sources><targets><datapoint pos=\"0\" key=\"31\"/></targets></component>",
         "<component name=\"filter\" library=\"core\" uid=\"33\" kind=\"3\"><sources><datapoint pos=\"0\" key=\"30\"/></sources><targets><datapoint pos=\"0\" key=\"31\"/><datapoint/></targets></component>",
     );
-    write(&dir.0.join("mapping.mfd"), &invalid);
+    dir.write("mapping.mfd", &invalid).unwrap();
 
-    let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+    let imported = mfd::import(&dir.path().join("mapping.mfd")).unwrap();
     assert_eq!(imported.warnings.len(), 1, "{:?}", imported.warnings);
     assert!(
         imported.warnings[0].contains("missing or unsupported filter predicate"),
@@ -657,17 +606,14 @@ fn malformed_join_filter_is_not_silently_dropped() {
 #[test]
 fn join_cannot_repeat_a_non_repeating_xml_document_root() {
     let dir = setup();
-    write(
-        &dir.0.join("target.xsd"),
-        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Target"><xs:complexType><xs:sequence><xs:element name="Label" type="xs:string"/><xs:element name="Description" type="xs:string"/><xs:element name="Position" type="xs:integer"/></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
-    );
+    dir.write("target.xsd", r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Target"><xs:complexType><xs:sequence><xs:element name="Label" type="xs:string"/><xs:element name="Description" type="xs:string"/><xs:element name="Position" type="xs:integer"/></xs:sequence></xs:complexType></xs:element></xs:schema>"#).unwrap();
     let root = mapping().replace(
         "<entry name=\"Target\"><entry name=\"Row\" inpkey=\"40\"><entry name=\"Label\" inpkey=\"41\"/><entry name=\"Description\" inpkey=\"42\"/><entry name=\"Position\" inpkey=\"43\"/></entry></entry>",
         "<entry name=\"Target\" inpkey=\"40\"><entry name=\"Label\" inpkey=\"41\"/><entry name=\"Description\" inpkey=\"42\"/><entry name=\"Position\" inpkey=\"43\"/></entry>",
     );
-    write(&dir.0.join("mapping.mfd"), &root);
+    dir.write("mapping.mfd", &root).unwrap();
 
-    let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+    let imported = mfd::import(&dir.path().join("mapping.mfd")).unwrap();
     assert_eq!(imported.warnings.len(), 1, "{:?}", imported.warnings);
     assert!(imported.warnings[0].contains("cannot iterate a non-repeating XML document root"));
 }
@@ -675,13 +621,13 @@ fn join_cannot_repeat_a_non_repeating_xml_document_root() {
 #[test]
 fn rejected_join_provenance_propagates_through_scalar_functions() {
     let dir = setup();
-    let target_schema = fs::read_to_string(dir.0.join("target.xsd"))
+    let target_schema = fs::read_to_string(dir.path().join("target.xsd"))
         .unwrap()
         .replace(
             "</xs:sequence></xs:complexType></xs:element></xs:sequence>",
             "</xs:sequence></xs:complexType></xs:element><xs:element name=\"Summary\" type=\"xs:string\"/></xs:sequence>",
         );
-    write(&dir.0.join("target.xsd"), &target_schema);
+    dir.write("target.xsd", &target_schema).unwrap();
     let invalid = mapping()
         .replace(
             "<keypaths><entry><condition/><entry name=\"Id\" outkey=\"101\"><condition/></entry><entry name=\"Code\" outkey=\"102\"><condition/></entry></entry></keypaths>",
@@ -703,9 +649,9 @@ fn rejected_join_provenance_propagates_through_scalar_functions() {
             "</vertices></graph>",
             "<vertex vertexkey=\"51\"><edges><edge vertexkey=\"45\"/></edges></vertex></vertices></graph>",
         );
-    write(&dir.0.join("mapping.mfd"), &invalid);
+    dir.write("mapping.mfd", &invalid).unwrap();
 
-    let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+    let imported = mfd::import(&dir.path().join("mapping.mfd")).unwrap();
     assert_eq!(imported.warnings.len(), 1, "{:?}", imported.warnings);
     assert!(
         imported.warnings[0].contains("join equality references unknown key path id 101"),

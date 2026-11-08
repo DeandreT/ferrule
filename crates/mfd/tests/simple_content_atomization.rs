@@ -1,31 +1,10 @@
 use std::error::Error;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{Instance, Value, XML_TEXT_FIELD};
 use mapping::Node;
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> std::io::Result<Self> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_simple_content_atomization_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn write_fixture(dir: &Path) -> Result<PathBuf, Box<dyn Error>> {
     std::fs::write(
@@ -126,8 +105,8 @@ fn write_generic_fixture(dir: &Path) -> Result<PathBuf, Box<dyn Error>> {
 
 #[test]
 fn repeating_simple_content_atomizes_when_consumed_as_a_scalar() -> Result<(), Box<dyn Error>> {
-    let dir = TempDir::new()?;
-    let imported = mfd::import(&write_fixture(&dir.0)?)?;
+    let dir = TempDir::new("mfd_simple_content_atomization")?;
+    let imported = mfd::import(&write_fixture(dir.path())?)?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
     assert!(imported.project.graph.nodes.values().any(|node| {
@@ -160,8 +139,8 @@ fn repeating_simple_content_atomizes_when_consumed_as_a_scalar() -> Result<(), B
 #[test]
 fn generic_structural_feed_iterates_and_atomizes_into_simple_content() -> Result<(), Box<dyn Error>>
 {
-    let dir = TempDir::new()?;
-    let imported = mfd::import(&write_generic_fixture(&dir.0)?)?;
+    let dir = TempDir::new("mfd_simple_content_atomization")?;
+    let imported = mfd::import(&write_generic_fixture(dir.path())?)?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
 

@@ -1,7 +1,6 @@
 //! Synthetic, independent whole-output and real parse-call-count checks.
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::path::Path;
 
 use ir::{Instance, ScalarType, SchemaNode, Value};
 use mapping::{Binding, FormatOptions, Graph, Node, Project, Scope, ScopeIteration, SequenceExpr};
@@ -369,24 +368,7 @@ fn concurrent_invocations_do_not_share_documents_or_instrumentation() {
     }
 }
 
-struct TempDir(PathBuf);
-impl TempDir {
-    fn new() -> Self {
-        static NEXT: AtomicU64 = AtomicU64::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_json_projection_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir(&path).unwrap();
-        Self(path)
-    }
-}
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn checked(command: &mut std::process::Command) {
     let output = command.output().unwrap();
@@ -402,7 +384,7 @@ fn checked(command: &mut std::process::Command) {
 #[test]
 #[ignore = "compiles instrumented generated Rust/C# Release hosts; requires Cargo and .NET 10"]
 fn generated_release_full_parse_work_and_whole_outputs() {
-    let dir = TempDir::new();
+    let dir = TempDir::new("json_projection").unwrap();
     let runtime = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../codegen-runtime")
         .canonicalize()
@@ -415,7 +397,7 @@ fn generated_release_full_parse_work_and_whole_outputs() {
         }
         verify_cases(&project, count, cases.clone());
         let program = codegen::lower(&project).unwrap();
-        let root = dir.0.join(format!("fields-{count}-udf-{udf}"));
+        let root = dir.path().join(format!("fields-{count}-udf-{udf}"));
         let rust = codegen_rust::emit(
             &program,
             &codegen_rust::Options {
@@ -483,7 +465,7 @@ fn generated_release_full_parse_work_and_whole_outputs() {
                     "profile.release.incremental=false",
                     "--target-dir",
                 ])
-                .arg(dir.0.join("rust-host-target"))
+                .arg(dir.path().join("rust-host-target"))
                 .arg("--manifest-path")
                 .arg(&manifest)
                 .args(["--bin", "projection-host", "--"])
@@ -529,7 +511,7 @@ fn generated_release_full_parse_work_and_whole_outputs() {
                 .arg(&schema_path)
                 .arg(count.to_string())
                 .arg(&parser_schema_path)
-                .env("DOTNET_CLI_HOME", dir.0.join("dotnet-home"))
+                .env("DOTNET_CLI_HOME", dir.path().join("dotnet-home"))
                 .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
                 .env("DOTNET_NOLOGO", "1")
                 .env("DOTNET_SKIP_FIRST_TIME_EXPERIENCE", "1")

@@ -1,34 +1,9 @@
 use std::collections::BTreeMap;
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{Instance, ScalarType, SchemaNode, Value};
 use mapping::{Binding, Graph, Node, Project, Scope, SequenceExpr};
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Self {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_sequence_exists_export_{}_{}_{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map_or(0, |duration| duration.as_nanos()),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn project() -> Project {
     let nodes = BTreeMap::from([
@@ -186,8 +161,8 @@ fn lookup_source() -> Instance {
 
 #[test]
 fn sequence_exists_exports_filter_chain_and_generated_position_context() {
-    let dir = TempDir::new();
-    let design = dir.0.join("sequence-exists.mfd");
+    let dir = TempDir::new("mfd_sequence_exists_export").unwrap();
+    let design = dir.path().join("sequence-exists.mfd");
     let warnings = mfd::export(&project(), &design).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
 
@@ -269,8 +244,8 @@ fn sequence_exists_exports_filter_chain_and_generated_position_context() {
 
 #[test]
 fn lookup_fed_sequence_exists_roundtrips_and_executes() {
-    let dir = TempDir::new();
-    let design = dir.0.join("lookup-sequence-exists.mfd");
+    let dir = TempDir::new("mfd_sequence_exists_export").unwrap();
+    let design = dir.path().join("lookup-sequence-exists.mfd");
     let warnings = mfd::export(&lookup_project(), &design).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
 

@@ -1,37 +1,7 @@
-use std::fs;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
-
 use ir::{Instance, Value};
 use mapping::Node;
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Self {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule-mfd-lookup-udf-{}-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map_or(0, |duration| duration.as_nanos()),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
-    }
-}
-
-fn write(path: &Path, contents: &str) {
-    fs::write(path, contents).unwrap();
-}
+use test_support::TempDir;
 
 fn mapping() -> &'static str {
     r#"<mapping version="26">
@@ -156,40 +126,20 @@ fn computed_catalog_mapping() -> &'static str {
 }
 
 fn setup(mfd: &str) -> TempDir {
-    let dir = TempDir::new();
-    write(
-        &dir.0.join("input.xsd"),
-        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Input"><xs:complexType><xs:sequence><xs:element name="Needle" type="xs:string"/></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
-    );
-    write(
-        &dir.0.join("catalog.xsd"),
-        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Catalog"><xs:complexType><xs:sequence><xs:element name="Item" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Key" type="xs:string"/><xs:element name="Value" type="xs:string"/><xs:element name="Extra" type="xs:string" minOccurs="0"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
-    );
-    write(
-        &dir.0.join("output.xsd"),
-        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Output"><xs:complexType><xs:sequence><xs:element name="Result" type="xs:string" minOccurs="0"/></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
-    );
-    write(&dir.0.join("mapping.mfd"), mfd);
+    let dir = TempDir::new("mfd-lookup-udf").unwrap();
+    dir.write("input.xsd", r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Input"><xs:complexType><xs:sequence><xs:element name="Needle" type="xs:string"/></xs:sequence></xs:complexType></xs:element></xs:schema>"#).unwrap();
+    dir.write("catalog.xsd", r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Catalog"><xs:complexType><xs:sequence><xs:element name="Item" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Key" type="xs:string"/><xs:element name="Value" type="xs:string"/><xs:element name="Extra" type="xs:string" minOccurs="0"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#).unwrap();
+    dir.write("output.xsd", r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Output"><xs:complexType><xs:sequence><xs:element name="Result" type="xs:string" minOccurs="0"/></xs:sequence></xs:complexType></xs:element></xs:schema>"#).unwrap();
+    dir.write("mapping.mfd", mfd).unwrap();
     dir
 }
 
 fn generic_attribute_setup() -> TempDir {
-    let dir = TempDir::new();
-    write(
-        &dir.0.join("input.xsd"),
-        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Input"><xs:complexType><xs:sequence><xs:element name="Meta" type="xs:anyType"/><xs:element name="Wanted" type="xs:string"/></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
-    );
-    write(
-        &dir.0.join("meta.xsd"),
-        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Meta" type="xs:anyType"/></xs:schema>"#,
-    );
-    write(
-        &dir.0.join("output.xsd"),
-        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Output"><xs:complexType><xs:sequence><xs:element name="Result" type="xs:string" minOccurs="0"/></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
-    );
-    write(
-        &dir.0.join("mapping.mfd"),
-        r#"<mapping version="26">
+    let dir = TempDir::new("mfd-lookup-udf").unwrap();
+    dir.write("input.xsd", r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Input"><xs:complexType><xs:sequence><xs:element name="Meta" type="xs:anyType"/><xs:element name="Wanted" type="xs:string"/></xs:sequence></xs:complexType></xs:element></xs:schema>"#).unwrap();
+    dir.write("meta.xsd", r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Meta" type="xs:anyType"/></xs:schema>"#).unwrap();
+    dir.write("output.xsd", r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Output"><xs:complexType><xs:sequence><xs:element name="Result" type="xs:string" minOccurs="0"/></xs:sequence></xs:complexType></xs:element></xs:schema>"#).unwrap();
+    dir.write("mapping.mfd", r#"<mapping version="26">
   <component name="map"><structure><children>
     <component name="input" library="xml" kind="14"><data><root>
       <entry name="Input"><entry name="Meta" outkey="10"/><entry name="Wanted" outkey="11"/></entry>
@@ -228,8 +178,7 @@ fn generic_attribute_setup() -> TempDir {
     <vertex vertexkey="210"><edges><edge vertexkey="222"/></edges></vertex>
     <vertex vertexkey="224"><edges><edge vertexkey="200"/></edges></vertex>
   </vertices></graph></structure></component>
-</mapping>"#,
-    );
+</mapping>"#).unwrap();
     dir
 }
 
@@ -250,7 +199,7 @@ fn item(key: &str, value: &str) -> Instance {
 #[test]
 fn structured_input_filter_udf_imports_as_first_match_lookup() {
     let dir = setup(mapping());
-    let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+    let imported = mfd::import(&dir.path().join("mapping.mfd")).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(imported.project.graph.nodes.values().any(|node| matches!(
         node,
@@ -298,7 +247,7 @@ fn edi_record_input_filter_udf_imports_as_first_match_lookup() {
             r#"</root><text type="edi" kind="EDIX12"/><parameter usageKind="input" name="Catalog"/></data></component>"#,
         );
     let dir = setup(&design);
-    let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+    let imported = mfd::import(&dir.path().join("mapping.mfd")).unwrap();
 
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(
@@ -315,7 +264,7 @@ fn edi_record_input_filter_udf_imports_as_first_match_lookup() {
 #[test]
 fn structured_lookup_near_miss_retains_actionable_warning() {
     let dir = setup(&mapping().replace("name=\"equal\"", "name=\"unsupported-predicate\""));
-    let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+    let imported = mfd::import(&dir.path().join("mapping.mfd")).unwrap();
     assert!(
         imported.warnings.iter().any(|warning| warning.contains(
             "skipped user-defined function `Find`: definition uses sequence operation `filter`"
@@ -336,7 +285,7 @@ fn structured_lookup_near_miss_retains_actionable_warning() {
 #[test]
 fn static_catalog_filter_udf_imports_as_an_executable_named_source_lookup() {
     let dir = setup(static_catalog_mapping());
-    let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+    let imported = mfd::import(&dir.path().join("mapping.mfd")).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert_eq!(imported.project.extra_sources.len(), 1);
     assert_eq!(imported.project.extra_sources[0].name, "Catalog");
@@ -379,7 +328,7 @@ fn static_catalog_filter_udf_imports_as_an_executable_named_source_lookup() {
 #[test]
 fn computed_catalog_filter_imports_composite_predicate_and_value_expression() {
     let dir = setup(computed_catalog_mapping());
-    let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+    let imported = mfd::import(&dir.path().join("mapping.mfd")).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(imported.project.graph.nodes.values().any(|node| matches!(
         node,
@@ -429,7 +378,7 @@ fn computed_catalog_filter_imports_composite_predicate_and_value_expression() {
 #[test]
 fn structured_parameter_attribute_filter_imports_and_executes() {
     let dir = generic_attribute_setup();
-    let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+    let imported = mfd::import(&dir.path().join("mapping.mfd")).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(imported.project.graph.nodes.values().any(|node| matches!(
         node,
@@ -454,7 +403,7 @@ fn structured_parameter_attribute_filter_imports_and_executes() {
 fn static_catalog_lookup_rejects_non_equality_predicates() {
     let near_miss = static_catalog_mapping().replace("name=\"equal\"", "name=\"greater-than\"");
     let dir = setup(&near_miss);
-    let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+    let imported = mfd::import(&dir.path().join("mapping.mfd")).unwrap();
     assert!(
         imported.warnings.iter().any(|warning| warning.contains(
             "skipped user-defined function `Find`: definition uses sequence operation `filter`"

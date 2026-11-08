@@ -28,6 +28,7 @@ sha2 = { workspace = true }
 rustix = { workspace = true }
 
 [dev-dependencies]
+test-support = { workspace = true }
 functions = { workspace = true, features = ["json-projection-instrumentation"] }
 codegen = { workspace = true }
 codegen-csharp = { workspace = true }

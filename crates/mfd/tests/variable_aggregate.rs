@@ -2,31 +2,11 @@
 mod private_corpus;
 
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{Instance, Value};
 use mapping::{AggregateOp, Node};
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Result<Self, std::io::Error> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_variable_aggregate_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn write_fixture(dir: &Path) -> Result<PathBuf, std::io::Error> {
     std::fs::write(
@@ -89,8 +69,8 @@ fn write_fixture(dir: &Path) -> Result<PathBuf, std::io::Error> {
 #[test]
 fn computed_aggregate_resolves_transparent_variable_fields()
 -> Result<(), Box<dyn std::error::Error>> {
-    let dir = TempDir::new()?;
-    let imported = mfd::import(&write_fixture(&dir.0)?)?;
+    let dir = TempDir::new("mfd_variable_aggregate")?;
+    let imported = mfd::import(&write_fixture(dir.path())?)?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
 
     let (collection, expression) = imported
@@ -114,7 +94,7 @@ fn computed_aggregate_resolves_transparent_variable_fields()
         Some(Node::Call { function, .. }) if function == "concat"
     ));
 
-    let source = format_xml::read(&dir.0.join("catalog.xml"), &imported.project.source)?;
+    let source = format_xml::read(&dir.path().join("catalog.xml"), &imported.project.source)?;
     let output = engine::run(&imported.project, &source)?;
     assert_eq!(
         output.field("Names").and_then(Instance::as_scalar),
@@ -126,9 +106,9 @@ fn computed_aggregate_resolves_transparent_variable_fields()
 #[test]
 fn core_structure_variable_passes_a_once_computed_aggregate_into_each_row()
 -> Result<(), Box<dyn std::error::Error>> {
-    let dir = TempDir::new()?;
+    let dir = TempDir::new("mfd_variable_aggregate")?;
     std::fs::write(
-        dir.0.join("roster.xsd"),
+        dir.path().join("roster.xsd"),
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:element name="Roster"><xs:complexType><xs:sequence>
     <xs:element name="User" minOccurs="0" maxOccurs="unbounded"><xs:complexType><xs:sequence>
@@ -138,7 +118,7 @@ fn core_structure_variable_passes_a_once_computed_aggregate_into_each_row()
 </xs:schema>"#,
     )?;
     std::fs::write(
-        dir.0.join("report.xsd"),
+        dir.path().join("report.xsd"),
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:element name="Report"><xs:complexType><xs:sequence>
     <xs:element name="Row" minOccurs="0" maxOccurs="unbounded"><xs:complexType><xs:sequence>
@@ -148,7 +128,7 @@ fn core_structure_variable_passes_a_once_computed_aggregate_into_each_row()
   </xs:sequence></xs:complexType></xs:element>
 </xs:schema>"#,
     )?;
-    let design = dir.0.join("compute-once-variable.mfd");
+    let design = dir.path().join("compute-once-variable.mfd");
     std::fs::write(
         &design,
         r#"<mapping version="26"><component name="map"><structure><children>
@@ -235,20 +215,20 @@ fn core_structure_variable_passes_a_once_computed_aggregate_into_each_row()
 #[test]
 fn filtered_cross_source_aggregate_lowers_to_an_inner_join()
 -> Result<(), Box<dyn std::error::Error>> {
-    let dir = TempDir::new()?;
+    let dir = TempDir::new("mfd_variable_aggregate")?;
     std::fs::write(
-        dir.0.join("order.xsd"),
+        dir.path().join("order.xsd"),
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Order"><xs:complexType><xs:sequence><xs:element name="Line" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Sku" type="xs:string"/><xs:element name="Quantity" type="xs:int"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
     )?;
     std::fs::write(
-        dir.0.join("catalog.xsd"),
+        dir.path().join("catalog.xsd"),
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Catalog"><xs:complexType><xs:sequence><xs:element name="Product" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Sku" type="xs:string"/><xs:element name="Price" type="xs:double"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
     )?;
     std::fs::write(
-        dir.0.join("summary.xsd"),
+        dir.path().join("summary.xsd"),
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Summary"><xs:complexType><xs:sequence><xs:element name="Total" type="xs:double"/><xs:element name="Matches" type="xs:int"/></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
     )?;
-    let design = dir.0.join("filtered-join-aggregate.mfd");
+    let design = dir.path().join("filtered-join-aggregate.mfd");
     std::fs::write(
         &design,
         r#"<mapping version="26"><component name="map"><structure><children>
@@ -343,7 +323,7 @@ fn filtered_cross_source_aggregate_lowers_to_an_inner_join()
         Some(&Value::Int(2))
     );
 
-    let exported = dir.0.join("roundtrip.mfd");
+    let exported = dir.path().join("roundtrip.mfd");
     let warnings = mfd::export(&imported.project, &exported)?;
     assert!(warnings.is_empty(), "{warnings:?}");
     let exported_xml = std::fs::read_to_string(&exported)?;
@@ -361,20 +341,20 @@ fn filtered_cross_source_aggregate_lowers_to_an_inner_join()
 #[test]
 fn filtered_cross_source_aggregate_does_not_broaden_an_enclosing_item_frame()
 -> Result<(), Box<dyn std::error::Error>> {
-    let dir = TempDir::new()?;
+    let dir = TempDir::new("mfd_variable_aggregate")?;
     std::fs::write(
-        dir.0.join("order.xsd"),
+        dir.path().join("order.xsd"),
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Order"><xs:complexType><xs:sequence><xs:element name="Line" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Sku" type="xs:string"/><xs:element name="Quantity" type="xs:int"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
     )?;
     std::fs::write(
-        dir.0.join("catalog.xsd"),
+        dir.path().join("catalog.xsd"),
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Catalog"><xs:complexType><xs:sequence><xs:element name="Product" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Sku" type="xs:string"/><xs:element name="Price" type="xs:double"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
     )?;
     std::fs::write(
-        dir.0.join("results.xsd"),
+        dir.path().join("results.xsd"),
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Results"><xs:complexType><xs:sequence><xs:element name="Row" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Sku" type="xs:string"/><xs:element name="Total" type="xs:double"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
     )?;
-    let design = dir.0.join("correlated-filtered-aggregate.mfd");
+    let design = dir.path().join("correlated-filtered-aggregate.mfd");
     std::fs::write(
         &design,
         r#"<mapping version="26"><component name="map"><structure><children>

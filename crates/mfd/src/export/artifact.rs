@@ -409,47 +409,24 @@ fn stage_artifact(destination: PathBuf, contents: &[u8]) -> io::Result<StagedArt
 #[cfg(all(test, unix))]
 mod tests {
     use std::os::unix::fs::symlink;
-    use std::sync::atomic::{AtomicUsize, Ordering};
 
     use super::*;
 
-    struct TempDir(PathBuf);
-
-    impl TempDir {
-        fn new(label: &str) -> Self {
-            static NEXT: AtomicUsize = AtomicUsize::new(0);
-            let path = std::env::temp_dir().join(format!(
-                "ferrule_artifact_{label}_{}_{}",
-                std::process::id(),
-                NEXT.fetch_add(1, Ordering::Relaxed)
-            ));
-            let _ = std::fs::remove_dir_all(&path);
-            std::fs::create_dir_all(&path).unwrap_or_else(|error| {
-                panic!("temporary artifact directory should be created: {error}")
-            });
-            Self(path)
-        }
-    }
-
-    impl Drop for TempDir {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_dir_all(&self.0);
-        }
-    }
+    use test_support::TempDir;
 
     #[test]
     fn nested_artifacts_reject_symlinked_parent_without_writing_outside() {
-        let output = TempDir::new("output");
-        let outside = TempDir::new("outside");
-        let bundle = output.0.join("mapping-source-protobuf");
-        symlink(&outside.0, &bundle)
+        let output = TempDir::new("output").unwrap();
+        let outside = TempDir::new("outside").unwrap();
+        let bundle = output.path().join("mapping-source-protobuf");
+        symlink(outside.path(), &bundle)
             .unwrap_or_else(|error| panic!("bundle symlink should be created: {error}"));
 
         let result = write_artifacts(
-            &output.0,
+            output.path(),
             vec![
                 (bundle.join("api/root.proto"), "message Root {}".to_string()),
-                (output.0.join("mapping.mfd"), "<mapping/>".to_string()),
+                (output.path().join("mapping.mfd"), "<mapping/>".to_string()),
             ],
         );
         let error = match result {
@@ -457,17 +434,17 @@ mod tests {
             Ok(()) => panic!("symlinked bundle directory must be rejected"),
         };
         assert!(error.to_string().contains("symbolic link"));
-        assert!(!outside.0.join("api/root.proto").exists());
-        assert!(!output.0.join("mapping.mfd").exists());
+        assert!(!outside.path().join("api/root.proto").exists());
+        assert!(!output.path().join("mapping.mfd").exists());
     }
 
     #[test]
     fn nested_artifacts_reject_file_directory_prefix_collisions_before_writing() {
-        let output = TempDir::new("prefix");
-        let prefix = output.0.join("schema.proto");
-        let mapping = output.0.join("mapping.mfd");
+        let output = TempDir::new("prefix").unwrap();
+        let prefix = output.path().join("schema.proto");
+        let mapping = output.path().join("mapping.mfd");
         let result = write_artifacts(
-            &output.0,
+            output.path(),
             vec![
                 (prefix.clone(), "message Root {}".to_string()),
                 (prefix.join("nested.proto"), "message Nested {}".to_string()),
@@ -485,13 +462,13 @@ mod tests {
 
     #[test]
     fn late_publish_failure_removes_new_sidecar_and_created_directory() {
-        let output = TempDir::new("rollback-new");
-        let bundle = output.0.join("new");
+        let output = TempDir::new("rollback-new").unwrap();
+        let bundle = output.path().join("new");
         let sidecar = bundle.join("mapping-stage-2-target.mft");
         let design = bundle.join("mapping.mfd");
         let mut publishes = 0;
         let error = write_artifacts_with_publish(
-            &output.0,
+            output.path(),
             vec![
                 (sidecar.clone(), "<FlexText/>".into()),
                 (design.clone(), "<mapping/>".into()),
@@ -514,18 +491,18 @@ mod tests {
 
     #[test]
     fn late_publish_failure_restores_existing_design_and_symlink_sidecar() {
-        let output = TempDir::new("rollback-existing");
-        let outside = TempDir::new("rollback-referent");
-        let referent = outside.0.join("original.mft");
+        let output = TempDir::new("rollback-existing").unwrap();
+        let outside = TempDir::new("rollback-referent").unwrap();
+        let referent = outside.path().join("original.mft");
         std::fs::write(&referent, "old config").unwrap();
-        let sidecar = output.0.join("mapping-stage-2-target.mft");
+        let sidecar = output.path().join("mapping-stage-2-target.mft");
         symlink(&referent, &sidecar).unwrap();
-        let design = output.0.join("mapping.mfd");
+        let design = output.path().join("mapping.mfd");
         std::fs::write(&design, "old design").unwrap();
 
         let mut publishes = 0;
         let error = write_artifacts_with_publish(
-            &output.0,
+            output.path(),
             vec![
                 (sidecar.clone(), "new config".into()),
                 (design.clone(), "new design".into()),
@@ -550,7 +527,7 @@ mod tests {
         assert_eq!(std::fs::read_link(&sidecar).unwrap(), referent);
         assert_eq!(std::fs::read_to_string(&referent).unwrap(), "old config");
         assert_eq!(std::fs::read_to_string(&design).unwrap(), "old design");
-        assert!(std::fs::read_dir(&output.0).unwrap().all(|entry| {
+        assert!(std::fs::read_dir(output.path()).unwrap().all(|entry| {
             !entry
                 .unwrap()
                 .file_name()
@@ -561,15 +538,15 @@ mod tests {
 
     #[test]
     fn failed_restore_retains_prior_artifact_for_recovery() {
-        let output = TempDir::new("rollback-retained");
-        let sidecar = output.0.join("mapping-stage-2-target.mft");
-        let design = output.0.join("mapping.mfd");
+        let output = TempDir::new("rollback-retained").unwrap();
+        let sidecar = output.path().join("mapping-stage-2-target.mft");
+        let design = output.path().join("mapping.mfd");
         std::fs::write(&sidecar, "old config").unwrap();
         std::fs::write(&design, "old design").unwrap();
 
         let mut publishes = 0;
         let error = write_artifacts_with_publish(
-            &output.0,
+            output.path(),
             vec![
                 (sidecar.clone(), "new config".into()),
                 (design.clone(), "new design".into()),
@@ -587,7 +564,7 @@ mod tests {
         .expect_err("the second publication must fail");
         assert!(error.to_string().contains("retained"), "{error}");
         assert_eq!(std::fs::read_to_string(&design).unwrap(), "old design");
-        let backups = std::fs::read_dir(&output.0)
+        let backups = std::fs::read_dir(output.path())
             .unwrap()
             .map(|entry| entry.unwrap().path())
             .filter(|path| {

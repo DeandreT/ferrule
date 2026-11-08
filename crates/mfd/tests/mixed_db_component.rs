@@ -1,30 +1,9 @@
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{Instance, Value, ValueGeneration};
 use rusqlite::Connection;
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Result<Self, std::io::Error> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_mixed_db_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn write_fixture(dir: &Path) -> Result<PathBuf, Box<dyn std::error::Error>> {
     let connection = Connection::open(dir.join("ledger.sqlite"))?;
@@ -130,8 +109,8 @@ fn write_balanced_fixture(dir: &Path) -> Result<PathBuf, Box<dyn std::error::Err
 #[test]
 fn balanced_database_ports_classify_one_component_as_source_and_target()
 -> Result<(), Box<dyn std::error::Error>> {
-    let dir = TempDir::new()?;
-    let imported = mfd::import(&write_balanced_fixture(&dir.0)?)?;
+    let dir = TempDir::new("mfd_mixed_db")?;
+    let imported = mfd::import(&write_balanced_fixture(dir.path())?)?;
 
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert_eq!(
@@ -147,7 +126,7 @@ fn balanced_database_ports_classify_one_component_as_source_and_target()
     assert!(imported.project.extra_targets.is_empty());
     assert!(engine::validate(&imported.project).is_empty());
 
-    let exported = dir.0.join("balanced-roundtrip.mfd");
+    let exported = dir.path().join("balanced-roundtrip.mfd");
     assert!(mfd::export(&imported.project, &exported)?.is_empty());
     let text = std::fs::read_to_string(&exported)?;
     let document = roxmltree::Document::parse(&text)?;
@@ -177,8 +156,8 @@ fn balanced_database_ports_classify_one_component_as_source_and_target()
 #[test]
 fn mixed_database_component_is_both_a_named_source_and_target()
 -> Result<(), Box<dyn std::error::Error>> {
-    let dir = TempDir::new()?;
-    let design = write_fixture(&dir.0)?;
+    let dir = TempDir::new("mfd_mixed_db")?;
+    let design = write_fixture(dir.path())?;
     let imported = mfd::import(&design)?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
@@ -209,7 +188,7 @@ fn mixed_database_component_is_both_a_named_source_and_target()
         "<Source><Item><Value>A</Value><Note>first</Note></Item><Item><Value>B</Value><Note>second</Note></Item></Source>",
         &imported.project.source,
     )?;
-    let ledger = format_db::read_instance(&dir.0.join("ledger.sqlite"), &database.schema)?;
+    let ledger = format_db::read_instance(&dir.path().join("ledger.sqlite"), &database.schema)?;
     let execution = engine::ExecutionContext::new(&design);
     let outputs = engine::run_outputs_with_sources_and_context(
         &imported.project,
@@ -230,8 +209,8 @@ fn mixed_database_component_is_both_a_named_source_and_target()
     let [database_output] = outputs.extras.as_slice() else {
         return Err("mixed database target did not execute".into());
     };
-    let written_database = dir.0.join("written.sqlite");
-    std::fs::copy(dir.0.join("ledger.sqlite"), &written_database)?;
+    let written_database = dir.path().join("written.sqlite");
+    std::fs::copy(dir.path().join("ledger.sqlite"), &written_database)?;
     format_db::write_instance(&written_database, target_schema, &database_output.instance)?;
     let written = Connection::open(&written_database)?;
     let updates = written
@@ -256,7 +235,7 @@ fn mixed_database_component_is_both_a_named_source_and_target()
     assert_eq!(journal_count, 7);
     drop(written);
 
-    let exported = dir.0.join("roundtrip.mfd");
+    let exported = dir.path().join("roundtrip.mfd");
     assert!(mfd::export(&imported.project, &exported)?.is_empty());
     let design = std::fs::read_to_string(&exported)?;
     let document = roxmltree::Document::parse(&design)?;
@@ -294,8 +273,10 @@ fn mixed_database_component_is_both_a_named_source_and_target()
         return Err("roundtrip did not retain the database source".into());
     };
     assert_eq!(roundtrip.project.extra_targets.len(), 1);
-    let roundtrip_ledger =
-        format_db::read_instance(&dir.0.join("ledger.sqlite"), &roundtrip_database.schema)?;
+    let roundtrip_ledger = format_db::read_instance(
+        &dir.path().join("ledger.sqlite"),
+        &roundtrip_database.schema,
+    )?;
     let roundtrip_target = engine::run_with_sources(
         &roundtrip.project,
         &source,
@@ -303,7 +284,7 @@ fn mixed_database_component_is_both_a_named_source_and_target()
     )?;
     assert_eq!(roundtrip_target, target);
 
-    let detached = dir.0.join("detached");
+    let detached = dir.path().join("detached");
     std::fs::create_dir(&detached)?;
     let detached_design = detached.join("roundtrip.mfd");
     assert!(mfd::export(&imported.project, &detached_design)?.is_empty());

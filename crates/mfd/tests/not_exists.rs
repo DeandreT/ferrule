@@ -1,41 +1,15 @@
 use std::error::Error;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::path::PathBuf;
 
 use ir::{Instance, Value};
 use mapping::Node;
 
-static NEXT_DIR: AtomicU64 = AtomicU64::new(0);
-
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Result<Self, std::io::Error> {
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_not_exists_{}_{}",
-            std::process::id(),
-            NEXT_DIR.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
-
-fn write(path: &Path, contents: &str) -> Result<(), std::io::Error> {
-    std::fs::write(path, contents)
-}
+use test_support::TempDir;
 
 fn setup() -> Result<(TempDir, PathBuf), Box<dyn Error>> {
-    let dir = TempDir::new()?;
-    write(
-        &dir.0.join("source.xsd"),
+    let dir = TempDir::new("mfd_not_exists")?;
+    dir.write(
+        "source.xsd",
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:element name="Source"><xs:complexType><xs:sequence>
     <xs:element name="Missing" type="xs:string" minOccurs="0"/>
@@ -43,8 +17,8 @@ fn setup() -> Result<(TempDir, PathBuf), Box<dyn Error>> {
   </xs:sequence></xs:complexType></xs:element>
 </xs:schema>"#,
     )?;
-    write(
-        &dir.0.join("target.xsd"),
+    dir.write(
+        "target.xsd",
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:element name="Target"><xs:complexType><xs:sequence>
     <xs:element name="MissingResult" type="xs:boolean"/>
@@ -52,8 +26,8 @@ fn setup() -> Result<(TempDir, PathBuf), Box<dyn Error>> {
   </xs:sequence></xs:complexType></xs:element>
 </xs:schema>"#,
     )?;
-    let design = dir.0.join("not-exists.mfd");
-    write(
+    let design = dir.path().join("not-exists.mfd");
+    std::fs::write(
         &design,
         r#"<mapping version="26"><resources/>
   <component name="map"><structure><children>
@@ -143,7 +117,7 @@ fn generic_not_exists_imports_executes_and_round_trips() -> Result<(), Box<dyn E
     let input = source();
     assert_result(&engine::run(&imported.project, &input)?);
 
-    let exported = dir.0.join("roundtrip.mfd");
+    let exported = dir.path().join("roundtrip.mfd");
     let warnings = mfd::export(&imported.project, &exported)?;
     assert!(warnings.is_empty(), "{warnings:?}");
     let reimported = mfd::import(&exported)?;

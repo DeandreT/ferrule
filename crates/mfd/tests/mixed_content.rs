@@ -1,29 +1,9 @@
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{Instance, Value};
 use mapping::Node;
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Result<Self, std::io::Error> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_mixed_content_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn write_fixture(dir: &Path) -> Result<PathBuf, std::io::Error> {
     std::fs::write(
@@ -99,8 +79,8 @@ fn write_fixture(dir: &Path) -> Result<PathBuf, std::io::Error> {
 #[test]
 fn recursive_mixed_content_replacements_preserve_document_order_and_values()
 -> Result<(), Box<dyn std::error::Error>> {
-    let dir = TempDir::new()?;
-    let design = write_fixture(&dir.0)?;
+    let dir = TempDir::new("mfd_mixed_content")?;
+    let design = write_fixture(dir.path())?;
     let imported = mfd::import(&design)?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(imported.project.graph.nodes.values().any(|node| matches!(
@@ -108,7 +88,7 @@ fn recursive_mixed_content_replacements_preserve_document_order_and_values()
         Node::XmlMixedContent { replacements, .. } if replacements.len() == 2
     )));
 
-    let source = format_xml::read(&dir.0.join("library.xml"), &imported.project.source)?;
+    let source = format_xml::read(&dir.path().join("library.xml"), &imported.project.source)?;
     assert_eq!(
         source
             .field("Article")
@@ -141,7 +121,7 @@ fn recursive_mixed_content_replacements_preserve_document_order_and_values()
         ]
     );
 
-    let exported = dir.0.join("roundtrip.mfd");
+    let exported = dir.path().join("roundtrip.mfd");
     let warnings = mfd::export(&imported.project, &exported)?;
     assert!(warnings.is_empty(), "{warnings:?}");
     let roundtrip = mfd::import(&exported)?;

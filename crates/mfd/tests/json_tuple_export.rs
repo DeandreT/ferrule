@@ -2,36 +2,21 @@
 //! design entries cannot address tuple positions yet.
 
 use std::error::Error;
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use format_json::JsonFormatError;
 use ir::{ItemCountRange, JsonTupleLayout, JsonTupleTail, ScalarType, SchemaNode};
 use mapping::{Graph, NamedSource, Project, Scope};
 use mfd::{ExportProfile, MfdError};
 
-struct TempDir(PathBuf);
+struct TempDir(test_support::TempDir);
 
 impl TempDir {
     fn new() -> std::io::Result<Self> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule-mfd-json-tuple-export-{}-{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir(&path)?;
-        Ok(Self(path))
+        test_support::TempDir::new("mfd-json-tuple-export").map(Self)
     }
 
     fn is_empty(&self) -> std::io::Result<bool> {
         Ok(std::fs::read_dir(&self.0)?.next().is_none())
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
     }
 }
 

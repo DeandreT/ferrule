@@ -1,26 +1,9 @@
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use ir::{Instance, Value};
 
-struct TempDir(PathBuf);
-impl TempDir {
-    fn new() -> Self {
-        static NEXT: AtomicU64 = AtomicU64::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_json_array_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir(&path).unwrap();
-        Self(path)
-    }
-}
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
+
 fn fixture() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/json-array-parser/mapping.mfd")
 }
@@ -117,7 +100,7 @@ fn optional_parent_absence_requires_valid_descriptors_and_schema_valid_input() {
 #[test]
 fn array_records_infer_the_same_driver_from_scalar_connections() {
     let dir = copy_fixture();
-    let path = dir.0.join("mapping.mfd");
+    let path = dir.path().join("mapping.mfd");
     let text = std::fs::read_to_string(&path).unwrap().replace(
         "<vertex vertexkey=\"21\"><edges><edge vertexkey=\"30\"/></edges></vertex>",
         "",
@@ -138,14 +121,18 @@ fn array_records_infer_the_same_driver_from_scalar_connections() {
 }
 
 fn copy_fixture() -> TempDir {
-    let dir = TempDir::new();
+    let dir = TempDir::new("json_array").unwrap();
     for name in [
         "mapping.mfd",
         "payload.schema.json",
         "target.schema.json",
         "source.schema.json",
     ] {
-        std::fs::copy(fixture().parent().unwrap().join(name), dir.0.join(name)).unwrap();
+        std::fs::copy(
+            fixture().parent().unwrap().join(name),
+            dir.path().join(name),
+        )
+        .unwrap();
     }
     dir
 }
@@ -227,12 +214,12 @@ fn unsupported_array_profiles_refuse_executable_import() {
         ),
     ] {
         let dir = copy_fixture();
-        let path = dir.0.join(file);
+        let path = dir.path().join(file);
         let text = std::fs::read_to_string(&path).unwrap();
         assert!(text.contains(from));
         std::fs::write(&path, text.replace(from, to)).unwrap();
         let outcome = mfd::import_with_profile(
-            &dir.0.join("mapping.mfd"),
+            &dir.path().join("mapping.mfd"),
             &mfd::ImportOptions::default(),
             mfd::ImportProfile::Executable,
         );
@@ -240,7 +227,7 @@ fn unsupported_array_profiles_refuse_executable_import() {
             outcome.is_err(),
             "unsupported profile was executable: {reason}"
         );
-        let best_effort = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+        let best_effort = mfd::import(&dir.path().join("mapping.mfd")).unwrap();
         assert!(
             best_effort
                 .warnings
@@ -254,15 +241,15 @@ fn unsupported_array_profiles_refuse_executable_import() {
 
 #[test]
 fn array_record_graphs_lower_and_emit_both_backends() {
-    let dir = TempDir::new();
-    emit(&dir.0);
+    let dir = TempDir::new("json_array").unwrap();
+    emit(dir.path());
 }
 
 #[test]
 fn array_helpers_export_as_ferrule_extensions_not_native_core_functions() {
     let project = imported();
-    let dir = TempDir::new();
-    let path = dir.0.join("exported.mfd");
+    let dir = TempDir::new("json_array").unwrap();
+    let path = dir.path().join("exported.mfd");
     let report = mfd::preflight_export(&project, &path).unwrap();
     assert!(!report.is_native_compatible());
     assert!(matches!(
@@ -341,11 +328,11 @@ fn emit(root: &Path) {
 #[test]
 #[ignore = "compiles generated Rust and C# Release hosts; requires Cargo and .NET 10"]
 fn generated_array_record_release_hosts_match_complete_values_and_typed_failures() {
-    let dir = TempDir::new();
-    emit(&dir.0);
+    let dir = TempDir::new("json_array").unwrap();
+    emit(dir.path());
     let fixtures = fixture();
     let fixtures = fixtures.parent().unwrap();
-    let rust = dir.0.join("rust");
+    let rust = dir.path().join("rust");
     let manifest = rust.join("Cargo.toml");
     let text = std::fs::read_to_string(&manifest)
         .unwrap()
@@ -364,20 +351,20 @@ fn generated_array_record_release_hosts_match_complete_values_and_typed_failures
             .arg(manifest)
             .args(["--bin", "array-record-host", "--"])
             .arg(fixtures.join("cases.json"))
-            .arg(dir.0.join("target-schema.json"))
-            .arg(dir.0.join("parser-schema.json"))
+            .arg(dir.path().join("target-schema.json"))
+            .arg(dir.path().join("parser-schema.json"))
             .arg(fixtures.join("absence-cases.json")),
     );
-    let host = dir.0.join("csharp/host");
+    let host = dir.path().join("csharp/host");
     std::fs::create_dir(&host).unwrap();
     std::fs::write(
-        dir.0.join("NuGet.Config"),
+        dir.path().join("NuGet.Config"),
         r#"<configuration><packageSources><clear/></packageSources></configuration>"#,
     )
     .unwrap();
     std::fs::write(host.join("Host.csproj"), r#"<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><TreatWarningsAsErrors>true</TreatWarningsAsErrors><NuGetAudit>false</NuGetAudit></PropertyGroup><ItemGroup><ProjectReference Include="../Ferrule.Generated.csproj"/></ItemGroup></Project>"#).unwrap();
     std::fs::copy(fixtures.join("csharp_host.cs"), host.join("Program.cs")).unwrap();
-    let home = dir.0.join("dotnet-home");
+    let home = dir.path().join("dotnet-home");
     checked(dotnet(&host, &home).arg("--version"));
     checked(
         dotnet(&host, &home)
@@ -393,8 +380,8 @@ fn generated_array_record_release_hosts_match_complete_values_and_typed_failures
             .arg(host.join("Host.csproj"))
             .arg("--")
             .arg(fixtures.join("cases.json"))
-            .arg(dir.0.join("target-schema.json"))
-            .arg(dir.0.join("parser-schema.json"))
+            .arg(dir.path().join("target-schema.json"))
+            .arg(dir.path().join("parser-schema.json"))
             .arg(fixtures.join("absence-cases.json")),
     );
 }

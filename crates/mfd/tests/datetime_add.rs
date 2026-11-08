@@ -1,26 +1,9 @@
 use std::collections::BTreeMap;
-use std::path::PathBuf;
 
 use ir::{Instance, ScalarType, SchemaNode, Value};
 use mapping::{Binding, Graph, Node, Project, Scope};
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Self {
-        let path =
-            std::env::temp_dir().join(format!("ferrule_mfd_datetime_add_{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn project() -> Project {
     let nodes = BTreeMap::from([
@@ -81,8 +64,8 @@ fn project() -> Project {
 
 #[test]
 fn three_input_datetime_add_exports_as_growable_and_reimports() {
-    let dir = TempDir::new();
-    let design = dir.0.join("datetime-add.mfd");
+    let dir = TempDir::new("mfd_datetime_add").unwrap();
+    let design = dir.path().join("datetime-add.mfd");
     let warnings = mfd::export(&project(), &design).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
     let xml = std::fs::read_to_string(&design).unwrap();
