@@ -215,7 +215,8 @@ fn group_plan(project: &Project) -> Option<NativeGroupFahrenheit> {
     let row = &project.root.children[0];
     let mut seen = BTreeSet::new();
     let graph = &project.graph;
-    let [month, hyphen] = call(take(graph, row.group_by?, &mut seen)?, "substring_before")? else {
+    let group_by = row.group_by?;
+    let [month, hyphen] = call(take(graph, group_by, &mut seen)?, "substring_before")? else {
         return None;
     };
     source_field(take(graph, *month, &mut seen)?, &["month"], &["data"])?;
@@ -242,7 +243,7 @@ fn group_plan(project: &Project) -> Option<NativeGroupFahrenheit> {
         .copied()
         .filter(|id| {
             !products.iter().any(|(_, aggregate)| aggregate == id)
-                && *id != row.group_by.unwrap()
+                && *id != group_by
                 && !matches!(
                     graph.nodes.get(id),
                     Some(

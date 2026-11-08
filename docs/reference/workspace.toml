@@ -146,3 +146,7 @@ role = "Versioned MFD capability inventory and evidence validation"
 [[area.component]]
 path = "crates/reference-docs"
 role = "Generator and freshness check for shared technical references"
+
+[[area.component]]
+path = "crates/test-support"
+role = "Shared test temporary directories and fixture writers"

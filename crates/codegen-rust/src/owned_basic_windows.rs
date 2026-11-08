@@ -602,9 +602,12 @@ fn render_legacy_iteration(
         !iteration.windows().is_empty() || iteration.output() == IterationOutput::First;
     let renumber = iteration.filter().is_some() || sort.is_some() || has_windows;
     // Common validation confines this to ordinary static Source Group/Scalar.
+    let IterationKind::Candidates(candidates) = iteration.kind() else {
+        return Err(codegen::unrendered_iteration(program, iteration).into());
+    };
     render_iteration_candidates(
         program,
-        iteration.input(),
+        candidates,
         sort.is_some() || has_windows,
         &mut output,
     )?;
