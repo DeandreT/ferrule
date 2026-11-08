@@ -379,7 +379,19 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ignored-compiled-tests-${{ matrix.shard }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ steps.ignored.outputs.evidence_dir }}
+          # Keep complete per-test command output, not package caches, compiled
+          # binaries or temporary sockets from the preparation directories.
+          path: |
+            ${{ steps.ignored.outputs.evidence_dir }}/list.json
+            ${{ steps.ignored.outputs.evidence_dir }}/failed.txt
+            ${{ steps.ignored.outputs.evidence_dir }}/*/command.txt
+            ${{ steps.ignored.outputs.evidence_dir }}/*/environment.json
+            ${{ steps.ignored.outputs.evidence_dir }}/*/removed-environment.json
+            ${{ steps.ignored.outputs.evidence_dir }}/*/stdout.log
+            ${{ steps.ignored.outputs.evidence_dir }}/*/stderr.log
+            ${{ steps.ignored.outputs.evidence_dir }}/*/exit-status.txt
+            ${{ steps.ignored.outputs.evidence_dir }}/*/storage-refusal.txt
+            ${{ steps.ignored.outputs.evidence_dir }}/*/skipped.txt
           if-no-files-found: error
           include-hidden-files: true
           retention-days: 14

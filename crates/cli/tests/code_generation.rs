@@ -284,6 +284,8 @@ mod unicode_casing;
 mod user_function_argument_order;
 #[path = "code_generation/value_maps.rs"]
 mod value_maps;
+#[path = "code_generation/valuemap_input_mode.rs"]
+mod valuemap_input_mode;
 #[path = "code_generation/variadic_logical.rs"]
 mod variadic_logical;
 #[path = "code_generation/x12_mapforce_interchanges.rs"]
