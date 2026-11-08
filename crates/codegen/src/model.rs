@@ -1416,6 +1416,48 @@ pub enum IterationSource {
     OptionalPresence(OptionalPresence),
 }
 
+/// How one iterating scope runs, split by the emission path that renders it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IterationKind<'a> {
+    /// A candidate loop over path-addressed items.
+    Candidates(CandidateIteration<'a>),
+    /// An endpoint-owned input; only the paired Basic family renders it.
+    Owned(OwnedIteration<'a>),
+    /// Independently evaluated segments; no candidate loop.
+    Concatenate(&'a ScopeSequence),
+    /// Zero or one group in the parent context; no candidate loop.
+    OptionalPresence(OptionalPresence),
+}
+
+/// Exactly the inputs a candidate loop can walk, before filter, sort,
+/// grouping and windows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CandidateIteration<'a> {
+    Source(&'a SourceIteration),
+    DynamicDocuments(&'a DynamicDocumentIteration),
+    Generated(&'a GeneratedSequence),
+    InnerJoin(&'a InnerJoin),
+}
+
+impl<'a> CandidateIteration<'a> {
+    /// The source path a source-backed loop walks; `None` for generated and
+    /// joined candidates.
+    pub fn source_path(self) -> Option<&'a [String]> {
+        match self {
+            Self::Source(source) => Some(source.path()),
+            Self::DynamicDocuments(dynamic) => Some(dynamic.source().path()),
+            Self::Generated(_) | Self::InnerJoin(_) => None,
+        }
+    }
+}
+
+/// An endpoint-owned iteration input.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OwnedIteration<'a> {
+    Source(&'a OwnedSourceIteration),
+    InnerJoin(&'a OwnedInnerJoin),
+}
+
 /// Zero or one group selected by one Boolean expression evaluated in the
 /// unchanged parent context; no candidate frame or position is added.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1857,6 +1899,33 @@ impl IterationPlan {
 
     pub const fn input(&self) -> &IterationSource {
         &self.input
+    }
+
+    pub const fn kind(&self) -> IterationKind<'_> {
+        match &self.input {
+            IterationSource::Source(source) => {
+                IterationKind::Candidates(CandidateIteration::Source(source))
+            }
+            IterationSource::DynamicDocuments(dynamic) => {
+                IterationKind::Candidates(CandidateIteration::DynamicDocuments(dynamic))
+            }
+            IterationSource::Generated(sequence) => {
+                IterationKind::Candidates(CandidateIteration::Generated(sequence))
+            }
+            IterationSource::InnerJoin(join) => {
+                IterationKind::Candidates(CandidateIteration::InnerJoin(join))
+            }
+            IterationSource::OwnedSource(source) => {
+                IterationKind::Owned(OwnedIteration::Source(source))
+            }
+            IterationSource::OwnedInnerJoin(join) => {
+                IterationKind::Owned(OwnedIteration::InnerJoin(join))
+            }
+            IterationSource::Concatenate(sequence) => IterationKind::Concatenate(sequence),
+            IterationSource::OptionalPresence(presence) => {
+                IterationKind::OptionalPresence(*presence)
+            }
+        }
     }
 
     pub const fn source_iteration(&self) -> Option<&SourceIteration> {

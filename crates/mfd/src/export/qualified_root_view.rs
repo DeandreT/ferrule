@@ -568,7 +568,7 @@ pub(super) fn prepare_export(
         .map_err(|e| unsupported(&format!("source schema: {e}")))?;
     let target_xsd = format_xml::xsd::export(&project.target)
         .map_err(|e| unsupported(&format!("target schema: {e}")))?;
-    let xml = render::mapping_xml(project, &plan, &allocated, &source_name, &target_name);
+    let xml = render::mapping_xml(project, &plan, &allocated, &source_name, &target_name)?;
     let load = |declared: &str| -> proof::Result<proof::SchemaResource> {
         let bytes = if declared == source_name {
             source_xsd.as_bytes()
