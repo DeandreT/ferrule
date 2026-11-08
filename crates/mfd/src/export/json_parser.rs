@@ -224,14 +224,17 @@ fn read_candidate(args: &[NodeId], graph: &Graph) -> Result<Candidate, String> {
             path.join("/")
         ));
     }
-    let field = schema_node_at(&schema, &path)
+    let field = schema
+        .descendant(&path)
         .ok_or_else(|| format!("field path `{}` is absent from its schema", path.join("/")))?;
     if field.repeating || !matches!(field.kind, SchemaKind::Scalar { .. }) {
         return Err(format!("field path `{}` is not scalar", path.join("/")));
     }
-    if (1..path.len())
-        .any(|length| schema_node_at(&schema, &path[..length]).is_some_and(|node| node.repeating))
-    {
+    if (1..path.len()).any(|length| {
+        schema
+            .descendant(&path[..length])
+            .is_some_and(|node| node.repeating)
+    }) {
         return Err(format!("field path `{}` crosses an array", path.join("/")));
     }
     Ok(Candidate {
@@ -310,9 +313,4 @@ fn literal_string<'a>(graph: &'a Graph, node: NodeId, label: &str) -> Result<&'a
         ));
     };
     Ok(value)
-}
-
-fn schema_node_at<'a>(schema: &'a SchemaNode, path: &[String]) -> Option<&'a SchemaNode> {
-    path.iter()
-        .try_fold(schema, |node, segment| node.child(segment))
 }

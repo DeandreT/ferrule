@@ -38,6 +38,16 @@ use ir::{GroupAlternativeMode, ScalarType, ScalarTypeSet, SchemaKind, SchemaNode
 
 use crate::{ContentlessSchemaReason, JsonFormatError};
 
+/// The JSON Schema `type` keyword value for a scalar type.
+pub fn json_schema_type_name(ty: ScalarType) -> &'static str {
+    match ty {
+        ScalarType::String => "string",
+        ScalarType::Int => "integer",
+        ScalarType::Float => "number",
+        ScalarType::Bool => "boolean",
+    }
+}
+
 mod all_of;
 mod allowed_values;
 mod alternatives;

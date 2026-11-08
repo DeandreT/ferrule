@@ -10,7 +10,7 @@ use mapping::{
 };
 use rust_xlsxwriter::{ExcelDateTime, Format, Workbook, Worksheet};
 
-use super::{MAX_EXACT_F64_INTEGER, MAX_WORKSHEET_ROW, XlsxFormatError, boolean_lexical};
+use super::{MAX_WORKSHEET_ROW, XlsxFormatError, boolean_lexical, exact_f64};
 
 /// Reads a workbook written with a retained hierarchical layout.
 pub fn read_hierarchical(
@@ -673,12 +673,6 @@ fn value_error(column: &XlsxOutputColumn, reason: &'static str) -> XlsxFormatErr
         path: column.path.join("/"),
         reason,
     }
-}
-
-fn exact_f64(value: i64) -> Option<f64> {
-    (-MAX_EXACT_F64_INTEGER..=MAX_EXACT_F64_INTEGER)
-        .contains(&value)
-        .then_some(value as f64)
 }
 
 fn schema_at<'a>(root: &'a SchemaNode, path: &[String]) -> Result<&'a SchemaNode, XlsxFormatError> {
