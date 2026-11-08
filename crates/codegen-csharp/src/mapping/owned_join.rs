@@ -23,21 +23,14 @@ fn render_source(source: &::mapping::OwnedJoinSource, output: &mut String) {
 }
 
 fn render_stages(plan: &::mapping::OwnedJoinPlan, output: &mut String) {
-    let sources = plan
-        .sources()
-        .map(::mapping::OwnedJoinSource::collection)
-        .collect::<Vec<_>>();
     output.push_str("new global::Ferrule.Runtime.FerruleOwnedJoinStage[]\n            {\n");
-    for (source, conditions) in plan.stages() {
+    for (source, keys) in plan.keyed_stages() {
         output.push_str("                new(");
         render_source(source, output);
         output.push_str(", new global::Ferrule.Runtime.FerruleOwnedJoinKey[] { ");
-        for key in conditions.iter() {
-            let left = sources
-                .iter()
-                .position(|collection| *collection == key.left_collection())
-                .expect("owned plans join each left source before its key");
-            output.push_str(&format!("new({left}, "));
+        for stage_key in keys {
+            let key = stage_key.key();
+            output.push_str(&format!("new({}, ", stage_key.left()));
             render_path(key.left_path(), output);
             output.push_str(", ");
             render_path(key.right_path(), output);
@@ -58,10 +51,7 @@ pub(super) fn render_aggregate(
     output: &mut String,
 ) {
     let plan = &aggregate.plan;
-    let first = plan
-        .sources()
-        .next()
-        .expect("owned plans have a first source");
+    let first = plan.first();
     output.push_str(&format!(
         "\n    {{\n        global::System.Collections.Generic.IReadOnlyList<{CONTEXT}> tuples_{node};\n        try\n        {{\n            tuples_{node} = context.OwnedInnerJoin({}UL,\n                ",
         aggregate.join.get()
@@ -115,10 +105,7 @@ pub(super) fn render_scope(
 ) {
     let id = join.id().get();
     let plan = join.plan();
-    let first = plan
-        .sources()
-        .next()
-        .expect("owned plans have a first source");
+    let first = plan.first();
     output.push_str(&format!(
         "        var candidates_{index} = new global::System.Collections.Generic.List<{CONTEXT}>(context.OwnedInnerJoin({id}UL,\n            "
     ));

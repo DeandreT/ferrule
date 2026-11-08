@@ -16,6 +16,7 @@ format-edi = { workspace = true }
 format-xml = { workspace = true }
 thiserror = { workspace = true }
 regex = { workspace = true }
+serde = { workspace = true }
 
 [dev-dependencies]
 format-json = { workspace = true }

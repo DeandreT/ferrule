@@ -159,16 +159,6 @@ pub fn sample_csv(
     format_csv::sample(path, delimiter, has_headers)
 }
 
-/// Bounded CSV preview with an explicit quote character.
-pub fn sample_csv_with_quote(
-    path: &Path,
-    delimiter: Option<char>,
-    quote: Option<char>,
-    has_headers: bool,
-) -> Result<CsvSample, format_csv::CsvFormatError> {
-    format_csv::sample_with_quote(path, delimiter, quote, has_headers)
-}
-
 /// Bounded CSV preview with optional quote recognition disabled.
 pub fn sample_csv_with_dialect(
     path: &Path,
