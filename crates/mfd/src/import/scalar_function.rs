@@ -193,11 +193,21 @@ impl GraphBuilder<'_> {
                         self.warnings.push(warning);
                     }
                 }
-                Node::ValueMap {
-                    input: input_or_null(self, 0),
+                let input = input_or_null(self, 0);
+                let map = Node::ValueMap {
+                    input,
                     input_type: value_map.input_type,
                     table: value_map.table,
                     default: value_map.default,
+                };
+                if value_map.pass_through_input {
+                    let map = self.alloc(map);
+                    Node::Call {
+                        function: "substitute_missing".to_string(),
+                        args: vec![map, input],
+                    }
+                } else {
+                    map
                 }
             }
             (name, _) => {
