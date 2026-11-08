@@ -85,17 +85,18 @@ pub use json5_boundary::{
 };
 pub use lower::{lower, lower_with_owned_capabilities};
 pub use model::{
-    AggregateFunction, AggregateValue, Binding, DelimitedTextField, DelimitedTextFieldError,
-    DynamicDocumentIteration, DynamicSourceDriver, DynamicSourceProgram, DynamicTargetBinding,
-    DynamicTargetChild, Expression, ExpressionNode, FailureIteration, FailureRule,
-    FailureSelection, FlexTextFieldProfile, GeneratedFilterMapCapture, GeneratedFilterMapV1,
-    GeneratedRange, GeneratedSequence, GroupingPlan, IterationOutput, IterationPlan,
-    IterationSource, NamedSourceProgram, NamedTargetProgram, NamedXmlInputPolicy,
-    NamedXmlOutputPolicy, OptionalPresence, OwnedSourceIteration, Program, RuntimeValue,
-    SUPPORTED_SCALAR_CALLS, ScalarFunction, ScalarTargetDomain, ScopeSequence, SequenceWindow,
-    SortFilterOrder, SortKey, SortPlan, SourceIteration, TargetConstruction, TargetScope,
-    UserFunctionParameter, UserFunctionProgram, XmlBoundaryProgram, XmlInputPolicy,
-    XmlInputProfile, XmlMixedContentElement, XmlMixedContentReplacement, XmlOutputPolicy,
+    AggregateFunction, AggregateValue, Binding, CandidateIteration, DelimitedTextField,
+    DelimitedTextFieldError, DynamicDocumentIteration, DynamicSourceDriver, DynamicSourceProgram,
+    DynamicTargetBinding, DynamicTargetChild, Expression, ExpressionNode, FailureIteration,
+    FailureRule, FailureSelection, FlexTextFieldProfile, GeneratedFilterMapCapture,
+    GeneratedFilterMapV1, GeneratedRange, GeneratedSequence, GroupingPlan, IterationKind,
+    IterationOutput, IterationPlan, IterationSource, NamedSourceProgram, NamedTargetProgram,
+    NamedXmlInputPolicy, NamedXmlOutputPolicy, OptionalPresence, OwnedIteration,
+    OwnedSourceIteration, Program, RuntimeValue, SUPPORTED_SCALAR_CALLS, ScalarFunction,
+    ScalarTargetDomain, ScopeSequence, SequenceWindow, SortFilterOrder, SortKey, SortPlan,
+    SourceIteration, TargetConstruction, TargetScope, UserFunctionParameter, UserFunctionProgram,
+    XmlBoundaryProgram, XmlInputPolicy, XmlInputProfile, XmlMixedContentElement,
+    XmlMixedContentReplacement, XmlOutputPolicy,
 };
 pub use owned_admission::{
     NamedInputAdmission, NamedInputAdmissionPlan, NamedInputAvailability, NamedInputCatalogue,
@@ -122,8 +123,9 @@ pub use validate::{
     OwnedSourceSchemaShape, OwnedSourceStructureReason, ProgramValidationError,
     RecursiveSequencePathRole, SequenceExpressionRole, SequenceOwner, XmlDocumentSetInputRefusal,
     is_basic_owned_primary_row_failure, owned_dynamic_loading, owned_expression_emission_error,
-    owned_sequence_emission_error, validate_basic_owned_emission_with_capabilities,
-    validate_owned_emission, validate_program, validate_program_with_owned_capabilities,
+    owned_sequence_emission_error, unrendered_iteration,
+    validate_basic_owned_emission_with_capabilities, validate_owned_emission, validate_program,
+    validate_program_with_owned_capabilities,
 };
 pub use x12_boundary::{
     MAX_EMBEDDED_X12_DESCRIPTOR_BYTES, MAX_X12_SCHEMA_DEPTH, MAX_X12_SCHEMA_NODES,

@@ -627,6 +627,9 @@ fn cell_value<'a>(
     })
 }
 
+/// XLSX numbers accept only the contiguous integer range that `f64` represents
+/// exactly (`±2^53`). This is narrower than `ir::i64_to_exact_f64`, which also
+/// accepts larger integers whose significand fits the mantissa.
 fn exact_f64(value: i64) -> Option<f64> {
     (-MAX_EXACT_F64_INTEGER..=MAX_EXACT_F64_INTEGER)
         .contains(&value)

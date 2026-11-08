@@ -5,10 +5,9 @@ use ir::{ScalarType, SchemaKind, Value};
 use mapping::{FunctionId, FunctionParameterId, Node, NodeId, Project, UserFunction};
 
 use crate::MfdError;
+use crate::datatype::mfd_type_name;
 
-use super::function::{
-    constant_parts, native_function, scalar_type_name, value_scalar_type, value_text,
-};
+use super::function::{constant_parts, native_function, value_scalar_type, value_text};
 use super::schema::{KeyAlloc, xml_escape};
 
 struct ParameterPort {
@@ -482,7 +481,7 @@ fn render_definition(
              \t\t\t\t</component>\n",
             xml_escape(&parameter.name),
             port.component_id,
-            scalar_type_name(parameter.ty),
+            mfd_type_name(parameter.ty),
             xml_escape(&parameter.name)
         );
     }
@@ -618,7 +617,7 @@ fn render_definition(
          \t\t\t\t</component>\n",
         xml_escape(&function.output_name),
         interface.output_component_id,
-        scalar_type_name(function.output_type),
+        mfd_type_name(function.output_type),
         xml_escape(&function.output_name)
     );
 
@@ -782,7 +781,7 @@ fn render_value_map(
         .iter()
         .find_map(|(_, value)| value_scalar_type(value))
         .or_else(|| default.as_ref().and_then(value_scalar_type))
-        .map(scalar_type_name)
+        .map(mfd_type_name)
         .unwrap_or("string");
     let _ = write!(
         components,
@@ -791,7 +790,7 @@ fn render_value_map(
          {indent}\t<targets><datapoint pos=\"0\" key=\"{output}\"/></targets>\n\
          {indent}\t<data><valuemap{mode}><valuemapTable>{rows}</valuemapTable><input name=\"input\" type=\"{}\"/><result name=\"result\" type=\"{result_type}\"{default_attr}/></valuemap></data>\n\
          {indent}</component>\n",
-        scalar_type_name(input_type.unwrap_or(ir::ScalarType::String))
+        mfd_type_name(input_type.unwrap_or(ir::ScalarType::String))
     );
 }
 

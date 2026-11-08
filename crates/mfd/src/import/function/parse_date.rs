@@ -211,17 +211,15 @@ fn ordinary_json_owner(component: roxmltree::Node<'_, '_>) -> bool {
     {
         return false;
     }
-    let data = component
-        .children()
-        .find(|node| node.has_tag_name("data"))
-        .unwrap();
+    let Some(data) = crate::import::child_element(component, "data") else {
+        return false;
+    };
     if !exact_children(data, &["root", "json"]) {
         return false;
     }
-    let json = data
-        .children()
-        .find(|node| node.has_tag_name("json"))
-        .unwrap();
+    let Some(json) = crate::import::child_element(data, "json") else {
+        return false;
+    };
     if json.tag_name().namespace().is_some()
         || json
             .attribute("schema")
@@ -233,10 +231,9 @@ fn ordinary_json_owner(component: roxmltree::Node<'_, '_>) -> bool {
     {
         return false;
     }
-    let root = data
-        .children()
-        .find(|node| node.has_tag_name("root"))
-        .unwrap();
+    let Some(root) = crate::import::child_element(data, "root") else {
+        return false;
+    };
     root.descendants()
         .filter(roxmltree::Node::is_element)
         .all(|node| {
@@ -263,17 +260,15 @@ fn literal_string_owner(component: roxmltree::Node<'_, '_>) -> bool {
     {
         return false;
     }
-    let data = component
-        .children()
-        .find(|node| node.has_tag_name("data"))
-        .unwrap();
+    let Some(data) = crate::import::child_element(component, "data") else {
+        return false;
+    };
     if !exact_children(data, &["constant"]) {
         return false;
     }
-    let literal = data
-        .children()
-        .find(|node| node.has_tag_name("constant"))
-        .unwrap();
+    let Some(literal) = crate::import::child_element(data, "constant") else {
+        return false;
+    };
     literal.tag_name().namespace().is_none()
         && literal.attribute("datatype") == Some("string")
         && literal.attribute("value").is_some()
