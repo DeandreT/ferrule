@@ -1,8 +1,8 @@
-use crate::dotnet_temp::DotnetTemp;
 use std::fs;
 use std::process::Command;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
+use test_support::DotnetTemp;
 
 include!("../../codegen/tests/fixtures/raise_project.rs");
 

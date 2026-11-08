@@ -115,16 +115,7 @@ fn mixed_interchanges_match_native_through_generated_and_shared_csharp_readers()
         Some(2)
     );
 
-    let root = std::env::temp_dir().join(format!(
-        "ferrule_mixed_x12_{}_{}",
-        std::process::id(),
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos()
-    ));
-    fs::create_dir(&root).unwrap();
-    let root = TempDir(root);
+    let root = TempDir::new("mixed-x12").unwrap();
     let candidate = mapforce::identity(&schema);
     let program = lower(&candidate);
     let policy = X12BoundaryPolicy {
@@ -133,9 +124,11 @@ fn mixed_interchanges_match_native_through_generated_and_shared_csharp_readers()
     };
     let artifacts = codegen_csharp::emit_with_x12(&program, &policy).unwrap();
     for file in artifacts.files() {
-        let path = root.join("Mapping").join(file.path.as_str());
-        fs::create_dir_all(path.parent().unwrap()).unwrap();
-        fs::write(path, &file.contents).unwrap();
+        root.write(
+            Path::new("Mapping").join(file.path.as_str()),
+            &file.contents,
+        )
+        .unwrap();
     }
     let configured = codegen::prepare_x12_boundary(
         &program,

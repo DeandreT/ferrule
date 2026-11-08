@@ -1,6 +1,6 @@
 use std::error::Error;
-use std::path::PathBuf;
 use std::process::Command;
+use test_support::{DotnetTemp, TempDir};
 
 #[path = "../../../conformance/invocation-counter-expressions/admission.rs"]
 mod admission;
@@ -9,11 +9,11 @@ mod expected;
 #[path = "../../../conformance/invocation-counter-expressions/project.rs"]
 mod fixture;
 
-struct Temporary(PathBuf);
+struct Temporary(Option<TempDir>);
 impl Drop for Temporary {
     fn drop(&mut self) {
-        if std::env::var_os("FERRULE_CODEGEN_KEEP_ARTIFACTS").is_none() {
-            let _ = std::fs::remove_dir_all(&self.0);
+        if std::env::var_os("FERRULE_CODEGEN_KEEP_ARTIFACTS").is_some() {
+            self.0.take().unwrap().keep();
         }
     }
 }
@@ -71,28 +71,21 @@ fn run_fixture(
     host: &str,
     expected: &str,
 ) -> Result<(), Box<dyn Error>> {
-    let nonce = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)?
-        .as_nanos();
-    let root = Temporary(std::env::temp_dir().join(format!(
-        "ferrule_counter_csharp_{}_{nonce}",
-        std::process::id()
-    )));
-    std::fs::create_dir(&root.0)?;
+    let directory = Temporary(Some(TempDir::with_retention("counter-csharp", false)?));
+    let root = directory.0.as_ref().unwrap();
     let program = codegen::lower(&project)?;
     for file in codegen_csharp::emit(&program)?.files() {
-        let path = root.0.join(file.path.as_str());
-        std::fs::create_dir_all(path.parent().unwrap())?;
-        std::fs::write(path, &file.contents)?;
+        root.write(file.path.as_str(), &file.contents)?;
     }
-    std::fs::create_dir(root.0.join("Harness"))?;
+    std::fs::create_dir(root.join("Harness"))?;
     std::fs::write(
-        root.0.join("Harness/Harness.csproj"),
+        root.join("Harness/Harness.csproj"),
         r#"<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><TreatWarningsAsErrors>true</TreatWarningsAsErrors><InvariantGlobalization>true</InvariantGlobalization></PropertyGroup><ItemGroup><ProjectReference Include="../Ferrule.Generated.csproj" /></ItemGroup></Project>"#,
     )?;
-    std::fs::write(root.0.join("Harness/Program.cs"), host)?;
+    std::fs::write(root.join("Harness/Program.cs"), host)?;
     let output = Command::new("dotnet")
         .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
+        .dotnet_temp(root.path())
         .args([
             "run",
             "--project",
@@ -102,10 +95,10 @@ fn run_fixture(
             "-p:UseSharedCompilation=false",
             "-p:BuildInParallel=false",
         ])
-        .current_dir(&root.0)
+        .current_dir(root.path())
         .output()?;
-    std::fs::write(root.0.join("stdout.txt"), &output.stdout)?;
-    std::fs::write(root.0.join("stderr.txt"), &output.stderr)?;
+    std::fs::write(root.join("stdout.txt"), &output.stdout)?;
+    std::fs::write(root.join("stderr.txt"), &output.stderr)?;
     assert!(
         output.status.success(),
         "{}\n{}",

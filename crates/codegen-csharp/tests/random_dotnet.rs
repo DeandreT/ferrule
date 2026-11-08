@@ -1,23 +1,10 @@
-#[path = "../../codegen/tests/fixtures/dotnet_temp.rs"]
-mod dotnet_temp;
-use dotnet_temp::DotnetTemp;
+use test_support::{DotnetTemp, TempDir};
 
 use std::path::Path;
 use std::process::Command;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use ir::{ScalarType, SchemaNode};
 use mapping::{Binding, Graph, Node, Project, Scope};
-
-/// Removes a per-test directory on drop, including after a panic.
-struct TempDir(std::path::PathBuf);
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
 
 #[test]
 fn generated_random_preserves_float_range_binding_shape_and_arity_errors()
@@ -65,22 +52,12 @@ fn generated_random_preserves_float_range_binding_shape_and_arity_errors()
         },
     };
     let program = codegen::lower(&project)?;
-    static NEXT: AtomicUsize = AtomicUsize::new(0);
-    let root = std::env::temp_dir().join(format!(
-        "ferrule_random_host_{}_{}_{}",
-        std::process::id(),
-        SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos(),
-        NEXT.fetch_add(1, Ordering::Relaxed)
-    ));
-    std::fs::create_dir(&root)?;
-    let _cleanup = TempDir(root.clone());
+    let root = TempDir::new("random-host")?;
     eprintln!("complete random host evidence: {}", root.display());
     std::fs::write(root.join("project.txt"), format!("{project:#?}\n"))?;
     std::fs::write(root.join("lowered-program.txt"), format!("{program:#?}\n"))?;
     for artifact in codegen_csharp::emit(&program)?.files() {
-        let path = root.join(artifact.path.as_str());
-        std::fs::create_dir_all(path.parent().expect("parent"))?;
-        std::fs::write(path, &artifact.contents)?;
+        root.write(artifact.path.as_str(), &artifact.contents)?;
     }
     std::fs::create_dir(root.join("Host"))?;
     std::fs::write(

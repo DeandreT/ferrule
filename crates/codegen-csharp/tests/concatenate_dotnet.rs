@@ -1,11 +1,8 @@
-#[path = "../../codegen/tests/fixtures/dotnet_temp.rs"]
-mod dotnet_temp;
-use dotnet_temp::DotnetTemp;
+use test_support::{DotnetTemp, TempDir};
 
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use codegen::ProgramValidationError;
 use ir::{Instance, ScalarType, SchemaNode, Value};
@@ -238,13 +235,11 @@ fn generated_scope_sequences_match_engine_order_controls_and_nested_content() {
         .expect("engine executes scope sequence");
     let program = codegen::lower(&project).expect("scope sequence lowers");
     let artifacts = codegen_csharp::emit(&program).expect("scope sequence emits");
-    let directory = TempDirectory::new("scope-sequence");
+    let directory = TempDir::new("scope-sequence").expect("temporary directory is created");
     for file in artifacts.files() {
-        let path = directory.path().join(file.path.as_str());
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).expect("artifact parent exists");
-        }
-        std::fs::write(path, &file.contents).expect("artifact is written");
+        directory
+            .write(file.path.as_str(), &file.contents)
+            .expect("artifact is written");
     }
     write_harness(directory.path());
     let build = Command::new("dotnet")
@@ -376,30 +371,4 @@ fn assert_command_succeeded(name: &str, output: &std::process::Output) {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
-}
-
-struct TempDirectory(PathBuf);
-
-impl TempDirectory {
-    fn new(tag: &str) -> Self {
-        static NEXT: AtomicU64 = AtomicU64::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_codegen_csharp_{tag}_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path).expect("temporary directory is created");
-        Self(path)
-    }
-
-    fn path(&self) -> &Path {
-        &self.0
-    }
-}
-
-impl Drop for TempDirectory {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
 }
