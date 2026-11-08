@@ -41,7 +41,7 @@ pub use error::{
 };
 pub use owned_sources::{
     OwnedDynamicLoading, is_basic_owned_primary_row_failure, owned_dynamic_loading,
-    owned_expression_emission_error, owned_sequence_emission_error,
+    owned_expression_emission_error, owned_sequence_emission_error, unrendered_iteration,
     validate_basic_owned_emission_with_capabilities, validate_owned_emission,
 };
 use sources::{SchemaCursor, SourceCatalog};
