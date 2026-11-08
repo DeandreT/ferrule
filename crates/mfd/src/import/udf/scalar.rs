@@ -708,7 +708,7 @@ impl DefinitionContext<'_> {
             (_, 4) => self.if_else_expression(function, active, budget, sequence_items),
             (_, 23) => {
                 let valuemap = function.valuemap.clone().unwrap_or_default();
-                Ok(ScalarExpr::ValueMap {
+                let map = ScalarExpr::ValueMap {
                     input: Box::new(self.function_input(
                         function,
                         0,
@@ -719,6 +719,16 @@ impl DefinitionContext<'_> {
                     input_type: valuemap.input_type,
                     table: valuemap.table,
                     default: valuemap.default,
+                };
+                Ok(if valuemap.pass_through_input {
+                    // Rebuilt rather than cloned so the copy claims expansion budget.
+                    let input = self.function_input(function, 0, active, budget, sequence_items)?;
+                    ScalarExpr::Call {
+                        function: "substitute_missing".to_string(),
+                        args: vec![map, input],
+                    }
+                } else {
+                    map
                 })
             }
             ("is-null", 5) if function.library == "db" => Ok(ScalarExpr::Call {
