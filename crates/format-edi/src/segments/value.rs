@@ -209,7 +209,7 @@ fn format_value(schema: &SchemaNode, value: &Value) -> Result<String, EdiFormatE
         (ScalarType::Float, Value::Float(_)) => Err(EdiFormatError::NonFiniteFloat {
             element: schema.name.clone(),
         }),
-        (ScalarType::Float, Value::Int(value)) if exact_f64(*value).is_some() => {
+        (ScalarType::Float, Value::Int(value)) if ir::i64_to_exact_f64(*value).is_some() => {
             Ok(value.to_string())
         }
         (ScalarType::Float, Value::Int(_)) => Err(incompatible("int outside the exact f64 range")),
@@ -228,13 +228,4 @@ fn format_value(schema: &SchemaNode, value: &Value) -> Result<String, EdiFormatE
             .map_err(|_| incompatible("string")),
         (_, other) => Err(incompatible(other.type_name())),
     }
-}
-
-fn exact_f64(value: i64) -> Option<f64> {
-    let magnitude = value.unsigned_abs();
-    if magnitude == 0 {
-        return Some(0.0);
-    }
-    let significant_bits = u64::BITS - magnitude.leading_zeros() - magnitude.trailing_zeros();
-    (significant_bits <= f64::MANTISSA_DIGITS).then_some(value as f64)
 }

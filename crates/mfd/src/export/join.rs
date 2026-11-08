@@ -417,7 +417,7 @@ pub(super) fn render(args: RenderJoinArgs<'_>) -> Result<JoinExports, MfdError> 
                     sources,
                     owner
                         .mapped_sequence
-                        .then(|| schema_node_at(&project.target, &owner.chain))
+                        .then(|| project.target.descendant(&owner.chain))
                         .flatten(),
                     keys,
                     uid,
@@ -969,14 +969,6 @@ fn keypath_id(
         .map_err(|_| "join declares too many key paths".to_string())?;
     keypaths.insert(path.to_vec(), (id, attribute));
     Ok(id)
-}
-
-fn schema_node_at<'a>(schema: &'a SchemaNode, path: &[String]) -> Option<&'a SchemaNode> {
-    let mut node = schema;
-    for segment in path {
-        node = node.child(segment)?;
-    }
-    Some(node)
 }
 
 fn blocked_nodes(

@@ -1093,7 +1093,7 @@ fn entry_schema_metadata(node: &SchemaNode, preserve_optional: bool) -> String {
         let _ = write!(
             metadata,
             " datatype=\"{}\"",
-            super::function::scalar_type_name(ty)
+            crate::datatype::mfd_type_name(ty)
         );
     }
     if preserve_optional && node.xml_optional {
