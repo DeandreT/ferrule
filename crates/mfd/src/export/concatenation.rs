@@ -142,7 +142,8 @@ fn validate_scope(
         validate_container(scope, path, output)?;
         match format {
             SideFormat::Xml | SideFormat::Xbrl if !path.is_empty() => {
-                let node = schema_node_at(target, path)
+                let node = target
+                    .descendant(path)
                     .ok_or_else(|| unsupported(path, "target schema path is missing"))?;
                 let compatible = matches!(node.kind, SchemaKind::Group { .. })
                     && (node.repeating && output == IterationOutput::Repeated
@@ -155,7 +156,8 @@ fn validate_scope(
                 }
             }
             SideFormat::Edi if !path.is_empty() => {
-                let node = schema_node_at(target, path)
+                let node = target
+                    .descendant(path)
                     .ok_or_else(|| unsupported(path, "target schema path is missing"))?;
                 if !node.repeating
                     || output != IterationOutput::Repeated
@@ -168,7 +170,8 @@ fn validate_scope(
                 }
             }
             SideFormat::Db if !path.is_empty() && (format != SideFormat::Db || path.len() == 1) => {
-                let node = schema_node_at(target, path)
+                let node = target
+                    .descendant(path)
                     .ok_or_else(|| unsupported(path, "target schema path is missing"))?;
                 if !node.repeating || !matches!(node.kind, SchemaKind::Group { .. }) {
                     return Err(unsupported(
@@ -193,7 +196,8 @@ fn validate_scope(
                 ));
             }
         }
-        let target_node = schema_node_at(target, path)
+        let target_node = target
+            .descendant(path)
             .ok_or_else(|| unsupported(path, "target schema path is missing"))?;
         let cloned_ports = schema_node_count(target_node).saturating_mul(segments.len() - 1);
         if segments.len() > 256 || cloned_ports > 65_536 {
@@ -291,7 +295,8 @@ fn validate_segment(
         ));
     }
     if output == IterationOutput::MappedSequence {
-        let _ = schema_node_at(target, path)
+        let _ = target
+            .descendant(path)
             .ok_or_else(|| unsupported(path, "target schema path is missing"))?;
     }
     for child in &scope.children {
@@ -334,7 +339,7 @@ fn collect_branches(
     branches: &mut TargetBranches,
 ) {
     if let Some(segments) = scope.concatenated()
-        && let Some(node) = schema_node_at(schema, path)
+        && let Some(node) = schema.descendant(path)
     {
         let extra_ports = segments
             .iter()
@@ -392,7 +397,8 @@ fn collect_binding_clones(
         let occurrence = occurrences.entry(&binding.target_field).or_default();
         if *occurrence > 0 {
             path.push(binding.target_field.clone());
-            if schema_node_at(schema, path)
+            if schema
+                .descendant(path)
                 .is_some_and(|node| node.repeating && !node.attribute && node.is_scalar())
             {
                 clones.entry(path.clone()).or_default().push(keys.next());
@@ -496,14 +502,6 @@ fn allocate_subtree(
             path.pop();
         }
     }
-}
-
-fn schema_node_at<'a>(schema: &'a SchemaNode, path: &[String]) -> Option<&'a SchemaNode> {
-    let mut node = schema;
-    for segment in path {
-        node = node.child(segment)?;
-    }
-    Some(node)
 }
 
 fn schema_node_count(schema: &SchemaNode) -> usize {

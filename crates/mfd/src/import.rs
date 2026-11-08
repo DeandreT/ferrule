@@ -542,8 +542,13 @@ fn import_pipeline_resolved(
             .position(|intermediate| intermediate.key == key)
             .expect("branching intermediate belongs to the chain")
     });
-    let final_named_output_key = final_named_producer_index
-        .map(|producer_index| lowered[producer_index + 1].source_components[0].key);
+    // The producing stage's name travels with the key it publishes.
+    let final_named_output = final_named_producer_index.map(|producer_index| {
+        (
+            lowered[producer_index + 1].source_components[0].key,
+            format!("mfd-stage-{}", producer_index + 1),
+        )
+    });
     let mapping_path = resources.mapping_path().to_path_buf();
     let mapping_identity = mapping_path.to_string_lossy().into_owned();
     let mut stages = Vec::with_capacity(lowered.len());
@@ -578,10 +583,12 @@ fn import_pipeline_resolved(
                     name: host_name.clone(),
                 }
             } else if index + 1 == chain.intermediates.len() + 1
-                && Some(identity.key) == final_named_output_key
+                && let Some((_, producer_stage)) = final_named_output
+                    .as_ref()
+                    .filter(|(key, _)| *key == identity.key)
             {
                 PipelineInput::StageTarget {
-                    stage: format!("mfd-stage-{}", final_named_producer_index.unwrap() + 1),
+                    stage: producer_stage.clone(),
                     target: None,
                 }
             } else {
@@ -597,7 +604,7 @@ fn import_pipeline_resolved(
             });
         }
         if index + 1 == chain.intermediates.len() + 1
-            && final_named_output_key.is_some()
+            && final_named_output.is_some()
             && extra_sources
                 .iter()
                 .filter(|binding| matches!(binding.from, PipelineInput::StageTarget { .. }))
@@ -1163,6 +1170,14 @@ fn target_input_coverage(
         connected,
         json_null_siblings,
     }
+}
+
+/// The first child element of `node` with the local name `tag`.
+fn child_element<'a, 'input>(
+    node: roxmltree::Node<'a, 'input>,
+    tag: &str,
+) -> Option<roxmltree::Node<'a, 'input>> {
+    node.children().find(|child| child.has_tag_name(tag))
 }
 
 fn selected_json_payload<'a, 'input>(

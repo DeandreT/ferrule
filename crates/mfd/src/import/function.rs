@@ -4,6 +4,7 @@ use ir::{ScalarType, Value};
 use mapping::AggregateOp;
 
 use crate::canonical_function;
+use crate::datatype::mfd_type_name;
 
 use super::schema::parse_u32;
 
@@ -480,11 +481,11 @@ pub(super) fn read(component: &roxmltree::Node) -> FnComponent {
                     (
                         parse_constant(
                             e.attribute("from").unwrap_or_default(),
-                            scalar_type_name(input_type.unwrap_or(ScalarType::String)),
+                            mfd_type_name(input_type.unwrap_or(ScalarType::String)),
                         ),
                         parse_constant(
                             e.attribute("to").unwrap_or_default(),
-                            scalar_type_name(result_type),
+                            mfd_type_name(result_type),
                         ),
                     )
                 })
@@ -493,7 +494,7 @@ pub(super) fn read(component: &roxmltree::Node) -> FnComponent {
                 .descendants()
                 .find(|n| n.has_tag_name("result"))
                 .and_then(|r| r.attribute("defaultValue"))
-                .map(|value| parse_constant(value, scalar_type_name(result_type)))
+                .map(|value| parse_constant(value, mfd_type_name(result_type)))
                 .filter(|_| {
                     !unsupported_input_mode
                         && (vm.attribute("defaultValueMode") == Some("custom")
@@ -1404,15 +1405,6 @@ fn parse_scalar_type(datatype: &str) -> ScalarType {
     }
 }
 
-fn scalar_type_name(ty: ScalarType) -> &'static str {
-    match ty {
-        ScalarType::String => "string",
-        ScalarType::Int => "integer",
-        ScalarType::Float => "decimal",
-        ScalarType::Bool => "boolean",
-    }
-}
-
 pub(super) fn aggregate_op(name: &str) -> Option<AggregateOp> {
     Some(match name {
         "count" => AggregateOp::Count,
@@ -1427,87 +1419,11 @@ pub(super) fn aggregate_op(name: &str) -> Option<AggregateOp> {
 }
 
 pub(super) fn map_name(name: &str) -> Option<&'static str> {
-    Some(match name {
-        "concat" => "concat",
-        "add" => "add",
-        "subtract" => "subtract",
-        "multiply" => "multiply",
-        "divide" => "divide",
-        "equal" => "equal",
-        "not-equal" => "not_equal",
-        "greater" => "greater_than",
-        "less" => "less_than",
-        "greater-equal" | "greater-or-equal" | "equal-or-greater" => "greater_or_equal",
-        "less-equal" | "less-or-equal" | "equal-or-less" => "less_or_equal",
-        "logical-and" => "and",
-        "logical-or" => "or",
-        "logical-not" => "not",
-        "string-length" => "length",
-        "contains" => "contains",
-        "starts-with" => "starts_with",
-        "ends-with" => "ends_with",
-        "matches" => "matches",
-        "replace" => "replace",
-        "upper-case" | "uppercase" => "upper",
-        "lower-case" | "lowercase" => "lower",
-        "string" => "string",
-        "number" => "to_number",
-        "numeric" => "is_numeric",
-        "boolean" => "boolean",
-        "positive" => "positive",
-        "floor" => "floor",
-        "create-guid" => "create_guid",
-        "random" => "random",
-        "format-guid-string" => "format_guid_string",
-        "format-number" => "format_number",
-        "format-date" => "format_date",
-        "format-dateTime" => "format_datetime",
-        "format-time" => "format_time",
-        "trim" => "trim",
-        "left" => "left",
-        "right" => "right",
-        "left-trim" => "left_trim",
-        "right-trim" => "right_trim",
-        "pad-string-left" => "pad_string_left",
-        "pad-string-right" => "pad_string_right",
-        "substring" => "substring",
-        "substring-before" => "substring_before",
-        "substring-after" => "substring_after",
-        "translate" => "translate",
-        "normalize-space" => "normalize_space",
-        "empty" => "is_empty",
-        "get-folder" => "get_folder",
-        "remove-folder" => "remove_folder",
-        "resolve-filepath" => "resolve_filepath",
-        "is-xsi-nil" => "is_xml_nil",
-        "substitute-missing-with-xsi-nil" => "substitute_missing_with_xml_nil",
-        "exists" => "exists",
-        // Native rounding sends exact halves toward positive infinity on
-        // decimal values, unlike Ferrule's away-from-zero `round`.
-        "round" | "round-precision" => "round_half_ceiling",
-        "date-from-datetime" => "date_from_datetime",
-        "year-from-datetime" => "year_from_datetime",
-        "month-from-datetime" => "month_from_datetime",
-        "day-from-datetime" => "day_from_datetime",
-        "weekday" => "weekday",
-        "hour-from-datetime" | "hours-from-datetime" => "hours_from_datetime",
-        "minute-from-datetime" | "minutes-from-datetime" => "minutes_from_datetime",
-        "time-from-datetime" => "time_from_datetime",
-        "datetime-from-date-and-time" => "datetime_from_date_and_time",
-        "datetime-from-parts" => "datetime_from_parts",
-        "duration-from-parts" => "duration_from_parts",
-        "datetime-add" => "datetime_add",
-        "parse-date" => "parse_date",
-        "parse-dateTime" => "parse_datetime",
-        "parse-time" => "parse_time",
-        "edifact-to-datetime" => "edifact_to_datetime",
-        "substitute-missing" | "substitute-null" => "substitute_missing",
-        "get-fileext" => "get_fileext",
-        "convertToISBN13" | "convertToEAN" => "isbn10_to_isbn13",
-        "sleep" => "delay_passthrough",
-        _ => return None,
-    })
+    crate::function_names::map_name(name)
 }
+
+#[cfg(test)]
+mod name_table_tests;
 
 #[cfg(test)]
 mod tests {
