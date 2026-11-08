@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Weekly, every ignored compiled test in cli --test code_generation.
+  schedule:
+    - cron: '23 5 * * 0'
   workflow_dispatch:
     inputs:
       runner:
@@ -11,12 +14,18 @@ on:
         type: choice
         default: auto
         options: [auto, cleo, over, github-hosted]
+      jobs:
+        description: Run the pull request jobs, or every ignored compiled test
+        type: choice
+        default: pull-request
+        options: [pull-request, ignored-compiled-tests]
 
 permissions:
   contents: read
 
 concurrency:
-  group: codegen-${{ github.workflow }}-${{ github.ref }}
+  # Ignored-test runs on main neither cancel nor are cancelled by push runs.
+  group: codegen-${{ github.workflow }}-${{ github.ref }}${{ (github.event_name == 'schedule' || inputs.jobs == 'ignored-compiled-tests') && '-ignored' || '' }}
   cancel-in-progress: true
 
 env:
@@ -35,6 +44,7 @@ env:
 jobs:
   generated-backends:
     name: generated-backends (${{ matrix.suite }} ${{ matrix.shard }}/4)
+    if: github.event_name != 'schedule' && inputs.jobs != 'ignored-compiled-tests'
     runs-on: ${{ fromJSON(vars.OVH_RUNNER_ENABLED == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && ((inputs.runner || vars.CI_RUNNER || 'auto') == 'cleo' && '["self-hosted", "Linux", "X64", "ferrule-cleo"]' || (inputs.runner || vars.CI_RUNNER || 'auto') == 'over' && '["self-hosted", "Linux", "X64", "ferrule-over"]' || (inputs.runner || vars.CI_RUNNER || 'auto') == 'auto' && '["self-hosted", "Linux", "X64", "ferrule-primary"]') || '["ubuntu-latest"]') }}
     # The mappings suite builds generated consumers serially for each case.
     timeout-minutes: ${{ matrix.suite == 'mappings' && 150 || 120 }}
@@ -58,6 +68,7 @@ jobs:
           python3 -B scripts/ci/test-compact-job-evidence.py
           python3 -B scripts/ci/test-prepare-hosted-temp.py
           python3 -B scripts/ci/test-setup-mold.py
+          python3 -B scripts/ci/test-ignored-codegen-tests.py
       - name: Hosted disk-backed test temp
         if: runner.environment == 'github-hosted'
         run: python3 -B scripts/ci/prepare-hosted-temp.py
@@ -132,6 +143,16 @@ jobs:
           cargo nextest run --profile ci -p cli --test code_generation
           --features codegen-tests --locked
           --partition slice:${{ matrix.shard }}/4
+      - name: ignored compiled test selection
+        if: matrix.suite == 'mappings' && matrix.shard == 1
+        env:
+          RUSTC_WRAPPER: ${{ runner.environment == 'self-hosted' && '/opt/ferrule-runner-tools/sccache' || '' }}
+        run: |
+          set -euo pipefail
+          list="$RUNNER_TEMP/ignored-codegen-tests.json"
+          cargo nextest list --color never --profile ci -p cli --test code_generation --features codegen-tests --locked \
+            --run-ignored only --message-format json > "$list"
+          python3 -I scripts/ci/ignored-codegen-tests.py check --list "$list"
       - name: compiled string and integral boundary regressions
         id: compiled_boundaries
         if: matrix.suite == 'mappings' && matrix.shard == 3
@@ -261,6 +282,131 @@ jobs:
           FERRULE_CI_CANARY_OUTCOME: ${{ steps.evidence_canary.outcome }}
           FERRULE_CI_SUITE: codegen
           FERRULE_CI_EVIDENCE_SUITE: codegen-${{ matrix.suite }}
+        run: python3 -I scripts/ci/job-evidence.py observe
+      - name: runner resources
+        if: always()
+        run: |
+          df -h
+          free -h
+          if [ "$RUNNER_ENVIRONMENT" = self-hosted ] && [ -n "${SCCACHE_DIR:-}" ]; then
+            /opt/ferrule-runner-tools/sccache --show-stats
+          fi
+
+  ignored-compiled-tests:
+    name: ignored-compiled-tests (${{ matrix.shard }}/8)
+    if: github.event_name == 'schedule' || inputs.jobs == 'ignored-compiled-tests'
+    runs-on: ${{ fromJSON(vars.OVH_RUNNER_ENABLED == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && ((inputs.runner || vars.CI_RUNNER || 'auto') == 'cleo' && '["self-hosted", "Linux", "X64", "ferrule-cleo"]' || (inputs.runner || vars.CI_RUNNER || 'auto') == 'over' && '["self-hosted", "Linux", "X64", "ferrule-over"]' || (inputs.runner || vars.CI_RUNNER || 'auto') == 'auto' && '["self-hosted", "Linux", "X64", "ferrule-primary"]') || '["ubuntu-latest"]') }}
+    # Each slice builds and runs its compiled consumers one test at a time.
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      # scripts/ci/ignored-codegen-tests.py assigns tests to these slices.
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: pre-job space guard tests
+        run: |
+          python3 -B scripts/ci/test-runner-failover.py
+          python3 -B scripts/ci/test-runner-routing.py
+          python3 -B scripts/ci/test-runner-provisioning.py
+          python3 -B scripts/ci/test-reclaim-build-cache.py
+          python3 -B scripts/ci/test-compact-job-evidence.py
+          python3 -B scripts/ci/test-prepare-hosted-temp.py
+          python3 -B scripts/ci/test-setup-mold.py
+          python3 -B scripts/ci/test-ignored-codegen-tests.py
+      - name: Hosted disk-backed test temp
+        if: runner.environment == 'github-hosted'
+        run: python3 -B scripts/ci/prepare-hosted-temp.py
+      - name: OVH build resources
+        if: runner.environment == 'self-hosted'
+        env:
+          FERRULE_CI_SUITE: codegen
+          FERRULE_CI_EVIDENCE_SUITE: codegen-mappings
+        run: bash scripts/ci/prepare-ovh-build.sh
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.98.1
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: nextest@0.9.150
+      - name: job-local linker
+        run: python3 -B scripts/ci/setup-mold.py
+      - name: linker
+        run: mold --version
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      - uses: Swatinem/rust-cache@v2
+        if: runner.environment == 'github-hosted'
+        with:
+          shared-key: codegen-mappings-bounded-builds
+          save-if: false
+      # The large XML boundary tests measure their hosts with GNU time.
+      - name: GNU time
+        if: runner.environment == 'github-hosted'
+        run: |
+          if [ ! -x /usr/bin/time ]; then
+            sudo apt-get update
+            sudo apt-get install -y time
+          fi
+          /usr/bin/time --version
+      - name: ignored compiled tests
+        id: ignored
+        env:
+          RUSTC_WRAPPER: ${{ runner.environment == 'self-hosted' && '/opt/ferrule-runner-tools/sccache' || '' }}
+          CARGO_BUILD_JOBS: "1"
+          CARGO_INCREMENTAL: "0"
+          RUST_TEST_THREADS: "1"
+        run: |
+          set -euo pipefail
+          evidence_dir=$(mktemp -d "$RUNNER_TEMP/ferrule-ignored-compiled.XXXXXX")
+          printf 'evidence_dir=%s\n' "$evidence_dir" >> "$GITHUB_OUTPUT"
+          # The harnesses refuse a host target that overlaps the workspace target.
+          if [[ -z ${FERRULE_CODEGEN_HOST_TARGET_DIR:-} ]]; then
+            export FERRULE_CODEGEN_HOST_TARGET_DIR="$RUNNER_TEMP/ferrule-ignored-host-target"
+          fi
+          mkdir -p "$FERRULE_CODEGEN_HOST_TARGET_DIR"
+          cargo nextest list --color never --profile ci -p cli --test code_generation --features codegen-tests --locked \
+            --run-ignored only --message-format json > "$evidence_dir/list.json"
+          python3 -I scripts/ci/ignored-codegen-tests.py check --list "$evidence_dir/list.json"
+          python3 -I scripts/ci/ignored-codegen-tests.py run --list "$evidence_dir/list.json" \
+            --shard ${{ matrix.shard }} --evidence "$evidence_dir"
+      - name: retain ignored compiled test logs
+        if: always() && steps.ignored.outputs.evidence_dir != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: ignored-compiled-tests-${{ matrix.shard }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ steps.ignored.outputs.evidence_dir }}
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 14
+      - name: Trim successful workspace build
+        if: success() && runner.environment == 'self-hosted'
+        run: cargo clean --workspace
+      # This optional canary contains metadata only. It never marks job evidence archived.
+      - name: Metadata evidence canary
+        id: evidence_canary
+        if: always() && runner.environment == 'self-hosted' && vars.OVH_EVIDENCE_CANARY_ENABLED == 'true' && vars.OVH_EVIDENCE_CANARY_RETENTION_DAYS != '' && env.FERRULE_CI_EVIDENCE_CANARY != ''
+        continue-on-error: true
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: evidence-canary-${{ env.FERRULE_CI_EVIDENCE_ID }}
+          path: ${{ env.FERRULE_CI_EVIDENCE_CANARY }}
+          archive: true
+          compression-level: 0
+          overwrite: false
+          if-no-files-found: error
+          retention-days: ${{ vars.OVH_EVIDENCE_CANARY_RETENTION_DAYS }}
+      - name: Retain unarchived job observation
+        if: always() && runner.environment == 'self-hosted' && env.FERRULE_CI_EVIDENCE_ROOT != ''
+        env:
+          FERRULE_CI_OBSERVED_JOB_STATE: ${{ job.status }}
+          FERRULE_CI_CANARY_OUTCOME: ${{ steps.evidence_canary.outcome }}
+          FERRULE_CI_SUITE: codegen
+          FERRULE_CI_EVIDENCE_SUITE: codegen-mappings
         run: python3 -I scripts/ci/job-evidence.py observe
       - name: runner resources
         if: always()
