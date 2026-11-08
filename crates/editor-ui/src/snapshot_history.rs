@@ -59,10 +59,6 @@ impl<T: Clone + PartialEq> SnapshotHistory<T> {
         self.saved.as_ref() != Some(current)
     }
 
-    pub fn is_dirty_by<K: PartialEq>(&self, current: &K, key: impl FnOnce(&T) -> &K) -> bool {
-        self.saved.as_ref().map(key) != Some(current)
-    }
-
     pub fn mark_saved(&mut self, current: &T) {
         self.saved = Some(current.clone());
     }

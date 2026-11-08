@@ -210,6 +210,10 @@ fn tags(node: Node<'_, '_>, allowed: &[&str]) -> Result<()> {
     Ok(())
 }
 fn number(raw: Option<&str>) -> Result<u32> {
+    raw_number(raw).map(|(_, n)| n)
+}
+/// A positive numeric identity together with the raw text it was parsed from.
+fn raw_number(raw: Option<&str>) -> Result<(&str, u32)> {
     let raw = raw.ok_or_else(|| Rejection {
         code: "numeric_identity",
         detail: "missing identity".into(),
@@ -218,7 +222,7 @@ fn number(raw: Option<&str>) -> Result<u32> {
         return reject("numeric_identity", raw);
     }
     match raw.parse::<u32>() {
-        Ok(n) if n > 0 => Ok(n),
+        Ok(n) if n > 0 => Ok((raw, n)),
         _ => reject("numeric_identity", raw),
     }
 }
@@ -362,7 +366,7 @@ fn boundary(
     {
         return reject("component", "only static nonvariable XML14 boundaries");
     }
-    let uid = number(component.attribute("uid"))?;
+    let (raw_uid, uid) = raw_number(component.attribute("uid"))?;
     let properties = component
         .children()
         .filter(|n| n.has_tag_name("properties"))
@@ -681,7 +685,7 @@ fn boundary(
     }
     normalize_proven_boundary_namespaces(schema_text, declared_root, &canonical_type, &mut schema)?;
     Ok(Boundary {
-        raw_uid: component.attribute("uid").unwrap().into(),
+        raw_uid: raw_uid.into(),
         uid,
         component: id(component),
         document: id(document),
@@ -822,8 +826,9 @@ fn prove_profile(
         return reject("document", "one source and one target required");
     }
     boundaries.sort_by_key(|b| b.role != "source");
-    let mut target = boundaries.pop().unwrap();
-    let mut source = boundaries.pop().unwrap();
+    let Ok([mut source, mut target]) = <[Boundary; 2]>::try_from(boundaries) else {
+        return reject("component", "exactly two components required");
+    };
     if source.canonical_type != target.canonical_type
         || source.declared_root != target.declared_root
     {
@@ -873,7 +878,7 @@ fn prove_profile(
     for vertex in elements(vertices) {
         attrs(vertex, &["vertexkey"])?;
         tags(vertex, &["edges"])?;
-        let from = number(vertex.attribute("vertexkey"))?;
+        let (raw_from, from) = raw_number(vertex.attribute("vertexkey"))?;
         if !seen_vertices.insert(from) {
             return reject("graph", "duplicate numeric vertex");
         }
@@ -897,7 +902,7 @@ fn prove_profile(
             if !elements(edge).is_empty() {
                 return reject("graph", "edge controls unsupported");
             }
-            let to = number(edge.attribute("vertexkey"))?;
+            let (raw_to, to) = raw_number(edge.attribute("vertexkey"))?;
             if !seen_targets.insert(to) {
                 return reject("graph", "duplicate/multiple producer target");
             }
@@ -921,8 +926,13 @@ fn prove_profile(
                     "only exact conditional leaf source-to-target feeds",
                 );
             }
-            let sa = source.schema.child(&a.path[0]).unwrap();
-            let tb = target.schema.child(&b.path[0]).unwrap();
+            // Pins come from these schemas' own attribute fields.
+            let (Some(sa), Some(tb)) = (
+                source.schema.child(&a.path[0]),
+                target.schema.child(&b.path[0]),
+            ) else {
+                return reject("endpoint", "dangling schema field");
+            };
             if sa.kind != tb.kind {
                 return reject("field_domain", "scalar adaptation outside initial proof");
             }
@@ -932,8 +942,8 @@ fn prove_profile(
             b.connected = true;
             connected.extend([from, to]);
             feeds.push(Feed {
-                raw_source: vertex.attribute("vertexkey").unwrap().into(),
-                raw_target: edge.attribute("vertexkey").unwrap().into(),
+                raw_source: raw_from.into(),
+                raw_target: raw_to.into(),
                 source: a,
                 target: b,
                 vertex: id(vertex),
