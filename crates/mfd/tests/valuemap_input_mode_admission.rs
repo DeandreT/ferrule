@@ -1,5 +1,6 @@
 //! Admission tests, not a claim about native input-token binding or casts.
-//! An explicit unsupported mode must survive every lowering route as a diagnostic.
+//! String-to-String input mode passes misses through on every lowering route;
+//! every other input-mode type pair must survive as a diagnostic.
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -365,6 +366,137 @@ fn explicit_input_mode_warns_and_refuses_executable_import_on_every_route() {
         ] {
             let directory = fixture(route, "23", mode, literal);
             assert_input_mode_refused(&directory.0.join("mapping.mfd"), route);
+        }
+    }
+}
+
+/// Rewrites the fixture's deliberately inexact type names to exact `string`.
+fn exact_string_types(path: &Path) {
+    let design = fs::read_to_string(path).unwrap();
+    let exact = design
+        .replace(r#"type="simpleString""#, r#"type="string""#)
+        .replace(r#"type="String""#, r#"type="string""#);
+    assert_eq!(
+        exact.matches(r#"type="string""#).count(),
+        design.matches(r#"type="string""#).count() + 2
+    );
+    fs::write(path, exact).unwrap();
+}
+
+fn assert_pass_through_values(project: &Project, route: Route) {
+    assert_values(project, route, Value::String("MISS".into()));
+    if matches!(route, Route::MultiOutput) {
+        return;
+    }
+    // An empty string is a present miss; an absent (reader Null) input stays
+    // Null, which writers omit, rather than becoming an empty string.
+    for value in [Value::String(String::new()), Value::Null, Value::xml_nil()] {
+        let (mut input, mut expected) = (
+            Instance::Group(vec![("sourceVal".into(), Instance::Scalar(value.clone()))].into()),
+            Instance::Group(vec![("targetVal".into(), Instance::Scalar(value))].into()),
+        );
+        if matches!(route, Route::Structured) {
+            input = Instance::Group(vec![("Record".into(), input)].into());
+            expected = Instance::Group(vec![("Record".into(), expected)].into());
+        }
+        assert_eq!(
+            engine::run(project, &input).unwrap_or_else(|e| panic!("{route:?}: {e:?}")),
+            expected,
+            "{route:?}"
+        );
+    }
+}
+
+#[test]
+fn string_input_mode_passes_misses_through_on_every_route_and_roundtrips() {
+    for route in ROUTES {
+        for (mode, literal) in [
+            (r#"defaultValueMode="input""#, ""),
+            // A saved custom literal must not apply in input mode.
+            (r#"defaultValueMode="input""#, r#"defaultValue="D""#),
+            (
+                r#"defaultValueMode="input" enableDefaultValue="1""#,
+                r#"defaultValue="D""#,
+            ),
+        ] {
+            let directory = fixture(route, "23", mode, literal);
+            let path = directory.0.join("mapping.mfd");
+            exact_string_types(&path);
+            let imported = mfd::import(&path).unwrap();
+            assert!(
+                imported.warnings.is_empty(),
+                "{route:?}: {:?}",
+                imported.warnings
+            );
+            let strict = mfd::import_with_profile(
+                &path,
+                &mfd::ImportOptions::default(),
+                mfd::ImportProfile::Executable,
+            )
+            .unwrap();
+            assert!(strict.report.executable && strict.report.issues.is_empty());
+            assert_control_route(&strict.imported.project, route, None);
+            assert_pass_through_values(&strict.imported.project, route);
+            let exported = path.with_file_name("roundtrip.mfd");
+            let warnings = mfd::export(&strict.imported.project, &exported).unwrap();
+            assert!(warnings.is_empty(), "{route:?}: {warnings:?}");
+            let restored = mfd::import_with_profile(
+                &exported,
+                &mfd::ImportOptions::default(),
+                mfd::ImportProfile::Executable,
+            )
+            .unwrap();
+            assert!(restored.report.executable && restored.report.issues.is_empty());
+            assert_pass_through_values(&restored.imported.project, route);
+        }
+    }
+}
+
+/// The same JSON cases drive generated Rust and C# in the CLI codegen suite.
+#[test]
+fn string_input_mode_json_designs_match_authored_cases() {
+    let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/valuemap-input-mode");
+    let cases: Vec<serde_json::Value> =
+        serde_json::from_slice(&fs::read(fixtures.join("cases.json")).unwrap()).unwrap();
+    for design in ["direct.mfd", "function.mfd", "named-library.mfd"] {
+        let strict = mfd::import_with_profile(
+            &fixtures.join(design),
+            &mfd::ImportOptions::default(),
+            mfd::ImportProfile::Executable,
+        )
+        .unwrap();
+        assert!(strict.report.executable && strict.imported.warnings.is_empty());
+        let project = &strict.imported.project;
+        assert!(engine::validate(project).is_empty(), "{design}");
+        for case in &cases {
+            let input =
+                format_json::from_str(case["input"].as_str().unwrap(), &project.source).unwrap();
+            let output = engine::run(project, &input).unwrap();
+            assert_eq!(
+                &format_json::to_value(&project.target, &output).unwrap(),
+                &case["expected"],
+                "{design}: {case}"
+            );
+        }
+    }
+}
+
+#[test]
+fn input_mode_with_a_non_string_type_still_refuses() {
+    for route in ROUTES {
+        for (from, to) in [
+            ("string", "integer"),
+            ("integer", "string"),
+            ("string", "dateTime"),
+        ] {
+            let directory = fixture(route, "23", r#"defaultValueMode="input""#, "");
+            let path = directory.0.join("mapping.mfd");
+            let design = fs::read_to_string(&path)
+                .unwrap()
+                .replace(r#"type="simpleString""#, &format!(r#"type="{from}""#))
+                .replace(r#"type="String""#, &format!(r#"type="{to}""#));
+            fs::write(&path, design).unwrap();
+            assert_input_mode_refused(&path, route);
         }
     }
 }
