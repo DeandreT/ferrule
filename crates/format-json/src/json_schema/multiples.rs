@@ -3,7 +3,7 @@ use ir::{
     SchemaNode,
 };
 
-use super::unsupported_union;
+use super::{json_schema_type_name, unsupported_union};
 use crate::JsonFormatError;
 
 pub(super) fn has_keyword(schema: &serde_json::Value) -> bool {
@@ -147,13 +147,13 @@ pub(super) fn render(
         if matches!(ty, ScalarType::Int | ScalarType::Float) {
             for terms in alternatives {
                 let mut branch = serde_json::Map::new();
-                branch.insert("type".into(), scalar_type_name(ty).into());
+                branch.insert("type".into(), json_schema_type_name(ty).into());
                 render_conjunction(terms, &mut branch)?;
                 branches.push(serde_json::Value::Object(branch));
             }
         } else {
             let mut branch = serde_json::Map::new();
-            branch.insert("type".into(), scalar_type_name(ty).into());
+            branch.insert("type".into(), json_schema_type_name(ty).into());
             branches.push(serde_json::Value::Object(branch));
         }
     }
@@ -262,15 +262,6 @@ fn divisor_json(divisor: JsonMultipleOf) -> Result<serde_json::Value, JsonFormat
         });
     }
     Ok(value)
-}
-
-fn scalar_type_name(ty: ScalarType) -> &'static str {
-    match ty {
-        ScalarType::String => "string",
-        ScalarType::Int => "integer",
-        ScalarType::Float => "number",
-        ScalarType::Bool => "boolean",
-    }
 }
 
 fn constraint_error(name: &str, error: JsonMultipleOfConstraintsError) -> JsonFormatError {

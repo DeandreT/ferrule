@@ -61,7 +61,9 @@ impl<'a> SchemaCursor<'a> {
         let Some(anchor) = self.node.recursive_ref.as_deref() else {
             return Some(self);
         };
-        find_concrete_group(self.root, anchor).map(|node| Self::new(self.root, node))
+        self.root
+            .find_concrete_group(anchor)
+            .map(|node| Self::new(self.root, node))
     }
 
     /// Lexically enclosing schema nodes that also own runtime source frames,
@@ -268,7 +270,7 @@ fn follow_from<'a>(
     let mut current = current;
     for segment in path {
         if let Some(anchor) = &current.recursive_ref {
-            current = find_concrete_group(root, anchor)?;
+            current = root.find_concrete_group(anchor)?;
         }
         current = current.child(segment)?;
     }
@@ -283,7 +285,7 @@ fn follow_direct<'a>(
     let mut current = current;
     for (index, segment) in path.iter().enumerate() {
         if let Some(anchor) = &current.recursive_ref {
-            current = find_concrete_group(root, anchor)?;
+            current = root.find_concrete_group(anchor)?;
         }
         current = current.child(segment)?;
         if current.repeating && index + 1 != path.len() {
@@ -291,21 +293,6 @@ fn follow_direct<'a>(
         }
     }
     Some(current)
-}
-
-fn find_concrete_group<'a>(current: &'a SchemaNode, anchor: &str) -> Option<&'a SchemaNode> {
-    if current.recursive_ref.is_none()
-        && current.name == anchor
-        && matches!(current.kind, SchemaKind::Group { .. })
-    {
-        return Some(current);
-    }
-    let SchemaKind::Group { children, .. } = &current.kind else {
-        return None;
-    };
-    children
-        .iter()
-        .find_map(|child| find_concrete_group(child, anchor))
 }
 
 fn find_parent<'a>(current: &'a SchemaNode, target: &'a SchemaNode) -> Option<&'a SchemaNode> {

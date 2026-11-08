@@ -490,29 +490,14 @@ fn target_node<'a>(root: &'a SchemaNode, path: &[String]) -> Option<&'a SchemaNo
     let mut node = root;
     for segment in path {
         if let Some(anchor) = &node.recursive_ref {
-            node = find_concrete_schema_group(root, anchor)?;
+            node = root.find_concrete_group(anchor)?;
         }
         node = node.child(segment)?;
     }
     match &node.recursive_ref {
-        Some(anchor) => find_concrete_schema_group(root, anchor),
+        Some(anchor) => root.find_concrete_group(anchor),
         None => Some(node),
     }
-}
-
-fn find_concrete_schema_group<'a>(schema: &'a SchemaNode, anchor: &str) -> Option<&'a SchemaNode> {
-    if schema.recursive_ref.is_none()
-        && schema.name == anchor
-        && matches!(schema.kind, SchemaKind::Group { .. })
-    {
-        return Some(schema);
-    }
-    let SchemaKind::Group { children, .. } = &schema.kind else {
-        return None;
-    };
-    children
-        .iter()
-        .find_map(|child| find_concrete_schema_group(child, anchor))
 }
 
 fn render_component(
