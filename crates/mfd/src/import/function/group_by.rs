@@ -88,21 +88,18 @@ fn ordinary_json(component: roxmltree::Node<'_, '_>) -> bool {
     {
         return false;
     }
-    let data = component
-        .children()
-        .find(|node| node.has_tag_name("data"))
-        .unwrap();
+    let Some(data) = crate::import::child_element(component, "data") else {
+        return false;
+    };
     if !children(data, &["root", "json"]) {
         return false;
     }
-    let json = data
-        .children()
-        .find(|node| node.has_tag_name("json"))
-        .unwrap();
-    let root = data
-        .children()
-        .find(|node| node.has_tag_name("root"))
-        .unwrap();
+    let Some(json) = crate::import::child_element(data, "json") else {
+        return false;
+    };
+    let Some(root) = crate::import::child_element(data, "root") else {
+        return false;
+    };
     json.tag_name().namespace().is_none()
         && json
             .attribute("schema")
@@ -140,10 +137,9 @@ fn ordinary_final_xml(component: roxmltree::Node<'_, '_>) -> bool {
     {
         return false;
     }
-    let properties = component
-        .children()
-        .find(|node| node.has_tag_name("properties"))
-        .unwrap();
+    let Some(properties) = crate::import::child_element(component, "properties") else {
+        return false;
+    };
     if properties.tag_name().namespace().is_some()
         || properties.attributes().len() != 1
         || properties.attribute("XSLTDefaultOutput") != Some("1")
@@ -157,20 +153,18 @@ fn ordinary_final_xml(component: roxmltree::Node<'_, '_>) -> bool {
     {
         return false;
     }
-    let data = component
-        .children()
-        .find(|node| node.has_tag_name("data"))
-        .unwrap();
+    let Some(data) = crate::import::child_element(component, "data") else {
+        return false;
+    };
     if data.tag_name().namespace().is_some()
         || data.attributes().len() != 0
         || !children(data, &["root", "document"])
     {
         return false;
     }
-    let document = data
-        .children()
-        .find(|node| node.has_tag_name("document"))
-        .unwrap();
+    let Some(document) = crate::import::child_element(data, "document") else {
+        return false;
+    };
     if document.tag_name().namespace().is_some()
         || document.attributes().len() != 3
         || document.attributes().any(|attribute| {
@@ -188,20 +182,18 @@ fn ordinary_final_xml(component: roxmltree::Node<'_, '_>) -> bool {
     {
         return false;
     }
-    let root = data
-        .children()
-        .find(|node| node.has_tag_name("root"))
-        .unwrap();
+    let Some(root) = crate::import::child_element(data, "root") else {
+        return false;
+    };
     if root.tag_name().namespace().is_some()
         || root.attributes().len() != 0
         || !children(root, &["entry"])
     {
         return false;
     }
-    let payload = root
-        .children()
-        .find(|node| node.has_tag_name("entry"))
-        .unwrap();
+    let Some(payload) = crate::import::child_element(root, "entry") else {
+        return false;
+    };
     if payload.attribute("name").is_none_or(|name| {
         document.attribute("instanceroot") != Some(format!("{{}}{name}").as_str())
     }) {
