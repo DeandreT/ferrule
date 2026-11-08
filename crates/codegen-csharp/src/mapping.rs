@@ -2,10 +2,10 @@ use std::collections::BTreeMap;
 
 use ::mapping::{FunctionId, FunctionParameterId, NodeId};
 use codegen::{
-    AggregateFunction, AggregateValue, Binding, Expression, GeneratedSequence, GroupingPlan,
-    InnerJoin, IterationOutput, IterationPlan, IterationSource, JoinSource, JoinSourceCardinality,
-    Program, ProgramValidationError, ScalarTargetDomain, SequenceWindow, SortFilterOrder,
-    TargetConstruction, TargetScope, UserFunctionProgram,
+    AggregateFunction, AggregateValue, Binding, CandidateIteration, Expression, GeneratedSequence,
+    GroupingPlan, InnerJoin, IterationKind, IterationOutput, IterationPlan, IterationSource,
+    JoinSource, JoinSourceCardinality, Program, ProgramValidationError, ScalarTargetDomain,
+    SequenceWindow, SortFilterOrder, TargetConstruction, TargetScope, UserFunctionProgram,
 };
 use ir::ScalarType;
 
@@ -194,26 +194,34 @@ fn render_mapping(
             output.push_str("        context.ValidateFlatRowsSource();\n");
         }
         if let Some(iteration) = scope.iteration {
-            if iteration.concatenated().is_some() {
-                render_concatenated_scope(iteration, &scope.segments, &mut output);
-            } else if let Some(presence) = iteration.presence() {
-                // The condition and the constructed group share the parent context.
-                let condition = presence.condition();
-                output.push_str(&format!(
-                    "        if (!global::Ferrule.Runtime.FerruleFunctions.RequireBoolean(Node_{condition}(context), {condition}U))\n        {{\n            return new global::Ferrule.Runtime.FerruleRepeated(global::System.Array.Empty<global::Ferrule.Runtime.FerruleInstance>());\n        }}\n        var item_{scope_index} = ScopeItem_{scope_index}(context);\n        return new global::Ferrule.Runtime.FerruleRepeated(new global::Ferrule.Runtime.FerruleInstance[] {{ item_{scope_index} }});\n"
-                ));
-            } else {
-                render_iteration_scope(
-                    program,
-                    scope_index,
-                    iteration,
-                    matches!(
-                        scope.construction,
-                        TargetConstruction::DynamicGroup { merge: true, .. }
-                    ),
-                    matches!(scope.construction, TargetConstruction::CollectDocuments),
-                    &mut output,
-                )?;
+            match iteration.kind() {
+                IterationKind::Concatenate(_) => {
+                    render_concatenated_scope(program, iteration, &scope.segments, &mut output)?;
+                }
+                IterationKind::OptionalPresence(presence) => {
+                    // The condition and the constructed group share the parent context.
+                    let condition = presence.condition();
+                    output.push_str(&format!(
+                        "        if (!global::Ferrule.Runtime.FerruleFunctions.RequireBoolean(Node_{condition}(context), {condition}U))\n        {{\n            return new global::Ferrule.Runtime.FerruleRepeated(global::System.Array.Empty<global::Ferrule.Runtime.FerruleInstance>());\n        }}\n        var item_{scope_index} = ScopeItem_{scope_index}(context);\n        return new global::Ferrule.Runtime.FerruleRepeated(new global::Ferrule.Runtime.FerruleInstance[] {{ item_{scope_index} }});\n"
+                    ));
+                }
+                IterationKind::Candidates(candidates) => {
+                    render_iteration_scope(
+                        program,
+                        scope_index,
+                        iteration,
+                        candidates,
+                        matches!(
+                            scope.construction,
+                            TargetConstruction::DynamicGroup { merge: true, .. }
+                        ),
+                        matches!(scope.construction, TargetConstruction::CollectDocuments),
+                        &mut output,
+                    )?;
+                }
+                IterationKind::Owned(_) => {
+                    return Err(codegen::unrendered_iteration(program, iteration).into());
+                }
             }
         } else {
             output.push_str(&format!(
@@ -1194,11 +1202,12 @@ fn render_iteration_scope(
     program: &Program,
     scope: usize,
     iteration: &IterationPlan,
+    candidates: CandidateIteration<'_>,
     merge_dynamic_fields: bool,
     collect_documents: bool,
     output: &mut String,
 ) -> Result<(), EmitError> {
-    render_iteration_candidates(program, scope, iteration.input(), output)?;
+    render_iteration_candidates(program, scope, candidates, output)?;
 
     let sort = iteration.sort();
     let filter_before_sort = iteration.filter().is_some()
@@ -1236,7 +1245,7 @@ fn render_iteration_scope(
     if let Some(grouping) = grouping {
         render_grouping(
             scope,
-            iteration.input(),
+            candidates,
             grouping,
             iteration.post_group_filter(),
             output,
@@ -1335,7 +1344,7 @@ fn render_grouping_setup(scope: usize, grouping: Option<GroupingPlan>, output: &
 
 fn render_grouping(
     scope: usize,
-    input: &IterationSource,
+    candidates: CandidateIteration<'_>,
     grouping: GroupingPlan,
     post_group_filter: Option<NodeId>,
     output: &mut String,
@@ -1346,7 +1355,7 @@ fn render_grouping(
     match grouping {
         GroupingPlan::By { key } => {
             output.push_str(&format!("GroupBy(candidates_{scope}, "));
-            render_grouping_path(input, output);
+            render_grouping_path(candidates, output);
             output.push_str(&format!(
                 ", candidate_{scope} => Node_{key}(candidate_{scope})"
             ));
@@ -1355,7 +1364,7 @@ fn render_grouping(
         }
         GroupingPlan::AdjacentBy { key } => {
             output.push_str(&format!("GroupAdjacentBy(candidates_{scope}, "));
-            render_grouping_path(input, output);
+            render_grouping_path(candidates, output);
             output.push_str(&format!(
                 ", candidate_{scope} => Node_{key}(candidate_{scope})"
             ));
@@ -1364,7 +1373,7 @@ fn render_grouping(
         }
         GroupingPlan::StartingWith { predicate } => {
             output.push_str(&format!("GroupStartingWith(candidates_{scope}, "));
-            render_grouping_path(input, output);
+            render_grouping_path(candidates, output);
             output.push_str(&format!(
                 ", candidate_{scope} => global::Ferrule.Runtime.FerruleFunctions.RequireBoolean(Node_{predicate}(candidate_{scope}), {predicate}U)"
             ));
@@ -1373,7 +1382,7 @@ fn render_grouping(
         }
         GroupingPlan::EndingWith { predicate } => {
             output.push_str(&format!("GroupEndingWith(candidates_{scope}, "));
-            render_grouping_path(input, output);
+            render_grouping_path(candidates, output);
             output.push_str(&format!(
                 ", candidate_{scope} => global::Ferrule.Runtime.FerruleFunctions.RequireBoolean(Node_{predicate}(candidate_{scope}), {predicate}U)"
             ));
@@ -1382,7 +1391,7 @@ fn render_grouping(
         }
         GroupingPlan::IntoBlocks { .. } => {
             output.push_str(&format!("GroupIntoBlocks(candidates_{scope}, "));
-            render_grouping_path(input, output);
+            render_grouping_path(candidates, output);
             output.push_str(&format!(", grouping_size_{scope}"));
             render_post_group_filter(scope, post_group_filter, output);
             output.push(')');
@@ -1399,19 +1408,10 @@ fn render_post_group_filter(scope: usize, post_group_filter: Option<NodeId>, out
     }
 }
 
-fn render_grouping_path(input: &IterationSource, output: &mut String) {
-    match input {
-        IterationSource::OwnedSource(_) => unreachable!("owned source emission gate"),
-        IterationSource::Source(source) => render_path(source.path(), output),
-        IterationSource::DynamicDocuments(dynamic) => render_path(dynamic.source().path(), output),
-        IterationSource::Generated(_) => render_path(&[], output),
-        IterationSource::InnerJoin(_)
-        | IterationSource::OwnedInnerJoin(_)
-        | IterationSource::Concatenate(_)
-        | IterationSource::OptionalPresence(_) => {
-            unreachable!("validated portable grouping cannot own an inner join")
-        }
-    }
+/// Generated candidates group under the empty path. Validation refuses
+/// grouping over joined candidates, so they never reach this.
+fn render_grouping_path(candidates: CandidateIteration<'_>, output: &mut String) {
+    render_path(candidates.source_path().unwrap_or_default(), output);
 }
 
 fn render_source_iteration_candidates(
@@ -1454,37 +1454,34 @@ fn render_source_iteration_candidates(
 fn render_iteration_candidates(
     program: &Program,
     scope: usize,
-    input: &IterationSource,
+    candidates: CandidateIteration<'_>,
     output: &mut String,
 ) -> Result<(), EmitError> {
-    match input {
-        IterationSource::OwnedSource(_) => unreachable!("owned source emission gate"),
-        IterationSource::Source(source) => {
+    match candidates {
+        CandidateIteration::Source(source) => {
             render_source_iteration_candidates(program, scope, source.path(), output);
         }
-        IterationSource::DynamicDocuments(dynamic) => {
+        CandidateIteration::DynamicDocuments(dynamic) => {
             render_source_iteration_candidates(program, scope, dynamic.source().path(), output);
         }
-        IterationSource::Generated(sequence) => {
+        CandidateIteration::Generated(sequence) => {
             let identifier = format!("scope_{scope}");
             render_generated_values(&identifier, sequence, output)?;
             output.push_str(&format!(
                 "        var candidates_{scope} = new global::System.Collections.Generic.List<global::Ferrule.Runtime.ScopeContext>(context.IterateGenerated(sequence_values_{identifier}, {}U));\n", sequence.item()
             ));
         }
-        IterationSource::InnerJoin(join) => render_inner_join(scope, join, output),
-        IterationSource::OwnedInnerJoin(_) => unreachable!("owned join emission gate"),
-        IterationSource::Concatenate(_) => {
-            unreachable!("concatenated scopes render before candidate iteration")
-        }
-        IterationSource::OptionalPresence(_) => {
-            unreachable!("optional-presence scopes render before candidate iteration")
-        }
+        CandidateIteration::InnerJoin(join) => render_inner_join(scope, join, output),
     }
     Ok(())
 }
 
-fn render_concatenated_scope(iteration: &IterationPlan, segments: &[usize], output: &mut String) {
+fn render_concatenated_scope(
+    program: &Program,
+    iteration: &IterationPlan,
+    segments: &[usize],
+    output: &mut String,
+) -> Result<(), EmitError> {
     output.push_str(
         "        var outputs = new global::System.Collections.Generic.List<global::Ferrule.Runtime.FerruleInstance>();\n",
     );
@@ -1496,11 +1493,14 @@ fn render_concatenated_scope(iteration: &IterationPlan, segments: &[usize], outp
     let variant = match iteration.output() {
         IterationOutput::Repeated => "FerruleRepeated",
         IterationOutput::MappedSequence => "FerruleMappedSequence",
-        IterationOutput::First => unreachable!("validated scope sequences cannot use First"),
+        IterationOutput::First => {
+            return Err(codegen::unrendered_iteration(program, iteration).into());
+        }
     };
     output.push_str(&format!(
         "        return new global::Ferrule.Runtime.{variant}(outputs);\n"
     ));
+    Ok(())
 }
 
 fn render_inner_join(scope: usize, join: &InnerJoin, output: &mut String) {
@@ -3015,10 +3015,14 @@ fn render_basic_window_legacy_scope(
 ) -> Result<(), EmitError> {
     output.push_str(&format!("\n    private static global::Ferrule.Runtime.FerruleInstance Scope_{index}(global::Ferrule.Runtime.ScopeContext context)\n    {{\n"));
     if let Some(iteration) = scope.iteration {
+        let IterationKind::Candidates(candidates) = iteration.kind() else {
+            return Err(codegen::unrendered_iteration(program, iteration).into());
+        };
         render_iteration_scope(
             program,
             index,
             iteration,
+            candidates,
             false,
             matches!(scope.construction, TargetConstruction::CollectDocuments),
             output,
