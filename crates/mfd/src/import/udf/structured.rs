@@ -1222,11 +1222,20 @@ impl ExprContext<'_> {
             }),
             (_, 23) => {
                 let valuemap = function.valuemap.clone().unwrap_or_default();
-                Ok(Expr::ValueMap {
+                let map = Expr::ValueMap {
                     input: Box::new(input(0, active, budget)?),
                     input_type: valuemap.input_type,
                     table: valuemap.table,
                     default: valuemap.default,
+                };
+                Ok(if valuemap.pass_through_input {
+                    // Rebuilt rather than cloned so the copy claims expansion budget.
+                    Expr::Call {
+                        function: "substitute_missing".to_string(),
+                        args: vec![map, input(0, active, budget)?],
+                    }
+                } else {
+                    map
                 })
             }
             (_, 3 | 6) => {
