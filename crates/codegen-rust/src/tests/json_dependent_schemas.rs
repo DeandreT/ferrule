@@ -247,7 +247,7 @@ fn generated_json_boundaries_enforce_dependent_schemas() -> Result<(), Box<dyn s
         .ok_or("generated Rust source is present UTF-8")?;
     assert!(generated_source.contains(r#"\"json_dependent_schemas\":[{\"trigger\":\"Trigger\""#));
 
-    let output = TempDir::new("rust_json_dependent_schemas_codegen");
+    let output = TempDir::new("rust_json_dependent_schemas_codegen").unwrap();
     write_artifacts(output.path(), &artifacts);
     let harness = r##"use codegen_runtime::JsonBoundaryError;
 use generated_dependent_schemas::{NamedJsonBytesInput, NamedJsonInput};
@@ -373,7 +373,7 @@ fn generated_dependent_schema_patterns_share_the_document_budget()
             runtime_dependency: RuntimeDependency::Path(runtime_path()?.display().to_string()),
         },
     )?;
-    let output = TempDir::new("rust_json_dependent_schema_budget_codegen");
+    let output = TempDir::new("rust_json_dependent_schema_budget_codegen").unwrap();
     write_artifacts(output.path(), &artifacts);
     let harness = r#"use codegen_runtime::JsonBoundaryError;
 

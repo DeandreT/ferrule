@@ -183,7 +183,7 @@ fn generated_package_exposes_group_members_and_compacts_post_window_position() {
         .join("../codegen-runtime")
         .canonicalize()
         .expect("runtime path exists");
-    let output = TempDir::new("rust_grouping_codegen");
+    let output = TempDir::new("rust_grouping_codegen").unwrap();
     let artifacts = emit(
         &grouping_program(),
         &Options {
@@ -248,7 +248,7 @@ fn generated_package_retains_a_group_when_any_member_matches() {
         .join("../codegen-runtime")
         .canonicalize()
         .expect("runtime path exists");
-    let output = TempDir::new("rust_post_group_filter_codegen");
+    let output = TempDir::new("rust_post_group_filter_codegen").unwrap();
     let artifacts = emit(
         &program,
         &Options {
