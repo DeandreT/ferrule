@@ -64,6 +64,11 @@ PREPARED = {
     ),
 }
 
+# This preparation/qualification pair fingerprints the default compiler route
+# and refuses even empty selector overrides. Other tests keep the job's cache
+# wrapper and explicit compiler choices.
+DEFAULT_COMPILER = frozenset(PREPARED["FERRULE_BASIC_ADJACENT442_PREPARE_DIR"])
+
 # Explicit opt-ins for the serial large-boundary tests.
 OPT_IN = {
     "xml_dynamic_inputs::request_count::generated_xml_dynamic_loader_exact_and_one_over_request_count_opt_in": {
@@ -151,6 +156,10 @@ def label(name: str) -> str:
 
 def environment(name: str, root: Path, base: dict) -> dict:
     result = dict(base)
+    result["XDG_RUNTIME_DIR"] = str(root / ".runtime")
+    if name in DEFAULT_COMPILER:
+        for selector in ("RUSTC", "RUSTC_WRAPPER", "RUSTC_WORKSPACE_WRAPPER"):
+            result.pop(selector, None)
     result.update(OPT_IN.get(name, {}))
     for variable, group in PREPARED.items():
         if name in group:
@@ -162,6 +171,44 @@ def environment(name: str, root: Path, base: dict) -> dict:
 
 def free_bytes(path: Path) -> int:
     return shutil.disk_usage(path).free
+
+
+def runtime_directory(root: Path) -> Path:
+    runtime = root / ".runtime"
+    if runtime.is_symlink():
+        raise ValueError("test runtime directory must not be a symlink")
+    runtime.mkdir(mode=0o700, exist_ok=True)
+    runtime.chmod(0o700)
+    return runtime
+
+
+def prepare_dotnet(root: Path, base: dict, *, runner=subprocess.run) -> bool:
+    """Initialize the shard's named-mutex directory before any compiled consumer.
+
+    .NET 10 can race while creating .dotnet/shm on concurrent first use (runtime
+    issue #136236). A private XDG directory isolates jobs but is still cold; run
+    one CLI first use alone, keeping the directory alive for the whole shard.
+    Consumers retain their own CLI homes, package caches and temporary paths.
+    """
+    stem = root / "dotnet-warmup"
+    stem.mkdir(exist_ok=True)
+    temp = stem / ".tmp"
+    temp.mkdir(exist_ok=True)
+    settings = dict(base, XDG_RUNTIME_DIR=str(runtime_directory(root)),
+                    DOTNET_CLI_HOME=str(stem / ".dotnet-home"),
+                    DOTNET_ADD_GLOBAL_TOOLS_TO_PATH="false",
+                    DOTNET_CLI_TELEMETRY_OPTOUT="1", DOTNET_NOLOGO="1",
+                    DOTNET_SKIP_FIRST_TIME_EXPERIENCE="1",
+                    TMPDIR=str(temp), TMP=str(temp), TEMP=str(temp))
+    (stem / "command.txt").write_text("dotnet --help\n")
+    added = {key: settings[key] for key in sorted(settings) if base.get(key) != settings[key]}
+    (stem / "environment.json").write_text(json.dumps(added, indent=2) + "\n")
+    with (stem / "stdout.log").open("wb") as stdout, (stem / "stderr.log").open("wb") as stderr:
+        status = runner(["dotnet", "--help"], stdout=stdout, stderr=stderr, env=settings).returncode
+    (stem / "exit-status.txt").write_text(f"{status}\n")
+    if status:
+        sys.stderr.write(tail(stem / "stdout.log") + tail(stem / "stderr.log"))
+    return status == 0
 
 
 def tail(path: Path) -> str:
@@ -184,8 +231,11 @@ def run_test(name: str, root: Path, base: dict, storage: list[Path], *, runner=s
     command = [*NEXTEST, "-E", f"test(={name})"]
     (stem / "command.txt").write_text(" ".join(command) + "\n")
     settings = environment(name, root, base)
+    runtime_directory(root)
     added = {key: settings[key] for key in sorted(settings) if base.get(key) != settings[key]}
     (stem / "environment.json").write_text(json.dumps(added, indent=2) + "\n")
+    removed = sorted(set(base) - set(settings))
+    (stem / "removed-environment.json").write_text(json.dumps(removed, indent=2) + "\n")
     with (stem / "stdout.log").open("wb") as stdout, (stem / "stderr.log").open("wb") as stderr:
         status = runner(command, stdout=stdout, stderr=stderr, env=settings).returncode
     (stem / "exit-status.txt").write_text(f"{status}\n")
@@ -203,6 +253,9 @@ def run(tests: list[str], shard: int, root: Path, base: dict, *, count: int = SH
     if not host or not Path(host).is_absolute() or not Path(host).is_dir():
         raise ValueError("FERRULE_CODEGEN_HOST_TARGET_DIR must name an existing absolute directory")
     storage = [Path(host), root]
+    if not prepare_dotnet(root, base, runner=runner):
+        (root / "failed.txt").write_text("dotnet-warmup\n")
+        return 1
     failed = []
     for unit in shards(tests, count)[shard - 1]:
         for position, name in enumerate(unit):
