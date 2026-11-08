@@ -48,39 +48,24 @@ fn utf8(mut bytes: &[u8]) -> String {
 }
 
 fn utf16(bytes: &[u8], big_endian: bool) -> String {
-    let mut words = bytes
-        .as_chunks::<2>()
-        .0
-        .iter()
-        .map(|bytes| {
-            let word = [bytes[0], bytes[1]];
-            if big_endian {
-                u16::from_be_bytes(word)
-            } else {
-                u16::from_le_bytes(word)
-            }
-        })
-        .peekable();
-    let mut output = String::new();
-    while let Some(word) = words.next() {
-        if (0xd800..=0xdbff).contains(&word) {
-            match words.peek().copied() {
-                None => break,
-                Some(low) if (0xdc00..=0xdfff).contains(&low) => {
-                    words.next();
-                    let scalar =
-                        0x10000 + ((u32::from(word) - 0xd800) << 10) + u32::from(low) - 0xdc00;
-                    output.push(char::from_u32(scalar).expect("valid surrogate pair"));
-                }
-                Some(_) => output.push(char::REPLACEMENT_CHARACTER),
-            }
-        } else if (0xdc00..=0xdfff).contains(&word) {
-            output.push(char::REPLACEMENT_CHARACTER);
+    let word = |bytes: &[u8; 2]| {
+        if big_endian {
+            u16::from_be_bytes(*bytes)
         } else {
-            output.push(char::from_u32(u32::from(word)).expect("non-surrogate BMP scalar"));
+            u16::from_le_bytes(*bytes)
         }
+    };
+    // An odd trailing byte and a terminal high surrogate are pending decoder
+    // state, which a non-flushing decoder leaves unemitted.
+    let mut words = bytes.as_chunks::<2>().0;
+    if let Some((last, rest)) = words.split_last()
+        && (0xd800..=0xdbff).contains(&word(last))
+    {
+        words = rest;
     }
-    output
+    char::decode_utf16(words.iter().map(word))
+        .map(|scalar| scalar.unwrap_or(char::REPLACEMENT_CHARACTER))
+        .collect()
 }
 
 fn utf32(bytes: &[u8], big_endian: bool) -> String {

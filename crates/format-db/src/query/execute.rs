@@ -16,7 +16,7 @@ use super::{
     BoundSqliteRead, CleanupStep, QueryCleanupFailure, QueryLimit, QueryPhase, QueryReadControl,
     QueryReadError, QueryReadErrorKind, QueryReadLimits, sqlite_codes,
 };
-use crate::{exact_f64, quote, sqlite_type_name};
+use crate::{quote, sqlite_type_name};
 
 const STOP_NONE: u8 = 0;
 const STOP_CANCELLED: u8 = 1;
@@ -516,7 +516,7 @@ fn convert(cell: ValueRef<'_>, ty: ScalarType) -> Result<Value, &'static str> {
         (ScalarType::Bool, ValueRef::Integer(1)) => Ok(Value::Bool(true)),
         (ScalarType::Bool, ValueRef::Integer(_)) => Err("integer other than 0 or 1"),
         (ScalarType::Int, ValueRef::Integer(value)) => Ok(Value::Int(value)),
-        (ScalarType::Float, ValueRef::Integer(value)) => exact_f64(value)
+        (ScalarType::Float, ValueRef::Integer(value)) => ir::i64_to_exact_f64(value)
             .map(Value::Float)
             .ok_or("integer outside the exact f64 range"),
         (ScalarType::Float, ValueRef::Real(value)) if value.is_finite() => Ok(Value::Float(value)),

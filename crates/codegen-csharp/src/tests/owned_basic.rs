@@ -1,10 +1,16 @@
-//! Prospective private generator controls. No public capability is enabled.
+//! Owned-source C# generation for Basic programs.
+//!
+//! Covers both the private renderer (`render_basic_owned_mapping`, with and
+//! without checked catalogue admission) and the public emitters
+//! (`emit_with_basic_owned_sources` and its filter and sort companions):
+//! admission and typed refusals, source failures, target value maps, root pins,
+//! leaf provenance, filtering and sorting. Ordinary emitter output stays
+//! byte-for-byte unchanged.
+//!
 //! FERRULE_PRIVATE_OWNED_CSHARP_HOST_DIR and FERRULE_PRIVATE_CHECKED_CSHARP_HOST_DIR
 //! retain the generated Mapping, TargetBuilder and complete typed host;
 //! FERRULE_PUBLIC_BASIC_CSHARP_HOST_DIR retains the public consumers.
-//! `owned_basic_consumers` builds and runs all of them without an external
-//! campaign.
-//! Ordinary embedded runtime/artifacts and all public emitter routes stay exact.
+//! `owned_basic_consumers` builds and runs all of them.
 use super::*;
 use crate::owned_basic::render_basic_owned_mapping;
 use ::mapping::{OwnedPosition, OwnedSourceField, OwnedSourceRef, SourceOwner};
@@ -359,8 +365,8 @@ fn private_nested_owned_identity_preserves_descendant_context_host() {
     assert_eq!(s.matches("WalkOwnedSourceCohort(").count(), 3);
     assert!(!s.contains("Reindex"));
     assert!(!s.contains("CloneView"));
-    // The P06 later compact1 operation is outside control-free #518; its frozen
-    // full expectation remains preserved for #440/#519, never rewritten here.
+    // This control-free host checks P06 owned identity only; it does not
+    // exercise the compact position after filtering.
 }
 #[test]
 fn private_owned_absence_plain_scope_and_malformed_error_hosts() {
@@ -1867,8 +1873,9 @@ fn checked_inventory_preserves_full_dynamic_refusal_and_present_empty_frame() {
     assert!(source.starts_with(&prepared.expect("prepared result captured")));
 }
 
-// #542 adds separate prospective controls. The complete preceding #518 test
-// module and every frozen source/host recipe above remain byte-for-byte exact.
+// Private renderer with ordinary source failures (#542): rule selection, lazy
+// messages, selected targets and bridge errors in generated hosts. The
+// control-free renders above stay byte-for-byte unchanged.
 fn source_failure(
     parts: &[&str],
     selection: codegen::FailureSelection,
@@ -2699,9 +2706,9 @@ const FAILURE_HOST_HELPERS: &str = r#"
     }
 "#;
 
-// #519 private interaction controls: checked admission plus ordinary global
-// source failures. All source and host controls remain prospective until Root
-// qualifies the composed corpus and generated C# friend-test assembly.
+// Checked admission combined with ordinary global source failures (#519):
+// catalogues include every target's legacy requirements, the factory runs
+// first, and ordered global failures fire before any target output.
 fn checked_failure_program() -> Program {
     use codegen::FailureSelection;
     let mut p = failure_scores(FailureSelection::WhenFalse(100));
@@ -7063,8 +7070,9 @@ Tree(a,expected);Tree(b,expected);Tree(c,expected);
 var all=(ExecutionOutputs)a.Result!;Check(all.Extras.Count==1 && all.Extras[0].Name=="Filtered" && Json(Plain(all.Extras[0].Instance))==expected,"complete plain all-target extra");Reads(a,1,1);Reads(b,1,1);Reads(c,1,1);
 "#;
 
-// #669 adds nine separate sorting controls; every earlier subject remains unchanged.
-// These controls retain source and complete consumers. Root supplies execution credit.
+// Public sort companion (#669): filter/sort phase order, stable multi-key
+// ordering, sorted positions and typed errors. Each test retains the generated
+// source and a complete consumer; other emitters' output stays unchanged.
 fn retain_public_sort_consumer(label: &str, program: &Program, body: &str) -> String {
     eprintln!("INPUT {label} complete sorting Program={program:#?}");
     let actual = crate::emit_with_basic_owned_sort(program);
