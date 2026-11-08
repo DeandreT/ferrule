@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 
 mod decimal;
 mod decimal_value;
+mod exact_float;
 mod flat_rows;
 mod instance_group;
 mod primary_root;
@@ -63,6 +64,7 @@ pub use xml_wildcard_exclusions::{
     XmlWildcardExcludedNamesError,
 };
 
+pub use exact_float::i64_to_exact_f64;
 pub use scalar_lexical::parse_exact_decimal_i64;
 pub use source_origin::{
     MAX_SOURCE_ORIGIN_PATH_BYTES, SourceDocumentOrigin, SourceOriginError, SourceRowOrigin,
@@ -3521,6 +3523,31 @@ impl SchemaNode {
             SchemaKind::Group { children, .. } => children.iter().find(|c| c.name == name),
             SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => None,
         }
+    }
+
+    /// Follows `path` one named child at a time, taking the first child with
+    /// each name. Recursive references are not resolved.
+    pub fn descendant(&self, path: &[String]) -> Option<&SchemaNode> {
+        path.iter()
+            .try_fold(self, |node, segment| node.child(segment))
+    }
+
+    /// Finds the first concrete group named `anchor` in depth-first,
+    /// declaration order, starting with this node. Recursive-reference nodes
+    /// never match, although their children are still searched.
+    pub fn find_concrete_group(&self, anchor: &str) -> Option<&SchemaNode> {
+        if self.recursive_ref.is_none()
+            && self.name == anchor
+            && matches!(self.kind, SchemaKind::Group { .. })
+        {
+            return Some(self);
+        }
+        let SchemaKind::Group { children, .. } = &self.kind else {
+            return None;
+        };
+        children
+            .iter()
+            .find_map(|child| child.find_concrete_group(anchor))
     }
 
     pub fn text_child(&self) -> Option<&SchemaNode> {
