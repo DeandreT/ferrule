@@ -332,11 +332,7 @@ impl<'a> SourceExports<'a> {
 
     pub(super) fn schema_node_at(&self, path: &[String]) -> Option<&SchemaNode> {
         let (source, _, local) = self.owner(path);
-        let mut node = source.schema;
-        for segment in local {
-            node = node.child(segment)?;
-        }
-        Some(node)
+        source.schema.descendant(local)
     }
 
     /// Resolves one join input against exactly one exported source component.

@@ -590,7 +590,7 @@ pub(super) fn source_path_crosses_repetition(project: &Project, path: &[String])
         let mut crossed = false;
         for segment in path {
             if let Some(anchor) = &current.recursive_ref {
-                let Some(group) = find_concrete_schema_group(root, anchor) else {
+                let Some(group) = root.find_concrete_group(anchor) else {
                     return false;
                 };
                 current = group;
@@ -672,7 +672,7 @@ fn follow_schema_direct_from<'a>(
     let mut current = schema;
     for (index, segment) in path.iter().enumerate() {
         if let Some(anchor) = &current.recursive_ref {
-            current = find_concrete_schema_group(root, anchor)?;
+            current = root.find_concrete_group(anchor)?;
         }
         current = current.child(segment)?;
         if current.repeating && index + 1 != path.len() {
@@ -718,7 +718,7 @@ fn any_schema_path_resolved(
             .and_then(|node| {
                 node.recursive_ref
                     .as_deref()
-                    .and_then(|anchor| find_concrete_schema_group(root, anchor))
+                    .and_then(|anchor| root.find_concrete_group(anchor))
                     .or(Some(node))
             })
             .is_some_and(predicate)
@@ -742,7 +742,7 @@ pub(super) fn follow_schema_resolved<'a>(
     let node = follow_schema(schema, path)?;
     node.recursive_ref
         .as_deref()
-        .and_then(|anchor| find_concrete_schema_group(schema, anchor))
+        .and_then(|anchor| schema.find_concrete_group(anchor))
         .or(Some(node))
 }
 
@@ -785,26 +785,11 @@ fn follow_schema_from<'a>(
     let mut current = schema;
     for segment in path {
         if let Some(anchor) = &current.recursive_ref {
-            current = find_concrete_schema_group(root, anchor)?;
+            current = root.find_concrete_group(anchor)?;
         }
         current = current.child(segment)?;
     }
     Some(current)
-}
-
-fn find_concrete_schema_group<'a>(schema: &'a SchemaNode, anchor: &str) -> Option<&'a SchemaNode> {
-    if schema.recursive_ref.is_none()
-        && schema.name == anchor
-        && matches!(schema.kind, SchemaKind::Group { .. })
-    {
-        return Some(schema);
-    }
-    let SchemaKind::Group { children, .. } = &schema.kind else {
-        return None;
-    };
-    children
-        .iter()
-        .find_map(|child| find_concrete_schema_group(child, anchor))
 }
 
 pub(super) fn display_path(path: &[String]) -> String {
@@ -876,7 +861,7 @@ pub(super) fn validate_owned_item_scalar(
     let mut valid = true;
     for segment in path {
         if let Some(anchor) = &current.recursive_ref {
-            match find_concrete_schema_group(root, anchor) {
+            match root.find_concrete_group(anchor) {
                 Some(group) => current = group,
                 None => {
                     valid = false;

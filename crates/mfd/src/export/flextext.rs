@@ -1,12 +1,13 @@
 use std::fmt::Write as _;
 
-use ir::{ScalarType, SchemaNode};
+use ir::SchemaNode;
 use mapping::{
     FlexCommand, FlexLineEnding, FlexTextLayout, FormatOptions, ManySplitter, OnceSplitter,
     SwitchMode, TrimSide,
 };
 
 use crate::MfdError;
+use crate::datatype::mfd_type_name;
 
 pub(super) fn validate_side(
     schema: &SchemaNode,
@@ -221,7 +222,7 @@ fn render_command(
                     )
                 })
                 .unwrap_or_default();
-            let _ = writeln!(output, "{pad}<Store Type=\"{}\"{trim}>", scalar_type(*ty));
+            let _ = writeln!(output, "{pad}<Store Type=\"{}\"{trim}>", mfd_type_name(*ty));
             value_element(output, indent + 2, "Name", name);
             let _ = writeln!(output, "{pad}</Store>");
         }
@@ -247,7 +248,7 @@ fn render_command(
                 let _ = writeln!(
                     output,
                     "{pad}    <Field Type=\"{}\" Size=\"{}\">",
-                    scalar_type(field.ty()),
+                    mfd_type_name(field.ty()),
                     field.width().get()
                 );
                 value_element(output, indent + 6, "Name", field.name());
@@ -286,7 +287,7 @@ fn render_command(
                 let _ = writeln!(
                     output,
                     "{pad}    <Field Type=\"{}\">",
-                    scalar_type(field.ty())
+                    mfd_type_name(field.ty())
                 );
                 value_element(output, indent + 6, "Name", field.name());
                 let _ = writeln!(output, "{pad}    </Field>");
@@ -359,15 +360,6 @@ fn empty_connection(output: &mut String, indent: usize) {
 fn value_element(output: &mut String, indent: usize, name: &str, value: &str) {
     let pad = " ".repeat(indent);
     let _ = writeln!(output, "{pad}<{name} Value=\"{}\"/>", encode_value(value));
-}
-
-fn scalar_type(ty: ScalarType) -> &'static str {
-    match ty {
-        ScalarType::String => "string",
-        ScalarType::Int => "integer",
-        ScalarType::Float => "decimal",
-        ScalarType::Bool => "boolean",
-    }
 }
 
 fn encode_value(value: &str) -> String {
