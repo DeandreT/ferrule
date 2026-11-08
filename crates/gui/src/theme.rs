@@ -176,19 +176,16 @@ pub enum TextRole {
     Title,
     /// Section headings inside a panel or dialog.
     Section,
-    Body,
     /// Secondary explanations and hints.
     Help,
-    Mono,
 }
 
 impl TextRole {
     pub fn font(self) -> FontId {
         match self {
             Self::Title => FontId::proportional(16.0),
-            Self::Section | Self::Body => FontId::proportional(14.0),
+            Self::Section => FontId::proportional(14.0),
             Self::Help => FontId::proportional(12.0),
-            Self::Mono => FontId::monospace(13.0),
         }
     }
 
@@ -197,7 +194,6 @@ impl TextRole {
         match self {
             Self::Title | Self::Section => text.strong(),
             Self::Help => text.weak(),
-            Self::Body | Self::Mono => text,
         }
     }
 }
