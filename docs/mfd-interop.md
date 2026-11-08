@@ -203,12 +203,19 @@ literals do not gain admission through a rename. Existing canonical constants
 keep their compatibility behavior; export still uses canonical component names.
 Specialized raw-metadata proofs retain their own narrower admission rules.
 
-Native value-maps with `defaultValueMode="input"` retain an explicit unsupported-
-mode diagnostic, including in embedded function declarations. Executable import
-refuses that diagnostic rather than admitting a map with its fallback removed.
-Ordinary import retains a warned partial design; it does not implement input
-fallback. Explicit custom defaults, legacy enabled defaults and absent default
-metadata keep their existing behavior.
+A native value-map with `defaultValueMode="input"` whose input and result types
+are both declared exactly `string` imports as
+`substitute_missing(value-map(input), input)`: a table miss returns the input
+unchanged, an absent input stays absent, and a saved custom default is ignored.
+This holds in the main mapping and in embedded function declarations. Every
+other input-mode type pair, including absent or unrecognized type names, retains
+an explicit unsupported-mode diagnostic, because the conversion of the passed
+value is not established. So does an input-mode map saved beside another
+value-map in the same component, because import lowers only one saved map.
+Executable import refuses that diagnostic rather than admitting a map with its
+fallback removed; ordinary import retains a warned partial design. Explicit
+custom defaults, legacy enabled defaults and absent default metadata keep their
+existing behavior.
 
 A used scalar source output-node rule that names a missing or unsupported
 function definition produces a warning with the function name and source output
