@@ -113,11 +113,49 @@ impl OwnedJoinConditions {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// One stage key with the earlier source its left side reads, resolved once
+/// when the plan is built.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OwnedJoinStageKey {
+    left: usize,
+    left_source: OwnedJoinSource,
+    key: OwnedJoinKey,
+}
+
+impl OwnedJoinStageKey {
+    /// Position of the left source in [`OwnedJoinPlan::sources`].
+    pub const fn left(&self) -> usize {
+        self.left
+    }
+
+    pub fn left_source(&self) -> &OwnedJoinSource {
+        &self.left_source
+    }
+
+    pub fn key(&self) -> &OwnedJoinKey {
+        &self.key
+    }
+}
+
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct OwnedJoinStep {
     source: OwnedJoinSource,
     conditions: OwnedJoinConditions,
+    /// `conditions` in order with their left sources; derived, never on the
+    /// wire, and left out of `Debug` so recorded program text stays stable.
+    #[serde(skip)]
+    keys: Vec<OwnedJoinStageKey>,
+}
+
+impl fmt::Debug for OwnedJoinStep {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("OwnedJoinStep")
+            .field("source", &self.source)
+            .field("conditions", &self.conditions)
+            .finish()
+    }
 }
 
 /// Left-deep owned inner-join plan with at least two sources. Duplicate and
@@ -184,12 +222,13 @@ impl OwnedJoinPlan {
         if first.collection == second.collection {
             return Err(OwnedJoinPlanError::DuplicateSource(second.collection));
         }
-        validate_left_sources(&conditions, std::slice::from_ref(&first))?;
+        let keys = resolve_left_sources(&conditions, std::slice::from_ref(&first))?;
         Ok(Self {
             first,
             second: OwnedJoinStep {
                 source: second,
                 conditions,
+                keys,
             },
             rest: Vec::new(),
         })
@@ -206,9 +245,17 @@ impl OwnedJoinPlan {
         {
             return Err(OwnedJoinPlanError::DuplicateSource(source.collection));
         }
-        validate_left_sources(&conditions, self.sources())?;
-        self.rest.push(OwnedJoinStep { source, conditions });
+        let keys = resolve_left_sources(&conditions, self.sources())?;
+        self.rest.push(OwnedJoinStep {
+            source,
+            conditions,
+            keys,
+        });
         Ok(self)
+    }
+
+    pub fn first(&self) -> &OwnedJoinSource {
+        &self.first
     }
 
     pub fn sources(&self) -> impl Iterator<Item = &OwnedJoinSource> {
@@ -223,6 +270,13 @@ impl OwnedJoinPlan {
                 .iter()
                 .map(|step| (&step.source, &step.conditions)),
         )
+    }
+
+    /// Each stage's source with its keys, every key carrying its left source.
+    pub fn keyed_stages(&self) -> impl Iterator<Item = (&OwnedJoinSource, &[OwnedJoinStageKey])> {
+        std::iter::once(&self.second)
+            .chain(&self.rest)
+            .map(|step| (&step.source, step.keys.as_slice()))
     }
 }
 
@@ -243,22 +297,28 @@ impl<'de> Deserialize<'de> for OwnedJoinPlan {
     }
 }
 
-fn validate_left_sources<'a>(
+fn resolve_left_sources<'a>(
     conditions: &OwnedJoinConditions,
     sources: impl IntoIterator<Item = &'a OwnedJoinSource>,
-) -> Result<(), OwnedJoinPlanError> {
-    let collections: Vec<_> = sources
-        .into_iter()
-        .map(|source| &source.collection)
-        .collect();
-    for condition in conditions.iter() {
-        if !collections.contains(&&condition.left_collection) {
-            return Err(OwnedJoinPlanError::UnknownLeftSource(
-                condition.left_collection.clone(),
-            ));
-        }
-    }
-    Ok(())
+) -> Result<Vec<OwnedJoinStageKey>, OwnedJoinPlanError> {
+    let sources: Vec<_> = sources.into_iter().collect();
+    conditions
+        .iter()
+        .map(|condition| {
+            sources
+                .iter()
+                .enumerate()
+                .find(|(_, source)| source.collection == condition.left_collection)
+                .map(|(left, source)| OwnedJoinStageKey {
+                    left,
+                    left_source: (*source).clone(),
+                    key: condition.clone(),
+                })
+                .ok_or_else(|| {
+                    OwnedJoinPlanError::UnknownLeftSource(condition.left_collection.clone())
+                })
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -345,6 +405,45 @@ mod tests {
             .unwrap();
         assert_eq!(plan.stages().count(), 2);
         let wire = serde_json::to_value(&plan).unwrap();
+        assert_eq!(serde_json::from_value::<OwnedJoinPlan>(wire).unwrap(), plan);
+    }
+
+    #[test]
+    fn stage_keys_carry_their_resolved_left_source() {
+        let plan = plan()
+            .then(
+                OwnedJoinSource::singleton(named(&["Header", "id"])),
+                key(named(&["Rows"])).and(OwnedJoinKey::new(
+                    primary(&["Rows"]),
+                    vec!["code".into()],
+                    vec!["code".into()],
+                )),
+            )
+            .unwrap();
+        let stages: Vec<_> = plan
+            .keyed_stages()
+            .map(|(source, keys)| {
+                let lefts: Vec<_> = keys
+                    .iter()
+                    .map(|key| (key.left(), key.left_source().collection().clone()))
+                    .collect();
+                (source.collection().clone(), lefts)
+            })
+            .collect();
+        assert_eq!(
+            stages,
+            [
+                (named(&["Rows"]), vec![(0, primary(&["Rows"]))]),
+                (
+                    named(&["Header", "id"]),
+                    vec![(1, named(&["Rows"])), (0, primary(&["Rows"]))],
+                ),
+            ]
+        );
+        assert_eq!(plan.first().collection(), &primary(&["Rows"]));
+        // Resolution is derived, not wire state: a round trip resolves again.
+        let wire = serde_json::to_value(&plan).unwrap();
+        assert!(!wire.to_string().contains("keys"));
         assert_eq!(serde_json::from_value::<OwnedJoinPlan>(wire).unwrap(), plan);
     }
 

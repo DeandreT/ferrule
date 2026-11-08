@@ -986,10 +986,7 @@ fn validate_copy_current_source(
     root: &Scope,
     target_format: SideFormat,
 ) -> Result<(), MfdError> {
-    let root_row_copy = root
-        .source()
-        .expect("legacy path after ownership boundary")
-        .is_some_and(<[String]>::is_empty)
+    let root_row_copy = crate::export::legacy_source(root)?.is_some_and(<[String]>::is_empty)
         && collection_root(
             side_format(&project.source_path, &project.source_options),
             &project.source,
@@ -1027,7 +1024,7 @@ fn validate_copy_scope(
         return Ok(());
     }
 
-    let current_source = scope_source_schema(project, parent_source, scope);
+    let current_source = scope_source_schema(project, parent_source, scope)?;
     if scope.construction == ScopeConstruction::CopyCurrentSource {
         validate_copy_scope_shape(scope, current_source, target, path, root_row_copy)?;
     }
@@ -1066,13 +1063,7 @@ fn validate_copy_scope_shape(
     path: &[String],
     root_row_copy: bool,
 ) -> Result<(), MfdError> {
-    if path.is_empty()
-        && scope
-            .source()
-            .expect("legacy path after ownership boundary")
-            .is_some()
-        && !root_row_copy
-    {
+    if path.is_empty() && crate::export::legacy_source(scope)?.is_some() && !root_row_copy {
         return Err(MfdError::Unsupported(
             "copy-current-source export requires an uncontrolled document-root copy or an exact row-root collection copy"
                 .to_string(),
@@ -1127,16 +1118,13 @@ fn scope_source_schema<'a>(
     project: &'a Project,
     parent: Option<&'a SchemaNode>,
     scope: &Scope,
-) -> Option<&'a SchemaNode> {
-    let Some(path) = scope
-        .source()
-        .expect("legacy path after ownership boundary")
-    else {
-        return if scope.sequence().is_none() && scope.join().is_none() {
+) -> Result<Option<&'a SchemaNode>, MfdError> {
+    let Some(path) = crate::export::legacy_source(scope)? else {
+        return Ok(if scope.sequence().is_none() && scope.join().is_none() {
             parent
         } else {
             None
-        };
+        });
     };
     if let Some((name, rest)) = path.split_first()
         && let Some(extra) = project
@@ -1144,9 +1132,9 @@ fn scope_source_schema<'a>(
             .iter()
             .find(|source| source.name == *name)
     {
-        return follow_schema(&extra.schema, rest);
+        return Ok(follow_schema(&extra.schema, rest));
     }
-    parent.and_then(|schema| follow_schema(schema, path))
+    Ok(parent.and_then(|schema| follow_schema(schema, path)))
 }
 
 fn follow_schema<'a>(mut schema: &'a SchemaNode, path: &[String]) -> Option<&'a SchemaNode> {
