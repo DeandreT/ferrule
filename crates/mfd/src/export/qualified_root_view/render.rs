@@ -28,7 +28,9 @@ fn boundary_xml(
     schema_file: &str,
     instance_path: &str,
     schema_hint: bool,
-) -> String {
+) -> Result<String, MfdError> {
+    // `RootTypeViewPlan::build` proved both closed root schemas and local paths.
+    let unaccounted = || unsupported("requires one completely accounted flat XML root pair");
     let root_ns = namespace(&schema.xml_namespace);
     let slot = |ns: &Option<XmlNamespace>| if namespace(ns).is_some() { 2 } else { 0 };
     let headers = format!(
@@ -66,17 +68,22 @@ fn boundary_xml(
         .alternatives()
         .iter()
         .find(|a| Some(&a.name) == schema.xml_default_type.as_ref())
-        .unwrap();
+        .ok_or_else(unaccounted)?;
     let selected_members = schema
         .alternatives()
         .iter()
         .find(|a| a.name == selected)
-        .unwrap();
+        .ok_or_else(unaccounted)?;
     let members = |names: &[String], keyed: bool| {
         names
             .iter()
-            .map(|name| field_xml(schema.child(name).unwrap(), keyed))
-            .collect::<String>()
+            .map(|name| {
+                schema
+                    .child(name)
+                    .map(|field| field_xml(field, keyed))
+                    .ok_or_else(unaccounted)
+            })
+            .collect::<Result<String, MfdError>>()
     };
     let root_name = xml_attr(&schema.name);
     let root_slot = slot(&schema.xml_namespace);
@@ -103,12 +110,12 @@ fn boundary_xml(
     } else {
         ""
     };
-    format!(
+    Ok(format!(
         "<component name=\"{root_name}\" uid=\"{uid}\" library=\"xml\" kind=\"14\">{properties}<data><root><header><namespaces>{headers}</namespaces></header><entry name=\"FileInstance\" ns=\"1\"><entry name=\"document\" ns=\"1\"><entry name=\"{root_name}\" ns=\"{root_slot}\" displayselectionmode=\"all\">{}</entry><entry name=\"{root_name}\" ns=\"{root_slot}\"><condition><expression><function name=\"equal\" library=\"core\"><expression><attribute name=\"type\" ns=\"http://www.w3.org/2001/XMLSchema-instance\"/></expression><expression><constant value=\"{}\" datatype=\"QName\"/></expression></function></expression></condition>{}</entry></entry></entry></root><document schema=\"{file}\" instanceroot=\"{root_expanded}\" {io}/></data></component>",
-        members(&base.members, false),
+        members(&base.members, false)?,
         xml_attr(&raw_type),
-        members(&selected_members.members, true)
-    )
+        members(&selected_members.members, true)?
+    ))
 }
 pub(super) fn mapping_xml(
     project: &Project,
@@ -116,7 +123,8 @@ pub(super) fn mapping_xml(
     allocated: &AllocatedPlan,
     source_schema: &str,
     target_schema: &str,
-) -> String {
+) -> Result<String, MfdError> {
+    let missing_path = || unsupported("requires one completely accounted flat XML root pair");
     let mut grouped = BTreeMap::<u32, Vec<u32>>::new();
     for (source, target) in &allocated.edges {
         grouped.entry(*source).or_default().push(*target);
@@ -133,7 +141,7 @@ pub(super) fn mapping_xml(
             )
         })
         .collect::<String>();
-    format!(
+    Ok(format!(
         "<mapping version=\"22\"><component name=\"Mapping\" uid=\"101\"><structure><children>{}{}</children><graph directed=\"1\"><vertices>{vertices}</vertices></graph></structure></component></mapping>",
         boundary_xml(
             &project.source,
@@ -142,9 +150,9 @@ pub(super) fn mapping_xml(
             allocated,
             &plan.canonical_type,
             source_schema,
-            project.source_path.as_deref().unwrap(),
+            project.source_path.as_deref().ok_or_else(missing_path)?,
             false,
-        ),
+        )?,
         boundary_xml(
             &project.target,
             Role::Target,
@@ -152,8 +160,8 @@ pub(super) fn mapping_xml(
             allocated,
             &plan.canonical_type,
             target_schema,
-            project.target_path.as_deref().unwrap(),
+            project.target_path.as_deref().ok_or_else(missing_path)?,
             project.target_options.xml_schema_hints.is_some(),
-        )
-    )
+        )?
+    ))
 }
