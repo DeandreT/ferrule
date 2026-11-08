@@ -866,7 +866,7 @@ fn consumer_projects() -> Vec<(&'static str, mapping::Project)> {
 
 #[test]
 fn owned_by_genuine_project_consumers_preserve_complete_trees_errors_and_api_policy() {
-    let directory = TempDir::new("owned_by_consumer");
+    let directory = TempDir::new("owned_by_consumer").unwrap();
     let mut library = String::new();
     for (name, project) in consumer_projects() {
         let saved = serde_json::to_vec_pretty(&project).unwrap();
@@ -1052,7 +1052,7 @@ macro_rules! fails {
 
 #[test]
 fn owned_by_empty_catalogue_public_consumers_build_with_warnings_denied() {
-    let directory = TempDir::new("owned_by_empty_catalogue");
+    let directory = TempDir::new("owned_by_empty_catalogue").unwrap();
     let mut options = options();
     options.package_name = "owned_empty_catalogue_host".into();
     let mut plain = project(SourceOwner::Primary);

@@ -816,7 +816,7 @@ fn public_basic_windows_generated_mixed_ancestry_preserves_native_positions() {
 }
 
 fn run_generated_consumers(programs: Vec<(&str, Program, String)>, include_prior_profiles: bool) {
-    let output = TempDir::new("basic_windows_702");
+    let output = TempDir::new("basic_windows_702").unwrap();
     let runtime = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .unwrap()

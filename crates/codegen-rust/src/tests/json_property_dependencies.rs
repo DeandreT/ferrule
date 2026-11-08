@@ -162,7 +162,7 @@ fn generated_json_boundaries_enforce_object_property_dependencies()
         generated_source.contains(r#"\"json_property_dependencies\":{\"Trigger\":[\"Required\"]}"#)
     );
 
-    let output = TempDir::new("rust_json_property_dependency_codegen");
+    let output = TempDir::new("rust_json_property_dependency_codegen").unwrap();
     write_artifacts(output.path(), &artifacts);
     let harness = r##"use codegen_runtime::JsonBoundaryError;
 use generated_property_dependencies::NamedJsonInput;
