@@ -1,10 +1,7 @@
-#[path = "../../codegen/tests/fixtures/dotnet_temp.rs"]
-mod dotnet_temp;
-use dotnet_temp::DotnetTemp;
+use test_support::{DotnetTemp, TempDir};
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use codegen::{
     Binding, DynamicSourceProgram, Expression, ExpressionNode, IterationOutput, IterationPlan,
@@ -233,13 +230,11 @@ fn dynamic_document_fixture() -> Program {
 #[test]
 fn generated_dynamic_source_fields_execute_exact_null_semantics() {
     let artifacts = codegen_csharp::emit(&fixture()).expect("dynamic source program emits");
-    let directory = TempDirectory::new("dotnet-dynamic-source");
+    let directory = TempDir::new("dotnet-dynamic-source").expect("temporary directory is created");
     for file in artifacts.files() {
-        let path = directory.path().join(file.path.as_str());
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).expect("artifact parent directory is created");
-        }
-        std::fs::write(path, &file.contents).expect("artifact is written");
+        directory
+            .write(file.path.as_str(), &file.contents)
+            .expect("artifact is written");
     }
     write_harness(directory.path());
 
@@ -279,13 +274,12 @@ fn generated_dynamic_source_fields_execute_exact_null_semantics() {
 fn generated_per_driver_dynamic_sources_execute_typed_and_json_host_contracts() {
     let artifacts =
         codegen_csharp::emit(&dynamic_document_fixture()).expect("dynamic source program emits");
-    let directory = TempDirectory::new("dotnet-per-driver-dynamic-source");
+    let directory =
+        TempDir::new("dotnet-per-driver-dynamic-source").expect("temporary directory is created");
     for file in artifacts.files() {
-        let path = directory.path().join(file.path.as_str());
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).expect("artifact parent directory is created");
-        }
-        std::fs::write(path, &file.contents).expect("artifact is written");
+        directory
+            .write(file.path.as_str(), &file.contents)
+            .expect("artifact is written");
     }
     write_dynamic_loader_harness(directory.path());
 
@@ -585,29 +579,4 @@ fn assert_command_succeeded(label: &str, output: &std::process::Output) {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
-}
-
-struct TempDirectory {
-    path: PathBuf,
-}
-
-impl TempDirectory {
-    fn new(label: &str) -> Self {
-        static NEXT: AtomicU64 = AtomicU64::new(0);
-        let serial = NEXT.fetch_add(1, Ordering::Relaxed);
-        let path =
-            std::env::temp_dir().join(format!("ferrule_{label}_{}_{}", std::process::id(), serial));
-        std::fs::create_dir_all(&path).expect("temporary directory is created");
-        Self { path }
-    }
-
-    fn path(&self) -> &Path {
-        &self.path
-    }
-}
-
-impl Drop for TempDirectory {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.path);
-    }
 }

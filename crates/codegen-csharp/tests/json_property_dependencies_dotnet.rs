@@ -1,11 +1,8 @@
-#[path = "../../codegen/tests/fixtures/dotnet_temp.rs"]
-mod dotnet_temp;
-use dotnet_temp::DotnetTemp;
+use test_support::{DotnetTemp, TempDir};
 
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use codegen::{
     Binding, Expression, ExpressionNode, NamedSourceProgram, Program, ScalarTargetDomain,
@@ -168,13 +165,9 @@ fn run_generated(program: &Program) -> Result<(), Box<dyn std::error::Error>> {
         .ok_or("generated mapping source is present UTF-8")?;
     assert!(generated.contains(r#"\"json_property_dependencies\":{\"Trigger\":[\"Required\"]}"#));
 
-    let directory = TempDirectory::new()?;
+    let directory = TempDir::new("json-property-dependencies-dotnet")?;
     for file in artifacts.files() {
-        let path = directory.path().join(file.path.as_str());
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        std::fs::write(path, &file.contents)?;
+        directory.write(file.path.as_str(), &file.contents)?;
     }
     write_harness(directory.path())?;
 
@@ -367,30 +360,4 @@ fn assert_command_succeeded(label: &str, output: &std::process::Output) {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
-}
-
-struct TempDirectory(PathBuf);
-
-impl TempDirectory {
-    fn new() -> Result<Self, std::io::Error> {
-        static NEXT: AtomicU64 = AtomicU64::new(0);
-        let unique = NEXT.fetch_add(1, Ordering::Relaxed);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_json_property_dependencies_dotnet_{}_{}",
-            std::process::id(),
-            unique
-        ));
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-
-    fn path(&self) -> &Path {
-        &self.0
-    }
-}
-
-impl Drop for TempDirectory {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
 }

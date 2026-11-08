@@ -1,11 +1,8 @@
-#[path = "../../codegen/tests/fixtures/dotnet_temp.rs"]
-mod dotnet_temp;
-use dotnet_temp::DotnetTemp;
+use test_support::{DotnetTemp, TempDir};
 
 use std::num::NonZeroU32;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use codegen::{
     Binding, DelimitedTextField, Expression, ExpressionNode, Program, ScalarFunction, TargetScope,
@@ -19,13 +16,11 @@ use mapping::{
 #[test]
 fn generated_scalar_batch_c_preserves_runtime_semantics() {
     let artifacts = codegen_csharp::emit(&fixture()).expect("scalar batch C fixture emits");
-    let directory = TempDirectory::new("scalar-batch-c-dotnet");
+    let directory = TempDir::new("scalar-batch-c-dotnet").expect("temporary directory is created");
     for file in artifacts.files() {
-        let path = directory.path().join(file.path.as_str());
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).expect("artifact parent directory is created");
-        }
-        std::fs::write(path, &file.contents).expect("artifact is written");
+        directory
+            .write(file.path.as_str(), &file.contents)
+            .expect("artifact is written");
     }
     write_harness(directory.path());
 
@@ -545,30 +540,4 @@ fn assert_command_succeeded(name: &str, output: &std::process::Output) {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
-}
-
-struct TempDirectory(PathBuf);
-
-impl TempDirectory {
-    fn new(tag: &str) -> Self {
-        static NEXT: AtomicU64 = AtomicU64::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_codegen_csharp_{tag}_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path).expect("temporary directory is created");
-        Self(path)
-    }
-
-    fn path(&self) -> &Path {
-        &self.0
-    }
-}
-
-impl Drop for TempDirectory {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
 }
