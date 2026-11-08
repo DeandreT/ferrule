@@ -1,8 +1,10 @@
 use ir::{Instance, Value};
 use mapping::{FunctionId, JoinId, NodeId, ScopeIteration, SequenceExpr};
+use serde::Serialize;
 
 use crate::source_iteration::PositionFrame;
 
+mod serialize;
 mod source_tree;
 pub use source_tree::TraceSourceTree;
 
@@ -12,12 +14,13 @@ const MAX_TRACE_ROW_TEXT_BYTES: usize = 512;
 const MAX_TRACE_ROW_NAME_CHARS: usize = 80;
 
 /// One active collection position captured when a graph node was evaluated.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct TracePosition {
     pub collection: Vec<String>,
     pub index: usize,
     pub grouped: bool,
     pub join: Option<JoinId>,
+    #[serde(serialize_with = "serialize::join_position")]
     pub join_position: Option<(JoinId, usize)>,
     pub document_path: Option<String>,
 }
@@ -46,11 +49,12 @@ pub enum TraceTarget {
 ///
 /// `structural_path` distinguishes repeated target names and concatenate
 /// segments without depending on runtime values.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct TraceScope {
     pub target: TraceTarget,
     pub target_path: Vec<String>,
     pub structural_path: Vec<usize>,
+    #[serde(skip)]
     pub source_scope: mapping::SourceScopeLocation,
 }
 
@@ -197,7 +201,8 @@ fn sequence_kind(sequence: &SequenceExpr) -> &'static str {
 }
 
 /// Where an item predicate was evaluated in the scope control pipeline.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum TraceFilterPhase {
     BeforeSort,
     AfterSort,
@@ -208,8 +213,9 @@ pub enum TraceFilterPhase {
 }
 
 /// A bounded scalar preview used by control-flow trace events.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct TraceValue {
+    #[serde(rename = "type")]
     pub value_type: &'static str,
     pub preview: String,
     pub truncated: bool,
@@ -248,7 +254,7 @@ impl TraceValue {
 }
 
 /// One immediate field of a bounded source-row snapshot.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct TraceSourceField {
     pub name: String,
     pub name_truncated: bool,
@@ -259,12 +265,13 @@ pub struct TraceSourceField {
 /// Source data as it entered one scope candidate, before its controls ran.
 /// Immediate fields retain the legacy preview. Structural rows also carry a
 /// separately bounded tree for inspection of nested groups and collections.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct TraceSourceRow {
     pub kind: TraceOutputKind,
     pub value: Option<TraceValue>,
     pub fields: Vec<TraceSourceField>,
     pub omitted_fields: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub structure: Option<TraceSourceTree>,
 }
 
@@ -326,7 +333,7 @@ impl TraceSourceRow {
 }
 
 /// One evaluated sort key without retaining its potentially large full value.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct TraceSortKey {
     pub node: NodeId,
     pub descending: bool,
@@ -334,7 +341,8 @@ pub struct TraceSortKey {
 }
 
 /// One concrete grouping strategy selected by a scope.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
 pub enum TraceGrouping {
     By { node: NodeId },
     AdjacentBy { node: NodeId },
@@ -354,7 +362,8 @@ pub enum TraceWindow {
 }
 
 /// Shape of one produced target item or finalized scope value.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum TraceOutputKind {
     Scalar,
     Group,
@@ -376,16 +385,32 @@ impl TraceOutputKind {
 }
 
 /// How one successfully written target field was computed.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
 pub enum TraceTargetFieldBinding {
-    StaticBinding { value: NodeId },
-    DynamicBinding { key: NodeId, value: NodeId },
+    StaticBinding {
+        #[serde(rename = "value_node")]
+        value: NodeId,
+    },
+    DynamicBinding {
+        #[serde(rename = "key_node")]
+        key: NodeId,
+        #[serde(rename = "value_node")]
+        value: NodeId,
+    },
     StaticChild,
-    DynamicChild { key: NodeId },
+    DynamicChild {
+        #[serde(rename = "key_node")]
+        key: NodeId,
+    },
 }
 
 /// A successful, observable step in interpreter evaluation.
-#[derive(Debug, Clone, PartialEq)]
+///
+/// Serializes as one object tagged by `kind`; output-shape fields are written
+/// as `output_kind`.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
 pub enum TraceEvent {
     NodeValue {
         node: NodeId,
@@ -429,6 +454,7 @@ pub enum TraceEvent {
         scope: TraceScope,
         ordinal: usize,
         positions: Vec<TracePosition>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         source_row: Option<TraceSourceRow>,
     },
     FilterDecision {
@@ -469,6 +495,7 @@ pub enum TraceEvent {
         field: String,
         binding: TraceTargetFieldBinding,
         positions: Vec<TracePosition>,
+        #[serde(rename = "output_kind")]
         kind: TraceOutputKind,
         value: Option<TraceValue>,
     },
@@ -476,12 +503,14 @@ pub enum TraceEvent {
         scope: TraceScope,
         positions: Vec<TracePosition>,
         output_path: Option<String>,
+        #[serde(rename = "output_kind")]
         kind: TraceOutputKind,
     },
     ScopeFinished {
         scope: TraceScope,
         candidates: usize,
         produced: usize,
+        #[serde(rename = "output_kind")]
         kind: TraceOutputKind,
     },
 }
