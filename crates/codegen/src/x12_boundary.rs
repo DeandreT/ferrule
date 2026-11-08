@@ -7,7 +7,8 @@ use std::fmt;
 use ir::{ScalarType, SchemaKind, SchemaNode};
 use mapping::{
     EdiAutocomplete, EdiBoundaryKind, EdiImpliedDecimal, EdiLexicalFormat, EdiLexicalKind,
-    EdiValueConstraint, FormatOptions, X12Autocomplete, X12Separators,
+    EdiValueConstraint, FormatOptions, X12Autocomplete, X12Descriptor, X12DescriptorEnvelope,
+    X12DescriptorSeparators, X12DescriptorVersion, X12Separators,
 };
 
 use crate::{EmbeddedSchemaError, Program, ProgramValidationError, serialize_embedded_schema};
@@ -373,49 +374,44 @@ pub(crate) fn descriptor(
     options: Option<&X12BoundaryOptions>,
     side: X12BoundarySide,
 ) -> Result<String, X12BoundaryPolicyError> {
-    let mut version = None;
-    if let Some(options) = options {
-        options.validate_separators()?;
-        version = Some(validate_schema(schema, options, side)?);
-        validate_constraints(schema, &options.constraints, side)?;
-        validate_profile_options(schema, options, side)?;
-    }
+    let Some(options) = options else {
+        return serialize_embedded_schema(schema, MAX_EMBEDDED_X12_DESCRIPTOR_BYTES)
+            .map_err(|error| X12BoundaryPolicyError::EmbeddedSchema { side, error });
+    };
+    options.validate_separators()?;
+    let version = validate_schema(schema, options, side)?;
+    let version = X12DescriptorVersion::from_label(version)
+        .ok_or_else(|| schema_error(side, &[], "unsupported X12 version"))?;
+    validate_constraints(schema, &options.constraints, side)?;
+    validate_profile_options(schema, options, side)?;
     let schema_descriptor = serialize_embedded_schema(schema, MAX_EMBEDDED_X12_DESCRIPTOR_BYTES)
         .map_err(|error| X12BoundaryPolicyError::EmbeddedSchema { side, error })?;
-    let Some(options) = options else {
-        return Ok(schema_descriptor);
+    let encoded = X12Descriptor {
+        version,
+        schema: schema_descriptor,
+        separators: options.separators.map(|syntax| X12DescriptorSeparators {
+            element: syntax.element,
+            component: syntax.component,
+            segment: syntax.segment,
+            repetition: syntax.repetition,
+        }),
+        constraints: options.constraints.clone(),
+        lenient_segments: options.lenient_segments,
+        implied_decimals: options.implied_decimals.clone(),
+        lexical_formats: options.lexical_formats.clone(),
+        autocomplete: options.autocomplete.clone(),
+        envelope_profile: match options.envelope_profile {
+            X12EnvelopeProfile::SingleTransaction => None,
+            X12EnvelopeProfile::GroupedTransactions => {
+                Some(X12DescriptorEnvelope::GroupedTransactions)
+            }
+            X12EnvelopeProfile::MapForceInterchanges => {
+                Some(X12DescriptorEnvelope::MapForceInterchanges)
+            }
+        },
     };
-    let separators = options.separators.map(|syntax| {
-        let mut encoded = serde_json::json!({
-            "element": syntax.element,
-            "component": syntax.component,
-            "segment": syntax.segment,
-        });
-        if let Some(repetition) = syntax.repetition {
-            encoded["repetition"] = serde_json::json!(repetition);
-        }
-        encoded
-    });
-    let mut encoded = serde_json::json!({
-        "version": version.expect("selected X12 schema has a proved version"),
-        "schema": schema_descriptor,
-        "separators": separators,
-        "constraints": options.constraints,
-        "lenient_segments": options.lenient_segments,
-        "implied_decimals": options.implied_decimals,
-        "lexical_formats": options.lexical_formats,
-        "autocomplete": options.autocomplete,
-    });
-    match options.envelope_profile {
-        X12EnvelopeProfile::SingleTransaction => {}
-        X12EnvelopeProfile::GroupedTransactions => {
-            encoded["envelope_profile"] = serde_json::json!("grouped_transactions");
-        }
-        X12EnvelopeProfile::MapForceInterchanges => {
-            encoded["envelope_profile"] = serde_json::json!("mapforce_interchanges");
-        }
-    }
-    let encoded = encoded.to_string();
+    let encoded = serde_json::to_string(&encoded)
+        .map_err(|_| schema_error(side, &[], "descriptor serialization failed"))?;
     if encoded.len() > MAX_EMBEDDED_X12_DESCRIPTOR_BYTES {
         return Err(X12BoundaryPolicyError::Descriptor {
             side,

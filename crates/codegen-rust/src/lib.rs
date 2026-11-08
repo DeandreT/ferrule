@@ -8,11 +8,11 @@ use std::fmt;
 
 use codegen::{
     AggregateFunction, AggregateValue, ArtifactPath, ArtifactPathError, ArtifactSet,
-    ArtifactSetError, Binding, BoundaryEmissionPlan, CompanionSelection, Expression, GeneratedFile,
-    GeneratedSequence, GroupingPlan, InnerJoin, IterationOutput, IterationPlan, IterationSource,
-    Program, ProgramValidationError, RuntimeValue, ScalarTargetDomain, SequenceWindow,
-    SortFilterOrder, TargetConstruction, TargetScope, UserFunctionProgram,
-    serialize_embedded_schema, validate_program,
+    ArtifactSetError, Binding, BoundaryEmissionPlan, CandidateIteration, CompanionSelection,
+    Expression, GeneratedFile, GeneratedSequence, GroupingPlan, InnerJoin, IterationKind,
+    IterationOutput, IterationPlan, IterationSource, Program, ProgramValidationError, RuntimeValue,
+    ScalarTargetDomain, SequenceWindow, SortFilterOrder, TargetConstruction, TargetScope,
+    UserFunctionProgram, serialize_embedded_schema, validate_program,
 };
 use codegen::{CsvOutputError, CsvOutputPolicy, validate_csv_output};
 use ir::{ScalarType, Value};
@@ -1848,22 +1848,34 @@ fn render_scope(
         format!("fn {name}(context: &ScopeContext<'_>) -> Result<Instance, RuntimeError> {{\n");
     output.push_str("    let _ = context;\n");
     if let Some(iteration) = &scope.iteration {
-        if iteration.concatenated().is_some() {
-            output.push_str(&render_concatenated_scope(iteration, segment_names));
-        } else if let Some(presence) = iteration.presence() {
-            output.push_str(&render_presence_scope(
-                scope,
-                presence,
-                child_names,
-                scope_preservation(program, scope),
-            ));
-        } else {
-            output.push_str(&render_iteration_scope(
-                program,
-                scope,
-                iteration,
-                child_names,
-            )?);
+        match iteration.kind() {
+            IterationKind::Concatenate(_) => {
+                output.push_str(&render_concatenated_scope(
+                    program,
+                    iteration,
+                    segment_names,
+                )?);
+            }
+            IterationKind::OptionalPresence(presence) => {
+                output.push_str(&render_presence_scope(
+                    scope,
+                    presence,
+                    child_names,
+                    scope_preservation(program, scope),
+                ));
+            }
+            IterationKind::Candidates(candidates) => {
+                output.push_str(&render_iteration_scope(
+                    program,
+                    scope,
+                    iteration,
+                    candidates,
+                    child_names,
+                )?);
+            }
+            IterationKind::Owned(_) => {
+                return Err(codegen::unrendered_iteration(program, iteration).into());
+            }
         }
     } else {
         output.push_str(&render_scope_item_with_scalar_output(
@@ -1883,7 +1895,11 @@ fn render_scope(
     Ok(output)
 }
 
-fn render_concatenated_scope(iteration: &IterationPlan, segment_names: &[String]) -> String {
+fn render_concatenated_scope(
+    program: &Program,
+    iteration: &IterationPlan,
+    segment_names: &[String],
+) -> Result<String, EmitError> {
     let mut output = String::from("    let mut outputs = Vec::new();\n");
     for segment_name in segment_names {
         output.push_str(&format!(
@@ -1895,9 +1911,11 @@ fn render_concatenated_scope(iteration: &IterationPlan, segment_names: &[String]
         IterationOutput::MappedSequence => {
             output.push_str("    Ok(Instance::MappedSequence(outputs))\n");
         }
-        IterationOutput::First => unreachable!("validated scope sequences cannot use First"),
+        IterationOutput::First => {
+            return Err(codegen::unrendered_iteration(program, iteration).into());
+        }
     }
-    output
+    Ok(output)
 }
 
 /// The condition runs once against the parent context, which the constructed
@@ -1939,6 +1957,7 @@ fn render_iteration_scope(
     program: &Program,
     scope: &TargetScope,
     iteration: &IterationPlan,
+    candidates: CandidateIteration<'_>,
     child_names: &[String],
 ) -> Result<String, EmitError> {
     let mut output = String::new();
@@ -1956,12 +1975,7 @@ fn render_iteration_scope(
 
     let candidates_are_reassigned =
         sort.is_some() || has_windows || has_grouping && iteration.filter().is_some();
-    render_iteration_candidates(
-        program,
-        iteration.input(),
-        candidates_are_reassigned,
-        &mut output,
-    )?;
+    render_iteration_candidates(program, candidates, candidates_are_reassigned, &mut output)?;
     if filter_before_sort {
         render_prefilter(iteration.filter(), &mut output);
     }
@@ -1996,7 +2010,7 @@ fn render_iteration_scope(
     }
     if let Some(grouping) = iteration.grouping() {
         render_grouping(
-            iteration.input(),
+            candidates,
             grouping,
             iteration.post_group_filter(),
             has_windows,
@@ -2071,14 +2085,14 @@ fn render_iteration_scope(
 }
 
 fn render_grouping(
-    input: &IterationSource,
+    candidates: CandidateIteration<'_>,
     grouping: GroupingPlan,
     post_group_filter: Option<NodeId>,
     candidates_are_reassigned: bool,
     output: &mut String,
 ) {
     render_grouping_with_prefix(
-        input,
+        candidates,
         grouping,
         post_group_filter,
         candidates_are_reassigned,
@@ -2088,29 +2102,20 @@ fn render_grouping(
 }
 
 fn render_grouping_with_prefix(
-    input: &IterationSource,
+    candidates: CandidateIteration<'_>,
     grouping: GroupingPlan,
     post_group_filter: Option<NodeId>,
     candidates_are_reassigned: bool,
     output: &mut String,
     expression_prefix: &str,
 ) {
-    let wrapper = match input {
-        IterationSource::OwnedSource(_) => unreachable!("owned source emission gate"),
-        IterationSource::Source(source) => source.path().last().map_or_else(
+    let wrapper = candidates
+        .source_path()
+        .and_then(<[String]>::last)
+        .map_or_else(
             || "None".to_string(),
             |name| format!("Some({})", rust_string(name)),
-        ),
-        IterationSource::DynamicDocuments(dynamic) => dynamic.source().path().last().map_or_else(
-            || "None".to_string(),
-            |name| format!("Some({})", rust_string(name)),
-        ),
-        IterationSource::Generated(_)
-        | IterationSource::InnerJoin(_)
-        | IterationSource::Concatenate(_)
-        | IterationSource::OptionalPresence(_) => "None".to_string(),
-        IterationSource::OwnedInnerJoin(_) => unreachable!("owned join emission gate"),
-    };
+        );
     let binding = if candidates_are_reassigned {
         "let mut candidates"
     } else {
@@ -2263,7 +2268,7 @@ fn render_source_iteration_candidates(
 
 fn render_iteration_candidates(
     program: &Program,
-    input: &IterationSource,
+    candidates: CandidateIteration<'_>,
     candidates_are_reassigned: bool,
     output: &mut String,
 ) -> Result<(), EmitError> {
@@ -2272,15 +2277,14 @@ fn render_iteration_candidates(
     } else {
         "let candidates"
     };
-    match input {
-        IterationSource::OwnedSource(_) => unreachable!("owned source emission gate"),
-        IterationSource::Source(source) => {
+    match candidates {
+        CandidateIteration::Source(source) => {
             render_source_iteration_candidates(program, source.path(), binding, output);
         }
-        IterationSource::DynamicDocuments(dynamic) => {
+        CandidateIteration::DynamicDocuments(dynamic) => {
             render_source_iteration_candidates(program, dynamic.source().path(), binding, output);
         }
-        IterationSource::Generated(sequence) => {
+        CandidateIteration::Generated(sequence) => {
             render_generated_values(sequence, "    ", output)?;
             output.push_str(
                 &format!(
@@ -2288,14 +2292,7 @@ fn render_iteration_candidates(
                 ),
             );
         }
-        IterationSource::InnerJoin(join) => render_inner_join(join, binding, output),
-        IterationSource::OwnedInnerJoin(_) => unreachable!("owned join emission gate"),
-        IterationSource::Concatenate(_) => {
-            unreachable!("concatenated scopes render before candidate iteration")
-        }
-        IterationSource::OptionalPresence(_) => {
-            unreachable!("optional-presence scopes render before candidate iteration")
-        }
+        CandidateIteration::InnerJoin(join) => render_inner_join(join, binding, output),
     }
     Ok(())
 }

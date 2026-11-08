@@ -10,7 +10,7 @@ pub(in crate::export) fn selector_context_warnings(
     project: &mapping::Project,
     sources: &super::super::source::SourceExports<'_>,
     bridge_required: bool,
-) -> Vec<String> {
+) -> Result<Vec<String>, crate::MfdError> {
     use mapping::{Node, NodeId, Scope, ScopeConstruction};
 
     use crate::node_inputs::{SelectorInputs, selector_inputs};
@@ -222,12 +222,12 @@ pub(in crate::export) fn selector_context_warnings(
             anchor: &[String],
             target: &str,
             depth: usize,
-        ) {
+        ) -> Result<(), crate::MfdError> {
             if depth >= 256 {
                 self.warnings.insert(format!(
                     "position selector context at {target} exceeds 256 scope levels"
                 ));
-                return;
+                return Ok(());
             }
             if let Some(segments) = scope.concatenated() {
                 for (index, segment) in segments.iter().enumerate() {
@@ -237,16 +237,13 @@ pub(in crate::export) fn selector_context_warnings(
                         anchor,
                         &format!("{target}/segment-{}", index + 1),
                         depth + 1,
-                    );
+                    )?;
                 }
-                return;
+                return Ok(());
             }
             let mut frames = parent.to_vec();
             let mut current = anchor.to_vec();
-            if let Some(source) = scope
-                .source()
-                .expect("legacy path after ownership boundary")
-            {
+            if let Some(source) = crate::export::legacy_source(scope)? {
                 current = self.source_frames(source, anchor, &mut frames);
             }
             if let Some(sequence) = scope.sequence() {
@@ -324,7 +321,7 @@ pub(in crate::export) fn selector_context_warnings(
                     &current,
                     &format!("{target}/{}", child.target_field),
                     depth + 1,
-                );
+                )?;
             }
             for child in &scope.dynamic_children {
                 self.check(
@@ -339,8 +336,9 @@ pub(in crate::export) fn selector_context_warnings(
                     &current,
                     &format!("{target}/dynamic-child"),
                     depth + 1,
-                );
+                )?;
             }
+            Ok(())
         }
     }
     let mut audit = Audit {
@@ -349,7 +347,7 @@ pub(in crate::export) fn selector_context_warnings(
         warnings: BTreeSet::new(),
         bridge_required,
     };
-    audit.scope(&project.root, &[], &[], "primary", 0);
+    audit.scope(&project.root, &[], &[], "primary", 0)?;
     for target in &project.extra_targets {
         audit.scope(
             &target.root,
@@ -357,7 +355,7 @@ pub(in crate::export) fn selector_context_warnings(
             &[],
             &format!("target `{}`", target.name),
             0,
-        );
+        )?;
     }
     for source in &project.extra_sources {
         if let Some(dynamic) = &source.dynamic_path
@@ -399,5 +397,5 @@ pub(in crate::export) fn selector_context_warnings(
             &format!("failure {} item", index + 1),
         );
     }
-    audit.warnings.into_iter().collect()
+    Ok(audit.warnings.into_iter().collect())
 }
