@@ -1,0 +1,22 @@
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" elementFormDefault="qualified">
+  <xs:element name="BuyerOrders"><xs:complexType><xs:sequence>
+    <xs:element name="BuyerOrder" minOccurs="0" maxOccurs="unbounded"><xs:complexType>
+      <xs:sequence>
+        <xs:element name="purpose" type="xs:string"/>
+        <xs:element name="orderType" type="xs:string"/>
+        <xs:element name="buyerOrder" type="xs:string"/>
+        <xs:element name="orderedOn" type="xs:string"/>
+        <xs:element name="department" type="xs:string" minOccurs="0"/>
+        <xs:element name="lineCount" type="xs:integer" minOccurs="0"/>
+        <xs:element name="line" minOccurs="0" maxOccurs="unbounded"><xs:complexType><xs:sequence>
+          <xs:element name="lineSeq" type="xs:string"/>
+          <xs:element name="quantity" type="xs:decimal"/>
+          <xs:element name="unit" type="xs:string"/>
+          <xs:element name="priceEach" type="xs:string"/>
+          <xs:element name="itemNumber" type="xs:string" minOccurs="0"/>
+        </xs:sequence></xs:complexType></xs:element>
+      </xs:sequence>
+      <xs:attribute name="lineCountMatches" type="xs:boolean"/>
+    </xs:complexType></xs:element>
+  </xs:sequence></xs:complexType></xs:element>
+</xs:schema>
