@@ -392,7 +392,7 @@ pub(super) fn rewrite_controlled_positions(
     uid: &mut u32,
 ) -> Result<(String, BTreeSet<u32>, Vec<String>), MfdError> {
     let requests = plan_with_identity(xml, |port| sources.xml_sequence_identity_for_port(port))?;
-    let warnings = selector_context_warnings(project, sources, !requests.is_empty());
+    let warnings = selector_context_warnings(project, sources, !requests.is_empty())?;
     if !warnings.is_empty() {
         return Ok((xml.to_string(), BTreeSet::new(), warnings));
     }

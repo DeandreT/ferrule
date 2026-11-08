@@ -479,14 +479,8 @@ mod tests {
         serde_json::from_str(text).unwrap_or_else(|error| panic!("fixture project: {error}"))
     }
 
-    fn test_directory(name: &str) -> anyhow::Result<PathBuf> {
-        let path =
-            std::env::temp_dir().join(format!("ferrule_cli_stdio_{name}_{}", std::process::id()));
-        if path.exists() {
-            std::fs::remove_dir_all(&path)?;
-        }
-        std::fs::create_dir_all(&path)?;
-        Ok(path)
+    fn test_directory(name: &str) -> anyhow::Result<test_support::TempDir> {
+        Ok(test_support::TempDir::new(&format!("cli-stdio-{name}"))?)
     }
 
     #[test]
@@ -511,7 +505,7 @@ mod tests {
             outcome.artifacts[0].bytes,
             b"full_name,age_next_year\nJane Doe,30\n"
         );
-        std::fs::remove_dir_all(directory)?;
+        directory.close()?;
         Ok(())
     }
 
@@ -541,7 +535,7 @@ mod tests {
         .unwrap_err();
 
         assert!(error.to_string().contains("exactly one output artifact"));
-        std::fs::remove_dir_all(directory)?;
+        directory.close()?;
         Ok(())
     }
 }
@@ -549,7 +543,6 @@ mod tests {
 #[cfg(test)]
 mod owned_source_stdio_admission_tests {
     use super::*;
-    use std::sync::atomic::{AtomicUsize, Ordering};
 
     #[test]
     fn owned_refusal_leaves_stdin_unread() -> anyhow::Result<()> {
@@ -560,16 +553,7 @@ mod owned_source_stdio_admission_tests {
                 panic!("stdin must remain unread")
             }
         }
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let directory = std::env::temp_dir().join(format!(
-            "ferrule-owned-stdio-{}-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)?
-                .as_nanos(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir(&directory)?;
+        let directory = test_support::TempDir::new("owned-stdio")?;
         let path = directory.join("project.json");
         std::fs::write(
             &path,
@@ -590,7 +574,7 @@ mod owned_source_stdio_admission_tests {
         ));
         assert_eq!(input.0, 0);
         std::fs::remove_file(path)?;
-        std::fs::remove_dir(directory)?;
+        directory.remove_empty()?;
         Ok(())
     }
 }
@@ -598,7 +582,6 @@ mod owned_source_stdio_admission_tests {
 #[cfg(test)]
 mod owned_collection_stdio_admission_tests {
     use super::*;
-    use std::sync::atomic::{AtomicUsize, Ordering};
 
     #[test]
     fn closed_source_function_refusal_with_owned_iteration_leaves_stdin_unread()
@@ -610,16 +593,7 @@ mod owned_collection_stdio_admission_tests {
                 panic!("stdin must remain unread")
             }
         }
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let directory = std::env::temp_dir().join(format!(
-            "ferrule-owned-collection-stdio-{}-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)?
-                .as_nanos(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir(&directory)?;
+        let directory = test_support::TempDir::new("owned-collection-stdio")?;
         let path = directory.join("project.json");
         std::fs::write(
             &path,
@@ -646,7 +620,7 @@ mod owned_collection_stdio_admission_tests {
         ));
         assert_eq!(input.0, 0);
         std::fs::remove_file(path)?;
-        std::fs::remove_dir(directory)?;
+        directory.remove_empty()?;
         Ok(())
     }
 }
@@ -700,7 +674,7 @@ mod owned_basic_stdio_transition_tests {
             assert!(error.to_string().contains("requires `--output -`"));
             assert_eq!(input.position(), 0);
             std::fs::remove_file(path)?;
-            std::fs::remove_dir(directory)?;
+            directory.remove_empty()?;
         }
         Ok(())
     }

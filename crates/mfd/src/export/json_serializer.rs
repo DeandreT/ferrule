@@ -5,6 +5,7 @@ use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::path::Path;
 
+use format_json::json_schema::json_schema_type_name;
 use ir::{ScalarType, SchemaKind, SchemaNode, Value};
 use mapping::{Graph, Node, NodeId};
 
@@ -255,7 +256,7 @@ fn render_shape(
             let _ = writeln!(
                 out,
                 "{pad}<entry name=\"{}\"{port}/>",
-                scalar_type_name(*ty)
+                json_schema_type_name(*ty)
             );
         }
         SchemaKind::ScalarUnion { .. } => {
@@ -282,14 +283,5 @@ fn render_shape(
             }
             let _ = writeln!(out, "{pad}</entry>");
         }
-    }
-}
-
-fn scalar_type_name(scalar_type: ScalarType) -> &'static str {
-    match scalar_type {
-        ScalarType::String => "string",
-        ScalarType::Int => "integer",
-        ScalarType::Float => "number",
-        ScalarType::Bool => "boolean",
     }
 }
