@@ -2272,18 +2272,8 @@ pub(crate) fn owned_collection_with_closed_source_function_test_project() -> map
 }
 
 #[cfg(test)]
-pub(crate) fn owned_host_test_directory(label: &str) -> anyhow::Result<std::path::PathBuf> {
-    static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
-    let directory = std::env::temp_dir().join(format!(
-        "ferrule-owned-host-{label}-{}-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)?
-            .as_nanos(),
-        NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-    ));
-    std::fs::create_dir(&directory)?;
-    Ok(directory)
+pub(crate) fn owned_host_test_directory(label: &str) -> anyhow::Result<test_support::TempDir> {
+    Ok(test_support::TempDir::new(&format!("owned-host-{label}"))?)
 }
 
 #[cfg(test)]
@@ -2462,7 +2452,7 @@ mod owned_basic_filesystem_transition_tests {
             assert_eq!(std::fs::read(&output)?.as_slice(), b"old-output".as_slice());
             std::fs::remove_file(input)?;
             std::fs::remove_file(output)?;
-            std::fs::remove_dir(directory)?;
+            directory.remove_empty()?;
         }
         Ok(())
     }

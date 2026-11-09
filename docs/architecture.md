@@ -408,6 +408,7 @@ compilation separate from runtime codecs and documents the public API migration.
   validation
 - `crates/reference-docs`: Generator and freshness check for shared technical
   references
+- `crates/test-support`: Shared test temporary directories and fixture writers
 <!-- END GENERATED workspace -->
 
 See [Supported formats](formats.md) for adapter direction and boundaries.
