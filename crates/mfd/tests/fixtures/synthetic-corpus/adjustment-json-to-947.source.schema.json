@@ -1,0 +1,34 @@
+{
+  "title": "Adjustment",
+  "type": "object",
+  "required": ["adjustmentNumber", "adjustmentDate", "location", "items"],
+  "properties": {
+    "adjustmentNumber": { "type": "string" },
+    "adjustmentDate": { "type": "string" },
+    "location": {
+      "type": "object",
+      "required": ["code"],
+      "properties": {
+        "code": { "type": "string" },
+        "name": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["itemNumber", "quantity", "reasonCode"],
+        "properties": {
+          "itemNumber": { "type": "string" },
+          "quantity": { "type": "number" },
+          "unit": { "type": "string" },
+          "reasonCode": { "type": "string" },
+          "note": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}
