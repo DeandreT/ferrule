@@ -1,0 +1,51 @@
+<mapping version="26"><component name="map"><structure><children>
+  <component name="advice" library="text" kind="16"><data>
+    <root><entry name="document"><entry name="Envelope"><entry name="Interchange"><entry name="Group"><entry name="Message" outkey="10">
+      <entry name="W06"><entry name="W0602" outkey="11"/><entry name="W0604" outkey="12"/></entry>
+      <entry name="Loop0100" outkey="13"><entry name="N1"><entry name="N101" outkey="14"/><entry name="N102" outkey="15"/><entry name="N104" outkey="16"/></entry></entry>
+      <entry name="G62"><entry name="G6202" outkey="17"/></entry>
+      <entry name="Loop0200" outkey="20"><entry name="W04"><entry name="W0401" outkey="21"/><entry name="W0402" outkey="22"/><entry name="W0405" outkey="23"/></entry></entry>
+      <entry name="W03"><entry name="W0301" outkey="24"/></entry>
+    </entry></entry></entry></entry></entry></root>
+    <text type="edi" kind="EDIX12" config="943.Config" inputinstance="advice.x12"/>
+  </data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint pos="0" key="100"/></targets><data><constant value="SF" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint pos="0" key="101"/></targets><data><constant value="[Y0001][M01][D01]" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint pos="0" key="102"/></targets><data><constant value="[Y0001]-[M01]-[D01]" datatype="string"/></data></component>
+  <component name="equal" library="core" kind="5"><sources><datapoint pos="0" key="110"/><datapoint pos="1" key="111"/></sources><targets><datapoint pos="0" key="112"/></targets></component>
+  <component name="filter" library="core" kind="3"><sources><datapoint pos="0" key="120"/><datapoint pos="1" key="121"/></sources><targets><datapoint pos="0" key="122"/><datapoint/></targets></component>
+  <component name="parse-date" library="core" kind="5"><sources><datapoint pos="0" key="130"/><datapoint pos="1" key="131"/></sources><targets><datapoint pos="0" key="132"/></targets></component>
+  <component name="format-date" library="core" kind="5"><sources><datapoint pos="0" key="140"/><datapoint pos="1" key="141"/></sources><targets><datapoint pos="0" key="142"/></targets></component>
+  <component name="number" library="core" kind="5"><sources><datapoint pos="0" key="150"/></sources><targets><datapoint pos="0" key="151"/></targets></component>
+  <component name="sum" library="core" kind="5"><sources><datapoint/><datapoint pos="1" key="160"/></sources><targets><datapoint pos="0" key="161"/></targets></component>
+  <component name="equal" library="core" kind="5"><sources><datapoint pos="0" key="170"/><datapoint pos="1" key="171"/></sources><targets><datapoint pos="0" key="172"/></targets></component>
+  <component name="intake" library="json" kind="31"><properties XSLTDefaultOutput="1"/><data>
+    <root><entry name="FileInstance"><entry name="document"><entry name="root"><entry name="object">
+      <entry name="receipts" type="json-property"><entry name="array" inpkey="200"><entry name="item" type="json-item"><entry name="object">
+        <entry name="depositorRef" type="json-property"><entry name="string" inpkey="201"/></entry>
+        <entry name="consignmentRef" type="json-property"><entry name="string" inpkey="202"/></entry>
+        <entry name="dispatchDate" type="json-property"><entry name="string" inpkey="203"/></entry>
+        <entry name="origin" type="json-property"><entry name="object" inpkey="204">
+          <entry name="name" type="json-property"><entry name="string" inpkey="205"/></entry>
+          <entry name="code" type="json-property"><entry name="string" inpkey="206"/></entry>
+        </entry></entry>
+        <entry name="lines" type="json-property"><entry name="array" inpkey="210"><entry name="item" type="json-item"><entry name="object">
+          <entry name="itemNumber" type="json-property"><entry name="string" inpkey="211"/></entry>
+          <entry name="quantity" type="json-property"><entry name="number" inpkey="212"/></entry>
+          <entry name="unit" type="json-property"><entry name="string" inpkey="213"/></entry>
+        </entry></entry></entry></entry>
+        <entry name="totalQuantity" type="json-property"><entry name="number" inpkey="220"/></entry>
+        <entry name="quantitiesBalance" type="json-property"><entry name="boolean" inpkey="221"/></entry>
+      </entry></entry></entry></entry>
+    </entry></entry></entry></entry></root>
+    <json schema="x12-943-to-intake-json.target.schema.json" outputinstance="intake.json"/>
+  </data></component>
+</children><connections>
+  <edge from="10" to="200"/><edge from="11" to="201"/><edge from="12" to="202"/>
+  <edge from="14" to="110"/><edge from="100" to="111"/><edge from="13" to="120"/><edge from="112" to="121"/>
+  <edge from="122" to="204"/><edge from="15" to="205"/><edge from="16" to="206"/>
+  <edge from="17" to="130"/><edge from="101" to="131"/><edge from="132" to="140"/><edge from="102" to="141"/><edge from="142" to="203"/>
+  <edge from="20" to="210"/><edge from="23" to="211"/><edge from="21" to="150"/><edge from="151" to="212"/><edge from="22" to="213"/>
+  <edge from="21" to="160"/><edge from="161" to="170"/><edge from="24" to="171"/>
+  <edge from="24" to="220"/><edge from="172" to="221"/>
+</connections></structure></component></mapping>
