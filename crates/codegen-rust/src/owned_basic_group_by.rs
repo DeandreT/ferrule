@@ -211,12 +211,15 @@ pub(super) fn render_legacy_grouping_scope(
         && sort.is_some_and(|sort| sort.filter_order() == SortFilterOrder::FilterThenSort);
     let has_windows =
         !iteration.windows().is_empty() || iteration.output() == IterationOutput::First;
+    let IterationKind::Candidates(candidates) = iteration.kind() else {
+        return Err(codegen::unrendered_iteration(program, iteration).into());
+    };
     let mut source = format!(
         "fn {name}(context: &ScopeContext<'_>) -> Result<Instance, RuntimeError> {{\n    let _ = context;\n"
     );
     render_iteration_candidates(
         program,
-        iteration.input(),
+        candidates,
         sort.is_some() || has_windows || iteration.filter().is_some(),
         &mut source,
     )?;
@@ -250,7 +253,7 @@ pub(super) fn render_legacy_grouping_scope(
         windows::render_legacy_prefilter(iteration.filter(), &mut source);
     }
     render_grouping_with_prefix(
-        iteration.input(),
+        candidates,
         grouping,
         iteration.post_group_filter(),
         has_windows,

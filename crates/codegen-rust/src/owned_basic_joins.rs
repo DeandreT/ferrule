@@ -16,21 +16,15 @@ fn source_literal(source: &mapping::OwnedJoinSource) -> String {
 }
 
 fn stages_literal(plan: &mapping::OwnedJoinPlan) -> String {
-    let sources = plan
-        .sources()
-        .map(|source| source.collection())
-        .collect::<Vec<_>>();
-    plan.stages()
-        .map(|(source, conditions)| {
-            let keys = conditions
+    plan.keyed_stages()
+        .map(|(source, keys)| {
+            let keys = keys
                 .iter()
-                .map(|key| {
-                    let left = sources
-                        .iter()
-                        .position(|collection| *collection == key.left_collection())
-                        .expect("owned plans join each left source before its key");
+                .map(|stage_key| {
+                    let key = stage_key.key();
                     format!(
-                        "codegen_runtime::OwnedJoinKey {{ left: {left}, left_path: &[{}], right_path: &[{}] }}",
+                        "codegen_runtime::OwnedJoinKey {{ left: {}, left_path: &[{}], right_path: &[{}] }}",
+                        stage_key.left(),
                         render_string_path(key.left_path()),
                         render_string_path(key.right_path())
                     )
@@ -56,10 +50,7 @@ pub(crate) fn render_owned_join_aggregate(
     call: impl Fn(NodeId, &str) -> String,
 ) -> String {
     let plan = &aggregate.plan;
-    let first = plan
-        .sources()
-        .next()
-        .expect("owned plans have a first source");
+    let first = plan.first();
     let mut body = format!(
         "{{\n        let tuples = context.owned_inner_join({}, {}, &[{}]).map_err(|error| error.with_owned_source_node({id}))?;\n",
         aggregate.join.get(),
@@ -132,10 +123,7 @@ pub(super) fn render_owned_join_scope(
         .expect("an owned join scope iterates");
     let id = join.id().get();
     let plan = join.plan();
-    let first = plan
-        .sources()
-        .next()
-        .expect("owned plans have a first source");
+    let first = plan.first();
     let mut source = format!(
         "fn {name}(context: &BasicScopeContext<'_>) -> Result<Instance, RuntimeError> {{\n    let candidates = context.owned_inner_join({id}, {}, &[{}])?;\n",
         source_literal(first),
