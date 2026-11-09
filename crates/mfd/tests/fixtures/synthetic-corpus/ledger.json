@@ -1,0 +1,154 @@
+{
+  "adjustment-json-to-947": {
+    "import": "ok",
+    "executable": true,
+    "issues": [],
+    "rust": "ok",
+    "csharp": "ok"
+  },
+  "intake-json-to-944": {
+    "import": "ok",
+    "executable": true,
+    "issues": [],
+    "rust": "ok",
+    "csharp": "ok"
+  },
+  "intake-json-to-944-cloned-references": {
+    "import": "ok",
+    "executable": false,
+    "issues": [
+      {
+        "kind": "import_warning",
+        "contains": "cannot prove complete enclosing-frame scalar occurrences"
+      },
+      {
+        "kind": "validation",
+        "contains": "target field `N901` is bound more than once"
+      },
+      {
+        "kind": "validation",
+        "contains": "target field `N902` is bound more than once"
+      }
+    ],
+    "rust": "refused",
+    "csharp": "refused"
+  },
+  "inventory-csv-to-846": {
+    "import": "ok",
+    "executable": true,
+    "issues": [],
+    "rust": "ok",
+    "csharp": "ok"
+  },
+  "inventory-json-to-846": {
+    "import": "ok",
+    "executable": true,
+    "issues": [],
+    "rust": "ok",
+    "csharp": "ok"
+  },
+  "inventory-json-to-846-distinct-count": {
+    "import": "ok",
+    "executable": false,
+    "issues": [
+      {
+        "kind": "import_warning",
+        "contains": "has an unresolvable sequence input"
+      }
+    ],
+    "rust": "ok",
+    "csharp": "ok"
+  },
+  "order-json-filename-to-945": {
+    "import": "ok",
+    "executable": false,
+    "issues": [
+      {
+        "kind": "import_warning",
+        "contains": "connected FileInstance input port"
+      },
+      {
+        "kind": "import_warning",
+        "contains": "connected FileInstance input port"
+      }
+    ],
+    "rust": "ok",
+    "csharp": "ok"
+  },
+  "order-json-to-945": {
+    "import": "ok",
+    "executable": true,
+    "issues": [],
+    "rust": "ok",
+    "csharp": "ok"
+  },
+  "order-json-to-945-conditional-note": {
+    "import": "ok",
+    "executable": false,
+    "issues": [
+      {
+        "kind": "import_warning",
+        "contains": "comes from an unsupported feed"
+      }
+    ],
+    "rust": "ok",
+    "csharp": "ok"
+  },
+  "order-json-to-945-functions": {
+    "import": "ok",
+    "executable": true,
+    "issues": [],
+    "rust": "ok",
+    "csharp": "ok"
+  },
+  "x12-850-to-order-xml": {
+    "import": "ok",
+    "executable": true,
+    "issues": [],
+    "rust": "ok",
+    "csharp": "ok"
+  },
+  "x12-856-to-consignment-json": {
+    "import": "ok",
+    "executable": true,
+    "issues": [],
+    "rust": "ok",
+    "csharp": "ok"
+  },
+  "x12-856-to-consignment-json-filtered-count": {
+    "import": "error: cannot import: physical filtered count: physical filtered count: physical filtered count: counted value is not String or Bool"
+  },
+  "x12-940-filename-to-order-json": {
+    "import": "ok",
+    "executable": false,
+    "issues": [
+      {
+        "kind": "import_warning",
+        "contains": "connected FileInstance input port"
+      }
+    ],
+    "rust": "ok",
+    "csharp": "ok"
+  },
+  "x12-940-to-997": {
+    "import": "ok",
+    "executable": true,
+    "issues": [],
+    "rust": "ok",
+    "csharp": "ok"
+  },
+  "x12-940-to-order-json": {
+    "import": "ok",
+    "executable": true,
+    "issues": [],
+    "rust": "ok",
+    "csharp": "ok"
+  },
+  "x12-943-to-intake-json": {
+    "import": "ok",
+    "executable": true,
+    "issues": [],
+    "rust": "ok",
+    "csharp": "ok"
+  }
+}
