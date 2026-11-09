@@ -1,0 +1,8 @@
+{
+  "type": "object",
+  "properties": {
+    "waybill": {"type": "string"},
+    "sealRef": {"type": "string"}
+  },
+  "additionalProperties": false
+}
