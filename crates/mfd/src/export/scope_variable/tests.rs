@@ -518,7 +518,7 @@ fn selector_project(collection: Vec<String>) -> mapping::Project {
 fn selector_warnings(project: &mapping::Project) -> Vec<String> {
     let sources =
         super::super::source::SourceExports::build(project, &mut KeyAlloc { next: 1 }).unwrap();
-    selector_context_warnings(project, &sources, false)
+    selector_context_warnings(project, &sources, false).unwrap()
 }
 #[test]
 fn selector_guard_uses_recorded_relative_paths_and_retains_inactive_absolute_diagnostic() {
@@ -666,7 +666,9 @@ fn private_xml_position_ownership_blocks_bridge_but_generated_parent_broadcast_i
     let sources =
         super::super::source::SourceExports::build(&project, &mut KeyAlloc { next: 1 }).unwrap();
     assert!(
-        selector_context_warnings(&project, &sources, true).is_empty(),
+        selector_context_warnings(&project, &sources, true)
+            .unwrap()
+            .is_empty(),
         "the generated item still broadcasts the active parent Row position"
     );
 }
