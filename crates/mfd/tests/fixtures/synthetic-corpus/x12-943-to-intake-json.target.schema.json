@@ -1,0 +1,36 @@
+{
+  "type": "object",
+  "properties": {
+    "receipts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "depositorRef": {"type": "string"},
+          "consignmentRef": {"type": "string"},
+          "dispatchDate": {"type": "string"},
+          "origin": {
+            "type": "object",
+            "properties": {
+              "name": {"type": "string"},
+              "code": {"type": "string"}
+            }
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "itemNumber": {"type": "string"},
+                "quantity": {"type": "number"},
+                "unit": {"type": "string"}
+              }
+            }
+          },
+          "totalQuantity": {"type": "number"},
+          "quantitiesBalance": {"type": "boolean"}
+        }
+      }
+    }
+  }
+}
