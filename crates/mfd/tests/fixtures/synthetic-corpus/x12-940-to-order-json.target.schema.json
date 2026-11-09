@@ -1,0 +1,41 @@
+{
+  "type": "object",
+  "properties": {
+    "orders": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "orderRef": {"type": "string"},
+          "buyerOrder": {"type": "string"},
+          "requestedDispatchDate": {"type": "string"},
+          "deliverTo": {
+            "type": "object",
+            "properties": {
+              "name": {"type": "string"},
+              "address1": {"type": "string"},
+              "address2": {"type": "string"},
+              "city": {"type": "string"},
+              "state": {"type": "string"},
+              "postCode": {"type": "string"},
+              "nation": {"type": "string"}
+            }
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "lineSeq": {"type": "integer"},
+                "itemNumber": {"type": "string"},
+                "quantity": {"type": "number"},
+                "unit": {"type": "string"},
+                "description": {"type": "string"}
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
