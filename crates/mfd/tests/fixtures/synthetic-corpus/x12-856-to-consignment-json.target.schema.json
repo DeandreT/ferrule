@@ -1,0 +1,59 @@
+{
+  "title": "ConsignmentNotices",
+  "type": "object",
+  "required": ["notices"],
+  "properties": {
+    "notices": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["consignmentRef"],
+        "properties": {
+          "consignmentRef": { "type": "string" },
+          "dispatchDate": { "type": "string" },
+          "shipTime": { "type": "string" },
+          "consignment": {
+            "type": "object",
+            "properties": {
+              "haulerQualifier": { "type": "string" },
+              "haulerCode": { "type": "string" },
+              "waybill": { "type": "string" }
+            },
+            "additionalProperties": false
+          },
+          "orders": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "hlId": { "type": "string" },
+                "orderRef": { "type": "string" }
+              },
+              "additionalProperties": false
+            }
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "hlId": { "type": "string" },
+                "parentId": { "type": "string" },
+                "productQualifier": { "type": "string" },
+                "itemNumber": { "type": "string" },
+                "quantity": { "type": "number" },
+                "unit": { "type": "string" }
+              },
+              "additionalProperties": false
+            }
+          },
+          "lineCount": { "type": "integer" },
+          "itemCount": { "type": "integer" },
+          "countMatches": { "type": "boolean" }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}
