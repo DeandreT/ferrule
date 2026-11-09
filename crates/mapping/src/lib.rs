@@ -140,7 +140,7 @@ pub use model::{
 pub use node_inputs::{NodeInput, NodeInputRole, NodeInputSlot};
 pub use owned_join::{
     OwnedJoinConditions, OwnedJoinKey, OwnedJoinPlan, OwnedJoinPlanError, OwnedJoinSource,
-    describe_owned_collection,
+    OwnedJoinStageKey, describe_owned_collection,
 };
 pub use path_hierarchy::PathHierarchyPlan;
 pub use path_hierarchy_owned::OwnedPathHierarchyPlan;
