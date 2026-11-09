@@ -1,0 +1,75 @@
+<Config><Elements>
+  <Segment name="ISA">
+    <Data name="ISA01" type="string"/><Data name="ISA02" type="string"/><Data name="ISA03" type="string"/><Data name="ISA04" type="string"/>
+    <Data name="ISA05" type="string"/><Data name="ISA06" type="string"/><Data name="ISA07" type="string"/><Data name="ISA08" type="string"/>
+    <Data name="ISA09" type="string"/><Data name="ISA10" type="string"/><Data name="ISA11" type="string"/><Data name="ISA12" type="string"/>
+    <Data name="ISA13" type="string"/><Data name="ISA14" type="string"/><Data name="ISA15" type="string"/><Data name="ISA16" type="string"/>
+  </Segment>
+  <Segment name="GS">
+    <Data name="GS01" type="string"/><Data name="GS02" type="string"/><Data name="GS03" type="string"/><Data name="GS04" type="string"/>
+    <Data name="GS05" type="string"/><Data name="GS06" type="string"/><Data name="GS07" type="string"/><Data name="GS08" type="string"/>
+  </Segment>
+  <Segment name="ST"><Data name="ST01" type="string"/><Data name="ST02" type="string"/></Segment>
+  <Segment name="SE"><Data name="SE01" type="string"/><Data name="SE02" type="string"/></Segment>
+  <Segment name="GE"><Data name="GE01" type="string"/><Data name="GE02" type="string"/></Segment>
+  <Segment name="IEA"><Data name="IEA01" type="string"/><Data name="IEA02" type="string"/></Segment>
+  <Segment name="N1"><Data name="N101" type="string"/><Data name="N102" type="string"/><Data name="N103" type="string"/><Data name="N104" type="string"/></Segment>
+  <Segment name="N3"><Data name="N301" type="string"/><Data name="N302" type="string"/></Segment>
+  <Segment name="N4"><Data name="N401" type="string"/><Data name="N402" type="string"/><Data name="N403" type="string"/><Data name="N404" type="string"/></Segment>
+  <Segment name="N9"><Data name="N901" type="string"/><Data name="N902" type="string"/></Segment>
+  <Segment name="G62"><Data name="G6201" type="string"/><Data name="G6202" type="string"/></Segment>
+  <Segment name="NTE"><Data name="NTE01" type="string"/><Data name="NTE02" type="string"/></Segment>
+  <Segment name="LX"><Data name="LX01" type="integer"/></Segment>
+  <Segment name="W05"><Data name="W0501" type="string"/><Data name="W0502" type="string"/><Data name="W0503" type="string"/></Segment>
+  <Segment name="W66"><Data name="W6601" type="string"/><Data name="W6602" type="string"/><Data name="W6605" type="string"/></Segment>
+  <Segment name="W01">
+    <Data name="W0101" type="decimal" maxLength="10"/><Data name="W0102" type="string"/><Data name="W0103" type="string"/>
+    <Data name="W0104" type="string"/><Data name="W0105" type="string"/>
+  </Segment>
+  <Segment name="G69"><Data name="G6901" type="string"/></Segment>
+  <Segment name="W76"><Data name="W7601" type="decimal" maxLength="10"/><Data name="W7602" type="decimal" maxLength="10"/></Segment>
+  <Segment name="W06">
+    <Data name="W0601" type="string"/><Data name="W0602" type="string"/><Data name="W0603" type="string"/>
+    <Data name="W0604" type="string"/><Data name="W0605" type="string"/>
+  </Segment>
+  <Segment name="W27"><Data name="W2701" type="string"/><Data name="W2702" type="string"/><Data name="W2703" type="string"/></Segment>
+  <Segment name="W12">
+    <Data name="W1201" type="string"/><Data name="W1202" type="decimal" maxLength="10"/><Data name="W1203" type="decimal" maxLength="10"/>
+    <Data name="W1204" type="decimal" maxLength="10"/><Data name="W1205" type="string"/><Data name="W1206" type="string"/>
+    <Data name="W1207" type="string"/><Data name="W1208" type="string"/>
+  </Segment>
+  <Segment name="W03"><Data name="W0301" type="decimal" maxLength="10"/><Data name="W0302" type="decimal" maxLength="10"/><Data name="W0303" type="string"/></Segment>
+  <Segment name="W04">
+    <Data name="W0401" type="decimal" maxLength="10"/><Data name="W0402" type="string"/><Data name="W0403" type="string"/>
+    <Data name="W0404" type="string"/><Data name="W0405" type="string"/>
+  </Segment>
+  <Segment name="W17"><Data name="W1701" type="string"/><Data name="W1702" type="string"/><Data name="W1703" type="string"/><Data name="W1704" type="string"/></Segment>
+  <Segment name="W07">
+    <Data name="W0701" type="decimal" maxLength="10"/><Data name="W0702" type="string"/><Data name="W0703" type="string"/>
+    <Data name="W0704" type="string"/><Data name="W0705" type="string"/>
+  </Segment>
+  <Segment name="W14"><Data name="W1401" type="decimal" maxLength="10"/></Segment>
+  <Segment name="BIA"><Data name="BIA01" type="string"/><Data name="BIA02" type="string"/><Data name="BIA03" type="string"/><Data name="BIA04" type="string"/></Segment>
+  <Segment name="LIN"><Data name="LIN01" type="string"/><Data name="LIN02" type="string"/><Data name="LIN03" type="string"/></Segment>
+  <Segment name="QTY"><Data name="QTY01" type="string"/><Data name="QTY02" type="decimal" maxLength="10"/><Data name="QTY03" type="string"/></Segment>
+  <Segment name="W15"><Data name="W1501" type="string"/><Data name="W1502" type="string"/></Segment>
+  <Segment name="W19">
+    <Data name="W1901" type="string"/><Data name="W1902" type="decimal" maxLength="10"/><Data name="W1903" type="string"/>
+    <Data name="W1904" type="string"/><Data name="W1905" type="string"/><Data name="W1906" type="string"/>
+  </Segment>
+  <Segment name="BSN"><Data name="BSN01" type="string"/><Data name="BSN02" type="string"/><Data name="BSN03" type="string"/><Data name="BSN04" type="string"/></Segment>
+  <Segment name="HL"><Data name="HL01" type="string"/><Data name="HL02" type="string"/><Data name="HL03" type="string"/></Segment>
+  <Segment name="TD5"><Data name="TD501" type="string"/><Data name="TD502" type="string"/><Data name="TD503" type="string"/></Segment>
+  <Segment name="REF"><Data name="REF01" type="string"/><Data name="REF02" type="string"/></Segment>
+  <Segment name="SN1"><Data name="SN101" type="string"/><Data name="SN102" type="decimal" maxLength="10"/><Data name="SN103" type="string"/></Segment>
+  <Segment name="BEG"><Data name="BEG01" type="string"/><Data name="BEG02" type="string"/><Data name="BEG03" type="string"/><Data name="BEG04" type="string"/><Data name="BEG05" type="string"/></Segment>
+  <Segment name="PO1">
+    <Data name="PO101" type="string"/><Data name="PO102" type="decimal" maxLength="10"/><Data name="PO103" type="string"/>
+    <Data name="PO104" type="decimal" maxLength="12"/><Data name="PO105" type="string"/><Data name="PO106" type="string"/><Data name="PO107" type="string"/>
+  </Segment>
+  <Segment name="CTT"><Data name="CTT01" type="integer"/></Segment>
+  <Segment name="AK1"><Data name="AK101" type="string"/><Data name="AK102" type="string"/></Segment>
+  <Segment name="AK2"><Data name="AK201" type="string"/><Data name="AK202" type="string"/></Segment>
+  <Segment name="AK5"><Data name="AK501" type="string"/></Segment>
+  <Segment name="AK9"><Data name="AK901" type="string"/><Data name="AK902" type="integer"/><Data name="AK903" type="integer"/><Data name="AK904" type="integer"/></Segment>
+</Elements></Config>
