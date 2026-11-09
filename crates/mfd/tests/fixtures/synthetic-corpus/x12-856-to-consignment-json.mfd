@@ -1,0 +1,78 @@
+<mapping version="26"><component name="map"><structure><children>
+  <component name="notice" library="text" kind="16"><data>
+    <root><entry name="document"><entry name="Envelope"><entry name="Interchange"><entry name="Group"><entry name="Message_856" outkey="10">
+      <entry name="BSN"><entry name="BSN01"/><entry name="BSN02" outkey="11"/><entry name="BSN03" outkey="12"/><entry name="BSN04" outkey="13"/></entry>
+      <entry name="Loop0100" outkey="20">
+        <entry name="HL"><entry name="HL01" outkey="32"/><entry name="HL02" outkey="33"/><entry name="HL03" outkey="21"/></entry>
+        <entry name="TD5"><entry name="TD501"/><entry name="TD502" outkey="22"/><entry name="TD503" outkey="23"/></entry>
+        <entry name="REF" outkey="24"><entry name="REF01" outkey="25"/><entry name="REF02" outkey="26"/></entry>
+        <entry name="LIN" outkey="34"><entry name="LIN01"/><entry name="LIN02" outkey="27"/><entry name="LIN03" outkey="28"/></entry>
+        <entry name="SN1"><entry name="SN101"/><entry name="SN102" outkey="29"/><entry name="SN103" outkey="30"/></entry>
+      </entry>
+      <entry name="CTT"><entry name="CTT01" outkey="31"/></entry>
+    </entry></entry></entry></entry></entry></root>
+    <text type="edi" kind="EDIX12" config="Envelope.Config" inputinstance="notice.x12"><messages><message type="856"/></messages></text>
+  </data></component>
+  <component name="consignments" library="json" kind="31"><properties XSLTDefaultOutput="1"/><data>
+    <root><entry name="FileInstance"><entry name="document"><entry name="root"><entry name="object">
+      <entry name="notices" type="json-property"><entry name="array"><entry name="item" type="json-item"><entry name="object" inpkey="100">
+        <entry name="consignmentRef" type="json-property"><entry name="string" inpkey="101"/></entry>
+        <entry name="dispatchDate" type="json-property"><entry name="string" inpkey="102"/></entry>
+        <entry name="shipTime" type="json-property"><entry name="string" inpkey="103"/></entry>
+        <entry name="consignment" type="json-property"><entry name="object" inpkey="110">
+          <entry name="haulerQualifier" type="json-property"><entry name="string" inpkey="111"/></entry>
+          <entry name="haulerCode" type="json-property"><entry name="string" inpkey="112"/></entry>
+          <entry name="waybill" type="json-property"><entry name="string" inpkey="113"/></entry>
+        </entry></entry>
+        <entry name="orders" type="json-property"><entry name="array"><entry name="item" type="json-item"><entry name="object" inpkey="120">
+          <entry name="hlId" type="json-property"><entry name="string" inpkey="121"/></entry>
+          <entry name="orderRef" type="json-property"><entry name="string" inpkey="122"/></entry>
+        </entry></entry></entry></entry>
+        <entry name="items" type="json-property"><entry name="array"><entry name="item" type="json-item"><entry name="object" inpkey="130">
+          <entry name="hlId" type="json-property"><entry name="string" inpkey="131"/></entry>
+          <entry name="parentId" type="json-property"><entry name="string" inpkey="132"/></entry>
+          <entry name="productQualifier" type="json-property"><entry name="string" inpkey="133"/></entry>
+          <entry name="itemNumber" type="json-property"><entry name="string" inpkey="134"/></entry>
+          <entry name="quantity" type="json-property"><entry name="number" inpkey="135"/></entry>
+          <entry name="unit" type="json-property"><entry name="string" inpkey="136"/></entry>
+        </entry></entry></entry></entry>
+        <entry name="lineCount" type="json-property"><entry name="number" inpkey="140"/></entry>
+        <entry name="itemCount" type="json-property"><entry name="number" inpkey="141"/></entry>
+        <entry name="countMatches" type="json-property"><entry name="boolean" inpkey="142"/></entry>
+      </entry></entry></entry></entry>
+    </entry></entry></entry></entry></root>
+    <json schema="x12-856-to-consignment-json.target.schema.json" outputinstance="consignments.json"/>
+  </data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint key="200"/></targets><data><constant value="S" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint key="201"/></targets><data><constant value="O" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint key="202"/></targets><data><constant value="I" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint key="203"/></targets><data><constant value="BM" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint key="204"/></targets><data><constant value="PO" datatype="string"/></data></component>
+  <component name="equal" library="core" kind="5"><sources><datapoint pos="0" key="210"/><datapoint pos="1" key="211"/></sources><targets><datapoint key="212"/></targets></component>
+  <component name="filter" library="core" kind="3"><sources><datapoint pos="0" key="213"/><datapoint pos="1" key="214"/></sources><targets><datapoint pos="0" key="215"/></targets></component>
+  <component name="equal" library="core" kind="5"><sources><datapoint pos="0" key="220"/><datapoint pos="1" key="221"/></sources><targets><datapoint key="222"/></targets></component>
+  <component name="filter" library="core" kind="3"><sources><datapoint pos="0" key="223"/><datapoint pos="1" key="224"/></sources><targets><datapoint pos="0" key="225"/></targets></component>
+  <component name="equal" library="core" kind="5"><sources><datapoint pos="0" key="230"/><datapoint pos="1" key="231"/></sources><targets><datapoint key="232"/></targets></component>
+  <component name="filter" library="core" kind="3"><sources><datapoint pos="0" key="233"/><datapoint pos="1" key="234"/></sources><targets><datapoint pos="0" key="235"/></targets></component>
+  <component name="equal" library="core" kind="5"><sources><datapoint pos="0" key="240"/><datapoint pos="1" key="241"/></sources><targets><datapoint key="242"/></targets></component>
+  <component name="filter" library="core" kind="3"><sources><datapoint pos="0" key="243"/><datapoint pos="1" key="244"/></sources><targets><datapoint pos="0" key="245"/></targets></component>
+  <component name="equal" library="core" kind="5"><sources><datapoint pos="0" key="250"/><datapoint pos="1" key="251"/></sources><targets><datapoint key="252"/></targets></component>
+  <component name="filter" library="core" kind="3"><sources><datapoint pos="0" key="253"/><datapoint pos="1" key="254"/></sources><targets><datapoint pos="0" key="255"/></targets></component>
+  <component name="filter" library="core" kind="3"><sources><datapoint pos="0" key="263"/><datapoint pos="1" key="264"/></sources><targets><datapoint pos="0" key="265"/></targets></component>
+  <component name="equal" library="core" kind="5"><sources><datapoint pos="0" key="266"/><datapoint pos="1" key="267"/></sources><targets><datapoint key="268"/></targets></component>
+  <component name="count" library="core" kind="5"><sources><datapoint/><datapoint pos="1" key="260"/></sources><targets><datapoint key="261"/></targets></component>
+  <component name="count" library="core" kind="5"><sources><datapoint/><datapoint pos="1" key="280"/></sources><targets><datapoint key="281"/></targets></component>
+  <component name="equal" library="core" kind="5"><sources><datapoint pos="0" key="270"/><datapoint pos="1" key="271"/></sources><targets><datapoint key="272"/></targets></component>
+</children><connections>
+  <edge from="10" to="100"/><edge from="11" to="101"/><edge from="12" to="102"/><edge from="13" to="103"/>
+  <edge from="20" to="213"/><edge from="21" to="210"/><edge from="200" to="211"/><edge from="212" to="214"/><edge from="215" to="110"/>
+  <edge from="22" to="111"/><edge from="23" to="112"/>
+  <edge from="26" to="243"/><edge from="25" to="240"/><edge from="203" to="241"/><edge from="242" to="244"/><edge from="245" to="113"/>
+  <edge from="20" to="223"/><edge from="21" to="220"/><edge from="201" to="221"/><edge from="222" to="224"/><edge from="225" to="120"/>
+  <edge from="32" to="121"/>
+  <edge from="26" to="253"/><edge from="25" to="250"/><edge from="204" to="251"/><edge from="252" to="254"/><edge from="255" to="122"/>
+  <edge from="20" to="233"/><edge from="21" to="230"/><edge from="202" to="231"/><edge from="232" to="234"/><edge from="235" to="130"/>
+  <edge from="32" to="131"/><edge from="33" to="132"/><edge from="27" to="133"/><edge from="28" to="134"/><edge from="29" to="135"/><edge from="30" to="136"/>
+  <edge from="31" to="140"/><edge from="21" to="263"/><edge from="21" to="266"/><edge from="202" to="267"/><edge from="268" to="264"/><edge from="265" to="260"/><edge from="261" to="141"/>
+  <edge from="31" to="270"/><edge from="34" to="280"/><edge from="281" to="271"/><edge from="272" to="142"/>
+</connections></structure></component></mapping>
