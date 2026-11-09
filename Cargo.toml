@@ -32,6 +32,7 @@ members = [
     "crates/cli",
     "crates/gui",
     "crates/web-demo",
+    "crates/test-support",
 ]
 # A path dependency, not a member: its upstream sources keep their own lints and docs.
 exclude = ["vendor/rust_xlsxwriter"]
@@ -51,6 +52,7 @@ mapping = { path = "crates/mapping" }
 document-source = { path = "crates/document-source" }
 functions = { path = "crates/functions" }
 engine = { path = "crates/engine" }
+test-support = { path = "crates/test-support" }
 codegen = { path = "crates/codegen" }
 codegen-schema = { path = "crates/codegen-schema" }
 codegen-runtime = { path = "crates/codegen-runtime" }
