@@ -1,0 +1,51 @@
+{
+  "title": "DispatchNotice",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["consignments"],
+  "properties": {
+    "consignments": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["consignmentRef", "orderRef", "dispatchDate", "hauler", "serviceLevel", "deliverTo", "lines"],
+        "properties": {
+          "consignmentRef": { "type": "string" },
+          "orderRef": { "type": "string" },
+          "buyerOrder": { "type": "string" },
+          "dispatchDate": { "type": "string" },
+          "hauler": { "type": "string" },
+          "serviceLevel": { "type": "string" },
+          "traceRef": { "type": "string" },
+          "deliverTo": {
+            "type": "object", "additionalProperties": false,
+            "required": ["name", "locationCode", "address1", "city", "state", "postCode"],
+            "properties": {
+              "name": { "type": "string" },
+              "locationCode": { "type": "string" },
+              "address1": { "type": "string" },
+              "city": { "type": "string" },
+              "state": { "type": "string" },
+              "postCode": { "type": "string" }
+            }
+          },
+          "lines": {
+            "type": "array", "minItems": 1,
+            "items": {
+              "type": "object", "additionalProperties": false,
+              "required": ["itemNumber", "quantityOrdered", "dispatchedQty", "status", "weight"],
+              "properties": {
+                "itemNumber": { "type": "string" },
+                "quantityOrdered": { "type": "number" },
+                "dispatchedQty": { "type": "number" },
+                "uom": { "type": "string" },
+                "status": { "type": "string" },
+                "weight": { "type": "number" }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
