@@ -1,0 +1,21 @@
+{
+  "type": "object",
+  "properties": {
+    "reportNumber": {"type": "string"},
+    "countDate": {"type": "string"},
+    "siteName": {"type": "string"},
+    "siteCode": {"type": "string"},
+    "records": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "itemNumber": {"type": "string"},
+          "location": {"type": "string"},
+          "quantity": {"type": "number"},
+          "unit": {"type": "string"}
+        }
+      }
+    }
+  }
+}
