@@ -1,0 +1,153 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mapping version="26"><component name="map"><structure><children>
+  <component name="dispatchNotice" library="json" kind="31"><data><root><entry name="FileInstance"><entry name="document"><entry name="root"><entry name="object">
+    <entry name="consignments" type="json-property"><entry name="array" outkey="10"><entry name="item" type="json-item"><entry name="object">
+      <entry name="consignmentRef" type="json-property"><entry name="string" outkey="11"/></entry>
+      <entry name="orderRef" type="json-property"><entry name="string" outkey="12"/></entry>
+      <entry name="buyerOrder" type="json-property"><entry name="string" outkey="13"/></entry>
+      <entry name="dispatchDate" type="json-property"><entry name="string" outkey="14"/></entry>
+      <entry name="hauler" type="json-property"><entry name="string" outkey="15"/></entry>
+      <entry name="serviceLevel" type="json-property"><entry name="string" outkey="16"/></entry>
+      <entry name="traceRef" type="json-property"><entry name="string" outkey="17"/></entry>
+      <entry name="deliverTo" type="json-property"><entry name="object">
+        <entry name="name" type="json-property"><entry name="string" outkey="20"/></entry>
+        <entry name="locationCode" type="json-property"><entry name="string" outkey="21"/></entry>
+        <entry name="address1" type="json-property"><entry name="string" outkey="22"/></entry>
+        <entry name="city" type="json-property"><entry name="string" outkey="23"/></entry>
+        <entry name="state" type="json-property"><entry name="string" outkey="24"/></entry>
+        <entry name="postCode" type="json-property"><entry name="string" outkey="25"/></entry>
+      </entry></entry>
+      <entry name="lines" type="json-property"><entry name="array" outkey="30"><entry name="item" type="json-item"><entry name="object">
+        <entry name="itemNumber" type="json-property"><entry name="string" outkey="31"/></entry>
+        <entry name="quantityOrdered" type="json-property"><entry name="number" outkey="32"/></entry>
+        <entry name="dispatchedQty" type="json-property"><entry name="number" outkey="33"/></entry>
+        <entry name="uom" type="json-property"><entry name="string" outkey="34"/></entry>
+        <entry name="status" type="json-property"><entry name="string" outkey="35"/></entry>
+        <entry name="weight" type="json-property"><entry name="number" outkey="36"/></entry>
+      </entry></entry></entry></entry>
+    </entry></entry></entry></entry>
+  </entry></entry></entry></entry></root><json schema="order-json-to-945.source.schema.json" inputinstance="order-json-to-945.source.json"/></data></component>
+  <component name="warehouseDispatchAdvice" library="text" kind="16"><properties XSLTDefaultOutput="1"/><data>
+    <root><entry name="document"><entry name="Envelope"><entry name="Interchange">
+      <entry name="ISA"><entry name="ISA01" inpkey="1000"/><entry name="ISA02" inpkey="1001"/><entry name="ISA03" inpkey="1002"/><entry name="ISA04" inpkey="1003"/><entry name="ISA05" inpkey="1004"/><entry name="ISA06" inpkey="1005"/><entry name="ISA07" inpkey="1006"/><entry name="ISA08" inpkey="1007"/><entry name="ISA09" inpkey="1008"/><entry name="ISA10" inpkey="1009"/><entry name="ISA11" inpkey="1010"/><entry name="ISA12" inpkey="1011"/><entry name="ISA13" inpkey="1012"/><entry name="ISA14" inpkey="1013"/><entry name="ISA15" inpkey="1014"/><entry name="ISA16" inpkey="1015"/></entry>
+      <entry name="Group"><entry name="GS"><entry name="GS01" inpkey="1016"/><entry name="GS02" inpkey="1017"/><entry name="GS03" inpkey="1018"/><entry name="GS04" inpkey="1019"/><entry name="GS05" inpkey="1020"/><entry name="GS06" inpkey="1021"/><entry name="GS07" inpkey="1022"/><entry name="GS08" inpkey="1023"/></entry>
+        <entry name="Message_945" inpkey="1100">
+          <entry name="ST"><entry name="ST01" inpkey="1101"/><entry name="ST02" inpkey="1102"/></entry>
+          <entry name="W06"><entry name="W0601" inpkey="1110"/><entry name="W0602" inpkey="1111"/><entry name="W0603" inpkey="1112"/><entry name="W0604" inpkey="1113"/><entry name="W0605" inpkey="1114"/></entry>
+          <entry name="Loop0100">
+            <entry name="N1"><entry name="N101" inpkey="1120"/><entry name="N102" inpkey="1121"/><entry name="N103" inpkey="1122"/><entry name="N104" inpkey="1123"/></entry>
+            <entry name="N3"><entry name="N301" inpkey="1124"/></entry>
+            <entry name="N4"><entry name="N401" inpkey="1125"/><entry name="N402" inpkey="1126"/><entry name="N403" inpkey="1127"/></entry>
+          </entry>
+          <entry name="N9" inpkey="1130"><entry name="N901" inpkey="1131"/><entry name="N902" inpkey="1132"/></entry>
+          <entry name="G62"><entry name="G6201" inpkey="1135"/><entry name="G6202" inpkey="1136"/></entry>
+          <entry name="W27"><entry name="W2701" inpkey="1140"/><entry name="W2702" inpkey="1141"/><entry name="W2703" inpkey="1142"/></entry>
+          <entry name="Loop0300" inpkey="1150">
+            <entry name="LX"><entry name="LX01" inpkey="1151"/></entry>
+            <entry name="Loop0310">
+              <entry name="W12"><entry name="W1201" inpkey="1160"/><entry name="W1202" inpkey="1161"/><entry name="W1203" inpkey="1162"/><entry name="W1205" inpkey="1163"/><entry name="W1207" inpkey="1164"/><entry name="W1208" inpkey="1165"/></entry>
+            </entry>
+          </entry>
+          <entry name="W03"><entry name="W0301" inpkey="1170"/><entry name="W0302" inpkey="1171"/><entry name="W0303" inpkey="1172"/></entry>
+          <entry name="SE"><entry name="SE01" inpkey="1180"/><entry name="SE02" inpkey="1181"/></entry>
+        </entry>
+        <entry name="GE"><entry name="GE01" inpkey="1190"/><entry name="GE02" inpkey="1191"/></entry>
+      </entry>
+      <entry name="IEA"><entry name="IEA01" inpkey="1192"/><entry name="IEA02" inpkey="1193"/></entry>
+    </entry></entry></entry></root>
+    <text type="edi" kind="EDIX12" config="Envelope.Config" outputinstance="order-json-to-945.x12"><messages><message type="945"/></messages></text>
+  </data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint pos="0" key="2000"/></targets><data><constant value="00" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint pos="0" key="2001"/></targets><data><constant value="          " datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint pos="0" key="2004"/></targets><data><constant value="ZZ" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint pos="0" key="2005"/></targets><data><constant value="SENDER         " datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint pos="0" key="2007"/></targets><data><constant value="RECEIVER       " datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint pos="0" key="2010"/></targets><data><constant value="U" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint pos="0" key="2011"/></targets><data><constant value="00401" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint pos="0" key="2012"/></targets><data><constant value="000000001" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint pos="0" key="2013"/></targets><data><constant value="0" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint pos="0" key="2014"/></targets><data><constant value="T" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint pos="0" key="2015"/></targets><data><constant value=":" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint pos="0" key="2016"/></targets><data><constant value="SW" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint pos="0" key="2017"/></targets><data><constant value="SENDER" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint pos="0" key="2018"/></targets><data><constant value="RECEIVER" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint pos="0" key="2021"/></targets><data><constant value="1" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint pos="0" key="2022"/></targets><data><constant value="X" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint pos="0" key="2023"/></targets><data><constant value="004010" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint pos="0" key="2024"/></targets><data><constant value="945" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint pos="0" key="2030"/></targets><data><constant value="F" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint pos="0" key="2031"/></targets><data><constant value="ST" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint pos="0" key="2032"/></targets><data><constant value="92" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint pos="0" key="2033"/></targets><data><constant value="2I" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint pos="0" key="2034"/></targets><data><constant value="11" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint pos="0" key="2035"/></targets><data><constant value="VN" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint pos="0" key="2036"/></targets><data><constant value="LB" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint pos="0" key="2037"/></targets><data><constant value="1" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint pos="0" key="2040"/></targets><data><constant value="[Y01][M01][D01]" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint pos="0" key="2041"/></targets><data><constant value="[H01][m01]" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint pos="0" key="2042"/></targets><data><constant value="[Y0001][M01][D01]" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint pos="0" key="2043"/></targets><data><constant value="[Y]-[M]-[D]" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint pos="0" key="2050"/></targets><data><constant value="1" datatype="integer"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint pos="0" key="2051"/></targets><data><constant value="4" datatype="integer"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint pos="0" key="2052"/></targets><data><constant value="0" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint pos="0" key="2053"/></targets><data><constant value="2" datatype="integer"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint pos="0" key="2054"/></targets><data><constant value="9" datatype="integer"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint pos="0" key="2056"/></targets><data><constant value="0" datatype="integer"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint pos="0" key="2057"/></targets><data><constant value="/" datatype="string"/></data></component>
+  <component name="now" library="lang" kind="5"><targets><datapoint pos="0" key="3000"/></targets></component>
+  <component name="format-dateTime" library="xpath2" kind="5"><sources><datapoint pos="0" key="3001"/><datapoint pos="1" key="3002"/></sources><targets><datapoint pos="0" key="3003"/></targets></component>
+  <component name="format-dateTime" library="xpath2" kind="5"><sources><datapoint pos="0" key="3004"/><datapoint pos="1" key="3005"/></sources><targets><datapoint pos="0" key="3006"/></targets></component>
+  <component name="format-dateTime" library="xpath2" kind="5"><sources><datapoint pos="0" key="3007"/><datapoint pos="1" key="3008"/></sources><targets><datapoint pos="0" key="3009"/></targets></component>
+  <component name="parse-date" library="core" kind="5"><sources><datapoint pos="0" key="3010"/><datapoint pos="1" key="3011"/></sources><targets><datapoint pos="0" key="3012"/></targets></component>
+  <component name="format-date" library="core" kind="5"><sources><datapoint pos="0" key="3013"/><datapoint pos="1" key="3014"/></sources><targets><datapoint pos="0" key="3015"/></targets></component>
+  <component name="position" library="core" kind="5"><sources><datapoint pos="0" key="3020"/></sources><targets><datapoint pos="0" key="3022"/></targets></component>
+  <component name="pad-string-left" library="lang" kind="5"><sources><datapoint pos="0" key="3023"/><datapoint pos="1" key="3024"/><datapoint pos="2" key="3025"/></sources><targets><datapoint pos="0" key="3026"/></targets></component>
+  <component name="value-map" library="core" kind="23"><sources><datapoint pos="0" key="3030"/></sources><targets><datapoint pos="0" key="3031"/></targets><data><valuemap defaultValueMode="custom">
+    <valuemapTable><entry from="ROAD" to="GRND"/><entry from="EXPRESS" to="XPRS"/><entry from="BULK" to="FRGT"/></valuemapTable>
+    <input name="serviceLevel" type="string"/><result name="methodCode" type="string" defaultValue="OTHR"/>
+  </valuemap></data></component>
+  <component name="concat" library="core" kind="5" growable="1" growablebasename="value"><sources><datapoint pos="0" key="3032"/><datapoint pos="1" key="3033"/><datapoint pos="2" key="3034"/></sources><targets><datapoint pos="0" key="3035"/></targets></component>
+  <component name="exists" library="core" kind="5"><sources><datapoint pos="0" key="3040"/></sources><targets><datapoint pos="0" key="3041"/></targets></component>
+  <component name="filter" library="core" kind="3"><sources><datapoint pos="0" key="3043"/><datapoint pos="1" key="3042"/></sources><targets><datapoint pos="0" key="3044"/><datapoint/></targets></component>
+  <component name="auto-number" library="core" kind="5"><sources><datapoint/><datapoint pos="1" key="3050"/><datapoint pos="2" key="3051"/><datapoint pos="3" key="3052"/></sources><targets><datapoint pos="0" key="3053"/></targets></component>
+  <component name="sum" library="core" kind="5"><sources><datapoint/><datapoint pos="1" key="3060"/></sources><targets><datapoint pos="0" key="3061"/></targets></component>
+  <component name="sum" library="core" kind="5"><sources><datapoint/><datapoint pos="1" key="3062"/></sources><targets><datapoint pos="0" key="3063"/></targets></component>
+  <component name="count" library="core" kind="5"><sources><datapoint/><datapoint pos="1" key="3070"/></sources><targets><datapoint pos="0" key="3071"/></targets></component>
+  <component name="multiply" library="core" kind="5"><sources><datapoint pos="0" key="3072"/><datapoint pos="1" key="3073"/></sources><targets><datapoint pos="0" key="3074"/></targets></component>
+  <component name="add" library="core" kind="5"><sources><datapoint pos="0" key="3075"/><datapoint pos="1" key="3076"/></sources><targets><datapoint pos="0" key="3077"/></targets></component>
+  <component name="if-else" library="core" kind="4"><sources><datapoint pos="0" key="3078"/><datapoint pos="1" key="3079"/><datapoint pos="2" key="3080"/></sources><targets><datapoint pos="0" key="3081"/></targets></component>
+  <component name="add" library="core" kind="5"><sources><datapoint pos="0" key="3082"/><datapoint pos="1" key="3083"/></sources><targets><datapoint pos="0" key="3084"/></targets></component>
+  <component name="count" library="core" kind="5"><sources><datapoint/><datapoint pos="1" key="3090"/></sources><targets><datapoint pos="0" key="3091"/></targets></component>
+</children><connections>
+  <edge from="2000" to="1000"/><edge from="2001" to="1001"/><edge from="2000" to="1002"/><edge from="2001" to="1003"/>
+  <edge from="2004" to="1004"/><edge from="2005" to="1005"/><edge from="2004" to="1006"/><edge from="2007" to="1007"/>
+  <edge from="3000" to="3001"/><edge from="2040" to="3002"/><edge from="3003" to="1008"/>
+  <edge from="3000" to="3004"/><edge from="2041" to="3005"/><edge from="3006" to="1009"/>
+  <edge from="2010" to="1010"/><edge from="2011" to="1011"/><edge from="2012" to="1012"/><edge from="2013" to="1013"/><edge from="2014" to="1014"/><edge from="2015" to="1015"/>
+  <edge from="2016" to="1016"/><edge from="2017" to="1017"/><edge from="2018" to="1018"/>
+  <edge from="3000" to="3007"/><edge from="2042" to="3008"/><edge from="3009" to="1019"/><edge from="3006" to="1020"/>
+  <edge from="2021" to="1021"/><edge from="2022" to="1022"/><edge from="2023" to="1023"/>
+  <edge from="10" to="1100"/>
+  <edge from="2024" to="1101"/>
+  <edge from="10" to="3020"/><edge from="3022" to="3023"/><edge from="2051" to="3024"/><edge from="2052" to="3025"/><edge from="3026" to="1102"/>
+  <edge from="2030" to="1110"/><edge from="12" to="1111"/>
+  <edge from="14" to="3010"/><edge from="2043" to="3011"/><edge from="3012" to="3013"/><edge from="2042" to="3014"/><edge from="3015" to="1112"/>
+  <edge from="11" to="1113"/><edge from="13" to="1114"/>
+  <edge from="2031" to="1120"/><edge from="20" to="1121"/><edge from="2032" to="1122"/><edge from="21" to="1123"/>
+  <edge from="22" to="1124"/><edge from="23" to="1125"/><edge from="24" to="1126"/><edge from="25" to="1127"/>
+  <edge from="17" to="3040"/><edge from="3041" to="3042"/><edge from="17" to="3043"/><edge from="3044" to="1130"/>
+  <edge from="2033" to="1131"/><edge from="17" to="1132"/>
+  <edge from="2034" to="1135"/><edge from="3015" to="1136"/>
+  <edge from="16" to="3030"/><edge from="3031" to="1140"/><edge from="15" to="1141"/>
+  <edge from="15" to="3032"/><edge from="2057" to="3033"/><edge from="16" to="3034"/><edge from="3035" to="1142"/>
+  <edge from="30" to="1150"/>
+  <edge from="2050" to="3050"/><edge from="2050" to="3051"/><edge from="11" to="3052"/><edge from="3053" to="1151"/>
+  <edge from="35" to="1160"/><edge from="32" to="1161"/><edge from="33" to="1162"/><edge from="34" to="1163"/><edge from="2035" to="1164"/><edge from="31" to="1165"/>
+  <edge from="33" to="3060"/><edge from="3061" to="1170"/>
+  <edge from="36" to="3062"/><edge from="3063" to="1171"/><edge from="2036" to="1172"/>
+  <edge from="30" to="3070"/><edge from="3071" to="3072"/><edge from="2053" to="3073"/><edge from="3074" to="3075"/><edge from="2054" to="3076"/>
+  <edge from="3041" to="3078"/><edge from="2050" to="3079"/><edge from="2056" to="3080"/>
+  <edge from="3077" to="3082"/><edge from="3081" to="3083"/><edge from="3084" to="1180"/><edge from="3026" to="1181"/>
+  <edge from="10" to="3090"/><edge from="3091" to="1190"/><edge from="2021" to="1191"/>
+  <edge from="2037" to="1192"/><edge from="2012" to="1193"/>
+</connections></structure></component></mapping>
