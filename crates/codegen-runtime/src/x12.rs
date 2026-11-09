@@ -11,8 +11,10 @@ use std::fmt;
 use std::sync::Arc;
 
 use ir::{Instance, SchemaKind, SchemaNode, Value};
-use mapping::{EdiImpliedDecimal, EdiLexicalFormat, EdiValueConstraint, X12Autocomplete};
-use serde_json::Value as Json;
+use mapping::{
+    EdiImpliedDecimal, EdiLexicalFormat, EdiValueConstraint, X12Autocomplete,
+    X12DescriptorEnvelope, X12DescriptorSeparators, X12DescriptorView,
+};
 
 use crate::descriptor_registry::DescriptorRegistry;
 use crate::{ExecutionContext, JsonBoundaryError, RuntimeError, RuntimeValue};
@@ -197,59 +199,41 @@ impl Profile {
         if text.len() > MAX_EMBEDDED_X12_SCHEMA_BYTES {
             return Err(descriptor("descriptor exceeds 1 MiB"));
         }
-        let value: Json = serde_json::from_str(text).map_err(|e| descriptor(e.to_string()))?;
-        let object = value
-            .as_object()
-            .ok_or_else(|| descriptor("expected an object"))?;
-        if object.keys().any(|key| {
-            !matches!(
-                key.as_str(),
-                "schema"
-                    | "version"
-                    | "envelope_profile"
-                    | "separators"
-                    | "constraints"
-                    | "lenient_segments"
-                    | "implied_decimals"
-                    | "lexical_formats"
-                    | "autocomplete"
-            )
-        }) {
-            return Err(descriptor("unknown descriptor member"));
-        }
-        let schema = codegen_schema::decode(
-            value["schema"]
-                .as_str()
-                .ok_or_else(|| descriptor("missing schema"))?,
-            MAX_EMBEDDED_X12_SCHEMA_BYTES,
-        )
-        .map_err(X12BoundaryError::Schema)?;
-        let version = match value["version"].as_str() {
-            Some("004010") => "00401",
-            Some("005010") => "00501",
-            Some("006040") => "00604",
-            _ => return Err(descriptor("unsupported version")),
+        // RawValue defers member decoding, including its recursion checks.
+        // Preserve the original whole-document JSON depth/syntax refusal before
+        // schema decoding. No field names or values are interpreted here.
+        let _: serde_json::Value =
+            serde_json::from_str(text).map_err(|e| descriptor(e.to_string()))?;
+        let value: X12DescriptorView =
+            serde_json::from_str(text).map_err(|e| descriptor(e.to_string()))?;
+        // Membership is checked first, but field decoding must remain staged:
+        // an invalid embedded schema precedes malformed version/options, and
+        // native schema validation precedes separators and leniency.
+        let schema_text = value.schema().map_err(|_| descriptor("missing schema"))?;
+        let schema = codegen_schema::decode(&schema_text, MAX_EMBEDDED_X12_SCHEMA_BYTES)
+            .map_err(X12BoundaryError::Schema)?;
+        let version = value
+            .version()
+            .map_err(|_| descriptor("unsupported version"))?
+            .interchange();
+        let envelope = match value
+            .envelope_profile()
+            .map_err(|_| descriptor("unsupported envelope profile"))?
+        {
+            None => EnvelopeProfile::Single,
+            Some(X12DescriptorEnvelope::GroupedTransactions) => EnvelopeProfile::Grouped,
+            Some(X12DescriptorEnvelope::MapForceInterchanges) => EnvelopeProfile::MapForce,
         };
-        let envelope = match value.get("envelope_profile").and_then(Json::as_str) {
-            None if value.get("envelope_profile").is_none() => EnvelopeProfile::Single,
-            Some("grouped_transactions") => EnvelopeProfile::Grouped,
-            Some("mapforce_interchanges") => EnvelopeProfile::MapForce,
-            _ => return Err(descriptor("unsupported envelope profile")),
-        };
-        let decode = |key: &str| {
-            value
-                .get(key)
-                .cloned()
-                .ok_or_else(|| descriptor(format!("missing {key}")))
-        };
-        let implied = serde_json::from_value(decode("implied_decimals")?)
+        let implied = value
+            .implied_decimals()
             .map_err(|e| descriptor(e.to_string()))?;
-        let lexical = serde_json::from_value(decode("lexical_formats")?)
+        let lexical = value
+            .lexical_formats()
             .map_err(|e| descriptor(e.to_string()))?;
-        let autocomplete = serde_json::from_value(decode("autocomplete")?)
+        let autocomplete = value
+            .autocomplete()
             .map_err(|e| descriptor(e.to_string()))?;
-        let constraints: Vec<EdiValueConstraint> = serde_json::from_value(decode("constraints")?)
-            .map_err(|e| descriptor(e.to_string()))?;
+        let constraints = value.constraints().map_err(|e| descriptor(e.to_string()))?;
         let mut indexed = BTreeMap::new();
         for constraint in constraints {
             if indexed
@@ -275,10 +259,13 @@ impl Profile {
             schema,
             version,
             envelope,
-            syntax: wire::Syntax::selected(&value["separators"], version)?,
-            lenient: value["lenient_segments"]
-                .as_bool()
-                .ok_or_else(|| descriptor("missing lenient_segments"))?,
+            syntax: wire::Syntax::selected(
+                value.separators().map_err(|e| descriptor(e.to_string()))?,
+                version,
+            )?,
+            lenient: value
+                .lenient_segments()
+                .map_err(|_| descriptor("missing lenient_segments"))?,
             implied,
             lexical,
             constraints: indexed,
