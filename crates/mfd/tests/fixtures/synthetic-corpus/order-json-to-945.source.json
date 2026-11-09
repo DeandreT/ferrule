@@ -1,0 +1,30 @@
+{
+  "consignments": [
+    {
+      "consignmentRef": "SHP0001",
+      "orderRef": "ORD1001",
+      "buyerOrder": "PO5001",
+      "dispatchDate": "2026-01-02",
+      "hauler": "CARA",
+      "serviceLevel": "ROAD",
+      "traceRef": "TRK000000001",
+      "deliverTo": { "name": "Sample Store", "locationCode": "LOC01", "address1": "1 Main Street", "city": "Springfield", "state": "ST", "postCode": "00001" },
+      "lines": [
+        { "itemNumber": "ITEM-A", "quantityOrdered": 4, "dispatchedQty": 4, "uom": "EA", "status": "SHIPPED", "weight": 2.5 },
+        { "itemNumber": "ITEM-B", "quantityOrdered": 3, "dispatchedQty": 2, "status": "PART_FILLED", "weight": 1.25 },
+        { "itemNumber": "ITEM-A", "quantityOrdered": 1, "dispatchedQty": 1, "uom": "EA", "status": "SHIPPED", "weight": 0.5 }
+      ]
+    },
+    {
+      "consignmentRef": "SHP0002",
+      "orderRef": "ORD1002",
+      "dispatchDate": "2026-01-03",
+      "hauler": "CARB",
+      "serviceLevel": "COLLECT",
+      "deliverTo": { "name": "Other Store", "locationCode": "LOC02", "address1": "2 Side Road", "city": "Riverton", "state": "RS", "postCode": "00002" },
+      "lines": [
+        { "itemNumber": "ITEM-C", "quantityOrdered": 6, "dispatchedQty": 0, "uom": "CS", "status": "CANCELLED", "weight": 0 }
+      ]
+    }
+  ]
+}

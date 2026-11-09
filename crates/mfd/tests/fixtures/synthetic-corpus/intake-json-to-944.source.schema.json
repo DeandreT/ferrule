@@ -1,0 +1,29 @@
+{
+  "type": "object",
+  "properties": {
+    "receipts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "intakeRef": {"type": "string"},
+          "transferNumber": {"type": "string"},
+          "originName": {"type": "string"},
+          "originCode": {"type": "string"},
+          "attributes": {"type": "string"},
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "itemNumber": {"type": "string"},
+                "quantity": {"type": "number"},
+                "unit": {"type": "string"}
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
