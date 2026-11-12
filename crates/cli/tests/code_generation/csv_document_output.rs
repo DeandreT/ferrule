@@ -47,16 +47,37 @@ fn csv_document_lists_execute_all_rust_and_csharp_apis() -> TestResult<()> {
         host.join("src/main.rs"),
         include_str!("csv_document_output/Host.rs.txt"),
     )?;
+    let native_host = super::mapped_csv_documents::seed_host_lock(
+        &host,
+        "csv-document-host",
+        "ferrule-generated-mapping",
+    )?;
     let target = std::env::var_os("FERRULE_CODEGEN_HOST_TARGET_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| root.join("cargo-target"));
-    let rust = Command::new("cargo")
-        .args(["run", "--quiet", "--offline", "--jobs", "1"])
+    let mut rust_command = Command::new("cargo");
+    rust_command
+        .args([
+            "run",
+            "--release",
+            "--quiet",
+            "--locked",
+            "--offline",
+            "--jobs",
+            "1",
+            "--target",
+            &native_host,
+        ])
         .current_dir(&host)
         .env("CARGO_TARGET_DIR", &target)
         .env("CARGO_BUILD_BUILD_DIR", &target)
-        .env("RUSTFLAGS", "-D warnings")
-        .isolated_output()?;
+        .env("RUSTFLAGS", "-D warnings");
+    let rust = super::host_policy::recorded_output_with_sources(
+        &mut rust_command,
+        root,
+        "legacy-rust-release",
+        &["rust".into(), "rust-host".into(), "project.json".into()],
+    )?;
     assert!(
         rust.status.success(),
         "{}",
@@ -84,18 +105,72 @@ fn csv_document_lists_execute_all_rust_and_csharp_apis() -> TestResult<()> {
         host.join("Program.cs"),
         include_str!("csv_document_output/Host.cs.txt"),
     )?;
-    let csharp = dotnet_command(root)
+    std::fs::copy(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../global.json"),
+        root.join("global.json"),
+    )?;
+    std::fs::write(
+        root.join("NuGet.Config"),
+        "<configuration><packageSources><clear /></packageSources></configuration>",
+    )?;
+    let mut restore = dotnet_command(root);
+    restore
+        .args([
+            "restore",
+            "--disable-parallel",
+            "csharp-host/Host.csproj",
+            "--locked-mode",
+            "--configfile",
+            "NuGet.Config",
+            "-p:EnableTargetingPackDownload=false",
+            "-p:EnableRuntimePackDownload=false",
+            "-p:BuildInParallel=false",
+        ])
+        .current_dir(root);
+    let restored = super::host_policy::recorded_output_with_sources(
+        &mut restore,
+        root,
+        "legacy-csharp-restore",
+        &[
+            "csharp".into(),
+            "csharp-host".into(),
+            "project.json".into(),
+            "global.json".into(),
+            "NuGet.Config".into(),
+        ],
+    )?;
+    assert!(
+        restored.status.success(),
+        "{}\n{}",
+        String::from_utf8_lossy(&restored.stdout),
+        String::from_utf8_lossy(&restored.stderr)
+    );
+    let mut csharp_command = dotnet_command(root);
+    csharp_command
         .args([
             "run",
+            "--no-restore",
             "--project",
             "csharp-host/Host.csproj",
             "--configuration",
             "Release",
             "-p:EnableTargetingPackDownload=false",
             "-p:EnableRuntimePackDownload=false",
+            "-p:BuildInParallel=false",
         ])
-        .current_dir(root)
-        .isolated_output()?;
+        .current_dir(root);
+    let csharp = super::host_policy::recorded_output_with_sources(
+        &mut csharp_command,
+        root,
+        "legacy-csharp-release",
+        &[
+            "csharp".into(),
+            "csharp-host".into(),
+            "project.json".into(),
+            "global.json".into(),
+            "NuGet.Config".into(),
+        ],
+    )?;
     assert!(
         csharp.status.success(),
         "{}\n{}",

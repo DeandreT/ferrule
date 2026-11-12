@@ -70,7 +70,7 @@ impl CsvOutputPolicy {
         Ok(policy)
     }
 
-    fn validate_dialect(&self) -> Result<(), CsvOutputError> {
+    pub(crate) fn validate_dialect(&self) -> Result<(), CsvOutputError> {
         let delimiter = self.delimiter.unwrap_or(',');
         if !delimiter.is_ascii() || matches!(delimiter, '\0' | '\r' | '\n') {
             return Err(CsvOutputError::BadDelimiter(delimiter));

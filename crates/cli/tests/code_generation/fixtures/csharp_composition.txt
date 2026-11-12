@@ -7414,7 +7414,7 @@ primary_csv      ok:cd53a4f46576a72c files=99 mapping=f9dbeced2699e592 project=b
 primary_csv_empty ok:c8e5a9f197d40a47 files=99 mapping=f9dbeced2699e592 project=bf9661a1f99d6017
 
 ## csv_documents/grouped
-csv_documents    ok:82d3aa8d110b1c19 files=98 mapping=2bb87dc897f26010 project=467e1cbcb75a032f
+csv_documents    ok:2ce758d5b378efb1 files=98 mapping=2bb87dc897f26010 project=467e1cbcb75a032f
 
 ## saved/csv_output/default
 ordinary         ok:9143322b061ed95d files=95 mapping=fcc561f9c97ab468 project=c2619c496a379507
@@ -7575,7 +7575,7 @@ csv_json         err:616f630afbc7429c generated_CSV-to-JSON_source_requires_an_e
 ## saved/csv_documents/grouped
 ordinary         ok:fdde849c07a5a9c5 files=95 mapping=bcf280b77b3792fc project=c2619c496a379507
 csv_output       err:6811ca2bf43da54f generated_CSV_output_does_not_yet
-csv_documents    ok:82d3aa8d110b1c19 files=98 mapping=2bb87dc897f26010 project=467e1cbcb75a032f
+csv_documents    ok:2ce758d5b378efb1 files=98 mapping=2bb87dc897f26010 project=467e1cbcb75a032f
 csv_document     err:b0e7bf13506f0d25 generated_CSV_output_does_not_yet
 raw_delimited    err:b764e7411af9bc26 raw-delimited_CRLF_output_requires_disabled_quoting:
 json5            err:4fed26a7fc7f12cc JSON5_Source_format_option_tabular_kind_is
