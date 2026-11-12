@@ -204,7 +204,7 @@ impl GraphBuilder<'_> {
         let result = match position {
             Some(position @ 0..=1) => {
                 let inverted = position == 1;
-                let lookup = self.scalar_filter_lookup_node(index, inverted, suffix);
+                let lookup = self.scalar_filter_lookup_node(index, inverted, suffix, None);
                 lookup.or_else(|| self.singleton_filter_node(index, inverted, suffix, None))
             }
             _ => None,
@@ -223,6 +223,44 @@ impl GraphBuilder<'_> {
             ));
         }
         result
+    }
+
+    /// Equality lookups belong to their receiving frame, not the globally
+    /// cached filter expression, which may also feed a sibling target scope.
+    pub(super) fn scalar_filter_lookup_at_anchor(
+        &mut self,
+        index: usize,
+        output: u32,
+        suffix: &[String],
+        anchor: &[String],
+    ) -> Option<NodeId> {
+        if self.fn_components[index]
+            .output_pins
+            .first()
+            .copied()
+            .flatten()
+            != Some(output)
+        {
+            return None;
+        }
+        let key = (output, suffix.to_vec());
+        if self.filter_nodes.get(&key) == Some(&None) {
+            self.refused_filter_projections.insert(key);
+            return None;
+        }
+        // Keep the existing cycle guard without publishing this receiver's
+        // lookup in the cache shared by other receiving scopes.
+        let previous = self.filter_nodes.insert(key.clone(), None);
+        let node = self.scalar_filter_lookup_node(index, false, suffix, Some(anchor));
+        match previous {
+            Some(previous) => {
+                self.filter_nodes.insert(key, previous);
+            }
+            None => {
+                self.filter_nodes.remove(&key);
+            }
+        }
+        node
     }
 
     fn filter_has_unsupported_predicate(&mut self, index: usize) -> bool {
@@ -323,6 +361,10 @@ impl GraphBuilder<'_> {
         let index = *self.fn_by_output.get(&feed)?;
         if is_filter(&self.fn_components[index]) {
             if let Some(anchor) = anchor {
+                if let Some(node) = self.scalar_filter_lookup_at_anchor(index, feed, suffix, anchor)
+                {
+                    return Some(node);
+                }
                 let key = (feed, suffix.to_vec());
                 if self.filter_nodes.get(&key) == Some(&None) {
                     self.refused_filter_projections.insert(key);
@@ -605,9 +647,11 @@ impl GraphBuilder<'_> {
         filter_index: usize,
         inverted: bool,
         suffix: &[String],
+        active_anchor: Option<&[String]>,
     ) -> Option<NodeId> {
         if suffix.is_empty()
             && !inverted
+            && active_anchor.is_none()
             && let Some(node) = self.dynamic_property_filter_node(filter_index)
         {
             return Some(node);
@@ -641,8 +685,18 @@ impl GraphBuilder<'_> {
                 }
                 (dependency.source, dependency.path, None)
             };
+        // Named-source lookups retain their existing source-prefix policy;
+        // this receiving-anchor correction is for primary physical fields.
+        if active_anchor.is_some() && source_index != 0 {
+            return None;
+        }
         let source = self.sources.get(source_index)?;
-        let collection = self.collection_path(source_index, &collection_path)?;
+        let collection = match active_anchor {
+            Some(anchor) => {
+                self.collection_path_at_anchor(source_index, &collection_path, anchor)?
+            }
+            None => self.collection_path(source_index, &collection_path)?,
+        };
         let lookup = value.as_ref().filter(|_| !inverted).and_then(|value| {
             self.fn_by_output
                 .get(&predicate_feed)
@@ -676,7 +730,10 @@ impl GraphBuilder<'_> {
                 })
         });
         let node = if let Some((key, matches_feed, value)) = lookup {
-            let matches = self.value_node(matches_feed)?;
+            let matches = match active_anchor {
+                Some(anchor) => self.scalar_node_at_anchor(matches_feed, anchor)?,
+                None => self.value_node(matches_feed)?,
+            };
             if !self.filter_expression_supported(matches, None, &mut BTreeSet::new()) {
                 return None;
             }
@@ -687,6 +744,11 @@ impl GraphBuilder<'_> {
                 value,
             })
         } else {
+            // This handoff qualifies equality lookups only. Other scalar
+            // filters keep their existing conditional/CollectionFind routes.
+            if active_anchor.is_some() {
+                return None;
+            }
             let mut predicate = self.value_node_in_collection(predicate_feed, &collection)?;
             if !self.filter_predicate_is_boolean_in_collection(predicate, Some(&collection)) {
                 return None;
