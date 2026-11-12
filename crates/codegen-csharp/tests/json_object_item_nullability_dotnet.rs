@@ -1,12 +1,8 @@
-#[path = "../../codegen/tests/fixtures/dotnet_temp.rs"]
-mod dotnet_temp;
-use dotnet_temp::DotnetTemp;
+use test_support::{DotnetTemp, TempDir};
 
 use codegen::{Program, TargetConstruction, TargetScope};
 use ir::SchemaNode;
-use std::path::PathBuf;
 use std::process::Command;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 #[test]
 fn generated_object_item_nullability_builds_and_preserves_complete_values()
@@ -52,13 +48,12 @@ fn generated_object_item_nullability_builds_and_preserves_complete_values()
         .find(|f| f.path.as_str() == "GeneratedMapping.cs")
         .unwrap();
     assert!(std::str::from_utf8(&source.contents)?.contains("FERRULE-EMBEDDED-SCHEMA/4"));
-    let directory = TempDirectory::new()?;
+    let cleanup = TempDirectory::new()?;
+    let directory = cleanup.0.as_ref().unwrap();
     for file in artifacts.files() {
-        let path = directory.0.join(file.path.as_str());
-        std::fs::create_dir_all(path.parent().unwrap())?;
-        std::fs::write(path, &file.contents)?;
+        directory.write(file.path.as_str(), &file.contents)?;
     }
-    let harness = directory.0.join("Harness");
+    let harness = directory.join("Harness");
     std::fs::create_dir(&harness)?;
     std::fs::write(
         harness.join("Harness.csproj"),
@@ -67,7 +62,7 @@ fn generated_object_item_nullability_builds_and_preserves_complete_values()
     std::fs::write(harness.join("Program.cs"), HARNESS)?;
     let build = Command::new("dotnet")
         .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
-        .dotnet_temp(&directory.0)
+        .dotnet_temp(directory.path())
         .args([
             "build",
             "-warnaserror",
@@ -77,7 +72,7 @@ fn generated_object_item_nullability_builds_and_preserves_complete_values()
             "Release",
             "Harness/Harness.csproj",
         ])
-        .current_dir(&directory.0)
+        .current_dir(directory.path())
         .output()?;
     assert!(
         build.status.success(),
@@ -87,9 +82,9 @@ fn generated_object_item_nullability_builds_and_preserves_complete_values()
     );
     let run = Command::new("dotnet")
         .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
-        .dotnet_temp(&directory.0)
-        .arg(directory.0.join("Harness/bin/Release/net10.0/Harness.dll"))
-        .current_dir(&directory.0)
+        .dotnet_temp(directory.path())
+        .arg(directory.join("Harness/bin/Release/net10.0/Harness.dll"))
+        .current_dir(directory.path())
         .output()?;
     assert!(
         run.status.success(),
@@ -104,33 +99,30 @@ fn generated_object_item_nullability_builds_and_preserves_complete_values()
     Ok(())
 }
 
-struct TempDirectory(PathBuf);
+// Preserve this suite's exact-value switch and direct-temp-child cleanup guard.
+struct TempDirectory(Option<TempDir>);
 impl TempDirectory {
     fn new() -> std::io::Result<Self> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let stamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let path = std::env::temp_dir().join(format!(
-            "ferrule-csharp-object-item-nullability-{}-{stamp}-{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir(&path)?;
-        Ok(Self(path))
+        Ok(Self(Some(TempDir::with_retention(
+            "csharp-object-item-nullability",
+            false,
+        )?)))
     }
 }
 impl Drop for TempDirectory {
     fn drop(&mut self) {
+        let directory = self.0.take().unwrap();
         let temp_root = std::env::temp_dir();
         if std::env::var_os("FERRULE_CODEGEN_KEEP_ARTIFACTS").is_some_and(|value| value == "1") {
             eprintln!(
                 "retained generated object-item artifacts: {}",
-                self.0.display()
+                directory.path().display()
             );
-        } else if self.0.starts_with(&temp_root) && self.0.parent() == Some(temp_root.as_path()) {
-            let _ = std::fs::remove_dir_all(&self.0);
+            directory.keep();
+        } else if !directory.starts_with(&temp_root)
+            || directory.parent() != Some(temp_root.as_path())
+        {
+            directory.keep();
         }
     }
 }

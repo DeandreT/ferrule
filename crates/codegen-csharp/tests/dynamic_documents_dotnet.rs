@@ -1,11 +1,8 @@
-#[path = "../../codegen/tests/fixtures/dotnet_temp.rs"]
-mod dotnet_temp;
-use dotnet_temp::DotnetTemp;
+use test_support::{DotnetTemp, TempDir};
 
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use ir::{DocumentMember, Instance, ScalarType, SchemaNode, Value};
 use mapping::{Binding, Graph, Node, Project, Scope, ScopeIteration};
@@ -18,13 +15,12 @@ fn generated_mapping_matches_dynamic_document_interpreter_output() {
         engine::run(&project, &source).expect("interpreter creates dynamic documents");
     let program = codegen::lower(&project).expect("dynamic documents lower");
     let artifacts = codegen_csharp::emit(&program).expect("dynamic document project emits");
-    let directory = TempDirectory::new();
+    let directory =
+        TempDir::new("dynamic-documents-dotnet").expect("temporary directory is created");
     for file in artifacts.files() {
-        let path = directory.path().join(file.path.as_str());
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).expect("artifact parent is created");
-        }
-        std::fs::write(path, &file.contents).expect("artifact is written");
+        directory
+            .write(file.path.as_str(), &file.contents)
+            .expect("artifact is written");
     }
     write_harness(directory.path());
 
@@ -269,31 +265,3 @@ catch (FerruleRuntimeException error)
 
 Console.WriteLine("generated dynamic documents passed");
 "#;
-
-struct TempDirectory {
-    path: PathBuf,
-}
-
-impl TempDirectory {
-    fn new() -> Self {
-        static NEXT: AtomicU64 = AtomicU64::new(0);
-        let unique = NEXT.fetch_add(1, Ordering::Relaxed);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_dynamic_documents_dotnet_{}_{}",
-            std::process::id(),
-            unique
-        ));
-        std::fs::create_dir_all(&path).expect("temporary directory is created");
-        Self { path }
-    }
-
-    fn path(&self) -> &Path {
-        &self.path
-    }
-}
-
-impl Drop for TempDirectory {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.path);
-    }
-}

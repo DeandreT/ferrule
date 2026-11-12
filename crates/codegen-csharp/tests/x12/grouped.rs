@@ -3,7 +3,6 @@
 use super::*;
 use codegen::X12EnvelopeProfile;
 use ir::{Instance, Value};
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 const HOST: &str = include_str!("grouped/Host.cs");
 const RUST_HOST: &str = include_str!("grouped/Host.rs.txt");
@@ -289,24 +288,12 @@ fn schema(version: &str) -> SchemaNode {
     serde_json::from_str(fixture(&format!("{version}-schema.json"))).unwrap()
 }
 fn evidence(label: &str) -> TempDir {
-    static NEXT: AtomicUsize = AtomicUsize::new(0);
-    let root = std::env::temp_dir().join(format!(
-        "ferrule_x12_grouped_{label}_{}_{}_{}",
-        std::process::id(),
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos(),
-        NEXT.fetch_add(1, Ordering::Relaxed)
-    ));
-    fs::create_dir(&root).unwrap();
+    let root = TempDir::new(&format!("x12-grouped-{label}")).unwrap();
     eprintln!("complete authored grouped X12 evidence: {}", root.display());
     for (name, contents) in FIXTURES {
-        let path = root.join(name);
-        fs::create_dir_all(path.parent().unwrap()).unwrap();
-        fs::write(path, contents).unwrap();
+        root.write(name, contents).unwrap();
     }
-    TempDir(root)
+    root
 }
 fn identity(schema: &SchemaNode) -> Project {
     project(

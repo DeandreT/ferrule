@@ -1,10 +1,7 @@
-use crate::dotnet_temp::DotnetTemp;
 use std::collections::BTreeMap;
 use std::fs;
-use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
+use test_support::{DotnetTemp, TempDir};
 
 use ir::{Instance, ScalarType, SchemaNode, Value};
 use mapping::{Binding, DynamicBinding, DynamicChild, Graph, Node, Project, Scope, ScopeIteration};
@@ -17,8 +14,12 @@ fn generated_dotnet_mapping_matches_ordered_dynamic_target_semantics() {
     let interpreted = engine::run(&project, &source()).expect("interpreter constructs open object");
     let program = codegen::lower(&project).expect("computed target properties lower");
     let artifacts = emit(&program).expect("dynamic target project emits");
-    let directory = TempDir::new("dynamic_targets_csharp");
-    write_artifacts(directory.path(), &artifacts);
+    let directory = TempDir::new("dynamic_targets_csharp").expect("temporary directory is created");
+    for file in artifacts.files() {
+        directory
+            .write(file.path.as_str(), &file.contents)
+            .expect("artifact is written");
+    }
     let harness = directory.path().join("Harness");
     fs::create_dir_all(&harness).expect("harness directory is created");
     fs::write(harness.join("Harness.csproj"), HARNESS_PROJECT).expect("project is written");
@@ -233,16 +234,6 @@ fn target_person(first: &str, title: &str, rank: i64) -> Instance {
     )
 }
 
-fn write_artifacts(directory: &Path, artifacts: &codegen::ArtifactSet) {
-    for file in artifacts.files() {
-        let path = directory.join(file.path.as_str());
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).expect("artifact parent is created");
-        }
-        fs::write(path, &file.contents).expect("artifact is written");
-    }
-}
-
 const HARNESS_PROJECT: &str = r#"<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -346,33 +337,3 @@ if (fixedCollision.Error != FerruleRuntimeError.DuplicateDynamicProperty ||
 
 Console.WriteLine("generated dynamic targets passed");
 "#;
-
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new(tag: &str) -> Self {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let nonce = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|duration| duration.as_nanos())
-            .unwrap_or_default();
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_{tag}_{}_{}_{}",
-            std::process::id(),
-            nonce,
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        fs::create_dir_all(&path).expect("temporary directory is created");
-        Self(path)
-    }
-
-    fn path(&self) -> &Path {
-        &self.0
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
-    }
-}

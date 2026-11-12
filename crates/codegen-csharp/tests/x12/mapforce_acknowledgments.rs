@@ -5,7 +5,6 @@
 use super::mapforce::{expected, identity, replaced};
 use super::*;
 use codegen::X12EnvelopeProfile;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 const CONTRACT: &str = include_str!("mapforce-acknowledgments/contract.json");
 const HOST: &str = include_str!("mapforce-acknowledgments/Host.cs");
@@ -42,25 +41,15 @@ fn source_options() -> X12BoundaryOptions {
     }
 }
 fn evidence(label: &str) -> TempDir {
-    static NEXT: AtomicUsize = AtomicUsize::new(0);
-    let root = std::env::temp_dir().join(format!(
-        "ferrule_x12_mapforce_ack_{label}_{}_{}_{}",
-        std::process::id(),
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos(),
-        NEXT.fetch_add(1, Ordering::Relaxed)
-    ));
-    fs::create_dir(&root).unwrap();
+    let root = TempDir::new(&format!("x12-mapforce-ack-{label}")).unwrap();
     eprintln!(
         "complete authored MapForce acknowledgment evidence: {}",
         root.display()
     );
     for (name, contents) in FIXTURES {
-        fs::write(root.join(name), contents).unwrap();
+        root.write(name, contents).unwrap();
     }
-    TempDir(root)
+    root
 }
 
 /// Proves the native oracles and writes the derived cases for the host:

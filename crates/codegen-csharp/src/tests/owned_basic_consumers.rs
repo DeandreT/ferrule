@@ -9,12 +9,12 @@
 //! The private and checked hosts read `internal` runtime members such as
 //! `FerruleBasicSourceCandidate.SourceId`, so each compiles into one assembly
 //! with the runtime sources, as the private renderer's mapping does.
-use crate::dotnet_temp::DotnetTemp;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use test_support::{DotnetTemp, TempDir};
 
 /// Bytes of a failing command's output quoted in the test failure.
 const EXCERPT: usize = 16 * 1024;
@@ -45,14 +45,14 @@ const PRIVATE_HOSTS: HostKind = HostKind {
     assembly: "bin/Host/release/Host.dll",
 };
 
-struct Run(PathBuf);
+struct Run(Option<TempDir>);
 
 impl Drop for Run {
     fn drop(&mut self) {
         if std::env::var_os("FERRULE_CODEGEN_KEEP_ARTIFACTS").as_deref() == Some("1".as_ref()) {
-            eprintln!("retained Basic C# hosts at {}", self.0.display());
-        } else {
-            let _ = fs::remove_dir_all(&self.0);
+            let directory = self.0.take().unwrap();
+            eprintln!("retained Basic C# hosts at {}", directory.path().display());
+            directory.keep();
         }
     }
 }
@@ -161,10 +161,11 @@ fn labels(hosts: &Path) -> Vec<String> {
 }
 
 fn check_hosts(kind: &HostKind, tag: &str) {
-    let run =
-        Run(std::env::temp_dir().join(format!("ferrule_csharp_{tag}_{}", std::process::id())));
-    let _ = fs::remove_dir_all(&run.0);
-    let hosts = run.0.join("hosts");
+    let run = Run(Some(
+        TempDir::with_retention(&format!("csharp-{tag}"), false).expect("host directory"),
+    ));
+    let root = run.0.as_ref().unwrap().path();
+    let hosts = root.join("hosts");
     // The ignored runners are not selected again: the child runs plain tests only.
     let mut regenerate = Command::new(std::env::current_exe().expect("test binary"));
     regenerate.args(["tests::owned_basic::", "--test-threads=2"]);
@@ -186,7 +187,7 @@ fn check_hosts(kind: &HostKind, tag: &str) {
     let workers = std::thread::available_parallelism().map_or(2, |n| (n.get() / 4).clamp(1, 4));
     std::thread::scope(|scope| {
         for worker in 0..workers {
-            let (next, failures, labels, root) = (&next, &failures, &labels, &run.0);
+            let (next, failures, labels, root) = (&next, &failures, &labels, root);
             scope.spawn(move || {
                 // One package cache per worker keeps concurrent restores apart.
                 let sandbox = root.join(format!("sandbox{worker}"));

@@ -1,10 +1,7 @@
-#[path = "../../codegen/tests/fixtures/dotnet_temp.rs"]
-mod dotnet_temp;
-use dotnet_temp::DotnetTemp;
+use test_support::{DotnetTemp, TempDir};
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use codegen::{
     Binding, Expression, ExpressionNode, Program, ScalarTargetDomain, TargetConstruction,
@@ -32,13 +29,11 @@ fn generated_union_targets_preserve_tags_and_adapt_exact_numbers() {
     assert!(generated.contains(r#"\"string_length_range\":{\"minimum\":2,\"maximum\":20}"#));
     assert!(generated.contains(r#"\"string_length_range\":{\"minimum\":2,\"maximum\":16}"#));
 
-    let directory = TempDirectory::new();
+    let directory = TempDir::new("scalar-union-dotnet").expect("temporary directory is created");
     for file in artifacts.files() {
-        let path = directory.path().join(file.path.as_str());
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).expect("artifact parent is created");
-        }
-        std::fs::write(path, &file.contents).expect("artifact is written");
+        directory
+            .write(file.path.as_str(), &file.contents)
+            .expect("artifact is written");
     }
     write_harness(directory.path());
 
@@ -396,31 +391,3 @@ catch (FerruleRuntimeException error)
 
 Console.WriteLine("generated scalar union passed");
 "#;
-
-struct TempDirectory {
-    path: PathBuf,
-}
-
-impl TempDirectory {
-    fn new() -> Self {
-        static NEXT: AtomicU64 = AtomicU64::new(0);
-        let unique = NEXT.fetch_add(1, Ordering::Relaxed);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_scalar_union_dotnet_{}_{}",
-            std::process::id(),
-            unique
-        ));
-        std::fs::create_dir_all(&path).expect("temporary directory is created");
-        Self { path }
-    }
-
-    fn path(&self) -> &Path {
-        &self.path
-    }
-}
-
-impl Drop for TempDirectory {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.path);
-    }
-}
