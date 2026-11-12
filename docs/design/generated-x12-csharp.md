@@ -540,8 +540,10 @@ caller supplied. Nonempty controls and counts are preserved and must satisfy the
 final envelope checks. Completion does not repair a supplied wrong count or
 control and does not generate acknowledgments. Hosts that retry or transport
 output own durable control allocation and retention of the resulting bytes.
-Under completion, GS05 must contain exactly six compact time digits. Ordinary
-output retains its four-, six-, seven- and eight-digit GS time forms.
+Completion preserves supplied four-, six-, seven- and eight-digit GS05 times,
+just like ordinary output. A missing, Null or empty unformatted GS05 receives
+the six-digit host timestamp fallback. ISA10 keeps its four-digit output contract;
+completion truncates a supplied six-digit ISA time to hours and minutes.
 
 Output first formats a private view, then performs selected completion, then
 checks fixed values, lengths, code lists and the complete encoded envelope.
