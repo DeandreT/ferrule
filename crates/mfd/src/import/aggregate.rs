@@ -148,6 +148,16 @@ impl GraphBuilder<'_> {
         let Some(sequence_feed) = sequence_feed else {
             return Ok(AggregateRoute::Existing(None));
         };
+        // Source-path resolution retains provenance, not grouping cardinality.
+        // Neither the groups output nor the key output may become a physical
+        // record count, including when a projection/forward hides the group-by.
+        // The scalar reducer model has no distinct-group count operation.
+        if op == AggregateOp::Count && self.count_sequence_depends_on_group_by(sequence_feed) {
+            return Err(
+                "group-by output requires a distinct-group count, but scalar grouped reduction is unsupported; supply the distinct group total explicitly instead of counting raw records"
+                    .into(),
+            );
+        }
         let arg_feed = self.input_feed(idx, if two_pin_item_at { 1 } else { 2 });
         if arg_feed.is_some_and(|feed| self.join_dependency_any(feed)) {
             return Err("aggregate argument depends on a joined tuple".to_string());
@@ -194,6 +204,39 @@ impl GraphBuilder<'_> {
             arg_feed,
             arg,
         })
+    }
+
+    fn count_sequence_depends_on_group_by(&self, feed: u32) -> bool {
+        let mut pending = vec![feed];
+        let mut visited = std::collections::BTreeSet::new();
+        while let Some(feed) = pending.pop() {
+            if !visited.insert(feed) {
+                continue;
+            }
+            if let Some(intermediate) = self.intermediate_feed(feed) {
+                pending.push(intermediate.feed);
+            }
+            let Some(&idx) = self.fn_by_output.get(&feed) else {
+                continue;
+            };
+            let component = &self.fn_components[idx];
+            if component.library == "core" && component.kind == 5 && component.name == "group-by" {
+                return true;
+            }
+            // A completed scalar reduction is a value, not a forwarding of
+            // its input sequence. Do not cross that cardinality boundary.
+            if component.kind == 5 && aggregate_op(&component.name).is_some() {
+                continue;
+            }
+            pending.extend(
+                component
+                    .inputs
+                    .iter()
+                    .flatten()
+                    .filter_map(|input| self.edge_from.get(input).copied()),
+            );
+        }
+        false
     }
 
     #[allow(clippy::too_many_arguments)]
