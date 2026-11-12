@@ -384,13 +384,14 @@ public static partial class FerruleX12
             if (character is '+' or '-' or 'Z') break;
             if (char.IsAsciiDigit(character))
             {
-                if (compact.Length == 6) throw CompletionHeaderFailure();
+                if (compact.Length == (shortTime ? 6 : 8)) throw CompletionHeaderFailure();
                 compact.Append(character);
             }
             else if (character is not (':' or '?')) throw CompletionHeaderFailure();
         }
         if (shortTime && compact.Length == 6) compact.Length = 4;
-        if (compact.Length != (shortTime ? 4 : 6)) throw CompletionHeaderFailure();
+        // GS05 permits HHMM, HHMMSS, HHMMSSD or HHMMSSDD, never partial seconds.
+        if (shortTime ? compact.Length != 4 : compact.Length is not (4 or 6 or 7 or 8)) throw CompletionHeaderFailure();
         return compact.ToString();
     }
 

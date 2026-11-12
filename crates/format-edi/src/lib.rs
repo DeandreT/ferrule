@@ -148,7 +148,7 @@ pub enum EdiFormatError {
         expected: char,
         found: char,
     },
-    #[error("ISA element `{element}` has invalid value `{value}`: {reason}")]
+    #[error("envelope element `{element}` has invalid value `{value}`: {reason}")]
     InvalidEnvelopeElement {
         element: String,
         value: String,
