@@ -67,6 +67,15 @@ impl<'a> Generator<'a> {
         crate::csv_document_output::emit(program, policy, self.options)
     }
 
+    /// [`crate::emit_with_mapped_csv_document_output`].
+    pub fn emit_with_mapped_csv_document_output(
+        &self,
+        program: &Program,
+        policy: &codegen::CsvMappedDocumentOutputPolicy,
+    ) -> Result<ArtifactSet, crate::MappedCsvDocumentEmitError> {
+        crate::mapped_csv_document_output::emit(program, policy, self.options)
+    }
+
     /// [`crate::emit_with_csv_document_adapters`].
     pub fn emit_with_csv_document_adapters(
         &self,

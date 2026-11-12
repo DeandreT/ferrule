@@ -85,6 +85,17 @@ impl<'a> Generator<'a> {
         self.finish(artifacts, GenerationProfile::CsvDocumentOutput)
     }
 
+    /// [`crate::emit_with_mapped_csv_document_output`].
+    pub fn emit_with_mapped_csv_document_output(
+        &self,
+        program: &Program,
+        policy: &codegen::CsvMappedDocumentOutputPolicy,
+    ) -> Result<ArtifactSet, crate::MappedCsvDocumentEmitError> {
+        let artifacts = crate::emit_with_mapped_csv_document_output(program, self.options, policy)?;
+        self.finish(artifacts, GenerationProfile::MappedCsvDocumentOutput)
+            .map_err(crate::MappedCsvDocumentEmitError::Emit)
+    }
+
     /// [`crate::emit_with_csv_document_adapters`].
     pub fn emit_with_csv_document_adapters(
         &self,

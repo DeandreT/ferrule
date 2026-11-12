@@ -27,6 +27,8 @@ mod primary_documents;
 mod read;
 mod source_document;
 
+pub use document_output::{to_mapped_document_bytes, to_mapped_document_text};
+
 pub use acquisition::{CsvAcquisitionError, CsvSourceAcquisition};
 pub use bounded::{CsvBoundedError, to_bytes_with_options_bounded, to_string_with_options_bounded};
 pub use bounded_read::{

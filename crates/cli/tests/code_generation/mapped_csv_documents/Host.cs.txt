@@ -1,0 +1,176 @@
+using System.Text;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+const string BP = "out/B-2026-11-12T03:04:05Z.csv", AP = "out/A-2026-11-12T03:04:05Z.csv";
+// Complete independent UTF-8 byte literals, not serializer-derived expectations.
+byte[] B = [0xef,0xbb,0xbf, .. "Client;SKU;Total;Label\nB;x;5;\""u8, 0xc3,0xa9, .. ";\"\"Q\"\"\r\nZ\"\nB;y;6;bee\n"u8];
+byte[] A = [0xef,0xbb,0xbf, .. "Client;SKU;Total;Label\nA;x;12;\"A\"\"x\"\nA;z;-2;"u8, 0xe5,0xb0,0xbe, 0x0a];
+static FerruleScalar Text(string value) => new(FerruleValue.FromString(value));
+static FerruleInstance Row(string account, string product, FerruleValue qty, string memo, string unused) => new FerruleGroup(new[] {
+    new FerruleField("Account", Text(account)), new FerruleField("Product", Text(product)), new FerruleField("Qty", new FerruleScalar(qty)), new FerruleField("Memo", Text(memo)), new FerruleField("Unused", Text(unused)) });
+static FerruleInstance Wrap(params FerruleInstance[] rows) => new FerruleGroup(new[] { new FerruleField("DetailLines", new FerruleRepeated(rows)) });
+static void Require(bool condition, string label) { if (!condition) throw new Exception(label); }
+static FerruleExecutionContext Context(params (string Name, FerruleValue Value)[] values) => new("mapped.csv.ferrule", "mapped.csv.ferrule", "2026-11-12T03:04:05Z",
+    new FerruleRuntimeParameters(values.Select(pair => new KeyValuePair<string, FerruleValue>(pair.Name, pair.Value))));
+var input = new FerruleRepeated(new[] {
+    Row("B", "x", FerruleValue.FromInt64(2), "é;\"Q\"\r\nZ", "discard-1"), Row("A", "x", FerruleValue.FromInt64(11), "A\"x", "discard-2"),
+    Row("B", "y", FerruleValue.FromInt64(7), "bee", "discard-3"), Row("B", "x", FerruleValue.FromInt64(3), "not-first-Bx", "discard-4"),
+    Row("A", "z", FerruleValue.FromInt64(-2), "尾", "discard-5"), Row("A", "x", FerruleValue.FromInt64(1), "not-first-Ax", "discard-6"),
+    Row("B", "y", FerruleValue.FromInt64(-1), "not-first-By", "discard-7") });
+var context = Context();
+Require(ImplementationMapping.RuntimeIdentity.StartsWith("sha256:", StringComparison.Ordinal) && ImplementationMapping.CompatibilityManifest.Contains("\"profile\": \"mapped_csv_document_output\"", StringComparison.Ordinal), "actual compiled compatibility metadata");
+if (args[0] is "plain" or "apostrophe" or "disabled") {
+    var kind = args[0];
+    var selected = kind == "plain" ? input : new FerruleRepeated(new[] { Row("B", "x", FerruleValue.FromInt64(3), kind == "apostrophe" ? "a'b;c" : "safe", "unused") });
+    (string Path, byte[] Bytes, string Text)[] expected = kind switch {
+        "plain" => [
+            (BP, [.. "B;x;5;\""u8, 0xc3,0xa9, .. ";\"\"Q\"\"\r\nZ\"\nB;y;6;bee\n"u8], "B;x;5;\"é;\"\"Q\"\"\r\nZ\"\nB;y;6;bee\n"),
+            (AP, [.. "A;x;12;\"A\"\"x\"\nA;z;-2;"u8, 0xe5,0xb0,0xbe, 0x0a], "A;x;12;\"A\"\"x\"\nA;z;-2;尾\n")],
+        "apostrophe" => [(BP, "Client;SKU;Total;Label\nB;x;3;'a''b;c'\n"u8.ToArray(), "Client;SKU;Total;Label\nB;x;3;'a''b;c'\n")],
+        _ => [(BP, "Client;SKU;Total;Label\nB;x;3;safe\n"u8.ToArray(), "Client;SKU;Total;Label\nB;x;3;safe\n")],
+    };
+    foreach (var docs in new[] { GeneratedMapping.ExecuteMappedCsvDocumentsBytes(selected), GeneratedMapping.ExecuteMappedCsvDocumentsBytes(selected, context) })
+        Require(docs.Count == expected.Length && docs.Select((d,index) => d.Path == expected[index].Path && d.Bytes.SequenceEqual(expected[index].Bytes)).All(ok => ok), "generated settings complete literal bytes");
+    foreach (var docs in new[] { GeneratedMapping.ExecuteMappedCsvDocuments(selected), GeneratedMapping.ExecuteMappedCsvDocuments(selected, context) })
+        Require(docs.Select(d => (d.Path,d.Text)).SequenceEqual(expected.Select(d => (d.Path,d.Text))), "generated settings complete literal text");
+    if (kind == "disabled") {
+        foreach (Action invoke in new Action[] { () => GeneratedMapping.ExecuteMappedCsvDocumentsBytes(input), () => GeneratedMapping.ExecuteMappedCsvDocumentsBytes(input, context), () => GeneratedMapping.ExecuteMappedCsvDocuments(input), () => GeneratedMapping.ExecuteMappedCsvDocuments(input, context) }) {
+            try { invoke(); throw new Exception("expected generated disabled quote refusal"); }
+            catch (FerruleCsvDocumentsException error) { Require(error.Error == FerruleCsvDocumentsError.Document && error.Document == 0 && error.Path == BP && error.InnerException is FerruleCsvException { Error: FerruleCsvError.UnquotedFieldBoundary, Row: 0, Field: "Label" }, "generated disabled quote cause"); }
+        }
+    }
+    Console.WriteLine("mapped documents passed");
+    return;
+}
+void CheckBytes(IReadOnlyList<FerruleCsvBytesDocument> docs) {
+    Require(docs.Count == 2 && docs[0].Path == BP && docs[1].Path == AP, "ordered paths");
+    Require(docs[0].Bytes.SequenceEqual(B) && docs[1].Bytes.SequenceEqual(A), "complete literal bytes");
+    Require(docs[0].Bytes.Length == 56 && docs[1].Bytes.Length == 51, "literal lengths");
+}
+void CheckText(IReadOnlyList<FerruleCsvTextDocument> docs) {
+    Require(docs.Select(d => (d.Path, d.Text)).SequenceEqual(new[] {
+        (BP, "\ufeffClient;SKU;Total;Label\nB;x;5;\"é;\"\"Q\"\"\r\nZ\"\nB;y;6;bee\n"),
+        (AP, "\ufeffClient;SKU;Total;Label\nA;x;12;\"A\"\"x\"\nA;z;-2;尾\n") }), "complete literal text");
+}
+CheckBytes(GeneratedMapping.ExecuteMappedCsvDocumentsBytes(input, context));
+CheckText(GeneratedMapping.ExecuteMappedCsvDocuments(input, context));
+if (args[0] == "literal") {
+    CheckBytes(GeneratedMapping.ExecuteMappedCsvDocumentsBytes(input));
+    CheckText(GeneratedMapping.ExecuteMappedCsvDocuments(input));
+}
+var empty = new FerruleRepeated(Array.Empty<FerruleInstance>());
+Require(GeneratedMapping.ExecuteMappedCsvDocuments(empty).Count == 0 && GeneratedMapping.ExecuteMappedCsvDocumentsBytes(empty).Count == 0 &&
+    GeneratedMapping.ExecuteMappedCsvDocuments(empty, context).Count == 0 && GeneratedMapping.ExecuteMappedCsvDocumentsBytes(empty, context).Count == 0, "zero document groups");
+foreach (var path in new[] { "same.csv", "../logical.csv", "C:/absolute.csv", "/absolute.csv" }) {
+    var docs = GeneratedMapping.ExecuteMappedCsvDocumentsBytes(input, Context(("Path", FerruleValue.FromString(path))));
+    Require(docs.Count == 2 && docs.All(d => d.Path == path) && docs[0].Bytes.SequenceEqual(B) && docs[1].Bytes.SequenceEqual(A), "opaque duplicate paths");
+}
+var filtered = GeneratedMapping.ExecuteMappedCsvDocumentsBytes(input, Context(("KeepRows", FerruleValue.FromBoolean(false))));
+Require(filtered.Select(d => (d.Path, Encoding.UTF8.GetString(d.Bytes))).SequenceEqual(new[] {
+    (BP, "\ufeffClient;SKU;Total;Label\n"), (AP, "\ufeffClient;SKU;Total;Label\n") }), "selected empty row groups survive");
+foreach (var operands in new[] { new[] { long.MaxValue, 1L }, new[] { long.MaxValue, 1L, -1L } }) {
+    var rows = new[] { Row("B", "x", FerruleValue.FromInt64(1), "ok", "unused") }.Concat(operands.Select(qty => Row("A", "x", FerruleValue.FromInt64(qty), "bad", "unused")));
+    try { GeneratedMapping.ExecuteMappedCsvDocumentsBytes(new FerruleRepeated(rows), context); throw new Exception("expected checked overflow"); }
+    catch (FerruleRuntimeException error) { Require(error.Error == FerruleRuntimeError.AggregateIntegerOverflow && error.AggregateOperation == FerruleAggregateOperation.Sum, "execution overflow remains typed"); }
+}
+try { GeneratedMapping.ExecuteMappedCsvDocuments(input, Context(("LatePath", FerruleValue.FromString("   ")))); throw new Exception("expected late path failure"); }
+catch (FerruleRuntimeException error) { Require(error.Error == FerruleRuntimeError.EmptyDynamicTargetPath && error.Node == 42, "late execution path"); }
+var integral = GeneratedMapping.ExecuteMappedCsvDocumentsBytes(new FerruleRepeated(new[] { Row("B", "x", FerruleValue.FromDouble(3.0), "ok", "unused") }), context);
+Require(integral[0].Bytes.SequenceEqual(new byte[] { 0xef,0xbb,0xbf }.Concat("Client;SKU;Total;Label\nB;x;3;ok\n"u8.ToArray())), "mapping adapts integral float to Int");
+var counter = Context(("Tick", FerruleValue.FromBoolean(true))).WithInvocationCounterLimits(new FerruleInvocationCounterLimits(1, 16));
+for (var iteration = 0; iteration < 2; iteration++) {
+    var docs = GeneratedMapping.ExecuteMappedCsvDocuments(input, counter);
+    Require(docs.Select(d => (d.Path, d.Text)).SequenceEqual(new[] {
+        ("out/B-3.csv", "\ufeffClient;SKU;Total;Label\nB;x;5;1\nB;y;6;2\n"),
+        ("out/A-6.csv", "\ufeffClient;SKU;Total;Label\nA;x;12;4\nA;z;-2;5\n") }), "construction before path, shared table, reset each call");
+}
+var fields = new[] { new FerruleCsvField("Client", FerruleScalarType.String), new FerruleCsvField("SKU", FerruleScalarType.String), new FerruleCsvField("Total", FerruleScalarType.Int64), new FerruleCsvField("Label", FerruleScalarType.String) };
+var options = new FerruleCsvWriteOptions { Delimiter = ';', Utf8Bom = true };
+var output = (FerruleDocumentSet)GeneratedMapping.Execute(input, context);
+CheckBytes(FerruleCsvDocuments.SerializeMappedBytes(output, "DetailLines", fields, options, 107));
+try { FerruleCsvDocuments.SerializeMappedBytes(output, "DetailLines", fields, options, 106); throw new Exception("expected total budget"); }
+catch (FerruleCsvDocumentsException error) { Require(error.Error == FerruleCsvDocumentsError.Document && error.Document == 1 && error.Path == AP && error.InnerException is FerruleCsvException { Error: FerruleCsvError.OutputTooLarge, Maximum: 50 }, "remaining allowance"); }
+var plain = FerruleCsvDocuments.SerializeMapped(output, "DetailLines", fields, options with { HasHeaders = false, Utf8Bom = false });
+Require(plain.Select(d => d.Text).SequenceEqual(new[] { "B;x;5;\"é;\"\"Q\"\"\r\nZ\"\nB;y;6;bee\n", "A;x;12;\"A\"\"x\"\nA;z;-2;尾\n" }), "header and BOM off");
+foreach (var malformed in new FerruleInstance[] { new FerruleGroup(Array.Empty<FerruleField>()), new FerruleScalar(FerruleValue.Null),
+    new FerruleGroup(new[] { new FerruleField("DetailLines", new FerruleScalar(FerruleValue.Null)) }),
+    new FerruleGroup(new[] { new FerruleField("DetailLines", new FerruleGroup(Array.Empty<FerruleField>())) }),
+    new FerruleGroup(new[] { new FerruleField("DetailLines", new FerruleMappedSequence(Array.Empty<FerruleInstance>())) }),
+    new FerruleGroup(new[] { new FerruleField("DetailLines", empty), new FerruleField("Spare", new FerruleScalar(FerruleValue.Null)) }) }) {
+    var bad = new FerruleDocumentSet(new[] { output.Documents[0], new FerruleDocument(AP, malformed) });
+    try { FerruleCsvDocuments.SerializeMappedBytes(bad, "DetailLines", fields, options); throw new Exception("expected exact wrapper shape"); }
+    catch (FerruleCsvDocumentsException error) { Require(error.Error == FerruleCsvDocumentsError.DocumentShape && error.Document == 1 && error.Path == AP, "wrapper diagnostics"); }
+}
+try { new FerruleGroup(new[] { new FerruleField("DetailLines", empty), new FerruleField("DetailLines", empty) }); throw new Exception("expected duplicate construction failure"); }
+catch (FerruleRuntimeException error) { Require(error.Error == FerruleRuntimeError.DuplicateField, "duplicate wrapper fails earlier in public C# construction"); }
+var secondRows = ((FerruleRepeated)((FerruleGroup)output.Documents[1].Value).Fields[0].Value).Items;
+foreach (var badTotal in new FerruleInstance?[] { null, new FerruleScalar(FerruleValue.FromDouble(3.0)), empty }) {
+    var second = new FerruleGroup(((FerruleGroup)secondRows[1]).Fields.Where(field => field.Name != "Total").Concat(badTotal is null ? Array.Empty<FerruleField>() : new[] { new FerruleField("Total", badTotal) }));
+    var bad = new FerruleDocumentSet(new[] { output.Documents[0], new FerruleDocument(AP, Wrap(secondRows[0], second)) });
+    try { FerruleCsvDocuments.SerializeMappedBytes(bad, "DetailLines", fields, options); throw new Exception("expected row error"); }
+    catch (FerruleCsvDocumentsException error) {
+        Require(error.Error == FerruleCsvDocumentsError.Document && error.Document == 1 && error.Path == AP, "late document diagnostics");
+        Require(error.InnerException is FerruleCsvException { Row: 1, Field: "Total" } inner && inner.Error == (badTotal is null ? FerruleCsvError.MissingField : FerruleCsvError.ValueType), "existing row cause");
+        if (badTotal is not null) Require(error.InnerException is FerruleCsvException { Expected: FerruleScalarType.Int64 } typed && typed.Got == (badTotal is FerruleRepeated ? "repeated" : "float"), "exact expected/got cell diagnostics");
+    }
+}
+var emptyDocuments = new FerruleDocumentSet(new[] { new FerruleDocument("a", Wrap()), new FerruleDocument("a", Wrap()) });
+foreach (var setting in new[] { options, options with { HasHeaders = false }, options with { HasHeaders = false, Utf8Bom = false } }) {
+    var docs = FerruleCsvDocuments.SerializeMapped(emptyDocuments, "DetailLines", fields, setting);
+    var expected = setting.HasHeaders ? "\ufeffClient;SKU;Total;Label\n" : setting.Utf8Bom ? "\ufeff" : "";
+    Require(docs.Count == 2 && docs.All(d => d.Path == "a" && d.Text == expected), "empty is not missing");
+}
+var max = new FerruleDocumentSet(Enumerable.Range(0, 4096).Select(_ => new FerruleDocument(new string('é', 2048), Wrap())));
+Require(FerruleCsvDocuments.SerializeMappedBytes(max, "DetailLines", fields, options with { HasHeaders = false, Utf8Bom = false }).Count == 4096, "count and UTF-8 path exact bounds");
+var tooMany = new FerruleDocumentSet(Enumerable.Range(0, 4097).Select(_ => new FerruleDocument("a", new FerruleScalar(FerruleValue.Null))));
+try { FerruleCsvDocuments.SerializeMappedBytes(tooMany, "DetailLines", fields, options); throw new Exception("expected document limit"); }
+catch (FerruleCsvDocumentsException error) { Require(error.Error == FerruleCsvDocumentsError.TooManyDocuments, "metadata count preflight"); }
+var tooLong = new FerruleDocumentSet(new[] { new FerruleDocument("a", new FerruleScalar(FerruleValue.Null)), new FerruleDocument(new string('é', 2049), Wrap()) });
+try { FerruleCsvDocuments.SerializeMappedBytes(tooLong, "DetailLines", fields, options); throw new Exception("expected path limit"); }
+catch (FerruleCsvDocumentsException error) { Require(error.Error == FerruleCsvDocumentsError.PathTooLong && error.Document == 1, "metadata paths preflight before malformed wrapper"); }
+var zero = new FerruleDocumentSet(Array.Empty<FerruleDocument>());
+try { FerruleCsvDocuments.SerializeMappedBytes(zero, "DetailLines", fields, options with { Delimiter = '\n' }); throw new Exception("expected empty static admission"); }
+catch (FerruleCsvDocumentsException error) { Require(error.Error == FerruleCsvDocumentsError.MappedConfiguration && error.InnerException is FerruleCsvException { Error: FerruleCsvError.BadDelimiter }, "static dialect on empty set"); }
+foreach (var selector in new[] { "", "\0" }) {
+    try { FerruleCsvDocuments.SerializeMappedBytes(zero, selector, fields, options); throw new Exception("expected selector error"); }
+    catch (FerruleCsvDocumentsException error) { Require(error.Error == FerruleCsvDocumentsError.InvalidRowsField, "explicit invalid selector"); }
+}
+var escapedFields = new[] { new FerruleCsvField("A;B", FerruleScalarType.String), new FerruleCsvField("Q\"R", FerruleScalarType.String) };
+var escaped = new FerruleDocumentSet(new[] { new FerruleDocument("x", Wrap(new FerruleGroup(new[] { new FerruleField("A;B", Text("x")), new FerruleField("Q\"R", Text("y")) }))) });
+Require(FerruleCsvDocuments.SerializeMappedBytes(escaped, "DetailLines", escapedFields, options with { Utf8Bom = false })[0].Bytes.SequenceEqual("\"A;B\";\"Q\"\"R\"\nx;y\n"u8.ToArray()), "literal header escaping");
+var custom = new FerruleDocumentSet(new[] { new FerruleDocument("x", Wrap(new FerruleGroup(new[] { new FerruleField("Label", Text("a'b;c")) }))) });
+Require(FerruleCsvDocuments.SerializeMappedBytes(custom, "DetailLines", new[] { new FerruleCsvField("Label", FerruleScalarType.String) }, options with { Quote = '\'', Utf8Bom = false })[0].Bytes.SequenceEqual("Label\n'a''b;c'\n"u8.ToArray()), "literal custom quote");
+var coercionFields = new[] { new FerruleCsvField("A", FerruleScalarType.String), new FerruleCsvField("N", FerruleScalarType.Int64), new FerruleCsvField("Flag", FerruleScalarType.Bool) };
+var coercion = new FerruleDocumentSet(new[] { new FerruleDocument("x", Wrap(new FerruleGroup(new[] { new FerruleField("A", new FerruleScalar(FerruleValue.Null)), new FerruleField("N", Text(" +0007 ")), new FerruleField("Flag", Text("1")) }))) });
+Require(FerruleCsvDocuments.SerializeMappedBytes(coercion, "DetailLines", coercionFields, options with { Utf8Bom = false })[0].Bytes.SequenceEqual("A;N;Flag\n;7;true\n"u8.ToArray()), "direct scalar lexical coercion");
+try { FerruleCsvDocuments.SerializeMappedBytes(output, "DetailLines", fields, options with { QuoteDisabled = true }); throw new Exception("expected disabled quote failure"); }
+catch (FerruleCsvDocumentsException error) { Require(error.Document == 0 && error.Path == BP && error.InnerException is FerruleCsvException { Error: FerruleCsvError.UnquotedFieldBoundary, Row: 0, Field: "Label" }, "disabled quote cause"); }
+var firstRows = ((FerruleRepeated)((FerruleGroup)output.Documents[0].Value).Fields[0].Value).Items;
+var laterMissing = new FerruleGroup(((FerruleGroup)firstRows[1]).Fields.Where(field => field.Name != "Total"));
+var precedence = new FerruleDocumentSet(new[] { new FerruleDocument(BP, Wrap(firstRows[0], laterMissing)) });
+try { FerruleCsvDocuments.SerializeMappedBytes(precedence, "DetailLines", fields, options with { QuoteDisabled = true }); throw new Exception("expected row precedence"); }
+catch (FerruleCsvDocumentsException error) { Require(error.Document == 0 && error.Path == BP && error.InnerException is FerruleCsvException { Error: FerruleCsvError.MissingField, Row: 1, Field: "Total" }, "row validation precedes earlier unquoted cell"); }
+var floatFields = new[] { new FerruleCsvField("N", FerruleScalarType.Double) };
+FerruleDocumentSet Number(long number) => new(new[] { new FerruleDocument("n", Wrap(new FerruleGroup(new[] { new FerruleField("N", new FerruleScalar(FerruleValue.FromInt64(number))) }))) });
+Require(FerruleCsvDocuments.SerializeMappedBytes(Number(9007199254740992), "DetailLines", floatFields)[0].Bytes.SequenceEqual("N\n9007199254740992\n"u8.ToArray()), "exact 2^53 is allowed");
+try { FerruleCsvDocuments.SerializeMappedBytes(Number(9007199254740993), "DetailLines", floatFields); throw new Exception("expected inexact numeric failure"); }
+catch (FerruleCsvDocumentsException error) { Require(error.Document == 0 && error.InnerException is FerruleCsvException { Error: FerruleCsvError.ValueType, Row: 0, Field: "N", Got: "int outside the exact f64 range" }, "inexact integer is not silently rounded"); }
+Console.WriteLine("mapped documents passed");
+
+static class GeneratedMapping
+{
+    private static T Observe<T>(string api, Func<T> invoke)
+    {
+        var outcome = "error";
+        var path = Environment.GetEnvironmentVariable("FERRULE_MAPPED_PUBLIC_CALLS");
+        try { var value = invoke(); outcome = "ok"; if (path is not null) File.AppendAllText(path + ".jsonl", System.Text.Json.JsonSerializer.Serialize(new { api, outcome, value }) + "\n"); return value; }
+        catch (Exception error) { if (path is not null) File.AppendAllText(path + ".jsonl", System.Text.Json.JsonSerializer.Serialize(new { api, outcome, type = error.GetType().FullName, detail = error.ToString() }) + "\n"); throw; }
+        finally { if (path is not null) File.AppendAllText(path, $"{api}|{outcome}\n"); }
+    }
+    public static IReadOnlyList<FerruleCsvBytesDocument> ExecuteMappedCsvDocumentsBytes(FerruleInstance source) => Observe("bytes-default", () => ImplementationMapping.ExecuteMappedCsvDocumentsBytes(source));
+    public static IReadOnlyList<FerruleCsvBytesDocument> ExecuteMappedCsvDocumentsBytes(FerruleInstance source, FerruleExecutionContext context) => Observe("bytes-context", () => ImplementationMapping.ExecuteMappedCsvDocumentsBytes(source, context));
+    public static IReadOnlyList<FerruleCsvTextDocument> ExecuteMappedCsvDocuments(FerruleInstance source) => Observe("text-default", () => ImplementationMapping.ExecuteMappedCsvDocuments(source));
+    public static IReadOnlyList<FerruleCsvTextDocument> ExecuteMappedCsvDocuments(FerruleInstance source, FerruleExecutionContext context) => Observe("text-context", () => ImplementationMapping.ExecuteMappedCsvDocuments(source, context));
+    public static FerruleInstance Execute(FerruleInstance source, FerruleExecutionContext context) => ImplementationMapping.Execute(source, context);
+}
