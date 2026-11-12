@@ -142,6 +142,24 @@ pub(super) fn classify_target_connection(
         return;
     }
     let resolved = builder.resolve_iteration_feed(feed);
+    if target.format == ComponentFormat::Json && !target_node.repeating && resolved.has_filter {
+        // First would invent a winner (and an empty object for no match), while
+        // MappedSequence omits no matches and rejects multiple matches at the
+        // JSON boundary. Neither establishes the authored singular contract.
+        // Reuse the rejected-iteration paths so child bindings cannot fall back
+        // to the enclosing source context in the repair-oriented project.
+        if builder.rejected_join_paths.insert(target_path.to_vec()) {
+            let path = if target_path.is_empty() {
+                "<root>".to_string()
+            } else {
+                target_path.join("/")
+            };
+            builder.warnings.push(format!(
+                "filtered source into non-repeating JSON object `{path}` is unsupported: singular selection semantics are not established; group and descendant bindings skipped; use a repeating target to retain the filter"
+            ));
+        }
+        return;
+    }
     let plain_feed = resolved.sequence_component.is_none()
         && resolved.db_where_component.is_none()
         && !resolved.has_filter

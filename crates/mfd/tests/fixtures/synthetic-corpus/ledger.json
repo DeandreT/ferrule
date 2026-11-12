@@ -110,8 +110,13 @@
   },
   "x12-856-to-consignment-json": {
     "import": "ok",
-    "executable": true,
-    "issues": [],
+    "executable": false,
+    "issues": [
+      {
+        "kind": "import_warning",
+        "contains": "filtered source into non-repeating JSON object `notices/consignment` is unsupported: singular selection semantics are not established; group and descendant bindings skipped; use a repeating target to retain the filter"
+      }
+    ],
     "rust": "ok",
     "csharp": "ok"
   },
@@ -125,6 +130,10 @@
       {
         "kind": "import_warning",
         "contains": "connected FileInstance input port"
+      },
+      {
+        "kind": "import_warning",
+        "contains": "filtered source into non-repeating JSON object `orders/deliverTo` is unsupported: singular selection semantics are not established; group and descendant bindings skipped; use a repeating target to retain the filter"
       }
     ],
     "rust": "ok",
@@ -139,15 +148,25 @@
   },
   "x12-940-to-order-json": {
     "import": "ok",
-    "executable": true,
-    "issues": [],
+    "executable": false,
+    "issues": [
+      {
+        "kind": "import_warning",
+        "contains": "filtered source into non-repeating JSON object `orders/deliverTo` is unsupported: singular selection semantics are not established; group and descendant bindings skipped; use a repeating target to retain the filter"
+      }
+    ],
     "rust": "ok",
     "csharp": "ok"
   },
   "x12-943-to-intake-json": {
     "import": "ok",
-    "executable": true,
-    "issues": [],
+    "executable": false,
+    "issues": [
+      {
+        "kind": "import_warning",
+        "contains": "filtered source into non-repeating JSON object `receipts/origin` is unsupported: singular selection semantics are not established; group and descendant bindings skipped; use a repeating target to retain the filter"
+      }
+    ],
     "rust": "ok",
     "csharp": "ok"
   }
