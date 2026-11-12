@@ -105,6 +105,11 @@ impl GraphBuilder<'_> {
             );
         }
         let index = *self.fn_by_output.get(&key)?;
+        if is_filter(self.fn_components.get(index)?)
+            && let Some(node) = self.scalar_filter_lookup_at_anchor(index, key, &[], active_anchor)
+        {
+            return Some(node);
+        }
         let function = self.fn_components.get(index)?;
         if self.json_parser_array_filter(index) {
             return self.json_parser_lookup_at_anchor(index, key, active_anchor);
