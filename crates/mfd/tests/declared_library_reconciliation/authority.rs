@@ -24,7 +24,10 @@ fn natural_and_prepared_bound_buffers_keep_private_exact_provenance() {
     );
     let definitions = readset.take_mapping_library_definitions();
     assert_eq!(definitions.len(), 1);
-    assert_eq!(definitions[0].declaring_document, path);
+    assert_eq!(
+        definitions[0].declaring_document,
+        path.canonicalize().unwrap()
+    );
     assert_eq!(definitions[0].declaring_sha256, digest(MAIN.as_bytes()));
     assert_eq!(definitions[0].identity.name, "Identity");
     assert_eq!(definitions[0].declaration_xml, IDENTITY);
