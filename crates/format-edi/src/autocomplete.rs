@@ -626,7 +626,7 @@ fn normalize_x12_time(
     short: bool,
 ) -> Result<(), EdiFormatError> {
     let value = ensure_value(segment, index, "");
-    let mut compact = String::with_capacity(6);
+    let mut compact = String::with_capacity(8);
     for character in value.chars() {
         if matches!(character, '+' | '-' | 'Z') {
             break;
@@ -641,8 +641,12 @@ fn normalize_x12_time(
     if short && compact.len() == 6 {
         compact.truncate(4);
     }
-    let width = if short { 4 } else { 6 };
-    if compact.len() != width || !compact.bytes().all(|byte| byte.is_ascii_digit()) {
+    let valid_width = if short {
+        compact.len() == 4
+    } else {
+        matches!(compact.len(), 4 | 6 | 7 | 8)
+    };
+    if !valid_width || !compact.bytes().all(|byte| byte.is_ascii_digit()) {
         return Err(EdiFormatError::InvalidEnvelopeElement {
             element: format!("{}{:02}", segment.id, index + 1),
             value: compact,
