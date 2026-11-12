@@ -20,7 +20,12 @@ mod identity;
 mod join;
 mod json5_boundary;
 mod lower;
+mod mapped_csv_document_boundary;
 mod model;
+pub use mapped_csv_document_boundary::{
+    CsvMappedDocumentOutputError, CsvMappedDocumentOutputPolicy,
+    validate_csv_mapped_document_output,
+};
 mod owned_admission;
 mod presets;
 mod primary_document_boundary;

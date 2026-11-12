@@ -14,6 +14,7 @@ mod aggregate;
 mod context;
 mod csv;
 mod csv_documents;
+pub use csv_documents::{serialize_mapped_csv_documents, serialize_mapped_csv_documents_bytes};
 mod descriptor_registry;
 mod dynamic_document;
 mod dynamic_source;

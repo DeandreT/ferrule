@@ -20,6 +20,10 @@ use mapping::{FunctionId, FunctionParameterId, NodeId};
 
 mod compatibility;
 mod csv_api;
+mod mapped_csv_document_output;
+pub use mapped_csv_document_output::{
+    MappedCsvDocumentEmitError, emit_with_mapped_csv_document_output,
+};
 mod csv_document;
 pub use compatibility::Generator;
 pub use csv_document::{CsvDocumentEmitError, emit_with_csv_document_adapters};

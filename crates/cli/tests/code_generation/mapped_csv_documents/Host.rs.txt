@@ -1,0 +1,452 @@
+use codegen_runtime::{
+    AggregateFunction, CsvDocumentOutputError, DocumentMember, ExecutionContext, Instance,
+    InvocationCounterLimits, RuntimeError, RuntimeParameters, ScalarType, SchemaNode, Value,
+};
+use format_csv::{CsvBoundedError, CsvDocumentsError, CsvFormatError};
+use mapped_host_lib::*;
+
+fn observed<T: std::fmt::Debug>(
+    api: &str,
+    outcome: Result<T, CsvDocumentOutputError>,
+) -> Result<T, CsvDocumentOutputError> {
+    if let Some(path) = std::env::var_os("FERRULE_MAPPED_PUBLIC_CALLS") {
+        use std::io::Write;
+        let mut receipt = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+            .unwrap();
+        let raw_path =
+            std::path::PathBuf::from(std::env::var_os("FERRULE_MAPPED_PUBLIC_CALLS").unwrap())
+                .with_extension("raw.txt");
+        let mut raw = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(raw_path)
+            .unwrap();
+        writeln!(raw, "{api}|{outcome:?}").unwrap();
+        writeln!(
+            receipt,
+            "{api}|{}",
+            if outcome.is_ok() { "ok" } else { "error" }
+        )
+        .unwrap();
+    }
+    outcome
+}
+fn execute_mapped_csv_documents(
+    source: &Instance,
+) -> Result<Vec<codegen_runtime::CsvTextDocument>, CsvDocumentOutputError> {
+    observed(
+        "text-default",
+        mapped_host_lib::execute_mapped_csv_documents(source),
+    )
+}
+fn execute_mapped_csv_documents_with_context(
+    source: &Instance,
+    context: &ExecutionContext<'_>,
+) -> Result<Vec<codegen_runtime::CsvTextDocument>, CsvDocumentOutputError> {
+    observed(
+        "text-context",
+        mapped_host_lib::execute_mapped_csv_documents_with_context(source, context),
+    )
+}
+fn execute_mapped_csv_documents_bytes(
+    source: &Instance,
+) -> Result<Vec<codegen_runtime::CsvBytesDocument>, CsvDocumentOutputError> {
+    observed(
+        "bytes-default",
+        mapped_host_lib::execute_mapped_csv_documents_bytes(source),
+    )
+}
+fn execute_mapped_csv_documents_bytes_with_context(
+    source: &Instance,
+    context: &ExecutionContext<'_>,
+) -> Result<Vec<codegen_runtime::CsvBytesDocument>, CsvDocumentOutputError> {
+    observed(
+        "bytes-context",
+        mapped_host_lib::execute_mapped_csv_documents_bytes_with_context(source, context),
+    )
+}
+
+const BP: &str = "out/B-2026-11-12T03:04:05Z.csv";
+const AP: &str = "out/A-2026-11-12T03:04:05Z.csv";
+const B: &[u8] =
+    b"\xef\xbb\xbfClient;SKU;Total;Label\nB;x;5;\"\xc3\xa9;\"\"Q\"\"\r\nZ\"\nB;y;6;bee\n";
+const A: &[u8] = b"\xef\xbb\xbfClient;SKU;Total;Label\nA;x;12;\"A\"\"x\"\nA;z;-2;\xe5\xb0\xbe\n";
+fn scalar(text: &str) -> Instance {
+    Instance::Scalar(Value::String(text.into()))
+}
+fn row(account: &str, product: &str, qty: Value, memo: &str, unused: &str) -> Instance {
+    Instance::Group(
+        vec![
+            ("Account".into(), scalar(account)),
+            ("Product".into(), scalar(product)),
+            ("Qty".into(), Instance::Scalar(qty)),
+            ("Memo".into(), scalar(memo)),
+            ("Unused".into(), scalar(unused)),
+        ]
+        .into(),
+    )
+}
+fn source() -> Instance {
+    Instance::Repeated(vec![
+        row("B", "x", Value::Int(2), "é;\"Q\"\r\nZ", "discard-1"),
+        row("A", "x", Value::Int(11), "A\"x", "discard-2"),
+        row("B", "y", Value::Int(7), "bee", "discard-3"),
+        row("B", "x", Value::Int(3), "not-first-Bx", "discard-4"),
+        row("A", "z", Value::Int(-2), "尾", "discard-5"),
+        row("A", "x", Value::Int(1), "not-first-Ax", "discard-6"),
+        row("B", "y", Value::Int(-1), "not-first-By", "discard-7"),
+    ])
+}
+fn schema() -> SchemaNode {
+    SchemaNode::group(
+        "DetailLines",
+        vec![
+            SchemaNode::scalar("Client", ScalarType::String),
+            SchemaNode::scalar("SKU", ScalarType::String),
+            SchemaNode::scalar("Total", ScalarType::Int),
+            SchemaNode::scalar("Label", ScalarType::String),
+        ],
+    )
+}
+fn options() -> codegen_runtime::CsvWriteOptions {
+    codegen_runtime::CsvWriteOptions {
+        delimiter: Some(';'),
+        utf8_bom: true,
+        ..Default::default()
+    }
+}
+fn check_bytes(docs: Vec<codegen_runtime::CsvBytesDocument>) {
+    assert_eq!(
+        docs.iter()
+            .map(|d| (d.path.as_str(), d.bytes.as_slice()))
+            .collect::<Vec<_>>(),
+        [(BP, B), (AP, A)]
+    );
+    assert_eq!((docs[0].bytes.len(), docs[1].bytes.len()), (56, 51));
+}
+fn check_text(docs: Vec<codegen_runtime::CsvTextDocument>) {
+    assert_eq!(
+        docs.iter()
+            .map(|d| (d.path.as_str(), d.text.as_str()))
+            .collect::<Vec<_>>(),
+        [
+            (
+                BP,
+                "\u{feff}Client;SKU;Total;Label\nB;x;5;\"é;\"\"Q\"\"\r\nZ\"\nB;y;6;bee\n"
+            ),
+            (
+                AP,
+                "\u{feff}Client;SKU;Total;Label\nA;x;12;\"A\"\"x\"\nA;z;-2;尾\n"
+            )
+        ]
+    );
+}
+fn main() {
+    let input = source();
+    let context = ExecutionContext::new(std::path::Path::new("mapped.csv.ferrule"))
+        .with_current_datetime("2026-11-12T03:04:05Z");
+    assert_eq!(RUNTIME_IDENTITY, codegen_runtime::RUNTIME_IDENTITY);
+    assert!(COMPATIBILITY_MANIFEST.contains("\"profile\": \"mapped_csv_document_output\""));
+    let kind = std::env::args().nth(1).unwrap();
+    if matches!(kind.as_str(), "plain" | "apostrophe" | "disabled") {
+        let selected = if kind == "plain" {
+            input.clone()
+        } else {
+            Instance::Repeated(vec![row(
+                "B",
+                "x",
+                Value::Int(3),
+                if kind == "apostrophe" {
+                    "a'b;c"
+                } else {
+                    "safe"
+                },
+                "unused",
+            )])
+        };
+        let expected: Vec<(&str, &[u8], &str)> = match kind.as_str() {
+            "plain" => vec![
+                (
+                    BP,
+                    b"B;x;5;\"\xc3\xa9;\"\"Q\"\"\r\nZ\"\nB;y;6;bee\n",
+                    "B;x;5;\"é;\"\"Q\"\"\r\nZ\"\nB;y;6;bee\n",
+                ),
+                (
+                    AP,
+                    b"A;x;12;\"A\"\"x\"\nA;z;-2;\xe5\xb0\xbe\n",
+                    "A;x;12;\"A\"\"x\"\nA;z;-2;尾\n",
+                ),
+            ],
+            "apostrophe" => vec![(
+                BP,
+                b"Client;SKU;Total;Label\nB;x;3;'a''b;c'\n",
+                "Client;SKU;Total;Label\nB;x;3;'a''b;c'\n",
+            )],
+            _ => vec![(
+                BP,
+                b"Client;SKU;Total;Label\nB;x;3;safe\n",
+                "Client;SKU;Total;Label\nB;x;3;safe\n",
+            )],
+        };
+        for docs in [
+            execute_mapped_csv_documents_bytes(&selected).unwrap(),
+            execute_mapped_csv_documents_bytes_with_context(&selected, &context).unwrap(),
+        ] {
+            assert_eq!(
+                docs.iter()
+                    .map(|d| (d.path.as_str(), d.bytes.as_slice()))
+                    .collect::<Vec<_>>(),
+                expected
+                    .iter()
+                    .map(|(p, b, _)| (*p, *b))
+                    .collect::<Vec<_>>()
+            );
+        }
+        for docs in [
+            execute_mapped_csv_documents(&selected).unwrap(),
+            execute_mapped_csv_documents_with_context(&selected, &context).unwrap(),
+        ] {
+            assert_eq!(
+                docs.iter()
+                    .map(|d| (d.path.as_str(), d.text.as_str()))
+                    .collect::<Vec<_>>(),
+                expected
+                    .iter()
+                    .map(|(p, _, t)| (*p, *t))
+                    .collect::<Vec<_>>()
+            );
+        }
+        if kind == "disabled" {
+            for error in [
+                execute_mapped_csv_documents_bytes(&input).unwrap_err(),
+                execute_mapped_csv_documents_bytes_with_context(&input, &context).unwrap_err(),
+                execute_mapped_csv_documents(&input).unwrap_err(),
+                execute_mapped_csv_documents_with_context(&input, &context).unwrap_err(),
+            ] {
+                assert!(
+                    matches!(error, CsvDocumentOutputError::Output(CsvDocumentsError::Document { document: 0, path, source: CsvBoundedError::Format(CsvFormatError::UnquotedFieldBoundary { row: 0, field }) }) if path == BP && field == "Label")
+                );
+            }
+        }
+        println!("mapped documents passed");
+        return;
+    }
+    check_bytes(execute_mapped_csv_documents_bytes_with_context(&input, &context).unwrap());
+    check_text(execute_mapped_csv_documents_with_context(&input, &context).unwrap());
+    if std::env::args().nth(1).as_deref() == Some("literal") {
+        check_bytes(execute_mapped_csv_documents_bytes(&input).unwrap());
+        check_text(execute_mapped_csv_documents(&input).unwrap());
+    }
+    assert!(
+        execute_mapped_csv_documents(&Instance::Repeated(vec![]))
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        execute_mapped_csv_documents_bytes(&Instance::Repeated(vec![]))
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        execute_mapped_csv_documents_with_context(&Instance::Repeated(vec![]), &context)
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        execute_mapped_csv_documents_bytes_with_context(&Instance::Repeated(vec![]), &context)
+            .unwrap()
+            .is_empty()
+    );
+    for path in [
+        "same.csv",
+        "../logical.csv",
+        "C:/absolute.csv",
+        "/absolute.csv",
+    ] {
+        let mut parameters = RuntimeParameters::new();
+        parameters
+            .insert("Path", Value::String(path.into()))
+            .unwrap();
+        let docs = execute_mapped_csv_documents_bytes_with_context(
+            &input,
+            &context.with_parameters(&parameters),
+        )
+        .unwrap();
+        assert_eq!(
+            docs.iter()
+                .map(|d| (d.path.as_str(), d.bytes.as_slice()))
+                .collect::<Vec<_>>(),
+            [(path, B), (path, A)]
+        );
+    }
+    let mut parameters = RuntimeParameters::new();
+    parameters.insert("KeepRows", Value::Bool(false)).unwrap();
+    let empty = execute_mapped_csv_documents_bytes_with_context(
+        &input,
+        &context.with_parameters(&parameters),
+    )
+    .unwrap();
+    assert_eq!(
+        empty
+            .iter()
+            .map(|d| (d.path.as_str(), d.bytes.as_slice()))
+            .collect::<Vec<_>>(),
+        [
+            (BP, b"\xef\xbb\xbfClient;SKU;Total;Label\n".as_slice()),
+            (AP, b"\xef\xbb\xbfClient;SKU;Total;Label\n")
+        ]
+    );
+    for operands in [vec![i64::MAX, 1], vec![i64::MAX, 1, -1]] {
+        let mut rows = vec![row("B", "x", Value::Int(1), "ok", "unused")];
+        rows.extend(
+            operands
+                .into_iter()
+                .map(|qty| row("A", "x", Value::Int(qty), "bad", "unused")),
+        );
+        assert!(matches!(
+            execute_mapped_csv_documents_bytes_with_context(&Instance::Repeated(rows), &context),
+            Err(CsvDocumentOutputError::Execution(
+                RuntimeError::AggregateIntegerOverflow {
+                    function: AggregateFunction::Sum
+                }
+            ))
+        ));
+    }
+    let mut parameters = RuntimeParameters::new();
+    parameters
+        .insert("LatePath", Value::String("   ".into()))
+        .unwrap();
+    assert!(matches!(
+        execute_mapped_csv_documents_with_context(&input, &context.with_parameters(&parameters)),
+        Err(CsvDocumentOutputError::Execution(
+            RuntimeError::EmptyDynamicTargetPath { node: 42 }
+        ))
+    ));
+    let integral = execute_mapped_csv_documents_bytes_with_context(
+        &Instance::Repeated(vec![row("B", "x", Value::Float(3.0), "ok", "unused")]),
+        &context,
+    )
+    .unwrap();
+    assert_eq!(
+        integral[0].bytes,
+        b"\xef\xbb\xbfClient;SKU;Total;Label\nB;x;3;ok\n"
+    );
+    // A shared invocation counter demonstrates child construction before path
+    // evaluation and no per-record remapping. The adapters' one Execute call is
+    // checked separately: counters reset per invocation, so cannot prove that alone.
+    let mut parameters = RuntimeParameters::new();
+    parameters.insert("Tick", Value::Bool(true)).unwrap();
+    let counter = context
+        .with_parameters(&parameters)
+        .with_invocation_counter_limits(InvocationCounterLimits {
+            max_counters: 1,
+            max_text_bytes: 16,
+        });
+    for _ in 0..2 {
+        let docs = execute_mapped_csv_documents_bytes_with_context(&input, &counter).unwrap();
+        assert_eq!(
+            docs.iter()
+                .map(|d| (d.path.as_str(), d.bytes.as_slice()))
+                .collect::<Vec<_>>(),
+            [
+                (
+                    "out/B-3.csv",
+                    b"\xef\xbb\xbfClient;SKU;Total;Label\nB;x;5;1\nB;y;6;2\n".as_slice()
+                ),
+                (
+                    "out/A-6.csv",
+                    b"\xef\xbb\xbfClient;SKU;Total;Label\nA;x;12;4\nA;z;-2;5\n"
+                )
+            ]
+        );
+    }
+    let output = execute_with_context(&input, &context).unwrap();
+    let plain = codegen_runtime::serialize_mapped_csv_documents_bytes(
+        &schema(),
+        &output,
+        "DetailLines",
+        &codegen_runtime::CsvWriteOptions {
+            has_headers: false,
+            utf8_bom: false,
+            ..options()
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        plain[0].bytes,
+        b"B;x;5;\"\xc3\xa9;\"\"Q\"\"\r\nZ\"\nB;y;6;bee\n"
+    );
+    assert_eq!(plain[1].bytes, b"A;x;12;\"A\"\"x\"\nA;z;-2;\xe5\xb0\xbe\n");
+    let Instance::DocumentSet(members) = &output else {
+        panic!("documents")
+    };
+    for malformed in [
+        Instance::Group(vec![].into()),
+        Instance::Scalar(Value::Null),
+        Instance::Group(vec![("DetailLines".into(), Instance::Scalar(Value::Null))].into()),
+        Instance::Group(vec![("DetailLines".into(), Instance::Group(vec![].into()))].into()),
+        Instance::Group(vec![("DetailLines".into(), Instance::MappedSequence(vec![]))].into()),
+        Instance::Group(
+            vec![
+                ("DetailLines".into(), Instance::Repeated(vec![])),
+                ("DetailLines".into(), Instance::Repeated(vec![])),
+            ]
+            .into(),
+        ),
+        Instance::Group(
+            vec![
+                ("DetailLines".into(), Instance::Repeated(vec![])),
+                ("Spare".into(), Instance::Scalar(Value::Null)),
+            ]
+            .into(),
+        ),
+    ] {
+        let bad = Instance::DocumentSet(vec![
+            members[0].clone(),
+            DocumentMember::new(AP, malformed).unwrap(),
+        ]);
+        assert!(
+            matches!(codegen_runtime::serialize_mapped_csv_documents_bytes(&schema(), &bad, "DetailLines", &options()), Err(CsvDocumentOutputError::Output(CsvDocumentsError::DocumentShape { document: 1, path })) if path == AP)
+        );
+    }
+    let missing = Instance::Group(
+        vec![
+            ("Client".into(), scalar("A")),
+            ("SKU".into(), scalar("z")),
+            ("Label".into(), scalar("尾")),
+        ]
+        .into(),
+    );
+    let bad = Instance::DocumentSet(vec![
+        members[0].clone(),
+        DocumentMember::new(
+            AP,
+            Instance::Group(
+                vec![(
+                    "DetailLines".into(),
+                    Instance::Repeated(vec![
+                        Instance::Group(
+                            vec![
+                                ("Client".into(), scalar("A")),
+                                ("SKU".into(), scalar("x")),
+                                ("Total".into(), Instance::Scalar(Value::Int(12))),
+                                ("Label".into(), scalar("A\"x")),
+                            ]
+                            .into(),
+                        ),
+                        missing,
+                    ]),
+                )]
+                .into(),
+            ),
+        )
+        .unwrap(),
+    ]);
+    assert!(
+        matches!(codegen_runtime::serialize_mapped_csv_documents_bytes(&schema(), &bad, "DetailLines", &options()), Err(CsvDocumentOutputError::Output(CsvDocumentsError::Document { document: 1, path, source: CsvBoundedError::Format(CsvFormatError::MissingField { row: 1, field }) })) if path == AP && field == "Total")
+    );
+    println!("mapped documents passed");
+}
