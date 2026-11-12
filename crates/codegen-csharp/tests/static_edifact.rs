@@ -1,7 +1,5 @@
 //! Self-authored complete EDIFACT fixtures. Runtime parity requires the shared
 //! EDI codec; no tokenizer or envelope implementation belongs in this adapter.
-#[path = "../../codegen/tests/fixtures/dotnet_temp.rs"]
-mod dotnet_temp;
 #[path = "../../format-edi/tests/fixtures/interchanges.rs"]
 mod interchange_fixtures;
 #[allow(dead_code)]
@@ -11,10 +9,10 @@ use codegen::{
     DocumentBoundaryOptions, EdifactBoundaryOptions, NamedDocumentBoundaryOptions,
     StaticDocumentBoundaryPolicy,
 };
-use dotnet_temp::DotnetTemp;
 use ir::{ScalarType, SchemaNode};
 use mapping::{EdiBoundaryKind, FormatOptions, Project, Scope, ScopeConstruction};
 use std::{fs, process::Command};
+use test_support::DotnetTemp;
 
 fn segment(name: &str, fields: usize) -> SchemaNode {
     SchemaNode::group(

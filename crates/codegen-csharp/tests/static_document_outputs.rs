@@ -1,8 +1,6 @@
 //! Focused complete physical-output contract. SDK execution is an explicit,
 //! ignored test; the ordinary tests inspect actual emitted artifacts only.
-#[path = "../../codegen/tests/fixtures/dotnet_temp.rs"]
-mod dotnet_temp;
-use dotnet_temp::DotnetTemp;
+use test_support::DotnetTemp;
 
 use std::{
     fs,

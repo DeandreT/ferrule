@@ -1,11 +1,8 @@
-#[path = "../../codegen/tests/fixtures/dotnet_temp.rs"]
-mod dotnet_temp;
-use dotnet_temp::DotnetTemp;
+use test_support::{DotnetTemp, TempDir};
 
 use std::fmt::Write as _;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use codegen::{
     Binding, Expression, ExpressionNode, Program, ScalarTargetDomain, TargetConstruction,
@@ -279,13 +276,10 @@ fn run_generated(program: &Program, harness: &str) -> Result<(), Box<dyn std::er
             && std::str::from_utf8(&file.contents)
                 .is_ok_and(|source| source.contains("JsonMultipleOfConstraints"))
     }));
-    let mut directory = TempDirectory::new()?;
+    let mut cleanup = TempDirectory::new()?;
+    let directory = cleanup.directory.as_ref().unwrap();
     for file in artifacts.files() {
-        let path = directory.path().join(file.path.as_str());
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        std::fs::write(path, &file.contents)?;
+        directory.write(file.path.as_str(), &file.contents)?;
     }
     write_harness(directory.path(), harness)?;
 
@@ -327,7 +321,7 @@ fn run_generated(program: &Program, harness: &str) -> Result<(), Box<dyn std::er
         String::from_utf8_lossy(&run.stdout).trim(),
         "generated JSON multipleOf passed"
     );
-    directory.complete = true;
+    cleanup.complete = true;
     Ok(())
 }
 
@@ -552,43 +546,31 @@ fn recorded_command(
 }
 
 struct TempDirectory {
-    path: PathBuf,
+    directory: Option<TempDir>,
     complete: bool,
 }
 
 impl TempDirectory {
     fn new() -> Result<Self, std::io::Error> {
-        static NEXT: AtomicU64 = AtomicU64::new(0);
-        let unique = NEXT.fetch_add(1, Ordering::Relaxed);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_json_multiple_of_dotnet_{}_{}",
-            std::process::id(),
-            unique
-        ));
-        std::fs::create_dir_all(&path)?;
         Ok(Self {
-            path,
+            directory: Some(TempDir::with_retention("json-multiple-of-dotnet", false)?),
             complete: false,
         })
-    }
-
-    fn path(&self) -> &Path {
-        &self.path
     }
 }
 
 impl Drop for TempDirectory {
     fn drop(&mut self) {
-        if self.complete
-            && std::env::var_os("FERRULE_CODEGEN_KEEP_ARTIFACTS").as_deref()
-                != Some(std::ffi::OsStr::new("1"))
+        if !self.complete
+            || std::env::var_os("FERRULE_CODEGEN_KEEP_ARTIFACTS").as_deref()
+                == Some(std::ffi::OsStr::new("1"))
         {
-            let _ = std::fs::remove_dir_all(&self.path);
-        } else {
+            let directory = self.directory.take().unwrap();
             eprintln!(
                 "Retained JSON multipleOf artifacts: {}",
-                self.path.display()
+                directory.path().display()
             );
+            directory.keep();
         }
     }
 }

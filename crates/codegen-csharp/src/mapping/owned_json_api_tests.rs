@@ -1,5 +1,5 @@
-use crate::dotnet_temp::DotnetTemp;
 use std::{fs, process::Command};
+use test_support::DotnetTemp;
 
 use ::mapping::{OwnedSourceField, OwnedSourceRef, SourceOwner};
 use codegen::{
