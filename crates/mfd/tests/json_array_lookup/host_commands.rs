@@ -231,7 +231,7 @@ fn rust_host_keeps_its_default_target_one_build_job_and_three_application_argume
             "--config",
             "profile.release.strip=\"symbols\"",
             "--manifest-path",
-            dir.0.join("rust/Cargo.toml").to_str().unwrap(),
+            dir.0.join("rust").join("Cargo.toml").to_str().unwrap(),
         ]
     );
     assert_eq!(&args[11..14], ["--bin", "lookup-host", "--"]);
