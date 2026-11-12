@@ -2,6 +2,26 @@ use crate::{CsvWriteOptions, RuntimeError};
 use ir::{Instance, SchemaNode};
 use std::fmt;
 
+pub fn serialize_mapped_csv_documents_bytes(
+    schema: &SchemaNode,
+    value: &Instance,
+    rows_field: &str,
+    options: &CsvWriteOptions,
+) -> Result<Vec<format_csv::CsvBytesDocument>, CsvDocumentOutputError> {
+    format_csv::to_mapped_document_bytes(schema, value, rows_field, options)
+        .map_err(CsvDocumentOutputError::Output)
+}
+
+pub fn serialize_mapped_csv_documents(
+    schema: &SchemaNode,
+    value: &Instance,
+    rows_field: &str,
+    options: &CsvWriteOptions,
+) -> Result<Vec<format_csv::CsvTextDocument>, CsvDocumentOutputError> {
+    format_csv::to_mapped_document_text(schema, value, rows_field, options)
+        .map_err(CsvDocumentOutputError::Output)
+}
+
 #[derive(Debug)]
 pub enum CsvDocumentOutputError {
     Execution(RuntimeError),

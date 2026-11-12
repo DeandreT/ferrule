@@ -4,7 +4,14 @@ use ir::SchemaKind;
 use super::{EmitError, rust_string};
 
 fn render_settings(program: &Program, policy: &CsvOutputPolicy) -> Result<String, EmitError> {
-    let SchemaKind::Group { children, .. } = &program.target.kind else {
+    render_row_settings(&program.target, policy)
+}
+
+pub(super) fn render_row_settings(
+    target: &ir::SchemaNode,
+    policy: &CsvOutputPolicy,
+) -> Result<String, EmitError> {
+    let SchemaKind::Group { children, .. } = &target.kind else {
         return Err(CsvOutputError::TargetSchema {
             field: None,
             reason: "a flat group schema is required",
@@ -14,7 +21,7 @@ fn render_settings(program: &Program, policy: &CsvOutputPolicy) -> Result<String
     let mut source = String::from("\nfn csv_output_schema() -> codegen_runtime::SchemaNode {\n");
     source.push_str(&format!(
         "    codegen_runtime::SchemaNode::group({}, vec![\n",
-        rust_string(&program.target.name)
+        rust_string(&target.name)
     ));
     for child in children {
         let SchemaKind::Scalar { ty } = &child.kind else {

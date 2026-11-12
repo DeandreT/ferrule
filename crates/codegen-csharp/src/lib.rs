@@ -8,6 +8,10 @@ mod csv_json;
 pub use csv_document::{CsvDocumentEmitError, emit_with_csv_document_adapters};
 mod csv_document_output;
 mod csv_output;
+mod mapped_csv_document_output;
+pub use mapped_csv_document_output::{
+    MappedCsvDocumentEmitError, emit_with_mapped_csv_document_output,
+};
 mod csv_x12;
 mod document_output_types;
 mod edi_runtime;

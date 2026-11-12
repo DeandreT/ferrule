@@ -154,6 +154,7 @@ pub enum GenerationProfile {
     TypedOnly,
     CsvOutput,
     CsvDocumentOutput,
+    MappedCsvDocumentOutput,
     CsvDocument,
     RawDelimitedDocument,
     Json5,
