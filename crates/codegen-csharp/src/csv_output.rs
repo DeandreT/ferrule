@@ -28,7 +28,11 @@ pub(crate) fn library(program: &Program, policy: &CsvOutputPolicy) -> Result<Lib
 }
 
 pub(super) fn render_settings(program: &Program, policy: &CsvOutputPolicy) -> String {
-    let SchemaKind::Group { children, .. } = &program.target.kind else {
+    render_row_settings(&program.target, policy)
+}
+
+pub(super) fn render_row_settings(target: &ir::SchemaNode, policy: &CsvOutputPolicy) -> String {
+    let SchemaKind::Group { children, .. } = &target.kind else {
         unreachable!("shared CSV validation proves one flat group target")
     };
     let mut output = String::from(
