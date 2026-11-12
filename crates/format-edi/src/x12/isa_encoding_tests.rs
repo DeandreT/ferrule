@@ -546,9 +546,9 @@ fn complete_isa_autocomplete_keeps_its_existing_lexical_conversion() {
         },
     );
     retain("autocomplete-4010", &schema, &instance, &result);
-    assert!(
-        matches!(result, Err(EdiFormatError::InvalidEnvelopeElement { ref element, .. }) if element == "GS05")
-    );
+    let output = result.unwrap();
+    assert_eq!(output, EXPECTED_AUTOCOMPLETE.replace("*103000*", "*1030*"));
+    assert_physical_isa(&output, b'*', b':', b'~');
     change(&mut instance, "GS", "05", "10:30:00");
     let result = to_string_with_syntax_and_autocomplete(
         &schema,
@@ -568,6 +568,132 @@ fn complete_isa_autocomplete_keeps_its_existing_lexical_conversion() {
     let output = result.unwrap();
     assert_eq!(output.as_bytes(), EXPECTED_AUTOCOMPLETE.as_bytes());
     assert_physical_isa(&output, b'*', b':', b'~');
+}
+
+#[test]
+fn autocomplete_preserves_gs05_compact_widths_and_fills_only_an_absent_time() {
+    let _evidence = EvidenceUse::acquire();
+    for value in ["1237", "123709", "1237091", "12370912", ""] {
+        let (schema, mut instance) = example();
+        change(&mut instance, "GS", "05", value);
+        let result = to_string_with_syntax_and_autocomplete(
+            &schema,
+            &instance,
+            released(),
+            Some("00401"),
+            completion(),
+        );
+        retain(
+            &format!("gs05-width-{}", value.len()),
+            &schema,
+            &instance,
+            &result,
+        );
+        let expected_time = if value.is_empty() { "103000" } else { value };
+        let expected = EXPECTED_AUTOCOMPLETE.replace("*103000*", &format!("*{expected_time}*"));
+        let output = result.unwrap();
+        assert_eq!(output.as_bytes(), expected.as_bytes(), "GS05 {value:?}");
+        assert_physical_isa(&output, b'*', b':', b'~');
+    }
+}
+
+#[test]
+fn autocomplete_defaults_missing_and_null_gs05_and_preserves_isa_seconds_truncation() {
+    for missing in [true, false] {
+        let (schema, mut instance) = example();
+        let Instance::Group(fields) = &mut instance else {
+            unreachable!()
+        };
+        let (_, Instance::Group(elements)) =
+            fields.iter_mut().find(|(name, _)| name == "GS").unwrap()
+        else {
+            unreachable!()
+        };
+        if missing {
+            elements.retain(|(name, _)| name != "05");
+        } else {
+            elements
+                .iter_mut()
+                .find(|(name, _)| name == "05")
+                .unwrap()
+                .1 = Instance::Scalar(Value::Null);
+        }
+        let output = to_string_with_syntax_and_autocomplete(
+            &schema,
+            &instance,
+            released(),
+            Some("00401"),
+            completion(),
+        )
+        .unwrap();
+        assert_eq!(output.as_bytes(), EXPECTED_AUTOCOMPLETE.as_bytes());
+    }
+    let (schema, mut instance) = example();
+    change(&mut instance, "ISA", "10", "123709");
+    change(&mut instance, "GS", "05", "12370912");
+    let output = to_string_with_syntax_and_autocomplete(
+        &schema,
+        &instance,
+        released(),
+        Some("00401"),
+        completion(),
+    )
+    .unwrap();
+    let expected = EXPECTED_AUTOCOMPLETE
+        .replace("*1030*", "*1237*")
+        .replace("*103000*", "*12370912*");
+    assert_eq!(output.as_bytes(), expected.as_bytes());
+    assert_physical_isa(&output, b'*', b':', b'~');
+}
+
+#[test]
+fn autocomplete_refuses_invalid_time_widths_before_replacing_a_destination() {
+    let _evidence = EvidenceUse::acquire();
+    for (segment, field, values) in [
+        (
+            "GS",
+            "05",
+            &["123", "12370", "123709123", "12x7", "１２３７"][..],
+        ),
+        ("ISA", "10", &["123", "12370", "1237091", "12370912"][..]),
+    ] {
+        for (index, value) in values.iter().enumerate() {
+            let (schema, mut instance) = example();
+            change(&mut instance, segment, field, value);
+            let result = to_string_with_syntax_and_autocomplete(
+                &schema,
+                &instance,
+                released(),
+                Some("00401"),
+                completion(),
+            );
+            let name = format!("invalid-time-{segment}-{index}");
+            retain(&name, &schema, &instance, &result);
+            let error = result.unwrap_err();
+            assert!(matches!(
+                &error,
+                EdiFormatError::InvalidEnvelopeElement { element, .. }
+                    if element == &format!("{segment}{field}")
+            ));
+            assert!(error.to_string().starts_with(&format!(
+                "envelope element `{segment}{field}` has invalid value"
+            )));
+            let destination = evidence_root().join(format!("{name}-destination.x12"));
+            std::fs::write(&destination, b"existing destination").unwrap();
+            assert!(matches!(
+                write_with_syntax_and_autocomplete(
+                    &destination,
+                    &schema,
+                    &instance,
+                    released(),
+                    Some("00401"),
+                    completion(),
+                ),
+                Err(EdiFormatError::InvalidEnvelopeElement { .. })
+            ));
+            assert_eq!(std::fs::read(destination).unwrap(), b"existing destination");
+        }
+    }
 }
 
 #[test]
