@@ -1,10 +1,7 @@
-#[path = "../../codegen/tests/fixtures/dotnet_temp.rs"]
-mod dotnet_temp;
-use dotnet_temp::DotnetTemp;
+use test_support::{DotnetTemp, TempDir};
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use codegen::{
     AggregateFunction, Binding, Expression, ExpressionNode, FailureIteration, FailureRule,
@@ -27,11 +24,12 @@ fn generated_library_builds_and_executes_without_packages() {
     );
     let directory = TempDirectory::new("dotnet-execution");
     for file in artifacts.files() {
-        let path = directory.path().join(file.path.as_str());
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).expect("artifact parent directory is created");
-        }
-        std::fs::write(path, &file.contents).expect("artifact is written");
+        directory
+            .0
+            .as_ref()
+            .unwrap()
+            .write(file.path.as_str(), &file.contents)
+            .expect("artifact is written");
     }
     write_harness(directory.path());
 
@@ -1275,31 +1273,30 @@ fn assert_command_succeeded(label: &str, output: &std::process::Output) {
     );
 }
 
-struct TempDirectory(PathBuf);
+// This suite evaluates its legacy retention switch at drop, not creation.
+struct TempDirectory(Option<TempDir>);
 
 impl TempDirectory {
     fn new(label: &str) -> Self {
-        static NEXT: AtomicU64 = AtomicU64::new(0);
-        let unique = NEXT.fetch_add(1, Ordering::Relaxed);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule-codegen-csharp-{label}-{}-{unique}",
-            std::process::id()
-        ));
-        std::fs::create_dir_all(&path).expect("temporary directory is created");
-        Self(path)
+        Self(Some(
+            TempDir::with_retention(label, false).expect("temporary directory is created"),
+        ))
     }
 
     fn path(&self) -> &Path {
-        &self.0
+        self.0.as_ref().unwrap().path()
     }
 }
 
 impl Drop for TempDirectory {
     fn drop(&mut self) {
         if std::env::var_os("FERRULE_CODEGEN_KEEP_ARTIFACTS").is_some() {
-            eprintln!("retained generated host artifacts at {}", self.0.display());
-            return;
+            let directory = self.0.take().unwrap();
+            eprintln!(
+                "retained generated host artifacts at {}",
+                directory.path().display()
+            );
+            directory.keep();
         }
-        let _ = std::fs::remove_dir_all(&self.0);
     }
 }

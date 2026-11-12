@@ -1,10 +1,7 @@
-#[path = "../../codegen/tests/fixtures/dotnet_temp.rs"]
-mod dotnet_temp;
-use dotnet_temp::DotnetTemp;
+use test_support::{DotnetTemp, TempDir};
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use codegen::{
     Expression, ExpressionNode, Program, ScalarTargetDomain, TargetConstruction, TargetScope,
@@ -112,13 +109,9 @@ fn run_generated(
     expected: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let artifacts = codegen_csharp::emit(program)?;
-    let directory = TempDirectory::new();
+    let directory = TempDir::new("json-pattern-dotnet").expect("temporary directory is created");
     for file in artifacts.files() {
-        let path = directory.path().join(file.path.as_str());
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        std::fs::write(path, &file.contents)?;
+        directory.write(file.path.as_str(), &file.contents)?;
     }
     write_harness(directory.path(), harness)?;
 
@@ -247,30 +240,4 @@ fn assert_command_succeeded(label: &str, output: &std::process::Output) {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
-}
-
-struct TempDirectory(PathBuf);
-
-impl TempDirectory {
-    fn new() -> Self {
-        static NEXT: AtomicU64 = AtomicU64::new(0);
-        let unique = NEXT.fetch_add(1, Ordering::Relaxed);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_json_pattern_dotnet_{}_{}",
-            std::process::id(),
-            unique
-        ));
-        std::fs::create_dir_all(&path).expect("temporary directory is created");
-        Self(path)
-    }
-
-    fn path(&self) -> &Path {
-        &self.0
-    }
-}
-
-impl Drop for TempDirectory {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
 }

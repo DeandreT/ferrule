@@ -1,10 +1,6 @@
-#[path = "../../codegen/tests/fixtures/dotnet_temp.rs"]
-mod dotnet_temp;
-use dotnet_temp::DotnetTemp;
+use test_support::{DotnetTemp, TempDir};
 
-use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use codegen::{
     Expression, ExpressionNode, Program, ScalarTargetDomain, TargetConstruction, TargetScope,
@@ -55,13 +51,9 @@ fn program() -> Program {
 #[test]
 fn generated_integer_json_output_normalizes_exact_decimal_strings() {
     let artifacts = codegen_csharp::emit(&program()).unwrap();
-    let directory = TempDirectory::new();
+    let directory = TempDir::new("integer-lexical-dotnet").expect("temporary directory is created");
     for file in artifacts.files() {
-        let path = directory.path().join(file.path.as_str());
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).unwrap();
-        }
-        std::fs::write(path, &file.contents).unwrap();
+        directory.write(file.path.as_str(), &file.contents).unwrap();
     }
     let harness = directory.path().join("Harness");
     std::fs::create_dir_all(&harness).unwrap();
@@ -167,29 +159,4 @@ fn assert_succeeded(name: &str, result: &std::process::Output) {
         String::from_utf8_lossy(&result.stdout),
         String::from_utf8_lossy(&result.stderr)
     );
-}
-
-struct TempDirectory(PathBuf);
-
-impl TempDirectory {
-    fn new() -> Self {
-        static NEXT: AtomicU64 = AtomicU64::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_integer_lexical_dotnet_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-
-    fn path(&self) -> &Path {
-        &self.0
-    }
-}
-
-impl Drop for TempDirectory {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
 }

@@ -1,10 +1,8 @@
-#[path = "../../codegen/tests/fixtures/dotnet_temp.rs"]
-mod dotnet_temp;
 #[path = "../../codegen/tests/fixtures/closed_primary_source.rs"]
 mod fixture;
-use dotnet_temp::DotnetTemp;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
+use test_support::DotnetTemp;
 
 fn write_artifacts(directory: &Path, artifacts: &codegen::ArtifactSet) {
     for file in artifacts.files() {
