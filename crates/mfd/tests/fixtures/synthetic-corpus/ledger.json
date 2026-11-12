@@ -42,8 +42,13 @@
   },
   "inventory-json-to-846": {
     "import": "ok",
-    "executable": true,
-    "issues": [],
+    "executable": false,
+    "issues": [
+      {
+        "kind": "import_warning",
+        "contains": "group-by output requires a distinct-group count, but scalar grouped reduction is unsupported"
+      }
+    ],
     "rust": "ok",
     "csharp": "ok"
   },
@@ -96,8 +101,13 @@
   },
   "order-json-to-945-functions": {
     "import": "ok",
-    "executable": true,
-    "issues": [],
+    "executable": false,
+    "issues": [
+      {
+        "kind": "import_warning",
+        "contains": "group-by output requires a distinct-group count, but scalar grouped reduction is unsupported"
+      }
+    ],
     "rust": "ok",
     "csharp": "ok"
   },
