@@ -26,6 +26,7 @@ mod constructed_parse_date;
 mod constructed_parser_scalar;
 mod constructed_runtime_clock;
 mod constructed_variable_driver;
+mod csv_declaration_proof;
 mod csv_document;
 mod csv_document_output;
 mod db_query;
@@ -1595,6 +1596,8 @@ fn import_resolved(
     if mapping_el.tag_name().name() != "mapping" {
         return Err(MfdError::NotMfd("root element is not <mapping>"));
     }
+    let csv_declarations = matches!(selection, StageSelection::Ordinary)
+        .then(|| csv_declaration_proof::inspect(mapping_el, &text));
     schema::validate_xml_optional_metadata(&mapping_el)?;
     schema::validate_xml_attribute_required_metadata(&mapping_el)?;
     let wrapper = mapping_el
@@ -1640,6 +1643,9 @@ fn import_resolved(
         ));
     }
     let mut warnings = edges.conflicts.clone();
+    if let Some(assessment) = &csv_declarations {
+        assessment.append_warnings(&mut warnings);
+    }
     let filename_endpoints = if filename_import == FilenameImport::Endpoints {
         Some(document_paths::Endpoints::read(structure, &edges.feeds)?)
     } else {
@@ -1698,6 +1704,9 @@ fn import_resolved(
     let inspect_unused_input = unused_xml_source::may_contain_unused_input(structure);
     let root_view_inventory = xml_root_view::Inventory::read(structure);
     if !retain_primary_filename
+        && !csv_declarations
+            .as_ref()
+            .is_some_and(|assessment| assessment.blocks_executable())
         && !structure
             .descendants()
             .any(|node| xml_scalar_output::xml_request_owner(node).is_some())
