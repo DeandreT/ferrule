@@ -29,6 +29,7 @@ pub use mapped_csv_document_boundary::{
 mod owned_admission;
 mod presets;
 mod primary_document_boundary;
+mod primary_mapped_csv_document_boundary;
 mod source_contract;
 mod static_document_boundary;
 mod validate;
@@ -113,6 +114,10 @@ pub use primary_document_boundary::{
     PrimaryDocumentBoundaryError, validate_primary_edi_documents,
     validate_primary_fixed_width_documents, validate_primary_json_documents,
     validate_primary_xml_documents,
+};
+pub use primary_mapped_csv_document_boundary::{
+    PrimaryMappedCsvDocumentBoundaryError, PrimaryMappedCsvDocumentPolicy,
+    validate_primary_mapped_csv_documents,
 };
 pub use static_document_boundary::{
     DocumentBoundaryDescriptor, DocumentBoundaryFormat, DocumentBoundaryOptions,
