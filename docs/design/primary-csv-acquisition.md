@@ -54,3 +54,6 @@ Generated companions require the existing closed flat CSV schema and explicit
 input policy. They reuse the ordinary filename evaluator and the same Rust/C#
 acquisition state machine. Ordinary generated entry points and static document
 adapters retain their existing behavior.
+
+For direct acquisition followed by constructed, computed-path CSV outputs, see
+[primary mapped CSV documents](primary-mapped-csv-documents.md).

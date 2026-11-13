@@ -1,0 +1,211 @@
+using System.Text;
+using Ferrule.Runtime;
+using ImplementationMapping = Authored.Primary.Packets.PacketMapping;
+
+static void Require(bool condition, string label)
+{
+    if (!condition) throw new InvalidOperationException(label);
+}
+static Dictionary<string, string> Records()
+{
+    var path = Environment.GetEnvironmentVariable("FERRULE_PRIMARY_MAPPED_FIXTURE")
+        ?? throw new InvalidOperationException("fixture path");
+    return File.ReadAllLines(path).Where(line => line.Length != 0 && !line.StartsWith('#'))
+        .Select(line => line.Split('\t', 2))
+        .ToDictionary(parts => parts[0], parts => parts[1].Replace("\\uFEFF", "\ufeff", StringComparison.Ordinal)
+            .Replace("\\n", "\n", StringComparison.Ordinal).Replace("\\r", "\r", StringComparison.Ordinal), StringComparer.Ordinal);
+}
+static void CheckError(string test, Exception error, IReadOnlyDictionary<string, string> records)
+{
+    switch (test)
+    {
+        case "missing-name":
+            Require(error is FerrulePrimaryDocumentException { Error: FerruleDocumentAcquisitionError.Filename,
+                InnerException: FerruleRuntimeException { Error: FerruleRuntimeError.MissingRuntimeParameter, Node: 91, RuntimeParameter: "InputName" } }, test);
+            break;
+        case "null-name":
+            Require(error is FerrulePrimaryDocumentException { Error: FerruleDocumentAcquisitionError.Filename,
+                InnerException: FerruleRuntimeException { Error: FerruleRuntimeError.PrimaryFilenameType, Node: 91, FoundKind: FerruleValueKind.Null } }, test);
+            break;
+        case "select":
+            Require(error is FerrulePrimaryDocumentException { Error: FerruleDocumentAcquisitionError.Selection, InnerException: HostFailure }, test);
+            break;
+        case "count0": case "count2":
+            Require(error is FerrulePrimaryDocumentException { Error: FerruleDocumentAcquisitionError.DirectSelection } direct && direct.Count == (test == "count0" ? 0 : 2), test);
+            break;
+        case "maximum0":
+            Require(error is FerrulePrimaryDocumentException { Error: FerruleDocumentAcquisitionError.Documents, Count: 0 }, test);
+            break;
+        case "invalid-limit":
+            Require(error is FerrulePrimaryDocumentException { Error: FerruleDocumentAcquisitionError.InvalidLimit, Count: 1_000_001 }, test);
+            break;
+        case "request":
+            Require(error is FerrulePrimaryDocumentException { Error: FerruleDocumentAcquisitionError.Request, Path: "" }, test);
+            break;
+        case "load":
+            Require(error is FerrulePrimaryDocumentException { Error: FerruleDocumentAcquisitionError.Load, Path: "catalog.csv", InnerException: HostFailure }, test);
+            break;
+        case "resolved":
+            Require(error is FerrulePrimaryDocumentException { Error: FerruleDocumentAcquisitionError.Input, Path: "catalog.csv", InnerException: ArgumentException { ParamName: "resolvedPath" } }, test);
+            break;
+        case "encoding":
+            Require(error is FerrulePrimaryDocumentException { Error: FerruleDocumentAcquisitionError.Input, Path: "catalog.csv", InnerException: FerruleCsvInputException { Error: FerruleCsvInputError.Encoding } }, test);
+            break;
+        case "width":
+            Require(error is FerrulePrimaryDocumentException { Error: FerruleDocumentAcquisitionError.Input, Path: "catalog.csv", InnerException: FerruleCsvInputException { Error: FerruleCsvInputError.ColumnCount, Row: 0, ExpectedColumns: 4, ActualColumns: 5 } }, test);
+            break;
+        case "type":
+            Require(error is FerrulePrimaryDocumentException { Error: FerruleDocumentAcquisitionError.Input, Path: "catalog.csv", InnerException: FerruleCsvInputException { Error: FerruleCsvInputError.Parse, Row: 0, Field: "Count", ExpectedType: FerruleScalarType.Int64, Cell: "nope" } }, test);
+            break;
+        case "input-limit":
+            Require(error is FerrulePrimaryDocumentException { Error: FerruleDocumentAcquisitionError.Input, Path: "catalog.csv", InnerException: FerruleCsvInputException { Error: FerruleCsvInputError.InputTooLarge, Maximum: 8_388_608, Observed: 8_388_609 } }, test);
+            break;
+        case "mapping":
+            Require(error is FerruleRuntimeException { Error: FerruleRuntimeError.MissingRuntimeParameter, Node: 38, RuntimeParameter: "Ending" }, test);
+            break;
+        case "late-map":
+            Require(error is FerruleRuntimeException { Error: FerruleRuntimeError.EmptyDynamicTargetPath, Node: 76 }, test);
+            break;
+        case "late-output":
+            Require(error is FerruleCsvDocumentsException { Error: FerruleCsvDocumentsError.Document, Document: 1,
+                InnerException: FerruleCsvException { Error: FerruleCsvError.UnquotedFieldBoundary, Row: 0, Field: "Comment" } } output && output.Path == records["west-path"], test);
+            break;
+        default: throw new InvalidOperationException("unclassified authored case " + test, error);
+    }
+}
+
+var kind = args[0];
+var records = Records();
+Require(ImplementationMapping.RuntimeIdentity == Environment.GetEnvironmentVariable("FERRULE_PRIMARY_MAPPED_RUNTIME_ID"), "compiled actual runtime identity");
+Require(ImplementationMapping.CompatibilityManifest.Contains("\"profile\": \"primary_mapped_csv_document\"", StringComparison.Ordinal), "new compiled profile");
+var cases = records["common-cases"].Split(',').ToList();
+if (kind == "parameter") cases.AddRange(records["parameter-cases"].Split(','));
+var receiptPath = Environment.GetEnvironmentVariable("FERRULE_PRIMARY_MAPPED_CALLS") ?? throw new InvalidOperationException("receipt path");
+using var receipt = new StreamWriter(new FileStream(receiptPath, FileMode.CreateNew, FileAccess.Write), new UTF8Encoding(false));
+// Reuse the exact caller context/parameters across counter, counter-again and
+// both APIs. Each generated invocation must create its own mutable table.
+var counterValues = new Dictionary<string, FerruleValue>(StringComparer.Ordinal)
+{
+    ["InputName"] = FerruleValue.FromString(records["parameter-name"]),
+    ["Ending"] = FerruleValue.FromString("!"),
+    ["UseCounter"] = FerruleValue.FromBoolean(true),
+};
+var counterParameters = new FerruleRuntimeParameters(counterValues);
+var counterLimits = new FerruleInvocationCounterLimits(1, 128);
+var counterContext = new FerruleExecutionContext("authored-map.ferrule", "authored-map.ferrule", records["clock"], counterParameters)
+    .WithInvocationCounterLimits(counterLimits);
+foreach (var test in cases)
+{
+    foreach (var api in new[] { "bytes", "text" })
+    {
+        var host = new RecordingHost(Encoding.UTF8.GetBytes(records[$"{kind}-input"]));
+        var counter = test.StartsWith("counter", StringComparison.Ordinal);
+        var values = counter ? counterValues : new Dictionary<string, FerruleValue>(StringComparer.Ordinal);
+        if (!counter)
+        {
+            if (test != "missing-name") values.Add("InputName", test == "null-name" ? FerruleValue.Null : test == "int-name" ? FerruleValue.FromInt64(42) : FerruleValue.FromString(records["parameter-name"]));
+            if (test != "mapping") values.Add("Ending", FerruleValue.FromString("!"));
+            if (test == "duplicate") values.Add("Destination", FerruleValue.FromString("../same.log"));
+            if (test == "late-map") values.Add("WestDestination", FerruleValue.FromString("   "));
+        }
+        var maximum = 1;
+        var decoding = FerruleCsvByteDecodingPolicy.StrictUtf8;
+        switch (test)
+        {
+            case "empty": host.Data = Encoding.UTF8.GetBytes(records[$"{kind}-empty"]); break;
+            case "empty-text": host.Data = Array.Empty<byte>(); break;
+            case "null-cell": host.Data = Encoding.UTF8.GetBytes(records[$"{kind}-null"]); break;
+            case "missing-cell": host.Data = Encoding.UTF8.GetBytes(records[$"{kind}-missing-cell"]); break;
+            case "select": host.SelectionFailure = true; break;
+            case "count0": host.Requests.Clear(); break;
+            case "count2": host.Requests.Add("not-loaded.csv"); break;
+            case "maximum0": maximum = 0; break;
+            case "invalid-limit": maximum = 1_000_001; break;
+            case "request": host.Requests = new List<string> { "" }; break;
+            case "load": host.LoadFailure = true; break;
+            case "resolved": host.Resolved = "bad\0path"; break;
+            case "encoding": host.Data = new byte[] { 0xff }; break;
+            case "width": case "type": host.Data = Encoding.UTF8.GetBytes(records[$"{kind}-{test}"]); break;
+            case "input-limit": host.Data = Enumerable.Repeat((byte)0xff, 8_388_609).ToArray(); break;
+            case "late-output": host.Data = Encoding.UTF8.GetBytes(records["parameter-late"]); break;
+            case "bom": host.Data = new byte[] { 0xef, 0xbb, 0xbf }.Concat(host.Data).ToArray(); break;
+            case "header-labels": host.Data = Encoding.UTF8.GetBytes(records["parameter-input"].Replace("Depot,Code,Count,Words", "Ignored,Positional,Header,Names", StringComparison.Ordinal)); break;
+            case "replacement": host.Data = host.Data.Concat(new byte[] { 0xe2 }).ToArray(); decoding = FerruleCsvByteDecodingPolicy.BomAwareNonFlushingReplacement; break;
+        }
+        var before = host.Data.ToArray();
+        var valuesBefore = values.ToArray();
+        var parameters = counter ? counterParameters : new FerruleRuntimeParameters(values);
+        var context = counter ? counterContext : new FerruleExecutionContext("authored-map.ferrule", "authored-map.ferrule", records["clock"], parameters);
+        if (counter)
+            Require(ReferenceEquals(context, counterContext) && ReferenceEquals(parameters, counterParameters), "same counter caller objects across all four invocations");
+        List<(string Path, byte[] Bytes)>? actual = null;
+        Exception? failure = null;
+        try
+        {
+            actual = api == "bytes"
+                ? ImplementationMapping.ExecutePrimaryMappedCsvDocumentsBytes(context, host, decoding, maximum).Select(d => (d.Path, d.Bytes)).ToList()
+                : ImplementationMapping.ExecutePrimaryMappedCsvDocuments(context, host, decoding, maximum).Select(d => (d.Path, Encoding.UTF8.GetBytes(d.Text))).ToList();
+        }
+        catch (Exception error) { failure = error; }
+        var success = test is "success" or "empty" or "empty-text" or "null-cell" or "missing-cell" or "duplicate" or "counter" or "counter-again" or "int-name" or "bom" or "header-labels" or "replacement";
+        if (success)
+        {
+            if (failure is not null) throw new InvalidOperationException($"{kind}/{test}/{api}", failure);
+            var expected = new List<(string Path, string Text)>();
+            if (test is "null-cell" or "missing-cell") expected.Add((records["east-path"], records[$"{kind}-null-expected"]));
+            else if (test is not "empty" and not "empty-text")
+            {
+                var prefix = test.StartsWith("counter", StringComparison.Ordinal) ? kind + "-counter" : kind;
+                expected.Add((test == "duplicate" ? "../same.log" : records["east-path"], records[$"{prefix}-east"]));
+                expected.Add((test == "duplicate" ? "../same.log" : records["west-path"], records[$"{prefix}-west"]));
+            }
+            Require(actual is not null && actual.Count == expected.Count && actual.Select((d, index) => d.Path == expected[index].Path && d.Bytes.SequenceEqual(Encoding.UTF8.GetBytes(expected[index].Text))).All(equal => equal), $"complete literal output {kind}/{test}/{api}");
+        }
+        else
+        {
+            Require(actual is null && failure is not null, "typed failure without partial returned list");
+            CheckError(test, failure ?? throw new InvalidOperationException("missing expected failure"), records);
+        }
+        var filename = kind == "literal" ? records["literal-name"] : test == "int-name" ? "42" : records["parameter-name"];
+        var expectedEvents = test is "invalid-limit" or "missing-name" or "null-name" ? Array.Empty<string>()
+            : test is "select" or "count0" or "count2" or "maximum0" or "request" ? new[] { $"select:{filename}:direct" }
+            : new[] { $"select:{filename}:direct", "load:catalog.csv" };
+        Require(host.Events.SequenceEqual(expectedEvents), $"host stage order {kind}/{test}/{api}");
+        Require(host.Data.SequenceEqual(before) && values.SequenceEqual(valuesBefore) && parameters.Count == values.Count && ReferenceEquals(context.RuntimeParameters, parameters), "caller input/context immutability");
+        Require(context.MappingFilePath == "authored-map.ferrule" && context.CurrentDateTime == records["clock"], "stable caller path/clock");
+        if (counter)
+            Require(ReferenceEquals(context.InvocationCounterLimits, counterLimits) && counterLimits.MaximumCount == 1 && counterLimits.MaximumTextBytes == 128 &&
+                context.ResolveRuntimeParameter(81, "UseCounter", FerruleScalarType.Bool) == FerruleValue.FromBoolean(true), "bounded immutable counter policy and binding");
+        else Require(context.InvocationCounterLimits is null, "noncounter cases retain ordinary context policy");
+        receipt.WriteLine($"{test}|{api}|{(success ? "ok" : "error")}|{host.Events.Count}");
+    }
+}
+Console.WriteLine("primary mapped CSV cases passed");
+
+sealed class HostFailure : Exception
+{
+    public HostFailure() : base("authored host failure") { }
+}
+sealed class RecordingHost : IFerrulePrimarySourceHost
+{
+    public RecordingHost(byte[] data) { Data = data; }
+    public byte[] Data { get; set; }
+    public List<string> Requests { get; set; } = new() { "catalog.csv" };
+    public string? Resolved { get; set; } = "/resolved/catalog.csv";
+    public bool SelectionFailure { get; set; }
+    public bool LoadFailure { get; set; }
+    public List<string> Events { get; } = new();
+    public IReadOnlyList<string> Select(string filename, FerrulePrimaryFileSelection selection)
+    {
+        if (selection.IsFileNameWildcard) throw new InvalidOperationException("expected direct selection");
+        Events.Add($"select:{filename}:direct");
+        if (SelectionFailure) throw new HostFailure();
+        return Requests.ToArray();
+    }
+    public FerruleCsvSourceData Load(string request)
+    {
+        Events.Add($"load:{request}");
+        if (LoadFailure) throw new HostFailure();
+        return new(Data.ToArray(), Resolved);
+    }
+}

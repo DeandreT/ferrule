@@ -52,6 +52,16 @@ pub(crate) fn emit(
 ) -> Result<ArtifactSet, MappedCsvDocumentEmitError> {
     codegen::validate_csv_mapped_document_output(program, policy)
         .map_err(MappedCsvDocumentEmitError::Boundary)?;
+    library_validated(program, policy)?
+        .into_artifacts_with(options, GenerationProfile::MappedCsvDocumentOutput)
+        .map_err(Into::into)
+}
+
+/// Build only after the caller has admitted the mapped-output boundary.
+pub(crate) fn library_validated(
+    program: &Program,
+    policy: &CsvMappedDocumentOutputPolicy,
+) -> Result<crate::composition::Library, MappedCsvDocumentEmitError> {
     let row = policy
         .row_schema(&program.target)
         .map_err(MappedCsvDocumentEmitError::Boundary)?;
@@ -88,7 +98,5 @@ pub(crate) fn emit(
             include_str!("../../../runtime/csharp/Ferrule.Runtime/FerruleCsvDocuments.cs"),
         ),
     ]);
-    library
-        .into_artifacts_with(options, GenerationProfile::MappedCsvDocumentOutput)
-        .map_err(Into::into)
+    Ok(library)
 }

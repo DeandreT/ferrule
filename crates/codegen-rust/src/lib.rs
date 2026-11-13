@@ -42,6 +42,7 @@ mod primary_csv_document;
 mod primary_edi_document;
 mod primary_filename;
 mod primary_fixed_width_document;
+mod primary_mapped_csv_document;
 pub use primary_edi_document::emit_with_primary_edi_documents;
 mod primary_json_document;
 pub use primary_fixed_width_document::emit_with_primary_fixed_width_documents;
@@ -55,6 +56,9 @@ pub use json5_api::{Json5EmitError, emit_with_json5};
 pub use primary_csv::{PrimaryCsvEmitError, emit_with_primary_csv_acquisition};
 pub use primary_csv_document::emit_with_primary_csv_documents;
 pub use primary_filename::emit_with_primary_filename;
+pub use primary_mapped_csv_document::{
+    PrimaryMappedCsvDocumentEmitError, emit_with_primary_mapped_csv_documents,
+};
 pub use primary_xml_document::{PrimaryDocumentEmitError, emit_with_primary_xml_documents};
 mod x12_api;
 mod xml_api;
