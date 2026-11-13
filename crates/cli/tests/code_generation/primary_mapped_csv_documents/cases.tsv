@@ -1,0 +1,33 @@
+# One authored source of input/expected byte text for native, Rust and C# hosts.
+common-cases	success,empty,empty-text,null-cell,missing-cell,duplicate,counter,counter-again,select,count0,count2,maximum0,invalid-limit,request,load,resolved,encoding,width,type,input-limit,mapping,late-map,replacement
+parameter-cases	missing-name,null-name,int-name,bom,header-labels,late-output
+clock	2032-04-05T06:07:08Z
+request	catalog.csv
+resolved	/resolved/catalog.csv
+parameter-name	 actual*.csv 
+literal-name	 literal-*.csv 
+parameter-input	Depot,Code,Count,Words\neast,a,2,"é,clair"\nwest,b,4,tail\neast,c,3,雪\n
+literal-input	east;a;2;'left;''é''\nline'\nwest;b;4;tail\neast;c;3;雪\n
+parameter-empty	Depot,Code,Count,Words\n
+literal-empty	
+parameter-width	Depot,Code,Count,Words\neast,a,2,ok,extra\n
+literal-width	east;a;2;ok;extra\n
+parameter-type	Depot,Code,Count,Words\neast,a,nope,ok\n
+literal-type	east;a;nope;ok\n
+parameter-null	Depot,Code,Count,Words\neast,a,2,\n
+literal-null	east;a;2;\n
+parameter-missing-cell	Depot,Code,Count,Words\neast,a,2\n
+literal-missing-cell	east;a;2\n
+parameter-late	Depot,Code,Count,Words\neast,a,2,ok\nwest,b,4,bad|word\n
+east-path	bundles/east-2032-04-05T06:07:08Z.log
+west-path	bundles/west-2032-04-05T06:07:08Z.log
+parameter-east	\uFEFFitem-a!|2|é,clair|authored-map.ferrule\nitem-c!|3|雪|authored-map.ferrule\n
+parameter-west	\uFEFFitem-b!|4|tail|authored-map.ferrule\n
+literal-east	Entry:Copies:Comment:Location\n"public static class GeneratedMapping\n{a!":2:"left;'é'\nline":authored-map.ferrule\n"public static class GeneratedMapping\n{c!":3:雪:authored-map.ferrule\n
+literal-west	Entry:Copies:Comment:Location\n"public static class GeneratedMapping\n{b!":4:tail:authored-map.ferrule\n
+parameter-null-expected	\uFEFFitem-a!|2||authored-map.ferrule\n
+literal-null-expected	Entry:Copies:Comment:Location\n"public static class GeneratedMapping\n{a!":2::authored-map.ferrule\n
+parameter-counter-east	\uFEFFitem-a!|10|é,clair|authored-map.ferrule\nitem-c!|20|雪|authored-map.ferrule\n
+parameter-counter-west	\uFEFFitem-b!|30|tail|authored-map.ferrule\n
+literal-counter-east	Entry:Copies:Comment:Location\n"public static class GeneratedMapping\n{a!":10:"left;'é'\nline":authored-map.ferrule\n"public static class GeneratedMapping\n{c!":20:雪:authored-map.ferrule\n
+literal-counter-west	Entry:Copies:Comment:Location\n"public static class GeneratedMapping\n{b!":30:tail:authored-map.ferrule\n

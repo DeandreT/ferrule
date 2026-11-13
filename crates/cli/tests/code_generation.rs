@@ -222,6 +222,8 @@ mod primary_filenames;
 mod primary_fixed_width_documents;
 #[path = "code_generation/primary_json_documents.rs"]
 mod primary_json_documents;
+#[path = "code_generation/primary_mapped_csv_documents.rs"]
+mod primary_mapped_csv_documents;
 #[path = "code_generation/primary_xml_documents.rs"]
 mod primary_xml_documents;
 #[path = "code_generation/recursive_sequences.rs"]

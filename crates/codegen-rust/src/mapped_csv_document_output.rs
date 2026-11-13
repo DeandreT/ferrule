@@ -46,6 +46,15 @@ pub fn emit_with_mapped_csv_document_output(
 ) -> Result<ArtifactSet, MappedCsvDocumentEmitError> {
     codegen::validate_csv_mapped_document_output(program, policy)
         .map_err(MappedCsvDocumentEmitError::Boundary)?;
+    emit_validated(program, options, policy)
+}
+
+/// Render only after the caller has admitted the mapped-output boundary.
+pub(crate) fn emit_validated(
+    program: &Program,
+    options: &Options,
+    policy: &CsvMappedDocumentOutputPolicy,
+) -> Result<ArtifactSet, MappedCsvDocumentEmitError> {
     let row = policy
         .row_schema(&program.target)
         .map_err(MappedCsvDocumentEmitError::Boundary)?;

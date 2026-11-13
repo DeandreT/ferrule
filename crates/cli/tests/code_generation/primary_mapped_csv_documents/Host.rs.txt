@@ -1,0 +1,410 @@
+use codegen_runtime::{
+    CsvDocumentOutputError, ExecutionContext, InvocationCounterLimits,
+    PrimaryAcquisitionError as Acquisition, PrimarySourceHost, RuntimeError, RuntimeParameters,
+    SourceData, Value,
+};
+use format_csv::{
+    CsvBoundedError, CsvByteDecodingPolicy, CsvDocumentsError, CsvFormatError, CsvReadError,
+    CsvReadLimit, CsvSourceError,
+};
+use primary_packet_lib::{
+    PrimaryMappedCsvDocumentError as Error, execute_primary_mapped_csv_documents,
+    execute_primary_mapped_csv_documents_bytes,
+};
+use std::{cell::RefCell, collections::BTreeMap, io::Write, path::Path};
+
+#[derive(Debug)]
+struct HostError;
+impl std::fmt::Display for HostError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("authored host failure")
+    }
+}
+impl std::error::Error for HostError {}
+struct Host {
+    events: RefCell<Vec<String>>,
+    data: Vec<u8>,
+    requests: Vec<String>,
+    resolved: Option<String>,
+    selection_failure: bool,
+    load_failure: bool,
+}
+impl PrimarySourceHost for Host {
+    type Error = HostError;
+    fn select(
+        &self,
+        filename: &str,
+        selection: codegen_runtime::PrimaryFileSelection,
+    ) -> Result<Vec<String>, HostError> {
+        assert!(selection.is_direct());
+        self.events
+            .borrow_mut()
+            .push(format!("select:{filename}:direct"));
+        if self.selection_failure {
+            Err(HostError)
+        } else {
+            Ok(self.requests.clone())
+        }
+    }
+    fn load(&self, request: &str) -> Result<SourceData, HostError> {
+        self.events.borrow_mut().push(format!("load:{request}"));
+        if self.load_failure {
+            Err(HostError)
+        } else {
+            Ok(SourceData {
+                bytes: self.data.clone(),
+                resolved_path: self.resolved.clone(),
+            })
+        }
+    }
+}
+fn records() -> BTreeMap<String, String> {
+    std::fs::read_to_string(
+        std::env::var_os("FERRULE_PRIMARY_MAPPED_FIXTURE").expect("fixture path"),
+    )
+    .unwrap()
+    .lines()
+    .filter(|line| !line.is_empty() && !line.starts_with('#'))
+    .map(|line| {
+        let (key, value) = line.split_once('\t').unwrap();
+        (
+            key.into(),
+            value
+                .replace("\\uFEFF", "\u{feff}")
+                .replace("\\n", "\n")
+                .replace("\\r", "\r"),
+        )
+    })
+    .collect()
+}
+fn check_error(case: &str, error: &Error<HostError>, records: &BTreeMap<String, String>) {
+    match case {
+        "missing-name" => assert!(
+            matches!(error, Error::Acquisition(Acquisition::Filename(RuntimeError::MissingRuntimeParameter { node: 91, name })) if name == "InputName")
+        ),
+        "null-name" => assert!(matches!(
+            error,
+            Error::Acquisition(Acquisition::Filename(RuntimeError::PrimaryFilenameType {
+                node: 91,
+                found: "null"
+            }))
+        )),
+        "select" => assert!(matches!(
+            error,
+            Error::Acquisition(Acquisition::Selection(HostError))
+        )),
+        "count0" | "count2" => assert!(
+            matches!(error, Error::Acquisition(Acquisition::DirectSelection { found }) if *found == if case == "count0" { 0 } else { 2 })
+        ),
+        "maximum0" => assert!(matches!(
+            error,
+            Error::Acquisition(Acquisition::Documents { maximum: 0 })
+        )),
+        "invalid-limit" => assert!(
+            matches!(error, Error::Acquisition(Acquisition::InvalidLimit { maximum }) if *maximum == codegen_runtime::MAX_SOURCE_DOCUMENTS + 1)
+        ),
+        "request" => assert!(
+            matches!(error, Error::Acquisition(Acquisition::Request { path }) if path.is_empty())
+        ),
+        "load" => assert!(
+            matches!(error, Error::Acquisition(Acquisition::Load { path, source: HostError }) if path == "catalog.csv")
+        ),
+        "resolved" => assert!(
+            matches!(error, Error::Acquisition(Acquisition::Input { path, source: CsvSourceError::Path { field: "resolved path" } }) if path == "catalog.csv")
+        ),
+        "encoding" => assert!(
+            matches!(error, Error::Acquisition(Acquisition::Input { path, source: CsvSourceError::Read(CsvReadError::Encoding(_)) }) if path == "catalog.csv")
+        ),
+        "width" => assert!(
+            matches!(error, Error::Acquisition(Acquisition::Input { path, source: CsvSourceError::Read(CsvReadError::Format(CsvFormatError::ColumnCount { row: 0, expected: 4, got: 5 })) }) if path == "catalog.csv")
+        ),
+        "type" => assert!(
+            matches!(error, Error::Acquisition(Acquisition::Input { path, source: CsvSourceError::Read(CsvReadError::Format(CsvFormatError::Parse { row: 0, field, expected: codegen_runtime::ScalarType::Int, value })) }) if path == "catalog.csv" && field == "Count" && value == "nope")
+        ),
+        "input-limit" => assert!(
+            matches!(error, Error::Acquisition(Acquisition::Input { path, source: CsvSourceError::Read(CsvReadError::Limit { kind: CsvReadLimit::InputBytes, maximum: 8_388_608, observed: 8_388_609, record: None, column: None }) }) if path == "catalog.csv")
+        ),
+        "mapping" => assert!(
+            matches!(error, Error::Output(CsvDocumentOutputError::Execution(RuntimeError::MissingRuntimeParameter { node: 38, name })) if name == "Ending")
+        ),
+        "late-map" => assert!(matches!(
+            error,
+            Error::Output(CsvDocumentOutputError::Execution(
+                RuntimeError::EmptyDynamicTargetPath { node: 76 }
+            ))
+        )),
+        "late-output" => assert!(
+            matches!(error, Error::Output(CsvDocumentOutputError::Output(CsvDocumentsError::Document { document: 1, path, source: CsvBoundedError::Format(CsvFormatError::UnquotedFieldBoundary { row: 0, field }) })) if path == &records["west-path"] && field == "Comment")
+        ),
+        _ => panic!("unclassified authored case {case}: {error:?}"),
+    }
+}
+fn main() {
+    let kind = std::env::args().nth(1).unwrap();
+    let records = records();
+    assert_eq!(
+        primary_packet_lib::RUNTIME_IDENTITY,
+        codegen_runtime::RUNTIME_IDENTITY
+    );
+    assert!(
+        primary_packet_lib::COMPATIBILITY_MANIFEST
+            .contains("\"profile\": \"primary_mapped_csv_document\"")
+    );
+    let mut cases = records["common-cases"].split(',').collect::<Vec<_>>();
+    if kind == "parameter" {
+        cases.extend(records["parameter-cases"].split(','));
+    }
+    let mut receipt = std::fs::OpenOptions::new()
+        .create_new(true)
+        .write(true)
+        .open(std::env::var_os("FERRULE_PRIMARY_MAPPED_CALLS").unwrap())
+        .unwrap();
+    // All four counter calls share these immutable caller objects. Only the
+    // generated invocation owns mutable counter state; every call must restart.
+    let mut counter_parameters = RuntimeParameters::new();
+    counter_parameters
+        .insert(
+            "InputName",
+            Value::String(records["parameter-name"].clone()),
+        )
+        .unwrap();
+    counter_parameters
+        .insert("Ending", Value::String("!".into()))
+        .unwrap();
+    counter_parameters
+        .insert("UseCounter", Value::Bool(true))
+        .unwrap();
+    let counter_execution = ExecutionContext::new(Path::new("authored-map.ferrule"))
+        .with_parameters(&counter_parameters)
+        .with_current_datetime(&records["clock"])
+        .with_invocation_counter_limits(InvocationCounterLimits {
+            max_counters: 1,
+            max_text_bytes: 128,
+        });
+    let counter_parameters_before = format!("{counter_parameters:?}");
+    for case in cases {
+        for api in ["bytes", "text"] {
+            let counter = case.starts_with("counter");
+            let mut host = Host {
+                events: RefCell::new(vec![]),
+                data: records[&format!("{kind}-input")].as_bytes().to_vec(),
+                requests: vec![records["request"].clone()],
+                resolved: Some(records["resolved"].clone()),
+                selection_failure: false,
+                load_failure: false,
+            };
+            let local_parameters = (!counter).then(|| {
+                let mut parameters = RuntimeParameters::new();
+                if case != "missing-name" {
+                    parameters
+                        .insert(
+                            "InputName",
+                            if case == "null-name" {
+                                Value::Null
+                            } else if case == "int-name" {
+                                Value::Int(42)
+                            } else {
+                                Value::String(records["parameter-name"].clone())
+                            },
+                        )
+                        .unwrap();
+                }
+                if case != "mapping" {
+                    parameters
+                        .insert("Ending", Value::String("!".into()))
+                        .unwrap();
+                }
+                if case == "duplicate" {
+                    parameters
+                        .insert("Destination", Value::String("../same.log".into()))
+                        .unwrap();
+                }
+                if case == "late-map" {
+                    parameters
+                        .insert("WestDestination", Value::String("   ".into()))
+                        .unwrap();
+                }
+                parameters
+            });
+            let mut maximum = 1;
+            let mut decoding = CsvByteDecodingPolicy::StrictUtf8;
+            match case {
+                "empty" => host.data = records[&format!("{kind}-empty")].as_bytes().to_vec(),
+                "empty-text" => host.data.clear(),
+                "null-cell" => host.data = records[&format!("{kind}-null")].as_bytes().to_vec(),
+                "missing-cell" => {
+                    host.data = records[&format!("{kind}-missing-cell")].as_bytes().to_vec()
+                }
+                "select" => host.selection_failure = true,
+                "count0" => host.requests.clear(),
+                "count2" => host.requests.push("not-loaded.csv".into()),
+                "maximum0" => maximum = 0,
+                "invalid-limit" => maximum = codegen_runtime::MAX_SOURCE_DOCUMENTS + 1,
+                "request" => host.requests = vec![String::new()],
+                "load" => host.load_failure = true,
+                "resolved" => host.resolved = Some("bad\0path".into()),
+                "encoding" => host.data = vec![0xff],
+                "width" | "type" => {
+                    host.data = records[&format!("{kind}-{case}")].as_bytes().to_vec()
+                }
+                "input-limit" => host.data = vec![0xff; 8_388_609],
+                "late-output" => host.data = records["parameter-late"].as_bytes().to_vec(),
+                "bom" => {
+                    let mut data = vec![0xef, 0xbb, 0xbf];
+                    data.extend_from_slice(&host.data);
+                    host.data = data;
+                }
+                "header-labels" => {
+                    host.data = records["parameter-input"]
+                        .replacen(
+                            "Depot,Code,Count,Words",
+                            "Ignored,Positional,Header,Names",
+                            1,
+                        )
+                        .into_bytes()
+                }
+                "replacement" => {
+                    host.data.push(0xe2);
+                    decoding = CsvByteDecodingPolicy::BomAwareNonFlushingReplacement;
+                }
+                _ => (),
+            }
+            let input_before = host.data.clone();
+            let active_parameters = local_parameters.as_ref().unwrap_or(&counter_parameters);
+            let parameters_before = format!("{active_parameters:?}");
+            let local_execution = (!counter).then(|| {
+                ExecutionContext::new(Path::new("authored-map.ferrule"))
+                    .with_parameters(active_parameters)
+                    .with_current_datetime(&records["clock"])
+            });
+            let execution = local_execution.as_ref().unwrap_or(&counter_execution);
+            if counter {
+                assert!(std::ptr::eq(execution, &counter_execution));
+                assert!(std::ptr::eq(active_parameters, &counter_parameters));
+            }
+            let result: Result<Vec<(String, Vec<u8>)>, Error<HostError>> = if api == "bytes" {
+                execute_primary_mapped_csv_documents_bytes(execution, &host, decoding, maximum)
+                    .map(|docs| docs.into_iter().map(|d| (d.path, d.bytes)).collect())
+            } else {
+                execute_primary_mapped_csv_documents(execution, &host, decoding, maximum).map(
+                    |docs| {
+                        docs.into_iter()
+                            .map(|d| (d.path, d.text.into_bytes()))
+                            .collect()
+                    },
+                )
+            };
+            let success = matches!(
+                case,
+                "success"
+                    | "empty"
+                    | "empty-text"
+                    | "null-cell"
+                    | "missing-cell"
+                    | "duplicate"
+                    | "counter"
+                    | "counter-again"
+                    | "int-name"
+                    | "bom"
+                    | "header-labels"
+                    | "replacement"
+            );
+            if success {
+                let docs = result.unwrap_or_else(|error| panic!("{kind}/{case}/{api}: {error:?}"));
+                let expected = if matches!(case, "empty" | "empty-text") {
+                    vec![]
+                } else if matches!(case, "null-cell" | "missing-cell") {
+                    vec![(
+                        records["east-path"].clone(),
+                        records[&format!("{kind}-null-expected")]
+                            .as_bytes()
+                            .to_vec(),
+                    )]
+                } else {
+                    let prefix = if case.starts_with("counter") {
+                        format!("{kind}-counter")
+                    } else {
+                        kind.clone()
+                    };
+                    vec![
+                        (
+                            if case == "duplicate" {
+                                "../same.log".into()
+                            } else {
+                                records["east-path"].clone()
+                            },
+                            records[&format!("{prefix}-east")].as_bytes().to_vec(),
+                        ),
+                        (
+                            if case == "duplicate" {
+                                "../same.log".into()
+                            } else {
+                                records["west-path"].clone()
+                            },
+                            records[&format!("{prefix}-west")].as_bytes().to_vec(),
+                        ),
+                    ]
+                };
+                assert_eq!(docs, expected, "{kind}/{case}/{api}");
+            } else {
+                check_error(
+                    case,
+                    &result.expect_err("one typed failure, no partial returned vector"),
+                    &records,
+                );
+            }
+            let filename = if kind == "literal" {
+                &records["literal-name"]
+            } else if case == "int-name" {
+                "42"
+            } else {
+                &records["parameter-name"]
+            };
+            let expected_events = if matches!(case, "invalid-limit" | "missing-name" | "null-name")
+            {
+                vec![]
+            } else if matches!(
+                case,
+                "select" | "count0" | "count2" | "maximum0" | "request"
+            ) {
+                vec![format!("select:{filename}:direct")]
+            } else {
+                vec![
+                    format!("select:{filename}:direct"),
+                    "load:catalog.csv".into(),
+                ]
+            };
+            assert_eq!(
+                *host.events.borrow(),
+                expected_events,
+                "{kind}/{case}/{api}"
+            );
+            assert_eq!(host.data, input_before);
+            assert_eq!(format!("{active_parameters:?}"), parameters_before);
+            assert_eq!(execution.runtime_parameter_count(), active_parameters.len());
+            assert_eq!(
+                execution.current_datetime(),
+                Some(records["clock"].as_str())
+            );
+            if counter {
+                assert_eq!(format!("{counter_parameters:?}"), counter_parameters_before);
+                assert_eq!(
+                    execution.resolve_runtime_parameter(
+                        81,
+                        "UseCounter",
+                        codegen_runtime::ScalarType::Bool,
+                    ),
+                    Ok(Value::Bool(true))
+                );
+            }
+            writeln!(
+                receipt,
+                "{case}|{api}|{}|{}",
+                if success { "ok" } else { "error" },
+                host.events.borrow().len()
+            )
+            .unwrap();
+        }
+    }
+    println!("primary mapped CSV cases passed");
+}
