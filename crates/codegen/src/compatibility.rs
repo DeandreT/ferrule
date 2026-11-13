@@ -164,6 +164,8 @@ pub enum GenerationProfile {
     CsvJson,
     /// Primary filename document runs with complete CSV documents.
     PrimaryCsvDocument,
+    /// Direct primary CSV acquisition followed by computed-path mapped documents.
+    PrimaryMappedCsvDocument,
     /// Primary filename document runs with unescaped CRLF text output.
     PrimaryRawDelimitedDocument,
     /// Primary filename document runs with complete XML documents.
