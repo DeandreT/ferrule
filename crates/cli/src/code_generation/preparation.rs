@@ -1,8 +1,9 @@
 //! Generation preparation shared by the generating calls and their plan
 //! queries. Preparation applies every refusal generation can make before it
-//! writes, in generation's order: the profile's backend requirement, its
-//! boundary policies, ordinary lowering, Rust runtime resolution, in-memory
-//! emission and finally the destination check.
+//! writes, in generation's order: the profile's backend requirement, design
+//! preparation, Rust runtime resolution, in-memory emission and finally the
+//! destination check. Ordinary profiles admit their policies before lowering;
+//! primary mapped CSV retains document lowering before its explicit policy.
 
 use std::fs;
 use std::path::Path;
@@ -16,7 +17,7 @@ use crate::{extension_for_dispatch, load_project, validate_tabular_fallback};
 
 /// The generated companion adapters selected for one generation. File
 /// suffixes and stored identities never select a profile.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub enum GenerateProfile {
     /// The ordinary mapping APIs only.
     #[default]
@@ -53,10 +54,13 @@ pub enum GenerateProfile {
     PrimaryDocument,
     /// [`Self::PrimaryDocument`] for a CSV route with unescaped CRLF text output.
     PrimaryRawDelimitedDocument,
+    /// Direct primary CSV acquisition with computed-path strict CSV documents.
+    /// The selected repeating target row field is exact, not normalized.
+    PrimaryMappedCsvDocument { rows_field: String },
 }
 
 impl GenerateProfile {
-    fn csharp_requirement(self) -> Option<&'static str> {
+    fn csharp_requirement(&self) -> Option<&'static str> {
         match self {
             Self::StaticDocuments { .. } => {
                 Some("generated static document adapters currently require the C# backend")
@@ -68,15 +72,17 @@ impl GenerateProfile {
     }
 
     /// Whether the profile reads a saved document project rather than a project.
-    fn reads_document_project(self) -> bool {
+    fn reads_document_project(&self) -> bool {
         matches!(
             self,
-            Self::PrimaryDocument | Self::PrimaryRawDelimitedDocument
+            Self::PrimaryDocument
+                | Self::PrimaryRawDelimitedDocument
+                | Self::PrimaryMappedCsvDocument { .. }
         )
     }
 }
 
-/// The boundary policy a profile admitted before ordinary lowering.
+/// The boundary policy admitted during design preparation.
 enum ProfilePolicy {
     Ordinary,
     CsvOutput(codegen::CsvOutputPolicy),
@@ -88,6 +94,7 @@ enum ProfilePolicy {
     CsvX12(codegen::CsvX12BoundaryPolicy),
     CsvJson(codegen::CsvJsonBoundaryPolicy),
     PrimaryCsvDocument(codegen::CsvDocumentBoundaryPolicy),
+    PrimaryMappedCsvDocument(codegen::PrimaryMappedCsvDocumentPolicy),
     PrimaryXmlDocument,
     PrimaryJsonDocument,
     PrimaryFixedWidthDocument,
@@ -126,7 +133,7 @@ enum Backend {
 
 fn require_backend(
     target: &GenerateTarget,
-    profile: GenerateProfile,
+    profile: &GenerateProfile,
     settings: &GenerateSettings,
 ) -> anyhow::Result<()> {
     if let Some(message) = profile.csharp_requirement()
@@ -161,7 +168,7 @@ fn lower_error(error: codegen::LowerError) -> anyhow::Error {
 
 fn admit_profile(
     project: &mapping::Project,
-    profile: GenerateProfile,
+    profile: &GenerateProfile,
 ) -> anyhow::Result<ProfilePolicy> {
     if project.uses_x12_segment_line_ending()
         && !matches!(
@@ -178,11 +185,14 @@ fn admit_profile(
         GenerateProfile::CsvDocument | GenerateProfile::RawDelimitedDocument => {
             ProfilePolicy::CsvDocument(csv_document_policy(
                 project,
-                profile == GenerateProfile::RawDelimitedDocument,
+                *profile == GenerateProfile::RawDelimitedDocument,
             )?)
         }
         GenerateProfile::PrimaryDocument | GenerateProfile::PrimaryRawDelimitedDocument => {
             bail!("generated primary CSV documents require a saved document project")
+        }
+        GenerateProfile::PrimaryMappedCsvDocument { .. } => {
+            bail!("generated primary mapped CSV documents require a saved document project")
         }
         GenerateProfile::CsvJson => {
             let policy = csv_json::policy(project)?;
@@ -190,7 +200,7 @@ fn admit_profile(
             ProfilePolicy::CsvJson(policy)
         }
         GenerateProfile::CsvX12 { target_envelope } => {
-            let policy = csv_x12::policy_with_envelope_profile(project, target_envelope)?;
+            let policy = csv_x12::policy_with_envelope_profile(project, *target_envelope)?;
             codegen::prepare_csv_x12_project_boundary(project, &policy)?;
             ProfilePolicy::CsvX12(policy)
         }
@@ -200,8 +210,8 @@ fn admit_profile(
         } => {
             let policy = static_documents::policy_with_envelope_profiles(
                 project,
-                source_envelope,
-                target_envelope,
+                *source_envelope,
+                *target_envelope,
             )?;
             codegen::prepare_static_document_project_boundaries(project, &policy)?;
             ProfilePolicy::StaticDocuments(policy)
@@ -211,8 +221,8 @@ fn admit_profile(
             target_envelope,
         } => ProfilePolicy::X12(x12::policy_with_envelope_profiles(
             project,
-            source_envelope,
-            target_envelope,
+            *source_envelope,
+            *target_envelope,
         )?),
         GenerateProfile::Json5 => {
             // Admission borrows the loaded schemas before ordinary lowering clones them.
@@ -244,7 +254,7 @@ fn admit_profile(
                     );
                 }
             }
-            if profile == GenerateProfile::CsvDocumentOutput {
+            if *profile == GenerateProfile::CsvDocumentOutput {
                 ProfilePolicy::CsvDocumentOutput(policy)
             } else {
                 ProfilePolicy::CsvOutput(policy)
@@ -265,17 +275,31 @@ fn csv_document_policy(
     Ok(policy)
 }
 
-/// Admits and lowers a document project: its CSV document policy, then its
-/// filename plan and ordinary mapping lowering.
+/// Prepares an explicitly selected document profile. Mapped output uses its
+/// own endpoint policy, not the legacy saved-format route or flat CSV policy.
 fn prepare_document(
     document: &mapping::DocumentProject,
-    profile: GenerateProfile,
+    profile: &GenerateProfile,
 ) -> anyhow::Result<PreparedDesign> {
-    let raw = profile == GenerateProfile::PrimaryRawDelimitedDocument;
+    let raw = *profile == GenerateProfile::PrimaryRawDelimitedDocument;
     if document.project().uses_x12_segment_line_ending() {
         bail!("primary document adapters do not support explicit X12 segment line endings");
     }
     refuse_xlsx_grid_regions(document.project())?;
+    if let GenerateProfile::PrimaryMappedCsvDocument { rows_field } = profile {
+        let lowered = codegen::lower_document(document).map_err(|error| match error {
+            codegen::DocumentLowerError::Mapping(error) => lower_error(error),
+            filename => anyhow::Error::new(filename),
+        })?;
+        let policy = codegen::PrimaryMappedCsvDocumentPolicy::from_project(
+            document.project(),
+            rows_field.as_str(),
+        )?;
+        return Ok(PreparedDesign {
+            lowered: Lowered::Document(lowered),
+            policy: ProfilePolicy::PrimaryMappedCsvDocument(policy),
+        });
+    }
     let route = document.primary_route()?;
     let policy = match route.format {
         mapping::PrimaryDocumentFormat::Csv => {
@@ -326,7 +350,7 @@ fn refuse_xlsx_grid_regions(project: &mapping::Project) -> anyhow::Result<()> {
 
 fn prepare_design(
     project: &mapping::Project,
-    profile: GenerateProfile,
+    profile: &GenerateProfile,
 ) -> anyhow::Result<PreparedDesign> {
     refuse_xlsx_grid_regions(project)?;
     let policy = admit_profile(project, profile)?;
@@ -400,6 +424,11 @@ fn emit(
                         document.context("a primary document policy has its document plan")?,
                         policy,
                     )?,
+                ProfilePolicy::PrimaryMappedCsvDocument(policy) => generator
+                    .emit_with_primary_mapped_csv_documents(
+                        document.context("a primary document policy has its document plan")?,
+                        policy,
+                    )?,
                 ProfilePolicy::PrimaryXmlDocument => generator.emit_with_primary_xml_documents(
                     document.context("a primary document policy has its document plan")?,
                 )?,
@@ -442,6 +471,11 @@ fn emit(
                 }
                 ProfilePolicy::PrimaryCsvDocument(policy) => generator
                     .emit_with_primary_csv_documents(
+                        document.context("a primary document policy has its document plan")?,
+                        policy,
+                    )?,
+                ProfilePolicy::PrimaryMappedCsvDocument(policy) => generator
+                    .emit_with_primary_mapped_csv_documents(
                         document.context("a primary document policy has its document plan")?,
                         policy,
                     )?,
@@ -489,11 +523,11 @@ pub(super) fn generate_artifacts(
     profile: GenerateProfile,
     settings: &GenerateSettings,
 ) -> anyhow::Result<ArtifactSet> {
-    require_backend(target, profile, settings)?;
+    require_backend(target, &profile, settings)?;
     let design = if profile.reads_document_project() {
-        prepare_document(&crate::load_document_project(project_path)?, profile)?
+        prepare_document(&crate::load_document_project(project_path)?, &profile)?
     } else {
-        prepare_design(&load_project(project_path)?, profile)?
+        prepare_design(&load_project(project_path)?, &profile)?
     };
     emit(&design, &resolve_backend(target, settings)?, settings)
 }
@@ -509,8 +543,8 @@ pub fn check_generate_project(
     profile: GenerateProfile,
 ) -> anyhow::Result<()> {
     let settings = GenerateSettings::default();
-    require_backend(target, profile, &settings)?;
-    let design = prepare_design(project, profile)?;
+    require_backend(target, &profile, &settings)?;
+    let design = prepare_design(project, &profile)?;
     let backend = match target {
         GenerateTarget::Rust { runtime_path } => Backend::Rust {
             runtime_dependency: runtime_path
@@ -535,8 +569,8 @@ pub fn plan_generate_project(
     profile: GenerateProfile,
 ) -> anyhow::Result<RoutePlan> {
     let settings = GenerateSettings::default();
-    require_backend(target, profile, &settings)?;
-    let design = prepare_design(project, profile)?;
+    require_backend(target, &profile, &settings)?;
+    let design = prepare_design(project, &profile)?;
     emit(&design, &resolve_backend(target, &settings)?, &settings)?;
     reject_existing_output(output_directory)?;
     let mut plan = RoutePlan::new(HostRoute::Generate, project_path);
@@ -554,12 +588,12 @@ pub fn plan_generate(
     profile: GenerateProfile,
 ) -> anyhow::Result<RoutePlan> {
     let settings = GenerateSettings::default();
-    require_backend(target, profile, &settings)?;
+    require_backend(target, &profile, &settings)?;
     if !profile.reads_document_project() {
         let project = load_project(project_path)?;
         return plan_generate_project(&project, project_path, output_directory, target, profile);
     }
-    let design = prepare_document(&crate::load_document_project(project_path)?, profile)?;
+    let design = prepare_document(&crate::load_document_project(project_path)?, &profile)?;
     emit(&design, &resolve_backend(target, &settings)?, &settings)?;
     reject_existing_output(output_directory)?;
     let mut plan = RoutePlan::new(HostRoute::Generate, project_path);

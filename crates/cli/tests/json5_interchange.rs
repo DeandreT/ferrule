@@ -182,7 +182,7 @@ fn retained_dependencies_refuse_before_native_io_or_generated_publication() -> a
                             &project_path,
                             &destination,
                             target.clone(),
-                            profile,
+                            profile.clone(),
                         )
                         .unwrap_err();
                         assert!(

@@ -21,6 +21,12 @@ use mapping::{
     PipelineNamedInput, PipelineStage, Project, Scope,
 };
 
+// Share the independently authored model; its runtime-only records and clock
+// are exercised by the generated-consumer test crate, not route preflight.
+#[allow(dead_code)]
+#[path = "code_generation/primary_mapped_csv_documents/fixture.rs"]
+mod primary_mapped_csv_fixture;
+
 struct TempDir(PathBuf);
 
 impl TempDir {
@@ -608,7 +614,8 @@ fn generate_refusal_publishes_nothing() -> anyhow::Result<()> {
     assert_refused(&refused, "already exists");
     let csharp = cli::GenerateTarget::CSharp;
     let ordinary = cli::GenerateProfile::Ordinary;
-    let error = cli::plan_generate(&project_path, &existing, &csharp, ordinary).unwrap_err();
+    let error =
+        cli::plan_generate(&project_path, &existing, &csharp, ordinary.clone()).unwrap_err();
     assert_eq!(
         error.downcast_ref::<cli::RouteRefusal>(),
         Some(&cli::RouteRefusal::GeneratedOutputExists {
@@ -788,14 +795,16 @@ fn generate_plan_refuses_what_generation_refuses_before_any_output() -> anyhow::
     let before = directory.snapshot()?;
     for (index, (target, profile)) in cases.into_iter().enumerate() {
         let output = directory.join(&format!("library-{index}"));
-        let planned = cli::plan_generate(&project_path, &output, &target, profile).unwrap_err();
+        let planned =
+            cli::plan_generate(&project_path, &output, &target, profile.clone()).unwrap_err();
         assert_eq!(
             directory.snapshot()?,
             before,
             "{profile:?} plan wrote nothing"
         );
-        let generated = cli::generate_project_with_profile(&project_path, &output, target, profile)
-            .unwrap_err();
+        let generated =
+            cli::generate_project_with_profile(&project_path, &output, target, profile.clone())
+                .unwrap_err();
         assert_eq!(
             format!("{planned:#}"),
             format!("{generated:#}"),
@@ -858,6 +867,657 @@ fn generate_plan_refuses_what_generation_refuses_before_any_output() -> anyhow::
         cli::GenerateProfile::CsvOutput,
     )?;
     assert!(outcome.files_written > 0);
+    Ok(())
+}
+
+fn mapped_csv_profile(rows: &str) -> cli::GenerateProfile {
+    cli::GenerateProfile::PrimaryMappedCsvDocument {
+        rows_field: rows.into(),
+    }
+}
+
+fn mapped_csv_targets() -> [cli::GenerateTarget; 2] {
+    [
+        cli::GenerateTarget::CSharp,
+        cli::GenerateTarget::Rust {
+            runtime_path: Path::new(env!("CARGO_MANIFEST_DIR")).join("../codegen-runtime"),
+        },
+    ]
+}
+
+#[test]
+fn primary_mapped_csv_refuses_explicit_x12_line_endings() -> anyhow::Result<()> {
+    let directory = TempDir::new("primary_mapped_csv_x12_line_endings")?;
+    let original = primary_mapped_csv_fixture::document(false);
+    for placement in 0..4 {
+        let mut project = original.project().clone();
+        let options = mapping::FormatOptions {
+            x12_segment_line_ending: mapping::X12SegmentLineEnding::CrLf,
+            ..Default::default()
+        };
+        match placement {
+            0 => project.source_options.x12_segment_line_ending = options.x12_segment_line_ending,
+            1 => project.target_options.x12_segment_line_ending = options.x12_segment_line_ending,
+            2 => project.extra_sources.push(NamedSource {
+                name: "lookup".into(),
+                path: "lookup.csv".into(),
+                schema: project.source.clone(),
+                options,
+                dynamic_path: None,
+            }),
+            _ => project.extra_targets.push(mapping::NamedTarget {
+                name: "other".into(),
+                path: None,
+                schema: project.target.clone(),
+                options,
+                root: project.root.clone(),
+            }),
+        }
+        let document = mapping::DocumentProject::new(project, original.primary_source().clone());
+        let saved = directory.join(&format!("{placement}.json"));
+        std::fs::write(
+            &saved,
+            mapping::document_project_file::encode_pretty(&document)?,
+        )?;
+        for (language, target) in ["csharp", "rust"].into_iter().zip(mapped_csv_targets()) {
+            let output = directory.join(&format!("{placement}-{language}/library"));
+            let before = directory.snapshot()?;
+            let expected =
+                "primary document adapters do not support explicit X12 segment line endings";
+            let planned =
+                cli::plan_generate(&saved, &output, &target, mapped_csv_profile("Entries"))
+                    .unwrap_err();
+            let generated = cli::generate_project_with_profile(
+                &saved,
+                &output,
+                target.clone(),
+                mapped_csv_profile("Entries"),
+            )
+            .unwrap_err();
+            assert_eq!(planned.to_string(), expected);
+            assert_eq!(generated.to_string(), expected);
+            let mut args = vec![
+                "generate",
+                "--project",
+                utf8(&saved)?,
+                "--language",
+                language,
+                "--out",
+                utf8(&output)?,
+                "--primary-mapped-csv-documents",
+                "Entries",
+            ];
+            if let cli::GenerateTarget::Rust { runtime_path } = &target {
+                args.extend(["--rust-runtime-path", utf8(runtime_path)?]);
+            }
+            assert_refused(&ferrule(&args, b"")?, expected);
+            assert_eq!(directory.snapshot()?, before);
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn primary_mapped_csv_saved_plan_matches_generation_without_acquiring_sources() -> anyhow::Result<()>
+{
+    let directory = TempDir::new("primary_mapped_csv_plan")?;
+    for literal in [false, true] {
+        let original = primary_mapped_csv_fixture::document(literal);
+        let mut project = original.project().clone();
+        let preview = directory.join("never-open-preview.csv");
+        if !preview.exists() {
+            std::fs::create_dir(&preview)?;
+        }
+        project.source_path = Some(utf8(&preview)?.into());
+        let document = mapping::DocumentProject::new(project, original.primary_source().clone());
+        let saved = directory.join(&format!("{literal}.document.json"));
+        std::fs::write(
+            &saved,
+            mapping::document_project_file::encode_pretty(&document)?,
+        )?;
+        for (index, target) in mapped_csv_targets().into_iter().enumerate() {
+            let output = directory.join(&format!("{literal}-{index}/library"));
+            let before = directory.snapshot()?;
+            let plan = cli::plan_generate(&saved, &output, &target, mapped_csv_profile("Entries"))?;
+            assert_eq!(plan.route(), cli::HostRoute::Generate);
+            assert_eq!(
+                plan.acquisitions(),
+                [cli::PlannedAcquisition::Design(saved.clone())]
+            );
+            assert_eq!(
+                plan.publications(),
+                [cli::PlannedPublication::GeneratedTree(output.clone())]
+            );
+            assert_eq!(
+                directory.snapshot()?,
+                before,
+                "plan creates no staging parent"
+            );
+            let result = cli::generate_project_with_profile(
+                &saved,
+                &output,
+                target,
+                mapped_csv_profile("Entries"),
+            )?;
+            assert_eq!(result.output_directory, output);
+            assert!(result.files_written > 0);
+            assert!(!directory.join("bundles").exists());
+            assert!(preview.is_dir());
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn primary_mapped_csv_refusals_share_preparation_order_and_publish_nothing() -> anyhow::Result<()> {
+    let directory = TempDir::new("primary_mapped_csv_refusals")?;
+    for name in [
+        "never-open-preview.csv",
+        "never-use-parameter-preview.csv",
+        "lookup.csv",
+    ] {
+        std::fs::create_dir(directory.join(name))?;
+    }
+    let original = primary_mapped_csv_fixture::document(false);
+    let mut base = original.project().clone();
+    base.source_path = Some(utf8(&directory.join("never-open-preview.csv"))?.into());
+    if let Some(Node::RuntimeParameter { preview, .. }) = base
+        .graph
+        .nodes
+        .get_mut(&primary_mapped_csv_fixture::INPUT_NODE)
+    {
+        *preview = Some(utf8(&directory.join("never-use-parameter-preview.csv"))?.into());
+    }
+    let wrap = |project| mapping::DocumentProject::new(project, original.primary_source().clone());
+    let mut cases = vec![
+        ("empty-selector", wrap(base.clone()), ""),
+        ("wrong-selector", wrap(base.clone()), "OtherRows"),
+        ("untrimmed-selector", wrap(base.clone()), " Entries "),
+    ];
+    for empty in [
+        mapping::EmptyFileSelection::Refuse,
+        mapping::EmptyFileSelection::MapNoDocuments,
+    ] {
+        cases.push((
+            "wildcard",
+            mapping::DocumentProject::new(
+                base.clone(),
+                original
+                    .primary_source()
+                    .clone()
+                    .with_selection(mapping::PrimaryFileSelection::FileNameWildcard { empty }),
+            ),
+            "Entries",
+        ));
+    }
+    cases.push((
+        "global-output",
+        wrap(base.clone()).with_output_filename(primary_mapped_csv_fixture::INPUT_NODE),
+        "Entries",
+    ));
+    for change in 0..18 {
+        let mut project = base.clone();
+        match change {
+            0 => project.source_options.delimiter = Some('\n'),
+            1 => project.source_options.json_lines = true,
+            2 => project.target_options.delimiter = Some('\r'),
+            3 => project.target_options.json_lines = true,
+            4 => project.target_options.csv_quote = Some('"'),
+            5 => {
+                let ir::SchemaKind::Group { children, .. } = &mut project.source.kind else {
+                    unreachable!()
+                };
+                children[0].nullable = true;
+            }
+            6 => {
+                let ir::SchemaKind::Group { children, .. } = &mut project.target.kind else {
+                    unreachable!()
+                };
+                children.push(SchemaNode::scalar("Spare", ScalarType::String));
+            }
+            7 => {
+                let ir::SchemaKind::Group { children, .. } = &mut project.target.kind else {
+                    unreachable!()
+                };
+                let ir::SchemaKind::Group { children, .. } = &mut children[0].kind else {
+                    unreachable!()
+                };
+                children[0].fixed = Some("unsupported".into());
+            }
+            8 => project.root.iteration = mapping::ScopeIteration::Source(vec![]),
+            9 => project.root.children.push(project.root.children[0].clone()),
+            10 => project.extra_sources.push(NamedSource {
+                name: "lookup".into(),
+                path: utf8(&directory.join("lookup.csv"))?.into(),
+                schema: project.source.clone(),
+                options: project.source_options.clone(),
+                dynamic_path: None,
+            }),
+            11 => project.extra_targets.push(mapping::NamedTarget {
+                name: "other".into(),
+                path: None,
+                schema: project.target.clone(),
+                options: project.target_options.clone(),
+                root: project.root.clone(),
+            }),
+            12 => {
+                project.graph.nodes.insert(
+                    primary_mapped_csv_fixture::INPUT_NODE,
+                    Node::SourceDocumentPath,
+                );
+            }
+            13 => {
+                // Filename lowering precedes policy construction, even with an
+                // independently invalid source option and empty selector.
+                project.graph.nodes.insert(
+                    primary_mapped_csv_fixture::INPUT_NODE,
+                    Node::SourceDocumentPath,
+                );
+                project.source_options.delimiter = Some('\n');
+            }
+            14 => {
+                // Factory refusal precedes Generator-only global-output and
+                // selection checks; do not replace it with a new CLI error.
+                project.source_options.delimiter = Some('\n');
+            }
+            15 => project.source_options.lenient_segments = true,
+            16 => project.target_options.lenient_segments = true,
+            _ => {
+                project.source_options.delimiter = Some('\n');
+                project.target_options.delimiter = Some('\r');
+            }
+        }
+        let mut document = wrap(project);
+        if change == 14 {
+            document = document.with_output_filename(primary_mapped_csv_fixture::INPUT_NODE);
+        }
+        cases.push((
+            "closed-policy",
+            document,
+            if matches!(change, 13 | 17) {
+                ""
+            } else {
+                "Entries"
+            },
+        ));
+    }
+    // Generator boundary ordering: global filename wins over wildcard/root.
+    let mut invalid_root = base.clone();
+    invalid_root.root.iteration = mapping::ScopeIteration::Source(vec![]);
+    cases.push((
+        "generator-order",
+        mapping::DocumentProject::new(
+            invalid_root,
+            original.primary_source().clone().with_selection(
+                mapping::PrimaryFileSelection::FileNameWildcard {
+                    empty: mapping::EmptyFileSelection::Refuse,
+                },
+            ),
+        )
+        .with_output_filename(primary_mapped_csv_fixture::INPUT_NODE),
+        "Entries",
+    ));
+    for (index, (label, document, rows)) in cases.into_iter().enumerate() {
+        let expected = (|| -> anyhow::Result<()> {
+            let lowered = codegen::lower_document(&document)?;
+            let policy =
+                codegen::PrimaryMappedCsvDocumentPolicy::from_project(document.project(), rows)?;
+            codegen::validate_primary_mapped_csv_documents(&lowered, &policy)?;
+            Ok(())
+        })()
+        .unwrap_err()
+        .to_string();
+        let saved = directory.join(&format!("{index}.document.json"));
+        std::fs::write(
+            &saved,
+            mapping::document_project_file::encode_pretty(&document)
+                .with_context(|| format!("{index}/{label}"))?,
+        )?;
+        for (language, target) in ["csharp", "rust"].into_iter().zip(mapped_csv_targets()) {
+            let output = directory.join(&format!("refused-{index}-{language}/library"));
+            let before = directory.snapshot()?;
+            let planned =
+                cli::plan_generate(&saved, &output, &target, mapped_csv_profile(rows)).unwrap_err();
+            let generated = cli::generate_project_with_profile(
+                &saved,
+                &output,
+                target.clone(),
+                mapped_csv_profile(rows),
+            )
+            .unwrap_err();
+            assert_eq!(
+                format!("{planned:#}"),
+                format!("{generated:#}"),
+                "{index}/{label}/{language}"
+            );
+            assert!(
+                format!("{planned:#}").contains(&expected),
+                "{index}/{label}: {planned:#}; expected {expected}"
+            );
+            let mut args = vec![
+                "generate",
+                "--project",
+                utf8(&saved)?,
+                "--language",
+                language,
+                "--out",
+                utf8(&output)?,
+                "--primary-mapped-csv-documents",
+                rows,
+            ];
+            if let cli::GenerateTarget::Rust { runtime_path } = &target {
+                args.extend(["--rust-runtime-path", utf8(runtime_path)?]);
+            }
+            let refused = ferrule(&args, b"")?;
+            assert_refused(&refused, &expected);
+            assert!(!output.parent().unwrap().exists());
+            assert_eq!(directory.snapshot()?, before, "{index}/{label}/{language}");
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn primary_mapped_csv_requires_saved_document_json_and_keeps_flat_profile_separate()
+-> anyhow::Result<()> {
+    let directory = TempDir::new("primary_mapped_csv_loader")?;
+    let document = primary_mapped_csv_fixture::document(false);
+    let ordinary = mapping::project_file::encode_pretty(document.project())?;
+    let wrong_kind = serde_json::json!({
+        "__ferrule_file": { "version": 2, "kind": "project", "float_bits": {} },
+        "document": serde_json::to_value(&document)?,
+    })
+    .to_string();
+    for (index, text) in [
+        ordinary,
+        "<mapping><component /></mapping>".into(),
+        "{".into(),
+        "{}".into(),
+        wrong_kind,
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let extension = if index == 1 { "mfd" } else { "json" };
+        let saved = directory.join(&format!("invalid-{index}.{extension}"));
+        std::fs::write(&saved, text)?;
+        let expected = cli::load_document_project(&saved).unwrap_err();
+        if index == 4 {
+            assert!(expected.chain().any(|error| matches!(
+                error.downcast_ref::<mapping::FileCodecError>(),
+                Some(mapping::FileCodecError::WrongKind { expected: "document_project", actual })
+                    if actual == "project"
+            )));
+        }
+        for (language, target) in ["csharp", "rust"].into_iter().zip(mapped_csv_targets()) {
+            let output = directory.join(&format!("loader-{index}-{language}/library"));
+            let before = directory.snapshot()?;
+            for error in [
+                cli::plan_generate(&saved, &output, &target, mapped_csv_profile("Entries"))
+                    .unwrap_err(),
+                cli::generate_project_with_profile(
+                    &saved,
+                    &output,
+                    target.clone(),
+                    mapped_csv_profile("Entries"),
+                )
+                .unwrap_err(),
+            ] {
+                assert_eq!(format!("{error:#}"), format!("{expected:#}"));
+            }
+            let mut args = vec![
+                "generate",
+                "--project",
+                utf8(&saved)?,
+                "--language",
+                language,
+                "--out",
+                utf8(&output)?,
+                "--primary-mapped-csv-documents",
+                "Entries",
+            ];
+            if let cli::GenerateTarget::Rust { runtime_path } = &target {
+                args.extend(["--rust-runtime-path", utf8(runtime_path)?]);
+            }
+            assert_refused(&ferrule(&args, b"")?, "parsing document project");
+            assert_eq!(directory.snapshot()?, before);
+        }
+    }
+    let saved = directory.join("document.json");
+    std::fs::write(
+        &saved,
+        mapping::document_project_file::encode_pretty(&document)?,
+    )?;
+    for target in mapped_csv_targets() {
+        let output = directory.join("separate/library");
+        let before = directory.snapshot()?;
+        for error in [
+            cli::check_generate_project(document.project(), &target, mapped_csv_profile("Entries"))
+                .unwrap_err(),
+            cli::plan_generate_project(
+                document.project(),
+                &saved,
+                &output,
+                &target,
+                mapped_csv_profile("Entries"),
+            )
+            .unwrap_err(),
+        ] {
+            assert!(
+                error
+                    .to_string()
+                    .contains("require a saved document project")
+            );
+        }
+        for profile in [
+            cli::GenerateProfile::Ordinary,
+            cli::GenerateProfile::CsvDocument,
+            cli::GenerateProfile::PrimaryDocument,
+        ] {
+            let planned =
+                cli::plan_generate(&saved, &output, &target, profile.clone()).unwrap_err();
+            let generated =
+                cli::generate_project_with_profile(&saved, &output, target.clone(), profile)
+                    .unwrap_err();
+            assert_eq!(format!("{planned:#}"), format!("{generated:#}"));
+        }
+        assert_eq!(directory.snapshot()?, before);
+    }
+    for flag in ["--primary-documents", "--primary-csv-documents"] {
+        let output = directory.join("legacy/library");
+        let before = directory.snapshot()?;
+        let expected =
+            codegen::CsvDocumentBoundaryPolicy::from_project(document.project()).unwrap_err();
+        let refused = ferrule(
+            &[
+                "generate",
+                "--project",
+                utf8(&saved)?,
+                "--language",
+                "csharp",
+                "--out",
+                utf8(&output)?,
+                flag,
+            ],
+            b"",
+        )?;
+        assert_refused(&refused, &expected.to_string());
+        assert_eq!(directory.snapshot()?, before);
+    }
+    Ok(())
+}
+
+#[test]
+fn primary_mapped_csv_keeps_runtime_destination_and_backend_refusal_order() -> anyhow::Result<()> {
+    let directory = TempDir::new("primary_mapped_csv_runtime")?;
+    let document = primary_mapped_csv_fixture::document(false);
+    let saved = directory.join("document.json");
+    std::fs::write(
+        &saved,
+        mapping::document_project_file::encode_pretty(&document)?,
+    )?;
+    let existing = directory.join("existing");
+    std::fs::create_dir(&existing)?;
+    std::fs::write(existing.join("keep.txt"), "host data")?;
+    let missing_runtime = cli::GenerateTarget::Rust {
+        runtime_path: directory.join("missing-runtime"),
+    };
+    let mut targets = mapped_csv_targets().to_vec();
+    targets.push(missing_runtime);
+    for target in targets {
+        let before = directory.snapshot()?;
+        let planned = cli::plan_generate(&saved, &existing, &target, mapped_csv_profile("Entries"))
+            .unwrap_err();
+        let generated = cli::generate_project_with_profile(
+            &saved,
+            &existing,
+            target.clone(),
+            mapped_csv_profile("Entries"),
+        )
+        .unwrap_err();
+        // Existing destination reporting differs between public planning and
+        // publication APIs; preserve that established distinction.
+        if let cli::GenerateTarget::Rust { runtime_path } = &target
+            && !runtime_path.exists()
+        {
+            assert_eq!(format!("{planned:#}"), format!("{generated:#}"));
+            assert!(format!("{planned:#}").contains("resolving Rust codegen runtime path"));
+        } else {
+            assert_eq!(
+                planned.downcast_ref::<cli::RouteRefusal>(),
+                Some(&cli::RouteRefusal::GeneratedOutputExists {
+                    path: existing.clone()
+                })
+            );
+            assert!(generated.to_string().contains("already exists"));
+        }
+        assert_eq!(directory.snapshot()?, before);
+    }
+    // A resolvable but incompatible runtime is refused only when the existing
+    // manifest setting requests identity verification, before tree staging.
+    let fake_runtime = directory.join("fake-runtime");
+    std::fs::create_dir(&fake_runtime)?;
+    std::fs::create_dir(fake_runtime.join("src"))?;
+    for name in ["Cargo.toml", "build.rs", "identity.rs"] {
+        std::fs::write(fake_runtime.join(name), "")?;
+    }
+    let output = directory.join("refused/library");
+    let before = directory.snapshot()?;
+    let error = cli::generate_project_with_settings(
+        &saved,
+        &output,
+        cli::GenerateTarget::Rust {
+            runtime_path: fake_runtime.clone(),
+        },
+        mapped_csv_profile("Entries"),
+        &cli::GenerateSettings {
+            manifest: codegen::ManifestSelection::Included,
+            ..Default::default()
+        },
+    )
+    .unwrap_err();
+    assert!(matches!(
+        error.downcast_ref::<codegen_rust::RuntimeBindingError>(),
+        Some(codegen_rust::RuntimeBindingError::Mismatch { .. })
+    ));
+    assert!(error.to_string().contains("has identity sha256:"));
+    assert!(
+        error
+            .to_string()
+            .contains("but this generator emits code for runtime sha256:")
+    );
+    let refused = ferrule(
+        &[
+            "generate",
+            "--project",
+            utf8(&saved)?,
+            "--language",
+            "rust",
+            "--rust-runtime-path",
+            utf8(&fake_runtime)?,
+            "--out",
+            utf8(&output)?,
+            "--primary-mapped-csv-documents",
+            "Entries",
+            "--compatibility-manifest",
+        ],
+        b"",
+    )?;
+    assert_refused(&refused, &error.to_string());
+    assert_eq!(directory.snapshot()?, before);
+    let generated = ferrule(
+        &[
+            "generate",
+            "--project",
+            utf8(&saved)?,
+            "--language",
+            "rust",
+            "--rust-runtime-path",
+            utf8(&fake_runtime)?,
+            "--out",
+            utf8(&output)?,
+            "--primary-mapped-csv-documents",
+            "Entries",
+        ],
+        b"",
+    )?;
+    assert!(
+        generated.status.success(),
+        "generation failed: {}",
+        String::from_utf8_lossy(&generated.stderr)
+    );
+    assert!(output.join("Cargo.toml").is_file());
+    Ok(())
+}
+
+#[test]
+fn primary_mapped_csv_shared_grid_guard_precedes_filename_lowering() -> anyhow::Result<()> {
+    let directory = TempDir::new("primary_mapped_csv_shared_guard")?;
+    let original = primary_mapped_csv_fixture::document(false);
+    let mut project = original.project().clone();
+    project.source_options.xlsx_composite = Some(mapping::XlsxCompositeLayout {
+        table: None,
+        additional_tables: vec![],
+        records: vec![],
+        grids: vec![mapping::XlsxGridRegion {
+            path: vec![],
+            layout: mapping::XlsxGridLayout {
+                sheet: None,
+                header_row: mapping::XlsxRow::new(1).unwrap(),
+                data_start_row: mapping::XlsxRow::new(2).unwrap(),
+                header_value_field: "Header".into(),
+                header_position_field: "Position".into(),
+                rows_field: "Rows".into(),
+                cells_field: "Cells".into(),
+                cell_value_field: "Value".into(),
+                cell_position_field: "Position".into(),
+                fixed_cells: vec![],
+            },
+        }],
+    });
+    project.graph.nodes.insert(
+        primary_mapped_csv_fixture::INPUT_NODE,
+        Node::SourceDocumentPath,
+    );
+    let document = mapping::DocumentProject::new(project, original.primary_source().clone());
+    assert!(codegen::lower_document(&document).is_err());
+    let saved = directory.join("document.json");
+    std::fs::write(
+        &saved,
+        mapping::document_project_file::encode_pretty(&document)?,
+    )?;
+    for target in mapped_csv_targets() {
+        let output = directory.join("refused/library");
+        let before = directory.snapshot()?;
+        let planned =
+            cli::plan_generate(&saved, &output, &target, mapped_csv_profile("")).unwrap_err();
+        let generated =
+            cli::generate_project_with_profile(&saved, &output, target, mapped_csv_profile(""))
+                .unwrap_err();
+        assert_eq!(format!("{planned:#}"), format!("{generated:#}"));
+        assert!(planned.to_string().contains("XLSX grid regions"));
+        assert_eq!(directory.snapshot()?, before);
+    }
     Ok(())
 }
 
