@@ -1303,173 +1303,32 @@ fn coerce_constant(expression: ScalarExpr, expected: Option<ScalarType>) -> Scal
     ScalarExpr::Const(value)
 }
 
+#[path = "scalar_expansion.rs"]
+mod expansion;
+
 fn substitute(
     expression: &ScalarExpr,
     parameters: &BTreeMap<u32, ScalarExpr>,
     budget: &mut ExpansionBudget,
     depth: usize,
 ) -> Result<ScalarExpr, String> {
-    match expression {
-        ScalarExpr::Parameter(component_id) => {
-            if let Some(expression) = parameters.get(component_id) {
-                clone_with_budget(expression, budget, depth)
-            } else {
-                budget.claim(depth)?;
-                Ok(ScalarExpr::Const(Value::Null))
-            }
-        }
-        ScalarExpr::DefaultedParameter {
-            component_id,
-            default,
-        } => {
-            if let Some(expression) = parameters.get(component_id) {
-                clone_with_budget(expression, budget, depth)
-            } else {
-                substitute(default, parameters, budget, depth)
-            }
-        }
-        ScalarExpr::Const(value) => {
-            budget.claim(depth)?;
-            Ok(ScalarExpr::Const(value.clone()))
-        }
-        ScalarExpr::RuntimeValue(value) => {
-            budget.claim(depth)?;
-            Ok(ScalarExpr::RuntimeValue(*value))
-        }
-        ScalarExpr::Call { function, args } => {
-            budget.claim(depth)?;
-            Ok(ScalarExpr::Call {
-                function: function.clone(),
-                args: args
-                    .iter()
-                    .map(|arg| substitute(arg, parameters, budget, depth + 1))
-                    .collect::<Result<_, _>>()?,
-            })
-        }
-        ScalarExpr::If {
-            condition,
-            then,
-            else_,
-        } => {
-            budget.claim(depth)?;
-            Ok(ScalarExpr::If {
-                condition: Box::new(substitute(condition, parameters, budget, depth + 1)?),
-                then: Box::new(substitute(then, parameters, budget, depth + 1)?),
-                else_: Box::new(substitute(else_, parameters, budget, depth + 1)?),
-            })
-        }
-        ScalarExpr::ValueMap {
-            input,
-            input_type,
-            table,
-            default,
-        } => {
-            budget.claim(depth)?;
-            Ok(ScalarExpr::ValueMap {
-                input: Box::new(substitute(input, parameters, budget, depth + 1)?),
-                input_type: *input_type,
-                table: table.clone(),
-                default: default.clone(),
-            })
-        }
-        ScalarExpr::SequenceItemAt { sequence, index } => {
-            budget.claim(depth)?;
-            Ok(ScalarExpr::SequenceItemAt {
-                sequence: substitute_sequence(sequence, parameters, budget, depth + 1)?,
-                index: Box::new(substitute(index, parameters, budget, depth + 1)?),
-            })
-        }
-        ScalarExpr::SequenceExists {
-            sequence,
-            item_feed,
-            predicate,
-        } => {
-            budget.claim(depth)?;
-            Ok(ScalarExpr::SequenceExists {
-                sequence: substitute_sequence(sequence, parameters, budget, depth + 1)?,
-                item_feed: *item_feed,
-                predicate: Box::new(substitute(predicate, parameters, budget, depth + 1)?),
-            })
-        }
-        ScalarExpr::SequenceItem(feed) => {
-            budget.claim(depth)?;
-            Ok(ScalarExpr::SequenceItem(*feed))
-        }
-        ScalarExpr::SequencePosition(feed) => {
-            budget.claim(depth)?;
-            Ok(ScalarExpr::SequencePosition(*feed))
-        }
-        ScalarExpr::SequenceAggregate {
-            function,
-            sequence,
-            item_feed,
-            predicate,
-            expression,
-            arg,
-        } => {
-            budget.claim(depth)?;
-            Ok(ScalarExpr::SequenceAggregate {
-                function: *function,
-                sequence: substitute_sequence(sequence, parameters, budget, depth + 1)?,
-                item_feed: *item_feed,
-                predicate: predicate
-                    .as_ref()
-                    .map(|predicate| {
-                        substitute(predicate, parameters, budget, depth + 1).map(Box::new)
-                    })
-                    .transpose()?,
-                expression: expression
-                    .as_ref()
-                    .map(|expression| {
-                        substitute(expression, parameters, budget, depth + 1).map(Box::new)
-                    })
-                    .transpose()?,
-                arg: arg
-                    .as_ref()
-                    .map(|arg| substitute(arg, parameters, budget, depth + 1).map(Box::new))
-                    .transpose()?,
-            })
-        }
-    }
+    expansion::scalar(expression, Some(parameters), budget, depth)
 }
 
+#[cfg_attr(
+    not(test),
+    allow(
+        dead_code,
+        reason = "Retained private sequence seam; scalar traversal uses heap frames"
+    )
+)]
 fn substitute_sequence(
     sequence: &ScalarSequenceExpr,
     parameters: &BTreeMap<u32, ScalarExpr>,
     budget: &mut ExpansionBudget,
     depth: usize,
 ) -> Result<ScalarSequenceExpr, String> {
-    Ok(match sequence {
-        ScalarSequenceExpr::Tokenize { input, delimiter } => ScalarSequenceExpr::Tokenize {
-            input: Box::new(substitute(input, parameters, budget, depth)?),
-            delimiter: Box::new(substitute(delimiter, parameters, budget, depth)?),
-        },
-        ScalarSequenceExpr::TokenizeByLength { input, length } => {
-            ScalarSequenceExpr::TokenizeByLength {
-                input: Box::new(substitute(input, parameters, budget, depth)?),
-                length: Box::new(substitute(length, parameters, budget, depth)?),
-            }
-        }
-        ScalarSequenceExpr::TokenizeRegex {
-            input,
-            pattern,
-            flags,
-        } => ScalarSequenceExpr::TokenizeRegex {
-            input: Box::new(substitute(input, parameters, budget, depth)?),
-            pattern: Box::new(substitute(pattern, parameters, budget, depth)?),
-            flags: flags
-                .as_ref()
-                .map(|flags| substitute(flags, parameters, budget, depth).map(Box::new))
-                .transpose()?,
-        },
-        ScalarSequenceExpr::Generate { from, to } => ScalarSequenceExpr::Generate {
-            from: from
-                .as_ref()
-                .map(|from| substitute(from, parameters, budget, depth).map(Box::new))
-                .transpose()?,
-            to: Box::new(substitute(to, parameters, budget, depth)?),
-        },
-    })
+    expansion::sequence(sequence, Some(parameters), budget, depth)
 }
 
 fn clone_with_budget(
@@ -1477,124 +1336,27 @@ fn clone_with_budget(
     budget: &mut ExpansionBudget,
     depth: usize,
 ) -> Result<ScalarExpr, String> {
-    budget.claim(depth)?;
-    match expression {
-        ScalarExpr::Parameter(component_id) => Ok(ScalarExpr::Parameter(*component_id)),
-        ScalarExpr::DefaultedParameter {
-            component_id,
-            default,
-        } => Ok(ScalarExpr::DefaultedParameter {
-            component_id: *component_id,
-            default: Box::new(clone_with_budget(default, budget, depth + 1)?),
-        }),
-        ScalarExpr::Const(value) => Ok(ScalarExpr::Const(value.clone())),
-        ScalarExpr::RuntimeValue(value) => Ok(ScalarExpr::RuntimeValue(*value)),
-        ScalarExpr::Call { function, args } => Ok(ScalarExpr::Call {
-            function: function.clone(),
-            args: args
-                .iter()
-                .map(|arg| clone_with_budget(arg, budget, depth + 1))
-                .collect::<Result<_, _>>()?,
-        }),
-        ScalarExpr::If {
-            condition,
-            then,
-            else_,
-        } => Ok(ScalarExpr::If {
-            condition: Box::new(clone_with_budget(condition, budget, depth + 1)?),
-            then: Box::new(clone_with_budget(then, budget, depth + 1)?),
-            else_: Box::new(clone_with_budget(else_, budget, depth + 1)?),
-        }),
-        ScalarExpr::ValueMap {
-            input,
-            input_type,
-            table,
-            default,
-        } => Ok(ScalarExpr::ValueMap {
-            input: Box::new(clone_with_budget(input, budget, depth + 1)?),
-            input_type: *input_type,
-            table: table.clone(),
-            default: default.clone(),
-        }),
-        ScalarExpr::SequenceItemAt { sequence, index } => Ok(ScalarExpr::SequenceItemAt {
-            sequence: clone_sequence_with_budget(sequence, budget, depth + 1)?,
-            index: Box::new(clone_with_budget(index, budget, depth + 1)?),
-        }),
-        ScalarExpr::SequenceExists {
-            sequence,
-            item_feed,
-            predicate,
-        } => Ok(ScalarExpr::SequenceExists {
-            sequence: clone_sequence_with_budget(sequence, budget, depth + 1)?,
-            item_feed: *item_feed,
-            predicate: Box::new(clone_with_budget(predicate, budget, depth + 1)?),
-        }),
-        ScalarExpr::SequenceItem(feed) => Ok(ScalarExpr::SequenceItem(*feed)),
-        ScalarExpr::SequencePosition(feed) => Ok(ScalarExpr::SequencePosition(*feed)),
-        ScalarExpr::SequenceAggregate {
-            function,
-            sequence,
-            item_feed,
-            predicate,
-            expression,
-            arg,
-        } => Ok(ScalarExpr::SequenceAggregate {
-            function: *function,
-            sequence: clone_sequence_with_budget(sequence, budget, depth + 1)?,
-            item_feed: *item_feed,
-            predicate: predicate
-                .as_ref()
-                .map(|predicate| clone_with_budget(predicate, budget, depth + 1).map(Box::new))
-                .transpose()?,
-            expression: expression
-                .as_ref()
-                .map(|expression| clone_with_budget(expression, budget, depth + 1).map(Box::new))
-                .transpose()?,
-            arg: arg
-                .as_ref()
-                .map(|arg| clone_with_budget(arg, budget, depth + 1).map(Box::new))
-                .transpose()?,
-        }),
-    }
+    expansion::scalar(expression, None, budget, depth)
 }
 
+#[cfg_attr(
+    not(test),
+    allow(
+        dead_code,
+        reason = "Retained private sequence seam; scalar traversal uses heap frames"
+    )
+)]
 fn clone_sequence_with_budget(
     sequence: &ScalarSequenceExpr,
     budget: &mut ExpansionBudget,
     depth: usize,
 ) -> Result<ScalarSequenceExpr, String> {
-    Ok(match sequence {
-        ScalarSequenceExpr::Tokenize { input, delimiter } => ScalarSequenceExpr::Tokenize {
-            input: Box::new(clone_with_budget(input, budget, depth)?),
-            delimiter: Box::new(clone_with_budget(delimiter, budget, depth)?),
-        },
-        ScalarSequenceExpr::TokenizeByLength { input, length } => {
-            ScalarSequenceExpr::TokenizeByLength {
-                input: Box::new(clone_with_budget(input, budget, depth)?),
-                length: Box::new(clone_with_budget(length, budget, depth)?),
-            }
-        }
-        ScalarSequenceExpr::TokenizeRegex {
-            input,
-            pattern,
-            flags,
-        } => ScalarSequenceExpr::TokenizeRegex {
-            input: Box::new(clone_with_budget(input, budget, depth)?),
-            pattern: Box::new(clone_with_budget(pattern, budget, depth)?),
-            flags: flags
-                .as_ref()
-                .map(|flags| clone_with_budget(flags, budget, depth).map(Box::new))
-                .transpose()?,
-        },
-        ScalarSequenceExpr::Generate { from, to } => ScalarSequenceExpr::Generate {
-            from: from
-                .as_ref()
-                .map(|from| clone_with_budget(from, budget, depth).map(Box::new))
-                .transpose()?,
-            to: Box::new(clone_with_budget(to, budget, depth)?),
-        },
-    })
+    expansion::sequence(sequence, None, budget, depth)
 }
+
+#[cfg(test)]
+#[path = "scalar_expansion_tests.rs"]
+mod expansion_tests;
 
 #[cfg(test)]
 #[path = "scalar_multi_case_tests.rs"]
