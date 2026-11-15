@@ -8,7 +8,7 @@ use ir::{ScalarType, SchemaKind, SchemaNode};
 use mapping::{
     EdiAutocomplete, EdiBoundaryKind, EdiImpliedDecimal, EdiLexicalFormat, EdiLexicalKind,
     EdiValueConstraint, FormatOptions, X12Autocomplete, X12Descriptor, X12DescriptorEnvelope,
-    X12DescriptorSeparators, X12DescriptorVersion, X12Separators,
+    X12DescriptorSeparators, X12DescriptorVersion, X12SegmentLineEnding, X12Separators,
 };
 
 use crate::{EmbeddedSchemaError, Program, ProgramValidationError, serialize_embedded_schema};
@@ -52,6 +52,8 @@ pub struct X12BoundaryOptions {
     pub implied_decimals: Vec<EdiImpliedDecimal>,
     pub lexical_formats: Vec<EdiLexicalFormat>,
     pub autocomplete: Option<X12Autocomplete>,
+    /// Target-only physical segment formatting; LF retains legacy bytes.
+    pub segment_line_ending: X12SegmentLineEnding,
 }
 
 impl X12BoundaryOptions {
@@ -80,6 +82,7 @@ impl X12BoundaryOptions {
                 matches!(completion, EdiAutocomplete::X12(_)).then(|| completion.clone())
             }),
             x12_separators: options.x12_separators,
+            x12_segment_line_ending: options.x12_segment_line_ending,
             x12_interchange_version: options
                 .x12_interchange_version
                 .as_ref()
@@ -94,6 +97,7 @@ impl X12BoundaryOptions {
             envelope_profile: X12EnvelopeProfile::default(),
             interchange_version: options.x12_interchange_version.clone(),
             separators: options.x12_separators,
+            segment_line_ending: options.x12_segment_line_ending,
             constraints: options.edi_value_constraints.clone(),
             lenient_segments: options.lenient_segments,
             implied_decimals: options.edi_implied_decimals.clone(),
@@ -384,6 +388,25 @@ pub(crate) fn descriptor(
         .ok_or_else(|| schema_error(side, &[], "unsupported X12 version"))?;
     validate_constraints(schema, &options.constraints, side)?;
     validate_profile_options(schema, options, side)?;
+    if !options.segment_line_ending.is_lf() {
+        if side == X12BoundarySide::Source {
+            return Err(schema_error(
+                side,
+                &[],
+                "segment line endings are output-only",
+            ));
+        }
+        if options
+            .separators
+            .is_some_and(|syntax| matches!(syntax.segment, '\n' | '\r'))
+        {
+            return Err(schema_error(
+                side,
+                &[],
+                "CRLF formatting requires a visible segment terminator",
+            ));
+        }
+    }
     let schema_descriptor = serialize_embedded_schema(schema, MAX_EMBEDDED_X12_DESCRIPTOR_BYTES)
         .map_err(|error| X12BoundaryPolicyError::EmbeddedSchema { side, error })?;
     let encoded = X12Descriptor {
@@ -409,6 +432,7 @@ pub(crate) fn descriptor(
                 Some(X12DescriptorEnvelope::MapForceInterchanges)
             }
         },
+        segment_line_ending: options.segment_line_ending,
     };
     let encoded = serde_json::to_string(&encoded)
         .map_err(|_| schema_error(side, &[], "descriptor serialization failed"))?;

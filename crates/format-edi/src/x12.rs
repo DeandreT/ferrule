@@ -14,6 +14,7 @@
 use std::path::Path;
 
 use ir::{Instance, SchemaKind, SchemaNode, Value};
+pub use mapping::X12SegmentLineEnding;
 
 use crate::autocomplete as envelope;
 use crate::segments::{
@@ -39,6 +40,9 @@ mod interchange_syntax_tests;
 #[cfg(test)]
 #[path = "x12/isa_encoding_tests.rs"]
 mod isa_encoding_tests;
+#[cfg(test)]
+#[path = "x12/line_ending_tests.rs"]
+mod line_ending_tests;
 
 const WRITE_OPTIONS: WriteOptions = WriteOptions {
     element: '*',
@@ -46,7 +50,10 @@ const WRITE_OPTIONS: WriteOptions = WriteOptions {
     terminator: '~',
     release: None,
     repetition: Some('^'),
-    style: WriteStyle::Delimited,
+    style: WriteStyle::Delimited {
+        line_ending: X12SegmentLineEnding::Lf,
+        maximum_bytes: None,
+    },
     interchange_version: None,
 };
 
@@ -70,6 +77,56 @@ pub struct Autocomplete<'a> {
     pub current_datetime: &'a str,
     pub request_acknowledgement: bool,
     pub transaction_set: Option<&'a str>,
+}
+
+/// Explicit X12 writer configuration. Existing entrypoints retain LF defaults.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct OutputOptions<'a> {
+    separators: Separators,
+    interchange_version: Option<&'a str>,
+    autocomplete: Option<Autocomplete<'a>>,
+    line_ending: X12SegmentLineEnding,
+    maximum_bytes: Option<usize>,
+}
+
+impl<'a> OutputOptions<'a> {
+    pub fn with_separators(mut self, value: Separators) -> Self {
+        self.separators = value;
+        self
+    }
+    pub fn with_interchange_version(mut self, value: Option<&'a str>) -> Self {
+        self.interchange_version = value;
+        self
+    }
+    pub fn with_autocomplete(mut self, value: Option<Autocomplete<'a>>) -> Self {
+        self.autocomplete = value;
+        self
+    }
+    pub fn with_segment_line_ending(mut self, value: X12SegmentLineEnding) -> Self {
+        self.line_ending = value;
+        self
+    }
+    /// Optional exact UTF-8 ceiling, checked before each segment is appended.
+    pub fn with_maximum_bytes(mut self, value: usize) -> Self {
+        self.maximum_bytes = Some(value);
+        self
+    }
+}
+
+pub fn to_string_with_output_options(
+    schema: &SchemaNode,
+    instance: &Instance,
+    options: OutputOptions<'_>,
+) -> Result<String, EdiFormatError> {
+    to_string_with_selected_options(schema, instance, options, false)
+}
+
+pub fn to_document_string_with_output_options(
+    schema: &SchemaNode,
+    instance: &Instance,
+    options: OutputOptions<'_>,
+) -> Result<String, EdiFormatError> {
+    to_string_with_selected_options(schema, instance, options, true)
 }
 
 /// A node's physical X12 role, determined by its parent, never its label alone.
@@ -186,7 +243,10 @@ impl Separators {
             terminator: self.segment,
             release: self.release,
             repetition: self.repetition,
-            style: WriteStyle::Delimited,
+            style: WriteStyle::Delimited {
+                line_ending: X12SegmentLineEnding::Lf,
+                maximum_bytes: None,
+            },
             interchange_version: None,
         })
     }
@@ -509,9 +569,42 @@ fn to_string_with_syntax_inner(
     autocomplete: Option<Autocomplete<'_>>,
     document_root: bool,
 ) -> Result<String, EdiFormatError> {
+    to_string_with_selected_options(
+        schema,
+        instance,
+        OutputOptions::default()
+            .with_separators(separators)
+            .with_interchange_version(interchange_version)
+            .with_autocomplete(autocomplete),
+        document_root,
+    )
+}
+
+fn to_string_with_selected_options(
+    schema: &SchemaNode,
+    instance: &Instance,
+    selected: OutputOptions<'_>,
+    document_root: bool,
+) -> Result<String, EdiFormatError> {
+    let OutputOptions {
+        separators,
+        interchange_version,
+        autocomplete,
+        line_ending,
+        maximum_bytes,
+    } = selected;
     crate::refuse_json_tuple(schema)?;
     validate_instance_shape(schema, instance)?;
     let mut options = separators.write_options()?;
+    if !line_ending.is_lf() && is_line_break_terminator(separators.segment) {
+        return Err(EdiFormatError::InvalidX12Separators(
+            "CRLF formatting requires a visible segment terminator".into(),
+        ));
+    }
+    options.style = WriteStyle::Delimited {
+        line_ending,
+        maximum_bytes,
+    };
     options.interchange_version = interchange_version
         .map(parse_interchange_version)
         .transpose()?;
@@ -538,7 +631,17 @@ fn to_string_with_syntax_inner(
     // Completion consumes the mapped lexicals before physical encoding. Its
     // existing date/time/control normalization must run before width checks.
     let mut out = if autocomplete.is_some() {
-        write_segments(schema, instance, &options)?
+        // Completion consumes the same legacy LF intermediate representation.
+        // The selected suffix/ceiling apply to the final completed segments,
+        // not to an intermediate spelling completion may shorten or expand.
+        let intermediate = WriteOptions {
+            style: WriteStyle::Delimited {
+                line_ending: X12SegmentLineEnding::Lf,
+                maximum_bytes: None,
+            },
+            ..options
+        };
+        write_segments(schema, instance, &intermediate)?
     } else {
         write_segments_with_encoding(schema, instance, &options, Some(encode))?
     };

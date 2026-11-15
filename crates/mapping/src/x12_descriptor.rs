@@ -9,7 +9,9 @@ use std::{fmt, marker::PhantomData};
 use serde::{Deserialize, Deserializer, Serialize, de};
 use serde_json::value::RawValue;
 
-use crate::{EdiImpliedDecimal, EdiLexicalFormat, EdiValueConstraint, X12Autocomplete};
+use crate::{
+    EdiImpliedDecimal, EdiLexicalFormat, EdiValueConstraint, X12Autocomplete, X12SegmentLineEnding,
+};
 
 // Declare the wire members once. The staged view checks object membership up
 // front, but leaves values as raw JSON so the runtime can decode/validate the
@@ -85,6 +87,9 @@ descriptor! {
         deserialize_with = "present"
     )]
     pub envelope_profile: Option<X12DescriptorEnvelope> => optional_present,
+    /// Omission is the legacy LF policy; explicit null is not a default.
+    #[serde(default, skip_serializing_if = "X12SegmentLineEnding::is_lf")]
+    pub segment_line_ending: X12SegmentLineEnding => defaulted,
 }
 
 fn required<T: de::DeserializeOwned>(
@@ -261,6 +266,7 @@ mod tests {
             lexical_formats: Vec::new(),
             autocomplete: None,
             envelope_profile: None,
+            segment_line_ending: X12SegmentLineEnding::Lf,
         }
     }
 

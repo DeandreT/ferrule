@@ -49,6 +49,9 @@ mod generated_artifact_evidence;
 #[cfg(test)]
 mod json5_output_tests;
 #[cfg(test)]
+#[path = "../../codegen/tests/fixtures/x12_line_endings.rs"]
+mod x12_line_ending_fixture;
+#[cfg(test)]
 mod x12_output_tests;
 
 #[cfg(test)]

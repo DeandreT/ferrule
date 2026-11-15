@@ -72,6 +72,18 @@ fn declaration(
         return Err(dependency.clone().into());
     }
     let side = direction.label();
+    if !options.x12_segment_line_ending.is_lf()
+        && (direction != Direction::Output || options.edi_kind != Some(EdiBoundaryKind::X12))
+    {
+        bail!("explicit X12 segment line endings require an X12 output boundary");
+    }
+    if !options.x12_segment_line_ending.is_lf()
+        && options
+            .x12_separators
+            .is_some_and(|syntax| matches!(syntax.segment, '\n' | '\r'))
+    {
+        bail!("CRLF formatting requires a visible X12 segment terminator");
+    }
     let selected = if let Some(value) = &options.xbrl {
         reject_xbrl_conflicts(options, side)?;
         SelectedFormat::Xbrl(value)

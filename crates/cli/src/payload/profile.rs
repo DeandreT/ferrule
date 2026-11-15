@@ -166,6 +166,9 @@ fn document_identity(options: &FormatOptions) -> anyhow::Result<&'static Path> {
         accepted.edi_autocomplete = options.edi_autocomplete.clone();
         accepted.x12_separators = options.x12_separators;
         accepted.x12_interchange_version = options.x12_interchange_version.clone();
+        if kind == EdiBoundaryKind::X12 {
+            accepted.x12_segment_line_ending = options.x12_segment_line_ending;
+        }
         "document.edi"
     } else if let Some(layout) = &options.fixed_width {
         accepted.fixed_width = Some(layout.clone());

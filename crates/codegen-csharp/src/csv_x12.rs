@@ -72,12 +72,21 @@ pub(crate) fn emit(
         ),
     ]);
     library.add_runtime(&crate::x12_output::X12_SOURCES);
+    crate::x12_output::add_output_policy(
+        &mut library,
+        crate::x12_output::uses_crlf(&profile.target_descriptor),
+    );
     library
         .into_artifacts_with(options, GenerationProfile::CsvX12)
         .map_err(CsvX12EmitError::from)
 }
 
 fn render(profile: &CsvX12BoundaryProfile) -> ClassPart {
+    let policy = if crate::x12_output::uses_crlf(&profile.target_descriptor) {
+        "WithLineEnding"
+    } else {
+        ""
+    };
     let mut output = String::from(
         "    private static readonly global::Ferrule.Runtime.FerruleCsvReadField[] CsvInputFields =\n        new global::Ferrule.Runtime.FerruleCsvReadField[]\n        {\n",
     );
@@ -137,7 +146,7 @@ fn render(profile: &CsvX12BoundaryProfile) -> ClassPart {
                 "        var target = Execute(input);\n"
             });
             output.push_str(&format!(
-                "        return global::Ferrule.Runtime.FerruleX12.SerializeEmbedded{suffix}(CsvX12TargetDescriptor, target{});\n    }}\n",
+                "        return global::Ferrule.Runtime.FerruleX12.SerializeEmbedded{suffix}{policy}(CsvX12TargetDescriptor, target{});\n    }}\n",
                 if contextual { ", executionContext" } else { "" },
             ));
         }
@@ -150,4 +159,41 @@ fn character(value: Option<char>) -> String {
         || "null".into(),
         |value| format!("(char){}", u32::from(value)),
     )
+}
+
+#[cfg(test)]
+use crate::x12_line_ending_fixture as line_ending_fixture;
+
+#[cfg(test)]
+mod line_ending_tests {
+    use super::line_ending_fixture as fixture;
+    use super::*;
+
+    #[test]
+    fn csv_target_descriptor_selects_string_and_byte_helpers() {
+        let envelope = codegen::X12EnvelopeProfile::SingleTransaction;
+        let program = codegen::lower(&fixture::project(envelope)).unwrap();
+        for ending in [
+            mapping::X12SegmentLineEnding::Lf,
+            mapping::X12SegmentLineEnding::CrLf,
+        ] {
+            let profile =
+                codegen::prepare_x12_boundary(&program, &fixture::policy(envelope, ending, false))
+                    .unwrap();
+            let csv = CsvX12BoundaryProfile {
+                fields: vec![],
+                source: Default::default(),
+                target_descriptor: profile.target_descriptor,
+            };
+            let source = render(&csv).members;
+            assert_eq!(
+                source.contains("SerializeEmbeddedBytesWithLineEnding"),
+                !ending.is_lf()
+            );
+            assert_eq!(
+                source.contains("SerializeEmbeddedWithLineEnding"),
+                !ending.is_lf()
+            );
+        }
+    }
 }

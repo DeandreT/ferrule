@@ -74,6 +74,13 @@ pub(crate) fn emit(
         .map_err(StaticDocumentEmitError::Policy)?;
     let mut library = crate::library(program)?;
     library.add_companion("GeneratedMapping.Documents.cs", render(&profile));
+    let crlf = std::iter::once(&profile.target)
+        .chain(profile.extra_targets.iter().map(|target| &target.boundary))
+        .any(|boundary| {
+            boundary.format == DocumentBoundaryFormat::X12
+                && crate::x12_output::uses_crlf(&boundary.descriptor)
+        });
+    crate::x12_output::add_output_policy(&mut library, crlf);
     if has_edifact(&profile) {
         crate::edi_runtime::add_runtime(&mut library);
     } else {
@@ -565,8 +572,15 @@ fn serialization(
         };
     }
     let selected_codec = codec(boundary.format);
+    let policy = if boundary.format == DocumentBoundaryFormat::X12
+        && crate::x12_output::uses_crlf(&boundary.descriptor)
+    {
+        "WithLineEnding"
+    } else {
+        ""
+    };
     let call = format!(
-        "global::Ferrule.Runtime.{selected_codec}.SerializeEmbedded{suffix}({descriptor}, {instance}"
+        "global::Ferrule.Runtime.{selected_codec}.SerializeEmbedded{suffix}{policy}({descriptor}, {instance}"
     );
     if boundary.format == DocumentBoundaryFormat::X12 {
         format!(

@@ -170,6 +170,16 @@ fn admit_profile(
     project: &mapping::Project,
     profile: &GenerateProfile,
 ) -> anyhow::Result<ProfilePolicy> {
+    if project.uses_x12_segment_line_ending()
+        && !matches!(
+            profile,
+            GenerateProfile::X12 { .. }
+                | GenerateProfile::CsvX12 { .. }
+                | GenerateProfile::StaticDocuments { .. }
+        )
+    {
+        bail!("explicit X12 segment line endings require a strict X12 output adapter");
+    }
     Ok(match profile {
         GenerateProfile::Ordinary => ProfilePolicy::Ordinary,
         GenerateProfile::CsvDocument | GenerateProfile::RawDelimitedDocument => {
@@ -272,6 +282,9 @@ fn prepare_document(
     profile: &GenerateProfile,
 ) -> anyhow::Result<PreparedDesign> {
     let raw = *profile == GenerateProfile::PrimaryRawDelimitedDocument;
+    if document.project().uses_x12_segment_line_ending() {
+        bail!("primary document adapters do not support explicit X12 segment line endings");
+    }
     refuse_xlsx_grid_regions(document.project())?;
     if let GenerateProfile::PrimaryMappedCsvDocument { rows_field } = profile {
         let lowered = codegen::lower_document(document).map_err(|error| match error {

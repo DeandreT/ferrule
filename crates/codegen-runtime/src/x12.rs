@@ -150,6 +150,7 @@ struct Profile {
     lexical: Vec<EdiLexicalFormat>,
     constraints: BTreeMap<Vec<String>, EdiValueConstraint>,
     autocomplete: Option<X12Autocomplete>,
+    line_ending: mapping::X12SegmentLineEnding,
 }
 
 /// Profiles of the descriptor-taking boundaries, decoded once per descriptor
@@ -255,21 +256,32 @@ impl Profile {
             }
         }
         validate_native_schema(SchemaCursor::root(&schema))?;
+        let syntax = wire::Syntax::selected(
+            value.separators().map_err(|e| descriptor(e.to_string()))?,
+            version,
+        )?;
+        let lenient = value
+            .lenient_segments()
+            .map_err(|_| descriptor("missing lenient_segments"))?;
+        let line_ending = value
+            .segment_line_ending()
+            .map_err(|e| descriptor(e.to_string()))?;
+        if !line_ending.is_lf() && syntax.is_some_and(|syntax| syntax.native().segment == '\n') {
+            return Err(descriptor(
+                "CRLF formatting requires a visible segment terminator",
+            ));
+        }
         Ok(Self {
             schema,
             version,
             envelope,
-            syntax: wire::Syntax::selected(
-                value.separators().map_err(|e| descriptor(e.to_string()))?,
-                version,
-            )?,
-            lenient: value
-                .lenient_segments()
-                .map_err(|_| descriptor("missing lenient_segments"))?,
+            syntax,
+            lenient,
             implied,
             lexical,
             constraints: indexed,
             autocomplete,
+            line_ending,
         })
     }
 }
@@ -287,6 +299,9 @@ pub fn parse_x12_bytes(descriptor: &str, document: &[u8]) -> Result<Instance, X1
 pub fn parse_x12(descriptor: &str, document: &str) -> Result<Instance, X12BoundaryError> {
     input_size(document.len())?;
     let profile = profile(descriptor)?;
+    if !profile.line_ending.is_lf() {
+        return Err(self::descriptor("segment line endings are output-only"));
+    }
     parse_admitted(
         &profile,
         document,

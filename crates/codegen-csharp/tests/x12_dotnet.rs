@@ -30,6 +30,12 @@ const DEEP: &str = include_str!("x12/deep-940.x12");
 mod grouped;
 #[path = "x12/gs05_completion.rs"]
 mod gs05_completion;
+#[path = "../../codegen/tests/fixtures/x12_line_endings.rs"]
+mod line_ending_fixture;
+#[path = "x12/line_ending_routes.rs"]
+mod line_ending_routes;
+#[path = "x12/line_endings.rs"]
+mod line_endings;
 #[path = "x12/mapforce.rs"]
 mod mapforce;
 #[path = "x12/mapforce_acknowledgments.rs"]

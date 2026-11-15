@@ -17,6 +17,7 @@ pub(super) fn validate(
         edi_autocomplete,
         x12_separators,
         x12_interchange_version,
+        x12_segment_line_ending,
         idoc,
         idoc_native_config,
         idoc_native_text_settings,
@@ -103,6 +104,12 @@ pub(super) fn validate(
         xlsx_hierarchical,
         sqlite_read
     );
+    if !x12_segment_line_ending.is_lf() {
+        return Err(Json5BoundaryPolicyError::FormatOption {
+            side,
+            field: "x12_segment_line_ending",
+        });
+    }
     empty!(
         mfd_json5_string_dependencies,
         edi_implied_decimals,

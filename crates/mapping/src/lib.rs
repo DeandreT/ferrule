@@ -51,6 +51,7 @@ mod swift;
 mod tabular;
 mod wsdl;
 mod x12_descriptor;
+mod x12_output;
 mod xbrl;
 mod xlsx_output;
 mod xml_mixed_content_owned;
@@ -194,6 +195,7 @@ pub use x12_descriptor::{
     X12Descriptor, X12DescriptorEnvelope, X12DescriptorSeparators, X12DescriptorVersion,
     X12DescriptorView,
 };
+pub use x12_output::{X12_SEGMENT_LINE_ENDING_V1_CAPABILITY, X12SegmentLineEnding};
 pub use xbrl::{
     XBRL_UNIT_FIELD_PREFIX, XbrlBoundaryMode, XbrlBoundaryOptions, XbrlBoundaryOptionsError,
     XbrlFactBinding, XbrlFactType, XbrlNamespaceBinding,

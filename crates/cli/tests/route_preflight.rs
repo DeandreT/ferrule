@@ -886,6 +886,78 @@ fn mapped_csv_targets() -> [cli::GenerateTarget; 2] {
 }
 
 #[test]
+fn primary_mapped_csv_refuses_explicit_x12_line_endings() -> anyhow::Result<()> {
+    let directory = TempDir::new("primary_mapped_csv_x12_line_endings")?;
+    let original = primary_mapped_csv_fixture::document(false);
+    for placement in 0..4 {
+        let mut project = original.project().clone();
+        let options = mapping::FormatOptions {
+            x12_segment_line_ending: mapping::X12SegmentLineEnding::CrLf,
+            ..Default::default()
+        };
+        match placement {
+            0 => project.source_options.x12_segment_line_ending = options.x12_segment_line_ending,
+            1 => project.target_options.x12_segment_line_ending = options.x12_segment_line_ending,
+            2 => project.extra_sources.push(NamedSource {
+                name: "lookup".into(),
+                path: "lookup.csv".into(),
+                schema: project.source.clone(),
+                options,
+                dynamic_path: None,
+            }),
+            _ => project.extra_targets.push(mapping::NamedTarget {
+                name: "other".into(),
+                path: None,
+                schema: project.target.clone(),
+                options,
+                root: project.root.clone(),
+            }),
+        }
+        let document = mapping::DocumentProject::new(project, original.primary_source().clone());
+        let saved = directory.join(&format!("{placement}.json"));
+        std::fs::write(
+            &saved,
+            mapping::document_project_file::encode_pretty(&document)?,
+        )?;
+        for (language, target) in ["csharp", "rust"].into_iter().zip(mapped_csv_targets()) {
+            let output = directory.join(&format!("{placement}-{language}/library"));
+            let before = directory.snapshot()?;
+            let expected =
+                "primary document adapters do not support explicit X12 segment line endings";
+            let planned =
+                cli::plan_generate(&saved, &output, &target, mapped_csv_profile("Entries"))
+                    .unwrap_err();
+            let generated = cli::generate_project_with_profile(
+                &saved,
+                &output,
+                target.clone(),
+                mapped_csv_profile("Entries"),
+            )
+            .unwrap_err();
+            assert_eq!(planned.to_string(), expected);
+            assert_eq!(generated.to_string(), expected);
+            let mut args = vec![
+                "generate",
+                "--project",
+                utf8(&saved)?,
+                "--language",
+                language,
+                "--out",
+                utf8(&output)?,
+                "--primary-mapped-csv-documents",
+                "Entries",
+            ];
+            if let cli::GenerateTarget::Rust { runtime_path } = &target {
+                args.extend(["--rust-runtime-path", utf8(runtime_path)?]);
+            }
+            assert_refused(&ferrule(&args, b"")?, expected);
+            assert_eq!(directory.snapshot()?, before);
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn primary_mapped_csv_saved_plan_matches_generation_without_acquiring_sources() -> anyhow::Result<()>
 {
     let directory = TempDir::new("primary_mapped_csv_plan")?;
