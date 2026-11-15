@@ -144,11 +144,223 @@ fn artifact_bytes(artifacts: &codegen::ArtifactSet) -> BTreeMap<&str, &[u8]> {
         .map(|file| (file.path.as_str(), file.contents.as_slice()))
         .collect()
 }
-fn write_files(root: &Path, artifacts: &codegen::ArtifactSet) -> TestResult<()> {
-    for file in artifacts.files() {
-        let path = root.join(file.path.as_str());
-        std::fs::create_dir_all(path.parent().ok_or("artifact parent")?)?;
-        std::fs::write(path, &file.contents)?;
+/// Save the existing authored model, exercise the actual CLI and compare every
+/// emitted path/byte with the configured Generator under identical settings.
+/// The returned artifacts are read back from the CLI tree, including its manifest.
+fn cli_artifacts(
+    document: &mapping::DocumentProject,
+    rows_field: &str,
+    saved: &Path,
+    output: &Path,
+    target: &GenerateTarget,
+    settings: &cli::GenerateSettings,
+) -> TestResult<codegen::ArtifactSet> {
+    std::fs::write(
+        saved,
+        mapping::document_project_file::encode_pretty(document)?,
+    )?;
+    let lowered = codegen::lower_document(document)?;
+    let policy = PrimaryMappedCsvDocumentPolicy::from_project(document.project(), rows_field)?;
+    let mut command = Command::new(env!("CARGO_BIN_EXE_ferrule"));
+    command
+        .args(["generate", "--project"])
+        .arg(saved)
+        .arg("--out")
+        .arg(output)
+        .args(["--primary-mapped-csv-documents", rows_field])
+        .current_dir(saved.parent().ok_or("saved document parent")?);
+    if settings.manifest == codegen::ManifestSelection::Included {
+        command.arg("--compatibility-manifest");
+    }
+    let expected = match target {
+        GenerateTarget::Rust { runtime_path } => {
+            command
+                .args(["--language", "rust", "--rust-runtime-path"])
+                .arg(runtime_path);
+            if let Some(name) = &settings.rust_package_name {
+                command.args(["--rust-package-name", name.as_str()]);
+            }
+            let options = codegen_rust::Options {
+                package_name: settings
+                    .rust_package_name
+                    .as_ref()
+                    .map_or(
+                        "ferrule-generated-mapping",
+                        codegen_rust::PackageName::as_str,
+                    )
+                    .to_owned(),
+                runtime_dependency: codegen_rust::RuntimeDependency::Path(
+                    runtime_path
+                        .canonicalize()?
+                        .to_str()
+                        .ok_or("UTF-8 runtime path")?
+                        .to_owned(),
+                ),
+            };
+            codegen_rust::Generator::new(&options)
+                .with_manifest(settings.manifest)
+                .emit_with_primary_mapped_csv_documents(&lowered, &policy)?
+        }
+        GenerateTarget::CSharp => {
+            command.args(["--language", "csharp"]);
+            if let Some(identity) = &settings.csharp_identity {
+                command.args([
+                    "--csharp-assembly-name",
+                    identity.assembly_name(),
+                    "--csharp-namespace",
+                    identity.root_namespace(),
+                    "--csharp-class",
+                    identity.mapping_class(),
+                ]);
+            }
+            let options = codegen_csharp::Options {
+                identity: settings.csharp_identity.clone().unwrap_or_default(),
+                manifest: settings.manifest,
+            };
+            codegen_csharp::Generator::new(&options)
+                .emit_with_primary_mapped_csv_documents(&lowered, &policy)?
+        }
+    };
+    let result = command.output()?;
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    let actual = artifact_files(output)?;
+    let expected_bytes = artifact_bytes(&expected)
+        .into_iter()
+        .map(|(path, bytes)| (path.to_owned(), bytes.to_vec()))
+        .collect::<Vec<_>>();
+    assert_eq!(actual, expected_bytes, "complete CLI path/byte set");
+    let actual = actual
+        .into_iter()
+        .map(|(path, contents)| {
+            Ok(codegen::GeneratedFile::new(
+                codegen::ArtifactPath::new(path)?,
+                contents,
+            ))
+        })
+        .collect::<Result<Vec<_>, codegen::ArtifactPathError>>()?;
+    Ok(codegen::ArtifactSet::new(actual)?)
+}
+
+#[test]
+fn primary_mapped_csv_documents_cli_matches_configured_generators() -> TestResult<()> {
+    let directory = TempDir::new("primary-mapped-csv-cli")?;
+    let runtime = Path::new(env!("CARGO_MANIFEST_DIR")).join("../codegen-runtime");
+    for literal in [false, true] {
+        for renamed in [false, true] {
+            let original = fixture::document(literal);
+            let rows = if renamed {
+                " Line Items Ω "
+            } else {
+                fixture::ROWS
+            };
+            let mut project = original.project().clone();
+            let ir::SchemaKind::Group { children, .. } = &mut project.target.kind else {
+                return Err("authored target wrapper".into());
+            };
+            children[0].name = rows.into();
+            project.root.children[0].target_field = rows.into();
+            let document =
+                mapping::DocumentProject::new(project, original.primary_source().clone());
+            for custom in [false, true] {
+                for manifest in [
+                    codegen::ManifestSelection::Omitted,
+                    codegen::ManifestSelection::Included,
+                ] {
+                    for target in [
+                        GenerateTarget::Rust {
+                            runtime_path: runtime.clone(),
+                        },
+                        GenerateTarget::CSharp,
+                    ] {
+                        let language = if matches!(target, GenerateTarget::Rust { .. }) {
+                            "rust"
+                        } else {
+                            "csharp"
+                        };
+                        let root = directory.0.join(format!(
+                            "{literal}-{renamed}-{custom}-{manifest:?}-{language}"
+                        ));
+                        std::fs::create_dir(&root)?;
+                        for preview in ["never-open-preview.csv", "never-use-parameter-preview.csv"]
+                        {
+                            std::fs::create_dir(root.join(preview))?;
+                        }
+                        let settings = cli::GenerateSettings {
+                            rust_package_name: if custom && language == "rust" {
+                                Some(codegen_rust::PackageName::new("authored-cli-packets")?)
+                            } else {
+                                None
+                            },
+                            csharp_identity: if custom && language == "csharp" {
+                                Some(codegen_csharp::Identity::new(
+                                    "Authored.Cli.Packets",
+                                    "Authored.Cli.Packets",
+                                    "PacketMapping",
+                                )?)
+                            } else {
+                                None
+                            },
+                            manifest,
+                        };
+                        let artifacts = cli_artifacts(
+                            &document,
+                            rows,
+                            &root.join("document.json"),
+                            &root.join("library"),
+                            &target,
+                            &settings,
+                        )?;
+                        assert_eq!(
+                            artifacts
+                                .files()
+                                .iter()
+                                .any(|file| file.path.as_str() == codegen::MANIFEST_PATH),
+                            manifest == codegen::ManifestSelection::Included
+                        );
+                        assert!(
+                            !root.join("bundles").exists(),
+                            "generation publishes no business documents"
+                        );
+                        for preview in ["never-open-preview.csv", "never-use-parameter-preview.csv"]
+                        {
+                            assert!(root.join(preview).is_dir());
+                        }
+                    }
+                }
+            }
+        }
+    }
+    // A saved-format route is not required by this explicit endpoint policy.
+    let original = fixture::document(false);
+    let mut project = original.project().clone();
+    project.source_options.tabular_kind = None;
+    project.target_options.tabular_kind = None;
+    let document = mapping::DocumentProject::new(project, original.primary_source().clone());
+    assert!(document.primary_route().is_err());
+    assert!(codegen::lower_document(&document)?.primary_route().is_err());
+    for target in [
+        GenerateTarget::Rust {
+            runtime_path: runtime,
+        },
+        GenerateTarget::CSharp,
+    ] {
+        let language = if matches!(target, GenerateTarget::Rust { .. }) {
+            "rust"
+        } else {
+            "csharp"
+        };
+        cli_artifacts(
+            &document,
+            fixture::ROWS,
+            &directory.0.join("explicit.document.json"),
+            &directory.0.join(format!("explicit-{language}")),
+            &target,
+            &cli::GenerateSettings::default(),
+        )?;
     }
     Ok(())
 }
@@ -485,8 +697,6 @@ fn primary_mapped_csv_documents_compiled_release_hosts() -> TestResult<()> {
             include_str!("primary_mapped_csv_documents/cases.tsv"),
         )?;
         let document = fixture::document(literal);
-        let policy = endpoint_policy(&document)?;
-        let lowered = codegen::lower_document(&document)?;
         let library_name = format!("authored-primary-packets-{kind}");
         let host_name = format!("authored-primary-host-{kind}");
         let options = codegen_rust::Options {
@@ -495,9 +705,22 @@ fn primary_mapped_csv_documents_compiled_release_hosts() -> TestResult<()> {
                 runtime.to_string_lossy().into(),
             ),
         };
-        let rust = codegen_rust::Generator::new(&options)
-            .with_manifest(codegen::ManifestSelection::Included)
-            .emit_with_primary_mapped_csv_documents(&lowered, &policy)?;
+        // Consumers compile the CLI-emitted tree after complete byte comparison,
+        // not a second direct-emitter copy. Existing host expectations stay intact.
+        let rust = cli_artifacts(
+            &document,
+            fixture::ROWS,
+            &variant.join("document.json"),
+            &variant.join("rust"),
+            &GenerateTarget::Rust {
+                runtime_path: runtime.clone(),
+            },
+            &cli::GenerateSettings {
+                rust_package_name: Some(codegen_rust::PackageName::new(&library_name)?),
+                manifest: codegen::ManifestSelection::Included,
+                ..Default::default()
+            },
+        )?;
         checked_manifest(
             &rust,
             codegen::LibraryIdentity::Rust {
@@ -507,7 +730,6 @@ fn primary_mapped_csv_documents_compiled_release_hosts() -> TestResult<()> {
             "codegen-runtime",
             requested_path_binding(&options),
         )?;
-        write_files(&variant.join("rust"), &rust)?;
         let host = variant.join("rust-host");
         std::fs::create_dir_all(host.join("src"))?;
         std::fs::write(
@@ -555,7 +777,12 @@ fn primary_mapped_csv_documents_compiled_release_hosts() -> TestResult<()> {
             &mut command,
             &variant,
             "primary-mapped-rust-release",
-            &["rust".into(), "rust-host".into(), "cases.tsv".into()],
+            &[
+                "rust".into(),
+                "rust-host".into(),
+                "cases.tsv".into(),
+                "document.json".into(),
+            ],
         )?;
         assert!(
             result.status.success(),
@@ -576,8 +803,18 @@ fn primary_mapped_csv_documents_compiled_release_hosts() -> TestResult<()> {
             )?,
             manifest: codegen::ManifestSelection::Included,
         };
-        let csharp = codegen_csharp::Generator::new(&options)
-            .emit_with_primary_mapped_csv_documents(&lowered, &policy)?;
+        let csharp = cli_artifacts(
+            &document,
+            fixture::ROWS,
+            &variant.join("document.json"),
+            &variant.join("csharp"),
+            &GenerateTarget::CSharp,
+            &cli::GenerateSettings {
+                csharp_identity: Some(options.identity.clone()),
+                manifest: options.manifest,
+                ..Default::default()
+            },
+        )?;
         let manifest = checked_manifest(
             &csharp,
             codegen::LibraryIdentity::CSharp {
@@ -588,7 +825,6 @@ fn primary_mapped_csv_documents_compiled_release_hosts() -> TestResult<()> {
             "Ferrule.Runtime",
             codegen::RuntimeBinding::Vendored,
         )?;
-        write_files(&variant.join("csharp"), &csharp)?;
         let host = variant.join("csharp-host");
         std::fs::create_dir_all(&host)?;
         std::fs::write(
@@ -632,6 +868,7 @@ fn primary_mapped_csv_documents_compiled_release_hosts() -> TestResult<()> {
                 "csharp".into(),
                 "csharp-host".into(),
                 "cases.tsv".into(),
+                "document.json".into(),
                 "global.json".into(),
                 "NuGet.Config".into(),
             ],
@@ -676,6 +913,7 @@ fn primary_mapped_csv_documents_compiled_release_hosts() -> TestResult<()> {
                 "csharp".into(),
                 "csharp-host".into(),
                 "cases.tsv".into(),
+                "document.json".into(),
                 "global.json".into(),
                 "NuGet.Config".into(),
             ],
