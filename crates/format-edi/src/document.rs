@@ -15,6 +15,11 @@ pub fn validate(
     options: &FormatOptions,
     kind: EdiBoundaryKind,
 ) -> Result<(), EdiFormatError> {
+    if !options.x12_segment_line_ending.is_lf() {
+        return Err(invalid(
+            "shared EDI document adapters do not support explicit X12 segment line endings",
+        ));
+    }
     if schema.repeating {
         return Err(invalid("EDI documents require a singular root container"));
     }

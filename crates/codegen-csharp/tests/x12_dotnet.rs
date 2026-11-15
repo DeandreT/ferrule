@@ -30,16 +30,22 @@ const DEEP: &str = include_str!("x12/deep-940.x12");
 mod grouped;
 #[path = "x12/gs05_completion.rs"]
 mod gs05_completion;
-#[path = "x12/repeating_envelope.rs"]
-mod repeating_envelope;
-#[path = "x12/repeating_envelope_acknowledgments.rs"]
-mod repeating_envelope_acknowledgments;
+#[path = "../../codegen/tests/fixtures/x12_line_endings.rs"]
+mod line_ending_fixture;
+#[path = "x12/line_ending_routes.rs"]
+mod line_ending_routes;
+#[path = "x12/line_endings.rs"]
+mod line_endings;
 #[path = "x12/mixed_syntax.rs"]
 mod mixed_syntax;
 #[path = "x12/modern.rs"]
 mod modern;
 #[path = "x12/repeated.rs"]
 mod repeated;
+#[path = "x12/repeating_envelope.rs"]
+mod repeating_envelope;
+#[path = "x12/repeating_envelope_acknowledgments.rs"]
+mod repeating_envelope_acknowledgments;
 #[path = "x12/saved_profile.rs"]
 mod saved_profile;
 

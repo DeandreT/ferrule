@@ -110,6 +110,13 @@ pub fn validate_primary_edi_documents(
         .edi_policy()
         .ok_or(PrimaryDocumentBoundaryError::EdiAdapter)?;
     route(document, PrimaryDocumentFormat::Edi(policy.kind))?;
+    // This route uses the legacy shared FerruleEdi codec, not the strict X12
+    // descriptor writer. Never discard a selected physical output policy.
+    if !policy.source.x12_segment_line_ending.is_lf()
+        || !policy.target.x12_segment_line_ending.is_lf()
+    {
+        return Err(PrimaryDocumentBoundaryError::EdiAdapter);
+    }
     for descriptor in [
         serde_json::to_vec(&document.program().source),
         serde_json::to_vec(&document.program().target),

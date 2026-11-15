@@ -9,7 +9,9 @@ use std::{fmt, marker::PhantomData};
 use serde::{Deserialize, Deserializer, Serialize, de};
 use serde_json::value::RawValue;
 
-use crate::{EdiImpliedDecimal, EdiLexicalFormat, EdiValueConstraint, X12Autocomplete};
+use crate::{
+    EdiImpliedDecimal, EdiLexicalFormat, EdiValueConstraint, X12Autocomplete, X12SegmentLineEnding,
+};
 
 // Declare the wire members once. The staged view checks object membership up
 // front, but leaves values as raw JSON so the runtime can decode/validate the
@@ -85,6 +87,9 @@ descriptor! {
         deserialize_with = "present"
     )]
     pub envelope_profile: Option<X12DescriptorEnvelope> => optional_present,
+    /// Omission is the legacy LF policy; explicit null is not a default.
+    #[serde(default, skip_serializing_if = "X12SegmentLineEnding::is_lf")]
+    pub segment_line_ending: X12SegmentLineEnding => defaulted,
 }
 
 fn required<T: de::DeserializeOwned>(
@@ -189,14 +194,13 @@ impl X12DescriptorEnvelope {
     pub const REPEATING_INTERCHANGES: Self = Self::MapForceInterchanges;
 }
 
-
 impl TryFrom<String> for X12DescriptorEnvelope {
     type Error = &'static str;
 
     fn try_from(label: String) -> Result<Self, Self::Error> {
         match label.as_str() {
             "grouped_transactions" => Ok(Self::GroupedTransactions),
-            "mapforce_interchanges" => Ok(Self::MapForceInterchanges),
+            "mapforce_interchanges" => Ok(Self::REPEATING_INTERCHANGES),
             _ => Err("unsupported envelope profile"),
         }
     }
@@ -267,6 +271,7 @@ mod tests {
             lexical_formats: Vec::new(),
             autocomplete: None,
             envelope_profile: None,
+            segment_line_ending: X12SegmentLineEnding::Lf,
         }
     }
 
@@ -284,7 +289,7 @@ mod tests {
             segment: '~',
             repetition: Some('^'),
         });
-        descriptor.envelope_profile = Some(X12DescriptorEnvelope::MapForceInterchanges);
+        descriptor.envelope_profile = Some(X12DescriptorEnvelope::REPEATING_INTERCHANGES);
         let text = serde_json::to_string(&descriptor).unwrap();
         assert_eq!(
             text,

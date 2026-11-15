@@ -7,7 +7,8 @@ use crate::{
     EdiValueConstraint, ExternalSourceOptions, FixedWidthLayout, FlexTextLayout, HttpGetOptions,
     IdocLayout, IdocNativeConfig, IdocNativeTextSettings, NodeId, PdfLayout, ProtobufOptions,
     SqliteReadProfile, SwiftMtLayout, SwiftMtOutputOptions, TabularBoundaryKind,
-    WsdlMessageOptions, X12Separators, XbrlBoundaryOptions, XlsxHierarchicalLayout, is_false,
+    WsdlMessageOptions, X12SegmentLineEnding, X12Separators, XbrlBoundaryOptions,
+    XlsxHierarchicalLayout, is_false,
 };
 
 macro_rules! xlsx_coordinate {
@@ -322,6 +323,9 @@ pub struct FormatOptions {
     /// boundary.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub x12_interchange_version: Option<String>,
+    /// Target-only X12 segment formatting. LF preserves all legacy bytes.
+    #[serde(default, skip_serializing_if = "X12SegmentLineEnding::is_lf")]
+    pub x12_segment_line_ending: X12SegmentLineEnding,
     /// SAP IDoc: embedded fixed-record layout compiled from the external
     /// parser configuration.
     #[serde(default, skip_serializing_if = "Option::is_none")]

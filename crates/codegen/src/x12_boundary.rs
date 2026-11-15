@@ -8,7 +8,7 @@ use ir::{ScalarType, SchemaKind, SchemaNode};
 use mapping::{
     EdiAutocomplete, EdiBoundaryKind, EdiImpliedDecimal, EdiLexicalFormat, EdiLexicalKind,
     EdiValueConstraint, FormatOptions, X12Autocomplete, X12Descriptor, X12DescriptorEnvelope,
-    X12DescriptorSeparators, X12DescriptorVersion, X12Separators,
+    X12DescriptorSeparators, X12DescriptorVersion, X12SegmentLineEnding, X12Separators,
 };
 
 use crate::{EmbeddedSchemaError, Program, ProgramValidationError, serialize_embedded_schema};
@@ -17,19 +17,18 @@ pub const MAX_EMBEDDED_X12_DESCRIPTOR_BYTES: usize = 1024 * 1024;
 pub const MAX_X12_SCHEMA_DEPTH: usize = 64;
 pub const MAX_X12_SCHEMA_NODES: usize = 10_000;
 const ENVELOPE_SEGMENTS: [&str; 6] = ["ISA", "GS", "ST", "SE", "GE", "IEA"];
-/// Prefix of the acknowledgment branches the reference application adds to X12 components that
-/// validate acknowledgments.
+/// Prefix of the acknowledgment branches in an imported X12 component.
 const ACKNOWLEDGMENT_PREFIX: &str = "ParserErrors_";
 
 /// Declared ownership grammar for a complete X12 document. Grouped and
-/// The reference application ownership are explicit; saved schemas and format options do not
+/// repeating-interchange ownership are explicit; saved schemas and format options do not
 /// infer either.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum X12EnvelopeProfile {
     #[default]
     SingleTransaction,
     GroupedTransactions,
-    /// the X12 `Envelope.Config` ownership: repeating interchanges of
+    /// `Envelope.Config` ownership: repeating interchanges of
     /// optional ISA/IEA around repeating functional groups of optional GS/GE
     /// around one repeating message container. The retained
     /// `interchange_version` selects the version.
@@ -41,7 +40,6 @@ impl X12EnvelopeProfile {
     pub const REPEATING_INTERCHANGES: Self = Self::MapForceInterchanges;
 }
 
-
 /// One explicitly selected raw X12 side. Missing separators mean ISA discovery
 /// on input and `*`, `:`, `~` on output, with `^` repetition for modern
 /// profiles. Completion is explicitly selected.
@@ -50,7 +48,7 @@ pub struct X12BoundaryOptions {
     pub envelope_profile: X12EnvelopeProfile,
     /// Explicit five-digit ISA12 metadata, when retained by the source design.
     /// The fixed ISA12/GS08 schema pair determines the selected single and
-    /// grouped profiles; Repeating interchanges require this retained version.
+    /// grouped profiles; repeating interchanges require this retained version.
     pub interchange_version: Option<String>,
     pub separators: Option<X12Separators>,
     pub constraints: Vec<EdiValueConstraint>,
@@ -58,6 +56,8 @@ pub struct X12BoundaryOptions {
     pub implied_decimals: Vec<EdiImpliedDecimal>,
     pub lexical_formats: Vec<EdiLexicalFormat>,
     pub autocomplete: Option<X12Autocomplete>,
+    /// Target-only physical segment formatting; LF retains legacy bytes.
+    pub segment_line_ending: X12SegmentLineEnding,
 }
 
 impl X12BoundaryOptions {
@@ -86,6 +86,7 @@ impl X12BoundaryOptions {
                 matches!(completion, EdiAutocomplete::X12(_)).then(|| completion.clone())
             }),
             x12_separators: options.x12_separators,
+            x12_segment_line_ending: options.x12_segment_line_ending,
             x12_interchange_version: options
                 .x12_interchange_version
                 .as_ref()
@@ -100,6 +101,7 @@ impl X12BoundaryOptions {
             envelope_profile: X12EnvelopeProfile::default(),
             interchange_version: options.x12_interchange_version.clone(),
             separators: options.x12_separators,
+            segment_line_ending: options.x12_segment_line_ending,
             constraints: options.edi_value_constraints.clone(),
             lenient_segments: options.lenient_segments,
             implied_decimals: options.edi_implied_decimals.clone(),
@@ -390,6 +392,25 @@ pub(crate) fn descriptor(
         .ok_or_else(|| schema_error(side, &[], "unsupported X12 version"))?;
     validate_constraints(schema, &options.constraints, side)?;
     validate_profile_options(schema, options, side)?;
+    if !options.segment_line_ending.is_lf() {
+        if side == X12BoundarySide::Source {
+            return Err(schema_error(
+                side,
+                &[],
+                "segment line endings are output-only",
+            ));
+        }
+        if options
+            .separators
+            .is_some_and(|syntax| matches!(syntax.segment, '\n' | '\r'))
+        {
+            return Err(schema_error(
+                side,
+                &[],
+                "CRLF formatting requires a visible segment terminator",
+            ));
+        }
+    }
     let schema_descriptor = serialize_embedded_schema(schema, MAX_EMBEDDED_X12_DESCRIPTOR_BYTES)
         .map_err(|error| X12BoundaryPolicyError::EmbeddedSchema { side, error })?;
     let encoded = X12Descriptor {
@@ -411,10 +432,11 @@ pub(crate) fn descriptor(
             X12EnvelopeProfile::GroupedTransactions => {
                 Some(X12DescriptorEnvelope::GroupedTransactions)
             }
-            X12EnvelopeProfile::MapForceInterchanges => {
-                Some(X12DescriptorEnvelope::MapForceInterchanges)
+            X12EnvelopeProfile::REPEATING_INTERCHANGES => {
+                Some(X12DescriptorEnvelope::REPEATING_INTERCHANGES)
             }
         },
+        segment_line_ending: options.segment_line_ending,
     };
     let encoded = serde_json::to_string(&encoded)
         .map_err(|_| schema_error(side, &[], "descriptor serialization failed"))?;
@@ -474,7 +496,9 @@ fn validate_schema(
     match options.envelope_profile {
         X12EnvelopeProfile::SingleTransaction => {}
         X12EnvelopeProfile::GroupedTransactions => validate_grouped_grammar(schema, side)?,
-        X12EnvelopeProfile::MapForceInterchanges => validate_repeating_envelope_grammar(schema, side)?,
+        X12EnvelopeProfile::REPEATING_INTERCHANGES => {
+            validate_repeating_envelope_grammar(schema, side)?
+        }
     }
     let mut nodes = 0;
     let mut envelopes = Vec::new();
@@ -491,7 +515,7 @@ fn validate_schema(
         &mut envelopes,
         &mut repeats,
     )?;
-    let version = if options.envelope_profile == X12EnvelopeProfile::MapForceInterchanges {
+    let version = if options.envelope_profile == X12EnvelopeProfile::REPEATING_INTERCHANGES {
         validate_repeating_envelope_fields(schema, &envelopes, options, side)?
     } else {
         validate_declared_envelopes(&envelopes, options, side)?
@@ -665,7 +689,7 @@ fn validate_declared_envelopes(
     Ok(version)
 }
 
-/// Positions that EDI configurations declare as numeric data: ISA13,
+/// Positions that X12 envelope configurations declare as numeric data: ISA13,
 /// GS06, SE01, GE01/GE02 and IEA01/IEA02. Other envelope elements are String.
 fn repeating_envelope_numeric_control(id: &str, position: usize) -> bool {
     matches!(
@@ -674,7 +698,7 @@ fn repeating_envelope_numeric_control(id: &str, position: usize) -> bool {
     )
 }
 
-/// Interchange envelope widths, element types and the retained version. ISA12
+/// Repeating-interchange envelope widths, element types and the retained version. ISA12
 /// and GS08 need not be fixed; fixed values must agree with the selection.
 fn validate_repeating_envelope_fields(
     schema: &SchemaNode,
@@ -764,7 +788,7 @@ fn validate_repeating_envelope_fields(
     Ok(version)
 }
 
-/// the X12 `Envelope.Config` ownership. The importer represents optional
+/// `Envelope.Config` ownership. The importer represents optional
 /// envelope segments as repeating; ST and SE remain singular message bounds.
 /// A source may also carry the trailing acknowledgment branches that
 /// acknowledgment validation adds after GE and SE; generated input reads them
@@ -1093,9 +1117,9 @@ fn visit_schema<'a>(
             ));
         }
         if ENVELOPE_SEGMENTS.contains(&id) {
-            // The the reference application grammar admits its optional repeating envelope
+            // The repeating-interchange grammar admits its optional repeating envelope
             // segments and their repeating owners before this traversal.
-            if envelope_profile != X12EnvelopeProfile::MapForceInterchanges
+            if envelope_profile != X12EnvelopeProfile::REPEATING_INTERCHANGES
                 && (node.repeating
                     || repeated_ancestor
                         && envelope_profile == X12EnvelopeProfile::SingleTransaction)

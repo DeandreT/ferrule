@@ -18,6 +18,10 @@ use serde_json::{Value as Json, json};
 #[allow(dead_code)]
 mod host_target;
 use host_target::GeneratedHostCommand;
+#[path = "../../codegen/tests/fixtures/x12_line_endings.rs"]
+mod line_ending_fixture;
+#[path = "x12_documents/line_endings.rs"]
+mod line_endings;
 #[path = "x12_documents/physical_roles.rs"]
 mod physical_roles;
 #[path = "x12_documents/review.rs"]
@@ -81,7 +85,7 @@ fn envelope(profile: X12EnvelopeProfile, version: &str) -> SchemaNode {
                 iea,
             ],
         ),
-        X12EnvelopeProfile::MapForceInterchanges => SchemaNode::group(
+        X12EnvelopeProfile::REPEATING_INTERCHANGES => SchemaNode::group(
             "Envelope",
             vec![
                 SchemaNode::group(
@@ -146,7 +150,7 @@ fn fixture(profile: X12EnvelopeProfile, version: &str) -> (Json, String) {
     let mut wire = String::new();
     let mut interchanges = Vec::new();
     let mut transaction = 7;
-    for interchange in 0..if profile == X12EnvelopeProfile::MapForceInterchanges {
+    for interchange in 0..if profile == X12EnvelopeProfile::REPEATING_INTERCHANGES {
         2
     } else {
         1
@@ -208,7 +212,7 @@ fn fixture(profile: X12EnvelopeProfile, version: &str) -> (Json, String) {
                     "ST*850*{number}~\nREF*AA:BB*3*1.25~\nNTE*one~\nNTE*two~\nSE*5*{number}~\n"
                 ));
                 let mut message = json!({"ST":segment(&["850", &number]),"REF":{"E01":{"A":"AA","B":"BB"},"E02":3,"E03":1.25},"NTE":[{"E01":"one"},{"E01":"two"}],"SE":segment(&["5",&number])});
-                if profile == X12EnvelopeProfile::MapForceInterchanges {
+                if profile == X12EnvelopeProfile::REPEATING_INTERCHANGES {
                     message["SE"] = json!([message["SE"].clone()]);
                 }
                 messages.push(message);
@@ -220,7 +224,7 @@ fn fixture(profile: X12EnvelopeProfile, version: &str) -> (Json, String) {
             };
             wire.push_str(&format!("GE*{count}*{group_control}~\n"));
             let ge = segment(&[count, group_control]);
-            groups.push(if profile == X12EnvelopeProfile::MapForceInterchanges {
+            groups.push(if profile == X12EnvelopeProfile::REPEATING_INTERCHANGES {
                 json!({"GS":[gs],"Messages":messages,"GE":[ge]})
             } else {
                 json!({"GS":gs,"Messages":messages,"GE":ge})
@@ -241,14 +245,14 @@ fn fixture(profile: X12EnvelopeProfile, version: &str) -> (Json, String) {
                 wire,
             );
         }
-        interchanges.push(if profile == X12EnvelopeProfile::MapForceInterchanges {
+        interchanges.push(if profile == X12EnvelopeProfile::REPEATING_INTERCHANGES {
             json!({"ISA":[isa],"Groups":groups,"IEA":[iea]})
         } else {
             json!({"ISA":isa,"Groups":groups,"IEA":iea})
         });
     }
     (
-        if profile == X12EnvelopeProfile::MapForceInterchanges {
+        if profile == X12EnvelopeProfile::REPEATING_INTERCHANGES {
             json!({"Interchanges":interchanges})
         } else {
             interchanges.remove(0)
@@ -339,7 +343,7 @@ fn generated_primary_x12_documents_compile_and_run_all_profiles_and_directions()
     for (label, envelope_profile) in [
         ("single", X12EnvelopeProfile::SingleTransaction),
         ("grouped", X12EnvelopeProfile::GroupedTransactions),
-        ("interchanges", X12EnvelopeProfile::MapForceInterchanges),
+        ("interchanges", X12EnvelopeProfile::REPEATING_INTERCHANGES),
     ] {
         for version in ["00401", "00501", "00604"] {
             let schema = envelope(envelope_profile, version);
@@ -584,7 +588,7 @@ fn option_libraries(
     )?;
     manifest.push_str("failure_boundary = { path = \"../failure_boundary\" }\n");
     host.push_str("    assert!(matches!(failure_boundary::execute_json_to_x12(include_str!(\"../single-00401.json\")), Err(Failure::Mapping(codegen_runtime::RuntimeError::MappingFailure { rule: 1, message: Some(message) })) if message == \"authored stop\"));\n    assert!(matches!(failure_boundary::execute_json_to_x12_bytes(b\"not JSON\"), Err(Failure::Json(_))));\n");
-    let mut schema = envelope(X12EnvelopeProfile::MapForceInterchanges, "00501");
+    let mut schema = envelope(X12EnvelopeProfile::REPEATING_INTERCHANGES, "00501");
     fn numeric(node: &mut SchemaNode) {
         if let ir::SchemaKind::Group { children, .. } = &mut node.kind {
             for (at, child) in children.iter_mut().enumerate() {
@@ -607,7 +611,7 @@ fn option_libraries(
     numeric(&mut schema);
     let program = codegen::lower(&project(schema))?;
     let options = X12BoundaryOptions {
-        envelope_profile: X12EnvelopeProfile::MapForceInterchanges,
+        envelope_profile: X12EnvelopeProfile::REPEATING_INTERCHANGES,
         interchange_version: Some("00501".into()),
         ..Default::default()
     };
@@ -621,7 +625,7 @@ fn option_libraries(
         },
     )?;
     manifest.push_str("numeric_controls = { path = \"../numeric_controls\" }\n");
-    let (_, wire) = fixture(X12EnvelopeProfile::MapForceInterchanges, "00501");
+    let (_, wire) = fixture(X12EnvelopeProfile::REPEATING_INTERCHANGES, "00501");
     fs::write(
         root.join("numeric-controls.x12"),
         wire.replace("000000123", "100000123")
