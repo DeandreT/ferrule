@@ -275,6 +275,10 @@ enum Command {
         /// selects through a host.
         #[arg(long, alias = "primary-csv-documents", conflicts_with_all = ["csv_output", "json5_adapters", "x12_adapters", "static_document_adapters", "csv_x12_adapters", "csv_json_adapters", "csv_document_adapters"])]
         primary_documents: bool,
+        /// Generate direct primary CSV acquisition and computed-path strict CSV
+        /// documents from a saved DocumentProject, selecting its exact row field.
+        #[arg(long, value_name = "ROWS_FIELD", conflicts_with_all = ["csv_output", "csv_document_output", "json5_adapters", "x12_adapters", "x12_source_envelope_profile", "x12_target_envelope_profile", "static_document_adapters", "csv_x12_adapters", "csv_x12_target_envelope_profile", "csv_json_adapters", "csv_document_adapters", "primary_documents", "raw_delimited_crlf"])]
+        primary_mapped_csv_documents: Option<String>,
         /// Write unescaped target fields and CRLF records; target quoting must be disabled.
         #[arg(long, requires = "csv_document_host")]
         raw_delimited_crlf: bool,
@@ -876,6 +880,7 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
             csv_json_adapters,
             csv_document_adapters,
             primary_documents,
+            primary_mapped_csv_documents,
             raw_delimited_crlf,
             identity,
         } => {
@@ -902,7 +907,9 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
                 }
             };
             let settings = identity.settings(matches!(language, CodegenLanguage::Rust))?;
-            let profile = if primary_documents {
+            let profile = if let Some(rows_field) = primary_mapped_csv_documents {
+                cli::GenerateProfile::PrimaryMappedCsvDocument { rows_field }
+            } else if primary_documents {
                 if raw_delimited_crlf {
                     cli::GenerateProfile::PrimaryRawDelimitedDocument
                 } else {
@@ -1635,6 +1642,178 @@ mod csv_json_flag_tests {
             "--csv-json-adapters requires --language csharp"
         );
         assert!(!output.parent().unwrap().exists());
+    }
+}
+
+#[cfg(test)]
+mod primary_mapped_csv_flag_tests {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    fn arguments(language: &str, rows: &str) -> Vec<OsString> {
+        [
+            "ferrule",
+            "generate",
+            "--project",
+            "absent-document.json",
+            "--language",
+            language,
+            "--out",
+            "absent-output",
+            "--primary-mapped-csv-documents",
+            rows,
+        ]
+        .into_iter()
+        .map(OsString::from)
+        .collect()
+    }
+
+    #[test]
+    fn primary_mapped_csv_flag_preserves_exact_selector_text() {
+        for language in ["rust", "csharp"] {
+            for rows in ["Entries", " Line Items Ω ", " ", ""] {
+                let parsed = Cli::try_parse_from(arguments(language, rows)).unwrap();
+                let Command::Generate {
+                    primary_mapped_csv_documents,
+                    ..
+                } = parsed.command
+                else {
+                    panic!("generate subcommand");
+                };
+                // Empty text is refused by the existing policy, not rewritten
+                // into a default field or a new parser-specific API contract.
+                assert_eq!(primary_mapped_csv_documents.as_deref(), Some(rows));
+            }
+        }
+    }
+
+    #[test]
+    fn primary_mapped_csv_flag_conflicts_with_every_other_profile_and_raw_mode() {
+        for option in [
+            "--csv-output",
+            "--csv-document-output",
+            "--json5-adapters",
+            "--x12-adapters",
+            "--static-document-adapters",
+            "--csv-x12-adapters",
+            "--csv-json-adapters",
+            "--csv-document-adapters",
+            "--primary-documents",
+            "--primary-csv-documents",
+            "--raw-delimited-crlf",
+        ] {
+            for first in [false, true] {
+                let mut args = arguments("csharp", "Entries");
+                if first {
+                    args.insert(8, option.into());
+                } else {
+                    args.push(option.into());
+                }
+                let error = Cli::try_parse_from(args)
+                    .err()
+                    .expect("conflicting selectors");
+                assert_eq!(
+                    error.kind(),
+                    ErrorKind::ArgumentConflict,
+                    "{option}: {error}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn primary_mapped_csv_flag_is_not_an_x12_envelope_host() {
+        for option in [
+            "--x12-source-envelope-profile",
+            "--x12-target-envelope-profile",
+            "--csv-x12-target-envelope-profile",
+        ] {
+            for first in [false, true] {
+                let mut args = arguments("csharp", "Entries");
+                if first {
+                    args.splice(8..8, [option.into(), "grouped-transactions".into()]);
+                } else {
+                    args.extend([option.into(), "grouped-transactions".into()]);
+                }
+                let error = Cli::try_parse_from(args)
+                    .err()
+                    .expect("conflicting envelope profile");
+                assert_eq!(
+                    error.kind(),
+                    ErrorKind::ArgumentConflict,
+                    "{option}: {error}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn primary_mapped_csv_flag_keeps_backend_checks_before_loading() {
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
+        let root = std::env::temp_dir().join(format!(
+            "ferrule-primary-mapped-csv-flags-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
+        std::fs::create_dir(&root).unwrap();
+        let _cleanup = TempDir(root.clone());
+        let output = root.join("absent-parent/library");
+        for (language, extra, message) in [
+            (
+                "rust",
+                vec![],
+                "--rust-runtime-path is required for --language rust until the runtime crate is published",
+            ),
+            (
+                "csharp",
+                vec!["--rust-runtime-path", "absent-runtime"],
+                "--rust-runtime-path applies only to --language rust",
+            ),
+            (
+                "csharp",
+                vec!["--rust-package-name", "authored-cli"],
+                "--rust-package-name applies only to --language rust",
+            ),
+            (
+                "rust",
+                vec![
+                    "--rust-runtime-path",
+                    "absent-runtime",
+                    "--csharp-assembly-name",
+                    "Authored.Cli",
+                ],
+                "--csharp-assembly-name applies only to --language csharp",
+            ),
+            (
+                "rust",
+                vec![
+                    "--rust-runtime-path",
+                    "absent-runtime",
+                    "--csharp-namespace",
+                    "Authored.Cli",
+                ],
+                "--csharp-namespace applies only to --language csharp",
+            ),
+            (
+                "rust",
+                vec![
+                    "--rust-runtime-path",
+                    "absent-runtime",
+                    "--csharp-class",
+                    "PacketMapping",
+                ],
+                "--csharp-class applies only to --language csharp",
+            ),
+        ] {
+            let mut args = arguments(language, "Entries");
+            args[3] = root.join("absent-document.json").into_os_string();
+            args[7] = output.clone().into_os_string();
+            args.extend(extra.into_iter().map(OsString::from));
+            let error = execute(Cli::try_parse_from(args).unwrap()).unwrap_err();
+            assert_eq!(error.to_string(), message);
+            assert!(!output.parent().unwrap().exists());
+            assert_eq!(std::fs::read_dir(&root).unwrap().count(), 0);
+        }
     }
 }
 
