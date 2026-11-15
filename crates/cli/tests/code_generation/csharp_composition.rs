@@ -143,7 +143,7 @@ fn generated(directory: &Path, project: &Path) -> Vec<(&'static str, String)> {
                 project,
                 &output,
                 GenerateTarget::CSharp,
-                *profile,
+                profile.clone(),
             );
             let line = match result {
                 Ok(_) => match artifact_files(&output) {
