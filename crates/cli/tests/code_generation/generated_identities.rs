@@ -322,7 +322,7 @@ fn configured_csharp_identity_renames_only_hosted_names() -> TestResult<()> {
                 &path,
                 &default,
                 GenerateTarget::CSharp,
-                profile,
+                profile.clone(),
             );
             let configured_result = cli::generate_project_with_settings(
                 &path,
