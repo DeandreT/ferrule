@@ -18,6 +18,10 @@ use serde_json::{Value as Json, json};
 #[allow(dead_code)]
 mod host_target;
 use host_target::GeneratedHostCommand;
+#[path = "../../codegen/tests/fixtures/x12_line_endings.rs"]
+mod line_ending_fixture;
+#[path = "x12_documents/line_endings.rs"]
+mod line_endings;
 #[path = "x12_documents/physical_roles.rs"]
 mod physical_roles;
 #[path = "x12_documents/review.rs"]

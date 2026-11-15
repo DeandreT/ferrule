@@ -80,6 +80,24 @@ fn native_write(
     } else {
         None
     };
+    if !profile.line_ending.is_lf() {
+        return format_edi::x12::to_document_string_with_output_options(
+            &profile.schema,
+            view,
+            format_edi::x12::OutputOptions::default()
+                .with_separators(syntax)
+                .with_interchange_version(Some(profile.version))
+                .with_autocomplete(autocomplete)
+                .with_segment_line_ending(profile.line_ending)
+                .with_maximum_bytes(MAX_X12_DOCUMENT_BYTES),
+        )
+        .map_err(|error| match error {
+            format_edi::EdiFormatError::X12OutputLimit { bytes, maximum } => {
+                X12BoundaryError::OutputLimit { bytes, maximum }
+            }
+            error => X12BoundaryError::Native(error),
+        });
+    }
     format_edi::x12::to_document_string_with_syntax(
         &profile.schema,
         view,

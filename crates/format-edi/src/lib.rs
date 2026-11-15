@@ -138,6 +138,8 @@ pub enum EdiFormatError {
     },
     #[error("invalid X12 separator configuration: {0}")]
     InvalidX12Separators(String),
+    #[error("X12 output is {bytes} bytes; maximum is {maximum}")]
+    X12OutputLimit { bytes: usize, maximum: usize },
     #[error(
         "configured X12 {kind} separator `{}` does not match interchange separator `{}`",
         .expected.escape_debug(),

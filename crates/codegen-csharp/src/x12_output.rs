@@ -55,6 +55,7 @@ pub(crate) fn emit(
     options: &Options,
 ) -> Result<ArtifactSet, X12EmitError> {
     let profile = codegen::prepare_x12_boundary(program, policy).map_err(X12EmitError::Policy)?;
+    let crlf = profile.target_x12 && uses_crlf(&profile.target_descriptor);
     // Validate the complete optional boundary before ordinary artifacts exist.
     let mut library = crate::library(program)?;
     library.add_companion(
@@ -64,9 +65,11 @@ pub(crate) fn emit(
             &profile.target_descriptor,
             profile.source_x12,
             profile.target_x12,
+            crlf,
         ),
     );
     library.add_runtime(&X12_SOURCES);
+    add_output_policy(&mut library, crlf);
     library
         .into_artifacts_with(options, GenerationProfile::X12)
         .map_err(X12EmitError::from)
@@ -107,7 +110,23 @@ pub(crate) const X12_SOURCES: [(&str, &str); 8] = [
     ),
 ];
 
-fn render(source: &str, target: &str, source_x12: bool, target_x12: bool) -> ClassPart {
+pub(crate) fn uses_crlf(descriptor: &str) -> bool {
+    !serde_json::from_str::<mapping::X12Descriptor>(descriptor)
+        .expect("prepared X12 descriptor")
+        .segment_line_ending
+        .is_lf()
+}
+
+pub(crate) fn add_output_policy(library: &mut crate::composition::Library, selected: bool) {
+    if selected {
+        library.add_runtime(&[(
+            "Runtime/X12/FerruleX12.OutputPolicy.cs",
+            include_str!("../../../runtime/csharp/Ferrule.Runtime/X12/FerruleX12.OutputPolicy.cs"),
+        )]);
+    }
+}
+
+fn render(source: &str, target: &str, source_x12: bool, target_x12: bool, crlf: bool) -> ClassPart {
     let mut output = String::from("    private const string X12SourceDescriptor = ");
     output.push_str(&literal::string(source));
     output.push_str(";\n    private const string X12TargetDescriptor = ");
@@ -117,7 +136,7 @@ fn render(source: &str, target: &str, source_x12: bool, target_x12: bool) -> Cla
         output.push_str(PARSE);
     }
     if target_x12 {
-        output.push_str(SERIALIZE);
+        output.push_str(if crlf { SERIALIZE_CRLF } else { SERIALIZE });
     }
     let (method, parse, serialize) = match (source_x12, target_x12) {
         (true, false) => ("ExecuteX12ToJson", "FerruleX12", "FerruleJson"),
@@ -157,8 +176,9 @@ fn render(source: &str, target: &str, source_x12: bool, target_x12: bool) -> Cla
         } else {
             ""
         };
+        let policy = if crlf { "WithLineEnding" } else { "" };
         output.push_str(&format!(
-            "        return global::Ferrule.Runtime.{serialize}.SerializeEmbedded{suffix}(X12TargetDescriptor, target{context});\n    }}\n"
+            "        return global::Ferrule.Runtime.{serialize}.SerializeEmbedded{suffix}{policy}(X12TargetDescriptor, target{context});\n    }}\n"
         ));
     }
     ClassPart::members(output)
@@ -199,5 +219,31 @@ const SERIALIZE: &str = r#"
         global::Ferrule.Runtime.FerruleExecutionContext executionContext)
     {
         return global::Ferrule.Runtime.FerruleX12.SerializeEmbeddedBytes(X12TargetDescriptor, target, executionContext);
+    }
+"#;
+
+const SERIALIZE_CRLF: &str = r#"
+    public static string SerializeX12(global::Ferrule.Runtime.FerruleInstance target)
+    {
+        return global::Ferrule.Runtime.FerruleX12.SerializeEmbeddedWithLineEnding(X12TargetDescriptor, target);
+    }
+
+    public static byte[] SerializeX12Bytes(global::Ferrule.Runtime.FerruleInstance target)
+    {
+        return global::Ferrule.Runtime.FerruleX12.SerializeEmbeddedBytesWithLineEnding(X12TargetDescriptor, target);
+    }
+
+    public static string SerializeX12(
+        global::Ferrule.Runtime.FerruleInstance target,
+        global::Ferrule.Runtime.FerruleExecutionContext executionContext)
+    {
+        return global::Ferrule.Runtime.FerruleX12.SerializeEmbeddedWithLineEnding(X12TargetDescriptor, target, executionContext);
+    }
+
+    public static byte[] SerializeX12Bytes(
+        global::Ferrule.Runtime.FerruleInstance target,
+        global::Ferrule.Runtime.FerruleExecutionContext executionContext)
+    {
+        return global::Ferrule.Runtime.FerruleX12.SerializeEmbeddedBytesWithLineEnding(X12TargetDescriptor, target, executionContext);
     }
 "#;

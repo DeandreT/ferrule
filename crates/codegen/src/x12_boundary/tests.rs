@@ -5,6 +5,53 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 type SchemaMutation = Box<dyn Fn(&mut SchemaNode)>;
 
+#[test]
+fn segment_line_ending_is_target_only_and_default_descriptor_is_unchanged() {
+    let schema = schema();
+    let mut options = X12BoundaryOptions::default();
+    let default = descriptor(&schema, Some(&options), X12BoundarySide::Target).unwrap();
+    assert!(!default.contains("segment_line_ending"));
+    options.segment_line_ending = mapping::X12SegmentLineEnding::Lf;
+    assert_eq!(
+        descriptor(&schema, Some(&options), X12BoundarySide::Target).unwrap(),
+        default
+    );
+    options.segment_line_ending = mapping::X12SegmentLineEnding::CrLf;
+    let selected: serde_json::Value = serde_json::from_str(
+        &descriptor(&schema, Some(&options), X12BoundarySide::Target).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(selected["segment_line_ending"], "crlf");
+    assert!(descriptor(&schema, Some(&options), X12BoundarySide::Source).is_err());
+    for segment in ['\n', '\r'] {
+        options.separators = Some(X12Separators {
+            element: '*',
+            component: ':',
+            segment,
+            repetition: None,
+            release: None,
+        });
+        assert!(descriptor(&schema, Some(&options), X12BoundarySide::Target).is_err());
+    }
+    let selected = FormatOptions {
+        edi_kind: Some(EdiBoundaryKind::X12),
+        x12_segment_line_ending: mapping::X12SegmentLineEnding::CrLf,
+        ..Default::default()
+    };
+    assert_eq!(
+        X12BoundaryOptions::from_format_options(&selected)
+            .unwrap()
+            .segment_line_ending,
+        mapping::X12SegmentLineEnding::CrLf
+    );
+    assert!(validate_x12_json_format_options(&selected).is_err());
+    let wrong = FormatOptions {
+        edi_kind: Some(EdiBoundaryKind::Edifact),
+        ..selected
+    };
+    assert!(X12BoundaryOptions::from_format_options(&wrong).is_err());
+}
+
 /// Removes the per-test directory on drop, including after a panic.
 struct TempDir(std::path::PathBuf);
 

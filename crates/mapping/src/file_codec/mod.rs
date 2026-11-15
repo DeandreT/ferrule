@@ -16,7 +16,8 @@ const MAX_POINTER_BYTES: usize = 4096;
 const PLAIN_VERSION: u64 = 2;
 /// Capability envelopes also name the features older readers must refuse.
 const CAPABILITY_VERSION: u64 = 3;
-const KNOWN_CAPABILITIES: [&str; 7] = [
+const KNOWN_CAPABILITIES: [&str; 8] = [
+    crate::X12_SEGMENT_LINE_ENDING_V1_CAPABILITY,
     crate::PRIMARY_SOURCE_SAFETY_GUARD_V1_CAPABILITY,
     crate::JOIN_COMPUTED_KEYS_V1_CAPABILITY,
     crate::JOIN_COMPUTED_SEQUENCE_KEYS_V1_CAPABILITY,
@@ -43,6 +44,10 @@ impl FileModel for crate::Project {
         self.uses_sqlite_read()
             .then_some(crate::SQLITE_READ_V1_CAPABILITY)
             .into_iter()
+            .chain(
+                self.uses_x12_segment_line_ending()
+                    .then_some(crate::X12_SEGMENT_LINE_ENDING_V1_CAPABILITY),
+            )
             .chain(
                 self.uses_xml_scalar_output()
                     .then_some(crate::XML_TARGET_SCALAR_OUTPUT_V1_CAPABILITY),

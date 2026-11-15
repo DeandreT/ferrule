@@ -54,7 +54,10 @@ pub struct Segment {
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum WriteStyle {
     /// `ID+element`-style syntax used by X12 and EDIFACT.
-    Delimited,
+    Delimited {
+        line_ending: mapping::X12SegmentLineEnding,
+        maximum_bytes: Option<usize>,
+    },
     /// EDIFACT selects repetition from each UNB syntax version, retaining an
     /// explicit default for completed or standalone version-4 output.
     Edifact { default_v4: bool },
@@ -532,7 +535,7 @@ pub(crate) fn serialize_segments_with_encoding(
         if let Some(encode) = encoding {
             encode(&segment.id, &mut serialized, opts)?;
         }
-        serialize_segment(&segment.id, &serialized, opts, &mut out);
+        serialize_segment(&segment.id, &serialized, opts, &mut out)?;
     }
     Ok(out)
 }
@@ -725,7 +728,7 @@ fn write_node(
             if let Some(encode) = encoding {
                 encode(segment_id, &mut elements, opts)?;
             }
-            serialize_segment(segment_id, &elements, opts, out);
+            serialize_segment(segment_id, &elements, opts, out)?;
         }
         Shape::Container(children) => {
             for child in children {
@@ -738,10 +741,48 @@ fn write_node(
     Ok(())
 }
 
-fn serialize_segment(segment_id: &str, elements: &[String], opts: &WriteOptions, out: &mut String) {
+fn serialize_segment(
+    segment_id: &str,
+    elements: &[String],
+    opts: &WriteOptions,
+    out: &mut String,
+) -> Result<(), EdiFormatError> {
+    // Check the complete selected segment before expanding the output buffer.
+    // Other dialects and legacy entrypoints retain their existing limits/order.
+    if let WriteStyle::Delimited {
+        line_ending,
+        maximum_bytes: Some(maximum),
+    } = opts.style
+    {
+        let suffix = if crate::x12::is_line_break_terminator(opts.terminator) {
+            0
+        } else {
+            line_ending.as_str().len()
+        };
+        let bytes = elements
+            .iter()
+            .fold(
+                out.len()
+                    .checked_add(segment_id.len())
+                    .and_then(|n| n.checked_add(opts.terminator.len_utf8()))
+                    .and_then(|n| n.checked_add(suffix)),
+                |total, element| {
+                    total
+                        .and_then(|n| n.checked_add(opts.element.len_utf8()))
+                        .and_then(|n| n.checked_add(element.len()))
+                },
+            )
+            .ok_or(EdiFormatError::X12OutputLimit {
+                bytes: usize::MAX,
+                maximum,
+            })?;
+        if bytes > maximum {
+            return Err(EdiFormatError::X12OutputLimit { bytes, maximum });
+        }
+    }
     out.push_str(segment_id);
     match opts.style {
-        WriteStyle::Delimited | WriteStyle::Edifact { .. } => {
+        WriteStyle::Delimited { .. } | WriteStyle::Edifact { .. } => {
             for element in elements {
                 out.push(opts.element);
                 out.push_str(element);
@@ -780,8 +821,12 @@ fn serialize_segment(segment_id: &str, elements: &[String], opts: &WriteOptions,
     if !matches!(opts.style, WriteStyle::Hl7 { .. })
         && !crate::x12::is_line_break_terminator(opts.terminator)
     {
-        out.push('\n');
+        match opts.style {
+            WriteStyle::Delimited { line_ending, .. } => out.push_str(line_ending.as_str()),
+            _ => out.push('\n'),
+        }
     }
+    Ok(())
 }
 
 pub(crate) fn edifact_v4(version: Option<&str>) -> Option<bool> {

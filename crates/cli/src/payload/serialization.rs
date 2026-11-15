@@ -549,6 +549,27 @@ fn render_edi_payload(
                 .map(x12_separators)
                 .unwrap_or_default();
             let version = options.x12_interchange_version.as_deref();
+            if !options.x12_segment_line_ending.is_lf() {
+                let completion = match options.edi_autocomplete.as_ref() {
+                    Some(EdiAutocomplete::X12(config)) => Some(format_edi::x12::Autocomplete {
+                        current_datetime,
+                        request_acknowledgement: config.request_acknowledgement,
+                        transaction_set: config.transaction_set.as_deref(),
+                    }),
+                    _ => None,
+                };
+                return format_edi::x12::to_string_with_output_options(
+                    schema,
+                    instance,
+                    format_edi::x12::OutputOptions::default()
+                        .with_separators(separators)
+                        .with_interchange_version(version)
+                        .with_autocomplete(completion)
+                        .with_segment_line_ending(options.x12_segment_line_ending)
+                        .with_maximum_bytes(64 * 1024 * 1024),
+                )
+                .map_err(Into::into);
+            }
             match options.edi_autocomplete.as_ref() {
                 Some(EdiAutocomplete::X12(config)) => {
                     format_edi::x12::to_string_with_syntax_and_autocomplete(

@@ -31,6 +31,11 @@ pub(super) fn validate_side(
     options: &FormatOptions,
     side_name: &str,
 ) -> Result<(), MfdError> {
+    if !options.x12_segment_line_ending.is_lf() {
+        return Err(MfdError::Unsupported(format!(
+            "the {side_name} explicit X12 segment line-ending policy cannot be exported losslessly to `.mfd`"
+        )));
+    }
     if let Some(settings) = options.idoc_native_text_settings.as_ref() {
         if options.idoc_native_config.is_none() || options.edi_kind != Some(EdiBoundaryKind::Idoc) {
             return Err(MfdError::Unsupported(format!(

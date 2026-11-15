@@ -7,6 +7,168 @@ use ir::{ScalarType, SchemaKind, SchemaNode};
 
 use crate::generated_artifact_evidence::Evidence;
 
+use crate::x12_line_ending_fixture as line_ending_fixture;
+
+#[test]
+fn crlf_companion_is_selected_once_and_manifest_covers_actual_runtime_inventory() {
+    use codegen::{CompatibilityManifest, ManifestSelection, RuntimeIdentity, X12EnvelopeProfile};
+    let program = codegen::lower(&line_ending_fixture::project(
+        X12EnvelopeProfile::SingleTransaction,
+    ))
+    .unwrap();
+    let lf = line_ending_fixture::policy(
+        X12EnvelopeProfile::SingleTransaction,
+        mapping::X12SegmentLineEnding::Lf,
+        false,
+    );
+    let crlf = line_ending_fixture::policy(
+        X12EnvelopeProfile::SingleTransaction,
+        mapping::X12SegmentLineEnding::CrLf,
+        false,
+    );
+    let before = emit_with_x12(&program, &lf).unwrap();
+    let selected = emit_with_x12(&program, &crlf).unwrap();
+    assert_eq!(before, emit_with_x12(&program, &lf).unwrap());
+    assert_eq!(selected, emit_with_x12(&program, &crlf).unwrap());
+    let path = "Runtime/X12/FerruleX12.OutputPolicy.cs";
+    assert!(!before.files().iter().any(|file| file.path.as_str() == path));
+    assert_eq!(
+        selected
+            .files()
+            .iter()
+            .filter(|file| file.path.as_str() == path)
+            .count(),
+        1
+    );
+    for original in before
+        .files()
+        .iter()
+        .filter(|file| file.path.as_str().starts_with("Runtime/"))
+    {
+        assert_eq!(
+            selected
+                .files()
+                .iter()
+                .find(|file| file.path == original.path)
+                .unwrap()
+                .contents,
+            original.contents
+        );
+    }
+    assert!(
+        !before
+            .files()
+            .iter()
+            .any(|file| file.path.as_str() == "ferrule-manifest.json")
+    );
+    let options = crate::Options {
+        manifest: ManifestSelection::Included,
+        ..Default::default()
+    };
+    let files = crate::Generator::new(&options)
+        .emit_with_x12(&program, &crlf)
+        .unwrap();
+    let manifest = files
+        .files()
+        .iter()
+        .find(|file| file.path.as_str() == "ferrule-manifest.json")
+        .unwrap();
+    let manifest =
+        CompatibilityManifest::from_json(std::str::from_utf8(&manifest.contents).unwrap()).unwrap();
+    let actual = RuntimeIdentity::of_sources(
+        files
+            .files()
+            .iter()
+            .filter(|file| {
+                file.path.as_str().starts_with("Runtime/")
+                    && file.path.as_str() != "Runtime/FerruleRuntimeIdentity.cs"
+            })
+            .map(|file| (file.path.as_str(), file.contents.as_slice())),
+    );
+    assert_eq!(manifest.runtime.identity, actual);
+    assert_eq!(manifest.runtime.package, "Ferrule.Runtime");
+    assert_eq!(manifest.runtime.binding, codegen::RuntimeBinding::Vendored);
+    assert_eq!(manifest.profile, codegen::GenerationProfile::X12);
+    assert!(companion(&selected).contains("SerializeEmbeddedBytesWithLineEnding"));
+    // New private names do not become global ordinary identity restrictions.
+    assert!(crate::Identity::new("Toy.Assembly", "SegmentOutputProfile.Toy", "ToyMapping").is_ok());
+}
+
+#[test]
+fn generated_cr_terminators_stay_refused_for_both_line_ending_policies() {
+    let profile = codegen::X12EnvelopeProfile::SingleTransaction;
+    let program = codegen::lower(&line_ending_fixture::project(profile)).unwrap();
+    for ending in [
+        mapping::X12SegmentLineEnding::Lf,
+        mapping::X12SegmentLineEnding::CrLf,
+    ] {
+        let mut policy = line_ending_fixture::policy(profile, ending, false);
+        policy.target.as_mut().unwrap().separators = Some(mapping::X12Separators {
+            element: '*',
+            component: ':',
+            segment: '\r',
+            repetition: None,
+            release: None,
+        });
+        assert!(matches!(
+            emit_with_x12(&program, &policy),
+            Err(X12EmitError::Policy(
+                codegen::X12BoundaryPolicyError::Separators { .. }
+            ))
+        ));
+    }
+}
+
+#[test]
+fn static_named_x12_targets_select_one_shared_output_partial() {
+    use codegen::{
+        DocumentBoundaryOptions as Boundary, NamedDocumentBoundaryOptions,
+        StaticDocumentBoundaryPolicy, X12EnvelopeProfile,
+    };
+    let mut project = line_ending_fixture::project(X12EnvelopeProfile::SingleTransaction);
+    project.extra_targets.push(mapping::NamedTarget {
+        name: "Copy".into(),
+        path: None,
+        schema: project.target.clone(),
+        options: Default::default(),
+        root: project.root.clone(),
+    });
+    let program = codegen::lower(&project).unwrap();
+    let selected = X12BoundaryOptions {
+        segment_line_ending: mapping::X12SegmentLineEnding::CrLf,
+        ..Default::default()
+    };
+    let policy = StaticDocumentBoundaryPolicy {
+        source: Boundary::X12(Default::default()),
+        target: Boundary::X12(selected.clone()),
+        extra_sources: vec![],
+        extra_targets: vec![NamedDocumentBoundaryOptions {
+            name: "Copy".into(),
+            options: Boundary::X12(selected),
+        }],
+    };
+    let artifacts = crate::emit_with_static_document_adapters(&program, &policy).unwrap();
+    assert_eq!(
+        artifacts
+            .files()
+            .iter()
+            .filter(|f| f.path.as_str() == "Runtime/X12/FerruleX12.OutputPolicy.cs")
+            .count(),
+        1
+    );
+    let source = &artifacts
+        .files()
+        .iter()
+        .find(|f| f.path.as_str() == "GeneratedMapping.Documents.cs")
+        .unwrap()
+        .contents;
+    assert!(
+        std::str::from_utf8(source)
+            .unwrap()
+            .contains("SerializeEmbeddedBytesWithLineEnding")
+    );
+}
+
 fn segment(name: &str, width: usize) -> SchemaNode {
     SchemaNode::group(
         name,

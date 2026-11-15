@@ -2,6 +2,46 @@ use super::*;
 use ir::ScalarType;
 use std::cell::Cell;
 
+#[test]
+fn selected_crlf_reaches_native_writer_and_preserves_legacy_error_precedence() {
+    let profile = test_profile(fields("NTE", 1).repeating());
+    let legacy = descriptor_for(&profile);
+    let input = parse_x12(&legacy, WIRE).unwrap();
+    let before = input.clone();
+    let mut value: serde_json::Value = serde_json::from_str(&legacy).unwrap();
+    value["segment_line_ending"] = "crlf".into();
+    let selected = value.to_string();
+    let expected = "ISA*00*          *00*          *ZZ*ALPHA          *ZZ*BETA           *300615*0945*U*00401*000000123*0*T*:~\r\nGS*PO*ALPHA*BETA*20300615*0945*7*X*004010~\r\nST*850*0007~\r\nNTE*one~\r\nNTE*two~\r\nSE*4*0007~\r\nGE*1*7~\r\nIEA*1*000000123~\r\n";
+    for _ in 0..2 {
+        assert_eq!(serialize_x12(&selected, &input, None).unwrap(), expected);
+        assert_eq!(
+            serialize_x12_bytes(&selected, &input, None).unwrap(),
+            expected.as_bytes()
+        );
+        assert_eq!(serialize_x12(&legacy, &input, None).unwrap(), WIRE);
+    }
+    assert!(matches!(
+        parse_x12(&selected, WIRE),
+        Err(X12BoundaryError::Descriptor(_))
+    ));
+    for raw in [
+        serde_json::Value::Null,
+        serde_json::json!({"lf":null}),
+        true.into(),
+        "CRLF".into(),
+    ] {
+        value["segment_line_ending"] = raw;
+        assert!(matches!(
+            serialize_x12(&value.to_string(), &input, None),
+            Err(X12BoundaryError::Descriptor(_))
+        ));
+    }
+    value["schema"] = "invalid".into();
+    let failure = serialize_x12(&value.to_string(), &input, None).unwrap_err();
+    assert!(matches!(failure, X12BoundaryError::Schema(_)));
+    assert_eq!(input, before);
+}
+
 const WIRE: &str = "ISA*00*          *00*          *ZZ*ALPHA          *ZZ*BETA           *300615*0945*U*00401*000000123*0*T*:~\nGS*PO*ALPHA*BETA*20300615*0945*7*X*004010~\nST*850*0007~\nNTE*one~\nNTE*two~\nSE*4*0007~\nGE*1*7~\nIEA*1*000000123~\n";
 
 fn fields(name: &str, count: usize) -> SchemaNode {
@@ -14,6 +54,7 @@ fn fields(name: &str, count: usize) -> SchemaNode {
 }
 fn test_profile(note: SchemaNode) -> Profile {
     Profile {
+        line_ending: mapping::X12SegmentLineEnding::Lf,
         schema: SchemaNode::group(
             "Envelope",
             vec![
