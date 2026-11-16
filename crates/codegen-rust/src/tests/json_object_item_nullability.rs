@@ -54,7 +54,7 @@ fn generated_object_item_nullability_builds_and_preserves_complete_values()
         .find(|f| f.path.as_str() == "src/lib.rs")
         .unwrap();
     assert!(std::str::from_utf8(&source.contents)?.contains("FERRULE-EMBEDDED-SCHEMA/4"));
-    let output = TempDir::new("rust_json_object_item_nullability");
+    let output = TempDir::new("rust_json_object_item_nullability").unwrap();
     write_artifacts(output.path(), &artifacts);
     fs::write(output.path().join("src/main.rs"), HARNESS)?;
     let result = Command::new("cargo")
