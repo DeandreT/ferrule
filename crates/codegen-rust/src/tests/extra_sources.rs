@@ -309,7 +309,7 @@ fn generated_named_input_project_builds_and_enforces_the_boundary_before_evaluat
         .parent()
         .map(|parent| parent.join("codegen-runtime"))
         .unwrap();
-    let output = TempDir::new("rust_named_input_codegen");
+    let output = TempDir::new("rust_named_input_codegen").unwrap();
     let artifacts = emit(
         &named_source_program(),
         &Options {

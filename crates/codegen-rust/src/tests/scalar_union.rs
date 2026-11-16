@@ -173,7 +173,7 @@ fn generated_union_targets_preserve_tags_and_adapt_exact_numbers() {
     assert!(generated_source.contains(r#"\"json_formats\":[\"source-identifier\"]"#));
     assert!(generated_source.contains(r#"\"json_formats\":[\"target-identifier\"]"#));
 
-    let output = TempDir::new("rust_scalar_union_codegen");
+    let output = TempDir::new("rust_scalar_union_codegen").unwrap();
     write_artifacts(output.path(), &artifacts);
     let harness = r##"use codegen_runtime::{field, group, integer, scalar, string, Instance, JsonBoundaryError, Value};
 
