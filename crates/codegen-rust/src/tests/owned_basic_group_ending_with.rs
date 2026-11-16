@@ -155,7 +155,7 @@ fn ending_composition_conserves_prior_by_adjacent_and_starting_artifacts() {
 
 #[test]
 fn ending_literal_public_consumer_keeps_trailing_groups_and_typed_errors() {
-    let directory = TempDir::new("owned_ending_consumer");
+    let directory = TempDir::new("owned_ending_consumer").unwrap();
     let mut plain = ending(SourceOwner::Primary);
     plain.extra_sources.clear();
     let mut post = plain.clone();

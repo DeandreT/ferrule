@@ -161,7 +161,7 @@ fn generated_nested_projections_and_udfs_compile_without_dead_metadata() {
         .parent()
         .unwrap()
         .join("codegen-runtime");
-    let directory = TempDir::new("nested_projection_reachability");
+    let directory = TempDir::new("nested_projection_reachability").unwrap();
     let artifacts = emit(
         &program,
         &Options {
