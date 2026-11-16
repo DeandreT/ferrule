@@ -416,7 +416,7 @@ fn scalar_name(value: &str) -> &'static str {
 
 #[test]
 fn compiled_filter_map_public_controls_retain_all_originals_before_comparisons() {
-    let output = TempDir::new("rust_filter_map192");
+    let output = TempDir::new("rust_filter_map192").unwrap();
     let directory = output.path().to_path_buf();
     // Preserve every source/process/runtime original on any negative gate.
     std::mem::forget(output);
