@@ -2,7 +2,6 @@ use std::collections::BTreeMap;
 use std::error::Error;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{ScalarType, SchemaNode, Value};
 use mapping::{
@@ -11,17 +10,11 @@ use mapping::{
     ScopeIteration,
 };
 
-struct TempDir(PathBuf);
+struct TempDir(test_support::TempDir);
 
 impl TempDir {
     fn new() -> std::io::Result<Self> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_cli_pipeline_files_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir_all(&path)?;
+        let path = test_support::TempDir::new("cli-pipeline-files")?;
         Ok(Self(path))
     }
 
@@ -35,12 +28,6 @@ impl TempDir {
         let path = self.0.join("orders.json");
         std::fs::write(&path, r#"{"Value":"original"}"#)?;
         Ok(path)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
     }
 }
 

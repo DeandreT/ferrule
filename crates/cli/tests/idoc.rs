@@ -1,20 +1,13 @@
 use std::collections::BTreeMap;
 use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
+use test_support::TempDir;
 
 use ir::{ScalarType, SchemaNode};
 use mapping::{
     Binding, EdiBoundaryKind, FormatOptions, Graph, IdocFieldLayout, IdocLayout, IdocSegmentLayout,
     Node, Project, Scope,
 };
-
-fn test_dir(label: &str) -> PathBuf {
-    let path =
-        std::env::temp_dir().join(format!("ferrule_cli_idoc_{label}_{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&path);
-    std::fs::create_dir_all(&path).unwrap();
-    path
-}
 
 fn field(name: &str, first: u32, last: u32) -> IdocFieldLayout {
     IdocFieldLayout::new(
@@ -140,7 +133,7 @@ fn write_project(directory: &Path, project: &Project) -> PathBuf {
 
 #[test]
 fn embedded_idoc_layout_dispatches_independent_of_extension() {
-    let directory = test_dir("dispatch");
+    let directory = TempDir::new("dispatch").unwrap();
     std::fs::write(
         directory.join("input.idoc"),
         "EDI_DC40 ignored\rHEADER0001 ABC12\r",
@@ -151,12 +144,12 @@ fn embedded_idoc_layout_dispatches_independent_of_extension() {
     let outcome = cli::run_project_with_paths(&project_path, None, None).unwrap();
     let output = std::fs::read_to_string(outcome.output_path).unwrap();
     assert!(output.contains("<value>ABC12</value>"), "{output}");
-    std::fs::remove_dir_all(directory).unwrap();
+    directory.close().unwrap();
 }
 
 #[test]
 fn idoc_layout_rejects_conflicting_csv_options() {
-    let directory = test_dir("conflict");
+    let directory = TempDir::new("conflict").unwrap();
     std::fs::write(directory.join("input.idoc"), "HEADER0001 ABC12\r").unwrap();
     let mut project = project();
     project.source_options.delimiter = Some('|');
@@ -165,12 +158,12 @@ fn idoc_layout_rejects_conflicting_csv_options() {
     let error = cli::run_project_with_paths(&project_path, None, None).unwrap_err();
     let message = format!("{error:#}");
     assert!(message.contains("`idoc` cannot be combined"), "{message}");
-    std::fs::remove_dir_all(directory).unwrap();
+    directory.close().unwrap();
 }
 
 #[test]
 fn embedded_idoc_layout_writes_filesystem_and_payload_outputs() -> anyhow::Result<()> {
-    let directory = test_dir("output");
+    let directory = TempDir::new("output").unwrap();
     std::fs::write(directory.join("input.json"), r#"{"value":"ABC12"}"#)?;
     let project = output_project();
     let project_path = write_project(&directory, &project);
@@ -190,6 +183,6 @@ fn embedded_idoc_layout_writes_filesystem_and_payload_outputs() -> anyhow::Resul
     assert_eq!(payload.artifacts.len(), 1);
     assert_eq!(payload.artifacts[0].bytes, b"HEADER0001 ZX999\r\n");
 
-    std::fs::remove_dir_all(directory)?;
+    directory.close()?;
     Ok(())
 }

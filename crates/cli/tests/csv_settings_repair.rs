@@ -1,6 +1,5 @@
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::path::Path;
 
 use cli::{PayloadDocument, PayloadRunOptions};
 use engine::ExecutionPurpose;
@@ -10,24 +9,8 @@ use mapping::{
     Project, Scope, ScopeIteration, TabularBoundaryKind,
 };
 
-struct TempDir(PathBuf);
-impl TempDir {
-    fn new() -> Self {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_cli_csv_repair_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
+
 fn schema() -> SchemaNode {
     SchemaNode::group("Row", vec![SchemaNode::scalar("Value", ScalarType::String)])
 }
@@ -76,10 +59,10 @@ fn assert_dependency(error: &anyhow::Error, cause: Cause) {
 
 #[test]
 fn new_settings_repairs_survive_file_and_payload_identity_overrides() {
-    let temp = TempDir::new();
-    let input = temp.0.join("input.csv");
+    let temp = TempDir::new("cli_csv_repair").unwrap();
+    let input = temp.path().join("input.csv");
     std::fs::write(&input, b"data\n").unwrap();
-    let output = temp.0.join("sentinel.csv");
+    let output = temp.path().join("sentinel.csv");
     for cause in [
         Cause::EmptyPolicy,
         Cause::Separator,
@@ -98,7 +81,7 @@ fn new_settings_repairs_survive_file_and_payload_identity_overrides() {
                 &mut project.target_options
             };
             boundary.csv_text_repair_dependency = Some(CsvTextRepairDependency::new(cause));
-            let saved = temp.0.join(format!("{cause:?}-{source}.json"));
+            let saved = temp.path().join(format!("{cause:?}-{source}.json"));
             std::fs::write(
                 &saved,
                 mapping::project_file::encode_pretty(&project).unwrap(),
@@ -109,7 +92,7 @@ fn new_settings_repairs_survive_file_and_payload_identity_overrides() {
                     .unwrap();
             std::fs::write(&output, b"sentinel").unwrap();
             let actual_input = if source {
-                temp.0.join("missing-renamed.xml")
+                temp.path().join("missing-renamed.xml")
             } else {
                 input.clone()
             };

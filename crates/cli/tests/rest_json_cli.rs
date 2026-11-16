@@ -3,14 +3,12 @@ use std::net::TcpListener;
 use std::path::PathBuf;
 use std::process::{Command, Output};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
-static NEXT: AtomicU64 = AtomicU64::new(0);
-
 struct Files {
-    root: PathBuf,
+    root: test_support::TempDir,
     project: PathBuf,
     request: PathBuf,
     headers: PathBuf,
@@ -19,12 +17,7 @@ struct Files {
 
 impl Files {
     fn new(url: &str, method: &str, body: Option<&[u8]>) -> Self {
-        let root = std::env::temp_dir().join(format!(
-            "ferrule_rest_json_cli_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir(&root).unwrap();
+        let root = test_support::TempDir::new("rest-json-cli").unwrap();
         let project = root.join("project.json");
         let request = root.join("request.json");
         let headers = root.join("protected-headers.json");
@@ -77,12 +70,6 @@ impl Files {
             command.args(["--allow-live-rest", "--allow-insecure-http"]);
         }
         command
-    }
-}
-
-impl Drop for Files {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.root);
     }
 }
 

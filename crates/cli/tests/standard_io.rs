@@ -1,23 +1,12 @@
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use test_support::TempDir;
 
 use anyhow::Context;
 
 fn fixture_directory() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")
-}
-
-fn test_directory(name: &str) -> anyhow::Result<PathBuf> {
-    let path = std::env::temp_dir().join(format!(
-        "ferrule_cli_standard_io_{name}_{}",
-        std::process::id()
-    ));
-    if path.exists() {
-        std::fs::remove_dir_all(&path)?;
-    }
-    std::fs::create_dir_all(&path)?;
-    Ok(path)
 }
 
 fn project() -> anyhow::Result<mapping::Project> {
@@ -54,7 +43,7 @@ fn run_with_stdin(args: &[&str], input: &[u8]) -> anyhow::Result<std::process::O
 
 #[test]
 fn positional_dash_paths_stream_raw_mapping_bytes() -> anyhow::Result<()> {
-    let directory = test_directory("positional")?;
+    let directory = TempDir::new("positional")?;
     let mut project = project()?;
     project.source_path = Some("input.csv".into());
     project.target_path = Some("output.csv".into());
@@ -76,13 +65,13 @@ fn positional_dash_paths_stream_raw_mapping_bytes() -> anyhow::Result<()> {
         std::fs::read(fixture_directory().join("expected_output.csv"))?
     );
     assert!(output.stderr.is_empty());
-    std::fs::remove_dir_all(directory)?;
+    directory.close()?;
     Ok(())
 }
 
 #[test]
 fn stdout_rejects_multiple_target_artifacts_without_partial_bytes() -> anyhow::Result<()> {
-    let directory = test_directory("multiple")?;
+    let directory = TempDir::new("multiple")?;
     let mut project = project()?;
     project.source_path = Some("input.csv".into());
     project.target_path = Some("output.csv".into());
@@ -112,13 +101,13 @@ fn stdout_rejects_multiple_target_artifacts_without_partial_bytes() -> anyhow::R
     assert!(!output.status.success());
     assert!(output.stdout.is_empty());
     assert!(String::from_utf8_lossy(&output.stderr).contains("exactly one output artifact"));
-    std::fs::remove_dir_all(directory)?;
+    directory.close()?;
     Ok(())
 }
 
 #[test]
 fn stream_mode_keeps_trace_json_stdout_rejected() -> anyhow::Result<()> {
-    let directory = test_directory("trace")?;
+    let directory = TempDir::new("trace")?;
     let mut project = project()?;
     project.source_path = Some("input.csv".into());
     project.target_path = Some("output.csv".into());
@@ -139,13 +128,13 @@ fn stream_mode_keeps_trace_json_stdout_rejected() -> anyhow::Result<()> {
     assert!(!output.status.success());
     assert!(output.stdout.is_empty());
     assert!(String::from_utf8_lossy(&output.stderr).contains("--trace-json -"));
-    std::fs::remove_dir_all(directory)?;
+    directory.close()?;
     Ok(())
 }
 
 #[test]
 fn stream_mode_rejects_persistent_sqlite_and_update_existing_xlsx() -> anyhow::Result<()> {
-    let directory = test_directory("persistent")?;
+    let directory = TempDir::new("persistent")?;
     let mut sqlite_project = project()?;
     sqlite_project.source_path = Some("input.sqlite".into());
     sqlite_project.target_path = Some("output.csv".into());
@@ -213,6 +202,6 @@ fn stream_mode_rejects_persistent_sqlite_and_update_existing_xlsx() -> anyhow::R
         String::from_utf8_lossy(&hierarchical_run.stderr)
     );
 
-    std::fs::remove_dir_all(directory)?;
+    directory.close()?;
     Ok(())
 }

@@ -1,6 +1,5 @@
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::path::Path;
 
 use ir::{ScalarType, SchemaNode};
 use mapping::{
@@ -8,26 +7,7 @@ use mapping::{
     Project, Scope, ScopeConstruction,
 };
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> std::io::Result<Self> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule-pipeline-preview-limits-{}-{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn pipeline() -> Pipeline {
     let schema = SchemaNode::group(
@@ -78,7 +58,7 @@ fn input_bytes(length: usize) -> Vec<u8> {
 }
 
 fn preview_error(pipeline: &Pipeline, bytes: &[u8], directory: &TempDir) -> anyhow::Result<String> {
-    let sentinel = directory.0.join("existing.json");
+    let sentinel = directory.path().join("existing.json");
     std::fs::write(&sentinel, b"existing output")?;
     let hosts = [cli::PipelineHostPayload::new(
         "input",
@@ -86,7 +66,7 @@ fn preview_error(pipeline: &Pipeline, bytes: &[u8], directory: &TempDir) -> anyh
     )?];
     let error = cli::preview_pipeline_value_payloads(
         pipeline,
-        &directory.0.join("flow.json"),
+        &directory.path().join("flow.json"),
         &cli::PipelinePreviewOptions::new(&hosts),
     )
     .unwrap_err();
@@ -96,7 +76,7 @@ fn preview_error(pipeline: &Pipeline, bytes: &[u8], directory: &TempDir) -> anyh
 
 #[test]
 fn an_expanding_mapping_cannot_return_an_oversized_document() -> anyhow::Result<()> {
-    let directory = TempDir::new()?;
+    let directory = TempDir::new("pipeline-preview-limits")?;
     let mut pipeline = pipeline();
     let project = &mut pipeline.stages[0].project;
     project.graph.nodes = BTreeMap::from([
@@ -130,7 +110,7 @@ fn an_expanding_mapping_cannot_return_an_oversized_document() -> anyhow::Result<
 
 #[test]
 fn individually_valid_documents_cannot_exceed_the_total_output_limit() -> anyhow::Result<()> {
-    let directory = TempDir::new()?;
+    let directory = TempDir::new("pipeline-preview-limits")?;
     let mut pipeline = pipeline();
     let project = &mut pipeline.stages[0].project;
     project.extra_targets = (0..8)

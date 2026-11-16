@@ -1,30 +1,12 @@
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::path::Path;
 
 use mapping::{
     Binding, FormatOptions, Graph, Node, PdfCapture, PdfCommand, PdfLayout, PdfPageSelection,
     PdfRegion, PdfRepairDependency, Project, Scope,
 };
 
-struct TempDir(PathBuf);
-impl TempDir {
-    fn new() -> Self {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_cli_pdf_repair_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn project() -> Project {
     let layout = PdfLayout::new(
@@ -89,16 +71,19 @@ fn assert_dependency(error: &anyhow::Error) {
 
 #[test]
 fn saved_pdf_repair_blocks_file_overrides_and_payload_identities_without_outputs() {
-    let temp = TempDir::new();
-    let saved = temp.0.join("project.json");
+    let temp = TempDir::new("cli_pdf_repair").unwrap();
+    let saved = temp.path().join("project.json");
     std::fs::write(
         &saved,
         mapping::project_file::encode_pretty(&project()).unwrap(),
     )
     .unwrap();
-    let output = temp.0.join("sentinel.json");
+    let output = temp.path().join("sentinel.json");
     std::fs::write(&output, b"sentinel").unwrap();
-    for input in [temp.0.join("missing.pdf"), temp.0.join("renamed.csv")] {
+    for input in [
+        temp.path().join("missing.pdf"),
+        temp.path().join("renamed.csv"),
+    ] {
         // An existing override must not switch this configured boundary to CSV.
         if input.extension() == Some(std::ffi::OsStr::new("csv")) {
             std::fs::write(&input, b"Value\ndata\n").unwrap();

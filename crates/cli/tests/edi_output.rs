@@ -1,19 +1,10 @@
 use std::path::{Path, PathBuf};
+use test_support::TempDir;
 
 use ir::{ScalarType, SchemaNode, Value};
 use mapping::{
     Binding, EdiBoundaryKind, EdiValueConstraint, FormatOptions, Graph, Node, Project, Scope,
 };
-
-fn test_dir(label: &str) -> Result<PathBuf, std::io::Error> {
-    let path = std::env::temp_dir().join(format!(
-        "ferrule_cli_edi_output_{label}_{}",
-        std::process::id()
-    ));
-    let _ = std::fs::remove_dir_all(&path);
-    std::fs::create_dir_all(&path)?;
-    Ok(path)
-}
 
 fn write_project(directory: &Path, project: &Project) -> Result<PathBuf, std::io::Error> {
     let path = directory.join("project.json");
@@ -101,7 +92,7 @@ fn hl7_target_identity_writes_a_neutral_output_path() -> Result<(), Box<dyn std:
         ],
         ..Scope::default()
     };
-    let directory = test_dir("hl7")?;
+    let directory = TempDir::new("hl7")?;
     let project_path = write_project(
         &directory,
         &project(
@@ -120,7 +111,7 @@ fn hl7_target_identity_writes_a_neutral_output_path() -> Result<(), Box<dyn std:
         std::fs::read_to_string(&output)?,
         "MSH|^~\\&|SEND\\F\\APP\rPID|patient\\T\\one\r"
     );
-    std::fs::remove_dir_all(directory)?;
+    directory.close()?;
     Ok(())
 }
 
@@ -166,7 +157,7 @@ fn tradacoms_target_identity_writes_a_neutral_output_path() -> Result<(), Box<dy
         ],
         ..Scope::default()
     };
-    let directory = test_dir("tradacoms")?;
+    let directory = TempDir::new("tradacoms")?;
     let project_path = write_project(
         &directory,
         &project(
@@ -185,7 +176,7 @@ fn tradacoms_target_identity_writes_a_neutral_output_path() -> Result<(), Box<dy
         std::fs::read_to_string(&output)?,
         "STX=ANA:1+A?+B'\nEND=1'\n"
     );
-    std::fs::remove_dir_all(directory)?;
+    directory.close()?;
     Ok(())
 }
 
@@ -218,7 +209,7 @@ fn invalid_edi_values_report_all_issues_before_output_is_replaced()
     };
     project.target_options.edi_value_constraints = vec![constraint];
 
-    let directory = test_dir("validation")?;
+    let directory = TempDir::new("validation")?;
     let project_path = write_project(&directory, &project)?;
     let input = directory.join("input.capture");
     let output = directory.join("output.capture");
@@ -231,7 +222,7 @@ fn invalid_edi_values_report_all_issues_before_output_is_replaced()
     assert!(message.contains("minimum is 2"), "{message}");
     assert!(message.contains("configured code-list"), "{message}");
     assert_eq!(std::fs::read_to_string(&output)?, "preserved");
-    std::fs::remove_dir_all(directory)?;
+    directory.close()?;
     Ok(())
 }
 
@@ -256,7 +247,7 @@ fn unresolved_edi_configuration_blocks_output_before_replacing_it()
     let mut project = project(target, EdiBoundaryKind::Hl7, constant_graph(&["1"]), root);
     project.target_options.edi_config_reference = Some("HL7/Envelope.Config".into());
 
-    let directory = test_dir("unresolved-config")?;
+    let directory = TempDir::new("unresolved-config")?;
     let project_path = write_project(&directory, &project)?;
     let input = directory.join("input.capture");
     let output = directory.join("output.capture");
@@ -273,7 +264,7 @@ fn unresolved_edi_configuration_blocks_output_before_replacing_it()
         "{message}"
     );
     assert_eq!(std::fs::read_to_string(&output)?, "preserved");
-    std::fs::remove_dir_all(directory)?;
+    directory.close()?;
     Ok(())
 }
 
@@ -299,7 +290,7 @@ fn missing_edi_configuration_metadata_blocks_output_before_replacing_it()
     project.target_options.edi_config_reference =
         Some(mapping::EdiConfigDependency::MissingConfiguration);
 
-    let directory = test_dir("missing-config-metadata")?;
+    let directory = TempDir::new("missing-config-metadata")?;
     let project_path = write_project(&directory, &project)?;
     let input = directory.join("input.capture");
     let output = directory.join("output.capture");
@@ -317,6 +308,6 @@ fn missing_edi_configuration_metadata_blocks_output_before_replacing_it()
         "{message}"
     );
     assert_eq!(std::fs::read_to_string(&output)?, "preserved");
-    std::fs::remove_dir_all(directory)?;
+    directory.close()?;
     Ok(())
 }

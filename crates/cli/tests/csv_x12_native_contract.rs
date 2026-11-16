@@ -3,18 +3,10 @@ use ir::{Instance, Value};
 use mapping::Project;
 use serde_json::{Value as Json, json};
 use std::error::Error;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::path::Path;
 
 /// Removes a per-test directory on drop, including after a panic.
-struct TempDir(PathBuf);
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 const PROJECT: &[u8] = include_bytes!("csv_x12_native/fixtures/project.json");
 const CONTEXT: &[u8] = include_bytes!("csv_x12_native/fixtures/context.json");
@@ -127,15 +119,9 @@ fn original(root: &Path, label: &str, value: &impl std::fmt::Debug) -> Result<()
 
 #[test]
 fn complete_csv_rows_feed_one_x12_document_without_dropping_rows() -> Result<(), Box<dyn Error>> {
-    static NEXT: AtomicUsize = AtomicUsize::new(0);
-    let root: PathBuf = std::env::temp_dir().join(format!(
-        "ferrule-csv-x12-275-native-{}-{}-{}",
-        std::process::id(),
-        SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos(),
-        NEXT.fetch_add(1, Ordering::Relaxed)
-    ));
+    let _cleanup = TempDir::new("cli-csv-x12-native-contract")?;
+    let root = _cleanup.path().to_path_buf();
     std::fs::create_dir_all(root.join("fixtures"))?;
-    let _cleanup = TempDir(root.clone());
     for (name, body) in FIXTURES {
         std::fs::write(root.join("fixtures").join(name), body)?;
     }

@@ -1,18 +1,11 @@
 use std::error::Error;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
-struct Package(PathBuf);
+struct Package(test_support::TempDir);
 impl Package {
     fn new(cast_first: bool, explicit: bool) -> Result<Self, Box<dyn Error>> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let root = std::env::temp_dir().join(format!(
-            "ferrule_cli_float_cast_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir(&root)?;
+        let root = test_support::TempDir::new("cli-target-float-cast")?;
         let package = Self(root);
         let fixture =
             Path::new(env!("CARGO_MANIFEST_DIR")).join("../mfd/tests/fixtures/target_float_cast");
@@ -49,11 +42,6 @@ impl Package {
         )?;
         assert!(warnings.is_empty());
         Ok(package)
-    }
-}
-impl Drop for Package {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
     }
 }
 

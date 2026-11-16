@@ -1,34 +1,17 @@
 use std::collections::BTreeMap;
 use std::error::Error;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::path::Path;
 
 use ir::{ScalarType, SchemaNode, Value};
 use mapping::{
     Binding, FormatOptions, Graph, Node, Pipeline, PipelineInput, PipelineStage, Project, Scope,
 };
 
-struct TempDir(PathBuf);
+struct TempDir(test_support::TempDir);
 
 impl TempDir {
     fn new() -> std::io::Result<Self> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let base = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../target/test-tmp-cli-project-file-codec");
-        std::fs::create_dir_all(&base)?;
-        let path = base.join(format!(
-            "case-{}-{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
+        test_support::TempDir::new("cli-project-file-codec").map(Self)
     }
 }
 

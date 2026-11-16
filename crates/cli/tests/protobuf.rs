@@ -1,4 +1,5 @@
 use std::path::Path;
+use test_support::TempDir;
 
 fn protobuf_directory() -> ir::Instance {
     let record = |code, label: &str, rank| {
@@ -32,6 +33,7 @@ fn protobuf_directory() -> ir::Instance {
 
 #[test]
 fn imported_protobuf_source_reads_binary_independent_of_extension() {
+    let _scratch = TempDir::new("cli-protobuf").unwrap();
     let fixture_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../mfd/tests/fixtures");
     let mut project = mfd::import(&fixture_dir.join("protobuf-source.mfd"))
         .unwrap()
@@ -76,9 +78,9 @@ enum Rank { STANDARD = 0; PRIORITY = 1; }
         },
     ];
     let tag = format!("protobuf_source_{}", std::process::id());
-    let project_path = std::env::temp_dir().join(format!("ferrule_cli_{tag}.json"));
-    let input_path = std::env::temp_dir().join(format!("ferrule_cli_{tag}.data"));
-    let output_path = std::env::temp_dir().join(format!("ferrule_cli_{tag}.xml"));
+    let project_path = _scratch.path().join(format!("ferrule_cli_{tag}.json"));
+    let input_path = _scratch.path().join(format!("ferrule_cli_{tag}.data"));
+    let output_path = _scratch.path().join(format!("ferrule_cli_{tag}.xml"));
     std::fs::write(&project_path, serde_json::to_vec(&project).unwrap()).unwrap();
 
     let protobuf = project.source_options.protobuf.as_ref().unwrap();
@@ -118,20 +120,19 @@ enum Rank { STANDARD = 0; PRIORITY = 1; }
         Some(&ir::Value::String("Eight".into()))
     );
 
-    std::fs::remove_file(project_path).unwrap();
-    std::fs::remove_file(input_path).unwrap();
-    std::fs::remove_file(output_path).unwrap();
+    _scratch.close().unwrap();
 }
 
 #[test]
 fn imported_protobuf_target_writes_binary_independent_of_extension() {
+    let _scratch = TempDir::new("cli-protobuf").unwrap();
     let fixture_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../mfd/tests/fixtures");
     let mut project = mfd::import(&fixture_dir.join("protobuf-target.mfd"))
         .unwrap()
         .project;
     let tag = format!("protobuf_{}", std::process::id());
-    let project_path = std::env::temp_dir().join(format!("ferrule_cli_{tag}.json"));
-    let output_path = std::env::temp_dir().join(format!("ferrule_cli_{tag}.data"));
+    let project_path = _scratch.path().join(format!("ferrule_cli_{tag}.json"));
+    let output_path = _scratch.path().join(format!("ferrule_cli_{tag}.data"));
     let write_project = |project: &mapping::Project| {
         std::fs::write(&project_path, serde_json::to_vec(project).unwrap()).unwrap();
     };
@@ -153,7 +154,7 @@ fn imported_protobuf_target_writes_binary_independent_of_extension() {
 
     let protobuf_schema = project.target.clone();
     let protobuf_options = project.target_options.clone();
-    let decoded_path = std::env::temp_dir().join(format!("ferrule_cli_{tag}.xml"));
+    let decoded_path = _scratch.path().join(format!("ferrule_cli_{tag}.xml"));
     let decode_project = mapping::Project {
         execution_contract: None,
         source: protobuf_schema.clone(),
@@ -214,7 +215,5 @@ fn imported_protobuf_target_writes_binary_independent_of_extension() {
     assert!(error.to_string().contains("`protobuf` cannot be combined"));
     assert_eq!(std::fs::read(&output_path).unwrap(), expected);
 
-    std::fs::remove_file(project_path).unwrap();
-    std::fs::remove_file(output_path).unwrap();
-    std::fs::remove_file(decoded_path).unwrap();
+    _scratch.close().unwrap();
 }

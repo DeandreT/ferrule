@@ -1,33 +1,13 @@
 use std::cell::RefCell;
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::path::Path;
 
 use ir::{ScalarType, SchemaNode, Value};
 use mapping::{
     Binding, DynamicSourcePath, Graph, NamedSource, Node, Project, Scope, ScopeIteration,
 };
 
-struct TestDir(PathBuf);
-
-impl TestDir {
-    fn new() -> Self {
-        static NEXT: AtomicU64 = AtomicU64::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_dynamic_trace_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for TestDir {
-    fn drop(&mut self) {
-        std::fs::remove_dir_all(&self.0).unwrap();
-    }
-}
+use test_support::TempDir as TestDir;
 
 #[derive(Default)]
 struct Requests(RefCell<Vec<(String, String)>>);
@@ -144,14 +124,14 @@ fn run(
 
 #[test]
 fn filesystem_primary_static_and_dynamic_outputs_preserve_callback_scope() {
-    let dir = TestDir::new();
+    let dir = TestDir::new("dynamic_trace").unwrap();
     std::fs::write(
-        dir.0.join("primary.xml"),
+        dir.path().join("primary.xml"),
         "<Document><Item><Value>Hello</Value></Item></Document>",
     )
     .unwrap();
     std::fs::write(
-        dir.0.join("secondary.xml"),
+        dir.path().join("secondary.xml"),
         "<Document><Item><Value>Hello</Value></Item></Document>",
     )
     .unwrap();
@@ -167,10 +147,10 @@ fn filesystem_primary_static_and_dynamic_outputs_preserve_callback_scope() {
     ] {
         let project = project(primary, dynamic);
         let requests = Requests::default();
-        let plain_path = dir.0.join(format!("{name}-plain.xml"));
-        let trace_path = dir.0.join(format!("{name}-observed.xml"));
-        let plain = run(&project, &dir.0, &plain_path, None);
-        let observed = run(&project, &dir.0, &trace_path, Some(&requests));
+        let plain_path = dir.path().join(format!("{name}-plain.xml"));
+        let trace_path = dir.path().join(format!("{name}-observed.xml"));
+        let plain = run(&project, dir.path(), &plain_path, None);
+        let observed = run(&project, dir.path(), &trace_path, Some(&requests));
         eprintln!("R04/R05 complete returns plain={plain:?} observed={observed:?}");
         let plain_bytes = std::fs::read(&plain_path).unwrap();
         let observed_bytes = std::fs::read(&trace_path).unwrap();
@@ -188,9 +168,9 @@ fn filesystem_primary_static_and_dynamic_outputs_preserve_callback_scope() {
 
 #[test]
 fn unused_dynamic_source_has_no_loader_request() {
-    let dir = TestDir::new();
+    let dir = TestDir::new("dynamic_trace").unwrap();
     std::fs::write(
-        dir.0.join("primary.xml"),
+        dir.path().join("primary.xml"),
         "<Document><Item><Value>Hello</Value></Item></Document>",
     )
     .unwrap();
@@ -203,8 +183,8 @@ fn unused_dynamic_source_has_no_loader_request() {
         },
     );
     let requests = Requests::default();
-    let output = dir.0.join("unused.xml");
-    let result = run(&unused, &dir.0, &output, Some(&requests));
+    let output = dir.path().join("unused.xml");
+    let result = run(&unused, dir.path(), &output, Some(&requests));
     eprintln!("R05 unused complete return={result:?}");
     let bytes = std::fs::read(&output).unwrap();
     eprintln!(
@@ -218,24 +198,24 @@ fn unused_dynamic_source_has_no_loader_request() {
 
 #[test]
 fn json_trace_load_event_is_deterministic_and_excludes_primary_static_reads() {
-    let dir = TestDir::new();
+    let dir = TestDir::new("dynamic_trace").unwrap();
     std::fs::write(
-        dir.0.join("primary.xml"),
+        dir.path().join("primary.xml"),
         "<Document><Item><Value>ignored</Value></Item></Document>",
     )
     .unwrap();
     std::fs::write(
-        dir.0.join("secondary.xml"),
+        dir.path().join("secondary.xml"),
         "<Document><Item><Value>Hello</Value></Item></Document>",
     )
     .unwrap();
     let project = project(false, true);
-    let output = dir.0.join("output.xml");
+    let output = dir.path().join("output.xml");
     let mut bodies = Vec::new();
     for label in ["first", "repeat"] {
-        let trace_path = dir.0.join(format!("{label}.jsonl"));
+        let trace_path = dir.path().join(format!("{label}.jsonl"));
         let trace = cli::JsonTraceFile::create(&trace_path).unwrap();
-        let result = run(&project, &dir.0, &output, Some(&trace));
+        let result = run(&project, dir.path(), &output, Some(&trace));
         eprintln!("R04/R06 {label} result={result:?}");
         let result = result.unwrap();
         let finished = trace.finish(&result.artifacts);
@@ -271,9 +251,9 @@ fn json_trace_load_event_is_deterministic_and_excludes_primary_static_reads() {
 
 #[test]
 fn null_json_null_and_non_string_paths_never_enter_loader() {
-    let dir = TestDir::new();
+    let dir = TestDir::new("dynamic_trace").unwrap();
     std::fs::write(
-        dir.0.join("primary.xml"),
+        dir.path().join("primary.xml"),
         "<Document><Item><Value>ignored</Value></Item></Document>",
     )
     .unwrap();
@@ -284,13 +264,13 @@ fn null_json_null_and_non_string_paths_never_enter_loader() {
     ] {
         let mut project = project(false, true);
         project.graph.nodes.insert(0, Node::Const { value });
-        let plain_path = dir.0.join(format!("{label}-plain.xml"));
-        let observed_path = dir.0.join(format!("{label}-observed.xml"));
+        let plain_path = dir.path().join(format!("{label}-plain.xml"));
+        let observed_path = dir.path().join(format!("{label}-observed.xml"));
         std::fs::write(&plain_path, b"previous").unwrap();
         std::fs::write(&observed_path, b"previous").unwrap();
         let requests = Requests::default();
-        let plain = run(&project, &dir.0, &plain_path, None);
-        let observed = run(&project, &dir.0, &observed_path, Some(&requests));
+        let plain = run(&project, dir.path(), &plain_path, None);
+        let observed = run(&project, dir.path(), &observed_path, Some(&requests));
         eprintln!("R04/R05 complete returns plain={plain:?} observed={observed:?}");
         let plain_bytes = std::fs::read(&plain_path).unwrap();
         let observed_bytes = std::fs::read(&observed_path).unwrap();

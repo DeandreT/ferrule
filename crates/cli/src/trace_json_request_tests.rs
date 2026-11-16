@@ -2,26 +2,7 @@ use super::*;
 use engine::TraceValue;
 use serde_json::{Value as JsonValue, json};
 
-struct TestDir(PathBuf);
-
-impl TestDir {
-    fn new() -> Self {
-        static NEXT: AtomicU64 = AtomicU64::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_request_writer_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for TestDir {
-    fn drop(&mut self) {
-        std::fs::remove_dir_all(&self.0).unwrap();
-    }
-}
+use test_support::TempDir as TestDir;
 
 fn node_event() -> TraceEvent {
     TraceEvent::NodeValue {
@@ -55,8 +36,8 @@ fn lines(path: &Path) -> Vec<JsonValue> {
 
 #[test]
 fn request_identity_roundtrips_exactly_in_shared_sequence() {
-    let dir = TestDir::new();
-    let path = dir.0.join("trace.jsonl");
+    let dir = TestDir::new("request_writer").unwrap();
+    let path = dir.path().join("trace.jsonl");
     let trace = JsonTraceFile::create(&path).unwrap();
     trace.record(node_event());
     trace.dynamic_source_load_requested("雪\"\\", "./雪\"\\\n.xml");
@@ -90,7 +71,7 @@ fn request_identity_roundtrips_exactly_in_shared_sequence() {
 
 #[test]
 fn borrowed_identity_limits_use_utf8_bytes_and_fail_stickily() {
-    let dir = TestDir::new();
+    let dir = TestDir::new("request_writer").unwrap();
     for (label, source, path, expected_error) in [
         ("source_below", "a", "x", None),
         ("source_equal", "é", "x", None),
@@ -109,7 +90,7 @@ fn borrowed_identity_limits_use_utf8_bytes_and_fail_stickily() {
             Some("dynamic source request path exceeds its byte limit"),
         ),
     ] {
-        let destination = dir.0.join(format!("{label}.jsonl"));
+        let destination = dir.path().join(format!("{label}.jsonl"));
         std::fs::write(&destination, b"previous\n").unwrap();
         let trace = JsonTraceFile::create_with_request_limits(
             &destination,
@@ -140,7 +121,7 @@ fn borrowed_identity_limits_use_utf8_bytes_and_fail_stickily() {
             assert_eq!(first.1, 1);
         }
     }
-    assert!(std::fs::read_dir(&dir.0).unwrap().all(|entry| {
+    assert!(std::fs::read_dir(dir.path()).unwrap().all(|entry| {
         !entry
             .unwrap()
             .file_name()
@@ -154,7 +135,7 @@ const REQUEST: &[u8] = b"{\"event\":{\"kind\":\"dynamic_source_load_requested\",
 
 #[test]
 fn serialized_line_and_total_request_byte_limits_include_lf() {
-    let dir = TestDir::new();
+    let dir = TestDir::new("request_writer").unwrap();
     for (label, line_bytes, bytes, allowed) in [
         ("line_below", REQUEST.len() + 1, 1024, true),
         ("line_equal", REQUEST.len(), 1024, true),
@@ -163,7 +144,7 @@ fn serialized_line_and_total_request_byte_limits_include_lf() {
         ("bytes_equal", 65536, REQUEST.len() as u64, true),
         ("bytes_above", 65536, REQUEST.len() as u64 - 1, false),
     ] {
-        let destination = dir.0.join(format!("{label}.jsonl"));
+        let destination = dir.path().join(format!("{label}.jsonl"));
         std::fs::write(&destination, b"previous\n").unwrap();
         let trace = JsonTraceFile::create_with_request_limits(
             &destination,
@@ -194,7 +175,7 @@ fn serialized_line_and_total_request_byte_limits_include_lf() {
 
 #[test]
 fn request_count_and_cumulative_bytes_are_independent_of_graph_events() {
-    let dir = TestDir::new();
+    let dir = TestDir::new("request_writer").unwrap();
     for (label, requests, bytes, permitted) in [
         ("count_below", 3, 1024, 2),
         ("count_equal", 2, 1024, 2),
@@ -202,7 +183,7 @@ fn request_count_and_cumulative_bytes_are_independent_of_graph_events() {
         ("total_equal", 3, REQUEST.len() as u64 * 2, 2),
         ("total_above", 3, REQUEST.len() as u64 * 2 - 1, 1),
     ] {
-        let destination = dir.0.join(format!("{label}.jsonl"));
+        let destination = dir.path().join(format!("{label}.jsonl"));
         std::fs::write(&destination, b"previous\n").unwrap();
         let trace = JsonTraceFile::create_with_request_limits(
             &destination,
@@ -234,9 +215,9 @@ fn request_count_and_cumulative_bytes_are_independent_of_graph_events() {
 
 #[test]
 fn sequence_and_writer_failure_refuse_complete_publication() {
-    let dir = TestDir::new();
+    let dir = TestDir::new("request_writer").unwrap();
     for sequence_overflow in [true, false] {
-        let destination = dir.0.join(format!("{sequence_overflow}.jsonl"));
+        let destination = dir.path().join(format!("{sequence_overflow}.jsonl"));
         std::fs::write(&destination, b"previous\n").unwrap();
         let trace = JsonTraceFile::create(&destination).unwrap();
         if sequence_overflow {
@@ -271,8 +252,8 @@ fn sequence_and_writer_failure_refuse_complete_publication() {
 
 #[test]
 fn request_record_does_not_bypass_output_collision_guard() {
-    let dir = TestDir::new();
-    let destination = dir.0.join("output.xml");
+    let dir = TestDir::new("request_writer").unwrap();
+    let destination = dir.path().join("output.xml");
     std::fs::write(&destination, b"mapping output").unwrap();
     let trace = JsonTraceFile::create(&destination).unwrap();
     trace.dynamic_source_load_requested("a", "b");
@@ -334,14 +315,14 @@ fn writer_refusal_does_not_change_mapping_result_or_published_output() {
     use mapping::{
         Binding, DynamicSourcePath, Graph, NamedSource, Node, Project, Scope, ScopeIteration,
     };
-    let dir = TestDir::new();
+    let dir = TestDir::new("request_writer").unwrap();
     std::fs::write(
-        dir.0.join("primary.xml"),
+        dir.path().join("primary.xml"),
         "<Document><Item><Value>ignored</Value></Item></Document>",
     )
     .unwrap();
     std::fs::write(
-        dir.0.join("secondary.xml"),
+        dir.path().join("secondary.xml"),
         "<Document><Item><Value>Hello</Value></Item></Document>",
     )
     .unwrap();
@@ -410,8 +391,8 @@ fn writer_refusal_does_not_change_mapping_result_or_published_output() {
             ..Scope::default()
         },
     };
-    let destination = dir.0.join("trace.jsonl");
-    let output = dir.0.join("output.xml");
+    let destination = dir.path().join("trace.jsonl");
+    let output = dir.path().join("output.xml");
     std::fs::write(&destination, b"previous trace\n").unwrap();
     let trace = JsonTraceFile::create_with_request_limits(
         &destination,
@@ -423,7 +404,7 @@ fn writer_refusal_does_not_change_mapping_result_or_published_output() {
     .unwrap();
     let mapped = crate::run_project_value_with_options(
         &project,
-        &dir.0.join("project.json"),
+        &dir.path().join("project.json"),
         &crate::RunOptions {
             output_path: Some(&output),
             trace_sink: Some(&trace),

@@ -1,5 +1,6 @@
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
+use test_support::TempDir;
 
 use serde_json::Value;
 
@@ -17,12 +18,13 @@ fn json_lines(output: &[u8]) -> Vec<Value> {
         .collect()
 }
 
-fn temporary_path(name: &str) -> PathBuf {
-    std::env::temp_dir().join(format!("ferrule_cli_{name}_{}.json", std::process::id()))
+fn temporary_path(directory: &TempDir, name: &str) -> PathBuf {
+    directory.join(format!("ferrule_cli_{name}_{}.json", std::process::id()))
 }
 
 #[test]
 fn validation_issues_are_json_lines_with_a_failure_exit_code() {
+    let _scratch = TempDir::new("cli-diagnostics").unwrap();
     let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/project.json");
     let text = std::fs::read_to_string(fixture).unwrap();
     let mut project: mapping::Project = serde_json::from_str(&text).unwrap();
@@ -33,7 +35,7 @@ fn validation_issues_are_json_lines_with_a_failure_exit_code() {
             args: vec![12345],
         },
     );
-    let invalid = temporary_path("diagnostics_invalid");
+    let invalid = temporary_path(&_scratch, "diagnostics_invalid");
     std::fs::write(&invalid, serde_json::to_string(&project).unwrap()).unwrap();
 
     let output = ferrule(&[
@@ -43,7 +45,6 @@ fn validation_issues_are_json_lines_with_a_failure_exit_code() {
         "--project",
         invalid.to_str().unwrap(),
     ]);
-    std::fs::remove_file(invalid).unwrap();
 
     assert!(!output.status.success());
     assert!(output.stdout.is_empty());
@@ -66,13 +67,15 @@ fn validation_issues_are_json_lines_with_a_failure_exit_code() {
             .as_str()
             .is_some_and(|message| message.contains("missing node 12345"))
     }));
+    _scratch.close().unwrap();
 }
 
 #[test]
 fn import_warnings_use_json_without_changing_stdout_or_the_artifact() {
+    let _scratch = TempDir::new("cli-diagnostics").unwrap();
     let fixture =
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../mfd/tests/fixtures/noschema-json.mfd");
-    let imported = temporary_path("diagnostics_imported");
+    let imported = temporary_path(&_scratch, "diagnostics_imported");
     let output = ferrule(&[
         "--diagnostics",
         "json",
@@ -89,7 +92,6 @@ fn import_warnings_use_json_without_changing_stdout_or_the_artifact() {
         String::from_utf8_lossy(&output.stderr)
     );
     assert!(imported.exists());
-    std::fs::remove_file(imported).unwrap();
     assert!(String::from_utf8_lossy(&output.stdout).contains("wrote "));
     let diagnostics = json_lines(&output.stderr);
     assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
@@ -102,11 +104,13 @@ fn import_warnings_use_json_without_changing_stdout_or_the_artifact() {
             .as_str()
             .is_some_and(|message| message.contains("no schema reference"))
     );
+    _scratch.close().unwrap();
 }
 
 #[test]
 fn import_failures_are_a_single_json_diagnostic() {
-    let missing = temporary_path("diagnostics_missing_xsd").with_extension("xsd");
+    let _scratch = TempDir::new("cli-diagnostics").unwrap();
+    let missing = temporary_path(&_scratch, "diagnostics_missing_xsd").with_extension("xsd");
     let output = ferrule(&[
         "--diagnostics",
         "json",
@@ -127,13 +131,15 @@ fn import_failures_are_a_single_json_diagnostic() {
             .as_str()
             .is_some_and(|message| message.contains("importing xsd"))
     );
+    _scratch.close().unwrap();
 }
 
 /// The CLI imports on its main thread; a schema far past the XSD import
 /// depth limit is refused there instead of overflowing the stack.
 #[test]
 fn schemas_past_the_xsd_depth_limit_fail_with_a_diagnostic() {
-    let deep = temporary_path("diagnostics_deep_xsd").with_extension("xsd");
+    let _scratch = TempDir::new("cli-diagnostics").unwrap();
+    let deep = temporary_path(&_scratch, "diagnostics_deep_xsd").with_extension("xsd");
     let mut schema = String::from(
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Input" type="t0"/>"#,
     );
@@ -152,7 +158,6 @@ fn schemas_past_the_xsd_depth_limit_fail_with_a_diagnostic() {
         "--xsd",
         deep.to_str().unwrap(),
     ]);
-    std::fs::remove_file(&deep).unwrap();
 
     // A stack overflow would end the process with a signal and no code.
     assert!(
@@ -168,15 +173,16 @@ fn schemas_past_the_xsd_depth_limit_fail_with_a_diagnostic() {
             .is_some_and(|message| message.contains("nesting and reference depth limit")),
         "{diagnostics:?}"
     );
+    _scratch.close().unwrap();
 }
 
 /// The CLI imports on its main thread; a schema reached through a long chain
 /// of include files imports there instead of overflowing the stack.
 #[test]
 fn schemas_behind_a_long_include_chain_import() {
+    let _scratch = TempDir::new("cli-diagnostics").unwrap();
     const FILES: usize = 10_000;
-    let directory = temporary_path("diagnostics_include_chain").with_extension("");
-    let _ = std::fs::remove_dir_all(&directory);
+    let directory = temporary_path(&_scratch, "diagnostics_include_chain").with_extension("");
     std::fs::create_dir_all(&directory).unwrap();
     let xs = r#"xmlns:xs="http://www.w3.org/2001/XMLSchema""#;
     for index in 1..FILES {
@@ -207,19 +213,20 @@ fn schemas_behind_a_long_include_chain_import() {
         "--xsd",
         root.to_str().unwrap(),
     ]);
-    std::fs::remove_dir_all(&directory).unwrap();
 
     assert!(output.status.success(), "{output:?}");
     let schema: Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(schema["name"], "Input");
     assert_eq!(schema["kind"]["children"][0]["name"], "Sku", "{schema}");
+    _scratch.close().unwrap();
 }
 
 /// A design whose entry tree nests far past the MFD entry depth limit is
 /// refused on the CLI's main thread instead of overflowing the stack.
 #[test]
 fn designs_past_the_entry_depth_limit_fail_with_a_diagnostic() {
-    let deep = temporary_path("diagnostics_deep_entries").with_extension("mfd");
+    let _scratch = TempDir::new("cli-diagnostics").unwrap();
+    let deep = temporary_path(&_scratch, "diagnostics_deep_entries").with_extension("mfd");
     let typed = r#"<entry name="n" ferrule-kind="group" ferrule-repeating="0">"#;
     std::fs::write(
         &deep,
@@ -230,7 +237,7 @@ fn designs_past_the_entry_depth_limit_fail_with_a_diagnostic() {
         ),
     )
     .unwrap();
-    let out = temporary_path("diagnostics_deep_entries_project");
+    let out = temporary_path(&_scratch, "diagnostics_deep_entries_project");
     let mut outputs = Vec::new();
     for pipeline in [false, true] {
         let mut args = vec![
@@ -247,7 +254,6 @@ fn designs_past_the_entry_depth_limit_fail_with_a_diagnostic() {
         }
         outputs.push(ferrule(&args));
     }
-    std::fs::remove_file(&deep).unwrap();
 
     for output in outputs {
         // A stack overflow would end the process with a signal and no code.
@@ -269,6 +275,7 @@ fn designs_past_the_entry_depth_limit_fail_with_a_diagnostic() {
             "{diagnostics:?}"
         );
     }
+    _scratch.close().unwrap();
 }
 
 #[test]
