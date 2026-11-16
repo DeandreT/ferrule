@@ -1,18 +1,11 @@
 use std::error::Error;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use mfd::{ImportIssue, ImportIssueKind, ImportProfile, ImportReport, MfdError};
 
 /// Removes a per-test directory on drop, including after a panic.
-struct TempDir(PathBuf);
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn retain(directory: &Path, name: &str, value: impl std::fmt::Debug) -> std::io::Result<()> {
     std::fs::write(directory.join(name), format!("{value:#?}\n"))
@@ -21,17 +14,11 @@ fn retain(directory: &Path, name: &str, value: impl std::fmt::Debug) -> std::io:
 #[test]
 fn conflicting_physical_inputs_refuse_before_destination_publication() -> Result<(), Box<dyn Error>>
 {
-    static NEXT: AtomicUsize = AtomicUsize::new(0);
     let fixtures =
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../mfd/tests/fixtures/input_guard");
     for design in ["modern-80.mfd", "legacy-80.mfd", "mixed-reintroduce.mfd"] {
-        let directory = std::env::temp_dir().join(format!(
-            "ferrule_cli_input_guard335_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir(&directory)?;
-        let _cleanup = TempDir(directory.clone());
+        let _cleanup = TempDir::new("cli-import-mfd-input-guard")?;
+        let directory = _cleanup.path().to_path_buf();
         eprintln!("CLI_INPUT_GUARD335_ORIGINALS={}", directory.display());
         for name in ["source.xsd", "target.xsd"] {
             std::fs::copy(fixtures.join(name), directory.join(name))?;
@@ -172,14 +159,8 @@ fn competing_singular_entries_refuse_native_and_generated_public_routes()
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let fixtures = root.join("../mfd/tests/fixtures");
     let runtime = root.join("../codegen-runtime").canonicalize()?;
-    static NEXT: AtomicUsize = AtomicUsize::new(0);
-    let directory = std::env::temp_dir().join(format!(
-        "ferrule_singular_feed_routes_{}_{}",
-        std::process::id(),
-        NEXT.fetch_add(1, Ordering::Relaxed)
-    ));
-    std::fs::create_dir(&directory)?;
-    let _cleanup = TempDir(directory.clone());
+    let _cleanup = TempDir::new("cli-import-mfd-input-guard")?;
+    let directory = _cleanup.path().to_path_buf();
 
     for (name, fixture, design, same_value, location) in [
         (

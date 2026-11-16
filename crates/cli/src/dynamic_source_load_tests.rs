@@ -4,28 +4,8 @@ use ir::{ScalarType, Value};
 use mapping::{DynamicSourcePath, NamedSource};
 use std::cell::RefCell;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
 
-struct TestDir(PathBuf);
-
-impl TestDir {
-    fn new() -> Self {
-        static NEXT: AtomicU64 = AtomicU64::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_loader_requests_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for TestDir {
-    fn drop(&mut self) {
-        std::fs::remove_dir_all(&self.0).unwrap();
-    }
-}
+use test_support::TempDir as TestDir;
 
 #[derive(Default)]
 struct Requests(RefCell<Vec<(String, String)>>);
@@ -65,23 +45,24 @@ fn expected(value: &str) -> Instance {
 
 #[test]
 fn loader_requests_include_cache_hits_before_acquisition() {
-    let dir = TestDir::new();
+    let dir = TestDir::new("loader_requests").unwrap();
     std::fs::write(
-        dir.0.join("a.xml"),
+        dir.path().join("a.xml"),
         "<Document><Value>alpha</Value></Document>",
     )
     .unwrap();
     std::fs::write(
-        dir.0.join("b.xml"),
+        dir.path().join("b.xml"),
         "<Document><Value>beta</Value></Document>",
     )
     .unwrap();
     let sources = [source("document")];
     let requests = Requests::default();
-    let loader = ProjectDynamicSourceLoader::new(&dir.0, &sources).with_trace_sink(Some(&requests));
+    let loader =
+        ProjectDynamicSourceLoader::new(dir.path(), &sources).with_trace_sink(Some(&requests));
     let first = loader.load("document", "a.xml");
     eprintln!("R01 first={first:?} requests={:?}", requests.0.borrow());
-    std::fs::remove_file(dir.0.join("a.xml")).unwrap();
+    std::fs::remove_file(dir.path().join("a.xml")).unwrap();
     let cached = loader.load("document", "a.xml");
     eprintln!("R01 cached={cached:?} requests={:?}", requests.0.borrow());
     let other = loader.load("document", "b.xml");
@@ -103,15 +84,16 @@ fn loader_requests_include_cache_hits_before_acquisition() {
 
 #[test]
 fn loader_requests_preserve_tuple_identity_and_raw_alias() {
-    let dir = TestDir::new();
+    let dir = TestDir::new("loader_requests").unwrap();
     std::fs::write(
-        dir.0.join("a.xml"),
+        dir.path().join("a.xml"),
         "<Document><Value>alpha</Value></Document>",
     )
     .unwrap();
     let sources = [source("first"), source("second")];
     let requests = Requests::default();
-    let loader = ProjectDynamicSourceLoader::new(&dir.0, &sources).with_trace_sink(Some(&requests));
+    let loader =
+        ProjectDynamicSourceLoader::new(dir.path(), &sources).with_trace_sink(Some(&requests));
     let first = loader.load("first", "a.xml");
     eprintln!("R02 first={first:?} requests={:?}", requests.0.borrow());
     let second = loader.load("second", "a.xml");
@@ -139,10 +121,11 @@ fn loader_requests_preserve_tuple_identity_and_raw_alias() {
 
 #[test]
 fn loader_requests_include_failures_without_caching_them() {
-    let dir = TestDir::new();
+    let dir = TestDir::new("loader_requests").unwrap();
     let sources = [source("document")];
     let requests = Requests::default();
-    let loader = ProjectDynamicSourceLoader::new(&dir.0, &sources).with_trace_sink(Some(&requests));
+    let loader =
+        ProjectDynamicSourceLoader::new(dir.path(), &sources).with_trace_sink(Some(&requests));
     let first = loader.load("document", "missing.xml");
     eprintln!(
         "R03 first={first:?} requests={:?} cache={:?}",
@@ -157,7 +140,7 @@ fn loader_requests_include_failures_without_caching_them() {
     );
     let cache_after_failures = loader.cache.borrow().len();
     std::fs::write(
-        dir.0.join("missing.xml"),
+        dir.path().join("missing.xml"),
         "<Document><Value>repaired</Value></Document>",
     )
     .unwrap();
@@ -194,16 +177,17 @@ fn legacy_sink_default_and_absent_sink_preserve_loader_results() {
     impl TraceSink for Legacy {
         fn record(&self, _: TraceEvent) {}
     }
-    let dir = TestDir::new();
+    let dir = TestDir::new("loader_requests").unwrap();
     std::fs::write(
-        dir.0.join("a.xml"),
+        dir.path().join("a.xml"),
         "<Document><Value>alpha</Value></Document>",
     )
     .unwrap();
     let sources = [source("document")];
     let legacy = Legacy;
-    let absent = ProjectDynamicSourceLoader::new(&dir.0, &sources);
-    let observed = ProjectDynamicSourceLoader::new(&dir.0, &sources).with_trace_sink(Some(&legacy));
+    let absent = ProjectDynamicSourceLoader::new(dir.path(), &sources);
+    let observed =
+        ProjectDynamicSourceLoader::new(dir.path(), &sources).with_trace_sink(Some(&legacy));
     let absent_result = absent.load("document", "a.xml");
     let legacy_result = observed.load("document", "a.xml");
     eprintln!("R06 absent={absent_result:?} legacy={legacy_result:?}");
@@ -215,9 +199,9 @@ fn legacy_sink_default_and_absent_sink_preserve_loader_results() {
 #[test]
 fn ordinary_pdf_loader_observation_preserves_exact_instance() {
     use mapping::{PdfCapture, PdfCommand, PdfLayout, PdfPageSelection, PdfRegion};
-    let dir = TestDir::new();
+    let dir = TestDir::new("loader_requests").unwrap();
     std::fs::write(
-        dir.0.join("hello.pdf"),
+        dir.path().join("hello.pdf"),
         include_bytes!("../../pdf-worker/tests/fixtures/hello-page.pdf"),
     )
     .unwrap();
@@ -240,9 +224,9 @@ fn ordinary_pdf_loader_observation_preserves_exact_instance() {
         ..source("document")
     }];
     let requests = Requests::default();
-    let plain = ProjectDynamicSourceLoader::new(&dir.0, &sources);
+    let plain = ProjectDynamicSourceLoader::new(dir.path(), &sources);
     let observed =
-        ProjectDynamicSourceLoader::new(&dir.0, &sources).with_trace_sink(Some(&requests));
+        ProjectDynamicSourceLoader::new(dir.path(), &sources).with_trace_sink(Some(&requests));
     let plain_result = plain.load("document", "hello.pdf");
     let observed_result = observed.load("document", "hello.pdf");
     eprintln!(

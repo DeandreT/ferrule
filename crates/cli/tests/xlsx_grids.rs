@@ -2,24 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
-struct Scratch(PathBuf);
-
-impl Scratch {
-    fn new(name: &str) -> Self {
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_cli_xlsx_grids_{name}_{}",
-            std::process::id()
-        ));
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for Scratch {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir as Scratch;
 
 fn grid_pair_project() -> mapping::Project {
     let design =
@@ -58,10 +41,10 @@ fn workbook() -> Vec<u8> {
 #[test]
 fn composite_grid_source_runs_through_the_file_route() {
     let project = grid_pair_project();
-    let scratch = Scratch::new("file");
-    let project_path = scratch.0.join("project.json");
-    let input_path = scratch.0.join("grids.xlsx");
-    let output_path = scratch.0.join("report.xml");
+    let scratch = Scratch::new("file").unwrap();
+    let project_path = scratch.path().join("project.json");
+    let input_path = scratch.path().join("grids.xlsx");
+    let output_path = scratch.path().join("report.xml");
     std::fs::write(&project_path, serde_json::to_vec(&project).unwrap()).unwrap();
     let bytes = workbook();
     std::fs::write(&input_path, &bytes).unwrap();
@@ -92,10 +75,10 @@ fn composite_grid_target_is_refused_explicitly() {
     let mut project = grid_pair_project();
     project.target_options = project.source_options.clone();
     project.target = project.source.clone();
-    let scratch = Scratch::new("target");
-    let project_path = scratch.0.join("project.json");
-    let input_path = scratch.0.join("grids.xlsx");
-    let output_path = scratch.0.join("out.xlsx");
+    let scratch = Scratch::new("target").unwrap();
+    let project_path = scratch.path().join("project.json");
+    let input_path = scratch.path().join("grids.xlsx");
+    let output_path = scratch.path().join("out.xlsx");
     std::fs::write(&project_path, serde_json::to_vec(&project).unwrap()).unwrap();
     std::fs::write(&input_path, workbook()).unwrap();
 

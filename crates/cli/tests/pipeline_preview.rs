@@ -1,6 +1,6 @@
 use std::cell::RefCell;
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use cli::{
@@ -15,24 +15,7 @@ use mapping::{
     ScopeConstruction, ScopeIteration,
 };
 
-struct TempDir(PathBuf);
-impl TempDir {
-    fn new() -> std::io::Result<Self> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_pipeline_preview_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn json_options() -> FormatOptions {
     FormatOptions {
@@ -240,9 +223,9 @@ fn preview_pipeline() -> Pipeline {
 #[test]
 fn all_stage_targets_use_typed_edges_and_one_context_without_touching_paths() -> anyhow::Result<()>
 {
-    let dir = TempDir::new()?;
-    let pipeline_path = dir.0.join("nonexistent/pipeline.json");
-    let sentinel = dir.0.join("existing.xml");
+    let dir = TempDir::new("pipeline_preview")?;
+    let pipeline_path = dir.path().join("nonexistent/pipeline.json");
+    let sentinel = dir.path().join("existing.xml");
     std::fs::write(&sentinel, "preserved")?;
     let hosts = [
         host(
@@ -302,7 +285,7 @@ fn all_stage_targets_use_typed_edges_and_one_context_without_touching_paths() ->
     );
     assert_eq!(
         outcome.artifacts[0].path,
-        dir.0.join("nonexistent/maps/first.xml")
+        dir.path().join("nonexistent/maps/first.xml")
     );
     assert_eq!(outcome.artifacts[1].path, sentinel);
     assert_eq!(outcome.artifacts[2].path, sentinel);
@@ -384,7 +367,7 @@ fn all_stage_targets_use_typed_edges_and_one_context_without_touching_paths() ->
     assert!(trace_stages.borrow().iter().any(|stage| stage == "prepare"));
     assert!(trace_stages.borrow().iter().any(|stage| stage == "consume"));
     assert_eq!(std::fs::read_to_string(&sentinel)?, "preserved");
-    assert!(!dir.0.join("nonexistent").exists());
+    assert!(!dir.path().join("nonexistent").exists());
     Ok(())
 }
 
@@ -441,8 +424,8 @@ fn shared_host_values_including_null_override_each_nodes_preview() -> anyhow::Re
 
 #[test]
 fn late_stage_failure_returns_no_outcome_and_preserves_files() -> anyhow::Result<()> {
-    let dir = TempDir::new()?;
-    let sentinel = dir.0.join("result.json");
+    let dir = TempDir::new("pipeline_preview")?;
+    let sentinel = dir.path().join("result.json");
     std::fs::write(&sentinel, "preserved")?;
     let mut pipeline = preview_pipeline();
     pipeline.stages[0].project.graph.nodes.insert(
@@ -473,7 +456,7 @@ fn late_stage_failure_returns_no_outcome_and_preserves_files() -> anyhow::Result
     };
     let error = preview_pipeline_value_payloads(
         &pipeline,
-        &dir.0.join("pipeline.json"),
+        &dir.path().join("pipeline.json"),
         &PipelinePreviewOptions::new(&hosts)
             .with_output_identities(&identities)
             .with_stage_debug_hook(&debug),
@@ -484,7 +467,7 @@ fn late_stage_failure_returns_no_outcome_and_preserves_files() -> anyhow::Result
     );
     assert!(calls.borrow().iter().any(|stage| stage == "prepare"));
     assert_eq!(std::fs::read_to_string(sentinel)?, "preserved");
-    assert!(!dir.0.join("maps").exists());
+    assert!(!dir.path().join("maps").exists());
     Ok(())
 }
 
@@ -847,31 +830,34 @@ fn dynamic_project() -> Project {
 #[test]
 fn dynamic_outputs_render_each_member_and_validate_options_before_execution() -> anyhow::Result<()>
 {
-    let dir = TempDir::new()?;
+    let dir = TempDir::new("pipeline_preview")?;
     let pipeline = single(dynamic_project());
     let bytes = br#"{"Rows":[{"File":"first.json","Value":"first"},{"File":"nested/second.json","Value":"second"}]}"#;
     let hosts = [host("input", Path::new("input.json"), bytes)?];
     let identities = [PipelinePreviewOutputIdentity {
         stage: "one".into(),
         target: None,
-        path: dir.0.join("uncreated"),
+        path: dir.path().join("uncreated"),
     }];
     let output = preview_pipeline_value_payloads(
         &pipeline,
-        &dir.0.join("pipeline.json"),
+        &dir.path().join("pipeline.json"),
         &PipelinePreviewOptions::new(&hosts).with_output_identities(&identities),
     )?;
     assert_eq!(output.artifacts.len(), 2);
-    assert_eq!(output.artifacts[0].path, dir.0.join("uncreated/first.json"));
+    assert_eq!(
+        output.artifacts[0].path,
+        dir.path().join("uncreated/first.json")
+    );
     assert_eq!(
         output.artifacts[1].path,
-        dir.0.join("uncreated/nested/second.json")
+        dir.path().join("uncreated/nested/second.json")
     );
     assert_eq!(
         serde_json::from_slice::<serde_json::Value>(&output.artifacts[1].bytes)?,
         serde_json::json!({"Value":"second"})
     );
-    assert!(!dir.0.join("uncreated").exists());
+    assert!(!dir.path().join("uncreated").exists());
     let mut unsupported = pipeline;
     unsupported.stages[0].project.target_options = FormatOptions {
         xlsx_composite: Some(mapping::XlsxCompositeLayout {
@@ -896,7 +882,7 @@ fn dynamic_outputs_render_each_member_and_validate_options_before_execution() ->
     };
     let error = preview_pipeline_value_payloads(
         &unsupported,
-        &dir.0.join("pipeline.json"),
+        &dir.path().join("pipeline.json"),
         &PipelinePreviewOptions::new(&hosts)
             .with_output_identities(&identities)
             .with_stage_debug_hook(&debug),
@@ -912,7 +898,7 @@ fn dynamic_outputs_render_each_member_and_validate_options_before_execution() ->
 
 #[test]
 fn csv_bom_conflicts_reject_metadata_before_pipeline_decode_or_callbacks() -> anyhow::Result<()> {
-    let dir = TempDir::new()?;
+    let dir = TempDir::new("pipeline_preview")?;
     for source_conflict in [false, true] {
         let mut project = copy_project();
         project.target_path = Some("output.csv".into());
@@ -935,7 +921,7 @@ fn csv_bom_conflicts_reject_metadata_before_pipeline_decode_or_callbacks() -> an
             br#"{"Value":"valid source"}"#
         };
         let hosts = [host("input", input_path, bytes)?];
-        let sentinel = dir.0.join(format!("sentinel-{source_conflict}.xml"));
+        let sentinel = dir.path().join(format!("sentinel-{source_conflict}.xml"));
         std::fs::write(&sentinel, b"preserved")?;
         let identities = [PipelinePreviewOutputIdentity {
             stage: "one".into(),
@@ -955,11 +941,11 @@ fn csv_bom_conflicts_reject_metadata_before_pipeline_decode_or_callbacks() -> an
             .with_stage_debug_hook(&debug)
             .with_stage_trace_sink(&trace);
         let metadata_error =
-            validate_pipeline_preview(&pipeline, &dir.0.join("pipeline.json"), &options)
+            validate_pipeline_preview(&pipeline, &dir.path().join("pipeline.json"), &options)
                 .unwrap_err();
         assert!(format!("{metadata_error:#}").contains("csv_utf8_bom"));
         let error =
-            preview_pipeline_value_payloads(&pipeline, &dir.0.join("pipeline.json"), &options)
+            preview_pipeline_value_payloads(&pipeline, &dir.path().join("pipeline.json"), &options)
                 .unwrap_err();
         assert!(format!("{error:#}").contains("csv_utf8_bom"));
         assert_eq!(count.load(Ordering::Relaxed), 0);
@@ -970,7 +956,7 @@ fn csv_bom_conflicts_reject_metadata_before_pipeline_decode_or_callbacks() -> an
 
 #[test]
 fn csv_bom_pipeline_preview_returns_exact_marked_bytes_without_writing() -> anyhow::Result<()> {
-    let dir = TempDir::new()?;
+    let dir = TempDir::new("pipeline_preview")?;
     let mut project = copy_project();
     project.source_options = FormatOptions {
         csv_utf8_bom: true,
@@ -988,12 +974,12 @@ fn csv_bom_pipeline_preview_returns_exact_marked_bytes_without_writing() -> anyh
     let identities = [PipelinePreviewOutputIdentity {
         stage: "one".into(),
         target: None,
-        path: dir.0.join("uncreated/output.csv"),
+        path: dir.path().join("uncreated/output.csv"),
     }];
     let options = PipelinePreviewOptions::new(&hosts).with_output_identities(&identities);
-    validate_pipeline_preview(&pipeline, &dir.0.join("pipeline.json"), &options)?;
+    validate_pipeline_preview(&pipeline, &dir.path().join("pipeline.json"), &options)?;
     let output =
-        preview_pipeline_value_payloads(&pipeline, &dir.0.join("pipeline.json"), &options)?;
+        preview_pipeline_value_payloads(&pipeline, &dir.path().join("pipeline.json"), &options)?;
     assert_eq!(output.artifacts.len(), 1);
     assert_eq!(output.artifacts[0].target, None);
     assert_eq!(output.artifacts[0].records_written, 1);
@@ -1002,20 +988,20 @@ fn csv_bom_pipeline_preview_returns_exact_marked_bytes_without_writing() -> anyh
         output.artifacts[0].bytes,
         b"\xef\xbb\xbfValue\ncaf\xc3\xa9\n"
     );
-    assert!(!dir.0.join("uncreated").exists());
+    assert!(!dir.path().join("uncreated").exists());
     Ok(())
 }
 
 #[test]
 fn stage_trace_capacity_skips_source_snapshots_but_keeps_event_order() -> anyhow::Result<()> {
-    let dir = TempDir::new()?;
+    let dir = TempDir::new("pipeline_preview")?;
     let pipeline = single(dynamic_project());
     let bytes = br#"{"Rows":[{"File":"first.json","Value":"first"},{"File":"second.json","Value":"second"}]}"#;
     let hosts = [host("input", Path::new("input.json"), bytes)?];
     let identities = [PipelinePreviewOutputIdentity {
         stage: "one".into(),
         target: None,
-        path: dir.0.join("outputs"),
+        path: dir.path().join("outputs"),
     }];
     let full_events = RefCell::new(Vec::new());
     let full_trace = |stage: &str, event| {
@@ -1023,7 +1009,7 @@ fn stage_trace_capacity_skips_source_snapshots_but_keeps_event_order() -> anyhow
     };
     let full = preview_pipeline_value_payloads(
         &pipeline,
-        &dir.0.join("pipeline.json"),
+        &dir.path().join("pipeline.json"),
         &PipelinePreviewOptions::new(&hosts)
             .with_output_identities(&identities)
             .with_stage_trace_sink(&full_trace),
@@ -1036,7 +1022,7 @@ fn stage_trace_capacity_skips_source_snapshots_but_keeps_event_order() -> anyhow
     };
     let bounded = preview_pipeline_value_payloads(
         &pipeline,
-        &dir.0.join("pipeline.json"),
+        &dir.path().join("pipeline.json"),
         &PipelinePreviewOptions::new(&hosts)
             .with_output_identities(&identities)
             .with_stage_trace_sink(&bounded_trace)
@@ -1141,8 +1127,8 @@ fn cancellation_before_execution_and_after_a_node_callback_discards_outputs() ->
 
 #[test]
 fn typed_primary_and_named_edges_ignore_unused_source_file_hints() -> anyhow::Result<()> {
-    let dir = TempDir::new()?;
-    let pipeline_path = dir.0.join("missing/pipeline.json");
+    let dir = TempDir::new("pipeline_preview")?;
+    let pipeline_path = dir.path().join("missing/pipeline.json");
     let hosts = [host(
         "input",
         Path::new("input.json"),
@@ -1235,7 +1221,7 @@ fn typed_primary_and_named_edges_ignore_unused_source_file_hints() -> anyhow::Re
             serde_json::json!({"Value":"upstream-upstream"})
         );
     }
-    assert!(!dir.0.join("missing").exists());
+    assert!(!dir.path().join("missing").exists());
     Ok(())
 }
 
@@ -1587,9 +1573,9 @@ mod source_ownership_admission {
     #[test]
     fn all_stages_and_targets_refuse_before_preview_decode() -> anyhow::Result<()> {
         for case in cases() {
-            let dir = TempDir::new()?;
-            let pipeline_path = dir.0.join("pipeline.json");
-            let sentinel = dir.0.join("result.json");
+            let dir = TempDir::new("pipeline_preview")?;
+            let pipeline_path = dir.path().join("pipeline.json");
+            let sentinel = dir.path().join("result.json");
             std::fs::write(&sentinel, b"old-output")?;
             let hosts = [host("input", Path::new("absent/input.json"), b"not-json")?];
             let debug_calls = RefCell::new(Vec::<String>::new());
@@ -1697,10 +1683,10 @@ mod source_ownership_admission {
     #[test]
     fn unused_owned_storage_preserves_preview_and_legacy_lazy_execution() -> anyhow::Result<()> {
         for lazy in [false, true] {
-            let dir = TempDir::new()?;
+            let dir = TempDir::new("pipeline_preview")?;
             let pipeline = one(unused_owned_project(lazy));
-            let pipeline_path = dir.0.join("pipeline.json");
-            let sentinel = dir.0.join("result.json");
+            let pipeline_path = dir.path().join("pipeline.json");
+            let sentinel = dir.path().join("result.json");
             std::fs::write(&sentinel, b"old-output")?;
             let hosts = [host(
                 "input",
@@ -1744,12 +1730,12 @@ mod source_ownership_admission {
     #[test]
     fn supported_basic_field_preview_accepts_metadata_before_payload_parse_and_cancel()
     -> anyhow::Result<()> {
-        let dir = TempDir::new()?;
+        let dir = TempDir::new("pipeline_preview")?;
         let mut project = unused_owned_project(false);
         project.root = bound(47);
         let pipeline = one(project);
-        let pipeline_path = dir.0.join("pipeline.json");
-        let sentinel = dir.0.join("result.json");
+        let pipeline_path = dir.path().join("pipeline.json");
+        let sentinel = dir.path().join("result.json");
         std::fs::write(&sentinel, b"old-output")?;
         let hosts = [host(
             "input",

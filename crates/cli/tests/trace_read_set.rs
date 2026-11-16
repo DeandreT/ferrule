@@ -8,7 +8,6 @@ use std::io::Write;
 use std::os::unix::fs::symlink as directory_symlink;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{ScalarType, SchemaNode};
 use mapping::{
@@ -49,27 +48,7 @@ fn directory_symlink(original: &Path, link: PathBuf) -> std::io::Result<()> {
     Ok(())
 }
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new(label: &str) -> std::io::Result<Self> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_cli_trace_read_set_{label}_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn ferrule(dir: &Path, args: &[&str], stdin: &[u8]) -> std::io::Result<Output> {
     let mut child = Command::new(env!("CARGO_BIN_EXE_ferrule"))
@@ -237,11 +216,11 @@ impl Fixture {
     fn new(label: &str, project: &Project, files: &[(&str, &str)]) -> Result<Self, Box<dyn Error>> {
         let dir = TempDir::new(label)?;
         let mut written = vec![(
-            dir.0.join("project.json"),
+            dir.path().join("project.json"),
             serde_json::to_vec_pretty(project)?,
         )];
         for (name, text) in files {
-            written.push((dir.0.join(name), text.as_bytes().to_vec()));
+            written.push((dir.path().join(name), text.as_bytes().to_vec()));
         }
         for (path, bytes) in &written {
             std::fs::write(path, bytes)?;
@@ -261,9 +240,9 @@ impl Fixture {
             assert_eq!(&std::fs::read(path)?, bytes, "{}", path.display());
         }
         for name in published {
-            assert!(!self.dir.0.join(name).exists(), "{name} was published");
+            assert!(!self.dir.path().join(name).exists(), "{name} was published");
         }
-        for entry in std::fs::read_dir(&self.dir.0)? {
+        for entry in std::fs::read_dir(self.dir.path())? {
             let name = entry?.file_name();
             assert!(!name.to_string_lossy().contains("trace-stage"), "{name:?}");
         }
@@ -286,7 +265,7 @@ fn trace_cannot_replace_the_design_through_path_aliases() -> TestResult {
         &scalar_project(false),
         &[("input.json", r#"{"Value":"a"}"#)],
     )?;
-    let dir = &fixture.dir.0;
+    let dir = &fixture.dir.path();
     std::fs::create_dir(dir.join("sub"))?;
     directory_symlink(dir, dir.join("link"))?;
     let absolute = dir.join("project.json");
@@ -325,7 +304,7 @@ fn hard_linked_trace_destination_leaves_the_design_intact() -> TestResult {
         &scalar_project(false),
         &[("input.json", r#"{"Value":"a"}"#)],
     )?;
-    let dir = &fixture.dir.0;
+    let dir = &fixture.dir.path();
     std::fs::hard_link(dir.join("project.json"), dir.join("linked.jsonl"))?;
 
     let output = ferrule(
@@ -365,7 +344,7 @@ fn trace_cannot_replace_primary_or_named_inputs() -> TestResult {
             ("lookup.json", r#"{"Value":"b"}"#),
         ],
     )?;
-    let dir = &fixture.dir.0;
+    let dir = &fixture.dir.path();
     let absolute_input = dir.join("input.json");
     for args in [
         vec![
@@ -429,7 +408,7 @@ fn trace_cannot_replace_a_dynamically_loaded_document() -> TestResult {
             ),
         ],
     )?;
-    let dir = &fixture.dir.0;
+    let dir = &fixture.dir.path();
     let output = ferrule(
         dir,
         &[
@@ -475,7 +454,7 @@ fn trace_cannot_replace_a_file_set_member() -> TestResult {
             ),
         ],
     )?;
-    let dir = &fixture.dir.0;
+    let dir = &fixture.dir.path();
     directory_symlink(dir, dir.join("link"))?;
     for alias in ["records-b.xml", "link/records-a.xml"] {
         let output = ferrule(
@@ -498,7 +477,7 @@ fn stdout_trace_cannot_replace_the_design_or_consumed_inputs() -> TestResult {
             ("lookup.json", r#"{"Value":"b"}"#),
         ],
     )?;
-    let dir = &fixture.dir.0;
+    let dir = &fixture.dir.path();
     let absolute_lookup = dir.join("lookup.json");
     for (args, stdin) in [
         (

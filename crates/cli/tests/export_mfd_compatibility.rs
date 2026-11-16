@@ -2,24 +2,17 @@ use std::collections::BTreeMap;
 use std::error::Error;
 use std::path::PathBuf;
 use std::process::{Command, Output};
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{ScalarType, SchemaNode};
 use mapping::{Binding, FormatOptions, Graph, Node, Project, Scope};
 use mfd::{ExportCompatibility, ExportProfile};
 use serde_json::Value;
 
-struct TempDir(PathBuf);
+struct TempDir(test_support::TempDir);
 
 impl TempDir {
     fn new() -> std::io::Result<Self> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_cli_export_compatibility_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir_all(&path)?;
+        let path = test_support::TempDir::new("cli-export-mfd-compatibility")?;
         Ok(Self(path))
     }
 
@@ -27,12 +20,6 @@ impl TempDir {
         let path = self.0.join("project.json");
         std::fs::write(&path, serde_json::to_vec_pretty(project)?)?;
         Ok(path)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
     }
 }
 

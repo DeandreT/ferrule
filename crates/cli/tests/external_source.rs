@@ -1,6 +1,5 @@
 use std::error::Error;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::path::Path;
 
 use ir::{ScalarType, SchemaNode};
 use mapping::{
@@ -8,27 +7,7 @@ use mapping::{
     HttpTimeoutSeconds, Node, Project, Scope,
 };
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Result<Self, std::io::Error> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_cli_external_source_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn project() -> Result<Project, Box<dyn Error>> {
     let mut graph = Graph::default();
@@ -87,10 +66,10 @@ fn write_project(path: &Path, project: &Project) -> Result<(), Box<dyn Error>> {
 #[test]
 fn local_capture_uses_declared_payload_and_stored_url_never_sends_post()
 -> Result<(), Box<dyn Error>> {
-    let dir = TempDir::new()?;
-    let project_path = dir.0.join("mapping.json");
-    let capture_path = dir.0.join("captured.response");
-    let output_path = dir.0.join("output.xml");
+    let dir = TempDir::new("cli_external_source")?;
+    let project_path = dir.path().join("mapping.json");
+    let capture_path = dir.path().join("captured.response");
+    let output_path = dir.path().join("output.xml");
     write_project(&project_path, &project()?)?;
     std::fs::write(&capture_path, r#"{"answer":"ready"}"#)?;
 

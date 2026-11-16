@@ -7,20 +7,7 @@ use mapping::{
     Binding, EdiBoundaryKind, EdiValueConstraint, FormatOptions, Graph, Node, Project, Scope,
 };
 
-struct Directory(PathBuf);
-impl Directory {
-    fn new(label: &str) -> Self {
-        let path =
-            std::env::temp_dir().join(format!("ferrule_edi_source_{label}_{}", std::process::id()));
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-impl Drop for Directory {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir as Directory;
 
 fn project(explicit: bool) -> Project {
     Project {
@@ -105,16 +92,16 @@ fn save(directory: &Path, project: &Project) -> PathBuf {
 
 #[test]
 fn file_cli_refuses_constraints_without_replacing_output() {
-    let directory = Directory::new("file");
+    let directory = Directory::new("file").unwrap();
     for explicit in [false, true] {
         let project = project(explicit);
-        let mapping = save(&directory.0, &project);
-        let input = directory.0.join(if explicit {
+        let mapping = save(directory.path(), &project);
+        let input = directory.path().join(if explicit {
             "input.capture"
         } else {
             "input.edi"
         });
-        let output = directory.0.join("output.json");
+        let output = directory.path().join("output.json");
         for (value, valid) in [("173000", true), ("1730", false), ("173000", true)] {
             std::fs::write(&input, wire(value)).unwrap();
             std::fs::write(&output, "preserved").unwrap();
@@ -149,9 +136,9 @@ fn file_cli_refuses_constraints_without_replacing_output() {
 
 #[test]
 fn stdin_cli_refuses_constraints_without_partial_stdout() {
-    let directory = Directory::new("stdin");
+    let directory = Directory::new("stdin").unwrap();
     for explicit in [false, true] {
-        let mapping = save(&directory.0, &project(explicit));
+        let mapping = save(directory.path(), &project(explicit));
         let mut child = Command::new(env!("CARGO_BIN_EXE_ferrule"))
             .arg("run")
             .arg(&mapping)
@@ -228,7 +215,7 @@ fn payload_profiles_validate_before_mapping_and_do_not_retain_failure_state() {
 
 #[test]
 fn numeric_file_and_payload_routes_validate_wire_before_typing_and_scaling() {
-    let directory = Directory::new("numbers");
+    let directory = Directory::new("numbers").unwrap();
     for (ty, wire_value, expected, implied) in [
         (ScalarType::Int, "000001", serde_json::json!(1), false),
         (ScalarType::Float, "001234", serde_json::json!(12.34), true),
@@ -263,11 +250,11 @@ fn numeric_file_and_payload_routes_validate_wire_before_typing_and_scaling() {
                 mapping::EdiImpliedDecimal::new(vec!["G62".into(), "Value".into()], 2).unwrap(),
             );
         }
-        let input = directory.0.join("input.capture");
-        let output = directory.0.join("output.json");
+        let input = directory.path().join("input.capture");
+        let output = directory.path().join("output.json");
         let wire = wire(wire_value).replace("G62*10*20261102*", "G62*");
         std::fs::write(&input, &wire).unwrap();
-        let mapping = save(&directory.0, &project);
+        let mapping = save(directory.path(), &project);
         cli::run_project(&mapping, &input, &output).unwrap();
         let actual: serde_json::Value =
             serde_json::from_slice(&std::fs::read(&output).unwrap()).unwrap();
@@ -285,7 +272,7 @@ fn numeric_file_and_payload_routes_validate_wire_before_typing_and_scaling() {
 
 #[test]
 fn inferred_routes_keep_existing_numeric_scaling_policy_with_or_without_constraints() {
-    let directory = Directory::new("inferred_scale");
+    let directory = Directory::new("inferred_scale").unwrap();
     for constrained in [false, true] {
         let mut project = project(false);
         project.source = SchemaNode::group(
@@ -324,10 +311,10 @@ fn inferred_routes_keep_existing_numeric_scaling_policy_with_or_without_constrai
             .edi_implied_decimals
             .push(mapping::EdiImpliedDecimal::new(vec!["G62".into(), "Value".into()], 2).unwrap());
         let wire = wire("001234").replace("G62*10*20261102*", "G62*");
-        let input = directory.0.join("input.edi");
-        let output = directory.0.join("output.json");
+        let input = directory.path().join("input.edi");
+        let output = directory.path().join("output.json");
         std::fs::write(&input, &wire).unwrap();
-        let mapping = save(&directory.0, &project);
+        let mapping = save(directory.path(), &project);
         cli::run_project(&mapping, &input, &output).unwrap();
         let actual: serde_json::Value =
             serde_json::from_slice(&std::fs::read(&output).unwrap()).unwrap();
@@ -345,7 +332,7 @@ fn inferred_routes_keep_existing_numeric_scaling_policy_with_or_without_constrai
 
 #[test]
 fn inferred_non_x12_families_validate_wire_and_keep_unscaled_outputs() {
-    let directory = Directory::new("inferred_families");
+    let directory = Directory::new("inferred_families").unwrap();
     for (extension, header, tag, prefix, suffix) in [
         ("edifact", "UNH", "BGM", "UNH+1'BGM+", "'"),
         ("hl7", "MSH", "PID", "MSH|^~\\&|SOURCE\rPID|", "\r"),
@@ -396,9 +383,9 @@ fn inferred_non_x12_families_validate_wire_and_keep_unscaled_outputs() {
             project.source_options.edi_implied_decimals =
                 vec![mapping::EdiImpliedDecimal::new(vec![tag.into(), "Value".into()], 2).unwrap()];
             assert_eq!(project.source_options.edi_kind, None);
-            let mapping = save(&directory.0, &project);
-            let input = directory.0.join(format!("input.{extension}"));
-            let output = directory.0.join("output.json");
+            let mapping = save(directory.path(), &project);
+            let input = directory.path().join(format!("input.{extension}"));
+            let output = directory.path().join("output.json");
             for raw in ["001234", "1234"] {
                 let valid = !constrained || raw == "001234";
                 let wire = format!("{prefix}{raw}{suffix}");
@@ -650,11 +637,11 @@ fn supplied_dynamic_edi_payloads_are_validated_before_conditional_execution() {
 
 #[test]
 fn filesystem_dynamic_edi_constraints_are_lazy_and_retain_typed_source_context() {
-    let directory = Directory::new("dynamic_file");
-    let mapping = save(&directory.0, &conditional_dynamic_edi_project());
-    let input = directory.0.join("input.json");
-    let output = directory.0.join("output.json");
-    let dynamic = directory.0.join("dynamic.edi");
+    let directory = Directory::new("dynamic_file").unwrap();
+    let mapping = save(directory.path(), &conditional_dynamic_edi_project());
+    let input = directory.path().join("input.json");
+    let output = directory.path().join("output.json");
+    let dynamic = directory.path().join("dynamic.edi");
     std::fs::write(&dynamic, wire("1730").replace("G62*10*20261102*", "G62*")).unwrap();
     for use_document in [false, true, false] {
         std::fs::write(
@@ -703,7 +690,7 @@ fn filesystem_dynamic_edi_constraints_are_lazy_and_retain_typed_source_context()
 fn remaining_segment_families_and_idoc_use_the_same_file_and_payload_constraints() {
     use mapping::{IdocFieldLayout, IdocLayout, IdocSegmentLayout};
     use std::num::NonZeroU32;
-    let directory = Directory::new("families");
+    let directory = Directory::new("families").unwrap();
     for (kind, tag, prefix, suffix) in [
         (EdiBoundaryKind::Edifact, "BGM", "UNH+1'BGM+", "'"),
         (EdiBoundaryKind::Hl7, "PID", "MSH|^~\\&|SOURCE\rPID|", "\r"),
@@ -742,9 +729,9 @@ fn remaining_segment_families_and_idoc_use_the_same_file_and_payload_constraints
                 .unwrap(),
             );
         }
-        let mapping = save(&directory.0, &project);
-        let input = directory.0.join("input.capture");
-        let output = directory.0.join("output.json");
+        let mapping = save(directory.path(), &project);
+        let input = directory.path().join("input.capture");
+        let output = directory.path().join("output.json");
         for (value, valid) in [("000001", true), ("1", false)] {
             let wire = format!("{prefix}{value}{suffix}");
             std::fs::write(&input, &wire).unwrap();
@@ -769,7 +756,7 @@ fn remaining_segment_families_and_idoc_use_the_same_file_and_payload_constraints
 
 #[test]
 fn named_sources_and_primary_document_members_enforce_constraints() {
-    let directory = Directory::new("named_primary");
+    let directory = Directory::new("named_primary").unwrap();
     let mut source = project(true);
     source.source = SchemaNode::group(
         "Input",
@@ -800,12 +787,12 @@ fn named_sources_and_primary_document_members_enforce_constraints() {
             path: vec!["edi".into(), "G62".into(), "Value".into()],
         },
     );
-    let mapping = save(&directory.0, &project);
-    let input = directory.0.join("input.json");
-    let output = directory.0.join("output.json");
+    let mapping = save(directory.path(), &project);
+    let input = directory.path().join("input.json");
+    let output = directory.path().join("output.json");
     std::fs::write(&input, "{}").unwrap();
     let bad = wire("1").replace("G62*10*20261102*", "G62*");
-    std::fs::write(directory.0.join("named.capture"), &bad).unwrap();
+    std::fs::write(directory.path().join("named.capture"), &bad).unwrap();
     let error = cli::run_project(&mapping, &input, &output).unwrap_err();
     assert!(format!("{error:#}").contains("G62/Value"));
     assert!(!output.exists());
@@ -860,11 +847,11 @@ fn named_sources_and_primary_document_members_enforce_constraints() {
         ..Default::default()
     };
     let document = mapping::DocumentProject::new(project, mapping::PrimarySourcePlan::new(1));
-    std::fs::write(directory.0.join("input.hl7"), "MSH|^~\\&\rPID|1\r").unwrap();
+    std::fs::write(directory.path().join("input.hl7"), "MSH|^~\\&\rPID|1\r").unwrap();
     let error = cli::execute_primary_document(
         &document,
         &mapping,
-        &cli::PrimaryDocumentPolicy::new(&directory.0),
+        &cli::PrimaryDocumentPolicy::new(directory.path()),
         None,
     )
     .unwrap_err();
@@ -876,7 +863,7 @@ fn swift_generic_source_constraints_are_refused_before_loading_or_decoding() {
     use mapping::{
         SwiftCharset, SwiftFieldLayout, SwiftMessageLayout, SwiftMtLayout, SwiftValueExpr,
     };
-    let directory = Directory::new("swift");
+    let directory = Directory::new("swift").unwrap();
     let mut project = project(true);
     project.source = SchemaNode::group(
         "SWIFT",
@@ -920,11 +907,11 @@ fn swift_generic_source_constraints_are_refused_before_loading_or_decoding() {
         ],
         ..Default::default()
     };
-    let mapping = save(&directory.0, &project);
+    let mapping = save(directory.path(), &project);
     let error = cli::run_project(
         &mapping,
-        &directory.0.join("missing.capture"),
-        &directory.0.join("output.json"),
+        &directory.path().join("missing.capture"),
+        &directory.path().join("output.json"),
     )
     .unwrap_err();
     assert!(

@@ -1,19 +1,12 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use test_support::TempDir;
 
 use ir::{ScalarType, SchemaNode};
 use mapping::{
     Binding, FormatOptions, Graph, Node, Project, Scope, SwiftCharset, SwiftFieldLayout,
     SwiftMessageLayout, SwiftMtLayout, SwiftValueExpr,
 };
-
-fn test_dir(label: &str) -> PathBuf {
-    let path =
-        std::env::temp_dir().join(format!("ferrule_cli_swift_{label}_{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&path);
-    std::fs::create_dir_all(&path).unwrap();
-    path
-}
 
 fn project() -> Project {
     let fields = vec![
@@ -119,7 +112,7 @@ fn write_project(directory: &Path, project: &Project) -> PathBuf {
 
 #[test]
 fn embedded_swift_layout_takes_precedence_over_txt_csv_dispatch() {
-    let directory = test_dir("dispatch");
+    let directory = TempDir::new("dispatch").unwrap();
     std::fs::write(
         directory.join("input.txt"),
         "{1:F01BANK}{2:I950DEST}{4:\r\n:20:REFERENCE\r\n:32:12,50\r\n-}",
@@ -131,12 +124,12 @@ fn embedded_swift_layout_takes_precedence_over_txt_csv_dispatch() {
     let output = std::fs::read_to_string(outcome.output_path).unwrap();
     assert!(output.contains("\"value\": \"REFERENCE\""), "{output}");
     assert!(output.contains("\"amount\": 12.5"), "{output}");
-    std::fs::remove_dir_all(directory).unwrap();
+    directory.close().unwrap();
 }
 
 #[test]
 fn swift_layout_rejects_conflicting_csv_options() {
-    let directory = test_dir("conflict");
+    let directory = TempDir::new("conflict").unwrap();
     std::fs::write(
         directory.join("input.txt"),
         "{1:F01BANK}{2:I950DEST}{4:\r\n:20:REFERENCE\r\n:32:12,50\r\n-}",
@@ -147,5 +140,5 @@ fn swift_layout_rejects_conflicting_csv_options() {
     let project_path = write_project(&directory, &project);
     let error = cli::run_project_with_paths(&project_path, None, None).unwrap_err();
     assert!(format!("{error:#}").contains("`swift_mt` cannot be combined"));
-    std::fs::remove_dir_all(directory).unwrap();
+    directory.close().unwrap();
 }

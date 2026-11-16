@@ -1,7 +1,6 @@
 use std::cell::RefCell;
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::path::Path;
 
 use engine::{
     DebugDecision, DebugHook, EngineError, PendingTargetWrite, RuntimeParameters, TraceTarget,
@@ -19,27 +18,7 @@ fn json_options() -> FormatOptions {
     }
 }
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> std::io::Result<Self> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_cli_payload_execution_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn dynamic_output_project() -> Project {
     let target_schema = SchemaNode::group(
@@ -244,10 +223,10 @@ fn payload_debug_cancellation_discards_all_target_artifacts() -> anyhow::Result<
             ..Scope::default()
         },
     };
-    let directory = TempDir::new()?;
-    let project_path = directory.0.join("project.json");
-    let primary_output = directory.0.join("primary.json");
-    let named_output = directory.0.join("named.json");
+    let directory = TempDir::new("cli_payload_execution")?;
+    let project_path = directory.path().join("project.json");
+    let primary_output = directory.path().join("primary.json");
+    let named_output = directory.path().join("named.json");
     std::fs::write(&primary_output, b"existing output")?;
     let source = cli::PayloadDocument::new(Path::new("input.json"), br#"{}"#)?;
 
@@ -817,16 +796,16 @@ fn payload_and_filesystem_runners_produce_identical_csv() -> anyhow::Result<()> 
         },
     };
     let xml = b"<Source><Row><Code>A</Code><Quantity>2</Quantity></Row><Row><Code>B</Code><Quantity>5</Quantity></Row></Source>";
-    let directory = TempDir::new()?;
-    let project_path = directory.0.join("project.json");
-    let input_path = directory.0.join("input.xml");
-    let file_output = directory.0.join("file.csv");
+    let directory = TempDir::new("cli_payload_execution")?;
+    let project_path = directory.path().join("project.json");
+    let input_path = directory.path().join("input.xml");
+    let file_output = directory.path().join("file.csv");
     std::fs::write(&project_path, serde_json::to_vec_pretty(&project)?)?;
     std::fs::write(&input_path, xml)?;
     cli::run_project(&project_path, &input_path, &file_output)?;
 
     let payload = cli::PayloadDocument::new(Path::new("input.xml"), xml)?;
-    let payload_output = directory.0.join("payload.csv");
+    let payload_output = directory.path().join("payload.csv");
     let outcome = cli::run_project_value_payloads(
         &project,
         &project_path,
@@ -876,10 +855,10 @@ fn custom_csv_quote_applies_to_file_and_payload_inputs_and_outputs() -> anyhow::
     };
     assert!(engine::validate(&project).is_empty());
     let csv = b"Name,Age\n'O''Neil, Jr.',29\n";
-    let directory = TempDir::new()?;
-    let project_path = directory.0.join("project.json");
-    let input_path = directory.0.join("input.csv");
-    let file_output = directory.0.join("file.csv");
+    let directory = TempDir::new("cli_payload_execution")?;
+    let project_path = directory.path().join("project.json");
+    let input_path = directory.path().join("input.csv");
+    let file_output = directory.path().join("file.csv");
     std::fs::write(&project_path, serde_json::to_vec_pretty(&project)?)?;
     std::fs::write(&input_path, csv)?;
     cli::run_project(&project_path, &input_path, &file_output)?;

@@ -1,31 +1,9 @@
-use std::path::PathBuf;
 use std::process::Command;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{Instance, ScalarType, SchemaNode, Value};
 use mapping::{Binding, Graph, NamedSource, NamedTarget, Node, Project, Scope};
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Result<Self, std::io::Error> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_cli_multiple_targets_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn document(name: &str) -> SchemaNode {
     SchemaNode::group(name, vec![SchemaNode::scalar("Value", ScalarType::String)])
@@ -136,12 +114,12 @@ fn project_with_unavailable_unselected_source() -> Project {
 #[test]
 fn explicit_primary_output_does_not_replace_stored_extra_target_paths()
 -> Result<(), Box<dyn std::error::Error>> {
-    let dir = TempDir::new()?;
-    let project_path = dir.0.join("project.json");
-    let input_path = dir.0.join("input.xml");
-    let override_path = dir.0.join("override.xml");
-    let stored_primary = dir.0.join("stored-primary.xml");
-    let stored_secondary = dir.0.join("stored-secondary.xml");
+    let dir = TempDir::new("cli_multiple_targets")?;
+    let project_path = dir.path().join("project.json");
+    let input_path = dir.path().join("input.xml");
+    let override_path = dir.path().join("override.xml");
+    let stored_primary = dir.path().join("stored-primary.xml");
+    let stored_secondary = dir.path().join("stored-secondary.xml");
     let project = project("stored-secondary.xml");
     std::fs::write(&project_path, serde_json::to_vec_pretty(&project)?)?;
     std::fs::write(&input_path, "<Source><Value>shared</Value></Source>")?;
@@ -185,11 +163,11 @@ fn explicit_primary_output_does_not_replace_stored_extra_target_paths()
 #[test]
 fn late_extra_render_failure_leaves_existing_primary_untouched()
 -> Result<(), Box<dyn std::error::Error>> {
-    let dir = TempDir::new()?;
-    let project_path = dir.0.join("project.json");
-    let input_path = dir.0.join("input.xml");
-    let primary_path = dir.0.join("primary.xml");
-    let late_path = dir.0.join("late.pdf");
+    let dir = TempDir::new("cli_multiple_targets")?;
+    let project_path = dir.path().join("project.json");
+    let input_path = dir.path().join("input.xml");
+    let primary_path = dir.path().join("primary.xml");
+    let late_path = dir.path().join("late.pdf");
     std::fs::write(
         &project_path,
         serde_json::to_vec_pretty(&project("late.pdf"))?,
@@ -217,11 +195,11 @@ fn symlinked_parent_aliases_are_preflighted_as_one_output_path()
 -> Result<(), Box<dyn std::error::Error>> {
     use std::os::unix::fs::symlink;
 
-    let dir = TempDir::new()?;
-    let project_path = dir.0.join("project.json");
-    let input_path = dir.0.join("input.xml");
-    let real = dir.0.join("real");
-    let alias = dir.0.join("alias");
+    let dir = TempDir::new("cli_multiple_targets")?;
+    let project_path = dir.path().join("project.json");
+    let input_path = dir.path().join("input.xml");
+    let real = dir.path().join("real");
+    let alias = dir.path().join("alias");
     std::fs::create_dir(&real)?;
     symlink(&real, &alias)?;
     std::fs::write(
@@ -248,10 +226,10 @@ fn symlinked_parent_aliases_are_preflighted_as_one_output_path()
 #[test]
 fn selected_target_avoids_colliding_unselected_destination()
 -> Result<(), Box<dyn std::error::Error>> {
-    let dir = TempDir::new()?;
-    let project_path = dir.0.join("project.json");
-    let input_path = dir.0.join("input.xml");
-    let shared_path = dir.0.join("shared.xml");
+    let dir = TempDir::new("cli_multiple_targets")?;
+    let project_path = dir.path().join("project.json");
+    let input_path = dir.path().join("input.xml");
+    let shared_path = dir.path().join("shared.xml");
     std::fs::write(
         &project_path,
         serde_json::to_vec_pretty(&colliding_project())?,
@@ -293,10 +271,10 @@ fn selected_target_avoids_colliding_unselected_destination()
 
 #[test]
 fn run_subcommand_accepts_primary_target_selector() -> Result<(), Box<dyn std::error::Error>> {
-    let dir = TempDir::new()?;
-    let project_path = dir.0.join("project.json");
-    let input_path = dir.0.join("input.xml");
-    let shared_path = dir.0.join("shared.xml");
+    let dir = TempDir::new("cli_multiple_targets")?;
+    let project_path = dir.path().join("project.json");
+    let input_path = dir.path().join("input.xml");
+    let shared_path = dir.path().join("shared.xml");
     std::fs::write(
         &project_path,
         serde_json::to_vec_pretty(&colliding_project())?,
@@ -333,10 +311,10 @@ fn run_subcommand_accepts_primary_target_selector() -> Result<(), Box<dyn std::e
 #[test]
 fn selected_filesystem_target_does_not_load_unselected_static_source()
 -> Result<(), Box<dyn std::error::Error>> {
-    let dir = TempDir::new()?;
-    let project_path = dir.0.join("project.json");
-    let input_path = dir.0.join("input.xml");
-    let selected_path = dir.0.join("selected.xml");
+    let dir = TempDir::new("cli_multiple_targets")?;
+    let project_path = dir.path().join("project.json");
+    let input_path = dir.path().join("input.xml");
+    let selected_path = dir.path().join("selected.xml");
     std::fs::write(
         &project_path,
         serde_json::to_vec_pretty(&project_with_unavailable_unselected_source())?,

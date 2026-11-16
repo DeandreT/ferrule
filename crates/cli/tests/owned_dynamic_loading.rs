@@ -2,8 +2,7 @@
 //! driver endpoints, nested loading and every attempted request in order.
 use std::cell::RefCell;
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::path::Path;
 
 use ir::{ScalarType, SchemaNode};
 use mapping::{
@@ -12,28 +11,16 @@ use mapping::{
 };
 use serde_json::{Value as Json, json};
 
-struct TestDir(PathBuf);
+struct TestDir(test_support::TempDir);
 
 impl TestDir {
     fn new() -> Self {
-        static NEXT: AtomicU64 = AtomicU64::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_owned_dynamic_loading_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
+        let path = test_support::TempDir::new("cli-owned-dynamic-loading").unwrap();
         std::fs::create_dir_all(path.join("docs")).unwrap();
         Self(path)
     }
     fn write(&self, name: &str, value: Json) {
         std::fs::write(self.0.join(name), serde_json::to_vec(&value).unwrap()).unwrap();
-    }
-}
-
-impl Drop for TestDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
     }
 }
 

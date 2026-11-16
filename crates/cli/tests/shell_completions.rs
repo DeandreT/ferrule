@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Command, Output};
 
 const SHELLS: [&str; 4] = ["bash", "zsh", "fish", "powershell"];
@@ -17,32 +17,7 @@ const OPTION_VALUES: [&str; 7] = [
     "native-mfd",
 ];
 
-/// Removes a per-test directory on drop, including after a panic.
-struct TestDirectory(PathBuf);
-
-impl TestDirectory {
-    fn new(name: &str) -> anyhow::Result<Self> {
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_cli_shell_completions_{name}_{}",
-            std::process::id()
-        ));
-        if path.exists() {
-            std::fs::remove_dir_all(&path)?;
-        }
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-
-    fn path(&self) -> &Path {
-        &self.0
-    }
-}
-
-impl Drop for TestDirectory {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir as TestDirectory;
 
 fn ferrule_in(directory: &Path, args: &[&str]) -> anyhow::Result<Output> {
     Ok(Command::new(env!("CARGO_BIN_EXE_ferrule"))

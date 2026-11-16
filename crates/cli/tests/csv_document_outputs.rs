@@ -1,20 +1,11 @@
 use ir::Value;
 use mapping::{Node, Project};
-use std::{
-    path::PathBuf,
-    sync::atomic::{AtomicUsize, Ordering},
-};
+use std::path::PathBuf;
 
-struct Directory(PathBuf);
+struct Directory(test_support::TempDir);
 impl Directory {
     fn new() -> Self {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule-csv-document-output-{}-{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir(&path).unwrap();
+        let path = test_support::TempDir::new("cli-csv-document-outputs").unwrap();
         std::fs::write(
             path.join("source.mfd"),
             include_str!("../../mfd/tests/fixtures/csv_document_output/grouped.mfd"),
@@ -40,11 +31,6 @@ impl Directory {
         )
         .unwrap();
         path
-    }
-}
-impl Drop for Directory {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
     }
 }
 

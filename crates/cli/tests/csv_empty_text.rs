@@ -1,29 +1,11 @@
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::path::Path;
 
 use ir::{Instance, ScalarType, SchemaNode, Value};
 use mapping::{
     FormatOptions, Graph, Project, Scope, ScopeConstruction, ScopeIteration, TabularBoundaryKind,
 };
 
-struct TempDir(PathBuf);
-impl TempDir {
-    fn new() -> std::io::Result<Self> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_csv_empty_text_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn project() -> Project {
     let row = SchemaNode::group(
@@ -68,20 +50,20 @@ fn project() -> Project {
 
 #[test]
 fn empty_text_survives_save_file_payload_and_xml_output() -> anyhow::Result<()> {
-    let temp = TempDir::new()?;
+    let temp = TempDir::new("csv_empty_text")?;
     let project = project();
     assert!(
         engine::validate(&project).is_empty(),
         "{:?}",
         engine::validate(&project)
     );
-    let path = temp.0.join("project.json");
+    let path = temp.path().join("project.json");
     std::fs::write(&path, mapping::project_file::encode_pretty(&project)?)?;
     let project = mapping::project_file::decode_str(&std::fs::read_to_string(&path)?)?;
     assert!(project.source_options.csv_preserve_empty_strings);
     let bytes = b",beta\n\"\",gamma\ndelta\n";
-    let input = temp.0.join("input.csv");
-    let output = temp.0.join("output.xml");
+    let input = temp.path().join("input.csv");
+    let output = temp.path().join("output.xml");
     std::fs::write(&input, bytes)?;
     cli::run_project(&path, &input, &output)?;
     let file_bytes = std::fs::read(&output)?;
@@ -117,11 +99,11 @@ fn empty_text_survives_save_file_payload_and_xml_output() -> anyhow::Result<()> 
 
 #[test]
 fn empty_text_policy_rejects_non_csv_formats_before_output_publication() -> anyhow::Result<()> {
-    let temp = TempDir::new()?;
+    let temp = TempDir::new("csv_empty_text")?;
     let mut project = project();
-    let path = temp.0.join("project.json");
-    let input = temp.0.join("input.xml");
-    let output = temp.0.join("output.xml");
+    let path = temp.path().join("project.json");
+    let input = temp.path().join("input.xml");
+    let output = temp.path().join("output.xml");
     std::fs::write(&path, mapping::project_file::encode_pretty(&project)?)?;
     std::fs::write(&input, "<Row><A>x</A><B>y</B></Row>")?;
     std::fs::write(&output, b"sentinel")?;

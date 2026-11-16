@@ -1,11 +1,10 @@
 use std::error::Error;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
-use std::sync::atomic::{AtomicU64, Ordering};
 
 #[test]
 fn import_mfd_accepts_a_relocatable_package_manifest() -> Result<(), Box<dyn Error>> {
-    let directory = TempDir::new()?;
+    let directory = TempDir::new("cli_edi_catalog")?;
     let maps = directory.path().join("maps");
     let catalog = directory.path().join("resources/edi");
     std::fs::create_dir_all(&maps)?;
@@ -81,7 +80,7 @@ fn package_manifest_conflicts_with_an_explicit_package_root() -> Result<(), Box<
 
 #[test]
 fn import_mfd_accepts_repeated_trusted_edi_catalog_roots() -> Result<(), Box<dyn Error>> {
-    let directory = TempDir::new()?;
+    let directory = TempDir::new("cli_edi_catalog")?;
     let maps = directory.path().join("maps");
     let empty_catalog = directory.path().join("empty");
     let catalog = directory.path().join("catalog");
@@ -190,28 +189,4 @@ fn write_mapping(path: &Path) -> Result<(), std::io::Error> {
     )
 }
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Result<Self, std::io::Error> {
-        static NEXT: AtomicU64 = AtomicU64::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_cli_edi_catalog_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-
-    fn path(&self) -> &Path {
-        &self.0
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;

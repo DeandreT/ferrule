@@ -1,29 +1,11 @@
 //! Imported XML targets write the reference default schema-location hint.
 
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::path::Path;
 
 const XSI: &str = "http://www.w3.org/2001/XMLSchema-instance";
 const NAMESPACE: &str = "urn:ferrule:schema-location";
 
-struct Dir(PathBuf);
-impl Dir {
-    fn new(label: &str) -> Self {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule-schema-location-{label}-{}-{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-impl Drop for Dir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir as Dir;
 
 fn schema(namespace: Option<&str>) -> String {
     let target = namespace
@@ -125,10 +107,10 @@ fn values() -> Vec<(String, String)> {
 #[test]
 fn absent_and_enabled_settings_write_the_stored_schema_reference() {
     for setting in [None, Some("1")] {
-        let directory = Dir::new("unqualified");
-        design(&directory.0, setting, None, "target.xsd");
+        let directory = Dir::new("unqualified").unwrap();
+        design(directory.path(), setting, None, "target.xsd");
         assert_eq!(
-            run(&directory.0),
+            run(directory.path()),
             (Some("target.xsd".into()), None, values()),
             "{setting:?}"
         );
@@ -137,48 +119,48 @@ fn absent_and_enabled_settings_write_the_stored_schema_reference() {
 
 #[test]
 fn disabled_setting_writes_no_hint() {
-    let directory = Dir::new("disabled");
-    design(&directory.0, Some("0"), None, "target.xsd");
-    assert_eq!(run(&directory.0), (None, None, values()));
+    let directory = Dir::new("disabled").unwrap();
+    design(directory.path(), Some("0"), None, "target.xsd");
+    assert_eq!(run(directory.path()), (None, None, values()));
 }
 
 #[test]
 fn namespaced_roots_write_one_namespace_location_pair() {
     for setting in [None, Some("1")] {
-        let directory = Dir::new("namespaced");
-        design(&directory.0, setting, Some(NAMESPACE), "target.xsd");
+        let directory = Dir::new("namespaced").unwrap();
+        design(directory.path(), setting, Some(NAMESPACE), "target.xsd");
         assert_eq!(
-            run(&directory.0),
+            run(directory.path()),
             (None, Some(format!("{NAMESPACE} target.xsd")), values()),
             "{setting:?}"
         );
     }
-    let directory = Dir::new("namespaced-disabled");
-    design(&directory.0, Some("0"), Some(NAMESPACE), "target.xsd");
-    assert_eq!(run(&directory.0), (None, None, values()));
+    let directory = Dir::new("namespaced-disabled").unwrap();
+    design(directory.path(), Some("0"), Some(NAMESPACE), "target.xsd");
+    assert_eq!(run(directory.path()), (None, None, values()));
 }
 
 #[test]
 fn stored_windows_paths_become_portable_uri_references() {
-    let directory = Dir::new("windows-path");
-    design(&directory.0, None, None, r"schemas\Target Schema.xsd");
+    let directory = Dir::new("windows-path").unwrap();
+    design(directory.path(), None, None, r"schemas\Target Schema.xsd");
     assert_eq!(
-        run(&directory.0).0.as_deref(),
+        run(directory.path()).0.as_deref(),
         Some("schemas/Target%20Schema.xsd")
     );
 }
 
 #[test]
 fn non_xml_sources_feed_a_hinted_xml_target() {
-    let directory = Dir::new("csv");
+    let directory = Dir::new("csv").unwrap();
     let fixtures = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../mfd/tests/fixtures/present-string-group-keys");
     for name in ["legacy-csv-sparse-string.mfd", "legacy-csv-target.xsd"] {
-        std::fs::copy(fixtures.join(name), directory.0.join(name)).unwrap();
+        std::fs::copy(fixtures.join(name), directory.path().join(name)).unwrap();
     }
-    let project = directory.0.join("project.json");
+    let project = directory.path().join("project.json");
     let warnings = cli::import_mfd_with_profile(
-        &directory.0.join("legacy-csv-sparse-string.mfd"),
+        &directory.path().join("legacy-csv-sparse-string.mfd"),
         &project,
         None,
         None,
@@ -188,9 +170,9 @@ fn non_xml_sources_feed_a_hinted_xml_target() {
     )
     .unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
-    std::fs::write(directory.0.join("input.csv"), "Key\nsapling\n").unwrap();
-    let output = directory.0.join("output.xml");
-    cli::run_project(&project, &directory.0.join("input.csv"), &output).unwrap();
+    std::fs::write(directory.path().join("input.csv"), "Key\nsapling\n").unwrap();
+    let output = directory.path().join("output.xml");
+    cli::run_project(&project, &directory.path().join("input.csv"), &output).unwrap();
     let text = std::fs::read_to_string(&output).unwrap();
     let document = roxmltree::Document::parse(&text).unwrap();
     assert_eq!(

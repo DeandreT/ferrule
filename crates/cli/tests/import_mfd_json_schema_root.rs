@@ -1,7 +1,6 @@
 use std::error::Error;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use ir::{ScalarType, SchemaKind};
 
@@ -25,7 +24,7 @@ fn import_mfd_help_lists_repeatable_json_schema_roots() -> Result<(), Box<dyn Er
 #[test]
 fn package_manifest_resolves_json_schema_and_rebases_instance_paths() -> Result<(), Box<dyn Error>>
 {
-    let directory = TempDir::new()?;
+    let directory = TempDir::new("cli_json_schema_catalog")?;
     let maps = directory.path().join("maps");
     let catalog = directory.path().join("resources/json");
     std::fs::create_dir_all(&maps)?;
@@ -63,7 +62,7 @@ fn package_manifest_resolves_json_schema_and_rebases_instance_paths() -> Result<
 fn symlinked_mfd_rebases_from_the_canonical_design_directory() -> Result<(), Box<dyn Error>> {
     use std::os::unix::fs::symlink;
 
-    let directory = TempDir::new()?;
+    let directory = TempDir::new("cli_json_schema_catalog")?;
     let package = directory.path().join("package");
     let maps = package.join("maps");
     let alias = directory.path().join("alias");
@@ -100,7 +99,7 @@ fn symlinked_mfd_rebases_from_the_canonical_design_directory() -> Result<(), Box
 
 #[test]
 fn import_mfd_searches_repeated_json_schema_roots_in_order() -> Result<(), Box<dyn Error>> {
-    let directory = TempDir::new()?;
+    let directory = TempDir::new("cli_json_schema_catalog")?;
     let maps = directory.path().join("maps");
     let empty = directory.path().join("empty");
     let first = directory.path().join("first");
@@ -210,28 +209,4 @@ fn write_mapping(path: &Path) -> Result<(), std::io::Error> {
     )
 }
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Result<Self, std::io::Error> {
-        static NEXT: AtomicU64 = AtomicU64::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_cli_json_schema_catalog_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-
-    fn path(&self) -> &Path {
-        &self.0
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;

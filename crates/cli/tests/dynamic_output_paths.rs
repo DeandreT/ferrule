@@ -1,7 +1,6 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use cli::{PayloadDocument, PayloadRunOptions, TargetSelection};
 use ir::{ScalarType, SchemaNode, Value};
@@ -13,26 +12,7 @@ const SECOND: &[u8] = b"{\n  \"Value\": \"second\"\n}\n";
 const SUMMARY: &[u8] = b"{\n  \"Value\": \"summary\"\n}\n";
 const PAYLOAD_CHILD: &str = "FERRULE_DYNAMIC_OUTPUT_PATH_CHILD";
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> std::io::Result<Self> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule-output-paths-{}-{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn project() -> Project {
     let options = FormatOptions {
@@ -211,12 +191,17 @@ fn run_file(
 fn check_file_paths(selected: &str) -> anyhow::Result<()> {
     for index in 0..4 {
         for base_index in 0..3 {
-            let directory = TempDir::new()?;
-            let project_path = &project_paths(&directory.0)[index];
-            let explicit = &bases(&directory.0)[base_index];
-            prepare(&directory.0, project_path, &project())?;
-            let before = snapshot(&directory.0)?;
-            let output = run_file(&directory.0, project_path, explicit.as_deref(), selected)?;
+            let directory = TempDir::new("output-paths")?;
+            let project_path = &project_paths(directory.path())[index];
+            let explicit = &bases(directory.path())[base_index];
+            prepare(directory.path(), project_path, &project())?;
+            let before = snapshot(directory.path())?;
+            let output = run_file(
+                directory.path(),
+                project_path,
+                explicit.as_deref(),
+                selected,
+            )?;
             assert!(
                 output.status.success(),
                 "{project_path:?}, {explicit:?}, {selected}: {}",
@@ -231,13 +216,13 @@ fn check_file_paths(selected: &str) -> anyhow::Result<()> {
                 .collect::<String>();
             assert!(String::from_utf8(output.stdout)?.ends_with(&report));
             for (_, path, bytes) in &artifacts {
-                assert_eq!(std::fs::read(directory.0.join(path))?, *bytes);
+                assert_eq!(std::fs::read(directory.path().join(path))?, *bytes);
             }
             // No unselected outputs, staging debris or changes to the input/project.
-            let mut after = snapshot(&directory.0)?;
+            let mut after = snapshot(directory.path())?;
             for (_, path, _) in artifacts {
-                let absolute = directory.0.join(path);
-                let relative = absolute.strip_prefix(&directory.0)?;
+                let absolute = directory.path().join(path);
+                let relative = absolute.strip_prefix(directory.path())?;
                 after.remove(relative);
                 let mut parent = relative.parent();
                 while let Some(path) = parent.filter(|path| !path.as_os_str().is_empty()) {
@@ -269,9 +254,9 @@ fn file_all_target_dynamic_bases() -> anyhow::Result<()> {
 }
 
 fn check_payload_child(selected: &str) -> anyhow::Result<()> {
-    let directory = TempDir::new()?;
+    let directory = TempDir::new("output-paths")?;
     let output = Command::new(std::env::current_exe()?)
-        .current_dir(&directory.0)
+        .current_dir(directory.path())
         .env(PAYLOAD_CHILD, selected)
         .args(["--exact", "payload_path_child", "--nocapture"])
         .output()?;
@@ -355,24 +340,24 @@ fn basename_refusals_do_not_publish_or_replace_any_outputs() -> anyhow::Result<(
         br#"{"Rows":[{"Primary":"primary/z.json","Named":"named/z.json","Value":"first"},{"Primary":"primary/a.json","Named":"../escape.json","Value":"second"}]}"#.as_slice(),
         br#"{"Rows":[{"Primary":"primary/z.json","Named":"named/z.json","Value":"first"},{"Primary":"primary/a.json","Named":"primary/z.json","Value":"second"}]}"#.as_slice(),
     ] {
-        let directory = TempDir::new()?;
-        prepare(&directory.0, Path::new("project.json"), &project())?;
-        std::fs::write(directory.0.join("input.json"), input)?;
-        std::fs::create_dir(directory.0.join("primary"))?;
-        std::fs::write(directory.0.join("primary/z.json"), b"keep me")?;
-        let before = snapshot(&directory.0)?;
-        let output = run_file(&directory.0, Path::new("project.json"), None, "all")?;
+        let directory = TempDir::new("output-paths")?;
+        prepare(directory.path(), Path::new("project.json"), &project())?;
+        std::fs::write(directory.path().join("input.json"), input)?;
+        std::fs::create_dir(directory.path().join("primary"))?;
+        std::fs::write(directory.path().join("primary/z.json"), b"keep me")?;
+        let before = snapshot(directory.path())?;
+        let output = run_file(directory.path(), Path::new("project.json"), None, "all")?;
         assert!(!output.status.success());
         let error = String::from_utf8(output.stderr)?;
         assert!(error.contains("cannot contain `..`") || error.contains("resolve to the same path"), "{error}");
-        assert_eq!(snapshot(&directory.0)?, before);
+        assert_eq!(snapshot(directory.path())?, before);
         let payload = PayloadDocument::new(Path::new("input.json"), input)?;
         assert!(cli::run_project_value_payloads(
             &project(),
-            &directory.0.join("project.json"),
+            &directory.path().join("project.json"),
             &PayloadRunOptions::new(payload),
         ).is_err());
-        assert_eq!(snapshot(&directory.0)?, before);
+        assert_eq!(snapshot(directory.path())?, before);
     }
     Ok(())
 }
@@ -380,17 +365,17 @@ fn basename_refusals_do_not_publish_or_replace_any_outputs() -> anyhow::Result<(
 #[test]
 fn explicit_empty_file_bases_are_not_replaced_with_defaults() -> anyhow::Result<()> {
     for selected in ["primary", "details"] {
-        let directory = TempDir::new()?;
-        prepare(&directory.0, Path::new("project.json"), &project())?;
-        let before = snapshot(&directory.0)?;
+        let directory = TempDir::new("output-paths")?;
+        prepare(directory.path(), Path::new("project.json"), &project())?;
+        let before = snapshot(directory.path())?;
         let output = run_file(
-            &directory.0,
+            directory.path(),
             Path::new("project.json"),
             Some(Path::new("")),
             selected,
         )?;
         assert!(!output.status.success());
-        assert_eq!(snapshot(&directory.0)?, before);
+        assert_eq!(snapshot(directory.path())?, before);
     }
     Ok(())
 }

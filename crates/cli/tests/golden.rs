@@ -1,4 +1,5 @@
 use std::path::Path;
+use test_support::TempDir;
 
 fn composite_xlsx_layout() -> mapping::XlsxCompositeLayout {
     use mapping::{
@@ -51,12 +52,13 @@ fn grid_xlsx_layout() -> mapping::XlsxGridLayout {
 
 #[test]
 fn simple_name_and_age_mapping() {
+    let _scratch = TempDir::new("cli-golden").unwrap();
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
     let project = dir.join("project.json");
     let input = dir.join("input.csv");
     let expected = std::fs::read_to_string(dir.join("expected_output.csv")).unwrap();
 
-    let output_path = std::env::temp_dir().join(format!(
+    let output_path = _scratch.path().join(format!(
         "ferrule_cli_golden_test_{}.csv",
         std::process::id()
     ));
@@ -65,12 +67,13 @@ fn simple_name_and_age_mapping() {
     assert_eq!(rows, 2);
 
     let actual = std::fs::read_to_string(&output_path).unwrap();
-    std::fs::remove_file(&output_path).unwrap();
     assert_eq!(actual, expected);
+    _scratch.close().unwrap();
 }
 
 #[test]
 fn xlsx_input_maps_to_xlsx_output_with_project_layout_options() {
+    let _scratch = TempDir::new("cli-golden").unwrap();
     use ir::{Instance, Value};
 
     let fixture_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
@@ -138,12 +141,13 @@ fn xlsx_input_maps_to_xlsx_output_with_project_layout_options() {
     ];
 
     let tag = format!("xlsx_{}", std::process::id());
-    let project_path = std::env::temp_dir().join(format!("ferrule_cli_{tag}.json"));
-    let input_path = std::env::temp_dir().join(format!("ferrule_cli_{tag}_input.xlsx"));
-    let output_path = std::env::temp_dir().join(format!("ferrule_cli_{tag}_output.xlsx"));
-    for path in [&project_path, &input_path, &output_path] {
-        std::fs::remove_file(path).ok();
-    }
+    let project_path = _scratch.path().join(format!("ferrule_cli_{tag}.json"));
+    let input_path = _scratch
+        .path()
+        .join(format!("ferrule_cli_{tag}_input.xlsx"));
+    let output_path = _scratch
+        .path()
+        .join(format!("ferrule_cli_{tag}_output.xlsx"));
     std::fs::write(&project_path, serde_json::to_vec(&project).unwrap()).unwrap();
     format_xlsx::write(
         &input_path,
@@ -166,23 +170,22 @@ fn xlsx_input_maps_to_xlsx_output_with_project_layout_options() {
         true,
     )
     .unwrap();
-    for path in [project_path, input_path, output_path] {
-        std::fs::remove_file(path).unwrap();
-    }
 
     assert_eq!(written, 2);
     assert_eq!(actual, expected);
+    _scratch.close().unwrap();
 }
 
 #[test]
 fn imported_hierarchical_xlsx_target_executes() {
+    let _scratch = TempDir::new("cli-golden").unwrap();
     let fixture_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../mfd/tests/fixtures");
     let imported = mfd::import(&fixture_dir.join("xlsx-hierarchical.mfd")).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
 
     let tag = format!("xlsx_hierarchical_{}", std::process::id());
-    let project_path = std::env::temp_dir().join(format!("ferrule_cli_{tag}.json"));
-    let output_path = std::env::temp_dir().join(format!("ferrule_cli_{tag}.xlsx"));
+    let project_path = _scratch.path().join(format!("ferrule_cli_{tag}.json"));
+    let output_path = _scratch.path().join(format!("ferrule_cli_{tag}.xlsx"));
     std::fs::write(
         &project_path,
         serde_json::to_vec(&imported.project).unwrap(),
@@ -196,15 +199,15 @@ fn imported_hierarchical_xlsx_target_executes() {
     )
     .unwrap();
     let bytes = std::fs::read(&output_path).unwrap();
-    std::fs::remove_file(project_path).unwrap();
-    std::fs::remove_file(output_path).unwrap();
 
     assert_eq!(written, 2);
     assert!(bytes.starts_with(b"PK"));
+    _scratch.close().unwrap();
 }
 
 #[test]
 fn transposed_xlsx_target_writes_and_reads_back() {
+    let _scratch = TempDir::new("cli-golden").unwrap();
     use ir::{Instance, Value};
 
     let fixture_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
@@ -215,8 +218,8 @@ fn transposed_xlsx_target_writes_and_reads_back() {
     project.target_options.xlsx_rows = vec![3, 1];
 
     let tag = format!("xlsx_transposed_target_{}", std::process::id());
-    let project_path = std::env::temp_dir().join(format!("ferrule_cli_{tag}.json"));
-    let output_path = std::env::temp_dir().join(format!("ferrule_cli_{tag}.xlsx"));
+    let project_path = _scratch.path().join(format!("ferrule_cli_{tag}.json"));
+    let output_path = _scratch.path().join(format!("ferrule_cli_{tag}.xlsx"));
     std::fs::write(&project_path, serde_json::to_vec(&project).unwrap()).unwrap();
 
     let written =
@@ -247,7 +250,7 @@ fn transposed_xlsx_target_writes_and_reads_back() {
     project.root.bindings[1].node = 4;
     std::fs::write(&project_path, serde_json::to_vec(&project).unwrap()).unwrap();
     let before = std::fs::read(&output_path).unwrap();
-    let input_path = std::env::temp_dir().join(format!("ferrule_cli_{tag}.csv"));
+    let input_path = _scratch.path().join(format!("ferrule_cli_{tag}.csv"));
     std::fs::write(&input_path, "first_name,last_name,age\nJane,Doe,\n").unwrap();
     let error = cli::run_project(&project_path, &input_path, &output_path).unwrap_err();
     assert!(
@@ -256,13 +259,12 @@ fn transposed_xlsx_target_writes_and_reads_back() {
     );
     assert_eq!(std::fs::read(&output_path).unwrap(), before);
 
-    for path in [project_path, input_path, output_path] {
-        std::fs::remove_file(path).unwrap();
-    }
+    _scratch.close().unwrap();
 }
 
 #[test]
 fn imported_transposed_xlsx_source_executes_to_csv() {
+    let _scratch = TempDir::new("cli-golden").unwrap();
     use ir::{Instance, ScalarType, SchemaNode, Value};
 
     let design =
@@ -306,9 +308,9 @@ fn imported_transposed_xlsx_source_executes_to_csv() {
     ];
 
     let tag = format!("xlsx_transposed_source_{}", std::process::id());
-    let project_path = std::env::temp_dir().join(format!("ferrule_cli_{tag}.json"));
-    let input_path = std::env::temp_dir().join(format!("ferrule_cli_{tag}.xlsx"));
-    let output_path = std::env::temp_dir().join(format!("ferrule_cli_{tag}.csv"));
+    let project_path = _scratch.path().join(format!("ferrule_cli_{tag}.json"));
+    let input_path = _scratch.path().join(format!("ferrule_cli_{tag}.xlsx"));
+    let output_path = _scratch.path().join(format!("ferrule_cli_{tag}.csv"));
     std::fs::write(
         &project_path,
         serde_json::to_vec(&imported.project).unwrap(),
@@ -327,16 +329,15 @@ fn imported_transposed_xlsx_source_executes_to_csv() {
 
     let written = cli::run_project(&project_path, &input_path, &output_path).unwrap();
     let actual = std::fs::read_to_string(&output_path).unwrap();
-    for path in [project_path, input_path, output_path] {
-        std::fs::remove_file(path).unwrap();
-    }
 
     assert_eq!(written, 3);
     assert_eq!(actual, "Category,Amount\nHeader,0\nFood,12\nTravel,34\n");
+    _scratch.close().unwrap();
 }
 
 #[test]
 fn composite_xlsx_source_maps_fixed_record_and_repeated_table_to_json() {
+    let _scratch = TempDir::new("cli-golden").unwrap();
     use ir::{ScalarType, SchemaNode};
     use mapping::{Binding, FormatOptions, Graph, Node, Project, Scope, ScopeIteration};
 
@@ -445,18 +446,17 @@ fn composite_xlsx_source_maps_fixed_record_and_repeated_table_to_json() {
     staff.write_string(2, 1, "Hopper").unwrap();
 
     let tag = format!("xlsx_composite_source_{}", std::process::id());
-    let project_path = std::env::temp_dir().join(format!("ferrule_cli_{tag}.json"));
-    let input_path = std::env::temp_dir().join(format!("ferrule_cli_{tag}.xlsx"));
-    let output_path = std::env::temp_dir().join(format!("ferrule_cli_{tag}_output.json"));
+    let project_path = _scratch.path().join(format!("ferrule_cli_{tag}.json"));
+    let input_path = _scratch.path().join(format!("ferrule_cli_{tag}.xlsx"));
+    let output_path = _scratch
+        .path()
+        .join(format!("ferrule_cli_{tag}_output.json"));
     std::fs::write(&project_path, serde_json::to_vec(&project).unwrap()).unwrap();
     std::fs::write(&input_path, workbook.save_to_buffer().unwrap()).unwrap();
 
     let written = cli::run_project(&project_path, &input_path, &output_path).unwrap();
     let actual: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(&output_path).unwrap()).unwrap();
-    for path in [project_path, input_path, output_path] {
-        std::fs::remove_file(path).unwrap();
-    }
 
     assert_eq!(written, 1);
     assert_eq!(
@@ -469,10 +469,12 @@ fn composite_xlsx_source_maps_fixed_record_and_repeated_table_to_json() {
             ]
         })
     );
+    _scratch.close().unwrap();
 }
 
 #[test]
 fn composite_xlsx_source_rejects_legacy_layout_options() {
+    let _scratch = TempDir::new("cli-golden").unwrap();
     let fixture_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
     let mut project: mapping::Project =
         serde_json::from_str(&std::fs::read_to_string(fixture_dir.join("project.json")).unwrap())
@@ -481,17 +483,13 @@ fn composite_xlsx_source_rejects_legacy_layout_options() {
     project.source_options.xlsx_sheet = Some("Legacy".into());
 
     let tag = format!("xlsx_composite_conflict_{}", std::process::id());
-    let project_path = std::env::temp_dir().join(format!("ferrule_cli_{tag}.json"));
-    let input_path = std::env::temp_dir().join(format!("ferrule_cli_{tag}.xlsx"));
-    let output_path = std::env::temp_dir().join(format!("ferrule_cli_{tag}.csv"));
+    let project_path = _scratch.path().join(format!("ferrule_cli_{tag}.json"));
+    let input_path = _scratch.path().join(format!("ferrule_cli_{tag}.xlsx"));
+    let output_path = _scratch.path().join(format!("ferrule_cli_{tag}.csv"));
     std::fs::write(&project_path, serde_json::to_vec(&project).unwrap()).unwrap();
     std::fs::write(&input_path, []).unwrap();
 
     let error = cli::run_project(&project_path, &input_path, &output_path).unwrap_err();
-    for path in [project_path, input_path] {
-        std::fs::remove_file(path).unwrap();
-    }
-    std::fs::remove_file(output_path).ok();
 
     assert!(
         error
@@ -499,10 +497,12 @@ fn composite_xlsx_source_rejects_legacy_layout_options() {
             .contains("a retained XLSX layout cannot be combined"),
         "unexpected error: {error:#}"
     );
+    _scratch.close().unwrap();
 }
 
 #[test]
 fn composite_xlsx_target_is_rejected_explicitly() {
+    let _scratch = TempDir::new("cli-golden").unwrap();
     let fixture_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
     let mut project: mapping::Project =
         serde_json::from_str(&std::fs::read_to_string(fixture_dir.join("project.json")).unwrap())
@@ -510,24 +510,24 @@ fn composite_xlsx_target_is_rejected_explicitly() {
     project.target_options.xlsx_composite = Some(composite_xlsx_layout());
 
     let tag = format!("xlsx_composite_target_{}", std::process::id());
-    let project_path = std::env::temp_dir().join(format!("ferrule_cli_{tag}.json"));
-    let output_path = std::env::temp_dir().join(format!("ferrule_cli_{tag}.xlsx"));
+    let project_path = _scratch.path().join(format!("ferrule_cli_{tag}.json"));
+    let output_path = _scratch.path().join(format!("ferrule_cli_{tag}.xlsx"));
     std::fs::write(&project_path, serde_json::to_vec(&project).unwrap()).unwrap();
 
     let error =
         cli::run_project(&project_path, &fixture_dir.join("input.csv"), &output_path).unwrap_err();
-    std::fs::remove_file(project_path).unwrap();
-    std::fs::remove_file(output_path).ok();
 
     assert!(
         error
             .to_string()
             .contains("composite XLSX output is not supported")
     );
+    _scratch.close().unwrap();
 }
 
 #[test]
 fn grid_xlsx_source_maps_headers_and_matrix_rows_to_nested_json_and_xml() {
+    let _scratch = TempDir::new("cli-golden").unwrap();
     use ir::{Instance, ScalarType, SchemaNode, Value};
     use mapping::{
         AggregateOp, Binding, FormatOptions, Graph, Node, Project, Scope, ScopeIteration,
@@ -719,10 +719,12 @@ fn grid_xlsx_source_maps_headers_and_matrix_rows_to_nested_json_and_xml() {
     );
 
     let tag = format!("xlsx_grid_source_{}", std::process::id());
-    let project_path = std::env::temp_dir().join(format!("ferrule_cli_{tag}.json"));
-    let input_path = std::env::temp_dir().join(format!("ferrule_cli_{tag}.xlsx"));
-    let json_path = std::env::temp_dir().join(format!("ferrule_cli_{tag}.json.out.json"));
-    let xml_path = std::env::temp_dir().join(format!("ferrule_cli_{tag}.xml"));
+    let project_path = _scratch.path().join(format!("ferrule_cli_{tag}.json"));
+    let input_path = _scratch.path().join(format!("ferrule_cli_{tag}.xlsx"));
+    let json_path = _scratch
+        .path()
+        .join(format!("ferrule_cli_{tag}.json.out.json"));
+    let xml_path = _scratch.path().join(format!("ferrule_cli_{tag}.xml"));
     std::fs::write(&project_path, serde_json::to_vec(&project).unwrap()).unwrap();
     std::fs::write(&input_path, workbook.save_to_buffer().unwrap()).unwrap();
 
@@ -737,13 +739,12 @@ fn grid_xlsx_source_maps_headers_and_matrix_rows_to_nested_json_and_xml() {
     assert_eq!(format_json::read(&json_path, &target).unwrap(), expected);
     assert_eq!(format_xml::read(&xml_path, &target).unwrap(), expected);
 
-    for path in [project_path, input_path, json_path, xml_path] {
-        std::fs::remove_file(path).unwrap();
-    }
+    _scratch.close().unwrap();
 }
 
 #[test]
 fn grid_xlsx_source_rejects_other_layout_modes() {
+    let _scratch = TempDir::new("cli-golden").unwrap();
     let fixture_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
     let project: mapping::Project =
         serde_json::from_str(&std::fs::read_to_string(fixture_dir.join("project.json")).unwrap())
@@ -780,27 +781,25 @@ fn grid_xlsx_source_rejects_other_layout_modes() {
         let mut project = project.clone();
         project.source_options = options;
         let tag = format!("xlsx_grid_{mode}_conflict_{}", std::process::id());
-        let project_path = std::env::temp_dir().join(format!("ferrule_cli_{tag}.json"));
-        let input_path = std::env::temp_dir().join(format!("ferrule_cli_{tag}.xlsx"));
-        let output_path = std::env::temp_dir().join(format!("ferrule_cli_{tag}.csv"));
+        let project_path = _scratch.path().join(format!("ferrule_cli_{tag}.json"));
+        let input_path = _scratch.path().join(format!("ferrule_cli_{tag}.xlsx"));
+        let output_path = _scratch.path().join(format!("ferrule_cli_{tag}.csv"));
         std::fs::write(&project_path, serde_json::to_vec(&project).unwrap()).unwrap();
         std::fs::write(&input_path, []).unwrap();
 
         let error = cli::run_project(&project_path, &input_path, &output_path).unwrap_err();
-        for path in [project_path, input_path] {
-            std::fs::remove_file(path).unwrap();
-        }
-        std::fs::remove_file(output_path).ok();
 
         assert!(
             error.to_string().contains(expected),
             "unexpected error: {error:#}"
         );
     }
+    _scratch.close().unwrap();
 }
 
 #[test]
 fn grid_xlsx_target_is_rejected_explicitly() {
+    let _scratch = TempDir::new("cli-golden").unwrap();
     let fixture_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
     let mut project: mapping::Project =
         serde_json::from_str(&std::fs::read_to_string(fixture_dir.join("project.json")).unwrap())
@@ -808,20 +807,19 @@ fn grid_xlsx_target_is_rejected_explicitly() {
     project.target_options.xlsx_grid = Some(grid_xlsx_layout());
 
     let tag = format!("xlsx_grid_target_{}", std::process::id());
-    let project_path = std::env::temp_dir().join(format!("ferrule_cli_{tag}.json"));
-    let output_path = std::env::temp_dir().join(format!("ferrule_cli_{tag}.xlsx"));
+    let project_path = _scratch.path().join(format!("ferrule_cli_{tag}.json"));
+    let output_path = _scratch.path().join(format!("ferrule_cli_{tag}.xlsx"));
     std::fs::write(&project_path, serde_json::to_vec(&project).unwrap()).unwrap();
 
     let error =
         cli::run_project(&project_path, &fixture_dir.join("input.csv"), &output_path).unwrap_err();
-    std::fs::remove_file(project_path).unwrap();
-    std::fs::remove_file(output_path).ok();
 
     assert!(
         error
             .to_string()
             .contains("grid XLSX output is not supported")
     );
+    _scratch.close().unwrap();
 }
 
 /// Flattens a real-world nested XML document (Orders -> repeating Order ->
@@ -831,12 +829,13 @@ fn grid_xlsx_target_is_rejected_explicitly() {
 /// Milestone 3: nested repeating-element mapping plus cross-level joins.
 #[test]
 fn nested_xml_flattens_into_csv_with_broadcast_fields() {
+    let _scratch = TempDir::new("cli-golden").unwrap();
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/orders");
     let project = dir.join("project.json");
     let input = dir.join("Orders.xml");
     let expected = std::fs::read_to_string(dir.join("expected_order_lines.csv")).unwrap();
 
-    let output_path = std::env::temp_dir().join(format!(
+    let output_path = _scratch.path().join(format!(
         "ferrule_cli_golden_test_orders_{}.csv",
         std::process::id()
     ));
@@ -845,8 +844,8 @@ fn nested_xml_flattens_into_csv_with_broadcast_fields() {
     assert_eq!(rows, 6);
 
     let actual = std::fs::read_to_string(&output_path).unwrap();
-    std::fs::remove_file(&output_path).unwrap();
     assert_eq!(actual, expected);
+    _scratch.close().unwrap();
 }
 
 /// Milestone 4: a `Scope.filter` drops rows (minors) while an `If` node
@@ -854,12 +853,13 @@ fn nested_xml_flattens_into_csv_with_broadcast_fields() {
 /// comparison functions along the way.
 #[test]
 fn filter_and_conditional_categorize_adults() {
+    let _scratch = TempDir::new("cli-golden").unwrap();
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/people");
     let project = dir.join("project.json");
     let input = dir.join("people.csv");
     let expected = std::fs::read_to_string(dir.join("expected_adults.csv")).unwrap();
 
-    let output_path = std::env::temp_dir().join(format!(
+    let output_path = _scratch.path().join(format!(
         "ferrule_cli_golden_test_people_{}.csv",
         std::process::id()
     ));
@@ -868,8 +868,8 @@ fn filter_and_conditional_categorize_adults() {
     assert_eq!(rows, 3);
 
     let actual = std::fs::read_to_string(&output_path).unwrap();
-    std::fs::remove_file(&output_path).unwrap();
     assert_eq!(actual, expected);
+    _scratch.close().unwrap();
 }
 
 /// Milestone 6 (JSON input): the same filter/conditional mapping fed from a
@@ -877,12 +877,13 @@ fn filter_and_conditional_categorize_adults() {
 /// CSV to the CSV-input variant above.
 #[test]
 fn json_input_produces_the_same_adults_csv() {
+    let _scratch = TempDir::new("cli-golden").unwrap();
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/people");
     let project = dir.join("project_json.json");
     let input = dir.join("people.json");
     let expected = std::fs::read_to_string(dir.join("expected_adults.csv")).unwrap();
 
-    let output_path = std::env::temp_dir().join(format!(
+    let output_path = _scratch.path().join(format!(
         "ferrule_cli_golden_test_people_json_{}.csv",
         std::process::id()
     ));
@@ -891,20 +892,21 @@ fn json_input_produces_the_same_adults_csv() {
     assert_eq!(rows, 3);
 
     let actual = std::fs::read_to_string(&output_path).unwrap();
-    std::fs::remove_file(&output_path).unwrap();
     assert_eq!(actual, expected);
+    _scratch.close().unwrap();
 }
 
 /// Milestone 6 (JSON output): the nested-XML-to-flat-rows orders mapping,
 /// unchanged, written as a JSON array of objects instead of CSV.
 #[test]
 fn nested_xml_flattens_into_json() {
+    let _scratch = TempDir::new("cli-golden").unwrap();
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/orders");
     let project = dir.join("project.json");
     let input = dir.join("Orders.xml");
     let expected = std::fs::read_to_string(dir.join("expected_order_lines.json")).unwrap();
 
-    let output_path = std::env::temp_dir().join(format!(
+    let output_path = _scratch.path().join(format!(
         "ferrule_cli_golden_test_orders_json_{}.json",
         std::process::id()
     ));
@@ -913,8 +915,8 @@ fn nested_xml_flattens_into_json() {
     assert_eq!(rows, 6);
 
     let actual = std::fs::read_to_string(&output_path).unwrap();
-    std::fs::remove_file(&output_path).unwrap();
     assert_eq!(actual, expected);
+    _scratch.close().unwrap();
 }
 
 /// Milestone 6 (SQLite input): the people mapping unchanged, fed from a
@@ -923,6 +925,7 @@ fn nested_xml_flattens_into_json() {
 /// the table. Must produce byte-identical CSV to the CSV-input variant.
 #[test]
 fn sqlite_input_produces_the_same_adults_csv() {
+    let _scratch = TempDir::new("cli-golden").unwrap();
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/people");
     let project = dir.join("project.json");
     let expected = std::fs::read_to_string(dir.join("expected_adults.csv")).unwrap();
@@ -930,11 +933,10 @@ fn sqlite_input_produces_the_same_adults_csv() {
     let project_json = std::fs::read_to_string(&project).unwrap();
     let parsed: mapping::Project = serde_json::from_str(&project_json).unwrap();
 
-    let db_path = std::env::temp_dir().join(format!(
+    let db_path = _scratch.path().join(format!(
         "ferrule_cli_golden_test_people_{}.db",
         std::process::id()
     ));
-    let _ = std::fs::remove_file(&db_path);
     let person = |name: &str, age: i64| {
         ir::Instance::Group(
             (vec![
@@ -959,7 +961,7 @@ fn sqlite_input_produces_the_same_adults_csv() {
     )
     .unwrap();
 
-    let output_path = std::env::temp_dir().join(format!(
+    let output_path = _scratch.path().join(format!(
         "ferrule_cli_golden_test_people_db_{}.csv",
         std::process::id()
     ));
@@ -968,13 +970,13 @@ fn sqlite_input_produces_the_same_adults_csv() {
     assert_eq!(rows, 3);
 
     let actual = std::fs::read_to_string(&output_path).unwrap();
-    std::fs::remove_file(&output_path).unwrap();
-    std::fs::remove_file(&db_path).unwrap();
     assert_eq!(actual, expected);
+    _scratch.close().unwrap();
 }
 
 #[test]
 fn composite_sqlite_input_iterates_a_selected_table() {
+    let _scratch = TempDir::new("cli-golden").unwrap();
     use std::collections::BTreeMap;
 
     use ir::{Instance, ScalarType, SchemaNode, Value};
@@ -1002,21 +1004,18 @@ fn composite_sqlite_input_iterates_a_selected_table() {
             .into(),
         )
     };
-    let db_path = std::env::temp_dir().join(format!(
+    let db_path = _scratch.path().join(format!(
         "ferrule_cli_composite_source_{}.db",
         std::process::id()
     ));
-    let project_path = std::env::temp_dir().join(format!(
+    let project_path = _scratch.path().join(format!(
         "ferrule_cli_composite_source_{}.json",
         std::process::id()
     ));
-    let output_path = std::env::temp_dir().join(format!(
+    let output_path = _scratch.path().join(format!(
         "ferrule_cli_composite_source_{}.csv",
         std::process::id()
     ));
-    let _ = std::fs::remove_file(&db_path);
-    let _ = std::fs::remove_file(&project_path);
-    let _ = std::fs::remove_file(&output_path);
     format_db::write(
         &db_path,
         &table_schema,
@@ -1058,12 +1057,10 @@ fn composite_sqlite_input_iterates_a_selected_table() {
 
     let rows = cli::run_project(&project_path, &db_path, &output_path).unwrap();
     let actual = std::fs::read_to_string(&output_path).unwrap();
-    std::fs::remove_file(&output_path).unwrap();
-    std::fs::remove_file(&project_path).unwrap();
-    std::fs::remove_file(&db_path).unwrap();
 
     assert_eq!(rows, 2);
     assert_eq!(actual, "department\nEngineering\nSales\n");
+    _scratch.close().unwrap();
 }
 
 /// Milestone 6 (SQLite output): the orders flattening written into a SQLite
@@ -1071,6 +1068,7 @@ fn composite_sqlite_input_iterates_a_selected_table() {
 /// the JSON golden fixture.
 #[test]
 fn nested_xml_flattens_into_sqlite() {
+    let _scratch = TempDir::new("cli-golden").unwrap();
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/orders");
     let project = dir.join("project.json");
     let input = dir.join("Orders.xml");
@@ -1078,17 +1076,15 @@ fn nested_xml_flattens_into_sqlite() {
     let project_json = std::fs::read_to_string(&project).unwrap();
     let parsed: mapping::Project = serde_json::from_str(&project_json).unwrap();
 
-    let db_path = std::env::temp_dir().join(format!(
+    let db_path = _scratch.path().join(format!(
         "ferrule_cli_golden_test_orders_{}.db",
         std::process::id()
     ));
-    let _ = std::fs::remove_file(&db_path);
 
     let rows = cli::run_project(&project, &input, &db_path).unwrap();
     assert_eq!(rows, 6);
 
     let read_back = format_db::read(&db_path, &parsed.target).unwrap();
-    std::fs::remove_file(&db_path).unwrap();
 
     let expected: serde_json::Value = serde_json::from_str(
         &std::fs::read_to_string(dir.join("expected_order_lines.json")).unwrap(),
@@ -1108,6 +1104,7 @@ fn nested_xml_flattens_into_sqlite() {
             assert!(matches, "field `{field}`: {actual:?} != {value}");
         }
     }
+    _scratch.close().unwrap();
 }
 
 /// Stretch (EDI): an X12 850 purchase order flattened into CSV line items.
@@ -1117,12 +1114,13 @@ fn nested_xml_flattens_into_sqlite() {
 /// the transaction header, line fields from PO1, description from PID.
 #[test]
 fn x12_purchase_order_flattens_into_csv() {
+    let _scratch = TempDir::new("cli-golden").unwrap();
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/edi");
     let project = dir.join("project.json");
     let input = dir.join("po850.edi");
     let expected = std::fs::read_to_string(dir.join("expected_po_lines.csv")).unwrap();
 
-    let output_path = std::env::temp_dir().join(format!(
+    let output_path = _scratch.path().join(format!(
         "ferrule_cli_golden_test_edi_{}.csv",
         std::process::id()
     ));
@@ -1131,8 +1129,8 @@ fn x12_purchase_order_flattens_into_csv() {
     assert_eq!(rows, 3);
 
     let actual = std::fs::read_to_string(&output_path).unwrap();
-    std::fs::remove_file(&output_path).unwrap();
     assert_eq!(actual, expected);
+    _scratch.close().unwrap();
 }
 
 /// EDI (EDIFACT): an ORDERS-style message flattened into CSV line items,
@@ -1141,12 +1139,13 @@ fn x12_purchase_order_flattens_into_csv() {
 /// the same broadcast-plus-multiply pattern as the X12 golden test.
 #[test]
 fn edifact_orders_flattens_into_csv() {
+    let _scratch = TempDir::new("cli-golden").unwrap();
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/edifact");
     let project = dir.join("project.json");
     let input = dir.join("orders.edifact");
     let expected = std::fs::read_to_string(dir.join("expected_lines.csv")).unwrap();
 
-    let output_path = std::env::temp_dir().join(format!(
+    let output_path = _scratch.path().join(format!(
         "ferrule_cli_golden_test_edifact_{}.csv",
         std::process::id()
     ));
@@ -1155,8 +1154,8 @@ fn edifact_orders_flattens_into_csv() {
     assert_eq!(rows, 2);
 
     let actual = std::fs::read_to_string(&output_path).unwrap();
-    std::fs::remove_file(&output_path).unwrap();
     assert_eq!(actual, expected);
+    _scratch.close().unwrap();
 }
 
 /// EDI lenient mode via project options: a HIPAA-style 837 claim where the
@@ -1165,12 +1164,13 @@ fn edifact_orders_flattens_into_csv() {
 /// everything else -- envelope, BHT, PER, addresses, TOO, trailers.
 #[test]
 fn lenient_x12_claim_flattens_into_csv() {
+    let _scratch = TempDir::new("cli-golden").unwrap();
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/edi");
     let project = dir.join("project_claim.json");
     let input = dir.join("claim837.edi");
     let expected = std::fs::read_to_string(dir.join("expected_claim_lines.csv")).unwrap();
 
-    let output_path = std::env::temp_dir().join(format!(
+    let output_path = _scratch.path().join(format!(
         "ferrule_cli_golden_test_claim_{}.csv",
         std::process::id()
     ));
@@ -1179,8 +1179,8 @@ fn lenient_x12_claim_flattens_into_csv() {
     assert_eq!(rows, 2);
 
     let actual = std::fs::read_to_string(&output_path).unwrap();
-    std::fs::remove_file(&output_path).unwrap();
     assert_eq!(actual, expected);
+    _scratch.close().unwrap();
 }
 
 /// Multi-source: CSV orders enriched against a JSON extra source declared
@@ -1189,12 +1189,13 @@ fn lenient_x12_claim_flattens_into_csv() {
 /// gets an empty cell (the lookup resolves to Null).
 #[test]
 fn csv_orders_enriched_from_json_customers() {
+    let _scratch = TempDir::new("cli-golden").unwrap();
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/enrich");
     let project = dir.join("project.json");
     let input = dir.join("orders.csv");
     let expected = std::fs::read_to_string(dir.join("expected_enriched.csv")).unwrap();
 
-    let output_path = std::env::temp_dir().join(format!(
+    let output_path = _scratch.path().join(format!(
         "ferrule_cli_golden_test_enrich_{}.csv",
         std::process::id()
     ));
@@ -1203,12 +1204,13 @@ fn csv_orders_enriched_from_json_customers() {
     assert_eq!(rows, 3);
 
     let actual = std::fs::read_to_string(&output_path).unwrap();
-    std::fs::remove_file(&output_path).unwrap();
     assert_eq!(actual, expected);
+    _scratch.close().unwrap();
 }
 
 #[test]
 fn validates_projects_before_reading_input_data() {
+    let _scratch = TempDir::new("cli-golden").unwrap();
     let fixture_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
     let valid_path = fixture_dir.join("project.json");
     assert!(cli::validate_project(&valid_path).unwrap().is_empty());
@@ -1222,7 +1224,7 @@ fn validates_projects_before_reading_input_data() {
             args: vec![12345],
         },
     );
-    let invalid_path = std::env::temp_dir().join(format!(
+    let invalid_path = _scratch.path().join(format!(
         "ferrule_cli_invalid_project_{}.json",
         std::process::id()
     ));
@@ -1239,14 +1241,14 @@ fn validates_projects_before_reading_input_data() {
             .iter()
             .any(|issue| issue.message.contains("missing node 12345"))
     );
-    let output = std::env::temp_dir().join(format!(
+    let output = _scratch.path().join(format!(
         "ferrule_cli_invalid_output_{}.csv",
         std::process::id()
     ));
     let error = cli::run_project(&invalid_path, Path::new("does-not-exist.csv"), &output)
         .unwrap_err()
         .to_string();
-    std::fs::remove_file(invalid_path).unwrap();
     assert!(error.contains("project validation failed"));
     assert!(!output.exists());
+    _scratch.close().unwrap();
 }

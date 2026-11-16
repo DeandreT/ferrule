@@ -4,25 +4,7 @@ use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::{Duration, Instant};
 
-struct Files(PathBuf);
-impl Files {
-    fn new() -> Self {
-        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-        let id = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let path =
-            std::env::temp_dir().join(format!("ferrule-rest-loaded-{}-{id}", std::process::id()));
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-    fn path(&self, name: &str) -> PathBuf {
-        self.0.join(name)
-    }
-}
-impl Drop for Files {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir as Files;
 
 fn project(value: &str) -> mapping::Project {
     serde_json::from_value(serde_json::json!({
@@ -101,30 +83,30 @@ fn endpoint(project_path: PathBuf) -> (String, thread::JoinHandle<Vec<Vec<u8>>>)
 #[test]
 fn loaded_snapshot_and_single_host_file_parser_preserve_get_post_and_denial() {
     for method in ["GET", "POST"] {
-        let files = Files::new();
-        let project_path = files.path("mapping.json");
+        let files = Files::new("rest-loaded").unwrap();
+        let project_path = files.join("mapping.json");
         std::fs::write(
             &project_path,
             mapping::project_file::encode_pretty(&project("saved")).unwrap(),
         )
         .unwrap();
-        std::fs::write(files.path("must-not-write.json"), b"untouched").unwrap();
+        std::fs::write(files.join("must-not-write.json"), b"untouched").unwrap();
         let snapshot = project("unsaved snapshot");
         let (url, server) = endpoint(project_path.clone());
         let body = br#"{"exact":9007199254740993}"#;
-        std::fs::write(files.path("body.json"), body).unwrap();
+        std::fs::write(files.join("body.json"), body).unwrap();
         let description = if method == "POST" {
             serde_json::json!({"method":method,"url":url,"body_file":"body.json"})
         } else {
             serde_json::json!({"method":method,"url":url})
         };
         std::fs::write(
-            files.path("request.json"),
+            files.join("request.json"),
             serde_json::to_vec(&description).unwrap(),
         )
         .unwrap();
         std::fs::write(
-            files.path("headers.json"),
+            files.join("headers.json"),
             br#"[{"name":"Authorization","value":"fixture-credential"}]"#,
         )
         .unwrap();
@@ -133,7 +115,7 @@ fn loaded_snapshot_and_single_host_file_parser_preserve_get_post_and_denial() {
         let denied = cli::run_project_value_rest_json_request_file_payloads(
             &snapshot,
             &project_path,
-            &files.path("missing-request.json"),
+            &files.join("missing-request.json"),
             None,
             cli::RestExecutionPolicy::Deny,
             &options,
@@ -141,8 +123,8 @@ fn loaded_snapshot_and_single_host_file_parser_preserve_get_post_and_denial() {
         let result = cli::run_project_value_rest_json_request_file_payloads(
             &snapshot,
             &project_path,
-            &files.path("request.json"),
-            Some(&files.path("headers.json")),
+            &files.join("request.json"),
+            Some(&files.join("headers.json")),
             cli::RestExecutionPolicy::AllowSingleRequest {
                 allow_insecure_http: true,
             },
@@ -150,7 +132,7 @@ fn loaded_snapshot_and_single_host_file_parser_preserve_get_post_and_denial() {
         );
         let raw = server.join().unwrap();
         let disk_after = std::fs::read(&project_path).unwrap();
-        let target_after = std::fs::read(files.path("must-not-write.json")).unwrap();
+        let target_after = std::fs::read(files.join("must-not-write.json")).unwrap();
         eprintln!(
             "{}",
             serde_json::json!({

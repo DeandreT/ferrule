@@ -1,32 +1,10 @@
 use std::error::Error;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::path::Path;
 
 use ir::{ScalarType, SchemaNode};
 use mapping::{Binding, Graph, Node, Project, Scope, XbrlBoundaryOptions};
 
-struct TempDir(PathBuf);
-
-static NEXT_DIR: AtomicU64 = AtomicU64::new(0);
-
-impl TempDir {
-    fn new() -> std::io::Result<Self> {
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_cli_xbrl_{}_{}",
-            std::process::id(),
-            NEXT_DIR.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn project() -> Project {
     let mut graph = Graph::default();
@@ -80,14 +58,14 @@ fn error_message(result: anyhow::Result<usize>) -> Result<String, Box<dyn Error>
 
 #[test]
 fn external_xbrl_source_dispatches_to_the_bounded_reader() -> Result<(), Box<dyn Error>> {
-    let dir = TempDir::new()?;
+    let dir = TempDir::new("cli_xbrl")?;
     let mut project = project();
     project.source_options.xbrl = Some(XbrlBoundaryOptions::external_source("taxonomy.xsd")?);
-    let project_path = dir.0.join("mapping.json");
-    let output_path = dir.0.join("output.xml");
+    let project_path = dir.path().join("mapping.json");
+    let output_path = dir.path().join("output.xml");
     write_project(&project_path, &project)?;
 
-    let input_path = dir.0.join("facts.xbrl");
+    let input_path = dir.path().join("facts.xbrl");
     std::fs::write(
         &input_path,
         r#"<xbrli:xbrl xmlns:xbrli="http://www.xbrl.org/2003/instance"/>"#,
@@ -104,15 +82,15 @@ fn external_xbrl_source_dispatches_to_the_bounded_reader() -> Result<(), Box<dyn
 
 #[test]
 fn external_xbrl_target_validates_before_replacing_output() -> Result<(), Box<dyn Error>> {
-    let dir = TempDir::new()?;
+    let dir = TempDir::new("cli_xbrl")?;
     let mut project = project();
     project.target_options.xbrl = Some(XbrlBoundaryOptions::external_target(
         "taxonomy.xsd",
         Some("table.sps"),
     )?);
-    let project_path = dir.0.join("mapping.json");
-    let input_path = dir.0.join("input.xml");
-    let output_path = dir.0.join("output.xml");
+    let project_path = dir.path().join("mapping.json");
+    let input_path = dir.path().join("input.xml");
+    let output_path = dir.path().join("output.xml");
     write_project(&project_path, &project)?;
     std::fs::write(&input_path, "<Source><value>test</value></Source>")?;
     std::fs::write(&output_path, "preserve")?;

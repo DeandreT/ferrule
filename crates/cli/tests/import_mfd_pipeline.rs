@@ -1,30 +1,10 @@
 use std::error::Error;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use mapping::PipelineInput;
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> std::io::Result<Self> {
-        static NEXT: AtomicU64 = AtomicU64::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule-cli-chain-{}-{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn write_chain(directory: &Path) -> Result<PathBuf, Box<dyn Error>> {
     let maps = directory.join("maps");
@@ -166,14 +146,14 @@ fn output_message(result: &std::process::Output) -> String {
 
 #[test]
 fn imports_and_runs_a_connected_two_stage_design() -> Result<(), Box<dyn Error>> {
-    let directory = TempDir::new()?;
-    let mapping = write_chain(&directory.0)?;
-    let output = directory.0.join("flow.json");
+    let directory = TempDir::new("cli-chain")?;
+    let mapping = write_chain(directory.path())?;
+    let output = directory.path().join("flow.json");
     let imported = Command::new(env!("CARGO_BIN_EXE_ferrule"))
         .args(["import-mfd", "--pipeline", "--mfd"])
         .arg(&mapping)
         .args(["--package-root"])
-        .arg(&directory.0)
+        .arg(directory.path())
         .args(["--out"])
         .arg(&output)
         .output()?;
@@ -199,13 +179,13 @@ fn imports_and_runs_a_connected_two_stage_design() -> Result<(), Box<dyn Error>>
     let PipelineInput::Host { name } = &pipeline.stages[0].source else {
         panic!("first stage must have a host input");
     };
-    let result = directory.0.join("result.xml");
+    let result = directory.path().join("result.xml");
     let run = Command::new(env!("CARGO_BIN_EXE_ferrule"))
         .args(["run-pipeline", "--pipeline"])
         .arg(&output)
         .args(["--input"])
         .arg(name)
-        .arg(directory.0.join("maps/source.xml"))
+        .arg(directory.path().join("maps/source.xml"))
         .args(["--output", "mfd-stage-2"])
         .arg(&result)
         .output()?;
@@ -270,8 +250,8 @@ fn imports_and_runs_a_connected_xlsx_workbook_design() -> Result<(), Box<dyn Err
     };
     assert!(engine::validate_pipeline(&pipeline).is_empty());
 
-    let directory = TempDir::new()?;
-    let maps = directory.0.join("maps");
+    let directory = TempDir::new("cli-chain")?;
+    let maps = directory.path().join("maps");
     std::fs::create_dir_all(&maps)?;
     let input = maps.join("source.xml");
     std::fs::copy(&source_path, &input)?;
@@ -280,12 +260,12 @@ fn imports_and_runs_a_connected_xlsx_workbook_design() -> Result<(), Box<dyn Err
         mfd::export_pipeline_with_profile(&pipeline, &design, mfd::ExportProfile::NativeMfd)?;
     assert!(report.is_native_compatible(), "{report:?}");
 
-    let saved_pipeline = directory.0.join("flow.json");
+    let saved_pipeline = directory.path().join("flow.json");
     let import = Command::new(env!("CARGO_BIN_EXE_ferrule"))
         .args(["import-mfd", "--pipeline", "--mfd"])
         .arg(&design)
         .args(["--package-root"])
-        .arg(&directory.0)
+        .arg(directory.path())
         .args(["--out"])
         .arg(&saved_pipeline)
         .output()?;
@@ -295,7 +275,7 @@ fn imports_and_runs_a_connected_xlsx_workbook_design() -> Result<(), Box<dyn Err
     let PipelineInput::Host { name } = &imported_pipeline.stages[0].source else {
         panic!("first stage must read a host source");
     };
-    let result = directory.0.join("result.xlsx");
+    let result = directory.path().join("result.xlsx");
     let run = Command::new(env!("CARGO_BIN_EXE_ferrule"))
         .args(["run-pipeline", "--pipeline"])
         .arg(&saved_pipeline)
@@ -405,8 +385,8 @@ fn imports_and_runs_a_connected_flextext_design_with_its_generated_layout()
     };
     assert!(engine::validate_pipeline(&pipeline).is_empty());
 
-    let directory = TempDir::new()?;
-    let maps = directory.0.join("maps");
+    let directory = TempDir::new("cli-chain")?;
+    let maps = directory.path().join("maps");
     std::fs::create_dir_all(&maps)?;
     let input = maps.join("Quotations.xml");
     std::fs::copy(&source_path, &input)?;
@@ -418,12 +398,12 @@ fn imports_and_runs_a_connected_flextext_design_with_its_generated_layout()
     assert!(layout_path.is_file());
     assert!(std::fs::read_to_string(&design)?.contains("config=\"quotations-stage-2-target.mft\""));
 
-    let saved_pipeline = directory.0.join("flow.json");
+    let saved_pipeline = directory.path().join("flow.json");
     let import = Command::new(env!("CARGO_BIN_EXE_ferrule"))
         .args(["import-mfd", "--pipeline", "--mfd"])
         .arg(&design)
         .args(["--package-root"])
-        .arg(&directory.0)
+        .arg(directory.path())
         .args(["--out"])
         .arg(&saved_pipeline)
         .output()?;
@@ -433,7 +413,7 @@ fn imports_and_runs_a_connected_flextext_design_with_its_generated_layout()
     let PipelineInput::Host { name } = &imported_pipeline.stages[0].source else {
         panic!("first stage must read a host source");
     };
-    let result = directory.0.join("result.txt");
+    let result = directory.path().join("result.txt");
     let run = Command::new(env!("CARGO_BIN_EXE_ferrule"))
         .args(["run-pipeline", "--pipeline"])
         .arg(&saved_pipeline)
@@ -519,8 +499,8 @@ fn imports_and_runs_a_connected_protobuf_design_with_its_generated_schema()
     };
     assert!(engine::validate_pipeline(&pipeline).is_empty());
 
-    let directory = TempDir::new()?;
-    let maps = directory.0.join("maps");
+    let directory = TempDir::new("cli-chain")?;
+    let maps = directory.path().join("maps");
     std::fs::create_dir_all(&maps)?;
     let source_path = fixtures.join("protobuf-target-source.xml");
     let input = maps.join("protobuf-target-source.xml");
@@ -535,12 +515,12 @@ fn imports_and_runs_a_connected_protobuf_design_with_its_generated_schema()
         std::fs::read_to_string(&design)?.contains("schemafile=\"protobuf-stage-2-target.proto\"")
     );
 
-    let saved_pipeline = directory.0.join("flow.json");
+    let saved_pipeline = directory.path().join("flow.json");
     let import = Command::new(env!("CARGO_BIN_EXE_ferrule"))
         .args(["import-mfd", "--pipeline", "--mfd"])
         .arg(&design)
         .args(["--package-root"])
-        .arg(&directory.0)
+        .arg(directory.path())
         .args(["--out"])
         .arg(&saved_pipeline)
         .output()?;
@@ -550,7 +530,7 @@ fn imports_and_runs_a_connected_protobuf_design_with_its_generated_schema()
     let PipelineInput::Host { name } = &imported_pipeline.stages[0].source else {
         panic!("first stage must read a host source");
     };
-    let result = directory.0.join("result.bin");
+    let result = directory.path().join("result.bin");
     let run = Command::new(env!("CARGO_BIN_EXE_ferrule"))
         .args(["run-pipeline", "--pipeline"])
         .arg(&saved_pipeline)
@@ -658,8 +638,8 @@ fn imports_and_runs_a_connected_xbrl_design_with_exact_instance_bytes() -> Resul
     };
     assert!(engine::validate_pipeline(&pipeline).is_empty());
 
-    let directory = TempDir::new()?;
-    let maps = directory.0.join("maps");
+    let directory = TempDir::new("cli-chain")?;
+    let maps = directory.path().join("maps");
     std::fs::create_dir_all(&maps)?;
     let source_path = fixtures.join("xbrl-final-source.xml");
     let input = maps.join("xbrl-final-source.xml");
@@ -673,12 +653,12 @@ fn imports_and_runs_a_connected_xbrl_design_with_exact_instance_bytes() -> Resul
         mfd::export_pipeline_with_profile(&pipeline, &design, mfd::ExportProfile::NativeMfd)?;
     assert!(report.is_native_compatible(), "{report:?}");
 
-    let saved_pipeline = directory.0.join("flow.json");
+    let saved_pipeline = directory.path().join("flow.json");
     let import = Command::new(env!("CARGO_BIN_EXE_ferrule"))
         .args(["import-mfd", "--pipeline", "--mfd"])
         .arg(&design)
         .args(["--package-root"])
-        .arg(&directory.0)
+        .arg(directory.path())
         .args(["--out"])
         .arg(&saved_pipeline)
         .output()?;
@@ -688,7 +668,7 @@ fn imports_and_runs_a_connected_xbrl_design_with_exact_instance_bytes() -> Resul
     let PipelineInput::Host { name } = &imported_pipeline.stages[0].source else {
         panic!("first stage must read a host source");
     };
-    let result = directory.0.join("result.xbrl");
+    let result = directory.path().join("result.xbrl");
     let run = Command::new(env!("CARGO_BIN_EXE_ferrule"))
         .args(["run-pipeline", "--pipeline"])
         .arg(&saved_pipeline)
@@ -785,19 +765,19 @@ fn imports_and_runs_an_xml_primary_with_exact_named_csv_bytes() -> Result<(), Bo
     };
     assert!(engine::validate_pipeline(&pipeline).is_empty());
 
-    let directory = TempDir::new()?;
-    let maps = directory.0.join("maps");
+    let directory = TempDir::new("cli-chain")?;
+    let maps = directory.path().join("maps");
     std::fs::create_dir_all(&maps)?;
     let design = maps.join("xml-and-csv.mfd");
     let report =
         mfd::export_pipeline_with_profile(&pipeline, &design, mfd::ExportProfile::NativeMfd)?;
     assert!(report.is_native_compatible(), "{report:?}");
-    let saved_pipeline = directory.0.join("flow.json");
+    let saved_pipeline = directory.path().join("flow.json");
     let import = Command::new(env!("CARGO_BIN_EXE_ferrule"))
         .args(["import-mfd", "--pipeline", "--mfd"])
         .arg(&design)
         .args(["--package-root"])
-        .arg(&directory.0)
+        .arg(directory.path())
         .args(["--out"])
         .arg(&saved_pipeline)
         .output()?;
@@ -810,8 +790,8 @@ fn imports_and_runs_an_xml_primary_with_exact_named_csv_bytes() -> Result<(), Bo
     let [named] = imported_pipeline.stages[1].project.extra_targets.as_slice() else {
         panic!("final stage must keep one named CSV target");
     };
-    let output_xml = directory.0.join("primary.xml");
-    let output_csv = directory.0.join("rows.csv");
+    let output_xml = directory.path().join("primary.xml");
+    let output_csv = directory.path().join("rows.csv");
     let run = Command::new(env!("CARGO_BIN_EXE_ferrule"))
         .args(["run-pipeline", "--pipeline"])
         .arg(&saved_pipeline)
@@ -839,7 +819,7 @@ fn imports_and_runs_an_xml_primary_with_exact_named_csv_bytes() -> Result<(), Bo
         format_xml::to_string(&pipeline.stages[1].project.target, &expected.primary)?;
     assert_eq!(std::fs::read(&output_xml)?, expected_xml.as_bytes());
     let csv = &pipeline.stages[1].project.extra_targets[0];
-    let expected_csv = directory.0.join("expected.csv");
+    let expected_csv = directory.path().join("expected.csv");
     format_csv::write_with_dialect(
         &expected_csv,
         &csv.schema,
@@ -925,19 +905,19 @@ fn imports_and_runs_an_xml_primary_with_exact_named_json_bytes() -> Result<(), B
     };
     assert!(engine::validate_pipeline(&pipeline).is_empty());
 
-    let directory = TempDir::new()?;
-    let maps = directory.0.join("maps");
+    let directory = TempDir::new("cli-chain")?;
+    let maps = directory.path().join("maps");
     std::fs::create_dir_all(&maps)?;
     let design = maps.join("xml-and-json.mfd");
     let report =
         mfd::export_pipeline_with_profile(&pipeline, &design, mfd::ExportProfile::NativeMfd)?;
     assert!(report.is_native_compatible(), "{report:?}");
-    let saved_pipeline = directory.0.join("flow.json");
+    let saved_pipeline = directory.path().join("flow.json");
     let import = Command::new(env!("CARGO_BIN_EXE_ferrule"))
         .args(["import-mfd", "--pipeline", "--mfd"])
         .arg(&design)
         .args(["--package-root"])
-        .arg(&directory.0)
+        .arg(directory.path())
         .args(["--out"])
         .arg(&saved_pipeline)
         .output()?;
@@ -950,8 +930,8 @@ fn imports_and_runs_an_xml_primary_with_exact_named_json_bytes() -> Result<(), B
     let [named] = imported_pipeline.stages[1].project.extra_targets.as_slice() else {
         panic!("final stage must keep one named JSON target");
     };
-    let output_xml = directory.0.join("primary.xml");
-    let output_json = directory.0.join("report.json");
+    let output_xml = directory.path().join("primary.xml");
+    let output_json = directory.path().join("report.json");
     let run = Command::new(env!("CARGO_BIN_EXE_ferrule"))
         .args(["run-pipeline", "--pipeline"])
         .arg(&saved_pipeline)
@@ -984,14 +964,14 @@ fn imports_and_runs_an_xml_primary_with_exact_named_json_bytes() -> Result<(), B
 
 #[test]
 fn imports_and_runs_a_connected_three_stage_design() -> Result<(), Box<dyn Error>> {
-    let directory = TempDir::new()?;
-    let mapping = write_three_stage_chain(&directory.0)?;
-    let output = directory.0.join("flow.json");
+    let directory = TempDir::new("cli-chain")?;
+    let mapping = write_three_stage_chain(directory.path())?;
+    let output = directory.path().join("flow.json");
     let imported = Command::new(env!("CARGO_BIN_EXE_ferrule"))
         .args(["import-mfd", "--pipeline", "--mfd"])
         .arg(&mapping)
         .args(["--package-root"])
-        .arg(&directory.0)
+        .arg(directory.path())
         .args(["--out"])
         .arg(&output)
         .output()?;
@@ -1040,15 +1020,15 @@ fn imports_and_runs_a_connected_three_stage_design() -> Result<(), Box<dyn Error
             }
         );
     }
-    let first = directory.0.join("first.xml");
-    let second = directory.0.join("second.xml");
-    let result = directory.0.join("result.xml");
+    let first = directory.path().join("first.xml");
+    let second = directory.path().join("second.xml");
+    let result = directory.path().join("result.xml");
     let run = Command::new(env!("CARGO_BIN_EXE_ferrule"))
         .args(["run-pipeline", "--pipeline"])
         .arg(&output)
         .args(["--input"])
         .arg(name)
-        .arg(directory.0.join("maps/source.xml"))
+        .arg(directory.path().join("maps/source.xml"))
         .args(["--output", "mfd-stage-1"])
         .arg(&first)
         .args(["--output", "mfd-stage-2"])
@@ -1070,14 +1050,14 @@ fn imports_and_runs_a_connected_three_stage_design() -> Result<(), Box<dyn Error
 
 #[test]
 fn imports_and_runs_an_earlier_result_as_a_final_named_source() -> Result<(), Box<dyn Error>> {
-    let directory = TempDir::new()?;
-    let design = write_earlier_result_named_source_chain(&directory.0)?;
-    let flow = directory.0.join("flow.json");
+    let directory = TempDir::new("cli-chain")?;
+    let design = write_earlier_result_named_source_chain(directory.path())?;
+    let flow = directory.path().join("flow.json");
     let imported = Command::new(env!("CARGO_BIN_EXE_ferrule"))
         .args(["import-mfd", "--pipeline", "--mfd"])
         .arg(&design)
         .args(["--package-root"])
-        .arg(&directory.0)
+        .arg(directory.path())
         .args(["--out"])
         .arg(&flow)
         .output()?;
@@ -1090,15 +1070,15 @@ fn imports_and_runs_an_earlier_result_as_a_final_named_source() -> Result<(), Bo
     let PipelineInput::Host { name } = &pipeline.stages[0].source else {
         panic!("first stage must read a host");
     };
-    let first = directory.0.join("first.xml");
-    let second = directory.0.join("second.xml");
-    let final_output = directory.0.join("final.xml");
+    let first = directory.path().join("first.xml");
+    let second = directory.path().join("second.xml");
+    let final_output = directory.path().join("final.xml");
     let run = Command::new(env!("CARGO_BIN_EXE_ferrule"))
         .args(["run-pipeline", "--pipeline"])
         .arg(&flow)
         .args(["--input"])
         .arg(name)
-        .arg(directory.0.join("maps/source.xml"))
+        .arg(directory.path().join("maps/source.xml"))
         .args(["--output", "mfd-stage-1"])
         .arg(&first)
         .args(["--output", "mfd-stage-2"])
@@ -1111,7 +1091,7 @@ fn imports_and_runs_an_earlier_result_as_a_final_named_source() -> Result<(), Bo
     assert!(std::fs::read_to_string(&second)?.contains("<Second>main value</Second>"));
     let xml = std::fs::read(&final_output)?;
     let source = format_xml::read(
-        &directory.0.join("maps/source.xml"),
+        &directory.path().join("maps/source.xml"),
         &pipeline.stages[0].project.source,
     )?;
     let direct = engine::run_pipeline(
@@ -1134,16 +1114,16 @@ fn imports_and_runs_an_earlier_result_as_a_final_named_source() -> Result<(), Bo
     assert!(expected.contains("<Lookup>main value</Lookup>"));
     assert!(expected.contains("<Shadow>side value</Shadow>"));
 
-    let exported = directory.0.join("reexported.mfd");
+    let exported = directory.path().join("reexported.mfd");
     let report =
         mfd::export_pipeline_with_profile(&pipeline, &exported, mfd::ExportProfile::NativeMfd)?;
     assert!(report.is_native_compatible(), "{report:?}");
-    let flow_again = directory.0.join("flow-again.json");
+    let flow_again = directory.path().join("flow-again.json");
     let reimported = Command::new(env!("CARGO_BIN_EXE_ferrule"))
         .args(["import-mfd", "--pipeline", "--mfd"])
         .arg(&exported)
         .args(["--package-root"])
-        .arg(&directory.0)
+        .arg(directory.path())
         .args(["--out"])
         .arg(&flow_again)
         .output()?;
@@ -1156,17 +1136,17 @@ fn imports_and_runs_an_earlier_result_as_a_final_named_source() -> Result<(), Bo
     let PipelineInput::Host { name: again_host } = &again.stages[0].source else {
         panic!("reimported first stage must read a host");
     };
-    let again_final = directory.0.join("again-final.xml");
+    let again_final = directory.path().join("again-final.xml");
     let rerun = Command::new(env!("CARGO_BIN_EXE_ferrule"))
         .args(["run-pipeline", "--pipeline"])
         .arg(&flow_again)
         .args(["--input"])
         .arg(again_host)
-        .arg(directory.0.join("maps/source.xml"))
+        .arg(directory.path().join("maps/source.xml"))
         .args(["--output", "mfd-stage-1"])
-        .arg(directory.0.join("again-first.xml"))
+        .arg(directory.path().join("again-first.xml"))
         .args(["--output", "mfd-stage-2"])
-        .arg(directory.0.join("again-second.xml"))
+        .arg(directory.path().join("again-second.xml"))
         .args(["--output", "mfd-stage-3"])
         .arg(&again_final)
         .output()?;
@@ -1182,8 +1162,8 @@ fn imports_and_runs_an_earlier_result_as_a_final_named_source() -> Result<(), Bo
 #[test]
 fn rejects_an_unrepresented_earlier_result_pin_before_cli_publication() -> Result<(), Box<dyn Error>>
 {
-    let directory = TempDir::new()?;
-    let design = write_earlier_result_named_source_chain(&directory.0)?;
+    let directory = TempDir::new("cli-chain")?;
+    let design = write_earlier_result_named_source_chain(directory.path())?;
     let original = std::fs::read_to_string(&design)?;
     let unsupported = original
         .replace(
@@ -1196,12 +1176,12 @@ fn rejects_an_unrepresented_earlier_result_pin_before_cli_publication() -> Resul
         );
     assert_ne!(unsupported, original);
     std::fs::write(&design, unsupported)?;
-    let output = directory.0.join("not-created").join("flow.json");
+    let output = directory.path().join("not-created").join("flow.json");
     let imported = Command::new(env!("CARGO_BIN_EXE_ferrule"))
         .args(["import-mfd", "--pipeline", "--mfd"])
         .arg(&design)
         .args(["--package-root"])
-        .arg(&directory.0)
+        .arg(directory.path())
         .args(["--out"])
         .arg(&output)
         .output()?;
@@ -1218,14 +1198,14 @@ fn rejects_an_unrepresented_earlier_result_pin_before_cli_publication() -> Resul
 
 #[test]
 fn imports_and_runs_a_connected_four_stage_design() -> Result<(), Box<dyn Error>> {
-    let directory = TempDir::new()?;
-    let mapping = write_four_stage_chain(&directory.0)?;
-    let output = directory.0.join("flow.json");
+    let directory = TempDir::new("cli-chain")?;
+    let mapping = write_four_stage_chain(directory.path())?;
+    let output = directory.path().join("flow.json");
     let imported = Command::new(env!("CARGO_BIN_EXE_ferrule"))
         .args(["import-mfd", "--pipeline", "--mfd"])
         .arg(&mapping)
         .args(["--package-root"])
-        .arg(&directory.0)
+        .arg(directory.path())
         .args(["--out"])
         .arg(&output)
         .output()?;
@@ -1250,13 +1230,13 @@ fn imports_and_runs_a_connected_four_stage_design() -> Result<(), Box<dyn Error>
     let PipelineInput::Host { name } = &pipeline.stages[0].source else {
         panic!("first stage must have a host input");
     };
-    let result = directory.0.join("result.xml");
+    let result = directory.path().join("result.xml");
     let run = Command::new(env!("CARGO_BIN_EXE_ferrule"))
         .args(["run-pipeline", "--pipeline"])
         .arg(&output)
         .args(["--input"])
         .arg(name)
-        .arg(directory.0.join("maps/source.xml"))
+        .arg(directory.path().join("maps/source.xml"))
         .args(["--output", "mfd-stage-4"])
         .arg(&result)
         .output()?;
@@ -1272,16 +1252,17 @@ fn imports_and_runs_a_connected_four_stage_design() -> Result<(), Box<dyn Error>
 #[test]
 fn imported_chain_previews_all_stages_without_reopening_inputs_or_writing_outputs()
 -> Result<(), Box<dyn Error>> {
-    let directory = TempDir::new()?;
-    let design = write_earlier_result_named_source_chain(&directory.0)?;
-    let flow = directory.0.join("flow.json");
-    let warnings = cli::import_mfd_pipeline(&design, &flow, Some(&directory.0), None, &[], &[])?;
+    let directory = TempDir::new("cli-chain")?;
+    let design = write_earlier_result_named_source_chain(directory.path())?;
+    let flow = directory.path().join("flow.json");
+    let warnings =
+        cli::import_mfd_pipeline(&design, &flow, Some(directory.path()), None, &[], &[])?;
     assert!(warnings.is_empty(), "{warnings:?}");
     let mut pipeline: mapping::Pipeline = serde_json::from_slice(&std::fs::read(&flow)?)?;
-    let input_path = directory.0.join("maps/source.xml");
+    let input_path = directory.path().join("maps/source.xml");
     let input_bytes = std::fs::read(&input_path)?;
     std::fs::remove_file(&input_path)?;
-    let logical_output = directory.0.join("untouched.xml");
+    let logical_output = directory.path().join("untouched.xml");
     std::fs::write(&logical_output, b"existing output")?;
     let PipelineInput::Host { name } = &pipeline.stages[0].source else {
         panic!("first stage must read a host");
@@ -1308,7 +1289,7 @@ fn imported_chain_previews_all_stages_without_reopening_inputs_or_writing_output
     // Embedded project paths were rebased to the pipeline location at import.
     assert_eq!(
         preview.artifacts[0].path,
-        directory.0.join("maps/first-out.xml")
+        directory.path().join("maps/first-out.xml")
     );
     let mut expected = None;
     for cycle in 0..3 {
@@ -1359,10 +1340,12 @@ fn imported_chain_previews_all_stages_without_reopening_inputs_or_writing_output
         }
         assert!(!input_path.exists());
         assert_eq!(std::fs::read(&logical_output)?, b"existing output");
-        assert!(!directory.0.join("maps/first-out.xml").exists());
-        assert!(!directory.0.join("maps/target.xml").exists());
+        assert!(!directory.path().join("maps/first-out.xml").exists());
+        assert!(!directory.path().join("maps/target.xml").exists());
         if cycle < 2 {
-            let exported = directory.0.join(format!("preview-roundtrip-{cycle}.mfd"));
+            let exported = directory
+                .path()
+                .join(format!("preview-roundtrip-{cycle}.mfd"));
             let report = mfd::export_pipeline_with_profile(
                 &pipeline,
                 &exported,
@@ -1370,7 +1353,7 @@ fn imported_chain_previews_all_stages_without_reopening_inputs_or_writing_output
             )?;
             assert!(report.is_native_compatible(), "{report:?}");
             let warnings =
-                cli::import_mfd_pipeline(&exported, &flow, Some(&directory.0), None, &[], &[])?;
+                cli::import_mfd_pipeline(&exported, &flow, Some(directory.path()), None, &[], &[])?;
             assert!(warnings.is_empty(), "{warnings:?}");
             pipeline = serde_json::from_slice(&std::fs::read(&flow)?)?;
         }
@@ -1380,14 +1363,14 @@ fn imported_chain_previews_all_stages_without_reopening_inputs_or_writing_output
 
 #[test]
 fn unsupported_chain_does_not_replace_an_existing_pipeline_file() -> Result<(), Box<dyn Error>> {
-    let directory = TempDir::new()?;
-    let mapping = write_chain(&directory.0)?;
+    let directory = TempDir::new("cli-chain")?;
+    let mapping = write_chain(directory.path())?;
     let original = std::fs::read_to_string(&mapping)?;
     std::fs::write(
         &mapping,
         original.replace("PassThrough=\"1\"", "PassThrough=\"0\""),
     )?;
-    let output = directory.0.join("flow.json");
+    let output = directory.path().join("flow.json");
     std::fs::write(&output, "preserve this file")?;
     let imported = Command::new(env!("CARGO_BIN_EXE_ferrule"))
         .args(["import-mfd", "--pipeline", "--mfd"])
