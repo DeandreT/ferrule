@@ -90,7 +90,7 @@ fn generated_package_preserves_order_and_frames_each_replaced_occurrence() {
         .join("../codegen-runtime")
         .canonicalize()
         .expect("runtime path exists");
-    let output = TempDir::new("rust_xml_mixed_content_codegen");
+    let output = TempDir::new("rust_xml_mixed_content_codegen").unwrap();
     let artifacts = emit(
         &fixture(),
         &Options {
@@ -235,7 +235,7 @@ fn generated_package_preserves_constructed_target_mixed_content_order() {
         .join("../codegen-runtime")
         .canonicalize()
         .expect("runtime path exists");
-    let output = TempDir::new("rust_target_xml_mixed_content_codegen");
+    let output = TempDir::new("rust_target_xml_mixed_content_codegen").unwrap();
     let artifacts = emit(
         &target_fixture(),
         &Options {

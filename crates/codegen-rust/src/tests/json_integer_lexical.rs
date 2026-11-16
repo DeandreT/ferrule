@@ -55,7 +55,7 @@ fn generated_integer_json_output_normalizes_exact_decimal_strings() {
         },
     )
     .unwrap();
-    let output = TempDir::new("rust_integer_lexical_codegen");
+    let output = TempDir::new("rust_integer_lexical_codegen").unwrap();
     write_artifacts(output.path(), &artifacts);
     let harness = r##"use codegen_runtime::{scalar, string, JsonBoundaryError, Value};
 

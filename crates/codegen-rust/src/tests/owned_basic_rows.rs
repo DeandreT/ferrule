@@ -417,7 +417,7 @@ fn primary_row_failures_generated_models_are_independently_admitted() {
 
 #[test]
 fn primary_row_failures_generated_public_consumers_preserve_full_contracts() {
-    let output = TempDir::new("primary_row_failures_809");
+    let output = TempDir::new("primary_row_failures_809").unwrap();
     let runtime = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .unwrap()
