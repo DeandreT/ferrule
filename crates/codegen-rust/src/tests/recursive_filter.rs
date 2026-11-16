@@ -231,7 +231,7 @@ fn generated_package_matches_engine_recursive_filter_and_typed_errors() {
         .join("../codegen-runtime")
         .canonicalize()
         .unwrap_or_else(|error| panic!("runtime path exists: {error}"));
-    let output = TempDir::new("rust_recursive_filter_codegen");
+    let output = TempDir::new("rust_recursive_filter_codegen").unwrap();
     let artifacts = emit(
         &program,
         &Options {
