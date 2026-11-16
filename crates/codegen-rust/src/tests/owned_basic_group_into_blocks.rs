@@ -143,7 +143,7 @@ fn blocks_composition_conserves_prior_grouping_artifacts() {
 
 #[test]
 fn blocks_literal_public_consumer_keeps_partial_blocks_and_typed_errors() {
-    let directory = TempDir::new("owned_blocks_consumer");
+    let directory = TempDir::new("owned_blocks_consumer").unwrap();
     let mut plain = blocks(SourceOwner::Primary);
     plain.extra_sources.clear();
     let mut post = plain.clone();

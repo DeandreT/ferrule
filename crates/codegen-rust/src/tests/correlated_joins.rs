@@ -793,7 +793,7 @@ fn generated_correlated_joins_match_engine_and_retain_typed_failures() {
         },
     )
     .expect("correlated join package emits");
-    let output = TempDir::new("rust_correlated_join_codegen");
+    let output = TempDir::new("rust_correlated_join_codegen").unwrap();
     write_artifacts(output.path(), &artifacts);
     fs::write(
         output.path().join("src/main.rs"),

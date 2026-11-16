@@ -653,7 +653,7 @@ fn generated_legacy_sequence_aggregate_predicates_compile_and_preserve_complete_
         .parent()
         .unwrap()
         .join("codegen-runtime");
-    let output = TempDir::new("legacy_sequence_aggregate_predicate");
+    let output = TempDir::new("legacy_sequence_aggregate_predicate").unwrap();
     let directory = output.path().to_path_buf();
     std::mem::forget(output);
     fs::write(directory.join("FROZEN_COMPLETE_CASES.original.json"), CASES).unwrap();
