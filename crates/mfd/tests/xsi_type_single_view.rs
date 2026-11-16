@@ -1,40 +1,14 @@
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
-
 use ir::{Instance, Value, XML_TYPE_FIELD};
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Self {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_single_xsi_type_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
-
-fn write(path: &Path, contents: &str) {
-    std::fs::write(path, contents).unwrap();
-}
+use test_support::TempDir;
 
 #[test]
 fn conditioned_transitive_derived_view_executes_and_roundtrips() {
-    let directory = TempDir::new();
-    write(
-        &directory.0.join("source.xsd"),
-        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+    let directory = TempDir::new("mfd_single_xsi_type").unwrap();
+    directory
+        .write(
+            "source.xsd",
+            r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
                 xmlns:t="urn:ferrule:address" targetNamespace="urn:ferrule:address"
                 elementFormDefault="qualified">
           <xs:complexType name="Address"><xs:sequence>
@@ -57,18 +31,19 @@ fn conditioned_transitive_derived_view_executes_and_roundtrips() {
             <xs:element name="shipTo" type="t:Address"/>
           </xs:sequence></xs:complexType></xs:element>
         </xs:schema>"#,
-    );
-    write(
-        &directory.0.join("target.xsd"),
-        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+        )
+        .unwrap();
+    directory
+        .write(
+            "target.xsd",
+            r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
           <xs:element name="Result"><xs:complexType><xs:sequence>
             <xs:element name="Postcode" type="xs:string"/>
           </xs:sequence></xs:complexType></xs:element>
         </xs:schema>"#,
-    );
-    write(
-        &directory.0.join("mapping.mfd"),
-        r#"<mapping version="26"><component name="map"><structure><children>
+        )
+        .unwrap();
+    directory.write("mapping.mfd", r#"<mapping version="26"><component name="map"><structure><children>
           <component name="source" library="xml" kind="14"><data><root>
             <entry name="FileInstance"><entry name="document"><entry name="Order">
               <entry name="shipTo" displayselectionmode="all"/>
@@ -90,10 +65,9 @@ fn conditioned_transitive_derived_view_executes_and_roundtrips() {
           </root><document schema="target.xsd" outputinstance="target.xml" instanceroot="{}Result"/></data></component>
         </children><graph><vertices>
           <vertex vertexkey="12"><edges><edge vertexkey="20"/></edges></vertex>
-        </vertices></graph></structure></component></mapping>"#,
-    );
+        </vertices></graph></structure></component></mapping>"#).unwrap();
 
-    let imported = mfd::import(&directory.0.join("mapping.mfd")).unwrap();
+    let imported = mfd::import(&directory.path().join("mapping.mfd")).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(
         engine::validate(&imported.project).is_empty(),
@@ -145,7 +119,7 @@ fn conditioned_transitive_derived_view_executes_and_roundtrips() {
         Some(&Value::String("AB12".into()))
     );
 
-    let exported_path = directory.0.join("roundtrip.mfd");
+    let exported_path = directory.path().join("roundtrip.mfd");
     let warnings = mfd::export(&imported.project, &exported_path).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
     let roundtripped = mfd::import(&exported_path).unwrap();
@@ -178,10 +152,11 @@ fn conditioned_transitive_derived_view_executes_and_roundtrips() {
 
 #[test]
 fn lone_concrete_type_from_abstract_base_executes_and_roundtrips() {
-    let directory = TempDir::new();
-    write(
-        &directory.0.join("source.xsd"),
-        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+    let directory = TempDir::new("mfd_single_xsi_type").unwrap();
+    directory
+        .write(
+            "source.xsd",
+            r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
                 xmlns:t="urn:ferrule:single-party" targetNamespace="urn:ferrule:single-party"
                 elementFormDefault="qualified">
           <xs:complexType name="AbstractParty" abstract="true"><xs:sequence>
@@ -196,18 +171,19 @@ fn lone_concrete_type_from_abstract_base_executes_and_roundtrips() {
             <xs:element name="party" type="t:AbstractParty"/>
           </xs:sequence></xs:complexType></xs:element>
         </xs:schema>"#,
-    );
-    write(
-        &directory.0.join("target.xsd"),
-        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+        )
+        .unwrap();
+    directory
+        .write(
+            "target.xsd",
+            r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
           <xs:element name="Result"><xs:complexType><xs:sequence>
             <xs:element name="Name" type="xs:string"/>
           </xs:sequence></xs:complexType></xs:element>
         </xs:schema>"#,
-    );
-    write(
-        &directory.0.join("mapping.mfd"),
-        r#"<mapping version="26"><component name="map"><structure><children>
+        )
+        .unwrap();
+    directory.write("mapping.mfd", r#"<mapping version="26"><component name="map"><structure><children>
           <component name="source" library="xml" kind="14"><data><root>
             <entry name="FileInstance"><entry name="document"><entry name="Directory">
               <entry name="party" displayselectionmode="all"/>
@@ -230,10 +206,9 @@ fn lone_concrete_type_from_abstract_base_executes_and_roundtrips() {
             instanceroot="{}Result"/></data></component>
         </children><graph><vertices>
           <vertex vertexkey="10"><edges><edge vertexkey="20"/></edges></vertex>
-        </vertices></graph></structure></component></mapping>"#,
-    );
+        </vertices></graph></structure></component></mapping>"#).unwrap();
 
-    let imported = mfd::import(&directory.0.join("mapping.mfd")).unwrap();
+    let imported = mfd::import(&directory.path().join("mapping.mfd")).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     let party = imported.project.source.child("party").unwrap();
     assert_eq!(party.alternatives().len(), 1);
@@ -253,7 +228,7 @@ fn lone_concrete_type_from_abstract_base_executes_and_roundtrips() {
         Some(&Value::String("Ada".into()))
     );
 
-    let exported_path = directory.0.join("roundtrip.mfd");
+    let exported_path = directory.path().join("roundtrip.mfd");
     let warnings = mfd::export(&imported.project, &exported_path).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
     let roundtripped = mfd::import(&exported_path).unwrap();

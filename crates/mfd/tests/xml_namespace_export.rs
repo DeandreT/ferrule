@@ -1,32 +1,10 @@
 use std::collections::BTreeMap;
 use std::error::Error;
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{ScalarType, SchemaNode};
 use mapping::{Binding, Graph, Node, Project, Scope};
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new(label: &str) -> std::io::Result<Self> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_xml_namespace_{label}_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn qualified(node: SchemaNode, namespace: &str) -> Result<SchemaNode, Box<dyn Error>> {
     node.xml_qualified(namespace)
@@ -82,11 +60,11 @@ fn cross_namespace_schema_artifacts_export_and_reimport() -> Result<(), Box<dyn 
     )?;
     let project = project_with_source(source.clone());
     let temp = TempDir::new("roundtrip")?;
-    let design = temp.0.join("namespaces.mfd");
+    let design = temp.path().join("namespaces.mfd");
 
     assert!(mfd::export(&project, &design)?.is_empty());
-    let source_xsd = std::fs::read_to_string(temp.0.join("namespaces-source.xsd"))?;
-    let dependency = std::fs::read_to_string(temp.0.join("namespaces-source-ns1.xsd"))?;
+    let source_xsd = std::fs::read_to_string(temp.path().join("namespaces-source.xsd"))?;
+    let dependency = std::fs::read_to_string(temp.path().join("namespaces-source-ns1.xsd"))?;
     assert!(source_xsd.contains(r#"schemaLocation="namespaces-source-ns1.xsd""#));
     assert!(source_xsd.contains(r#"ref="ns1:ForeignValue""#));
     assert!(dependency.contains(r#"targetNamespace="urn:ferrule:foreign""#));
@@ -127,12 +105,12 @@ fn namespace_dependency_failure_publishes_no_artifacts() -> Result<(), Box<dyn E
     project.graph.nodes.clear();
     project.root.bindings.clear();
     let temp = TempDir::new("atomic")?;
-    let design = temp.0.join("rejected.mfd");
+    let design = temp.path().join("rejected.mfd");
 
     assert!(mfd::export(&project, &design).is_err());
     assert!(!design.exists());
-    assert!(!temp.0.join("rejected-source.xsd").exists());
-    assert!(!temp.0.join("rejected-source-ns1.xsd").exists());
-    assert!(!temp.0.join("rejected-target.xsd").exists());
+    assert!(!temp.path().join("rejected-source.xsd").exists());
+    assert!(!temp.path().join("rejected-source-ns1.xsd").exists());
+    assert!(!temp.path().join("rejected-target.xsd").exists());
     Ok(())
 }

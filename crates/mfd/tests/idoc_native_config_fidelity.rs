@@ -1,7 +1,5 @@
 use std::collections::BTreeMap;
 use std::num::NonZeroU32;
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use ir::{ScalarType, SchemaNode};
 use mapping::{
@@ -11,26 +9,7 @@ use mapping::{
 };
 use mfd::MfdError;
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Self {
-        static NEXT: AtomicU64 = AtomicU64::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule-idoc-config-fidelity-{}-{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn nonzero(value: u32) -> NonZeroU32 {
     NonZeroU32::new(value).unwrap()
@@ -111,8 +90,8 @@ fn project_with_leading_label() -> Project {
 
 #[test]
 fn unrepresentable_idoc_label_rejects_export_before_creating_artifacts() {
-    let temp = TempDir::new();
-    let output = temp.0.join("new-parent/mapping.mfd");
+    let temp = TempDir::new("idoc-config-fidelity").unwrap();
+    let output = temp.path().join("new-parent/mapping.mfd");
     let project = project_with_leading_label();
     for error in [
         mfd::preflight_export(&project, &output).unwrap_err(),

@@ -1,30 +1,9 @@
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::path::Path;
 
 use ir::{Instance, Value};
 use mapping::{Node, RuntimeValue};
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Self {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_runtime_now_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn write_design(path: &Path, name: &str, library: &str) {
     let design = format!(
@@ -55,8 +34,8 @@ fn assert_now(output: &Instance) {
 #[test]
 fn native_runtime_datetime_export_round_trips_both_import_spellings() {
     for (name, library) in [("now", "lang"), ("current-dateTime", "xpath2")] {
-        let dir = TempDir::new();
-        let design = dir.0.join("runtime-datetime.mfd");
+        let dir = TempDir::new("mfd_runtime_now").unwrap();
+        let design = dir.path().join("runtime-datetime.mfd");
         write_design(&design, name, library);
 
         let imported = mfd::import(&design).unwrap();
@@ -85,7 +64,7 @@ fn native_runtime_datetime_export_round_trips_both_import_spellings() {
         let original_output = run(&imported.project);
         assert_now(&original_output);
 
-        let exported = dir.0.join("native-round-trip.mfd");
+        let exported = dir.path().join("native-round-trip.mfd");
         let report = mfd::preflight_export(&imported.project, &exported).unwrap();
         assert!(report.is_native_compatible(), "{name}: {report:?}");
         assert!(!exported.exists());
@@ -130,9 +109,9 @@ fn native_runtime_datetime_export_round_trips_both_import_spellings() {
 #[test]
 fn scalar_udfs_support_database_helpers_number_and_stable_now()
 -> Result<(), Box<dyn std::error::Error>> {
-    let dir = TempDir::new();
+    let dir = TempDir::new("mfd_runtime_now").unwrap();
     std::fs::write(
-        dir.0.join("source.xsd"),
+        dir.path().join("source.xsd"),
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:element name="Input"><xs:complexType><xs:sequence>
     <xs:element name="Maybe" type="xs:string" minOccurs="0"/>
@@ -141,7 +120,7 @@ fn scalar_udfs_support_database_helpers_number_and_stable_now()
 </xs:schema>"#,
     )?;
     std::fs::write(
-        dir.0.join("target.xsd"),
+        dir.path().join("target.xsd"),
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:element name="Output"><xs:complexType><xs:sequence>
     <xs:element name="Present" type="xs:boolean"/>
@@ -150,7 +129,7 @@ fn scalar_udfs_support_database_helpers_number_and_stable_now()
   </xs:sequence></xs:complexType></xs:element>
 </xs:schema>"#,
     )?;
-    let design = dir.0.join("scalar-helpers.mfd");
+    let design = dir.path().join("scalar-helpers.mfd");
     std::fs::write(
         &design,
         r#"<mapping version="26">

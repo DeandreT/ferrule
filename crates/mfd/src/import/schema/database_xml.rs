@@ -160,28 +160,16 @@ mod tests {
     use super::{expanded_namespace, local_name};
 
     /// Removes a per-test directory on drop, including after a panic.
-    struct TempDir(std::path::PathBuf);
-
-    impl Drop for TempDir {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_dir_all(&self.0);
-        }
-    }
+    use test_support::TempDir;
 
     #[test]
     fn database_xml_column_dependencies_use_the_mapping_resource_root()
     -> Result<(), Box<dyn std::error::Error>> {
-        use std::sync::atomic::{AtomicU64, Ordering};
-        static NEXT: AtomicU64 = AtomicU64::new(0);
         for (location, contained) in [("types.xsd", true), ("../outside/types.xsd", false)] {
-            let folder = std::env::temp_dir().join(format!(
-                "ferrule_db_xml_boundary_{}_{}",
-                std::process::id(),
-                NEXT.fetch_add(1, Ordering::Relaxed)
-            ));
+            let _cleanup = TempDir::new("db_xml_boundary")?;
+            let folder = _cleanup.path().to_path_buf();
             let package = folder.join("package");
             std::fs::create_dir_all(&package)?;
-            let _cleanup = TempDir(folder.clone());
             std::fs::create_dir_all(folder.join("outside"))?;
             let mapping = package.join("mapping.mfd");
             std::fs::write(&mapping, "<mapping/>")?;

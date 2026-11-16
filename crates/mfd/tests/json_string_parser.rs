@@ -1,57 +1,18 @@
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
-
 use ir::{Instance, Value};
 use mapping::Node;
 
 #[path = "support/json5_string_dependency.rs"]
 mod json5_string_dependency;
 
-struct TempDir(PathBuf);
-
-static NEXT_DIR: AtomicU64 = AtomicU64::new(0);
-
-impl TempDir {
-    fn new() -> Self {
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_json_string_parser_{}_{}",
-            std::process::id(),
-            NEXT_DIR.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
-
-fn write(path: &Path, contents: &str) {
-    std::fs::write(path, contents).unwrap();
-}
+use test_support::TempDir;
 
 #[test]
 fn imports_executes_and_round_trips_a_connected_json_string_parser() {
-    let dir = TempDir::new();
-    write(
-        &dir.0.join("source.xsd"),
-        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Source"><xs:complexType><xs:sequence><xs:element name="Row" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Payload" type="xs:string"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
-    );
-    write(
-        &dir.0.join("payload.schema.json"),
-        r#"{"type":"object","properties":{"Shares":{"type":"integer"},"Leaves":{"type":"object","properties":{"Total":{"type":"number"}}}}}"#,
-    );
-    write(
-        &dir.0.join("target.xsd"),
-        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Report"><xs:complexType><xs:sequence><xs:element name="Row" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Shares" type="xs:integer"/><xs:element name="Total" type="xs:decimal"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
-    );
-    write(
-        &dir.0.join("mapping.mfd"),
-        r#"<mapping><component name="map"><structure><children>
+    let dir = TempDir::new("json_string_parser").unwrap();
+    dir.write("source.xsd", r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Source"><xs:complexType><xs:sequence><xs:element name="Row" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Payload" type="xs:string"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#).unwrap();
+    dir.write("payload.schema.json", r#"{"type":"object","properties":{"Shares":{"type":"integer"},"Leaves":{"type":"object","properties":{"Total":{"type":"number"}}}}}"#).unwrap();
+    dir.write("target.xsd", r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Report"><xs:complexType><xs:sequence><xs:element name="Row" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Shares" type="xs:integer"/><xs:element name="Total" type="xs:decimal"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#).unwrap();
+    dir.write("mapping.mfd", r#"<mapping><component name="map"><structure><children>
   <component name="source" library="xml" kind="14"><data><root><entry name="Source"><entry name="Row" outkey="10"><entry name="Payload" outkey="11"/></entry></entry></root><document schema="source.xsd" inputinstance="source.xml" instanceroot="{}Source"/></data></component>
   <component name="payload" library="json" kind="31"><data><root><entry name="FileInstance" inpkey="20"><entry name="document"><entry name="root"><entry name="object"><entry name="Shares" type="json-property"><entry name="number" outkey="21"/></entry><entry name="Leaves" type="json-property"><entry name="object"><entry name="Total" type="json-property"><entry name="number" outkey="22"/></entry></entry></entry></entry></entry></entry></entry></root><parameter usageKind="stringparse"/><json schema="payload.schema.json" inputinstance="missing-design-time.json"/></data></component>
   <component name="target" library="xml" kind="14"><properties XSLTDefaultOutput="1"/><data><root><entry name="Report"><entry name="Row" inpkey="30"><entry name="Shares" inpkey="31"/><entry name="Total" inpkey="32"/></entry></entry></root><document schema="target.xsd" outputinstance="target.xml" instanceroot="{}Report"/></data></component>
@@ -60,10 +21,9 @@ fn imports_executes_and_round_trips_a_connected_json_string_parser() {
   <vertex vertexkey="11"><edges><edge vertexkey="20"/></edges></vertex>
   <vertex vertexkey="21"><edges><edge vertexkey="31"/></edges></vertex>
   <vertex vertexkey="22"><edges><edge vertexkey="32"/></edges></vertex>
-</vertices></graph></structure></component></mapping>"#,
-    );
+</vertices></graph></structure></component></mapping>"#).unwrap();
 
-    let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+    let imported = mfd::import(&dir.path().join("mapping.mfd")).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert_eq!(imported.project.source_path.as_deref(), Some("source.xml"));
     assert!(imported.project.extra_sources.is_empty());
@@ -96,7 +56,7 @@ fn imports_executes_and_round_trips_a_connected_json_string_parser() {
         Some(&Value::Float(3.5))
     );
 
-    let roundtrip_path = dir.0.join("roundtrip.mfd");
+    let roundtrip_path = dir.path().join("roundtrip.mfd");
     let warnings = mfd::export(&imported.project, &roundtrip_path).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
     let design = std::fs::read_to_string(&roundtrip_path).unwrap();
@@ -105,7 +65,7 @@ fn imports_executes_and_round_trips_a_connected_json_string_parser() {
     assert!(design.contains("roundtrip-json-parser-"));
     assert!(!design.contains("name=\"json_parse_field\""));
     assert!(
-        std::fs::read_dir(&dir.0)
+        std::fs::read_dir(dir.path())
             .unwrap()
             .filter_map(Result::ok)
             .any(|entry| {
@@ -120,7 +80,7 @@ fn imports_executes_and_round_trips_a_connected_json_string_parser() {
     assert!(engine::validate(&roundtrip.project).is_empty());
     assert_eq!(engine::run(&roundtrip.project, &input).unwrap(), output);
 
-    json5_string_dependency::assert_retained(&dir.0, mapping::Json5StringComponentKind::Parser);
+    json5_string_dependency::assert_retained(dir.path(), mapping::Json5StringComponentKind::Parser);
     let mut unsupported = imported.project;
     let Some((_, Node::Call { args, .. })) = unsupported.graph.nodes.iter().find(|(_, node)| {
         matches!(
@@ -138,7 +98,7 @@ fn imports_executes_and_round_trips_a_connected_json_string_parser() {
             frame: Some(vec!["Row".into()]),
         },
     );
-    let unsupported_path = dir.0.join("unsupported.mfd");
+    let unsupported_path = dir.path().join("unsupported.mfd");
     let warnings = mfd::export(&unsupported, &unsupported_path).unwrap();
     assert!(
         warnings.iter().any(|warning| {
@@ -152,28 +112,19 @@ fn imports_executes_and_round_trips_a_connected_json_string_parser() {
 
 #[test]
 fn missing_string_parser_schema_provenance_survives_without_changing_execution() {
-    let dir = TempDir::new();
-    write(
-        &dir.0.join("source.xsd"),
-        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Source"><xs:complexType><xs:sequence><xs:element name="Payload" type="xs:string"/></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
-    );
-    write(
-        &dir.0.join("target.xsd"),
-        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Report"><xs:complexType><xs:sequence><xs:element name="Value" type="xs:string"/></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
-    );
-    write(
-        &dir.0.join("missing.mfd"),
-        r#"<mapping><component name="map"><structure><children>
+    let dir = TempDir::new("json_string_parser").unwrap();
+    dir.write("source.xsd", r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Source"><xs:complexType><xs:sequence><xs:element name="Payload" type="xs:string"/></xs:sequence></xs:complexType></xs:element></xs:schema>"#).unwrap();
+    dir.write("target.xsd", r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Report"><xs:complexType><xs:sequence><xs:element name="Value" type="xs:string"/></xs:sequence></xs:complexType></xs:element></xs:schema>"#).unwrap();
+    dir.write("missing.mfd", r#"<mapping><component name="map"><structure><children>
   <component name="source" library="xml" kind="14"><data><root><entry name="Source"><entry name="Payload" outkey="11"/></entry></root><document schema="source.xsd" inputinstance="source.xml" instanceroot="{}Source"/></data></component>
   <component name="payload" library="json" kind="31"><data><root><entry name="FileInstance" inpkey="20"><entry name="document"><entry name="root"><entry name="object"><entry name="Value" type="json-property"><entry name="string" outkey="21"/></entry></entry></entry></entry></entry></root><parameter usageKind="stringparse"/><json schema="missing&amp;parser.schema.json"/></data></component>
   <component name="target" library="xml" kind="14"><properties XSLTDefaultOutput="1"/><data><root><entry name="Report"><entry name="Value" inpkey="31"/></entry></root><document schema="target.xsd" outputinstance="target.xml" instanceroot="{}Report"/></data></component>
 </children><graph><vertices>
   <vertex vertexkey="11"><edges><edge vertexkey="20"/></edges></vertex>
   <vertex vertexkey="21"><edges><edge vertexkey="31"/></edges></vertex>
-</vertices></graph></structure></component></mapping>"#,
-    );
+</vertices></graph></structure></component></mapping>"#).unwrap();
 
-    let imported = mfd::import(&dir.0.join("missing.mfd")).unwrap();
+    let imported = mfd::import(&dir.path().join("missing.mfd")).unwrap();
     assert!(imported.warnings.iter().any(|warning| {
         warning.contains("missing&parser.schema.json")
             && warning.contains("falling back to the entry tree")
@@ -235,7 +186,7 @@ fn missing_string_parser_schema_provenance_survives_without_changing_execution()
     .unwrap();
     codegen_csharp::emit(&lowered).unwrap();
 
-    let destination = dir.0.join("roundtrip.mfd");
+    let destination = dir.path().join("roundtrip.mfd");
     let report = mfd::preflight_export(&stored, &destination).unwrap();
     assert_eq!(report.compatibility, mfd::ExportCompatibility::Incomplete);
     assert!(report.issues.iter().any(|issue| {
@@ -293,7 +244,7 @@ fn missing_string_parser_schema_provenance_survives_without_changing_execution()
         value["ferrule:json-parser-recipe"][field] = replacement;
         *schema = serde_json::to_string(&value).unwrap();
         assert!(
-            mfd::preflight_export(&invalid, &dir.0.join("invalid.mfd"))
+            mfd::preflight_export(&invalid, &dir.path().join("invalid.mfd"))
                 .unwrap_err()
                 .to_string()
                 .contains(expected_error)

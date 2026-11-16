@@ -50,11 +50,11 @@ fn design_text(id: &str) -> String {
 
 /// Imports a design written beside the shared schemas.
 fn import_design(text: &str) -> Project {
-    let dir = TempDir::new("computed-key-design");
+    let dir = TempDir::new("computed-key-design").unwrap();
     for file in ["source.xsd", "target.xsd"] {
-        fs::copy(Path::new(FIXTURES).join(file), dir.path(file)).expect("fixture file copies");
+        fs::copy(Path::new(FIXTURES).join(file), dir.join(file)).expect("fixture file copies");
     }
-    let path = dir.path("mapping.mfd");
+    let path = dir.join("mapping.mfd");
     fs::write(&path, text).expect("design writes");
     let imported = mfd::import(&path).expect("the design imports");
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
@@ -64,8 +64,8 @@ fn import_design(text: &str) -> Project {
 
 /// Exports `project` and imports it back, warning-free both ways.
 fn round_trip(project: &Project, id: &str) -> (Project, String) {
-    let dir = TempDir::new("computed-key-round-trip");
-    let path = dir.path("mapping.mfd");
+    let dir = TempDir::new("computed-key-round-trip").unwrap();
+    let path = dir.join("mapping.mfd");
     let warnings = mfd::export(project, &path).unwrap_or_else(|error| panic!("{id}: {error}"));
     assert!(warnings.is_empty(), "{id}: {warnings:?}");
     let xml = fs::read_to_string(&path).expect("export writes the design");
@@ -332,8 +332,8 @@ fn replace_key(project: &mut Project, value: NodeId) {
 }
 
 fn assert_refused(project: &Project, reason: &str) {
-    let dir = TempDir::new("computed-key-refused");
-    let path = dir.path("mapping.mfd");
+    let dir = TempDir::new("computed-key-refused").unwrap();
+    let path = dir.join("mapping.mfd");
     fs::write(&path, "sentinel").expect("sentinel writes");
     let error = mfd::export(project, &path).expect_err(reason);
     assert!(
@@ -344,7 +344,7 @@ fn assert_refused(project: &Project, reason: &str) {
         fs::read_to_string(&path).expect("sentinel reads"),
         "sentinel"
     );
-    let written = fs::read_dir(&dir.0)
+    let written = fs::read_dir(dir.path())
         .expect("the directory reads")
         .filter_map(|entry| entry.ok().map(|entry| entry.file_name()))
         .collect::<Vec<_>>();
@@ -538,8 +538,8 @@ fn tokenize_nodes(project: &Project) -> (NodeId, NodeId, NodeId, NodeId) {
 #[test]
 fn a_sequence_key_is_written_as_its_tokenize_component() {
     let design = import_design(&design_text("tokens"));
-    let dir = TempDir::new("computed-key-tokens");
-    let path = dir.path("mapping.mfd");
+    let dir = TempDir::new("computed-key-tokens").unwrap();
+    let path = dir.join("mapping.mfd");
     assert_eq!(
         mfd::export(&design, &path).expect("tokens exports"),
         [] as [String; 0]

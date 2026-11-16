@@ -1,28 +1,10 @@
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::path::Path;
 
 use ir::{ScalarType, SchemaNode};
 use mapping::{Binding, FormatOptions, Graph, Node, Project, Scope};
 
-struct Directory(PathBuf);
-impl Directory {
-    fn new() -> Self {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_default_view_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir(&path).unwrap();
-        Self(path)
-    }
-}
-impl Drop for Directory {
-    fn drop(&mut self) {
-        std::fs::remove_dir_all(&self.0).unwrap();
-    }
-}
+use test_support::TempDir as Directory;
 
 fn authored_project(
     directory: &Path,
@@ -109,14 +91,14 @@ fn roundtrip(project: &Project, path: &Path) -> Project {
 }
 
 fn check_default(abstract_base: bool, included: bool, derived: bool) {
-    let directory = Directory::new();
-    let project = authored_project(&directory.0, abstract_base, included, derived);
+    let directory = Directory::new("default_view").unwrap();
+    let project = authored_project(directory.path(), abstract_base, included, derived);
     let original = project.source.child("Record").unwrap();
     let expected = (!abstract_base && derived).then_some("{urn:default-view}Base");
     assert_eq!(original.xml_default_type.as_deref(), expected);
-    let imported = roundtrip(&project, &directory.0.join("mapping.mfd"));
+    let imported = roundtrip(&project, &directory.path().join("mapping.mfd"));
     let generated = format_xml::xsd::import_root(
-        &directory.0.join("mapping-source.xsd"),
+        &directory.path().join("mapping-source.xsd"),
         Some("{urn:default-view}Envelope"),
     )
     .unwrap();
@@ -141,7 +123,7 @@ fn check_default(abstract_base: bool, included: bool, derived: bool) {
             .as_deref(),
         expected
     );
-    let second = roundtrip(&imported, &directory.0.join("second.mfd"));
+    let second = roundtrip(&imported, &directory.path().join("second.mfd"));
     assert_eq!(
         second.source.child("Record").unwrap(),
         imported.source.child("Record").unwrap()
@@ -175,9 +157,9 @@ fn plain_legacy_type_does_not_gain_alternative_default() {
 
 #[test]
 fn unresolved_conditioned_type_remains_explicit_strict_rejection() {
-    let directory = Directory::new();
-    let project = authored_project(&directory.0, false, false, true);
-    let path = directory.0.join("mapping.mfd");
+    let directory = Directory::new("default_view").unwrap();
+    let project = authored_project(directory.path(), false, false, true);
+    let path = directory.path().join("mapping.mfd");
     roundtrip(&project, &path);
     let original = std::fs::read_to_string(&path).unwrap();
     let corrupted = original.replace("{urn:default-view}Extended", "{urn:default-view}Missing");

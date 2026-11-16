@@ -1,5 +1,4 @@
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::path::Path;
 
 use ir::{Instance, JsonSchemaPredicate, SchemaNode, Value};
 
@@ -11,7 +10,7 @@ const MISSING_THEN_INPUT: &str = r#"{"Expedite":true,"Amount":4}"#;
 #[test]
 fn imports_executes_and_roundtrips_exact_object_if_then() -> Result<(), Box<dyn std::error::Error>>
 {
-    let directory = TempDir::new()?;
+    let directory = TempDir::new("mfd-if-then-profile")?;
     write_fixture(directory.path())?;
     let design = directory.path().join("mapping.mfd");
 
@@ -67,7 +66,7 @@ fn imports_executes_and_roundtrips_exact_object_if_then() -> Result<(), Box<dyn 
 #[test]
 fn else_false_requires_trigger_and_retains_then_predicate() -> Result<(), Box<dyn std::error::Error>>
 {
-    let directory = TempDir::new()?;
+    let directory = TempDir::new("mfd-if-then-profile")?;
     write_fixture_with_schema(directory.path(), ELSE_FALSE_SCHEMA)?;
     let design = directory.path().join("mapping.mfd");
 
@@ -109,7 +108,7 @@ fn else_false_requires_trigger_and_retains_then_predicate() -> Result<(), Box<dy
 #[test]
 fn else_false_with_true_then_lowers_to_an_ordinary_requirement()
 -> Result<(), Box<dyn std::error::Error>> {
-    let directory = TempDir::new()?;
+    let directory = TempDir::new("mfd-if-then-profile")?;
     write_fixture_with_schema(directory.path(), ELSE_FALSE_TRUE_THEN_SCHEMA)?;
     let design = directory.path().join("mapping.mfd");
 
@@ -145,7 +144,7 @@ fn else_false_with_true_then_lowers_to_an_ordinary_requirement()
 #[test]
 fn nullable_object_conditional_keeps_null_outside_the_presence_rule()
 -> Result<(), Box<dyn std::error::Error>> {
-    let directory = TempDir::new()?;
+    let directory = TempDir::new("mfd-if-then-profile")?;
     write_fixture_with_schema(directory.path(), NULLABLE_CONDITIONAL_SCHEMA)?;
     let imported = mfd::import(&directory.path().join("mapping.mfd"))?;
 
@@ -443,28 +442,4 @@ const NULLABLE_CONDITIONAL_SCHEMA: &str = r#"{
   "else":true
 }"#;
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Result<Self, std::io::Error> {
-        static NEXT: AtomicU64 = AtomicU64::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule-mfd-if-then-profile-{}-{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-
-    fn path(&self) -> &Path {
-        &self.0
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;

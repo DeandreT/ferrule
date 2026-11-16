@@ -1,28 +1,6 @@
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
-
 use ir::{Instance, Value};
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Result<Self, std::io::Error> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_multi_case_if_else_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn source(value: f64) -> Instance {
     Instance::Group((vec![("Value".into(), Instance::Scalar(Value::Float(value)))]).into())
@@ -39,16 +17,16 @@ fn label(project: &mapping::Project, value: f64) -> Result<Value, Box<dyn std::e
 #[test]
 fn growable_if_else_evaluates_condition_value_pairs_before_default()
 -> Result<(), Box<dyn std::error::Error>> {
-    let dir = TempDir::new()?;
+    let dir = TempDir::new("mfd_multi_case_if_else")?;
     std::fs::write(
-        dir.0.join("source.xsd"),
+        dir.path().join("source.xsd"),
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Source"><xs:complexType><xs:sequence><xs:element name="Value" type="xs:decimal"/></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
     )?;
     std::fs::write(
-        dir.0.join("target.xsd"),
+        dir.path().join("target.xsd"),
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Target"><xs:complexType><xs:sequence><xs:element name="Label" type="xs:string" minOccurs="0"/></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
     )?;
-    let mapping = dir.0.join("mapping.mfd");
+    let mapping = dir.path().join("mapping.mfd");
     std::fs::write(
         &mapping,
         r#"<mapping version="26"><component name="map"><structure><children>
@@ -83,7 +61,7 @@ fn growable_if_else_evaluates_condition_value_pairs_before_default()
     assert_eq!(label(&imported.project, 2.0)?, Value::String("low".into()));
     assert_eq!(label(&imported.project, 10.0)?, Value::Null);
 
-    let exported_path = dir.0.join("roundtrip.mfd");
+    let exported_path = dir.path().join("roundtrip.mfd");
     let export_warnings = mfd::export(&imported.project, &exported_path)?;
     assert!(export_warnings.is_empty(), "{export_warnings:?}");
     let exported = std::fs::read_to_string(&exported_path)?;

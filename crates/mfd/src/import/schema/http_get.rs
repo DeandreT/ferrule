@@ -481,39 +481,14 @@ fn valid_http_url(url: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use std::path::{Path, PathBuf};
-    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::path::Path;
 
     use ir::{ScalarType, SchemaKind};
 
     use super::{read, read_resolved, valid_http_url};
     use crate::resource::ResourceResolver;
 
-    struct TempDir(PathBuf);
-
-    impl TempDir {
-        fn new() -> Result<Self, std::io::Error> {
-            static NEXT: AtomicU64 = AtomicU64::new(0);
-            let path = std::env::temp_dir().join(format!(
-                "ferrule-mfd-http-package-{}-{}",
-                std::process::id(),
-                NEXT.fetch_add(1, Ordering::Relaxed)
-            ));
-            match std::fs::remove_dir_all(&path) {
-                Ok(()) => {}
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-                Err(error) => return Err(error),
-            }
-            std::fs::create_dir_all(&path)?;
-            Ok(Self(path))
-        }
-    }
-
-    impl Drop for TempDir {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_dir_all(&self.0);
-        }
-    }
+    use test_support::TempDir;
 
     fn component(method: &str, request_entry: &str, response_extra: &str) -> String {
         format!(
@@ -616,8 +591,8 @@ mod tests {
     #[test]
     fn safe_parent_response_schema_resolves_after_package_relocation()
     -> Result<(), Box<dyn std::error::Error>> {
-        let temp = TempDir::new()?;
-        let original = temp.0.join("original");
+        let temp = TempDir::new("mfd-http-package")?;
+        let original = temp.path().join("original");
         let maps = original.join("maps");
         let schemas = original.join("resources");
         std::fs::create_dir_all(&maps)?;
@@ -628,7 +603,7 @@ mod tests {
             r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Feed"><xs:complexType><xs:sequence><xs:element name="Value" type="xs:int" maxOccurs="unbounded"/></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
         )?;
 
-        let relocated = temp.0.join("relocated");
+        let relocated = temp.path().join("relocated");
         std::fs::rename(&original, &relocated)?;
         let mapping = relocated.join("maps/mapping.mfd");
         let resolver = ResourceResolver::new(&mapping, Some(&relocated))?;
@@ -657,9 +632,9 @@ mod tests {
     #[test]
     fn post_request_schema_keeps_transitive_references_inside_package()
     -> Result<(), Box<dyn std::error::Error>> {
-        let package = TempDir::new()?;
-        let maps = package.0.join("maps");
-        let schemas = package.0.join("resources");
+        let package = TempDir::new("mfd-http-package")?;
+        let maps = package.path().join("maps");
+        let schemas = package.path().join("resources");
         let definitions = schemas.join("definitions");
         std::fs::create_dir_all(&maps)?;
         std::fs::create_dir_all(&definitions)?;
@@ -673,7 +648,7 @@ mod tests {
             definitions.join("request.json"),
             r#"{"type":"object","properties":{"query":{"type":"integer"}}}"#,
         )?;
-        let resolver = ResourceResolver::new(&mapping, Some(&package.0))?;
+        let resolver = ResourceResolver::new(&mapping, Some(package.path()))?;
         let xml = r#"<component name="post" library="webservice" kind="20">
           <data>
             <root><entry name="HTTPMessage"><entry name="HTTPBody">
@@ -732,21 +707,21 @@ mod tests {
     -> Result<(), Box<dyn std::error::Error>> {
         use std::os::unix::fs::symlink;
 
-        let package = TempDir::new()?;
-        let outside = TempDir::new()?;
-        let maps = package.0.join("maps");
-        let schemas = package.0.join("resources");
+        let package = TempDir::new("mfd-http-package")?;
+        let outside = TempDir::new("mfd-http-package")?;
+        let maps = package.path().join("maps");
+        let schemas = package.path().join("resources");
         std::fs::create_dir_all(&maps)?;
         std::fs::create_dir_all(&schemas)?;
         let mapping = maps.join("mapping.mfd");
         std::fs::write(&mapping, "<mapping/>")?;
-        let external = outside.0.join("feed.xsd");
+        let external = outside.path().join("feed.xsd");
         std::fs::write(
             &external,
             r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Feed"><xs:complexType><xs:sequence><xs:element name="Value" type="xs:int" maxOccurs="unbounded"/></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
         )?;
         symlink(&external, schemas.join("feed.xsd"))?;
-        let resolver = ResourceResolver::new(&mapping, Some(&package.0))?;
+        let resolver = ResourceResolver::new(&mapping, Some(package.path()))?;
         let xml = component("GET", "", "").replace("missing.xsd", "../resources/feed.xsd");
         let document = roxmltree::Document::parse(&xml)?;
         let mut warnings = Vec::new();

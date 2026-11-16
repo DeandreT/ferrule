@@ -1,29 +1,6 @@
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
-
 use ir::{Instance, JsonSchemaPredicate, SchemaNode, Value};
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Result<Self, std::io::Error> {
-        static NEXT: AtomicU64 = AtomicU64::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule-mfd-dependent-schemas-{}-{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn dependent_predicate<'a>(
     schema: &'a SchemaNode,
@@ -64,9 +41,9 @@ fn assert_dependent_error(
 #[test]
 fn imports_executes_and_roundtrips_json_dependent_schemas() -> Result<(), Box<dyn std::error::Error>>
 {
-    let directory = TempDir::new()?;
+    let directory = TempDir::new("mfd-dependent-schemas")?;
     std::fs::write(
-        directory.0.join("legacy.schema.json"),
+        directory.path().join("legacy.schema.json"),
         r#"{
   "$schema":"http://json-schema.org/draft-07/schema#",
   "title":"LegacyConditional",
@@ -78,7 +55,7 @@ fn imports_executes_and_roundtrips_json_dependent_schemas() -> Result<(), Box<dy
 }"#,
     )?;
     std::fs::write(
-        directory.0.join("source.schema.json"),
+        directory.path().join("source.schema.json"),
         r#"{
   "$schema":"https://json-schema.org/draft/2020-12/schema",
   "title":"ConditionalEnvelope",
@@ -157,8 +134,8 @@ fn imports_executes_and_roundtrips_json_dependent_schemas() -> Result<(), Box<dy
   "Legacy":{"X":1,"Y":"legacy"},
   "Amount":7
 }"#;
-    std::fs::write(directory.0.join("input.json"), input_document)?;
-    let design = directory.0.join("mapping.mfd");
+    std::fs::write(directory.path().join("input.json"), input_document)?;
+    let design = directory.path().join("mapping.mfd");
     std::fs::write(
         &design,
         r#"<mapping version="26"><component name="map"><structure><children>
@@ -266,10 +243,10 @@ fn imports_executes_and_roundtrips_json_dependent_schemas() -> Result<(), Box<dy
         Some(Instance::Scalar(Value::Int(7)))
     ));
 
-    let roundtrip = directory.0.join("roundtrip.mfd");
+    let roundtrip = directory.path().join("roundtrip.mfd");
     assert!(mfd::export(&imported.project, &roundtrip)?.is_empty());
     let exported: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(
-        directory.0.join("roundtrip-source.schema.json"),
+        directory.path().join("roundtrip-source.schema.json"),
     )?)?;
     assert_eq!(
         exported["dependentRequired"]["RequiredOnlyTrigger"],

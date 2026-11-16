@@ -1,31 +1,9 @@
 use std::error::Error;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::path::Path;
 
 use ir::{Instance, Value};
 
-struct TempDir(PathBuf);
-
-static NEXT_DIR: AtomicU64 = AtomicU64::new(0);
-
-impl TempDir {
-    fn new(label: &str) -> Result<Self, std::io::Error> {
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_external_scalar_{label}_{}_{}",
-            std::process::id(),
-            NEXT_DIR.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn write(path: &Path, contents: &str) -> Result<(), std::io::Error> {
     if let Some(parent) = path.parent() {
@@ -78,21 +56,21 @@ fn exercise_formatter(
     module: &str,
 ) -> Result<(), Box<dyn Error>> {
     let dir = TempDir::new(label)?;
-    write_common_schemas(&dir.0, "string")?;
-    write(&dir.0.join(module_path), module)?;
+    write_common_schemas(dir.path(), "string")?;
+    write(&dir.path().join(module_path), module)?;
     write(
-        &dir.0.join("mapping.mfd"),
+        &dir.path().join("mapping.mfd"),
         &mapping(language, library, function),
     )?;
 
     let input = input(Value::Float(1234.5));
-    let imported = import_clean(&dir.0.join("mapping.mfd"))?;
+    let imported = import_clean(&dir.path().join("mapping.mfd"))?;
     assert_value(
         &engine::run(&imported.project, &input)?,
         &Value::String("1,234.50".into()),
     );
     roundtrip(
-        &dir.0,
+        dir.path(),
         &imported.project,
         &input,
         &Value::String("1,234.50".into()),
@@ -102,9 +80,9 @@ fn exercise_formatter(
 #[test]
 fn imports_xquery_arithmetic_function() -> Result<(), Box<dyn Error>> {
     let dir = TempDir::new("xquery")?;
-    write_common_schemas(&dir.0, "decimal")?;
+    write_common_schemas(dir.path(), "decimal")?;
     write(
-        &dir.0.join("fees.xq"),
+        &dir.path().join("fees.xq"),
         r#"xquery version "1.0";
 module namespace fee="urn:ferrule:test";
 declare function fee:calculate($amount as xs:decimal) as xs:decimal {
@@ -112,17 +90,17 @@ declare function fee:calculate($amount as xs:decimal) as xs:decimal {
 };"#,
     )?;
     write(
-        &dir.0.join("mapping.mfd"),
+        &dir.path().join("mapping.mfd"),
         &mapping("xquery", "fees", "fee:calculate"),
     )?;
 
     let input = input(Value::Int(200));
-    let imported = import_clean(&dir.0.join("mapping.mfd"))?;
+    let imported = import_clean(&dir.path().join("mapping.mfd"))?;
     assert_value(
         &engine::run(&imported.project, &input)?,
         &Value::Float(30.0),
     );
-    roundtrip(&dir.0, &imported.project, &input, &Value::Float(30.0))
+    roundtrip(dir.path(), &imported.project, &input, &Value::Float(30.0))
 }
 
 fn write_common_schemas(dir: &Path, result_type: &str) -> Result<(), std::io::Error> {

@@ -1,39 +1,13 @@
 use std::error::Error;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use mapping::{XbrlBoundaryMode, XbrlBoundaryOptions};
 
-struct TempDir(PathBuf);
-
-static NEXT_DIR: AtomicU64 = AtomicU64::new(0);
-
-impl TempDir {
-    fn new() -> std::io::Result<Self> {
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_xbrl_export_{}_{}",
-            std::process::id(),
-            NEXT_DIR.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
-
-fn write(path: &Path, contents: &str) -> std::io::Result<()> {
-    std::fs::write(path, contents)
-}
+use test_support::TempDir;
 
 fn source_fixture(directory: &Path) -> Result<PathBuf, Box<dyn Error>> {
-    write(
-        &directory.join("target.xsd"),
+    std::fs::write(
+        directory.join("target.xsd"),
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:element name="Target"><xs:complexType><xs:sequence>
     <xs:element name="Amount" type="xs:string"/>
@@ -41,7 +15,7 @@ fn source_fixture(directory: &Path) -> Result<PathBuf, Box<dyn Error>> {
 </xs:schema>"#,
     )?;
     let path = directory.join("source.mfd");
-    write(
+    std::fs::write(
         &path,
         r#"<mapping version="26"><resources/>
   <component name="map"><structure><children>
@@ -68,12 +42,12 @@ fn source_fixture(directory: &Path) -> Result<PathBuf, Box<dyn Error>> {
 
 fn target_fixture(directory: &Path) -> Result<PathBuf, Box<dyn Error>> {
     std::fs::create_dir_all(directory.join("presentation"))?;
-    write(
-        &directory.join("presentation/table.sps"),
+    std::fs::write(
+        directory.join("presentation/table.sps"),
         r#"<structure><schemasources><namespaces><nspair prefix="ex" uri="urn:example"/></namespaces></schemasources><template subtype="xbrl-concept-aspect" match="ex:Amount"><children><calltemplate subtype="named" match="monetaryItemType"/></children></template></structure>"#,
     )?;
-    write(
-        &directory.join("source.xsd"),
+    std::fs::write(
+        directory.join("source.xsd"),
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:element name="Source"><xs:complexType><xs:sequence>
     <xs:element name="Value" type="xs:string"/>
@@ -82,7 +56,7 @@ fn target_fixture(directory: &Path) -> Result<PathBuf, Box<dyn Error>> {
 </xs:schema>"#,
     )?;
     let path = directory.join("target.mfd");
-    write(
+    std::fs::write(
         &path,
         r#"<mapping version="26"><resources/>
   <component name="map"><structure><children>
@@ -113,8 +87,8 @@ fn target_fixture(directory: &Path) -> Result<PathBuf, Box<dyn Error>> {
 
 #[test]
 fn xbrl_source_boundary_exports_and_reimports_without_warnings() -> Result<(), Box<dyn Error>> {
-    let dir = TempDir::new()?;
-    let imported = mfd::import(&source_fixture(&dir.0)?)?;
+    let dir = TempDir::new("mfd_xbrl_export")?;
+    let imported = mfd::import(&source_fixture(dir.path())?)?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     let original = imported
         .project
@@ -123,7 +97,7 @@ fn xbrl_source_boundary_exports_and_reimports_without_warnings() -> Result<(), B
         .clone()
         .ok_or_else(|| std::io::Error::other("missing source XBRL options"))?;
 
-    let exported_path = dir.0.join("source-roundtrip.mfd");
+    let exported_path = dir.path().join("source-roundtrip.mfd");
     let warnings = mfd::export(&imported.project, &exported_path)?;
     assert!(warnings.is_empty(), "{warnings:?}");
     let exported = std::fs::read_to_string(&exported_path)?;
@@ -144,8 +118,8 @@ fn xbrl_source_boundary_exports_and_reimports_without_warnings() -> Result<(), B
 #[test]
 fn xbrl_target_boundary_regenerates_fact_metadata_and_simple_content() -> Result<(), Box<dyn Error>>
 {
-    let dir = TempDir::new()?;
-    let imported = mfd::import(&target_fixture(&dir.0)?)?;
+    let dir = TempDir::new("mfd_xbrl_export")?;
+    let imported = mfd::import(&target_fixture(dir.path())?)?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     let original = imported
         .project
@@ -156,7 +130,7 @@ fn xbrl_target_boundary_regenerates_fact_metadata_and_simple_content() -> Result
     assert_eq!(original.mode(), XbrlBoundaryMode::ExternalTarget);
     assert_eq!(original.fact_bindings().len(), 1);
 
-    let output = dir.0.join("roundtrip");
+    let output = dir.path().join("roundtrip");
     std::fs::create_dir_all(output.join("presentation"))?;
     let exported_path = output.join("target-roundtrip.mfd");
     let warnings = mfd::export(&imported.project, &exported_path)?;
@@ -187,8 +161,8 @@ fn xbrl_target_boundary_regenerates_fact_metadata_and_simple_content() -> Result
 
 #[test]
 fn unsafe_xbrl_presentation_path_rejects_without_publishing() -> Result<(), Box<dyn Error>> {
-    let dir = TempDir::new()?;
-    let mut imported = mfd::import(&target_fixture(&dir.0)?)?.project;
+    let dir = TempDir::new("mfd_xbrl_export")?;
+    let mut imported = mfd::import(&target_fixture(dir.path())?)?.project;
     let original = imported
         .target_options
         .xbrl
@@ -199,8 +173,8 @@ fn unsafe_xbrl_presentation_path_rejects_without_publishing() -> Result<(), Box<
             .with_namespace_bindings(original.namespace_bindings().to_vec())?
             .with_fact_bindings(original.fact_bindings().to_vec())?,
     );
-    let design = dir.0.join("preserved.mfd");
-    write(&design, "preserve")?;
+    let design = dir.path().join("preserved.mfd");
+    std::fs::write(&design, "preserve")?;
 
     let result = mfd::export(&imported, &design);
     assert!(matches!(
@@ -209,14 +183,14 @@ fn unsafe_xbrl_presentation_path_rejects_without_publishing() -> Result<(), Box<
             if message.contains("not a bounded relative path")
     ));
     assert_eq!(std::fs::read_to_string(design)?, "preserve");
-    assert!(!dir.0.join("outside.sps").exists());
+    assert!(!dir.path().join("outside.sps").exists());
     Ok(())
 }
 
 #[test]
 fn filesystem_export_preserves_legacy_presentation_aliases() -> Result<(), Box<dyn Error>> {
-    let dir = TempDir::new()?;
-    let original = mfd::import(&target_fixture(&dir.0)?)?.project;
+    let dir = TempDir::new("mfd_xbrl_export")?;
+    let original = mfd::import(&target_fixture(dir.path())?)?.project;
     for (index, reference) in ["./layout.sps", "sub\\layout.sps"].into_iter().enumerate() {
         let mut project = original.clone();
         let boundary = project
@@ -229,7 +203,7 @@ fn filesystem_export_preserves_legacy_presentation_aliases() -> Result<(), Box<d
                 .with_namespace_bindings(boundary.namespace_bindings().to_vec())?
                 .with_fact_bindings(boundary.fact_bindings().to_vec())?,
         );
-        let path = dir.0.join(format!("alias-{index}/output.mfd"));
+        let path = dir.path().join(format!("alias-{index}/output.mfd"));
         assert!(mfd::export(&project, &path)?.is_empty());
         assert!(mfd::import(&path)?.warnings.is_empty());
     }

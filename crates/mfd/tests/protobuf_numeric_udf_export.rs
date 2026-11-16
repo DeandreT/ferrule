@@ -2,8 +2,7 @@
 mod private_corpus;
 
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::path::Path;
 
 use ir::{Instance, ScalarType, SchemaKind, SchemaNode, Value};
 use mapping::{
@@ -11,28 +10,7 @@ use mapping::{
     Project, ProtobufOptions, Scope, UserFunction,
 };
 
-static NEXT_DIR: AtomicU64 = AtomicU64::new(0);
-
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Self {
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_protobuf_numeric_udf_{}_{}",
-            std::process::id(),
-            NEXT_DIR.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn call(function: &str, args: &[u32]) -> Node {
     Node::Call {
@@ -198,7 +176,7 @@ fn strict_rejects(project: &Project, directory: &Path) {
 #[test]
 fn finite_protobuf_numeric_udf_exports_as_direct_native_arithmetic()
 -> Result<(), Box<dyn std::error::Error>> {
-    let directory = TempDir::new();
+    let directory = TempDir::new("protobuf_numeric_udf").unwrap();
     let project = project();
     assert!(engine::validate(&project).is_empty());
     let input = source(&project);
@@ -206,7 +184,7 @@ fn finite_protobuf_numeric_udf_exports_as_direct_native_arithmetic()
     let before_csv = csv(&project, &before);
     assert_eq!(before_csv.lines().count(), 2);
 
-    let path = directory.0.join("native.mfd");
+    let path = directory.path().join("native.mfd");
     let report = mfd::preflight_export(&project, &path)?;
     assert!(report.is_native_compatible(), "{report}");
     mfd::export_with_profile(&project, &path, mfd::ExportProfile::NativeMfd)?;
@@ -272,7 +250,7 @@ fn finite_protobuf_numeric_udf_exports_as_direct_native_arithmetic()
 
 #[test]
 fn numeric_udf_fold_rejects_non_float32_callers_and_changed_or_shared_wrappers() {
-    let directory = TempDir::new();
+    let directory = TempDir::new("protobuf_numeric_udf").unwrap();
     let mut string_caller = project();
     string_caller.graph.nodes.insert(
         0,
@@ -281,7 +259,7 @@ fn numeric_udf_fold_rejects_non_float32_callers_and_changed_or_shared_wrappers()
             frame: Some(vec!["painting".into()]),
         },
     );
-    strict_rejects(&string_caller, &directory.0);
+    strict_rejects(&string_caller, directory.path());
 
     let mut runtime_caller = project();
     runtime_caller.graph.nodes.insert(
@@ -292,12 +270,12 @@ fn numeric_udf_fold_rejects_non_float32_callers_and_changed_or_shared_wrappers()
             preview: None,
         },
     );
-    strict_rejects(&runtime_caller, &directory.0);
+    strict_rejects(&runtime_caller, directory.path());
 
     let mut unbounded_source = project();
     unbounded_source.source_options.protobuf = None;
     unbounded_source.source_path = Some("assets.xml".into());
-    strict_rejects(&unbounded_source, &directory.0);
+    strict_rejects(&unbounded_source, directory.path());
 
     let mut mismatched_schema = project();
     let SchemaKind::Group { children, .. } = &mut mismatched_schema.source.kind else {
@@ -313,7 +291,9 @@ fn numeric_udf_fold_rejects_non_float32_callers_and_changed_or_shared_wrappers()
     painting_fields[0].kind = SchemaKind::Scalar {
         ty: ScalarType::String,
     };
-    assert!(mfd::preflight_export(&mismatched_schema, &directory.0.join("mismatch.mfd")).is_err());
+    assert!(
+        mfd::preflight_export(&mismatched_schema, &directory.path().join("mismatch.mfd")).is_err()
+    );
 
     let mut changed_divisor = project();
     changed_divisor
@@ -328,7 +308,7 @@ fn numeric_udf_fold_rejects_non_float32_callers_and_changed_or_shared_wrappers()
                 value: Value::Float(0.1),
             },
         );
-    strict_rejects(&changed_divisor, &directory.0);
+    strict_rejects(&changed_divisor, directory.path());
 
     let mut shared_wrapper = project();
     let function = shared_wrapper
@@ -337,7 +317,7 @@ fn numeric_udf_fold_rejects_non_float32_callers_and_changed_or_shared_wrappers()
         .unwrap();
     function.body.nodes.insert(9, call("add", &[1, 8]));
     function.output = 9;
-    strict_rejects(&shared_wrapper, &directory.0);
+    strict_rejects(&shared_wrapper, directory.path());
 }
 
 #[test]
@@ -368,8 +348,8 @@ fn local_protocol_buffer_numeric_udf_strict_export_keeps_exact_csv()
     let before_csv = csv(project, &before);
     assert_eq!(before.as_repeated().unwrap().len(), 7);
 
-    let directory = TempDir::new();
-    let path = directory.0.join("native.mfd");
+    let directory = TempDir::new("protobuf_numeric_udf").unwrap();
+    let path = directory.path().join("native.mfd");
     let report = mfd::preflight_export(project, &path)?;
     assert!(report.is_native_compatible(), "{report}");
     mfd::export_with_profile(project, &path, mfd::ExportProfile::NativeMfd)?;

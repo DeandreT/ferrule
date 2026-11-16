@@ -2,7 +2,6 @@ use std::collections::BTreeMap;
 use std::error::Error;
 use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::ScalarType;
 use mapping::{
@@ -16,36 +15,16 @@ fn fixture(name: &str) -> PathBuf {
         .join(name)
 }
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> std::io::Result<Self> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_flextext_export_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 #[test]
 fn source_layout_roundtrips_and_executes_identically() -> Result<(), Box<dyn Error>> {
     let imported = mfd::import(&fixture("flextext-source.mfd"))?;
-    let temp = TempDir::new()?;
-    let design = temp.0.join("source-map.mfd");
+    let temp = TempDir::new("mfd_flextext_export")?;
+    let design = temp.path().join("source-map.mfd");
 
     assert!(mfd::export(&imported.project, &design)?.is_empty());
-    assert!(temp.0.join("source-map-source.mft").is_file());
+    assert!(temp.path().join("source-map-source.mft").is_file());
     let roundtrip = mfd::import(&design)?;
     assert!(roundtrip.warnings.is_empty(), "{:?}", roundtrip.warnings);
     assert_eq!(roundtrip.project.source, imported.project.source);
@@ -76,11 +55,11 @@ fn source_layout_roundtrips_and_executes_identically() -> Result<(), Box<dyn Err
 #[test]
 fn regex_switch_condition_roundtrips_losslessly() -> Result<(), Box<dyn Error>> {
     let imported = mfd::import(&fixture("flextext-regex-switch.mfd"))?;
-    let temp = TempDir::new()?;
-    let design = temp.0.join("regex-map.mfd");
+    let temp = TempDir::new("mfd_flextext_export")?;
+    let design = temp.path().join("regex-map.mfd");
 
     assert!(mfd::export(&imported.project, &design)?.is_empty());
-    let configuration = std::fs::read_to_string(temp.0.join("regex-map-source.mft"))?;
+    let configuration = std::fs::read_to_string(temp.path().join("regex-map-source.mft"))?;
     assert!(configuration.contains("Mode=\"ContentContainsRegex\""));
     let roundtrip = mfd::import(&design)?;
     assert!(roundtrip.warnings.is_empty(), "{:?}", roundtrip.warnings);
@@ -95,11 +74,11 @@ fn regex_switch_condition_roundtrips_losslessly() -> Result<(), Box<dyn Error>> 
 #[test]
 fn target_layout_roundtrips_and_renders_identically() -> Result<(), Box<dyn Error>> {
     let imported = mfd::import(&fixture("flextext-target.mfd"))?;
-    let temp = TempDir::new()?;
-    let design = temp.0.join("target-map.mfd");
+    let temp = TempDir::new("mfd_flextext_export")?;
+    let design = temp.path().join("target-map.mfd");
 
     assert!(mfd::export(&imported.project, &design)?.is_empty());
-    assert!(temp.0.join("target-map-target.mft").is_file());
+    assert!(temp.path().join("target-map-target.mft").is_file());
     let roundtrip = mfd::import(&design)?;
     assert!(roundtrip.warnings.is_empty(), "{:?}", roundtrip.warnings);
     assert_eq!(roundtrip.project.target, imported.project.target);
@@ -192,8 +171,8 @@ fn delimiter_and_line_content_splits_roundtrip_losslessly() -> Result<(), Box<dy
             ..Scope::default()
         },
     };
-    let temp = TempDir::new()?;
-    let design = temp.0.join("splitters.mfd");
+    let temp = TempDir::new("mfd_flextext_export")?;
+    let design = temp.path().join("splitters.mfd");
 
     assert!(mfd::export(&project, &design)?.is_empty());
     let roundtrip = mfd::import(&design)?;
@@ -225,9 +204,9 @@ fn unsupported_layout_rejects_before_replacing_any_artifact() -> Result<(), Box<
         ..FormatOptions::default()
     };
 
-    let temp = TempDir::new()?;
-    let design = temp.0.join("mapping.mfd");
-    let config = temp.0.join("mapping-source.mft");
+    let temp = TempDir::new("mfd_flextext_export")?;
+    let design = temp.path().join("mapping.mfd");
+    let config = temp.path().join("mapping-source.mft");
     std::fs::write(&design, "keep design")?;
     std::fs::write(&config, "keep config")?;
 
@@ -258,12 +237,12 @@ fn mismatched_layout_schema_is_rejected_atomically() -> Result<(), Box<dyn Error
         ..FormatOptions::default()
     };
 
-    let temp = TempDir::new()?;
-    let design = temp.0.join("mapping.mfd");
+    let temp = TempDir::new("mfd_flextext_export")?;
+    let design = temp.path().join("mapping.mfd");
     std::fs::write(&design, "keep design")?;
     let error = mfd::export(&project, &design).expect_err("schema mismatch must fail");
     assert!(error.to_string().contains("does not exactly match"));
     assert_eq!(std::fs::read_to_string(design)?, "keep design");
-    assert!(!temp.0.join("mapping-source.mft").exists());
+    assert!(!temp.path().join("mapping-source.mft").exists());
     Ok(())
 }

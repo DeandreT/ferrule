@@ -83,8 +83,8 @@ fn compatible_scalar_udf_exports_and_reimports_as_a_definition() {
     let project = mfd::import(&fixture("scalar-udf-single.mfd"))
         .unwrap()
         .project;
-    let temp = TempDir::new("scalar_udf_round_trip");
-    let path = temp.0.join("mapping.mfd");
+    let temp = TempDir::new("scalar_udf_round_trip").unwrap();
+    let path = temp.path().join("mapping.mfd");
     let warnings = mfd::export(&project, &path).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
 

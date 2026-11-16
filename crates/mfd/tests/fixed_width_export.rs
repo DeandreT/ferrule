@@ -9,24 +9,7 @@ fn fixture(name: &str) -> PathBuf {
         .join(name)
 }
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new(tag: &str) -> Self {
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_fixed_width_{tag}_{}",
-            std::process::id()
-        ));
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn width(value: u32) -> FixedFieldWidth {
     FixedFieldWidth::new(value).unwrap()
@@ -35,8 +18,8 @@ fn width(value: u32) -> FixedFieldWidth {
 #[test]
 fn exports_and_reimports_fixed_width_source() {
     let project = mfd::import(&fixture("fixed-width.mfd")).unwrap().project;
-    let dir = TempDir::new("source");
-    let design = dir.0.join("mapping.mfd");
+    let dir = TempDir::new("source").unwrap();
+    let design = dir.path().join("mapping.mfd");
 
     let warnings = mfd::export(&project, &design).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
@@ -64,8 +47,8 @@ fn exports_and_reimports_fixed_width_target() {
     project.target_options.has_header_row = None;
     project.target_options.fixed_width =
         Some(FixedWidthLayout::new(vec![width(24), width(4)], ' ', false, false).unwrap());
-    let dir = TempDir::new("target");
-    let design = dir.0.join("mapping.mfd");
+    let dir = TempDir::new("target").unwrap();
+    let design = dir.path().join("mapping.mfd");
 
     let warnings = mfd::export(&project, &design).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
@@ -85,7 +68,7 @@ fn exports_and_reimports_fixed_width_target() {
 #[test]
 fn invalid_fixed_width_exports_preserve_existing_design() {
     let base = mfd::import(&fixture("fixed-width.mfd")).unwrap().project;
-    let dir = TempDir::new("atomic");
+    let dir = TempDir::new("atomic").unwrap();
 
     let cases = [
         (
@@ -125,7 +108,7 @@ fn invalid_fixed_width_exports_preserve_existing_design() {
     ];
 
     for (name, project, expected) in cases {
-        let design = dir.0.join(format!("{name}.mfd"));
+        let design = dir.path().join(format!("{name}.mfd"));
         std::fs::write(&design, "existing design").unwrap();
         assert!(matches!(
             mfd::export(&project, &design),

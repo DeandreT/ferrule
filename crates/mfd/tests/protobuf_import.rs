@@ -1,5 +1,4 @@
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{Instance, ScalarType, SchemaKind, Value};
 use mapping::ProtobufOptions;
@@ -10,27 +9,7 @@ fn fixture(name: &str) -> PathBuf {
         .join(name)
 }
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Self {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_protobuf_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn scalar<'a>(instance: &'a Instance, name: &str) -> Option<&'a Value> {
     instance.field(name).and_then(Instance::as_scalar)
@@ -80,9 +59,9 @@ fn embedded_layout(options: &ProtobufOptions) -> format_protobuf::Layout {
 
 #[test]
 fn multi_file_source_is_embedded_executable_and_roundtrips_without_originals() {
-    let temp = TempDir::new();
+    let temp = TempDir::new("mfd_protobuf").unwrap();
     for directory in ["api", "shared", "common"] {
-        std::fs::create_dir_all(temp.0.join(directory)).unwrap();
+        std::fs::create_dir_all(temp.path().join(directory)).unwrap();
     }
     let root_source = r#"
 syntax = "proto3";
@@ -107,11 +86,11 @@ syntax = "proto3";
 package shared.types;
 enum Status { STATUS_UNSPECIFIED = 0; READY = 1; }
 "#;
-    std::fs::write(temp.0.join("api/root.proto"), root_source).unwrap();
-    std::fs::write(temp.0.join("shared/model.proto"), model_source).unwrap();
-    std::fs::write(temp.0.join("common/status.proto"), status_source).unwrap();
+    std::fs::write(temp.path().join("api/root.proto"), root_source).unwrap();
+    std::fs::write(temp.path().join("shared/model.proto"), model_source).unwrap();
+    std::fs::write(temp.path().join("common/status.proto"), status_source).unwrap();
     std::fs::write(
-        temp.0.join("result.xsd"),
+        temp.path().join("result.xsd"),
         r#"<?xml version="1.0" encoding="UTF-8"?>
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:element name="Result">
@@ -124,7 +103,7 @@ enum Status { STATUS_UNSPECIFIED = 0; READY = 1; }
 "#,
     )
     .unwrap();
-    let design = temp.0.join("multi-file.mfd");
+    let design = temp.path().join("multi-file.mfd");
     std::fs::write(
         &design,
         r#"<?xml version="1.0" encoding="UTF-8"?>
@@ -190,7 +169,7 @@ enum Status { STATUS_UNSPECIFIED = 0; READY = 1; }
     );
 
     for directory in ["api", "shared", "common"] {
-        std::fs::remove_dir_all(temp.0.join(directory)).unwrap();
+        std::fs::remove_dir_all(temp.path().join(directory)).unwrap();
     }
     let layout = embedded_layout(options);
     let input = Instance::Group(
@@ -227,10 +206,10 @@ enum Status { STATUS_UNSPECIFIED = 0; READY = 1; }
     );
     assert_eq!(scalar(&output, "Status"), Some(&Value::Int(1)));
 
-    let exported_design = temp.0.join("exported/mapping.mfd");
+    let exported_design = temp.path().join("exported/mapping.mfd");
     let warnings = mfd::export(&imported.project, &exported_design).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
-    let exported_base = temp.0.join("exported/mapping-source-protobuf");
+    let exported_base = temp.path().join("exported/mapping-source-protobuf");
     assert_eq!(
         std::fs::read_to_string(exported_base.join("api/root.proto")).unwrap(),
         root_source
@@ -295,12 +274,12 @@ fn protobuf_source_imports_exports_reimports_and_executes_equivalently() {
         Some(&Value::String("Eight".into()))
     );
 
-    let temp = TempDir::new();
-    let design = temp.0.join("mapping.mfd");
+    let temp = TempDir::new("mfd_protobuf").unwrap();
+    let design = temp.path().join("mapping.mfd");
     let warnings = mfd::export(&imported.project, &design).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
     assert_eq!(
-        std::fs::read_to_string(temp.0.join("mapping-source.proto")).unwrap(),
+        std::fs::read_to_string(temp.path().join("mapping-source.proto")).unwrap(),
         options.schema
     );
     let exported = std::fs::read_to_string(&design).unwrap();
@@ -342,9 +321,9 @@ fn protobuf_source_imports_exports_reimports_and_executes_equivalently() {
 fn unsupported_protobuf_source_options_do_not_replace_existing_artifacts() {
     let mut imported = mfd::import(&fixture("protobuf-source.mfd")).unwrap();
     imported.project.source_options.delimiter = Some(';');
-    let temp = TempDir::new();
-    let design = temp.0.join("mapping.mfd");
-    let schema = temp.0.join("mapping-source.proto");
+    let temp = TempDir::new("mfd_protobuf").unwrap();
+    let design = temp.path().join("mapping.mfd");
+    let schema = temp.path().join("mapping-source.proto");
     std::fs::write(&design, "keep this design").unwrap();
     std::fs::write(&schema, "keep this schema").unwrap();
 
@@ -438,12 +417,12 @@ fn protobuf_target_exports_reimports_and_preserves_encoded_output() {
     )
     .unwrap();
 
-    let temp = TempDir::new();
-    let design = temp.0.join("mapping.mfd");
+    let temp = TempDir::new("mfd_protobuf").unwrap();
+    let design = temp.path().join("mapping.mfd");
     let warnings = mfd::export(&imported.project, &design).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
     assert_eq!(
-        std::fs::read_to_string(temp.0.join("mapping-target.proto")).unwrap(),
+        std::fs::read_to_string(temp.path().join("mapping-target.proto")).unwrap(),
         original_options.schema
     );
     let exported = std::fs::read_to_string(&design).unwrap();
@@ -480,9 +459,9 @@ fn invalid_protobuf_metadata_does_not_replace_existing_artifacts() {
         .as_mut()
         .unwrap()
         .schema = "not a proto schema".to_string();
-    let temp = TempDir::new();
-    let design = temp.0.join("mapping.mfd");
-    let schema = temp.0.join("mapping-target.proto");
+    let temp = TempDir::new("mfd_protobuf").unwrap();
+    let design = temp.path().join("mapping.mfd");
+    let schema = temp.path().join("mapping-target.proto");
     std::fs::write(&design, "keep this design").unwrap();
     std::fs::write(&schema, "keep this schema").unwrap();
 

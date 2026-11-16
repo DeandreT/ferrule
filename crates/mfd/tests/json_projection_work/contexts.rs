@@ -361,12 +361,12 @@ fn emit(root: &Path, language: &str) {
 #[test]
 #[ignore = "compiles C# Release generated sorted grouping plus direct filter/map boundary controls"]
 fn csharp_context_propagation_release_controls() {
-    let dir = TempDir::new();
-    emit(&dir.0, "csharp");
-    let host = dir.0.join("csharp/host");
+    let dir = TempDir::new("json_projection").unwrap();
+    emit(dir.path(), "csharp");
+    let host = dir.path().join("csharp/host");
     std::fs::create_dir(&host).unwrap();
     std::fs::write(
-        dir.0.join("NuGet.Config"),
+        dir.path().join("NuGet.Config"),
         "<configuration><packageSources><clear/></packageSources></configuration>",
     )
     .unwrap();
@@ -393,8 +393,8 @@ fn csharp_context_propagation_release_controls() {
             ])
             .arg(host.join("Host.csproj"))
             .arg("--")
-            .arg(&dir.0)
-            .env("DOTNET_CLI_HOME", dir.0.join("dotnet-home"))
+            .arg(dir.path())
+            .env("DOTNET_CLI_HOME", dir.path().join("dotnet-home"))
             .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
             .env("DOTNET_NOLOGO", "1")
             .env("DOTNET_SKIP_FIRST_TIME_EXPERIENCE", "1")
@@ -406,9 +406,9 @@ fn csharp_context_propagation_release_controls() {
 #[test]
 #[ignore = "compiles Rust Release generated sorted grouping plus direct filter/map boundary parity controls"]
 fn rust_context_propagation_release_controls() {
-    let dir = TempDir::new();
-    emit(&dir.0, "rust");
-    let root = dir.0.join("rust");
+    let dir = TempDir::new("json_projection").unwrap();
+    emit(dir.path(), "rust");
+    let root = dir.path().join("rust");
     let manifest = root.join("Cargo.toml");
     let text = std::fs::read_to_string(&manifest)
         .unwrap()
@@ -441,13 +441,14 @@ fn rust_context_propagation_release_controls() {
                 "profile.release.incremental=false",
                 "--target-dir",
             ])
-            .arg(dir.0.join("host-target"))
+            .arg(dir.path().join("host-target"))
             .arg("--manifest-path")
             .arg(&manifest)
             .args(["--bin", "context-host", "--"])
-            .arg(&dir.0)
+            .arg(dir.path())
             .env_remove("CARGO_BUILD_BUILD_DIR")
             .env_remove("CARGO_ENCODED_RUSTFLAGS")
             .env("RUSTFLAGS", "-D warnings"),
     );
 }
+use std::path::PathBuf;

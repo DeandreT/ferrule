@@ -1,31 +1,10 @@
 use std::collections::BTreeMap;
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{ScalarType, SchemaNode};
 use mapping::{DynamicBinding, FormatOptions, Graph, Node, Project, Scope, ScopeIteration};
 use mfd::ExportProfile;
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> std::io::Result<Self> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule-csv-dynamic-format-{}-{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn computed_property_project() -> Project {
     Project {
@@ -96,7 +75,7 @@ fn computed_property_project() -> Project {
 #[test]
 fn pathless_computed_json_target_does_not_discard_explicit_csv_options()
 -> Result<(), Box<dyn std::error::Error>> {
-    let dir = TempDir::new()?;
+    let dir = TempDir::new("csv-dynamic-format")?;
     let control = computed_property_project();
     assert!(engine::validate(&control).is_empty());
     let source = format_json::from_str(
@@ -115,7 +94,7 @@ fn pathless_computed_json_target_does_not_discard_explicit_csv_options()
         .into_iter()
         .enumerate()
     {
-        let control_path = dir.0.join(format!("control-{profile_index}.mfd"));
+        let control_path = dir.path().join(format!("control-{profile_index}.mfd"));
         mfd::export_with_profile(&control, &control_path, profile)?;
         let reimported = mfd::import(&control_path)?;
         assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
@@ -154,7 +133,7 @@ fn pathless_computed_json_target_does_not_discard_explicit_csv_options()
             let mut project = control.clone();
             project.target_options = options;
             assert!(engine::validate(&project).is_empty(), "{case}");
-            let parent = dir.0.join(format!("rejected-{profile_index}-{case}"));
+            let parent = dir.path().join(format!("rejected-{profile_index}-{case}"));
             let output = parent.join("mapping.mfd");
             let error = mfd::export_with_profile(&project, &output, profile).unwrap_err();
             assert!(

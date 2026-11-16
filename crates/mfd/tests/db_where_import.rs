@@ -1,25 +1,9 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use ir::{Instance, Value};
 use rusqlite::Connection;
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new(tag: &str) -> Self {
-        let path =
-            std::env::temp_dir().join(format!("ferrule_mfd_db_where_{tag}_{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn prepare_database(dir: &Path) {
     let connection = Connection::open(dir.join("people.sqlite")).unwrap();
@@ -105,9 +89,9 @@ fn output_names(project: &mapping::Project, db_path: &Path) -> Vec<String> {
 
 #[test]
 fn qualified_equality_filters_and_descending_order_execute() {
-    let dir = TempDir::new("equality");
-    prepare_database(&dir.0);
-    let design = dir.0.join("equality.mfd");
+    let dir = TempDir::new("equality").unwrap();
+    prepare_database(dir.path());
+    let design = dir.path().join("equality.mfd");
     write_design(
         &design,
         "people.department = :bound",
@@ -122,16 +106,16 @@ fn qualified_equality_filters_and_descending_order_execute() {
     let imported = mfd::import(&design).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert_eq!(
-        output_names(&imported.project, &dir.0.join("people.sqlite")),
+        output_names(&imported.project, &dir.path().join("people.sqlite")),
         ["Grace", "Ada"]
     );
 }
 
 #[test]
 fn like_uses_a_bound_concat_expression_and_single_character_wildcard() {
-    let dir = TempDir::new("like");
-    prepare_database(&dir.0);
-    let design = dir.0.join("like.mfd");
+    let dir = TempDir::new("like").unwrap();
+    prepare_database(dir.path());
+    let design = dir.path().join("like.mfd");
     write_design(
         &design,
         "Name LIKE :bound",
@@ -162,16 +146,16 @@ fn like_uses_a_bound_concat_expression_and_single_character_wildcard() {
     let imported = mfd::import(&design).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert_eq!(
-        output_names(&imported.project, &dir.0.join("people.sqlite")),
+        output_names(&imported.project, &dir.path().join("people.sqlite")),
         ["Bea", "Bex", "Bob"]
     );
 }
 
 #[test]
 fn unsupported_condition_warns_once_and_does_not_pass_rows_through() {
-    let dir = TempDir::new("unsupported");
-    prepare_database(&dir.0);
-    let design = dir.0.join("unsupported.mfd");
+    let dir = TempDir::new("unsupported").unwrap();
+    prepare_database(dir.path());
+    let design = dir.path().join("unsupported.mfd");
     write_design(
         &design,
         "Department = :bound OR Name = :bound",
@@ -199,9 +183,9 @@ fn unsupported_condition_warns_once_and_does_not_pass_rows_through() {
 
 #[test]
 fn multiple_order_keys_warn_once_and_do_not_pass_rows_through() {
-    let dir = TempDir::new("unsupported_order");
-    prepare_database(&dir.0);
-    let design = dir.0.join("unsupported-order.mfd");
+    let dir = TempDir::new("unsupported_order").unwrap();
+    prepare_database(dir.path());
+    let design = dir.path().join("unsupported-order.mfd");
     write_design(
         &design,
         "Department = :bound",
@@ -228,9 +212,9 @@ fn multiple_order_keys_warn_once_and_do_not_pass_rows_through() {
 
 #[test]
 fn database_order_combined_with_another_sort_warns_and_skips_iteration() {
-    let dir = TempDir::new("combined_order");
-    prepare_database(&dir.0);
-    let design = dir.0.join("combined-order.mfd");
+    let dir = TempDir::new("combined_order").unwrap();
+    prepare_database(dir.path());
+    let design = dir.path().join("combined-order.mfd");
     write_design(
         &design,
         "Department = :bound",

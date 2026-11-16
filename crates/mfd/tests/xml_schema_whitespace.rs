@@ -1,7 +1,5 @@
 use std::collections::BTreeMap;
 use std::error::Error;
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{Instance, ScalarType, SchemaNode, Value};
 use mapping::{Binding, FormatOptions, Graph, Node, Project, Scope};
@@ -16,26 +14,7 @@ const FIELDS: [&str; 4] = [
     "defaultAttribute",
 ];
 
-struct TempDirectory(PathBuf);
-
-impl TempDirectory {
-    fn new() -> std::io::Result<Self> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_xml_schema_whitespace_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDirectory {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir as TempDirectory;
 
 fn schema(name: &str) -> SchemaNode {
     SchemaNode::group(
@@ -138,12 +117,12 @@ fn assert_runtime(project: &Project) -> Result<(), Box<dyn Error>> {
 #[test]
 fn strict_xml_roundtrips_preserve_fixed_default_values_and_boundary_behavior()
 -> Result<(), Box<dyn Error>> {
-    let directory = TempDirectory::new()?;
+    let directory = TempDirectory::new("mfd_xml_schema_whitespace")?;
     let original = project();
     assert_runtime(&original)?;
     let mut current = original.clone();
     for cycle in 0..2 {
-        let path = directory.0.join(format!("cycle-{cycle}.mfd"));
+        let path = directory.path().join(format!("cycle-{cycle}.mfd"));
         let report = mfd::preflight_export(&current, &path)?;
         assert_eq!(report.compatibility, ExportCompatibility::NativeMfd);
         assert!(report.issues.is_empty(), "{:?}", report.issues);
@@ -153,8 +132,9 @@ fn strict_xml_roundtrips_preserve_fixed_default_values_and_boundary_behavior()
             report
         );
         for side in ["source", "target"] {
-            let xsd =
-                std::fs::read_to_string(directory.0.join(format!("cycle-{cycle}-{side}.xsd")))?;
+            let xsd = std::fs::read_to_string(
+                directory.path().join(format!("cycle-{cycle}-{side}.xsd")),
+            )?;
             assert!(xsd.contains(&format!("fixed=\"{ENCODED}\"")), "{xsd}");
             assert!(xsd.contains(&format!("default=\"{ENCODED}\"")), "{xsd}");
         }
@@ -170,14 +150,14 @@ fn strict_xml_roundtrips_preserve_fixed_default_values_and_boundary_behavior()
 
 #[test]
 fn forbidden_xml_schema_values_fail_before_artifact_publication() -> Result<(), Box<dyn Error>> {
-    let directory = TempDirectory::new()?;
+    let directory = TempDirectory::new("mfd_xml_schema_whitespace")?;
     for character in ['\0', '\u{b}', '\u{c}', '\u{fffe}', '\u{ffff}'] {
         let mut project = project();
         let ir::SchemaKind::Group { children, .. } = &mut project.source.kind else {
             return Err("expected a source group".into());
         };
         children[0].fixed = Some(format!("before{character}after"));
-        let path = directory.0.join("uncreated/mapping.mfd");
+        let path = directory.path().join("uncreated/mapping.mfd");
         assert!(
             mfd::preflight_export(&project, &path).is_err(),
             "{character:?}"
@@ -186,7 +166,7 @@ fn forbidden_xml_schema_values_fail_before_artifact_publication() -> Result<(), 
             mfd::export_with_profile(&project, &path, ExportProfile::NativeMfd).is_err(),
             "{character:?}"
         );
-        assert!(!directory.0.join("uncreated").exists());
+        assert!(!directory.path().join("uncreated").exists());
     }
     Ok(())
 }

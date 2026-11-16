@@ -2,32 +2,11 @@
 mod private_corpus;
 
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{Instance, SchemaKind, Value};
 use mapping::{PdfCommand, PdfPageSelection};
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Self {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_pdf_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn fixture(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -75,9 +54,9 @@ fn has_text_rows(commands: &[PdfCommand]) -> bool {
 
 #[test]
 fn unsupported_pdf_capture_algorithm_emits_one_actionable_warning() {
-    let temp = TempDir::new();
-    let design = temp.0.join("mapping.mfd");
-    let template = temp.0.join("unsupported.pxt");
+    let temp = TempDir::new("mfd_pdf").unwrap();
+    let design = temp.path().join("mapping.mfd");
+    let template = temp.path().join("unsupported.pxt");
     assert!(std::fs::write(
         &template,
         r#"<Document><Template><Model><Root><Children><Capture><Label>Ignored</Label><Region>{ Left: Left, Top: Top, Right: Right, Bottom: Bottom }</Region><Algorithm><OpticalCharacterRecognition/></Algorithm></Capture></Children><Label>Pdf</Label></Root></Model></Template></Document>"#,
@@ -131,29 +110,33 @@ fn unsupported_pdf_capture_algorithm_emits_one_actionable_warning() {
 
 #[test]
 fn imports_case_insensitive_pdf_references_and_table_layout() {
-    let temp = TempDir::new();
-    std::fs::copy(fixture("pdf-table.mfd"), temp.0.join("mapping.mfd")).unwrap();
-    std::fs::copy(fixture("pdf-table.pxt"), temp.0.join("Garden-Layout.PXT")).unwrap();
-    std::fs::write(temp.0.join("Garden-Input.PDF"), b"").unwrap();
+    let temp = TempDir::new("mfd_pdf").unwrap();
+    std::fs::copy(fixture("pdf-table.mfd"), temp.path().join("mapping.mfd")).unwrap();
+    std::fs::copy(
+        fixture("pdf-table.pxt"),
+        temp.path().join("Garden-Layout.PXT"),
+    )
+    .unwrap();
+    std::fs::write(temp.path().join("Garden-Input.PDF"), b"").unwrap();
 
-    let expected_input = if temp.0.join("garden-input.pdf").is_file() {
+    let expected_input = if temp.path().join("garden-input.pdf").is_file() {
         "garden-input.pdf"
     } else {
         "Garden-Input.PDF"
     };
 
-    let imported = mfd::import(&temp.0.join("mapping.mfd")).unwrap();
+    let imported = mfd::import(&temp.path().join("mapping.mfd")).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert_eq!(
         imported.project.source_path.as_deref(),
         Some(expected_input)
     );
     let resolved_input = temp
-        .0
+        .path()
         .join(imported.project.source_path.as_deref().unwrap());
     assert_eq!(
         std::fs::canonicalize(resolved_input).unwrap(),
-        std::fs::canonicalize(temp.0.join("Garden-Input.PDF")).unwrap()
+        std::fs::canonicalize(temp.path().join("Garden-Input.PDF")).unwrap()
     );
     let layout = imported.project.source_options.pdf.as_ref().unwrap();
     assert!(has_minimum_extent(layout.commands(), 30.0));
@@ -227,22 +210,22 @@ fn imports_case_insensitive_pdf_references_and_table_layout() {
         Some(&Value::Float(4.0))
     );
 
-    let design = temp.0.join("export.mfd");
+    let design = temp.path().join("export.mfd");
     std::fs::write(&design, "keep this design").unwrap();
     let warnings = mfd::export(&imported.project, &design).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
     let exported = std::fs::read_to_string(&design).unwrap();
     assert!(exported.contains("library=\"pdf\""));
     assert!(exported.contains("kind=\"34\""));
-    assert!(temp.0.join("export-source.pxt").is_file());
-    let exported_template = std::fs::read_to_string(temp.0.join("export-source.pxt")).unwrap();
+    assert!(temp.path().join("export-source.pxt").is_file());
+    let exported_template = std::fs::read_to_string(temp.path().join("export-source.pxt")).unwrap();
     assert!(
         exported_template.contains("basic_visual") || exported_template.contains("<BasicVisual>")
     );
     assert!(
         exported_template.contains("insert_space") || exported_template.contains("<InsertSpace/>")
     );
-    std::fs::remove_file(temp.0.join("Garden-Input.PDF")).unwrap();
+    std::fs::remove_file(temp.path().join("Garden-Input.PDF")).unwrap();
 
     let reimported = mfd::import(&design).unwrap();
     assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
@@ -257,12 +240,12 @@ fn imports_case_insensitive_pdf_references_and_table_layout() {
 
 #[test]
 fn imports_exact_page_regions_into_a_named_merge() {
-    let temp = TempDir::new();
-    assert!(std::fs::copy(fixture("pdf-merge.mfd"), temp.0.join("mapping.mfd")).is_ok());
-    assert!(std::fs::copy(fixture("pdf-merge.pxt"), temp.0.join("ledger.pxt")).is_ok());
-    assert!(std::fs::write(temp.0.join("ledger.pdf"), b"").is_ok());
+    let temp = TempDir::new("mfd_pdf").unwrap();
+    assert!(std::fs::copy(fixture("pdf-merge.mfd"), temp.path().join("mapping.mfd")).is_ok());
+    assert!(std::fs::copy(fixture("pdf-merge.pxt"), temp.path().join("ledger.pxt")).is_ok());
+    assert!(std::fs::write(temp.path().join("ledger.pdf"), b"").is_ok());
 
-    let Ok(imported) = mfd::import(&temp.0.join("mapping.mfd")) else {
+    let Ok(imported) = mfd::import(&temp.path().join("mapping.mfd")) else {
         panic!("self-authored PDF merge fixture must import");
     };
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
@@ -308,12 +291,24 @@ fn imports_exact_page_regions_into_a_named_merge() {
 
 #[test]
 fn imports_open_page_collage_and_marker_delimited_groups() {
-    let temp = TempDir::new();
-    assert!(std::fs::copy(fixture("pdf-text-groups.mfd"), temp.0.join("mapping.mfd")).is_ok());
-    assert!(std::fs::copy(fixture("pdf-text-groups.pxt"), temp.0.join("warehouse.pxt")).is_ok());
-    assert!(std::fs::write(temp.0.join("warehouse.pdf"), b"").is_ok());
+    let temp = TempDir::new("mfd_pdf").unwrap();
+    assert!(
+        std::fs::copy(
+            fixture("pdf-text-groups.mfd"),
+            temp.path().join("mapping.mfd")
+        )
+        .is_ok()
+    );
+    assert!(
+        std::fs::copy(
+            fixture("pdf-text-groups.pxt"),
+            temp.path().join("warehouse.pxt")
+        )
+        .is_ok()
+    );
+    assert!(std::fs::write(temp.path().join("warehouse.pdf"), b"").is_ok());
 
-    let Ok(imported) = mfd::import(&temp.0.join("mapping.mfd")) else {
+    let Ok(imported) = mfd::import(&temp.path().join("mapping.mfd")) else {
         panic!("self-authored PDF text-group fixture must import");
     };
     assert_eq!(imported.warnings.len(), 1, "{:?}", imported.warnings);

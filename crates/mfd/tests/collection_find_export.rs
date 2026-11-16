@@ -1,31 +1,9 @@
 use std::collections::BTreeMap;
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{Instance, ScalarType, SchemaNode, Value};
 use mapping::{Binding, Graph, Node, Project, Scope, ScopeIteration};
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Self {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_collection_find_export_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn project() -> Project {
     let source = SchemaNode::group(
@@ -176,8 +154,8 @@ fn row(fields: impl IntoIterator<Item = (&'static str, Value)>) -> Instance {
 
 #[test]
 fn scalar_filter_roundtrip_rebuilds_collection_find_context() {
-    let directory = TempDir::new();
-    let design = directory.0.join("mapping.mfd");
+    let directory = TempDir::new("mfd_collection_find_export").unwrap();
+    let design = directory.path().join("mapping.mfd");
     let project = project();
     let source = Instance::Group(
         (vec![

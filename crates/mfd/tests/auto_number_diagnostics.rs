@@ -1,5 +1,4 @@
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{Instance, Value};
 use mapping::{Node, NodeId, Project, Scope};
@@ -8,26 +7,7 @@ use mfd::{ImportIssueKind, ImportOptions, ImportOutcome, ImportProfile, MfdError
 const GLOBAL_ID_WARNING: &str =
     "auto-number with a global identifier is unsupported; imported as Null";
 
-struct Directory(PathBuf);
-
-impl Directory {
-    fn new() -> Self {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_auto_number_diagnostics_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for Directory {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir as Directory;
 
 #[derive(Clone, Copy)]
 enum CounterUse {
@@ -259,8 +239,8 @@ fn null_nodes(project: &Project) -> Vec<NodeId> {
 #[test]
 fn used_global_id_has_explicit_best_effort_diagnostic_and_strict_refusal() {
     for reset in [false, true] {
-        let dir = Directory::new();
-        let design = write_design(&dir.0, true, reset, CounterUse::Direct);
+        let dir = Directory::new("auto_number_diagnostics").unwrap();
+        let design = write_design(dir.path(), true, reset, CounterUse::Direct);
         let project = assert_global_id_refused(&design);
         assert_eq!(null_nodes(&project), [binding(&project, "Number")]);
         assert!(
@@ -275,8 +255,8 @@ fn used_global_id_has_explicit_best_effort_diagnostic_and_strict_refusal() {
 
 #[test]
 fn global_id_used_through_unanchored_scalar_function_is_also_refused() {
-    let dir = Directory::new();
-    let design = write_design(&dir.0, true, false, CounterUse::ScalarFunction);
+    let dir = Directory::new("auto_number_diagnostics").unwrap();
+    let design = write_design(dir.path(), true, false, CounterUse::ScalarFunction);
     let project = assert_global_id_refused(&design);
     let Node::UserFunctionCall { args, .. } = &project.graph.nodes[&binding(&project, "Number")]
     else {
@@ -289,8 +269,8 @@ fn global_id_used_through_unanchored_scalar_function_is_also_refused() {
 
 #[test]
 fn reusing_one_connected_global_id_component_reports_it_once() {
-    let dir = Directory::new();
-    let design = write_design(&dir.0, true, false, CounterUse::Reused);
+    let dir = Directory::new("auto_number_diagnostics").unwrap();
+    let design = write_design(dir.path(), true, false, CounterUse::Reused);
     let project = assert_global_id_refused(&design);
     let number = binding(&project, "Number");
     assert_eq!(number, binding(&project, "Copy"));
@@ -300,8 +280,8 @@ fn reusing_one_connected_global_id_component_reports_it_once() {
 #[test]
 fn unused_global_id_placeholders_do_not_reject_executable_import() {
     for usage in [CounterUse::Unused, CounterUse::UnusedConsumer] {
-        let dir = Directory::new();
-        let design = write_design(&dir.0, true, true, usage);
+        let dir = Directory::new("auto_number_diagnostics").unwrap();
+        let design = write_design(dir.path(), true, true, usage);
         let project = assert_admitted(&design);
         assert_eq!(item_scope(&project).bindings.len(), 1);
         assert_eq!(item_scope(&project).bindings[0].target_field, "Label");
@@ -367,16 +347,16 @@ fn assert_positional_output(project: &Project) {
 
 #[test]
 fn disconnected_global_id_pin_preserves_ordinary_positional_counter() {
-    let dir = Directory::new();
-    let design = write_design(&dir.0, false, false, CounterUse::Direct);
+    let dir = Directory::new("auto_number_diagnostics").unwrap();
+    let design = write_design(dir.path(), false, false, CounterUse::Direct);
     let project = assert_admitted(&design);
     assert_positional_output(&project);
 }
 
 #[test]
 fn supported_related_scope_reset_does_not_warn_for_eager_null_placeholder() {
-    let dir = Directory::new();
-    let design = write_design(&dir.0, false, true, CounterUse::Direct);
+    let dir = Directory::new("auto_number_diagnostics").unwrap();
+    let design = write_design(dir.path(), false, true, CounterUse::Direct);
     let project = assert_admitted(&design);
     assert_positional_output(&project);
 }
@@ -599,8 +579,8 @@ fn assert_retained_counter_diagnostics(path: &Path, counter_fields: &[&str]) {
 #[test]
 fn distinct_retained_global_id_components_each_produce_one_diagnostic() {
     for same_id in [false, true] {
-        let dir = Directory::new();
-        let design = write_multiple_counter_design(&dir.0, same_id, true, false);
+        let dir = Directory::new("auto_number_diagnostics").unwrap();
+        let design = write_multiple_counter_design(dir.path(), same_id, true, false);
         assert_retained_counter_diagnostics(&design, &["Number", "Copy"]);
     }
 }
@@ -608,8 +588,8 @@ fn distinct_retained_global_id_components_each_produce_one_diagnostic() {
 #[test]
 fn mixed_used_and_unused_global_id_components_only_warn_for_retained_counters() {
     for second_used in [false, true] {
-        let dir = Directory::new();
-        let design = write_multiple_counter_design(&dir.0, true, second_used, true);
+        let dir = Directory::new("auto_number_diagnostics").unwrap();
+        let design = write_multiple_counter_design(dir.path(), true, second_used, true);
         let counter_fields: &[&str] = if second_used {
             &["Number", "Copy"]
         } else {

@@ -1,6 +1,4 @@
 use std::collections::BTreeMap;
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{ScalarType, SchemaNode, Value};
 use mapping::{
@@ -8,30 +6,7 @@ use mapping::{
     ScopeIteration, SequenceExpr,
 };
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new(label: &str) -> Self {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_exception_export_{label}_{}_{}_{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map_or(0, |duration| duration.as_nanos()),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn source_project(message: Option<u32>) -> Project {
     Project {
@@ -266,8 +241,8 @@ fn has_outgoing_edge(document: &roxmltree::Document<'_>, from: &str) -> bool {
 
 #[test]
 fn false_scope_branch_exports_and_reimports_canonically() {
-    let dir = TempDir::new("false");
-    let design = dir.0.join("failure.mfd");
+    let dir = TempDir::new("false").unwrap();
+    let design = dir.path().join("failure.mfd");
     let warnings = mfd::export(&source_project(Some(3)), &design).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
 
@@ -320,7 +295,7 @@ fn false_scope_branch_exports_and_reimports_canonically() {
         }) if message == "limit exceeded"
     ));
 
-    let roundtrip = dir.0.join("roundtrip.mfd");
+    let roundtrip = dir.path().join("roundtrip.mfd");
     let warnings = mfd::export(&imported.project, &roundtrip).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
     let reimported = mfd::import(&roundtrip).unwrap();
@@ -330,8 +305,8 @@ fn false_scope_branch_exports_and_reimports_canonically() {
 
 #[test]
 fn optional_message_pin_remains_disconnected() {
-    let dir = TempDir::new("optional-message");
-    let design = dir.0.join("failure.mfd");
+    let dir = TempDir::new("optional-message").unwrap();
+    let design = dir.path().join("failure.mfd");
     let project = source_project(None);
     let warnings = mfd::export(&project, &design).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
@@ -357,8 +332,8 @@ fn optional_message_pin_remains_disconnected() {
 
 #[test]
 fn multiple_failures_share_one_false_filter_branch() {
-    let dir = TempDir::new("shared-branch");
-    let design = dir.0.join("failure.mfd");
+    let dir = TempDir::new("shared-branch").unwrap();
+    let design = dir.path().join("failure.mfd");
     let mut project = source_project(Some(3));
     project.graph.nodes.insert(
         4,
@@ -412,8 +387,8 @@ fn multiple_failures_share_one_false_filter_branch() {
 
 #[test]
 fn nested_failure_message_uses_the_absolute_item_position_context() {
-    let dir = TempDir::new("nested-position");
-    let design = dir.0.join("failure.mfd");
+    let dir = TempDir::new("nested-position").unwrap();
+    let design = dir.path().join("failure.mfd");
     let project = nested_project(vec!["Outer".into(), "Item".into()]);
 
     let warnings = mfd::export(&project, &design).unwrap();
@@ -439,9 +414,9 @@ fn nested_failure_message_uses_the_absolute_item_position_context() {
 
 #[test]
 fn restricted_ancestor_and_ambiguous_position_reject_atomically() {
-    let dir = TempDir::new("nested-rejections");
+    let dir = TempDir::new("nested-rejections").unwrap();
 
-    let restricted_path = dir.0.join("restricted.mfd");
+    let restricted_path = dir.path().join("restricted.mfd");
     std::fs::write(&restricted_path, "sentinel").unwrap();
     let mut restricted = nested_project(vec!["Outer".into(), "Item".into()]);
     restricted.root.children[0].filter = Some(4);
@@ -452,7 +427,7 @@ fn restricted_ancestor_and_ambiguous_position_reject_atomically() {
         "sentinel"
     );
 
-    let position_path = dir.0.join("position.mfd");
+    let position_path = dir.path().join("position.mfd");
     std::fs::write(&position_path, "sentinel").unwrap();
     let ambiguous = nested_project(vec!["Outer".into()]);
     let error = mfd::export(&ambiguous, &position_path).unwrap_err();
@@ -465,7 +440,7 @@ fn restricted_ancestor_and_ambiguous_position_reject_atomically() {
 
 #[test]
 fn noncanonical_failure_shapes_are_rejected_atomically() {
-    let dir = TempDir::new("unsupported");
+    let dir = TempDir::new("unsupported").unwrap();
     for (label, selection, iteration, expected) in [
         (
             "all",
@@ -496,7 +471,7 @@ fn noncanonical_failure_shapes_are_rejected_atomically() {
             "generated-sequence failures",
         ),
     ] {
-        let design = dir.0.join(format!("{label}.mfd"));
+        let design = dir.path().join(format!("{label}.mfd"));
         std::fs::write(&design, "sentinel").unwrap();
         let mut project = source_project(Some(3));
         project.failure_rules[0].selection = selection;
@@ -509,8 +484,8 @@ fn noncanonical_failure_shapes_are_rejected_atomically() {
 
 #[test]
 fn invalid_failure_reference_is_rejected_before_replacing_artifacts() {
-    let dir = TempDir::new("invalid");
-    let design = dir.0.join("failure.mfd");
+    let dir = TempDir::new("invalid").unwrap();
+    let design = dir.path().join("failure.mfd");
     std::fs::write(&design, "sentinel").unwrap();
     let mut project = source_project(Some(999));
     project.source_path = Some("missing-source.xml".into());
@@ -521,6 +496,6 @@ fn invalid_failure_reference_is_rejected_before_replacing_artifacts() {
         "{error}"
     );
     assert_eq!(std::fs::read_to_string(&design).unwrap(), "sentinel");
-    assert!(!dir.0.join("failure-source.xsd").exists());
-    assert!(!dir.0.join("failure-target.xsd").exists());
+    assert!(!dir.path().join("failure-source.xsd").exists());
+    assert!(!dir.path().join("failure-target.xsd").exists());
 }

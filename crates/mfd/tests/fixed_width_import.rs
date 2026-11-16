@@ -1,30 +1,9 @@
 use std::error::Error;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{Instance, ScalarType, SchemaKind, Value};
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Result<Self, std::io::Error> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_fixed_width_parser_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn fixture(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -157,8 +136,8 @@ fn imports_inline_fixed_width_string_parser_and_executes_per_source_row()
         Some(&Value::String("Grace".into()))
     );
 
-    let dir = TempDir::new()?;
-    let design = dir.0.join("fixed-width-parser.mfd");
+    let dir = TempDir::new("mfd_fixed_width_parser")?;
+    let design = dir.path().join("fixed-width-parser.mfd");
     let warnings = mfd::export(&imported.project, &design)?;
     assert!(warnings.is_empty(), "{warnings:?}");
     let xml = std::fs::read_to_string(&design)?;

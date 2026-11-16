@@ -1,31 +1,10 @@
 use std::collections::BTreeMap;
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{ScalarType, SchemaNode, Value};
 use mapping::{FormatOptions, Graph, Node, Pipeline, PipelineInput, PipelineStage, Project, Scope};
 use mfd::{MAX_MFD_DESIGN_BYTES, MfdError};
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Self {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_design_limits_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn constant_project(value: String) -> Project {
     Project {
@@ -73,8 +52,8 @@ fn assert_export_limit(error: MfdError) {
 
 #[test]
 fn oversized_sparse_design_rejects_before_xml_parsing_in_both_import_paths() {
-    let dir = TempDir::new();
-    let path = dir.0.join("oversized.mfd");
+    let dir = TempDir::new("mfd_design_limits").unwrap();
+    let path = dir.path().join("oversized.mfd");
     std::fs::File::create(&path)
         .unwrap()
         .set_len(MAX_MFD_DESIGN_BYTES as u64 + 1)
@@ -93,11 +72,11 @@ fn oversized_sparse_design_rejects_before_xml_parsing_in_both_import_paths() {
 
 #[test]
 fn xml_escaping_counts_toward_export_limit_before_existing_artifacts_change() {
-    let dir = TempDir::new();
-    let path = dir.0.join("mapping.mfd");
+    let dir = TempDir::new("mfd_design_limits").unwrap();
+    let path = dir.path().join("mapping.mfd");
     let project = constant_project("\"".repeat(MAX_MFD_DESIGN_BYTES / 6 + 1));
     std::fs::write(&path, "existing design").unwrap();
-    let sibling = dir.0.join("mapping-source.xsd");
+    let sibling = dir.path().join("mapping-source.xsd");
     std::fs::write(&sibling, "existing schema").unwrap();
     assert_export_limit(mfd::preflight_export(&project, &path).unwrap_err());
     assert_export_limit(mfd::export(&project, &path).unwrap_err());
@@ -106,12 +85,12 @@ fn xml_escaping_counts_toward_export_limit_before_existing_artifacts_change() {
         std::fs::read_to_string(&sibling).unwrap(),
         "existing schema"
     );
-    assert_eq!(std::fs::read_dir(&dir.0).unwrap().count(), 2);
+    assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 2);
 }
 
 #[test]
 fn connected_pipeline_obeys_one_combined_design_budget() {
-    let dir = TempDir::new();
+    let dir = TempDir::new("mfd_design_limits").unwrap();
     let mut first = constant_project("\"".repeat(MAX_MFD_DESIGN_BYTES / 10));
     first.target_path = None;
     let mut second = first.clone();
@@ -147,10 +126,14 @@ fn connected_pipeline_obeys_one_combined_design_budget() {
     // Each independently valid stage fits; only the connected design exceeds
     // the budget. Rejection must happen before the output directory exists.
     for (index, stage) in pipeline.stages.iter().enumerate() {
-        mfd::preflight_export(&stage.project, &dir.0.join(format!("stage-{index}.mfd"))).unwrap();
+        mfd::preflight_export(
+            &stage.project,
+            &dir.path().join(format!("stage-{index}.mfd")),
+        )
+        .unwrap();
     }
-    let output = dir.0.join("uncreated").join("pipeline.mfd");
+    let output = dir.path().join("uncreated").join("pipeline.mfd");
     assert_export_limit(mfd::export_pipeline(&pipeline, &output).unwrap_err());
     assert!(!output.parent().unwrap().exists());
-    assert_eq!(std::fs::read_dir(&dir.0).unwrap().count(), 0);
+    assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
 }

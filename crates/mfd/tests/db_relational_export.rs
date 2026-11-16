@@ -1,32 +1,10 @@
 use std::collections::BTreeMap;
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{ScalarType, SchemaNode};
 use mapping::{FormatOptions, Graph, Project, Scope};
 use rusqlite::Connection;
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new(label: &str) -> Self {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_db_export_{label}_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn empty_project(source: SchemaNode, target: SchemaNode) -> Project {
     Project {
@@ -54,8 +32,8 @@ fn scalar(name: &str, ty: ScalarType) -> SchemaNode {
 
 #[test]
 fn exports_and_reimports_one_table_with_nested_foreign_key_relations() {
-    let directory = TempDir::new("nested_source");
-    let database = directory.0.join("company.sqlite");
+    let directory = TempDir::new("nested_source").unwrap();
+    let database = directory.path().join("company.sqlite");
     let connection = Connection::open(&database).unwrap();
     connection
         .execute_batch(
@@ -94,7 +72,7 @@ fn exports_and_reimports_one_table_with_nested_foreign_key_relations() {
         SchemaNode::group("Result", vec![scalar("Value", ScalarType::String)]),
     );
     project.source_path = Some("company.sqlite".into());
-    let design = directory.0.join("mapping.mfd");
+    let design = directory.path().join("mapping.mfd");
 
     let warnings = mfd::export(&project, &design).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
@@ -115,7 +93,7 @@ fn exports_and_reimports_one_table_with_nested_foreign_key_relations() {
 
 #[test]
 fn exports_and_reimports_single_nested_table_below_database_wrapper() {
-    let directory = TempDir::new("wrapped_nested_source");
+    let directory = TempDir::new("wrapped_nested_source").unwrap();
     let people = SchemaNode::group(
         "people|department_id",
         vec![
@@ -140,7 +118,7 @@ fn exports_and_reimports_single_nested_table_below_database_wrapper() {
         SchemaNode::group("Result", vec![scalar("Value", ScalarType::String)]),
     );
     project.source_path = Some("company.sqlite".into());
-    let design = directory.0.join("mapping.mfd");
+    let design = directory.path().join("mapping.mfd");
 
     let warnings = mfd::export(&project, &design).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
@@ -155,8 +133,8 @@ fn exports_and_reimports_single_nested_table_below_database_wrapper() {
 
 #[test]
 fn exports_and_reimports_multiple_target_tables_with_a_nested_relation() {
-    let directory = TempDir::new("multi_target");
-    let database = directory.0.join("target.sqlite");
+    let directory = TempDir::new("multi_target").unwrap();
+    let database = directory.path().join("target.sqlite");
     let connection = Connection::open(&database).unwrap();
     connection
         .execute_batch(
@@ -208,7 +186,7 @@ fn exports_and_reimports_multiple_target_tables_with_a_nested_relation() {
         SchemaNode::group("database", vec![customers, orders]),
     );
     project.target_path = Some("target.sqlite".into());
-    let design = directory.0.join("mapping.mfd");
+    let design = directory.path().join("mapping.mfd");
 
     let warnings = mfd::export(&project, &design).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
@@ -239,8 +217,8 @@ fn rejects_non_relational_nested_groups_without_touching_the_design() {
         SchemaNode::group("Result", vec![scalar("Value", ScalarType::String)]),
     );
     project.source_path = Some("source.sqlite".into());
-    let directory = TempDir::new("invalid");
-    let design = directory.0.join("mapping.mfd");
+    let directory = TempDir::new("invalid").unwrap();
+    let design = directory.path().join("mapping.mfd");
     std::fs::write(&design, "sentinel").unwrap();
 
     let error = mfd::export(&project, &design).unwrap_err();

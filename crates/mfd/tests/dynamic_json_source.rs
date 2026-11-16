@@ -1,29 +1,8 @@
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{Instance, ScalarType, SchemaKind, Value};
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Result<Self, std::io::Error> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_dynamic_json_source_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn write_fixture(dir: &Path) -> Result<PathBuf, std::io::Error> {
     std::fs::write(
@@ -102,8 +81,8 @@ fn write_scalar_fixture(dir: &Path) -> Result<PathBuf, std::io::Error> {
 #[test]
 fn equality_selected_dynamic_boolean_source_fields_filter_objects()
 -> Result<(), Box<dyn std::error::Error>> {
-    let dir = TempDir::new()?;
-    let imported = mfd::import(&write_fixture(&dir.0)?)?;
+    let dir = TempDir::new("mfd_dynamic_json_source")?;
+    let imported = mfd::import(&write_fixture(dir.path())?)?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
     assert!(matches!(
@@ -117,7 +96,7 @@ fn equality_selected_dynamic_boolean_source_fields_filter_objects()
         })
     ));
 
-    let input = format_json::read(&dir.0.join("source.json"), &imported.project.source)?;
+    let input = format_json::read(&dir.path().join("source.json"), &imported.project.source)?;
     let output = engine::run(&imported.project, &input)?;
     let rows = output
         .field("Row")
@@ -136,7 +115,7 @@ fn equality_selected_dynamic_boolean_source_fields_filter_objects()
         Some(&Value::String("A".into()))
     );
 
-    let export_path = dir.0.join("dynamic-source-export.mfd");
+    let export_path = dir.path().join("dynamic-source-export.mfd");
     let warnings = mfd::export(&imported.project, &export_path)?;
     assert!(warnings.is_empty(), "{warnings:?}");
     let design = std::fs::read_to_string(&export_path)?;
@@ -152,12 +131,15 @@ fn equality_selected_dynamic_boolean_source_fields_filter_objects()
 #[test]
 fn equality_selected_dynamic_string_source_fields_map_nullable_scalars()
 -> Result<(), Box<dyn std::error::Error>> {
-    let dir = TempDir::new()?;
-    let imported = mfd::import(&write_scalar_fixture(&dir.0)?)?;
+    let dir = TempDir::new("mfd_dynamic_json_source")?;
+    let imported = mfd::import(&write_scalar_fixture(dir.path())?)?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
 
-    let input = format_json::read(&dir.0.join("open-source.json"), &imported.project.source)?;
+    let input = format_json::read(
+        &dir.path().join("open-source.json"),
+        &imported.project.source,
+    )?;
     let output = engine::run(&imported.project, &input)?;
     let rows = output
         .field("Row")
@@ -179,7 +161,7 @@ fn equality_selected_dynamic_string_source_fields_map_nullable_scalars()
         Some(&Value::String("1998-05-06".into()))
     );
 
-    let export_path = dir.0.join("dynamic-string-source-export.mfd");
+    let export_path = dir.path().join("dynamic-string-source-export.mfd");
     let warnings = mfd::export(&imported.project, &export_path)?;
     assert!(warnings.is_empty(), "{warnings:?}");
     let design = std::fs::read_to_string(&export_path)?;

@@ -1,35 +1,13 @@
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
-
 use ir::{Instance, Value};
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Result<Self, std::io::Error> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_xml_document_decorations_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 #[test]
 fn processing_instruction_before_payload_does_not_hide_document_ports()
 -> Result<(), Box<dyn std::error::Error>> {
-    let dir = TempDir::new()?;
+    let dir = TempDir::new("mfd_xml_document_decorations")?;
     std::fs::write(
-        dir.0.join("source.xsd"),
+        dir.path().join("source.xsd"),
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:element name="Source"><xs:complexType><xs:sequence>
     <xs:element name="Item" maxOccurs="unbounded"><xs:complexType><xs:sequence>
@@ -39,7 +17,7 @@ fn processing_instruction_before_payload_does_not_hide_document_ports()
 </xs:schema>"#,
     )?;
     std::fs::write(
-        dir.0.join("target.xsd"),
+        dir.path().join("target.xsd"),
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:element name="Target"><xs:complexType><xs:sequence>
     <xs:element name="Row" maxOccurs="unbounded"><xs:complexType><xs:sequence>
@@ -48,7 +26,7 @@ fn processing_instruction_before_payload_does_not_hide_document_ports()
   </xs:sequence></xs:complexType></xs:element>
 </xs:schema>"#,
     )?;
-    let mapping = dir.0.join("mapping.mfd");
+    let mapping = dir.path().join("mapping.mfd");
     std::fs::write(
         &mapping,
         r#"<mapping version="26"><component name="map"><structure><children>

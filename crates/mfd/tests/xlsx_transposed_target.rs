@@ -11,17 +11,11 @@ fn fixture(name: &str) -> PathBuf {
         .join(name)
 }
 
-struct TempDir(PathBuf);
+struct TempDir(test_support::TempDir);
 
 impl TempDir {
     fn new(name: &str) -> Self {
-        let path = std::env::temp_dir().join(format!(
-            "ferrule-mfd-xlsx-transposed-target-{}-{name}",
-            std::process::id()
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
+        Self(test_support::TempDir::new(&format!("mfd-xlsx-transposed-target-{name}")).unwrap())
     }
 
     /// A copy of the fixture design, edited by `edit`, beside its source
@@ -37,12 +31,6 @@ impl TempDir {
         let path = self.0.join("design.mfd");
         std::fs::write(&path, edit(original)).unwrap();
         path
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
     }
 }
 

@@ -722,36 +722,16 @@ fn resolve_case_insensitive(candidate: &Path) -> std::io::Result<PathBuf> {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::atomic::{AtomicU64, Ordering};
 
     use super::*;
 
-    struct TempDir(PathBuf);
-
-    impl TempDir {
-        fn new() -> Self {
-            static NEXT: AtomicU64 = AtomicU64::new(0);
-            let path = std::env::temp_dir().join(format!(
-                "ferrule-mfd-resource-{}-{}",
-                std::process::id(),
-                NEXT.fetch_add(1, Ordering::Relaxed)
-            ));
-            std::fs::create_dir_all(&path).unwrap();
-            Self(path)
-        }
-    }
-
-    impl Drop for TempDir {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_dir_all(&self.0);
-        }
-    }
+    use test_support::TempDir;
 
     #[test]
     fn resolves_windows_separators_and_safe_parent_paths_inside_package() {
-        let package = TempDir::new();
-        let design = package.0.join("Maps");
-        let schemas = package.0.join("Resources").join("Schemas");
+        let package = TempDir::new("mfd-resource").unwrap();
+        let design = package.path().join("Maps");
+        let schemas = package.path().join("Resources").join("Schemas");
         std::fs::create_dir_all(&design).unwrap();
         std::fs::create_dir_all(&schemas).unwrap();
         let mapping = design.join("mapping.mfd");
@@ -759,7 +739,7 @@ mod tests {
         let schema = schemas.join("Order.JSON");
         std::fs::write(&schema, "{}").unwrap();
 
-        let resolver = ResourceResolver::new(&mapping, Some(&package.0)).unwrap();
+        let resolver = ResourceResolver::new(&mapping, Some(package.path())).unwrap();
         assert_eq!(
             resolver
                 .resolve_file(r"..\Resources\Schemas\order.json", "JSON Schema")
@@ -770,20 +750,20 @@ mod tests {
 
     #[test]
     fn rejects_package_escape_absolute_windows_paths_and_outside_mappings() {
-        let package = TempDir::new();
-        let outside = TempDir::new();
-        let mapping = package.0.join("mapping.mfd");
+        let package = TempDir::new("mfd-resource").unwrap();
+        let outside = TempDir::new("mfd-resource").unwrap();
+        let mapping = package.path().join("mapping.mfd");
         std::fs::write(&mapping, "<mapping/>").unwrap();
-        let escaped = outside.0.join("schema.json");
+        let escaped = outside.path().join("schema.json");
         std::fs::write(&escaped, "{}").unwrap();
-        let resolver = ResourceResolver::new(&mapping, Some(&package.0)).unwrap();
+        let resolver = ResourceResolver::new(&mapping, Some(package.path())).unwrap();
 
         assert!(
             resolver
                 .resolve_file(
                     &format!(
                         "../{}/schema.json",
-                        outside.0.file_name().unwrap().to_string_lossy()
+                        outside.path().file_name().unwrap().to_string_lossy()
                     ),
                     "JSON Schema",
                 )
@@ -799,13 +779,13 @@ mod tests {
                 .resolve_file("C:schema.json", "JSON Schema")
                 .is_err()
         );
-        assert!(ResourceResolver::new(&escaped, Some(&package.0)).is_err());
+        assert!(ResourceResolver::new(&escaped, Some(package.path())).is_err());
     }
 
     #[test]
     fn default_root_escape_explains_how_to_declare_a_mapping_package() {
-        let package = TempDir::new();
-        let design = package.0.join("maps");
+        let package = TempDir::new("mfd-resource").unwrap();
+        let design = package.path().join("maps");
         std::fs::create_dir_all(&design).unwrap();
         let mapping = design.join("mapping.mfd");
         std::fs::write(&mapping, "<mapping/>").unwrap();
@@ -823,15 +803,15 @@ mod tests {
     fn rejects_symlink_escape_after_canonicalization() {
         use std::os::unix::fs::symlink;
 
-        let package = TempDir::new();
-        let outside = TempDir::new();
-        let mapping = package.0.join("mapping.mfd");
+        let package = TempDir::new("mfd-resource").unwrap();
+        let outside = TempDir::new("mfd-resource").unwrap();
+        let mapping = package.path().join("mapping.mfd");
         std::fs::write(&mapping, "<mapping/>").unwrap();
-        let escaped = outside.0.join("schema.json");
+        let escaped = outside.path().join("schema.json");
         std::fs::write(&escaped, "{}").unwrap();
-        symlink(&escaped, package.0.join("schema.json")).unwrap();
+        symlink(&escaped, package.path().join("schema.json")).unwrap();
 
-        let resolver = ResourceResolver::new(&mapping, Some(&package.0)).unwrap();
+        let resolver = ResourceResolver::new(&mapping, Some(package.path())).unwrap();
         assert!(resolver.resolve_file("schema.json", "JSON Schema").is_err());
     }
 }

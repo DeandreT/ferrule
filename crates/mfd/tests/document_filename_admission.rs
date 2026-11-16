@@ -1,18 +1,10 @@
 use std::error::Error;
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
-struct TempDir(PathBuf);
+struct TempDir(test_support::TempDir);
 
 impl TempDir {
     fn new() -> std::io::Result<Self> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule-document-filenames-{}-{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir(&path)?;
+        let path = test_support::TempDir::new("mfd-document-filename-admission")?;
         std::fs::write(
             path.join("document.xsd"),
             r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Document"><xs:complexType><xs:sequence><xs:element name="Value" type="xs:string"/></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
@@ -26,12 +18,6 @@ impl TempDir {
             r#"<Config><Format standard="HL7"/><Elements><Data name="Value" type="string"/><Segment name="ABC"><Data ref="Value"/></Segment></Elements><Message><MessageType>DOC</MessageType><Group name="DOC"><Segment ref="ABC"/></Group></Message></Config>"#,
         )?;
         Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
     }
 }
 

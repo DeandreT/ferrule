@@ -2,38 +2,12 @@
 mod private_corpus;
 
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use ir::{Instance, ScalarType, SchemaKind, SchemaNode, Value};
 use mapping::{Binding, Node};
 use rusqlite::Connection;
 
-static NEXT_DIR: AtomicU64 = AtomicU64::new(0);
-
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Self {
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_database_xml_column_{}_{}",
-            std::process::id(),
-            NEXT_DIR.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
-
-fn write(path: &Path, contents: &str) {
-    std::fs::write(path, contents).unwrap();
-}
+use test_support::TempDir;
 
 fn payloads(output: &Instance) -> Vec<&str> {
     output
@@ -98,32 +72,26 @@ fn write_packaged_mapping(
 
 #[test]
 fn embedded_xml_database_columns_execute_compactly_and_round_trip() {
-    let dir = TempDir::new();
-    write(
-        &dir.0.join("catalog.xsd"),
-        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+    let dir = TempDir::new("database_xml_column").unwrap();
+    dir.write("catalog.xsd", r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:element name="Item"><xs:complexType><xs:sequence><xs:element name="Name" type="xs:string"/></xs:sequence><xs:attribute name="sku" type="xs:string"/></xs:complexType></xs:element>
   <xs:element name="Catalog"><xs:complexType><xs:sequence><xs:element ref="Item" maxOccurs="unbounded"/></xs:sequence></xs:complexType></xs:element>
-</xs:schema>"#,
-    );
-    let database = dir.0.join("inventory.sqlite");
+</xs:schema>"#).unwrap();
+    let database = dir.path().join("inventory.sqlite");
     let connection = Connection::open(&database).unwrap();
     connection
         .execute("CREATE TABLE Inventory (payload TEXT NOT NULL)", [])
         .unwrap();
     drop(connection);
-    write(
-        &dir.0.join("mapping.mfd"),
-        r#"<mapping><resources><datasources><datasource name="inventory"><database_connection name="inventory" ConnectionString="inventory.sqlite" database_kind="SQLite" import_kind="SQLite"/></datasource></datasources></resources>
+    dir.write("mapping.mfd", r#"<mapping><resources><datasources><datasource name="inventory"><database_connection name="inventory" ConnectionString="inventory.sqlite" database_kind="SQLite" import_kind="SQLite"/></datasource></datasources></resources>
 <component name="map"><structure><children>
   <component name="catalog" library="xml" kind="14"><data><root><entry name="document"><entry name="Catalog" outkey="10"><entry name="Item" outkey="11"/></entry></entry></root><document schema="catalog.xsd" inputinstance="catalog.xml" instanceroot="{}Catalog"/></data></component>
   <component name="inventory" library="db" kind="15"><properties XSLTDefaultOutput="1"/><data><root><entry name="document"><entry name="Inventory" type="table" inpkey="20"><entry name="payload"><entry name="document" type="doc-xml"><document schemafile="catalog.xsd" root="Item" encoding="UTF-8"/><entry name="Item" inpkey="21"/></entry></entry></entry></entry></root><database ref="inventory"/></data></component>
 </children><graph><edges><edge edgekey="100"><data><dataconnection type="2"/></data></edge></edges><vertices>
   <vertex vertexkey="11"><edges><edge vertexkey="20"/><edge vertexkey="21" edgekey="100"/></edges></vertex>
-</vertices></graph></structure></component></mapping>"#,
-    );
+</vertices></graph></structure></component></mapping>"#).unwrap();
 
-    let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+    let imported = mfd::import(&dir.path().join("mapping.mfd")).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
     assert!(imported.project.graph.nodes.values().any(|node| matches!(
@@ -158,7 +126,7 @@ fn embedded_xml_database_columns_execute_compactly_and_round_trip() {
         .unwrap();
     assert_eq!(stored, payloads(&output));
 
-    let exported_path = dir.0.join("roundtrip.mfd");
+    let exported_path = dir.path().join("roundtrip.mfd");
     let native_report = mfd::preflight_export(&imported.project, &exported_path).unwrap();
     assert!(native_report.is_native_compatible(), "{native_report}");
     assert!(native_report.warnings.is_empty());
@@ -176,7 +144,11 @@ fn embedded_xml_database_columns_execute_compactly_and_round_trip() {
     assert!(exported.contains(r#"schemafile="roundtrip-target-database-xml-0.xsd""#));
     assert!(!exported.contains("ferrule-indent"));
     assert!(!exported.contains("stringserialize"));
-    assert!(dir.0.join("roundtrip-target-database-xml-0.xsd").is_file());
+    assert!(
+        dir.path()
+            .join("roundtrip-target-database-xml-0.xsd")
+            .is_file()
+    );
     let reimported = mfd::import(&exported_path).unwrap();
     assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
     assert!(engine::validate(&reimported.project).is_empty());
@@ -197,14 +169,14 @@ fn embedded_xml_database_columns_execute_compactly_and_round_trip() {
     // not available beside the exported mapping.
     let mut detached = imported.project.clone();
     detached.target_path = Some("missing.sqlite".into());
-    let detached_path = dir.0.join("detached.mfd");
+    let detached_path = dir.path().join("detached.mfd");
     assert!(
         mfd::preflight_export(&detached, &detached_path)
             .unwrap()
             .is_native_compatible()
     );
     mfd::export_with_profile(&detached, &detached_path, mfd::ExportProfile::NativeMfd).unwrap();
-    assert!(!dir.0.join("missing.sqlite").exists());
+    assert!(!dir.path().join("missing.sqlite").exists());
     let detached_import = mfd::import(&detached_path).unwrap();
     assert!(
         detached_import.warnings.is_empty(),
@@ -250,7 +222,7 @@ fn embedded_xml_database_columns_execute_compactly_and_round_trip() {
         node: consumer,
     });
     assert!(engine::validate(&shared).is_empty());
-    let shared_report = mfd::preflight_export(&shared, &dir.0.join("shared.mfd")).unwrap();
+    let shared_report = mfd::preflight_export(&shared, &dir.path().join("shared.mfd")).unwrap();
     assert!(
         shared_report.issues.iter().any(|issue| {
             issue.feature == mfd::ExportCompatibilityFeature::XmlSerializationIndent
@@ -274,12 +246,12 @@ fn local_xml_to_sqlite_field_strict_export_preserves_sqlite_payloads()
     )?;
     let original = engine::run(&imported.project, &input)?;
 
-    let directory = TempDir::new();
-    let original_db = directory.0.join("original.sqlite");
+    let directory = TempDir::new("database_xml_column").unwrap();
+    let original_db = directory.path().join("original.sqlite");
     format_db::write_instance(&original_db, &imported.project.target, &original)?;
     let mut project = imported.project.clone();
     project.target_path = Some(original_db.to_string_lossy().into_owned());
-    let exported_path = directory.0.join("strict.mfd");
+    let exported_path = directory.path().join("strict.mfd");
     let report = mfd::preflight_export(&project, &exported_path)?;
     assert!(report.is_native_compatible(), "{report}");
     mfd::export_with_profile(&project, &exported_path, mfd::ExportProfile::NativeMfd)?;
@@ -287,7 +259,7 @@ fn local_xml_to_sqlite_field_strict_export_preserves_sqlite_payloads()
     assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
     let roundtrip = engine::run(&reimported.project, &input)?;
 
-    let roundtrip_db = directory.0.join("roundtrip.sqlite");
+    let roundtrip_db = directory.path().join("roundtrip.sqlite");
     format_db::write_instance(&roundtrip_db, &reimported.project.target, &roundtrip)?;
     let read_payloads = |database: &Path| -> Result<Vec<String>, rusqlite::Error> {
         let connection = Connection::open(database)?;
@@ -303,10 +275,10 @@ fn local_xml_to_sqlite_field_strict_export_preserves_sqlite_payloads()
 #[test]
 fn relocated_package_resolves_windows_parent_database_xml_schema_and_executes()
 -> Result<(), Box<dyn std::error::Error>> {
-    let directory = TempDir::new();
-    let original = directory.0.join("original");
+    let directory = TempDir::new("database_xml_column").unwrap();
+    let original = directory.path().join("original");
     let mapping = write_packaged_mapping(&original, r"..\..\schemas\catalog.xsd")?;
-    let relocated = directory.0.join("relocated");
+    let relocated = directory.path().join("relocated");
     std::fs::rename(&original, &relocated)?;
     let relocated_mapping = relocated.join(mapping.strip_prefix(&original)?);
     let options = mfd::ImportOptions::default().with_package_root(&relocated);
@@ -334,10 +306,10 @@ fn database_xml_schema_symlink_cannot_escape_selected_package()
 -> Result<(), Box<dyn std::error::Error>> {
     use std::os::unix::fs::symlink;
 
-    let directory = TempDir::new();
-    let package = directory.0.join("package");
+    let directory = TempDir::new("database_xml_column").unwrap();
+    let package = directory.path().join("package");
     let mapping = write_packaged_mapping(&package, r"..\..\schemas\catalog.xsd")?;
-    let outside = directory.0.join("outside.xsd");
+    let outside = directory.path().join("outside.xsd");
     std::fs::write(
         &outside,
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Item" type="xs:string"/></xs:schema>"#,

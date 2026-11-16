@@ -1,30 +1,11 @@
 use std::collections::BTreeMap;
 use std::error::Error;
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{ScalarType, SchemaNode};
 use mapping::{Binding, Graph, NamedSource, NamedTarget, Node, Project, Scope};
 use mfd::{ExportCompatibility, ExportProfile, ExportReport};
 
-struct Fixture(PathBuf);
-impl Fixture {
-    fn new() -> Self {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_xml_root_view_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-impl Drop for Fixture {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir as Fixture;
 
 fn schema(qualified: bool) -> SchemaNode {
     let namespace = if qualified {
@@ -40,8 +21,8 @@ fn schema(qualified: bool) -> SchemaNode {
       <xs:element name="Root" type="{prefix}Base"/>
     </xs:schema>"#
     );
-    let fixture = Fixture::new();
-    let path = fixture.0.join("source.xsd");
+    let fixture = Fixture::new("xml_root_view").unwrap();
+    let path = fixture.path().join("source.xsd");
     std::fs::write(&path, text).unwrap();
     let result = format_xml::xsd::import_root(&path, Some("Root")).unwrap();
     assert!(result.xml_attribute_required_is_valid());
@@ -111,9 +92,9 @@ fn issues(report: &ExportReport) -> Vec<(String, u32)> {
 #[test]
 fn connected_derived_root_fields_have_precise_typed_findings() -> Result<(), Box<dyn Error>> {
     for qualified in [false, true] {
-        let f = Fixture::new();
+        let f = Fixture::new("xml_root_view").unwrap();
         let p = project(schema(qualified), true);
-        let report = mfd::preflight_export(&p, &f.0.join("mapping.mfd"))?;
+        let report = mfd::preflight_export(&p, &f.path().join("mapping.mfd"))?;
         assert_eq!(report.compatibility, ExportCompatibility::FerruleExtensions);
         assert_eq!(
             issues(&report),
@@ -132,19 +113,19 @@ fn connected_derived_root_fields_have_precise_typed_findings() -> Result<(), Box
 
 #[test]
 fn strict_rejection_is_atomic_for_new_and_existing_artifact_sets() -> Result<(), Box<dyn Error>> {
-    let f = Fixture::new();
+    let f = Fixture::new("xml_root_view").unwrap();
     let p = project(schema(false), true);
-    let new = f.0.join("uncreated/mapping.mfd");
+    let new = f.path().join("uncreated/mapping.mfd");
     assert!(matches!(
         mfd::export_with_profile(&p, &new, ExportProfile::NativeMfd),
         Err(mfd::MfdError::IncompatibleExport(_))
     ));
     assert!(!new.parent().unwrap().exists());
-    let path = f.0.join("mapping.mfd");
+    let path = f.path().join("mapping.mfd");
     let siblings = [
         path.clone(),
-        f.0.join("mapping-source.xsd"),
-        f.0.join("mapping-target.xsd"),
+        f.path().join("mapping-source.xsd"),
+        f.path().join("mapping-target.xsd"),
     ];
     for sibling in &siblings {
         std::fs::write(sibling, b"original sentinel")?;
@@ -161,9 +142,9 @@ fn strict_rejection_is_atomic_for_new_and_existing_artifact_sets() -> Result<(),
 
 #[test]
 fn extensions_preserve_design_and_legacy_warning_behavior() -> Result<(), Box<dyn Error>> {
-    let f = Fixture::new();
+    let f = Fixture::new("xml_root_view").unwrap();
     let p = project(schema(false), true);
-    let path = f.0.join("mapping.mfd");
+    let path = f.path().join("mapping.mfd");
     let report = mfd::export_with_profile(&p, &path, ExportProfile::FerruleExtensions)?;
     let first = std::fs::read(&path)?;
     assert_eq!(issues(&report).len(), 2);
@@ -175,16 +156,17 @@ fn extensions_preserve_design_and_legacy_warning_behavior() -> Result<(), Box<dy
 
 #[test]
 fn unconnected_extra_fields_and_unreachable_nodes_remain_native() -> Result<(), Box<dyn Error>> {
-    let f = Fixture::new();
+    let f = Fixture::new("xml_root_view").unwrap();
     let p = project(schema(false), false);
-    let report = mfd::export_with_profile(&p, &f.0.join("mapping.mfd"), ExportProfile::NativeMfd)?;
+    let report =
+        mfd::export_with_profile(&p, &f.path().join("mapping.mfd"), ExportProfile::NativeMfd)?;
     assert!(report.is_native_compatible(), "{report:?}");
     Ok(())
 }
 
 #[test]
 fn child_type_views_are_not_mistaken_for_root_views() -> Result<(), Box<dyn Error>> {
-    let f = Fixture::new();
+    let f = Fixture::new("xml_root_view").unwrap();
     let inner = schema(false);
     let mut p = project(SchemaNode::group("Outer", vec![inner]), true);
     p.graph.nodes = BTreeMap::from([
@@ -220,14 +202,14 @@ fn child_type_views_are_not_mistaken_for_root_views() -> Result<(), Box<dyn Erro
         }],
         ..Scope::default()
     };
-    let report = mfd::preflight_export(&p, &f.0.join("mapping.mfd"))?;
+    let report = mfd::preflight_export(&p, &f.path().join("mapping.mfd"))?;
     assert!(issues(&report).is_empty(), "{report:?}");
     Ok(())
 }
 
 #[test]
 fn named_sources_and_targets_keep_exact_component_ownership() -> Result<(), Box<dyn Error>> {
-    let f = Fixture::new();
+    let f = Fixture::new("xml_root_view").unwrap();
     let union = schema(false);
     let mut p = project(union.clone(), false);
     p.extra_sources.push(NamedSource {
@@ -257,7 +239,7 @@ fn named_sources_and_targets_keep_exact_component_ownership() -> Result<(), Box<
             ..Scope::default()
         },
     });
-    let report = mfd::preflight_export(&p, &f.0.join("mapping.mfd"))?;
+    let report = mfd::preflight_export(&p, &f.path().join("mapping.mfd"))?;
     assert_eq!(
         issues(&report),
         vec![("Secondary".into(), 3), ("Additional".into(), 5)]
@@ -268,11 +250,11 @@ fn named_sources_and_targets_keep_exact_component_ownership() -> Result<(), Box<
 
 #[test]
 fn physical_reserved_wrapper_names_retain_structural_identity() -> Result<(), Box<dyn Error>> {
-    let f = Fixture::new();
+    let f = Fixture::new("xml_root_view").unwrap();
     let mut p = project(schema(false), true);
     p.source.name = "document".into();
     p.target.name = "FileInstance".into();
-    let report = mfd::preflight_export(&p, &f.0.join("mapping.mfd"))?;
+    let report = mfd::preflight_export(&p, &f.path().join("mapping.mfd"))?;
     assert_eq!(
         issues(&report),
         vec![("document".into(), 2), ("FileInstance".into(), 3)]
@@ -282,11 +264,11 @@ fn physical_reserved_wrapper_names_retain_structural_identity() -> Result<(), Bo
 
 #[test]
 fn non_xml_formats_are_not_classified_as_xml_root_view_failures() -> Result<(), Box<dyn Error>> {
-    let f = Fixture::new();
+    let f = Fixture::new("xml_root_view").unwrap();
     let mut p = project(schema(false), true);
     p.source_path = Some("input.json".into());
     p.target_path = Some("output.json".into());
-    let report = mfd::preflight_export(&p, &f.0.join("mapping.mfd"))?;
+    let report = mfd::preflight_export(&p, &f.path().join("mapping.mfd"))?;
     assert!(issues(&report).is_empty(), "{report:?}");
     let ordinary = SchemaNode::group(
         "Plain",
@@ -294,14 +276,14 @@ fn non_xml_formats_are_not_classified_as_xml_root_view_failures() -> Result<(), 
     );
     let mut p = project(ordinary, false);
     p.graph.nodes.remove(&1);
-    assert!(mfd::preflight_export(&p, &f.0.join("plain.mfd"))?.is_native_compatible());
+    assert!(mfd::preflight_export(&p, &f.path().join("plain.mfd"))?.is_native_compatible());
     Ok(())
 }
 
 #[test]
 fn connected_descendants_of_unowned_root_groups_are_not_missed() -> Result<(), Box<dyn Error>> {
     for source_side in [true, false] {
-        let f = Fixture::new();
+        let f = Fixture::new("xml_root_view").unwrap();
         let mut union = schema(false);
         let ir::SchemaKind::Group { children, .. } = &mut union.kind else {
             unreachable!()
@@ -385,7 +367,7 @@ fn connected_descendants_of_unowned_root_groups_are_not_missed() -> Result<(), B
         let output = engine::run(&p, &input)?;
         let serialized = format_xml::to_string(&p.target, &output)?;
         format_xml::from_str(&serialized, &p.target)?;
-        let path = f.0.join("mapping.mfd");
+        let path = f.path().join("mapping.mfd");
         let report = mfd::export_with_profile(&p, &path, ExportProfile::FerruleExtensions)?;
         let expected_uid = if source_side { 2 } else { 3 };
         assert_eq!(issues(&report), vec![("Root".into(), expected_uid)]);
@@ -432,7 +414,7 @@ fn connected_descendants_of_unowned_root_groups_are_not_missed() -> Result<(), B
 fn equal_member_and_singleton_declared_views_keep_native_compatibility()
 -> Result<(), Box<dyn Error>> {
     for singleton in [false, true] {
-        let f = Fixture::new();
+        let f = Fixture::new("xml_root_view").unwrap();
         let mut union = schema(false);
         let ir::SchemaKind::Group {
             children,
@@ -452,7 +434,7 @@ fn equal_member_and_singleton_declared_views_keep_native_compatibility()
         assert!(union.metadata_is_valid());
         let mut p = project(union, false);
         p.graph.nodes.remove(&1);
-        assert!(mfd::preflight_export(&p, &f.0.join("mapping.mfd"))?.is_native_compatible());
+        assert!(mfd::preflight_export(&p, &f.path().join("mapping.mfd"))?.is_native_compatible());
     }
     Ok(())
 }

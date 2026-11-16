@@ -1,35 +1,8 @@
 use std::error::Error;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use mapping::{Node, XbrlBoundaryMode};
 
-struct TempDir(PathBuf);
-
-static NEXT_DIR: AtomicU64 = AtomicU64::new(0);
-
-impl TempDir {
-    fn new() -> std::io::Result<Self> {
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_xbrl_import_{}_{}",
-            std::process::id(),
-            NEXT_DIR.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
-
-fn write(path: &Path, contents: &str) -> std::io::Result<()> {
-    std::fs::write(path, contents)
-}
+use test_support::TempDir;
 
 fn missing(description: &str) -> std::io::Error {
     std::io::Error::other(description)
@@ -37,17 +10,17 @@ fn missing(description: &str) -> std::io::Error {
 
 #[test]
 fn xbrl_source_boundary_retains_paths_and_xml_binding() -> Result<(), Box<dyn Error>> {
-    let dir = TempDir::new()?;
-    write(
-        &dir.0.join("target.xsd"),
+    let dir = TempDir::new("mfd_xbrl_import")?;
+    dir.write(
+        "target.xsd",
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:element name="Target"><xs:complexType><xs:sequence>
     <xs:element name="Amount" type="xs:string"/>
   </xs:sequence></xs:complexType></xs:element>
 </xs:schema>"#,
     )?;
-    write(
-        &dir.0.join("source-boundary.mfd"),
+    dir.write(
+        "source-boundary.mfd",
         r#"<mapping version="26"><resources/>
   <component name="map"><structure><children>
     <component name="Facts" library="xbrl" kind="27"><data>
@@ -69,7 +42,7 @@ fn xbrl_source_boundary_retains_paths_and_xml_binding() -> Result<(), Box<dyn Er
 </mapping>"#,
     )?;
 
-    let imported = mfd::import(&dir.0.join("source-boundary.mfd"))?;
+    let imported = mfd::import(&dir.path().join("source-boundary.mfd"))?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
 
@@ -113,22 +86,19 @@ fn xbrl_source_boundary_retains_paths_and_xml_binding() -> Result<(), Box<dyn Er
 
 #[test]
 fn xbrl_target_boundary_retains_presentation_and_nested_binding() -> Result<(), Box<dyn Error>> {
-    let dir = TempDir::new()?;
-    std::fs::create_dir_all(dir.0.join("presentation"))?;
-    write(
-        &dir.0.join("presentation/table.sps"),
-        r#"<structure xmlns:ex="urn:example"><template subtype="xbrl-concept-aspect" match="ex:Amount"><children><calltemplate subtype="named" match="monetaryItemType"/></children></template></structure>"#,
-    )?;
-    write(
-        &dir.0.join("source.xsd"),
+    let dir = TempDir::new("mfd_xbrl_import")?;
+    std::fs::create_dir_all(dir.path().join("presentation"))?;
+    dir.write("presentation/table.sps", r#"<structure xmlns:ex="urn:example"><template subtype="xbrl-concept-aspect" match="ex:Amount"><children><calltemplate subtype="named" match="monetaryItemType"/></children></template></structure>"#)?;
+    dir.write(
+        "source.xsd",
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:element name="Source"><xs:complexType><xs:sequence>
     <xs:element name="Value" type="xs:string"/>
   </xs:sequence></xs:complexType></xs:element>
 </xs:schema>"#,
     )?;
-    write(
-        &dir.0.join("target-boundary.mfd"),
+    dir.write(
+        "target-boundary.mfd",
         r#"<mapping version="26"><resources/>
   <component name="map"><structure><children>
     <component name="Source" library="xml" kind="14"><data>
@@ -150,7 +120,7 @@ fn xbrl_target_boundary_retains_presentation_and_nested_binding() -> Result<(), 
 </mapping>"#,
     )?;
 
-    let imported = mfd::import(&dir.0.join("target-boundary.mfd"))?;
+    let imported = mfd::import(&dir.path().join("target-boundary.mfd"))?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
 

@@ -1,33 +1,11 @@
 use std::collections::BTreeMap;
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{Instance, ScalarType, SchemaNode, Value};
 use mapping::{
     Binding, Graph, IterationOutput, Node, Project, Scope, ScopeIteration, SequenceWindow,
 };
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Self {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_mapped_group_sequence_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 #[test]
 fn copied_variable_mapped_output_roundtrips_controls_and_positions() {
@@ -205,8 +183,8 @@ fn copied_variable_mapped_output_roundtrips_controls_and_positions() {
         Some(&Instance::MappedSequence(Vec::new()))
     );
 
-    let dir = TempDir::new();
-    let first_export = dir.0.join("first.mfd");
+    let dir = TempDir::new("mfd_mapped_group_sequence").unwrap();
+    let first_export = dir.path().join("first.mfd");
     assert!(mfd::export(&project, &first_export).unwrap().is_empty());
     let design = std::fs::read_to_string(&first_export).unwrap();
     assert!(design.contains("name=\"scope-sequence\""));
@@ -235,7 +213,7 @@ fn copied_variable_mapped_output_roundtrips_controls_and_positions() {
     assert_eq!(selected.windows.len(), 2);
     assert_eq!(engine::run(&imported.project, &source).unwrap(), expected);
 
-    let second_export = dir.0.join("second.mfd");
+    let second_export = dir.path().join("second.mfd");
     assert!(
         mfd::export(&imported.project, &second_export)
             .unwrap()
@@ -257,15 +235,15 @@ fn copied_variable_mapped_output_roundtrips_controls_and_positions() {
 
 #[test]
 fn copied_active_collection_remains_owned_by_the_parent() {
-    let dir = TempDir::new();
+    let dir = TempDir::new("mfd_mapped_group_sequence").unwrap();
     for (name, root, child) in [
         ("source.xsd", "Source", "Item"),
         ("variable.xsd", "Buffer", "Item"),
     ] {
-        std::fs::write(dir.0.join(name), format!("<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\"><xs:element name=\"{root}\"><xs:complexType><xs:sequence><xs:element name=\"{child}\" maxOccurs=\"unbounded\"><xs:complexType><xs:sequence><xs:element name=\"Value\" type=\"xs:string\"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>")).unwrap();
+        std::fs::write(dir.path().join(name), format!("<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\"><xs:element name=\"{root}\"><xs:complexType><xs:sequence><xs:element name=\"{child}\" maxOccurs=\"unbounded\"><xs:complexType><xs:sequence><xs:element name=\"Value\" type=\"xs:string\"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>")).unwrap();
     }
-    std::fs::write(dir.0.join("target.xsd"), r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Target"><xs:complexType><xs:sequence><xs:element name="Item" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Selected"><xs:complexType><xs:sequence><xs:element name="Value" type="xs:string"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#).unwrap();
-    let design = dir.0.join("mapping.mfd");
+    std::fs::write(dir.path().join("target.xsd"), r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Target"><xs:complexType><xs:sequence><xs:element name="Item" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Selected"><xs:complexType><xs:sequence><xs:element name="Value" type="xs:string"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#).unwrap();
+    let design = dir.path().join("mapping.mfd");
     std::fs::write(&design, r#"<mapping version="26"><component name="map"><structure><children>
       <component name="source" library="xml" kind="14"><data><root><entry name="Source"><entry name="Item" outkey="10"><entry name="Value" outkey="11"/></entry></entry></root><document schema="source.xsd" inputinstance="source.xml" instanceroot="{}Source"/></data></component>
       <component name="payload" library="xml" kind="14"><data><parameter usageKind="variable"/><root><entry name="Buffer"><entry name="Item" inpkey="20" outkey="30"><entry name="Value" outkey="31"/></entry></entry></root><document schema="variable.xsd" instanceroot="{}Buffer"/></data></component>

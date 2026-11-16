@@ -1,29 +1,8 @@
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{Instance, Value, XML_TEXT_FIELD};
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Result<Self, std::io::Error> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_cloned_xml_occurrence_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn write_fixture(dir: &Path) -> Result<PathBuf, std::io::Error> {
     std::fs::write(
@@ -92,8 +71,8 @@ fn write_fixture(dir: &Path) -> Result<PathBuf, std::io::Error> {
 #[test]
 fn cloned_occurrence_branches_keep_their_own_descendant_bindings()
 -> Result<(), Box<dyn std::error::Error>> {
-    let dir = TempDir::new()?;
-    let imported = mfd::import(&write_fixture(&dir.0)?)?;
+    let dir = TempDir::new("mfd_cloned_xml_occurrence")?;
+    let imported = mfd::import(&write_fixture(dir.path())?)?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
 
@@ -158,8 +137,8 @@ fn cloned_occurrence_branches_keep_their_own_descendant_bindings()
 #[test]
 fn copy_all_clone_completes_a_mixed_structural_sequence() -> Result<(), Box<dyn std::error::Error>>
 {
-    let dir = TempDir::new()?;
-    let design = write_fixture(&dir.0)?;
+    let dir = TempDir::new("mfd_cloned_xml_occurrence")?;
+    let design = write_fixture(dir.path())?;
     let mapping = std::fs::read_to_string(&design)?
         .replace(
             "</children><graph><vertices>",
@@ -228,7 +207,7 @@ fn copy_all_clone_completes_a_mixed_structural_sequence() -> Result<(), Box<dyn 
         Some(&Value::String("C1".into()))
     );
 
-    let exported = dir.0.join("roundtrip.mfd");
+    let exported = dir.path().join("roundtrip.mfd");
     let warnings = mfd::export(&imported.project, &exported)?;
     assert!(warnings.is_empty(), "{warnings:?}");
     assert!(std::fs::read_to_string(&exported)?.contains(r#"<dataconnection type="2"/>"#));
@@ -255,8 +234,8 @@ fn copy_all_clone_completes_a_mixed_structural_sequence() -> Result<(), Box<dyn 
 #[test]
 fn structural_branch_without_content_is_not_silently_concatenated()
 -> Result<(), Box<dyn std::error::Error>> {
-    let dir = TempDir::new()?;
-    let design = write_fixture(&dir.0)?;
+    let dir = TempDir::new("mfd_cloned_xml_occurrence")?;
+    let design = write_fixture(dir.path())?;
     let mut mapping = std::fs::read_to_string(&design)?;
     for vertex in [
         r#"<vertex vertexkey="21"><edges><edge vertexkey="41"/></edges></vertex>"#,
@@ -286,16 +265,16 @@ fn structural_branch_without_content_is_not_silently_concatenated()
 #[test]
 fn absent_edi_composites_do_not_emit_empty_cloned_occurrences()
 -> Result<(), Box<dyn std::error::Error>> {
-    let dir = TempDir::new()?;
+    let dir = TempDir::new("mfd_cloned_xml_occurrence")?;
     std::fs::write(
-        dir.0.join("target.xsd"),
+        dir.path().join("target.xsd"),
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
           <xs:element name="Result"><xs:complexType><xs:sequence>
             <xs:element name="Station" maxOccurs="unbounded"><xs:complexType><xs:attribute name="code" type="xs:string"/></xs:complexType></xs:element>
           </xs:sequence></xs:complexType></xs:element>
         </xs:schema>"#,
     )?;
-    let design = dir.0.join("mapping.mfd");
+    let design = dir.path().join("mapping.mfd");
     std::fs::write(
         &design,
         r#"<mapping version="26"><component name="map"><structure><children>
@@ -394,8 +373,8 @@ fn absent_edi_composites_do_not_emit_empty_cloned_occurrences()
 #[test]
 fn scalar_only_cloned_occurrences_keep_document_order_around_sequences()
 -> Result<(), Box<dyn std::error::Error>> {
-    let dir = TempDir::new()?;
-    let design = write_fixture(&dir.0)?;
+    let dir = TempDir::new("mfd_cloned_xml_occurrence")?;
+    let design = write_fixture(dir.path())?;
     let mut mapping = std::fs::read_to_string(&design)?;
     mapping = mapping.replace(
         r#"<entry name="Header" inpkey="50"/>"#,
@@ -472,9 +451,9 @@ fn scalar_only_cloned_occurrences_keep_document_order_around_sequences()
 #[test]
 fn cloned_repeating_scalars_use_entry_order_instead_of_pin_order()
 -> Result<(), Box<dyn std::error::Error>> {
-    let dir = TempDir::new()?;
+    let dir = TempDir::new("mfd_cloned_xml_occurrence")?;
     std::fs::write(
-        dir.0.join("source.xsd"),
+        dir.path().join("source.xsd"),
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:element name="Source"><xs:complexType><xs:sequence>
     <xs:element name="Street" type="xs:string"/>
@@ -483,7 +462,7 @@ fn cloned_repeating_scalars_use_entry_order_instead_of_pin_order()
 </xs:schema>"#,
     )?;
     std::fs::write(
-        dir.0.join("target.xsd"),
+        dir.path().join("target.xsd"),
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:element name="Target"><xs:complexType><xs:sequence>
     <xs:element name="Address"><xs:complexType><xs:sequence>
@@ -492,7 +471,7 @@ fn cloned_repeating_scalars_use_entry_order_instead_of_pin_order()
   </xs:sequence></xs:complexType></xs:element>
 </xs:schema>"#,
     )?;
-    let mapping = dir.0.join("mapping.mfd");
+    let mapping = dir.path().join("mapping.mfd");
     std::fs::write(
         &mapping,
         r#"<mapping version="26"><component name="map"><structure><children>
