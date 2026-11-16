@@ -296,7 +296,7 @@ fn generated_join_package_preserves_named_sources_compaction_and_static_children
         .join("../codegen-runtime")
         .canonicalize()
         .unwrap();
-    let output = TempDir::new("rust_join_codegen");
+    let output = TempDir::new("rust_join_codegen").unwrap();
     let artifacts = emit(
         &join_program(),
         &Options {

@@ -227,7 +227,7 @@ fn generated_dynamic_source_fields_execute_exact_null_semantics() {
         .parent()
         .map(|parent| parent.join("codegen-runtime"))
         .unwrap_or_default();
-    let output = TempDir::new("rust_dynamic_source_codegen");
+    let output = TempDir::new("rust_dynamic_source_codegen").unwrap();
     let artifacts = emit(
         &fixture(),
         &Options {
@@ -313,7 +313,7 @@ fn generated_per_driver_dynamic_sources_execute_typed_and_json_host_contracts() 
         .parent()
         .map(|parent| parent.join("codegen-runtime"))
         .unwrap_or_default();
-    let output = TempDir::new("rust_per_driver_dynamic_source_codegen");
+    let output = TempDir::new("rust_per_driver_dynamic_source_codegen").unwrap();
     let artifacts = emit(
         &dynamic_document_fixture(),
         &Options {
@@ -690,7 +690,7 @@ fn generated_unused_dynamic_source_keeps_loader_and_context_reads_lazy_without_w
         .parent()
         .map(|parent| parent.join("codegen-runtime"))
         .unwrap_or_default();
-    let output = TempDir::new("rust_unused_dynamic_source_codegen");
+    let output = TempDir::new("rust_unused_dynamic_source_codegen").unwrap();
     let artifacts = emit(
         &unused_second_document_fixture(),
         &Options {

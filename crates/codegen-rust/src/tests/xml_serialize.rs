@@ -312,7 +312,7 @@ fn generated_xml_serialization_matches_engine_and_retains_typed_errors() {
         .join("../codegen-runtime")
         .canonicalize()
         .expect("runtime path is canonical");
-    let output = TempDir::new("rust_xml_serialize_codegen");
+    let output = TempDir::new("rust_xml_serialize_codegen").unwrap();
     let artifacts = emit(
         &program,
         &Options {

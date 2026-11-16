@@ -522,7 +522,7 @@ fn starting_catalogues_are_complete_exact_and_phase_aware() {
 
 #[test]
 fn starting_literal_public_consumer_keeps_prefix_consecutive_starts_and_typed_errors() {
-    let directory = TempDir::new("owned_starting_consumer");
+    let directory = TempDir::new("owned_starting_consumer").unwrap();
     let mut plain = project(SourceOwner::Primary);
     plain.extra_sources.clear();
     let mut post = plain.clone();
