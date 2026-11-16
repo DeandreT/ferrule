@@ -311,20 +311,21 @@ mod tests {
 
     #[test]
     fn a_changed_runtime_directory_is_refused_before_binding() {
-        let root =
-            std::env::temp_dir().join(format!("ferrule_runtime_identity_{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&root);
-        std::fs::create_dir_all(root.join("src")).unwrap();
+        let directory = test_support::TempDir::new("runtime_identity").unwrap();
+        let root = directory.path().to_path_buf();
         for name in ["Cargo.toml", "build.rs", "identity.rs"] {
-            std::fs::write(root.join(name), name).unwrap();
+            directory.write(name, name).unwrap();
         }
-        std::fs::write(root.join("src/lib.rs"), "pub fn changed() {}").unwrap();
+        directory
+            .write("src/lib.rs", "pub fn changed() {}")
+            .unwrap();
         let error = verify_runtime_path(&root).unwrap_err();
         assert!(matches!(
             &error,
             RuntimeBindingError::Mismatch { required, found, .. }
                 if required.as_str() == RUNTIME_IDENTITY && found != required
         ));
+        // Removing the runtime is part of this test, even when fixtures are retained.
         std::fs::remove_dir_all(&root).unwrap();
         assert!(matches!(
             verify_runtime_path(&root),

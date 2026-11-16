@@ -96,7 +96,7 @@ fn generated_json_boundaries_enforce_and_preserve_object_openness()
     assert!(generated_source.contains(r#"\"dynamic\":{\"name\":\"*\""#));
     assert!(generated_source.contains(r#"\"json_any\":true"#));
 
-    let output = TempDir::new("rust_json_object_openness_codegen");
+    let output = TempDir::new("rust_json_object_openness_codegen").unwrap();
     write_artifacts(output.path(), &artifacts);
     let harness = r##"use codegen_runtime::JsonBoundaryError;
 use generated_object_openness::NamedJsonInput;
