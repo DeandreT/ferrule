@@ -272,7 +272,7 @@ fn generated_mixed_content_keeps_owned_absence_like_the_interpreter() {
         .join("../codegen-runtime")
         .canonicalize()
         .expect("runtime path exists");
-    let output = TempDir::new("rust_xml_mixed_owned_absence_codegen");
+    let output = TempDir::new("rust_xml_mixed_owned_absence_codegen").unwrap();
     let program = codegen::lower(&project).expect("mixed-content project lowers");
     let artifacts = emit(
         &program,

@@ -231,7 +231,7 @@ fn generated_fixed_width_flextext_projection_executes_the_embedded_layout() {
         .parent()
         .map(|parent| parent.join("codegen-runtime"))
         .expect("runtime has a workspace parent");
-    let output = TempDir::new("rust_fixed_width_flextext_codegen");
+    let output = TempDir::new("rust_fixed_width_flextext_codegen").unwrap();
     let program = Program {
         execution_contract: None,
         xml_boundary: None,

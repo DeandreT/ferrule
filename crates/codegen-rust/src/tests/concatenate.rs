@@ -215,7 +215,7 @@ fn generated_scope_sequences_match_engine_order_controls_and_nested_content() {
         )),
     )
     .expect("scope sequence package emits");
-    let output = TempDir::new("rust_scope_sequence_codegen");
+    let output = TempDir::new("rust_scope_sequence_codegen").unwrap();
     write_artifacts(output.path(), &artifacts);
     fs::write(
         output.path().join("src/main.rs"),
