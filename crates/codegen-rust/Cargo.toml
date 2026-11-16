@@ -18,3 +18,4 @@ sha2 = { workspace = true }
 
 [dev-dependencies]
 engine = { workspace = true }
+test-support = { workspace = true }

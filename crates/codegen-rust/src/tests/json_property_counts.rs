@@ -148,7 +148,7 @@ fn generated_json_boundaries_enforce_exact_object_property_counts()
         .ok_or("generated Rust source is present UTF-8")?;
     assert!(generated_source.contains(r#"\"property_count_range\":{\"minimum\":3,\"maximum\":5}"#));
 
-    let output = TempDir::new("rust_json_property_count_codegen");
+    let output = TempDir::new("rust_json_property_count_codegen").unwrap();
     write_artifacts(output.path(), &artifacts);
     let harness = r##"use codegen_runtime::JsonBoundaryError;
 use generated_property_counts::NamedJsonInput;

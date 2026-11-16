@@ -82,7 +82,7 @@ fn generated_json_entry_point_enforces_input_and_normalized_output_patterns() {
     };
     assert!(generated_source.contains(r#"\"json_patterns\":{\"any_of\":[[\"^[A-Z]+$\"]"#));
 
-    let output = TempDir::new("rust_json_pattern_codegen");
+    let output = TempDir::new("rust_json_pattern_codegen").unwrap();
     write_artifacts(output.path(), &artifacts);
     let harness = r##"use codegen_runtime::JsonBoundaryError;
 

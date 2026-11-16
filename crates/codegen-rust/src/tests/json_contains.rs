@@ -180,7 +180,7 @@ fn generated_json_boundaries_enforce_contains_counts() -> Result<(), Box<dyn std
     assert!(generated_source.contains(r#"\"json_contains\":[{\"predicate\":{\"kind\":\"schema\""#));
     assert!(generated_source.contains(r#"\"minimum\":2,\"maximum\":2"#));
 
-    let output = TempDir::new("rust_json_contains_codegen");
+    let output = TempDir::new("rust_json_contains_codegen").unwrap();
     write_artifacts(output.path(), &artifacts);
     let harness = r##"use codegen_runtime::JsonBoundaryError;
 use generated_contains::{NamedJsonBytesInput, NamedJsonInput};
@@ -290,7 +290,7 @@ fn generated_contains_patterns_preserve_typed_work_limit_errors()
             runtime_dependency: RuntimeDependency::Path(runtime.display().to_string()),
         },
     )?;
-    let output = TempDir::new("rust_json_contains_budget_codegen");
+    let output = TempDir::new("rust_json_contains_budget_codegen").unwrap();
     write_artifacts(output.path(), &artifacts);
     let harness = r##"use codegen_runtime::JsonBoundaryError;
 

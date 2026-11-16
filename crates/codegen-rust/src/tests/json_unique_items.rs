@@ -81,7 +81,7 @@ fn generated_json_entry_point_enforces_exact_unique_items() -> Result<(), Box<dy
         .ok_or("generated Rust source is present UTF-8")?;
     assert!(generated_source.contains(r#"\"json_unique_items\":true"#));
 
-    let output = TempDir::new("rust_json_unique_items_codegen");
+    let output = TempDir::new("rust_json_unique_items_codegen").unwrap();
     write_artifacts(output.path(), &artifacts);
     let harness = r##"use codegen_runtime::JsonBoundaryError;
 

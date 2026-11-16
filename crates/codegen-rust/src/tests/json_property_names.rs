@@ -273,7 +273,7 @@ fn generated_json_boundaries_enforce_property_names_on_actual_keys()
     assert!(generated_source.contains(r#"\"^private$\""#));
     assert!(generated_source.contains(r#"\"json_property_names\":{\"kind\":\"never\"}"#));
 
-    let output = TempDir::new("rust_json_property_names_codegen");
+    let output = TempDir::new("rust_json_property_names_codegen").unwrap();
     write_artifacts(output.path(), &artifacts);
     let harness = r##"use generated_property_names::{NamedJsonBytesInput, NamedJsonInput};
 use codegen_runtime::JsonBoundaryError;
@@ -479,7 +479,7 @@ fn generated_property_name_matching_has_a_bounded_work_budget()
             runtime_dependency: RuntimeDependency::Path(runtime.display().to_string()),
         },
     )?;
-    let output = TempDir::new("rust_json_property_name_budget_codegen");
+    let output = TempDir::new("rust_json_property_name_budget_codegen").unwrap();
     write_artifacts(output.path(), &artifacts);
     let harness = r##"use codegen_runtime::JsonBoundaryError;
 
