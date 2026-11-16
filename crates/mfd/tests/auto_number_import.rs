@@ -1,30 +1,9 @@
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{Instance, Value};
 use mapping::{Scope, ScopeIteration, ScopeSequence};
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Result<Self, std::io::Error> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_auto_number_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn write_fixture(dir: &Path) -> Result<PathBuf, std::io::Error> {
     std::fs::write(
@@ -82,8 +61,8 @@ fn write_fixture(dir: &Path) -> Result<PathBuf, std::io::Error> {
 #[test]
 fn auto_number_uses_current_position_start_and_increment() -> Result<(), Box<dyn std::error::Error>>
 {
-    let dir = TempDir::new()?;
-    let imported = mfd::import(&write_fixture(&dir.0)?)?;
+    let dir = TempDir::new("mfd_auto_number")?;
+    let imported = mfd::import(&write_fixture(dir.path())?)?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
 
@@ -107,7 +86,7 @@ fn auto_number_uses_current_position_start_and_increment() -> Result<(), Box<dyn
         .collect::<Vec<_>>();
     assert_eq!(numbers, [&Value::Int(5), &Value::Int(7)]);
 
-    let exported = dir.0.join("exported.mfd");
+    let exported = dir.path().join("exported.mfd");
     let warnings = mfd::export(&imported.project, &exported)?;
     assert!(warnings.is_empty(), "{warnings:?}");
     let xml = std::fs::read_to_string(&exported)?;
@@ -126,8 +105,8 @@ fn auto_number_uses_current_position_start_and_increment() -> Result<(), Box<dyn
 #[test]
 fn shared_auto_number_roundtrips_across_concatenated_target_branches()
 -> Result<(), Box<dyn std::error::Error>> {
-    let dir = TempDir::new()?;
-    let mut project = mfd::import(&write_fixture(&dir.0)?)?.project;
+    let dir = TempDir::new("mfd_auto_number")?;
+    let mut project = mfd::import(&write_fixture(dir.path())?)?.project;
     let mut row = project
         .root
         .children
@@ -169,7 +148,7 @@ fn shared_auto_number_roundtrips_across_concatenated_target_branches()
         ]
     );
 
-    let exported = dir.0.join("concatenated.mfd");
+    let exported = dir.path().join("concatenated.mfd");
     let warnings = mfd::export(&project, &exported)?;
     assert!(warnings.is_empty(), "{warnings:?}");
     let xml = std::fs::read_to_string(&exported)?;
@@ -181,7 +160,7 @@ fn shared_auto_number_roundtrips_across_concatenated_target_branches()
     assert!(engine::validate(&reimported.project).is_empty());
     assert_eq!(engine::run(&reimported.project, &input)?, expected);
 
-    let second_export = dir.0.join("concatenated-second.mfd");
+    let second_export = dir.path().join("concatenated-second.mfd");
     let warnings = mfd::export(&reimported.project, &second_export)?;
     assert!(warnings.is_empty(), "{warnings:?}");
     Ok(())
@@ -190,9 +169,9 @@ fn shared_auto_number_roundtrips_across_concatenated_target_branches()
 #[test]
 fn restart_on_change_uses_position_in_a_related_nested_scope()
 -> Result<(), Box<dyn std::error::Error>> {
-    let dir = TempDir::new()?;
+    let dir = TempDir::new("mfd_auto_number")?;
     std::fs::write(
-        dir.0.join("source.xsd"),
+        dir.path().join("source.xsd"),
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:element name="Source"><xs:complexType><xs:sequence>
     <xs:element name="Order" maxOccurs="unbounded"><xs:complexType><xs:sequence>
@@ -207,7 +186,7 @@ fn restart_on_change_uses_position_in_a_related_nested_scope()
 </xs:schema>"#,
     )?;
     std::fs::write(
-        dir.0.join("target.xsd"),
+        dir.path().join("target.xsd"),
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:element name="Target"><xs:complexType><xs:sequence>
     <xs:element name="Order" maxOccurs="unbounded"><xs:complexType><xs:sequence>
@@ -219,7 +198,7 @@ fn restart_on_change_uses_position_in_a_related_nested_scope()
   </xs:sequence></xs:complexType></xs:element>
 </xs:schema>"#,
     )?;
-    let design = dir.0.join("restart.mfd");
+    let design = dir.path().join("restart.mfd");
     std::fs::write(
         &design,
         r#"<mapping version="26"><component name="map"><structure><children>

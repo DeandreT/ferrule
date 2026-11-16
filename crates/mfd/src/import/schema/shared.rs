@@ -398,60 +398,40 @@ pub(in crate::import) fn is_default_output(component: &roxmltree::Node) -> bool 
 
 #[cfg(test)]
 mod tests {
-    use std::sync::atomic::{AtomicUsize, Ordering};
 
     use super::*;
 
-    struct TempDir(PathBuf);
-
-    impl TempDir {
-        fn new() -> Self {
-            static NEXT: AtomicUsize = AtomicUsize::new(0);
-            let path = std::env::temp_dir().join(format!(
-                "ferrule_mfd_schema_reference_{}_{}",
-                std::process::id(),
-                NEXT.fetch_add(1, Ordering::Relaxed)
-            ));
-            let _ = std::fs::remove_dir_all(&path);
-            std::fs::create_dir_all(&path).unwrap();
-            Self(path)
-        }
-    }
-
-    impl Drop for TempDir {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_dir_all(&self.0);
-        }
-    }
+    use test_support::TempDir;
 
     #[test]
     fn exact_schema_reference_takes_precedence() {
-        let dir = TempDir::new();
-        let exact = dir.0.join("input.xsd");
+        let dir = TempDir::new("mfd_schema_reference").unwrap();
+        let exact = dir.path().join("input.xsd");
         std::fs::write(&exact, "exact").unwrap();
-        let fallback = dir.0.join("INPUT.XSD");
+        let fallback = dir.path().join("INPUT.XSD");
         if !fallback.exists() {
             // Distinct case-only siblings require a case-sensitive filesystem.
             std::fs::write(fallback, "fallback").unwrap();
         }
 
         let resolved =
-            resolve_xml_schema_reference(&dir.0.join("mapping.mfd"), "input.xsd").unwrap();
+            resolve_xml_schema_reference(&dir.path().join("mapping.mfd"), "input.xsd").unwrap();
         assert_eq!(resolved, exact);
         assert_eq!(std::fs::read_to_string(resolved).unwrap(), "exact");
     }
 
     #[test]
     fn schema_reference_fallback_is_unique_and_stays_in_its_parent() {
-        let dir = TempDir::new();
-        let schemas = dir.0.join("schemas");
+        let dir = TempDir::new("mfd_schema_reference").unwrap();
+        let schemas = dir.path().join("schemas");
         std::fs::create_dir(&schemas).unwrap();
         let matched = schemas.join("Input.xsd");
         std::fs::write(&matched, "schema").unwrap();
-        std::fs::write(dir.0.join("INPUT.XSD"), "wrong parent").unwrap();
+        std::fs::write(dir.path().join("INPUT.XSD"), "wrong parent").unwrap();
 
         let resolved =
-            resolve_xml_schema_reference(&dir.0.join("mapping.mfd"), "schemas\\input.xsd").unwrap();
+            resolve_xml_schema_reference(&dir.path().join("mapping.mfd"), "schemas\\input.xsd")
+                .unwrap();
         if schemas.join("input.xsd").is_file() {
             assert_eq!(resolved, schemas.join("input.xsd"));
         } else {
@@ -466,20 +446,20 @@ mod tests {
     #[cfg(target_os = "linux")]
     #[test]
     fn ambiguous_schema_references_are_rejected() {
-        let dir = TempDir::new();
-        std::fs::write(dir.0.join("Input.xsd"), "first").unwrap();
-        std::fs::write(dir.0.join("INPUT.XSD"), "second").unwrap();
+        let dir = TempDir::new("mfd_schema_reference").unwrap();
+        std::fs::write(dir.path().join("Input.xsd"), "first").unwrap();
+        std::fs::write(dir.path().join("INPUT.XSD"), "second").unwrap();
 
         let ambiguous =
-            resolve_xml_schema_reference(&dir.0.join("mapping.mfd"), "input.xsd").unwrap_err();
+            resolve_xml_schema_reference(&dir.path().join("mapping.mfd"), "input.xsd").unwrap_err();
         assert!(ambiguous.contains("multiple case-insensitive sibling matches"));
     }
 
     #[test]
     fn missing_schema_references_are_rejected() {
-        let dir = TempDir::new();
-        let missing =
-            resolve_xml_schema_reference(&dir.0.join("mapping.mfd"), "missing.xsd").unwrap_err();
+        let dir = TempDir::new("mfd_schema_reference").unwrap();
+        let missing = resolve_xml_schema_reference(&dir.path().join("mapping.mfd"), "missing.xsd")
+            .unwrap_err();
         assert!(missing.contains("was not found"));
     }
 

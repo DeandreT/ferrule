@@ -35,8 +35,8 @@ fn mixed_direction_sort_keys_execute_and_roundtrip() {
         ["First", "Tie", "Second", "Third", "Low"].map(|name| Value::String(name.into()))
     );
 
-    let dir = TempDir::new("mixed_sort");
-    let design = dir.0.join("mixed-sort.mfd");
+    let dir = TempDir::new("mixed_sort").unwrap();
+    let design = dir.path().join("mixed-sort.mfd");
     let warnings = mfd::export(&project, &design).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
     let exported = std::fs::read_to_string(&design).unwrap();
@@ -104,8 +104,8 @@ fn group_starting_with_imports_executes_and_roundtrips() {
     assert_eq!(scalar(&groups[2], "First"), Value::String("delta".into()));
     assert_eq!(scalar(&groups[2], "Count"), Value::Int(1));
 
-    let dir = TempDir::new("group_starting");
-    let out = dir.0.join("group-starting.mfd");
+    let dir = TempDir::new("group_starting").unwrap();
+    let out = dir.path().join("group-starting.mfd");
     let warnings = mfd::export(&imported.project, &out).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
     let exported = std::fs::read_to_string(&out).unwrap();
@@ -175,8 +175,8 @@ fn group_adjacent_imports_executes_and_roundtrips() {
         assert_eq!(scalar(group, "Count"), Value::Int(count));
     }
 
-    let dir = TempDir::new("group_adjacent");
-    let out = dir.0.join("group-adjacent.mfd");
+    let dir = TempDir::new("group_adjacent").unwrap();
+    let out = dir.path().join("group-adjacent.mfd");
     let warnings = mfd::export(&imported.project, &out).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
     let exported = std::fs::read_to_string(&out).unwrap();
@@ -214,8 +214,8 @@ fn group_ending_with_imports_executes_and_roundtrips() {
     assert_eq!(scalar(&groups[1], "First"), Value::String("three".into()));
     assert_eq!(scalar(&groups[1], "Count"), Value::Int(3));
 
-    let dir = TempDir::new("group_ending");
-    let out = dir.0.join("group-ending.mfd");
+    let dir = TempDir::new("group_ending").unwrap();
+    let out = dir.path().join("group-ending.mfd");
     let warnings = mfd::export(&imported.project, &out).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
     let exported = std::fs::read_to_string(&out).unwrap();
@@ -240,11 +240,11 @@ fn malformed_group_starting_predicates_skip_the_affected_iteration() {
         ),
     ];
     for (name, design) in variants {
-        let dir = TempDir::new(&format!("group_starting_{name}"));
+        let dir = TempDir::new(&format!("group_starting_{name}")).unwrap();
         for schema in ["group-starting-source.xsd", "group-starting-target.xsd"] {
-            std::fs::copy(fixture(schema), dir.0.join(schema)).unwrap();
+            std::fs::copy(fixture(schema), dir.path().join(schema)).unwrap();
         }
-        let path = dir.0.join("group-starting.mfd");
+        let path = dir.path().join("group-starting.mfd");
         std::fs::write(&path, design).unwrap();
         let imported = mfd::import(&path).unwrap();
         assert_eq!(
@@ -300,8 +300,8 @@ fn group_into_blocks_imports_executes_and_roundtrips() {
     assert_eq!(scalar(&blocks[1], "First"), Value::String("gamma".into()));
     assert_eq!(scalar(&blocks[1], "Count"), Value::Int(1));
 
-    let dir = TempDir::new("group_blocks");
-    let out = dir.0.join("group-blocks.mfd");
+    let dir = TempDir::new("group_blocks").unwrap();
+    let out = dir.path().join("group-blocks.mfd");
     let warnings = mfd::export(&imported.project, &out).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
     let exported = std::fs::read_to_string(&out).unwrap();
@@ -330,11 +330,11 @@ fn malformed_group_block_sizes_skip_the_affected_iteration() {
         ),
     ];
     for (name, design) in variants {
-        let dir = TempDir::new(&format!("group_blocks_{name}"));
+        let dir = TempDir::new(&format!("group_blocks_{name}")).unwrap();
         for schema in ["group-blocks-source.xsd", "group-blocks-target.xsd"] {
-            std::fs::copy(fixture(schema), dir.0.join(schema)).unwrap();
+            std::fs::copy(fixture(schema), dir.path().join(schema)).unwrap();
         }
-        let path = dir.0.join("group-blocks.mfd");
+        let path = dir.path().join("group-blocks.mfd");
         std::fs::write(&path, design).unwrap();
         let imported = mfd::import(&path).unwrap();
         assert_eq!(
@@ -399,8 +399,8 @@ fn group_block_and_window_counts_keep_edges_and_report_inactive_parent_positions
         count: window_count,
     }];
 
-    let dir = TempDir::new("group_block_position_export");
-    let out = dir.0.join("group-block-position.mfd");
+    let dir = TempDir::new("group_block_position_export").unwrap();
+    let out = dir.path().join("group-block-position.mfd");
     let warnings = mfd::export(&project, &out).unwrap();
     assert_eq!(warnings.len(), 2, "{warnings:?}");
     for position in [block_position, window_position] {
@@ -409,11 +409,11 @@ fn group_block_and_window_counts_keep_edges_and_report_inactive_parent_positions
                 && warning.contains("inactive at primary/Block parent bounds")
         }));
     }
-    let before = std::fs::read_dir(&dir.0).unwrap().count();
-    let native = dir.0.join("native-group-block-position.mfd");
+    let before = std::fs::read_dir(dir.path()).unwrap().count();
+    let native = dir.path().join("native-group-block-position.mfd");
     assert!(mfd::export_with_profile(&project, &native, mfd::ExportProfile::NativeMfd).is_err());
     assert!(!native.exists());
-    assert_eq!(std::fs::read_dir(&dir.0).unwrap().count(), before);
+    assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), before);
     let exported = std::fs::read_to_string(out).unwrap();
     let doc = roxmltree::Document::parse(&exported).unwrap();
     let position_inputs: Vec<&str> = doc
@@ -500,8 +500,8 @@ fn distinct_values_imports_as_stable_sequence_and_roundtrips() {
         Value::String("first".into())
     );
 
-    let dir = TempDir::new("distinct");
-    let out = dir.0.join("distinct.mfd");
+    let dir = TempDir::new("distinct").unwrap();
+    let out = dir.path().join("distinct.mfd");
     let warnings = mfd::export(project, &out).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
     let exported = std::fs::read_to_string(&out).unwrap();
@@ -595,8 +595,8 @@ fn tokenizers_generate_distinct_scalar_sequences_and_roundtrip() {
         vec![Value::String("Aé".into()), Value::String("🙂Z".into())]
     );
 
-    let dir = TempDir::new("tokenize");
-    let out = dir.0.join("tokenize.mfd");
+    let dir = TempDir::new("tokenize").unwrap();
+    let out = dir.path().join("tokenize.mfd");
     let warnings = mfd::export(project, &out).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
     let exported = std::fs::read_to_string(&out).unwrap();
@@ -660,8 +660,8 @@ fn regex_tokenizer_imports_optional_flags_executes_and_roundtrips() {
         ["Aé", "Z"].map(|value| Value::String(value.into()))
     );
 
-    let dir = TempDir::new("tokenize_regexp");
-    let out = dir.0.join("tokenize-regexp.mfd");
+    let dir = TempDir::new("tokenize_regexp").unwrap();
+    let out = dir.path().join("tokenize-regexp.mfd");
     let warnings = mfd::export(project, &out).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
     let exported = std::fs::read_to_string(&out).unwrap();
@@ -743,8 +743,8 @@ fn generated_integer_ranges_import_controls_execute_and_roundtrip() {
         vec![Value::Int(1), Value::Int(2), Value::Int(3)]
     );
 
-    let dir = TempDir::new("generate");
-    let out = dir.0.join("generate.mfd");
+    let dir = TempDir::new("generate").unwrap();
+    let out = dir.path().join("generate.mfd");
     let warnings = mfd::export(project, &out).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
     let exported = std::fs::read_to_string(&out).unwrap();
@@ -830,8 +830,8 @@ fn exporting_one_position_at_multiple_iteration_stages_warns_once() {
         .node;
     item.sort_by = Some(position);
 
-    let dir = TempDir::new("position_context_conflict");
-    let warnings = mfd::export(&project, &dir.0.join("conflict.mfd")).unwrap();
+    let dir = TempDir::new("position_context_conflict").unwrap();
+    let warnings = mfd::export(&project, &dir.path().join("conflict.mfd")).unwrap();
     assert_eq!(warnings.len(), 1, "{warnings:?}");
     assert!(
         warnings[0].contains("used in multiple iteration stages or scopes"),
@@ -863,8 +863,8 @@ fn filter_then_sort_control_order_imports_executes_and_roundtrips() {
         .collect::<Vec<_>>();
     assert_eq!(values, vec![Value::Int(5), Value::Int(4), Value::Int(3)]);
 
-    let dir = TempDir::new("filter_then_sort");
-    let exported = dir.0.join("mapping.mfd");
+    let dir = TempDir::new("filter_then_sort").unwrap();
+    let exported = dir.path().join("mapping.mfd");
     let warnings = mfd::export(&imported.project, &exported).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
     let reimported = mfd::import(&exported).unwrap();
@@ -908,8 +908,8 @@ fn generated_sequence_item_at_imports_executes_and_roundtrips() {
     let target = engine::run(&imported.project, &source).unwrap();
     assert_eq!(scalar(&target, "Value"), Value::String("beta".into()));
 
-    let dir = TempDir::new("generated_item_at");
-    let exported = dir.0.join("mapping.mfd");
+    let dir = TempDir::new("generated_item_at").unwrap();
+    let exported = dir.path().join("mapping.mfd");
     let warnings = mfd::export(&imported.project, &exported).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
     let xml = std::fs::read_to_string(&exported).unwrap();
@@ -974,8 +974,8 @@ fn ordered_sequence_windows_import_execute_and_roundtrip() {
     assert_eq!(rows.len(), 1);
     assert_eq!(scalar(&rows[0], "Value"), Value::Int(5));
 
-    let dir = TempDir::new("sequence_windows");
-    let exported = dir.0.join("mapping.mfd");
+    let dir = TempDir::new("sequence_windows").unwrap();
+    let exported = dir.path().join("mapping.mfd");
     let warnings = mfd::export(&imported.project, &exported).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
     let xml = std::fs::read_to_string(&exported).unwrap();
@@ -997,14 +997,14 @@ fn ordered_sequence_windows_import_execute_and_roundtrip() {
 
 #[test]
 fn sequence_window_with_missing_required_bound_skips_iteration() {
-    let dir = TempDir::new("sequence_window_missing_bound");
+    let dir = TempDir::new("sequence_window_missing_bound").unwrap();
     for name in ["generate-source.xsd", "generate-target.xsd", "generate.xml"] {
-        std::fs::copy(fixture(name), dir.0.join(name)).unwrap();
+        std::fs::copy(fixture(name), dir.path().join(name)).unwrap();
     }
     let design = std::fs::read_to_string(fixture("sequence-windows.mfd"))
         .unwrap()
         .replace("<edge from=\"33\" to=\"54\"/>", "");
-    let path = dir.0.join("mapping.mfd");
+    let path = dir.path().join("mapping.mfd");
     std::fs::write(&path, design).unwrap();
 
     let imported = mfd::import(&path).unwrap();

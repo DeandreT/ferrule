@@ -1,41 +1,14 @@
 use std::error::Error;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use ir::{Instance, Value};
 
-struct TempDir(PathBuf);
-
-static NEXT_DIR: AtomicU64 = AtomicU64::new(0);
-
-impl TempDir {
-    fn new() -> Result<Self, std::io::Error> {
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_external_xslt_{}_{}",
-            std::process::id(),
-            NEXT_DIR.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
-
-fn write(path: &Path, contents: &str) -> Result<(), std::io::Error> {
-    std::fs::write(path, contents)
-}
+use test_support::TempDir;
 
 #[test]
 fn imports_executes_and_roundtrips_external_xslt_aggregate() -> Result<(), Box<dyn Error>> {
-    let dir = TempDir::new()?;
-    write(
-        &dir.0.join("source.xsd"),
+    let dir = TempDir::new("external_xslt")?;
+    dir.write(
+        "source.xsd",
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:element name="Catalog"><xs:complexType><xs:sequence>
     <xs:element name="Items"><xs:complexType><xs:sequence>
@@ -46,16 +19,16 @@ fn imports_executes_and_roundtrips_external_xslt_aggregate() -> Result<(), Box<d
   </xs:sequence></xs:complexType></xs:element>
 </xs:schema>"#,
     )?;
-    write(
-        &dir.0.join("target.xsd"),
+    dir.write(
+        "target.xsd",
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:element name="Report"><xs:complexType><xs:sequence>
     <xs:element name="Total" type="xs:integer"/>
   </xs:sequence></xs:complexType></xs:element>
 </xs:schema>"#,
     )?;
-    write(
-        &dir.0.join("pricing.xslt"),
+    dir.write(
+        "pricing.xslt",
         r#"<xsl:stylesheet xmlns:xsl="http://www.w3.org/1999/XSL/Transform" version="1.0">
   <xsl:template name="GrandTotal">
     <xsl:param name="catalog"/>
@@ -63,9 +36,7 @@ fn imports_executes_and_roundtrips_external_xslt_aggregate() -> Result<(), Box<d
   </xsl:template>
 </xsl:stylesheet>"#,
     )?;
-    write(
-        &dir.0.join("mapping.mfd"),
-        r#"<mapping><component name="map"><structure><children>
+    dir.write("mapping.mfd", r#"<mapping><component name="map"><structure><children>
   <component name="catalog" library="xml" kind="14"><data><root>
     <entry name="Catalog"><entry name="Items" outkey="10"><entry name="Item"><entry name="Cost"/></entry></entry></entry>
   </root><document schema="source.xsd" inputinstance="source.xml" instanceroot="{}Catalog"/></data></component>
@@ -79,10 +50,9 @@ fn imports_executes_and_roundtrips_external_xslt_aggregate() -> Result<(), Box<d
 </children><graph><vertices>
   <vertex vertexkey="10"><edges><edge vertexkey="20"/></edges></vertex>
   <vertex vertexkey="21"><edges><edge vertexkey="30"/></edges></vertex>
-</vertices></graph></structure></component></mapping>"#,
-    )?;
+</vertices></graph></structure></component></mapping>"#)?;
 
-    let imported = mfd::import(&dir.0.join("mapping.mfd"))?;
+    let imported = mfd::import(&dir.path().join("mapping.mfd"))?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
 
@@ -108,7 +78,7 @@ fn imports_executes_and_roundtrips_external_xslt_aggregate() -> Result<(), Box<d
     );
     assert_total(&engine::run(&imported.project, &input)?, 12);
 
-    let export_path = dir.0.join("roundtrip.mfd");
+    let export_path = dir.path().join("roundtrip.mfd");
     let export_warnings = mfd::export(&imported.project, &export_path)?;
     assert!(export_warnings.is_empty(), "{export_warnings:?}");
     let roundtripped = mfd::import(&export_path)?;

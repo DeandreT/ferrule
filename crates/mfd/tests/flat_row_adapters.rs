@@ -1,33 +1,7 @@
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
-
 use ir::{Instance, ScalarType, Value};
 use mapping::ScopeConstruction;
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Result<Self, std::io::Error> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_flat_row_adapters_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
-
-fn write(path: &Path, text: &str) -> Result<(), std::io::Error> {
-    std::fs::write(path, text)
-}
+use test_support::TempDir;
 
 fn csv_component(
     name: &str,
@@ -55,20 +29,20 @@ fn csv_component(
 #[test]
 fn copy_all_between_flat_row_roots_preserves_every_field_and_writes()
 -> Result<(), Box<dyn std::error::Error>> {
-    let dir = TempDir::new()?;
+    let dir = TempDir::new("mfd_flat_row_adapters")?;
     let source = csv_component("source", "out", 10, None, "string");
     let target = csv_component("target", "inp", 20, None, "string");
-    let design = dir.0.join("copy-all.mfd");
-    write(
+    let design = dir.path().join("copy-all.mfd");
+    std::fs::write(
         &design,
-        &format!(
+        format!(
             r#"<mapping version="26"><component name="map"><structure><children>{source}{target}</children>
               <graph><edges><edge edgekey="90"><data><dataconnection type="2"/></data></edge></edges><vertices>
                 <vertex vertexkey="10"><edges><edge vertexkey="20" edgekey="90"/></edges></vertex>
               </vertices></graph></structure></component></mapping>"#
         ),
     )?;
-    write(&dir.0.join("source.csv"), "Count\nfirst\nsecond\n")?;
+    dir.write("source.csv", "Count\nfirst\nsecond\n")?;
 
     let imported = mfd::import(&design)?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
@@ -77,7 +51,7 @@ fn copy_all_between_flat_row_roots_preserves_every_field_and_writes()
         ScopeConstruction::CopyCurrentSource
     );
     let source_rows = format_csv::read(
-        &dir.0.join("source.csv"),
+        &dir.path().join("source.csv"),
         &imported.project.source,
         Some(','),
         true,
@@ -93,7 +67,7 @@ fn copy_all_between_flat_row_roots_preserves_every_field_and_writes()
         Some(&Value::String("second".into()))
     );
 
-    let output_path = dir.0.join("output.csv");
+    let output_path = dir.path().join("output.csv");
     format_csv::write(
         &output_path,
         &imported.project.target,
@@ -106,7 +80,7 @@ fn copy_all_between_flat_row_roots_preserves_every_field_and_writes()
         "Count\nfirst\nsecond\n"
     );
 
-    let roundtrip_design = dir.0.join("copy-all-roundtrip.mfd");
+    let roundtrip_design = dir.path().join("copy-all-roundtrip.mfd");
     let export_warnings = mfd::export(&imported.project, &roundtrip_design)?;
     assert!(export_warnings.is_empty(), "{export_warnings:?}");
     let exported = std::fs::read_to_string(&roundtrip_design)?;
@@ -135,25 +109,25 @@ fn copy_all_between_flat_row_roots_preserves_every_field_and_writes()
 #[test]
 fn exact_numeric_target_adapter_converts_before_strict_csv_write()
 -> Result<(), Box<dyn std::error::Error>> {
-    let dir = TempDir::new()?;
+    let dir = TempDir::new("mfd_flat_row_adapters")?;
     let source = csv_component("source", "out", 10, Some(11), "number");
     let target = csv_component("target", "inp", 20, Some(21), "integer");
-    let design = dir.0.join("numeric-adapter.mfd");
-    write(
+    let design = dir.path().join("numeric-adapter.mfd");
+    std::fs::write(
         &design,
-        &format!(
+        format!(
             r#"<mapping version="26"><component name="map"><structure><children>{source}{target}</children><graph><vertices>
               <vertex vertexkey="10"><edges><edge vertexkey="20"/></edges></vertex>
               <vertex vertexkey="11"><edges><edge vertexkey="21"/></edges></vertex>
             </vertices></graph></structure></component></mapping>"#
         ),
     )?;
-    write(&dir.0.join("source.csv"), "Count\n4.0\n")?;
+    dir.write("source.csv", "Count\n4.0\n")?;
 
     let imported = mfd::import(&design)?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     let source_rows = format_csv::read(
-        &dir.0.join("source.csv"),
+        &dir.path().join("source.csv"),
         &imported.project.source,
         Some(','),
         true,
@@ -167,7 +141,7 @@ fn exact_numeric_target_adapter_converts_before_strict_csv_write()
         Some(&Value::Int(4))
     );
 
-    let output_path = dir.0.join("output.csv");
+    let output_path = dir.path().join("output.csv");
     format_csv::write(
         &output_path,
         &imported.project.target,
@@ -186,7 +160,7 @@ fn exact_numeric_target_adapter_converts_before_strict_csv_write()
         .ok_or("lossy numeric output was not a row collection")?;
     assert!(matches!(
         format_csv::write(
-            &dir.0.join("lossy.csv"),
+            &dir.path().join("lossy.csv"),
             &imported.project.target,
             lossy_rows,
             Some(','),
@@ -203,22 +177,17 @@ fn exact_numeric_target_adapter_converts_before_strict_csv_write()
 #[test]
 fn singleton_csv_target_block_produces_one_boundary_row() -> Result<(), Box<dyn std::error::Error>>
 {
-    let dir = TempDir::new()?;
-    write(
-        &dir.0.join("source.xsd"),
+    let dir = TempDir::new("mfd_flat_row_adapters")?;
+    dir.write(
+        "source.xsd",
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
           <xs:element name="Record"><xs:complexType><xs:sequence>
             <xs:element name="Label" type="xs:string"/>
           </xs:sequence></xs:complexType></xs:element>
         </xs:schema>"#,
     )?;
-    write(
-        &dir.0.join("source.xml"),
-        "<Record><Label>sample</Label></Record>",
-    )?;
-    write(
-        &dir.0.join("mapping.mfd"),
-        r#"<mapping version="26"><component name="map"><structure><children>
+    dir.write("source.xml", "<Record><Label>sample</Label></Record>")?;
+    dir.write("mapping.mfd", r#"<mapping version="26"><component name="map"><structure><children>
           <component name="source" library="xml" kind="14"><data>
             <root><entry name="Record"><entry name="Label" outkey="10"/></entry></root>
             <document schema="source.xsd" inputinstance="source.xml" instanceroot="{}Record"/>
@@ -231,15 +200,14 @@ fn singleton_csv_target_block_produces_one_boundary_row() -> Result<(), Box<dyn 
           </data></component>
         </children><graph><vertices>
           <vertex vertexkey="10"><edges><edge vertexkey="20"/></edges></vertex>
-        </vertices></graph></structure></component></mapping>"#,
-    )?;
+        </vertices></graph></structure></component></mapping>"#)?;
 
-    let imported = mfd::import(&dir.0.join("mapping.mfd"))?;
+    let imported = mfd::import(&dir.path().join("mapping.mfd"))?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(!imported.project.target.repeating);
     assert!(imported.project.root.concatenated().is_some());
 
-    let input = format_xml::read(&dir.0.join("source.xml"), &imported.project.source)?;
+    let input = format_xml::read(&dir.path().join("source.xml"), &imported.project.source)?;
     let output = engine::run(&imported.project, &input)?;
     let rows = output
         .as_repeated()
@@ -255,7 +223,7 @@ fn singleton_csv_target_block_produces_one_boundary_row() -> Result<(), Box<dyn 
         "sample\n"
     );
 
-    let exported = dir.0.join("roundtrip.mfd");
+    let exported = dir.path().join("roundtrip.mfd");
     assert!(mfd::export(&imported.project, &exported)?.is_empty());
     let exported_text = std::fs::read_to_string(&exported)?;
     let exported_document = roxmltree::Document::parse(&exported_text)?;

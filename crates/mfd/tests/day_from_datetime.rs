@@ -1,33 +1,9 @@
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::path::Path;
 
 use ir::{Instance, Value};
 use mapping::Node;
 
-static NEXT_DIR: AtomicU64 = AtomicU64::new(0);
-
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Self {
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_day_from_datetime_{}_{}",
-            std::process::id(),
-            NEXT_DIR.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        if let Err(error) = std::fs::create_dir_all(&path) {
-            panic!("failed to create test directory: {error}");
-        }
-        Self(path)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn write(path: &Path, contents: &str) {
     if let Err(error) = std::fs::write(path, contents) {
@@ -36,9 +12,9 @@ fn write(path: &Path, contents: &str) {
 }
 
 fn setup() -> TempDir {
-    let dir = TempDir::new();
+    let dir = TempDir::new("mfd_day_from_datetime").unwrap();
     write(
-        &dir.0.join("source.xsd"),
+        &dir.path().join("source.xsd"),
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:element name="Dates"><xs:complexType><xs:sequence>
     <xs:element name="Date" maxOccurs="unbounded"><xs:complexType><xs:sequence>
@@ -48,7 +24,7 @@ fn setup() -> TempDir {
 </xs:schema>"#,
     );
     write(
-        &dir.0.join("target.xsd"),
+        &dir.path().join("target.xsd"),
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:element name="Checks"><xs:complexType><xs:sequence>
     <xs:element name="Check" maxOccurs="unbounded"><xs:complexType><xs:sequence>
@@ -58,7 +34,7 @@ fn setup() -> TempDir {
 </xs:schema>"#,
     );
     write(
-        &dir.0.join("mapping.mfd"),
+        &dir.path().join("mapping.mfd"),
         r#"<mapping version="26">
   <component name="main"><structure><children>
     <component name="Dates" library="xml" uid="1" kind="14"><data>
@@ -134,7 +110,7 @@ fn result(instance: &Instance) -> &Value {
 #[test]
 fn scalar_datetime_component_udf_imports_and_executes() {
     let dir = setup();
-    let imported = match mfd::import(&dir.0.join("mapping.mfd")) {
+    let imported = match mfd::import(&dir.path().join("mapping.mfd")) {
         Ok(imported) => imported,
         Err(error) => panic!("failed to import self-authored mapping: {error}"),
     };

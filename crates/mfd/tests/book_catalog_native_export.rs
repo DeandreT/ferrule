@@ -1,32 +1,12 @@
 #[path = "support/private_corpus.rs"]
 mod private_corpus;
 
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::path::Path;
 
 use ir::Instance;
 use mfd::ExportProfile;
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> std::io::Result<Self> {
-        static NEXT: AtomicU64 = AtomicU64::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule-book-catalog-native-{}-{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 #[test]
 #[ignore = "needs the local ReferenceSamples corpus; informational only"]
@@ -54,16 +34,16 @@ fn local_book_catalog_keeps_extraction_and_xml_through_two_strict_native_cycles(
     assert_eq!(books.len(), 52);
     let original_xml = format_xml::to_string(&current.target, &original_output)?;
 
-    let temp = TempDir::new()?;
+    let temp = TempDir::new("book-catalog-native")?;
     for cycle in 0..2 {
-        let exported_design = temp.0.join(format!("book-catalog-{cycle}.mfd"));
+        let exported_design = temp.path().join(format!("book-catalog-{cycle}.mfd"));
         let report = mfd::preflight_export(&current, &exported_design)?;
         assert!(report.is_native_compatible(), "{report}");
         let report =
             mfd::export_with_profile(&current, &exported_design, ExportProfile::NativeMfd)?;
         assert!(report.is_native_compatible(), "{report}");
         let template =
-            std::fs::read_to_string(temp.0.join(format!("book-catalog-{cycle}-source.pxt")))?;
+            std::fs::read_to_string(temp.path().join(format!("book-catalog-{cycle}-source.pxt")))?;
         assert!(template.contains("<Template version=\"1\">"));
         assert!(template.contains("<MergeTarget"));
         assert!(!template.contains("FerruleLayout"));

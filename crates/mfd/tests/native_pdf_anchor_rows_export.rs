@@ -1,8 +1,6 @@
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::num::NonZeroU32;
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use ir::{Instance, ScalarType, SchemaNode, Value};
 use mapping::{
@@ -14,26 +12,7 @@ use mfd::{ExportCompatibilityFeature, ExportProfile};
 
 const AWKWARD_FINITE: u64 = 0x3feffffffffffc19;
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> std::io::Result<Self> {
-        static NEXT: AtomicU64 = AtomicU64::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule-native-pdf-anchor-rows-{}-{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 // Entirely self-authored: two letter-size pages, each with the same painted
 // table lines. The second page has decoy values to check Pages(First).
@@ -356,7 +335,7 @@ fn changed_layout(edit: impl FnOnce(&mut Vec<PdfCommand>)) -> PdfLayout {
 #[test]
 fn first_page_anchored_rows_map_two_physical_pdf_rows_through_two_strict_cycles()
 -> Result<(), Box<dyn std::error::Error>> {
-    let temp = TempDir::new()?;
+    let temp = TempDir::new("native-pdf-anchor-rows")?;
     let pdf = two_page_ruled_pdf();
     let mut current = project(layout());
     let mut first_source = None;
@@ -383,11 +362,12 @@ fn first_page_anchored_rows_map_two_physical_pdf_rows_through_two_strict_cycles(
             break;
         }
 
-        let design = temp.0.join(format!("anchors-{cycle}.mfd"));
+        let design = temp.path().join(format!("anchors-{cycle}.mfd"));
         let report = mfd::preflight_export(&current, &design)?;
         assert!(report.is_native_compatible(), "{report}");
         mfd::export_with_profile(&current, &design, ExportProfile::NativeMfd)?;
-        let template = std::fs::read_to_string(temp.0.join(format!("anchors-{cycle}-source.pxt")))?;
+        let template =
+            std::fs::read_to_string(temp.path().join(format!("anchors-{cycle}-source.pxt")))?;
         assert!(template.contains("<VerticalAnchorAssignment"));
         assert!(template.contains("<HorizontalAnchorAssignment"));
         assert!(template.contains("<Filter>1</Filter>"));
@@ -466,7 +446,7 @@ fn unsupported_anchor_row_shapes_reject_atomically() -> Result<(), Box<dyn std::
         rows.region.top.reference = PdfReference::Anchor("Table Top".into());
     });
 
-    let temp = TempDir::new()?;
+    let temp = TempDir::new("native-pdf-anchor-rows")?;
     for (name, layout) in [
         ("non-first-page", non_first_page),
         ("misordered-anchor", misordered_anchor),
@@ -476,8 +456,8 @@ fn unsupported_anchor_row_shapes_reject_atomically() -> Result<(), Box<dyn std::
         ("unsafe-anchor", unsafe_anchor),
     ] {
         let project = project(layout);
-        let design = temp.0.join(format!("{name}.mfd"));
-        let sibling = temp.0.join(format!("{name}-source.pxt"));
+        let design = temp.path().join(format!("{name}.mfd"));
+        let sibling = temp.path().join(format!("{name}-source.pxt"));
         let report = mfd::preflight_export(&project, &design)?;
         assert!(
             report.issues.iter().any(|issue| {

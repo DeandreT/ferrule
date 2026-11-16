@@ -3,8 +3,6 @@
 //! with one `root` string that the graph's bindings no longer address.
 
 use std::error::Error;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
 
 /// A label, the schema files to write, and the expected warning reason.
 type Case = (
@@ -211,27 +209,4 @@ fn assert_bindings_resolve(project: &mapping::Project, label: &str) {
     );
 }
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new(label: &str) -> Result<Self, std::io::Error> {
-        static NEXT: AtomicU64 = AtomicU64::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule-contentless-json-schema-{label}-{}-{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir(&path)?;
-        Ok(Self(path))
-    }
-
-    fn path(&self) -> &Path {
-        &self.0
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;

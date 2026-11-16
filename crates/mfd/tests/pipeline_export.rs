@@ -3,32 +3,11 @@ mod private_corpus;
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use ir::{Instance, Value};
 use mapping::PipelineInput;
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Self {
-        static NEXT: AtomicU64 = AtomicU64::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_pipeline_export_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn write_schema(path: &Path, root: &str, field: &str) {
     std::fs::write(
@@ -545,11 +524,11 @@ fn assert_catalog_item_fanout(exported: &str, expected_edges: usize) {
 
 #[test]
 fn serial_xml_pipeline_exports_one_design_and_preserves_execution() {
-    let directory = TempDir::new();
-    let original = mfd::import_pipeline(&make_chain(&directory.0)).unwrap();
+    let directory = TempDir::new("mfd_pipeline_export").unwrap();
+    let original = mfd::import_pipeline(&make_chain(directory.path())).unwrap();
     assert!(original.warnings.is_empty(), "{:?}", original.warnings);
     let original_outputs = execute(&original.pipeline);
-    let exported_path = directory.0.join("exported.mfd");
+    let exported_path = directory.path().join("exported.mfd");
     let report = mfd::preflight_pipeline_export(&original.pipeline, &exported_path).unwrap();
     assert!(report.is_native_compatible(), "{report:?}");
     assert!(report.warnings.is_empty(), "{:?}", report.warnings);
@@ -582,8 +561,8 @@ fn serial_xml_pipeline_exports_one_design_and_preserves_execution() {
 
 #[test]
 fn serial_pipeline_preserves_intermediate_output_instance_and_execution() {
-    let directory = TempDir::new();
-    let imported = mfd::import_pipeline(&make_chain_with_intermediate_output(&directory.0))
+    let directory = TempDir::new("mfd_pipeline_export").unwrap();
+    let imported = mfd::import_pipeline(&make_chain_with_intermediate_output(directory.path()))
         .expect("connected intermediate output imports");
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert_eq!(
@@ -596,7 +575,7 @@ fn serial_pipeline_preserves_intermediate_output_instance_and_execution() {
     );
     let before = execute(&imported.pipeline);
 
-    let exported_path = directory.0.join("materialized-intermediate.mfd");
+    let exported_path = directory.path().join("materialized-intermediate.mfd");
     let report = mfd::preflight_pipeline_export(&imported.pipeline, &exported_path).unwrap();
     assert!(report.is_native_compatible(), "{report:?}");
     assert!(!exported_path.exists());
@@ -658,7 +637,7 @@ fn serial_pipeline_preserves_intermediate_output_instance_and_execution() {
 
     let mut unsupported = imported.pipeline;
     unsupported.stages[0].project.target_path = Some("buffer.csv".into());
-    let rejected_path = directory.0.join("not-created/rejected.mfd");
+    let rejected_path = directory.path().join("not-created/rejected.mfd");
     let error = mfd::export_pipeline(&unsupported, &rejected_path)
         .unwrap_err()
         .to_string();
@@ -667,7 +646,7 @@ fn serial_pipeline_preserves_intermediate_output_instance_and_execution() {
 
     let mut unsupported = reimported.pipeline;
     unsupported.stages[1].project.source_path = Some("buffer-preview.csv".into());
-    let rejected_path = directory.0.join("not-created/source-rejected.mfd");
+    let rejected_path = directory.path().join("not-created/source-rejected.mfd");
     let error = mfd::export_pipeline(&unsupported, &rejected_path)
         .unwrap_err()
         .to_string();
@@ -724,8 +703,8 @@ fn local_reference_chains_keep_only_declared_intermediate_instance_paths() {
         } else {
             None
         };
-        let directory = TempDir::new();
-        let destination = directory.0.join("exported-chain.mfd");
+        let directory = TempDir::new("mfd_pipeline_export").unwrap();
+        let destination = directory.path().join("exported-chain.mfd");
         let report = mfd::preflight_pipeline_export(&imported.pipeline, &destination)
             .unwrap_or_else(|error| panic!("{relative}: {error}"));
         assert!(report.is_native_compatible(), "{relative}: {report:?}");
@@ -770,7 +749,8 @@ fn local_reference_chains_keep_only_declared_intermediate_instance_paths() {
                     .find(|node| node.has_tag_name("document"))
                     .and_then(|node| node.attribute("schema"))
                     .unwrap();
-                let schema_xml = std::fs::read_to_string(directory.0.join(schema_file)).unwrap();
+                let schema_xml =
+                    std::fs::read_to_string(directory.path().join(schema_file)).unwrap();
                 let schema = roxmltree::Document::parse(&schema_xml).unwrap();
                 assert_eq!(
                     schema
@@ -901,8 +881,8 @@ fn execute_local_tut3(pipeline: &mapping::Pipeline, sample: &Path) -> engine::Pi
 
 #[test]
 fn synthetic_xml_chain_with_csv_final_target_imports_executes_and_roundtrips() {
-    let directory = TempDir::new();
-    let imported = mfd::import_pipeline(&make_csv_final_chain(&directory.0)).unwrap();
+    let directory = TempDir::new("mfd_pipeline_export").unwrap();
+    let imported = mfd::import_pipeline(&make_csv_final_chain(directory.path())).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert_eq!(imported.pipeline.stages.len(), 2);
     assert!(engine::validate_pipeline(&imported.pipeline).is_empty());
@@ -925,7 +905,7 @@ fn synthetic_xml_chain_with_csv_final_target_imports_executes_and_roundtrips() {
         Some(&Value::String("serial value".into())),
         "{final_instance:?}"
     );
-    let csv_path = directory.0.join("result.csv");
+    let csv_path = directory.path().join("result.csv");
     let options = &final_stage.project.target_options;
     format_csv::write_with_dialect(
         &csv_path,
@@ -952,7 +932,7 @@ fn synthetic_xml_chain_with_csv_final_target_imports_executes_and_roundtrips() {
     .unwrap();
     assert_eq!(read_back, rows);
 
-    let exported_path = directory.0.join("csv-final-export.mfd");
+    let exported_path = directory.path().join("csv-final-export.mfd");
     let report = mfd::preflight_pipeline_export(&imported.pipeline, &exported_path).unwrap();
     assert!(report.is_native_compatible(), "{report:?}");
     assert!(report.warnings.is_empty(), "{:?}", report.warnings);
@@ -987,8 +967,8 @@ fn synthetic_xml_chain_with_csv_final_target_imports_executes_and_roundtrips() {
 
 #[test]
 fn repeated_xml_rows_write_header_and_quoted_csv_after_pipeline_roundtrip() {
-    let directory = TempDir::new();
-    let imported = mfd::import_pipeline(&make_repeated_csv_final_chain(&directory.0)).unwrap();
+    let directory = TempDir::new("mfd_pipeline_export").unwrap();
+    let imported = mfd::import_pipeline(&make_repeated_csv_final_chain(directory.path())).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate_pipeline(&imported.pipeline).is_empty());
     let PipelineInput::Host { name } = &imported.pipeline.stages[0].source else {
@@ -1036,7 +1016,7 @@ fn repeated_xml_rows_write_header_and_quoted_csv_after_pipeline_roundtrip() {
             Some(&Value::String(expected.into())),
         );
     }
-    let csv_path = directory.0.join("rows.csv");
+    let csv_path = directory.path().join("rows.csv");
     let options = &final_stage.project.target_options;
     format_csv::write_with_dialect(
         &csv_path,
@@ -1063,7 +1043,7 @@ fn repeated_xml_rows_write_header_and_quoted_csv_after_pipeline_roundtrip() {
     .unwrap();
     assert_eq!(read_back, original_rows);
 
-    let exported_path = directory.0.join("repeated-csv-export.mfd");
+    let exported_path = directory.path().join("repeated-csv-export.mfd");
     let preflight = mfd::preflight_pipeline_export(&imported.pipeline, &exported_path).unwrap();
     assert!(preflight.is_native_compatible(), "{preflight:?}");
     assert!(!exported_path.exists());
@@ -1101,7 +1081,7 @@ fn repeated_xml_rows_write_header_and_quoted_csv_after_pipeline_roundtrip() {
         .primary
         .as_repeated()
         .unwrap();
-    let reimported_csv_path = directory.0.join("reimported-rows.csv");
+    let reimported_csv_path = directory.path().join("reimported-rows.csv");
     let options = &reimported_stage.project.target_options;
     format_csv::write_with_dialect(
         &reimported_csv_path,
@@ -1121,13 +1101,13 @@ fn repeated_xml_rows_write_header_and_quoted_csv_after_pipeline_roundtrip() {
 
 #[test]
 fn csv_primary_may_keep_a_connected_xml_named_target() {
-    let directory = TempDir::new();
+    let directory = TempDir::new("mfd_pipeline_export").unwrap();
     let imported =
-        mfd::import_pipeline(&make_csv_final_with_xml_named_target(&directory.0)).unwrap();
+        mfd::import_pipeline(&make_csv_final_with_xml_named_target(directory.path())).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert_eq!(imported.pipeline.stages[1].project.extra_targets.len(), 1);
     let original_outputs = execute(&imported.pipeline);
-    let exported_path = directory.0.join("csv-and-xml-export.mfd");
+    let exported_path = directory.path().join("csv-and-xml-export.mfd");
     let report = mfd::preflight_pipeline_export(&imported.pipeline, &exported_path).unwrap();
     assert!(report.is_native_compatible(), "{report:?}");
     mfd::export_pipeline_with_profile(
@@ -1162,8 +1142,8 @@ fn xml_primary_may_keep_one_connected_csv_named_target_with_exact_output() {
     assert_eq!(named_before.name, csv.name);
     let xml_before =
         format_xml::to_string(&final_stage.project.target, &final_before.primary).unwrap();
-    let directory = TempDir::new();
-    let csv_before_path = directory.0.join("before.csv");
+    let directory = TempDir::new("mfd_pipeline_export").unwrap();
+    let csv_before_path = directory.path().join("before.csv");
     format_csv::write_with_dialect(
         &csv_before_path,
         &csv.schema,
@@ -1177,7 +1157,7 @@ fn xml_primary_may_keep_one_connected_csv_named_target_with_exact_output() {
     let csv_before = std::fs::read(&csv_before_path).unwrap();
     assert_eq!(csv_before, b"Alice Carter;34\nBo Diaz;41\n");
 
-    let exported = directory.0.join("xml-with-named-csv.mfd");
+    let exported = directory.path().join("xml-with-named-csv.mfd");
     let preflight = mfd::preflight_pipeline_export(&pipeline, &exported).unwrap();
     assert!(preflight.is_native_compatible(), "{preflight:?}");
     assert!(!exported.exists());
@@ -1219,7 +1199,7 @@ fn xml_primary_may_keep_one_connected_csv_named_target_with_exact_output() {
     .unwrap();
     assert_eq!(xml_after.as_bytes(), xml_before.as_bytes());
     let csv = &reimported.pipeline.stages[1].project.extra_targets[0];
-    let csv_after_path = directory.0.join("after.csv");
+    let csv_after_path = directory.path().join("after.csv");
     format_csv::write_with_dialect(
         &csv_after_path,
         &csv.schema,
@@ -1236,14 +1216,14 @@ fn xml_primary_may_keep_one_connected_csv_named_target_with_exact_output() {
 #[test]
 fn xml_primary_named_csv_export_rejects_nonfinal_and_multiple_targets_without_artifacts() {
     let (pipeline, _) = local_xml_with_named_csv_pipeline();
-    let directory = TempDir::new();
+    let directory = TempDir::new("mfd_pipeline_export").unwrap();
 
     let mut nonfinal = pipeline.clone();
     let named = nonfinal.stages[1].project.extra_targets.remove(0);
     nonfinal.stages[0].project.graph = nonfinal.stages[1].project.graph.clone();
     nonfinal.stages[0].project.extra_targets.push(named);
     assert!(engine::validate_pipeline(&nonfinal).is_empty());
-    let path = directory.0.join("not-created/nonfinal.mfd");
+    let path = directory.path().join("not-created/nonfinal.mfd");
     let error = mfd::export_pipeline_with_profile(&nonfinal, &path, mfd::ExportProfile::NativeMfd)
         .unwrap_err()
         .to_string();
@@ -1259,7 +1239,7 @@ fn xml_primary_named_csv_export_rejects_nonfinal_and_multiple_targets_without_ar
     other.path = Some("other.csv".into());
     multiple.stages[1].project.extra_targets.push(other);
     assert!(engine::validate_pipeline(&multiple).is_empty());
-    let path = directory.0.join("not-created/multiple.mfd");
+    let path = directory.path().join("not-created/multiple.mfd");
     let error = mfd::export_pipeline_with_profile(&multiple, &path, mfd::ExportProfile::NativeMfd)
         .unwrap_err()
         .to_string();
@@ -1269,8 +1249,8 @@ fn xml_primary_named_csv_export_rejects_nonfinal_and_multiple_targets_without_ar
 
 #[test]
 fn xml_primary_named_csv_import_rejects_ambiguous_malformed_and_bypassed_targets() {
-    let directory = TempDir::new();
-    let path = make_xml_final_with_csv_named_target(&directory.0);
+    let directory = TempDir::new("mfd_pipeline_export").unwrap();
+    let path = make_xml_final_with_csv_named_target(directory.path());
     let original = std::fs::read_to_string(&path).unwrap();
     let imported = mfd::import_pipeline(&path).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
@@ -1330,7 +1310,7 @@ fn xml_primary_named_csv_import_rejects_ambiguous_malformed_and_bypassed_targets
         error.contains("without branches, cycles, or bypasses"),
         "{error}"
     );
-    assert!(!directory.0.join("not-created").exists());
+    assert!(!directory.path().join("not-created").exists());
 }
 
 #[test]
@@ -1353,8 +1333,8 @@ fn xml_primary_may_keep_one_connected_json_named_target_with_exact_output() {
     let json_before = format_json::to_string(&json.schema, &named_before.instance).unwrap();
     assert!(json_before.contains("\"sku\"") && json_before.contains("\"A1\""));
 
-    let directory = TempDir::new();
-    let exported = directory.0.join("xml-with-named-json.mfd");
+    let directory = TempDir::new("mfd_pipeline_export").unwrap();
+    let exported = directory.path().join("xml-with-named-json.mfd");
     let preflight = mfd::preflight_pipeline_export(&pipeline, &exported).unwrap();
     assert!(preflight.is_native_compatible(), "{preflight:?}");
     assert!(!exported.exists());
@@ -1406,14 +1386,14 @@ fn xml_primary_may_keep_one_connected_json_named_target_with_exact_output() {
 #[test]
 fn xml_primary_named_json_export_rejects_nonfinal_multiple_and_json_lines_without_artifacts() {
     let (pipeline, _) = xml_with_named_json_pipeline();
-    let directory = TempDir::new();
+    let directory = TempDir::new("mfd_pipeline_export").unwrap();
 
     let mut nonfinal = pipeline.clone();
     let named = nonfinal.stages[1].project.extra_targets.remove(0);
     nonfinal.stages[0].project.graph = nonfinal.stages[1].project.graph.clone();
     nonfinal.stages[0].project.extra_targets.push(named);
     assert!(engine::validate_pipeline(&nonfinal).is_empty());
-    let path = directory.0.join("not-created/nonfinal.mfd");
+    let path = directory.path().join("not-created/nonfinal.mfd");
     let error = mfd::export_pipeline_with_profile(&nonfinal, &path, mfd::ExportProfile::NativeMfd)
         .unwrap_err()
         .to_string();
@@ -1429,7 +1409,7 @@ fn xml_primary_named_json_export_rejects_nonfinal_multiple_and_json_lines_withou
     other.path = Some("other.json".into());
     multiple.stages[1].project.extra_targets.push(other);
     assert!(engine::validate_pipeline(&multiple).is_empty());
-    let path = directory.0.join("not-created/multiple.mfd");
+    let path = directory.path().join("not-created/multiple.mfd");
     let error = mfd::export_pipeline_with_profile(&multiple, &path, mfd::ExportProfile::NativeMfd)
         .unwrap_err()
         .to_string();
@@ -1438,7 +1418,7 @@ fn xml_primary_named_json_export_rejects_nonfinal_multiple_and_json_lines_withou
 
     let mut json_lines = pipeline;
     json_lines.stages[1].project.extra_targets[0].path = Some("report.jsonl".into());
-    let path = directory.0.join("not-created/json-lines.mfd");
+    let path = directory.path().join("not-created/json-lines.mfd");
     let error =
         mfd::export_pipeline_with_profile(&json_lines, &path, mfd::ExportProfile::NativeMfd)
             .unwrap_err()
@@ -1449,8 +1429,8 @@ fn xml_primary_named_json_export_rejects_nonfinal_multiple_and_json_lines_withou
 
 #[test]
 fn xml_primary_named_json_import_rejects_ambiguous_malformed_bypass_and_unrepresented_pins() {
-    let directory = TempDir::new();
-    let path = make_xml_final_with_json_named_target(&directory.0);
+    let directory = TempDir::new("mfd_pipeline_export").unwrap();
+    let path = make_xml_final_with_json_named_target(directory.path());
     let original = std::fs::read_to_string(&path).unwrap();
     let imported = mfd::import_pipeline(&path).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
@@ -1547,13 +1527,13 @@ fn xml_primary_named_json_import_rejects_ambiguous_malformed_bypass_and_unrepres
         error.contains("unrepresented connected input port"),
         "{error}"
     );
-    assert!(!directory.0.join("not-created").exists());
+    assert!(!directory.path().join("not-created").exists());
 }
 
 #[test]
 fn json_final_chain_imports_exports_and_preserves_exact_serialization() {
-    let directory = TempDir::new();
-    let imported = mfd::import_pipeline(&make_json_final_chain(&directory.0)).unwrap();
+    let directory = TempDir::new("mfd_pipeline_export").unwrap();
+    let imported = mfd::import_pipeline(&make_json_final_chain(directory.path())).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(
         imported.pipeline.stages[1]
@@ -1568,7 +1548,7 @@ fn json_final_chain_imports_exports_and_preserves_exact_serialization() {
     let value: serde_json::Value = serde_json::from_str(&json_before).unwrap();
     assert_eq!(value["Result"], "serial value");
 
-    let exported = directory.0.join("exported-json-chain.mfd");
+    let exported = directory.path().join("exported-json-chain.mfd");
     let preflight = mfd::preflight_pipeline_export(&imported.pipeline, &exported).unwrap();
     assert!(preflight.is_native_compatible(), "{preflight:?}");
     assert!(!exported.exists());
@@ -1711,9 +1691,9 @@ fn assert_identity_xml_to_xlsx_roundtrip(design: &Path, input: &Path) {
         format_xlsx::from_bytes_hierarchical(&workbook_before, &final_project.target, layout)
             .unwrap();
 
-    let directory = TempDir::new();
-    std::fs::copy(input, directory.0.join(input.file_name().unwrap())).unwrap();
-    let exported = directory.0.join("xlsx-chain.mfd");
+    let directory = TempDir::new("mfd_pipeline_export").unwrap();
+    std::fs::copy(input, directory.path().join(input.file_name().unwrap())).unwrap();
+    let exported = directory.path().join("xlsx-chain.mfd");
     let preflight = mfd::preflight_pipeline_export(&pipeline, &exported).unwrap();
     assert!(preflight.is_native_compatible(), "{preflight:?}");
     assert!(!exported.exists());
@@ -1872,9 +1852,9 @@ fn assert_identity_xml_to_fixed_width_roundtrip(
     let parsed_before =
         format_csv::from_str_fixed_width(&text_before, &final_project.target, layout).unwrap();
 
-    let directory = TempDir::new();
-    std::fs::copy(input, directory.0.join(input.file_name().unwrap())).unwrap();
-    let exported = directory.0.join("fixed-width-chain.mfd");
+    let directory = TempDir::new("mfd_pipeline_export").unwrap();
+    std::fs::copy(input, directory.path().join(input.file_name().unwrap())).unwrap();
+    let exported = directory.path().join("fixed-width-chain.mfd");
     let preflight = mfd::preflight_pipeline_export(pipeline, &exported).unwrap();
     assert!(preflight.is_native_compatible(), "{preflight:?}");
     assert!(!exported.exists());
@@ -1970,9 +1950,9 @@ fn local_xml_to_fixed_width_mapping_runs_after_an_identity_xml_stage() {
 #[test]
 fn fixed_width_final_chain_rejects_unsupported_boundaries_without_artifacts() {
     let (pipeline, _, _) = synthetic_fixed_width_pipeline();
-    let directory = TempDir::new();
+    let directory = TempDir::new("mfd_pipeline_export").unwrap();
 
-    let mut intermediate_fixed = mfd::import_pipeline(&make_chain(&directory.0))
+    let mut intermediate_fixed = mfd::import_pipeline(&make_chain(directory.path()))
         .unwrap()
         .pipeline;
     intermediate_fixed.stages[0].project.target_path = Some("buffer.dat".into());
@@ -1993,7 +1973,7 @@ fn fixed_width_final_chain_rejects_unsupported_boundaries_without_artifacts() {
         )
         .unwrap(),
     );
-    let destination = directory.0.join("not-created/intermediate.mfd");
+    let destination = directory.path().join("not-created/intermediate.mfd");
     let error = mfd::export_pipeline_with_profile(
         &intermediate_fixed,
         &destination,
@@ -2013,7 +1993,7 @@ fn fixed_width_final_chain_rejects_unsupported_boundaries_without_artifacts() {
         options: final_project.target_options.clone(),
         root: final_project.root.clone(),
     });
-    let destination = directory.0.join("not-created/named.mfd");
+    let destination = directory.path().join("not-created/named.mfd");
     let error = mfd::export_pipeline_with_profile(
         &named_fixed,
         &destination,
@@ -2034,7 +2014,7 @@ fn fixed_width_final_chain_rejects_unsupported_boundaries_without_artifacts() {
         )
         .unwrap(),
     );
-    let destination = directory.0.join("not-created/width-mismatch.mfd");
+    let destination = directory.path().join("not-created/width-mismatch.mfd");
     let error = mfd::export_pipeline_with_profile(
         &width_mismatch,
         &destination,
@@ -2048,7 +2028,7 @@ fn fixed_width_final_chain_rejects_unsupported_boundaries_without_artifacts() {
     let mut disconnected = pipeline;
     disconnected.stages[1].project.root = mapping::Scope::default();
     disconnected.stages[1].project.prune_unreachable_nodes();
-    let destination = directory.0.join("not-created/disconnected.mfd");
+    let destination = directory.path().join("not-created/disconnected.mfd");
     let error = mfd::export_pipeline_with_profile(
         &disconnected,
         &destination,
@@ -2107,8 +2087,8 @@ fn add_connected_fixed_width_target(xml: &str, default_output: bool) -> String {
 #[test]
 fn fixed_width_final_chain_import_rejects_malformed_ambiguous_and_disconnected() {
     let (pipeline, _, _) = synthetic_fixed_width_pipeline();
-    let directory = TempDir::new();
-    let design = directory.0.join("source-fixed-chain.mfd");
+    let directory = TempDir::new("mfd_pipeline_export").unwrap();
+    let design = directory.path().join("source-fixed-chain.mfd");
     mfd::export_pipeline_with_profile(&pipeline, &design, mfd::ExportProfile::NativeMfd).unwrap();
     let original = std::fs::read_to_string(&design).unwrap();
     assert!(mfd::import_pipeline(&design).is_ok());
@@ -2171,7 +2151,7 @@ fn fixed_width_final_chain_import_rejects_malformed_ambiguous_and_disconnected()
         mfd::import_pipeline(&design).is_err(),
         "zero-width final layout must reject"
     );
-    assert!(!directory.0.join("not-created").exists());
+    assert!(!directory.path().join("not-created").exists());
 }
 
 #[test]
@@ -2181,11 +2161,11 @@ fn xlsx_final_chain_rejects_unsupported_boundaries_without_artifacts() {
         &fixtures.join("xlsx-hierarchical.mfd"),
         &fixtures.join("xlsx-hierarchical-source.xml"),
     );
-    let directory = TempDir::new();
+    let directory = TempDir::new("mfd_pipeline_export").unwrap();
 
     let mut intermediate_xlsx = pipeline.clone();
     intermediate_xlsx.stages[0].project.target_path = Some("buffer.xlsx".into());
-    let destination = directory.0.join("not-created/intermediate.mfd");
+    let destination = directory.path().join("not-created/intermediate.mfd");
     let error = mfd::export_pipeline_with_profile(
         &intermediate_xlsx,
         &destination,
@@ -2205,7 +2185,7 @@ fn xlsx_final_chain_rejects_unsupported_boundaries_without_artifacts() {
         options: final_project.target_options.clone(),
         root: final_project.root.clone(),
     });
-    let destination = directory.0.join("not-created/named.mfd");
+    let destination = directory.path().join("not-created/named.mfd");
     let error =
         mfd::export_pipeline_with_profile(&named_xlsx, &destination, mfd::ExportProfile::NativeMfd)
             .unwrap_err()
@@ -2218,7 +2198,7 @@ fn xlsx_final_chain_rejects_unsupported_boundaries_without_artifacts() {
         .project
         .target_options
         .xlsx_update_existing = true;
-    let destination = directory.0.join("not-created/update-existing.mfd");
+    let destination = directory.path().join("not-created/update-existing.mfd");
     let error = mfd::export_pipeline_with_profile(
         &update_existing,
         &destination,
@@ -2229,7 +2209,7 @@ fn xlsx_final_chain_rejects_unsupported_boundaries_without_artifacts() {
     assert!(error.contains("new-workbook XLSX"), "{error}");
     assert!(!destination.parent().unwrap().exists());
 
-    let mut flat_update_existing = mfd::import_pipeline(&make_csv_final_chain(&directory.0))
+    let mut flat_update_existing = mfd::import_pipeline(&make_csv_final_chain(directory.path()))
         .unwrap()
         .pipeline;
     flat_update_existing.stages[1].project.target_path = Some("converted.xlsx".into());
@@ -2238,7 +2218,9 @@ fn xlsx_final_chain_rejects_unsupported_boundaries_without_artifacts() {
         xlsx_update_existing: true,
         ..mapping::FormatOptions::default()
     };
-    let destination = directory.0.join("not-created/flat-update-existing.mfd");
+    let destination = directory
+        .path()
+        .join("not-created/flat-update-existing.mfd");
     let error = mfd::export_pipeline_with_profile(
         &flat_update_existing,
         &destination,
@@ -2252,7 +2234,7 @@ fn xlsx_final_chain_rejects_unsupported_boundaries_without_artifacts() {
     let mut disconnected = pipeline;
     disconnected.stages[1].project.root = mapping::Scope::default();
     disconnected.stages[1].project.prune_unreachable_nodes();
-    let destination = directory.0.join("not-created/disconnected.mfd");
+    let destination = directory.path().join("not-created/disconnected.mfd");
     let error = mfd::export_pipeline_with_profile(
         &disconnected,
         &destination,
@@ -2315,8 +2297,8 @@ fn xlsx_final_chain_import_rejects_ambiguous_disconnected_and_update_existing() 
         &fixtures.join("xlsx-hierarchical.mfd"),
         &fixtures.join("xlsx-hierarchical-source.xml"),
     );
-    let directory = TempDir::new();
-    let design = directory.0.join("source-xlsx-chain.mfd");
+    let directory = TempDir::new("mfd_pipeline_export").unwrap();
+    let design = directory.path().join("source-xlsx-chain.mfd");
     mfd::export_pipeline_with_profile(&pipeline, &design, mfd::ExportProfile::NativeMfd).unwrap();
     let original = std::fs::read_to_string(&design).unwrap();
     assert!(mfd::import_pipeline(&design).is_ok());
@@ -2375,7 +2357,7 @@ fn xlsx_final_chain_import_rejects_ambiguous_disconnected_and_update_existing() 
         .expect("update-existing XLSX final must reject")
         .to_string();
     assert!(error.contains("new-workbook XLSX final target"), "{error}");
-    assert!(!directory.0.join("not-created").exists());
+    assert!(!directory.path().join("not-created").exists());
 }
 
 #[test]
@@ -2446,9 +2428,9 @@ fn local_xml_to_json_mapping_runs_after_an_identity_xml_stage() {
     .unwrap();
     assert!(json_before.contains("\"sku\"") && json_before.contains("\"A1\""));
 
-    let directory = TempDir::new();
-    std::fs::copy(&input, directory.0.join("Altova_Hierarchical.xml")).unwrap();
-    let exported = directory.0.join("corpus-json-chain.mfd");
+    let directory = TempDir::new("mfd_pipeline_export").unwrap();
+    std::fs::copy(&input, directory.path().join("Altova_Hierarchical.xml")).unwrap();
+    let exported = directory.path().join("corpus-json-chain.mfd");
     let preflight = mfd::preflight_pipeline_export(&pipeline, &exported).unwrap();
     assert!(preflight.is_native_compatible(), "{preflight:?}");
     let report =
@@ -2492,13 +2474,13 @@ fn local_xml_to_json_mapping_runs_after_an_identity_xml_stage() {
 
 #[test]
 fn json_final_chain_rejects_unsupported_json_layouts_without_artifacts() {
-    let directory = TempDir::new();
-    let path = make_json_final_chain(&directory.0);
+    let directory = TempDir::new("mfd_pipeline_export").unwrap();
+    let path = make_json_final_chain(directory.path());
     let imported = mfd::import_pipeline(&path).unwrap();
 
     let mut intermediate_json = imported.pipeline.clone();
     intermediate_json.stages[0].project.target_path = Some("buffer.json".into());
-    let destination = directory.0.join("not-created/intermediate.mfd");
+    let destination = directory.path().join("not-created/intermediate.mfd");
     let error = mfd::export_pipeline_with_profile(
         &intermediate_json,
         &destination,
@@ -2518,7 +2500,7 @@ fn json_final_chain_rejects_unsupported_json_layouts_without_artifacts() {
         options: final_project.target_options.clone(),
         root: final_project.root.clone(),
     });
-    let destination = directory.0.join("not-created/named.mfd");
+    let destination = directory.path().join("not-created/named.mfd");
     let error =
         mfd::export_pipeline_with_profile(&named_json, &destination, mfd::ExportProfile::NativeMfd)
             .unwrap_err()
@@ -2531,7 +2513,7 @@ fn json_final_chain_rejects_unsupported_json_layouts_without_artifacts() {
     disconnected_json.stages[1]
         .project
         .prune_unreachable_nodes();
-    let destination = directory.0.join("not-created/disconnected.mfd");
+    let destination = directory.path().join("not-created/disconnected.mfd");
     let error = mfd::export_pipeline_with_profile(
         &disconnected_json,
         &destination,
@@ -2545,8 +2527,8 @@ fn json_final_chain_rejects_unsupported_json_layouts_without_artifacts() {
 
 #[test]
 fn ambiguous_or_disconnected_json_final_import_rejects() {
-    let directory = TempDir::new();
-    let path = make_json_final_chain(&directory.0);
+    let directory = TempDir::new("mfd_pipeline_export").unwrap();
+    let path = make_json_final_chain(directory.path());
     let original = std::fs::read_to_string(&path).unwrap();
     let disconnected = original.replace(
         "<vertex vertexkey=\"30\"><edges><edge vertexkey=\"40\"/></edges></vertex>",
@@ -2580,17 +2562,17 @@ fn ambiguous_or_disconnected_json_final_import_rejects() {
         error.contains("one connected XML, CSV, fixed-width, FlexText, JSON, Protocol Buffers, XBRL, or XLSX final target"),
         "{error}"
     );
-    assert!(!directory.0.join("not-created").exists());
+    assert!(!directory.path().join("not-created").exists());
 }
 
 #[test]
 fn csv_pipeline_rejects_non_xml_intermediate_and_db_final_without_artifacts() {
-    let directory = TempDir::new();
-    let imported = mfd::import_pipeline(&make_csv_final_chain(&directory.0)).unwrap();
+    let directory = TempDir::new("mfd_pipeline_export").unwrap();
+    let imported = mfd::import_pipeline(&make_csv_final_chain(directory.path())).unwrap();
 
     let mut intermediate_csv = imported.pipeline.clone();
     intermediate_csv.stages[0].project.target_path = Some("buffer.csv".into());
-    let destination = directory.0.join("not-created/intermediate.mfd");
+    let destination = directory.path().join("not-created/intermediate.mfd");
     let error = mfd::export_pipeline(&intermediate_csv, &destination)
         .unwrap_err()
         .to_string();
@@ -2599,14 +2581,14 @@ fn csv_pipeline_rejects_non_xml_intermediate_and_db_final_without_artifacts() {
 
     let mut final_db = imported.pipeline;
     final_db.stages[1].project.target_path = Some("target.db".into());
-    let destination = directory.0.join("not-created/final.mfd");
+    let destination = directory.path().join("not-created/final.mfd");
     let error = mfd::export_pipeline(&final_db, &destination)
         .unwrap_err()
         .to_string();
     assert!(error.contains("unsupported file boundary"), "{error}");
     assert!(!destination.parent().unwrap().exists());
 
-    let mut named_csv = mfd::import_pipeline(&make_csv_final_chain(&directory.0))
+    let mut named_csv = mfd::import_pipeline(&make_csv_final_chain(directory.path()))
         .unwrap()
         .pipeline;
     let final_project = &mut named_csv.stages[1].project;
@@ -2617,7 +2599,7 @@ fn csv_pipeline_rejects_non_xml_intermediate_and_db_final_without_artifacts() {
         options: final_project.target_options.clone(),
         root: final_project.root.clone(),
     });
-    let destination = directory.0.join("not-created/named.mfd");
+    let destination = directory.path().join("not-created/named.mfd");
     let error = mfd::export_pipeline(&named_csv, &destination)
         .unwrap_err()
         .to_string();
@@ -2627,8 +2609,8 @@ fn csv_pipeline_rejects_non_xml_intermediate_and_db_final_without_artifacts() {
 
 #[test]
 fn csv_pipeline_import_rejects_non_csv_text_terminal() {
-    let directory = TempDir::new();
-    let path = make_csv_final_chain(&directory.0);
+    let directory = TempDir::new("mfd_pipeline_export").unwrap();
+    let path = make_csv_final_chain(directory.path());
     let original = std::fs::read_to_string(&path).unwrap();
     let unsupported = original.replace("<text type=\"csv\"", "<text type=\"fixed-length\"");
     assert_ne!(unsupported, original);
@@ -2643,7 +2625,7 @@ fn csv_pipeline_import_rejects_non_csv_text_terminal() {
         ),
         "{error}"
     );
-    assert!(!directory.0.join("not-created").exists());
+    assert!(!directory.path().join("not-created").exists());
 }
 
 fn identity_xml_to_flextext_pipeline(
@@ -2802,10 +2784,10 @@ fn assert_identity_xml_to_flextext_roundtrip(design: &Path, input: &Path, expect
     let before_parsed =
         format_flextext::from_str(&before_text, &final_project.target, before_layout).unwrap();
 
-    let directory = TempDir::new();
-    std::fs::copy(input, directory.0.join(input.file_name().unwrap())).unwrap();
-    let exported = directory.0.join("flextext-chain.mfd");
-    let sibling = directory.0.join("flextext-chain-stage-2-target.mft");
+    let directory = TempDir::new("mfd_pipeline_export").unwrap();
+    std::fs::copy(input, directory.path().join(input.file_name().unwrap())).unwrap();
+    let exported = directory.path().join("flextext-chain.mfd");
+    let sibling = directory.path().join("flextext-chain-stage-2-target.mft");
     let preflight = mfd::preflight_pipeline_export(&pipeline, &exported).unwrap();
     assert!(preflight.is_native_compatible(), "{preflight:?}");
     assert!(!exported.exists());
@@ -2919,9 +2901,9 @@ fn assert_identity_xml_to_protobuf_roundtrip(design: &Path, input: &Path, expect
     let before_decoded =
         format_protobuf::from_slice(&layout, &options.root_message, &before_bytes).unwrap();
 
-    let directory = TempDir::new();
-    std::fs::copy(input, directory.0.join(input.file_name().unwrap())).unwrap();
-    let exported = directory.0.join("protobuf-chain.mfd");
+    let directory = TempDir::new("mfd_pipeline_export").unwrap();
+    std::fs::copy(input, directory.path().join(input.file_name().unwrap())).unwrap();
+    let exported = directory.path().join("protobuf-chain.mfd");
     let preflight = mfd::preflight_pipeline_export(&pipeline, &exported).unwrap();
     assert!(preflight.is_native_compatible(), "{preflight:?}");
     assert!(!exported.exists());
@@ -2941,7 +2923,7 @@ fn assert_identity_xml_to_protobuf_roundtrip(design: &Path, input: &Path, expect
         .and_then(|node| node.attribute("schemafile"))
         .unwrap();
     assert!(schemafile.starts_with("protobuf-chain-stage-2-target"));
-    let schema_path = directory.0.join(schemafile);
+    let schema_path = directory.path().join(schemafile);
     assert!(schema_path.is_file());
     assert_eq!(
         std::fs::read_to_string(&schema_path).unwrap(),
@@ -3045,11 +3027,11 @@ fn xbrl_final_chain_roundtrips_exact_instance_document() {
         1
     );
 
-    let directory = TempDir::new();
+    let directory = TempDir::new("mfd_pipeline_export").unwrap();
     for file in ["xbrl-final-source.xml", "xbrl-final-taxonomy.xsd"] {
-        std::fs::copy(fixtures.join(file), directory.0.join(file)).unwrap();
+        std::fs::copy(fixtures.join(file), directory.path().join(file)).unwrap();
     }
-    let exported = directory.0.join("xbrl-chain.mfd");
+    let exported = directory.path().join("xbrl-chain.mfd");
     let preflight = mfd::preflight_pipeline_export(&pipeline, &exported).unwrap();
     assert!(preflight.is_native_compatible(), "{preflight:?}");
     assert!(!exported.exists());
@@ -3111,13 +3093,13 @@ fn xbrl_final_chain_rejects_unsupported_boundaries_before_artifacts() {
     let imported = mfd::import(&fixtures.join("xbrl-final.mfd")).unwrap();
     let (pipeline, _) =
         identity_xml_to_xbrl_pipeline(imported.project, &fixtures.join("xbrl-final-source.xml"));
-    let directory = TempDir::new();
+    let directory = TempDir::new("mfd_pipeline_export").unwrap();
 
     let mut intermediate = pipeline.clone();
     intermediate.stages[0].project.target_path = Some("buffer.xbrl".into());
     intermediate.stages[0].project.target_options =
         pipeline.stages[1].project.target_options.clone();
-    let destination = directory.0.join("not-created/intermediate.mfd");
+    let destination = directory.path().join("not-created/intermediate.mfd");
     assert!(
         mfd::export_pipeline_with_profile(
             &intermediate,
@@ -3137,7 +3119,7 @@ fn xbrl_final_chain_rejects_unsupported_boundaries_before_artifacts() {
         options: final_project.target_options.clone(),
         root: mapping::Scope::default(),
     });
-    let destination = directory.0.join("not-created/named.mfd");
+    let destination = directory.path().join("not-created/named.mfd");
     assert!(
         mfd::export_pipeline_with_profile(&named, &destination, mfd::ExportProfile::NativeMfd)
             .is_err()
@@ -3161,7 +3143,7 @@ fn xbrl_final_chain_rejects_unsupported_boundaries_before_artifacts() {
         .with_namespace_bindings(options.namespace_bindings().to_vec())
         .unwrap(),
     );
-    let destination = directory.0.join("not-created/presentation.mfd");
+    let destination = directory.path().join("not-created/presentation.mfd");
     let error = mfd::export_pipeline_with_profile(
         &presentation,
         &destination,
@@ -3178,7 +3160,7 @@ fn xbrl_final_chain_rejects_unsupported_boundaries_before_artifacts() {
     let mut disconnected = pipeline;
     disconnected.stages[1].project.root = mapping::Scope::default();
     disconnected.stages[1].project.prune_unreachable_nodes();
-    let destination = directory.0.join("not-created/disconnected.mfd");
+    let destination = directory.path().join("not-created/disconnected.mfd");
     assert!(
         mfd::export_pipeline_with_profile(
             &disconnected,
@@ -3198,13 +3180,13 @@ fn protobuf_final_chain_rejects_unsupported_boundaries_before_artifacts() {
         imported.project,
         &fixtures.join("protobuf-target-source.xml"),
     );
-    let directory = TempDir::new();
+    let directory = TempDir::new("mfd_pipeline_export").unwrap();
 
     let mut intermediate = pipeline.clone();
     intermediate.stages[0].project.target_path = Some("buffer.bin".into());
     intermediate.stages[0].project.target_options =
         pipeline.stages[1].project.target_options.clone();
-    let destination = directory.0.join("not-created/intermediate.mfd");
+    let destination = directory.path().join("not-created/intermediate.mfd");
     let error = mfd::export_pipeline_with_profile(
         &intermediate,
         &destination,
@@ -3224,7 +3206,7 @@ fn protobuf_final_chain_rejects_unsupported_boundaries_before_artifacts() {
         options: final_project.target_options.clone(),
         root: mapping::Scope::default(),
     });
-    let destination = directory.0.join("not-created/named.mfd");
+    let destination = directory.path().join("not-created/named.mfd");
     let error =
         mfd::export_pipeline_with_profile(&named, &destination, mfd::ExportProfile::NativeMfd)
             .unwrap_err()
@@ -3240,7 +3222,7 @@ fn protobuf_final_chain_rejects_unsupported_boundaries_before_artifacts() {
         .as_mut()
         .unwrap()
         .schema = "not a proto schema".into();
-    let destination = directory.0.join("not-created/malformed.mfd");
+    let destination = directory.path().join("not-created/malformed.mfd");
     let error =
         mfd::export_pipeline_with_profile(&malformed, &destination, mfd::ExportProfile::NativeMfd)
             .unwrap_err()
@@ -3254,7 +3236,7 @@ fn protobuf_final_chain_rejects_unsupported_boundaries_before_artifacts() {
     let mut disconnected = pipeline;
     disconnected.stages[1].project.root = mapping::Scope::default();
     disconnected.stages[1].project.prune_unreachable_nodes();
-    let destination = directory.0.join("not-created/disconnected.mfd");
+    let destination = directory.path().join("not-created/disconnected.mfd");
     let error = mfd::export_pipeline_with_profile(
         &disconnected,
         &destination,
@@ -3463,11 +3445,11 @@ fn add_connected_input_outside_xml_payload(
 #[test]
 fn pipeline_import_rejects_unrepresented_intermediate_and_named_xml_inputs() {
     for case in ["first", "middle", "named"] {
-        let directory = TempDir::new();
+        let directory = TempDir::new("mfd_pipeline_export").unwrap();
         let (path, component_name, upstream_key) = match case {
-            "first" => (make_chain(&directory.0), "buffer", "10"),
-            "middle" => (make_four_stage_chain(&directory.0), "buffer-2", "30"),
-            "named" => (make_terminal_fanout(&directory.0), "secondary", "30"),
+            "first" => (make_chain(directory.path()), "buffer", "10"),
+            "middle" => (make_four_stage_chain(directory.path()), "buffer-2", "30"),
+            "named" => (make_terminal_fanout(directory.path()), "secondary", "30"),
             _ => unreachable!(),
         };
         let original = std::fs::read_to_string(&path).unwrap();
@@ -3489,10 +3471,10 @@ fn pipeline_import_rejects_unrepresented_intermediate_and_named_xml_inputs() {
 #[test]
 fn pipeline_import_rejects_connected_inputs_outside_csv_and_json_payloads() {
     for library in ["text", "json"] {
-        let directory = TempDir::new();
+        let directory = TempDir::new("mfd_pipeline_export").unwrap();
         let path = match library {
-            "text" => make_csv_final_chain(&directory.0),
-            "json" => make_json_final_chain(&directory.0),
+            "text" => make_csv_final_chain(directory.path()),
+            "json" => make_json_final_chain(directory.path()),
             _ => unreachable!(),
         };
         let original = std::fs::read_to_string(&path).unwrap();
@@ -3512,8 +3494,8 @@ fn pipeline_import_rejects_connected_inputs_outside_csv_and_json_payloads() {
 
 #[test]
 fn json_null_alternative_only_skips_a_connected_typed_sibling_in_selected_payload() {
-    let directory = TempDir::new();
-    let path = make_json_final_chain(&directory.0);
+    let directory = TempDir::new("mfd_pipeline_export").unwrap();
+    let path = make_json_final_chain(directory.path());
     let original = std::fs::read_to_string(&path).unwrap();
     let original_pipeline = mfd::import_pipeline(&path).unwrap().pipeline;
     let with_null = original.replace(
@@ -3576,8 +3558,8 @@ fn protobuf_final_chain_import_rejects_malformed_ambiguous_and_disconnected() {
         imported.project,
         &fixtures.join("protobuf-target-source.xml"),
     );
-    let directory = TempDir::new();
-    let design = directory.0.join("source-protobuf-chain.mfd");
+    let directory = TempDir::new("mfd_pipeline_export").unwrap();
+    let design = directory.path().join("source-protobuf-chain.mfd");
     mfd::export_pipeline_with_profile(&pipeline, &design, mfd::ExportProfile::NativeMfd).unwrap();
     let original = std::fs::read_to_string(&design).unwrap();
     assert!(mfd::import_pipeline(&design).is_ok());
@@ -3673,7 +3655,7 @@ fn protobuf_final_chain_import_rejects_malformed_ambiguous_and_disconnected() {
         .expect("missing protobuf schema must reject")
         .to_string();
     assert!(error.contains("protobuf"), "{error}");
-    assert!(!directory.0.join("not-created").exists());
+    assert!(!directory.path().join("not-created").exists());
 }
 
 #[test]
@@ -3682,13 +3664,13 @@ fn xbrl_final_chain_import_rejects_malformed_ambiguous_and_disconnected() {
     let imported = mfd::import(&fixtures.join("xbrl-final.mfd")).unwrap();
     let (pipeline, _) =
         identity_xml_to_xbrl_pipeline(imported.project, &fixtures.join("xbrl-final-source.xml"));
-    let directory = TempDir::new();
+    let directory = TempDir::new("mfd_pipeline_export").unwrap();
     std::fs::copy(
         fixtures.join("xbrl-final-taxonomy.xsd"),
-        directory.0.join("xbrl-final-taxonomy.xsd"),
+        directory.path().join("xbrl-final-taxonomy.xsd"),
     )
     .unwrap();
-    let design = directory.0.join("source-xbrl-chain.mfd");
+    let design = directory.path().join("source-xbrl-chain.mfd");
     mfd::export_pipeline_with_profile(&pipeline, &design, mfd::ExportProfile::NativeMfd).unwrap();
     let original = std::fs::read_to_string(&design).unwrap();
     assert!(mfd::import_pipeline(&design).is_ok());
@@ -3765,7 +3747,7 @@ fn xbrl_final_chain_import_rejects_malformed_ambiguous_and_disconnected() {
         error.contains("unrepresented connected input port"),
         "{error}"
     );
-    assert!(!directory.0.join("not-created").exists());
+    assert!(!directory.path().join("not-created").exists());
 }
 
 #[test]
@@ -3776,13 +3758,13 @@ fn flextext_final_chain_rejects_unsupported_boundaries_before_artifacts() {
         imported.project,
         &fixtures.join("flextext/target-source.xml"),
     );
-    let directory = TempDir::new();
+    let directory = TempDir::new("mfd_pipeline_export").unwrap();
 
     let mut intermediate = pipeline.clone();
     intermediate.stages[0].project.target_path = Some("buffer.txt".into());
     intermediate.stages[0].project.target_options =
         pipeline.stages[1].project.target_options.clone();
-    let destination = directory.0.join("not-created/intermediate.mfd");
+    let destination = directory.path().join("not-created/intermediate.mfd");
     let error = mfd::export_pipeline_with_profile(
         &intermediate,
         &destination,
@@ -3802,7 +3784,7 @@ fn flextext_final_chain_rejects_unsupported_boundaries_before_artifacts() {
         options: final_project.target_options.clone(),
         root: final_project.root.clone(),
     });
-    let destination = directory.0.join("not-created/named.mfd");
+    let destination = directory.path().join("not-created/named.mfd");
     let error =
         mfd::export_pipeline_with_profile(&named, &destination, mfd::ExportProfile::NativeMfd)
             .unwrap_err()
@@ -3841,7 +3823,7 @@ fn flextext_final_chain_rejects_unsupported_boundaries_before_artifacts() {
         )
         .unwrap(),
     );
-    let destination = directory.0.join("not-created/unsupported.mfd");
+    let destination = directory.path().join("not-created/unsupported.mfd");
     let error = mfd::export_pipeline_with_profile(
         &unsupported,
         &destination,
@@ -3905,8 +3887,8 @@ fn flextext_final_chain_import_rejects_malformed_ambiguous_and_disconnected() {
         imported.project,
         &fixtures.join("flextext/target-source.xml"),
     );
-    let directory = TempDir::new();
-    let design = directory.0.join("source-flextext-chain.mfd");
+    let directory = TempDir::new("mfd_pipeline_export").unwrap();
+    let design = directory.path().join("source-flextext-chain.mfd");
     mfd::export_pipeline_with_profile(&pipeline, &design, mfd::ExportProfile::NativeMfd).unwrap();
     let original = std::fs::read_to_string(&design).unwrap();
     assert!(mfd::import_pipeline(&design).is_ok());
@@ -3981,17 +3963,17 @@ fn flextext_final_chain_import_rejects_malformed_ambiguous_and_disconnected() {
         .expect("missing FlexText configuration must reject")
         .to_string();
     assert!(error.contains("text/flextext"), "{error}");
-    assert!(!directory.0.join("not-created").exists());
+    assert!(!directory.path().join("not-created").exists());
 }
 
 #[test]
 fn four_stage_pipeline_remaps_every_stage_and_preserves_execution() {
-    let directory = TempDir::new();
-    let original = mfd::import_pipeline(&make_four_stage_chain(&directory.0)).unwrap();
+    let directory = TempDir::new("mfd_pipeline_export").unwrap();
+    let original = mfd::import_pipeline(&make_four_stage_chain(directory.path())).unwrap();
     assert!(original.warnings.is_empty(), "{:?}", original.warnings);
     assert_eq!(original.pipeline.stages.len(), 4);
     let original_outputs = execute(&original.pipeline);
-    let exported_path = directory.0.join("exported-four-stage.mfd");
+    let exported_path = directory.path().join("exported-four-stage.mfd");
     assert!(
         mfd::export_pipeline(&original.pipeline, &exported_path)
             .unwrap()
@@ -4020,8 +4002,8 @@ fn four_stage_pipeline_remaps_every_stage_and_preserves_execution() {
 
 #[test]
 fn late_named_xml_source_reuses_one_original_host_component() {
-    let directory = TempDir::new();
-    let original = mfd::import_pipeline(&make_late_named_source_chain(&directory.0)).unwrap();
+    let directory = TempDir::new("mfd_pipeline_export").unwrap();
+    let original = mfd::import_pipeline(&make_late_named_source_chain(directory.path())).unwrap();
     assert!(original.warnings.is_empty(), "{:?}", original.warnings);
     assert_eq!(original.pipeline.stages.len(), 2);
     assert_eq!(
@@ -4049,7 +4031,7 @@ fn late_named_xml_source_reuses_one_original_host_component() {
         Some(&Value::String("host value".into()))
     );
 
-    let exported_path = directory.0.join("late-host-export.mfd");
+    let exported_path = directory.path().join("late-host-export.mfd");
     let report = mfd::preflight_pipeline_export(&original.pipeline, &exported_path).unwrap();
     assert!(report.is_native_compatible(), "{report:?}");
     let published = mfd::export_pipeline_with_profile(
@@ -4080,9 +4062,9 @@ fn late_named_xml_source_reuses_one_original_host_component() {
 
 #[test]
 fn original_host_can_feed_first_and_later_stage_from_one_vertex() {
-    let directory = TempDir::new();
+    let directory = TempDir::new("mfd_pipeline_export").unwrap();
     let imported =
-        mfd::import_pipeline(&make_first_and_late_named_source_chain(&directory.0)).unwrap();
+        mfd::import_pipeline(&make_first_and_late_named_source_chain(directory.path())).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert_eq!(imported.pipeline.stages.len(), 2);
     for stage in &imported.pipeline.stages {
@@ -4105,7 +4087,7 @@ fn original_host_can_feed_first_and_later_stage_from_one_vertex() {
         );
     }
 
-    let exported_path = directory.0.join("first-and-late-host.mfd");
+    let exported_path = directory.path().join("first-and-late-host.mfd");
     let report = mfd::preflight_pipeline_export(&imported.pipeline, &exported_path).unwrap();
     assert!(report.is_native_compatible(), "{report:?}");
     let published = mfd::export_pipeline_with_profile(
@@ -4140,9 +4122,9 @@ fn original_host_can_feed_first_and_later_stage_from_one_vertex() {
 
 #[test]
 fn earlier_xml_result_feeds_final_named_input_and_round_trips_natively() {
-    let directory = TempDir::new();
+    let directory = TempDir::new("mfd_pipeline_export").unwrap();
     let original =
-        mfd::import_pipeline(&make_earlier_result_named_source_chain(&directory.0)).unwrap();
+        mfd::import_pipeline(&make_earlier_result_named_source_chain(directory.path())).unwrap();
     assert!(original.warnings.is_empty(), "{:?}", original.warnings);
     assert_eq!(original.pipeline.stages.len(), 3);
     let final_stage = &original.pipeline.stages[2];
@@ -4218,7 +4200,7 @@ fn earlier_xml_result_feeds_final_named_input_and_round_trips_natively() {
     }
     let before_xml = format_xml::to_string(&final_stage.project.target, final_before).unwrap();
 
-    let exported_path = directory.0.join("earlier-named-export.mfd");
+    let exported_path = directory.path().join("earlier-named-export.mfd");
     let preflight = mfd::preflight_pipeline_export(&original.pipeline, &exported_path).unwrap();
     assert!(preflight.is_native_compatible(), "{preflight:?}");
     assert!(!exported_path.exists());
@@ -4313,8 +4295,8 @@ fn earlier_xml_result_feeds_final_named_input_and_round_trips_natively() {
 #[test]
 fn nonadjacent_xml_result_feeds_final_named_input_in_four_stage_chain() {
     for producer in 1..=2 {
-        let directory = TempDir::new();
-        let source_path = make_four_stage_earlier_result_chain(&directory.0, producer);
+        let directory = TempDir::new("mfd_pipeline_export").unwrap();
+        let source_path = make_four_stage_earlier_result_chain(directory.path(), producer);
         let imported = mfd::import_pipeline(&source_path).unwrap();
         assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
         assert_eq!(imported.pipeline.stages.len(), 4);
@@ -4365,7 +4347,7 @@ fn nonadjacent_xml_result_feeds_final_named_input_in_four_stage_chain() {
         let before_xml = format_xml::to_string(&final_stage.project.target, final_before).unwrap();
 
         let exported_path = directory
-            .0
+            .path()
             .join(format!("four-stage-branch-{producer}.mfd"));
         let preflight = mfd::preflight_pipeline_export(&imported.pipeline, &exported_path).unwrap();
         assert!(preflight.is_native_compatible(), "{preflight:?}");
@@ -4444,8 +4426,8 @@ fn nonadjacent_xml_result_feeds_final_named_input_in_four_stage_chain() {
 
 #[test]
 fn four_stage_earlier_named_source_rejects_changed_preview_before_export() {
-    let directory = TempDir::new();
-    let source_path = make_four_stage_earlier_result_chain(&directory.0, 2);
+    let directory = TempDir::new("mfd_pipeline_export").unwrap();
+    let source_path = make_four_stage_earlier_result_chain(directory.path(), 2);
     let mut pipeline = mfd::import_pipeline(&source_path).unwrap().pipeline;
     let binding_name = pipeline.stages[3]
         .extra_sources
@@ -4461,7 +4443,7 @@ fn four_stage_earlier_named_source_rejects_changed_preview_before_export() {
         .find(|source| source.name == binding_name)
         .unwrap();
     named.path = "different-preview.xml".into();
-    let exported = directory.0.join("changed-four-stage-preview.mfd");
+    let exported = directory.path().join("changed-four-stage-preview.mfd");
     let error =
         mfd::export_pipeline_with_profile(&pipeline, &exported, mfd::ExportProfile::NativeMfd)
             .err()
@@ -4473,10 +4455,10 @@ fn four_stage_earlier_named_source_rejects_changed_preview_before_export() {
 
 #[test]
 fn four_stage_chain_rejects_two_earlier_branches() {
-    let directory = TempDir::new();
-    let source_path = make_four_stage_earlier_result_chain(&directory.0, 2);
+    let directory = TempDir::new("mfd_pipeline_export").unwrap();
+    let source_path = make_four_stage_earlier_result_chain(directory.path(), 2);
     std::fs::write(
-        directory.0.join("target.xsd"),
+        directory.path().join("target.xsd"),
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Target"><xs:complexType><xs:sequence><xs:element name="Result" type="xs:string"/><xs:element name="Lookup" type="xs:string"/><xs:element name="Lookup2" type="xs:string"/></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
     )
     .unwrap();
@@ -4511,8 +4493,8 @@ fn four_stage_chain_rejects_two_earlier_branches() {
 
 #[test]
 fn earlier_result_branch_rejects_other_stage_graphs_and_unrepresented_inputs() {
-    let directory = TempDir::new();
-    let path = make_four_stage_chain(&directory.0);
+    let directory = TempDir::new("mfd_pipeline_export").unwrap();
+    let path = make_four_stage_chain(directory.path());
     let original = std::fs::read_to_string(&path).unwrap();
     let branch = original
         .replace(
@@ -4528,7 +4510,7 @@ fn earlier_result_branch_rejects_other_stage_graphs_and_unrepresented_inputs() {
     let error = mfd::import_pipeline(&path).err().unwrap().to_string();
     assert!(error.contains("serial XML chain"), "{error}");
 
-    let path = make_earlier_result_named_source_chain(&directory.0);
+    let path = make_earlier_result_named_source_chain(directory.path());
     let original = std::fs::read_to_string(&path).unwrap();
     let unrepresented = original
         .replace(
@@ -4557,8 +4539,8 @@ fn earlier_result_branch_rejects_other_stage_graphs_and_unrepresented_inputs() {
 
 #[test]
 fn earlier_result_branch_requires_a_source_preview_path() {
-    let directory = TempDir::new();
-    let path = make_earlier_result_named_source_chain(&directory.0);
+    let directory = TempDir::new("mfd_pipeline_export").unwrap();
+    let path = make_earlier_result_named_source_chain(directory.path());
     let original = std::fs::read_to_string(&path).unwrap();
     for replacement in [
         "outputinstance=\"first-out.xml\"",
@@ -4580,8 +4562,8 @@ fn earlier_result_branch_requires_a_source_preview_path() {
 
 #[test]
 fn earlier_result_named_source_export_guards_publish_no_artifacts() {
-    let directory = TempDir::new();
-    let original = mfd::import_pipeline(&make_earlier_result_named_source_chain(&directory.0))
+    let directory = TempDir::new("mfd_pipeline_export").unwrap();
+    let original = mfd::import_pipeline(&make_earlier_result_named_source_chain(directory.path()))
         .unwrap()
         .pipeline;
     for (label, mutate) in [
@@ -4627,7 +4609,7 @@ fn earlier_result_named_source_export_guards_publish_no_artifacts() {
         let mut pipeline = original.clone();
         mutate(&mut pipeline);
         let destination = directory
-            .0
+            .path()
             .join(format!("not-created-{label}"))
             .join("rejected.mfd");
         let error = mfd::export_pipeline(&pipeline, &destination)
@@ -4648,9 +4630,9 @@ fn earlier_result_named_source_export_guards_publish_no_artifacts() {
 #[test]
 fn four_stage_chain_reuses_unused_original_host_in_intermediate_or_final_stage() {
     for late_stage in [3, 4] {
-        let directory = TempDir::new();
+        let directory = TempDir::new("mfd_pipeline_export").unwrap();
         let original = mfd::import_pipeline(&make_four_stage_late_named_source_chain(
-            &directory.0,
+            directory.path(),
             late_stage,
         ))
         .unwrap();
@@ -4675,7 +4657,7 @@ fn four_stage_chain_reuses_unused_original_host_in_intermediate_or_final_stage()
         );
 
         let exported_path = directory
-            .0
+            .path()
             .join(format!("late-host-stage-{late_stage}.mfd"));
         let report = mfd::preflight_pipeline_export(&original.pipeline, &exported_path).unwrap();
         assert!(report.is_native_compatible(), "{report:?}");
@@ -4715,9 +4697,9 @@ fn four_stage_chain_reuses_unused_original_host_in_intermediate_or_final_stage()
 #[test]
 fn four_stage_chain_reuses_original_host_across_later_stages() {
     for same_port in [false, true] {
-        let directory = TempDir::new();
+        let directory = TempDir::new("mfd_pipeline_export").unwrap();
         let imported = mfd::import_pipeline(&make_four_stage_repeated_host_chain(
-            &directory.0,
+            directory.path(),
             same_port,
         ))
         .unwrap();
@@ -4758,7 +4740,7 @@ fn four_stage_chain_reuses_original_host_across_later_stages() {
             ))
         );
 
-        let exported_path = directory.0.join("reused-host-export.mfd");
+        let exported_path = directory.path().join("reused-host-export.mfd");
         let report = mfd::preflight_pipeline_export(&imported.pipeline, &exported_path).unwrap();
         assert!(report.is_native_compatible(), "{report:?}");
         let published = mfd::export_pipeline_with_profile(
@@ -4797,13 +4779,16 @@ fn four_stage_chain_reuses_original_host_across_later_stages() {
 
 #[test]
 fn four_stage_late_host_rejects_changed_boundary_or_unknown_host_without_publishing() {
-    let directory = TempDir::new();
-    let imported =
-        mfd::import_pipeline(&make_four_stage_late_named_source_chain(&directory.0, 4)).unwrap();
+    let directory = TempDir::new("mfd_pipeline_export").unwrap();
+    let imported = mfd::import_pipeline(&make_four_stage_late_named_source_chain(
+        directory.path(),
+        4,
+    ))
+    .unwrap();
 
     let mut changed = imported.pipeline.clone();
     changed.stages[3].project.extra_sources[0].path = "different.xml".into();
-    let destination = directory.0.join("not-created/changed.mfd");
+    let destination = directory.path().join("not-created/changed.mfd");
     let error = mfd::export_pipeline(&changed, &destination)
         .unwrap_err()
         .to_string();
@@ -4817,7 +4802,7 @@ fn four_stage_late_host_rejects_changed_boundary_or_unknown_host_without_publish
     unknown.stages[3].extra_sources[0].from = PipelineInput::Host {
         name: "introduced-late".into(),
     };
-    let destination = directory.0.join("not-created/unknown.mfd");
+    let destination = directory.path().join("not-created/unknown.mfd");
     let error = mfd::export_pipeline(&unknown, &destination)
         .unwrap_err()
         .to_string();
@@ -4827,8 +4812,8 @@ fn four_stage_late_host_rejects_changed_boundary_or_unknown_host_without_publish
 
 #[test]
 fn late_named_xml_source_rejects_changed_boundary_or_name_without_publishing() {
-    let directory = TempDir::new();
-    let imported = mfd::import_pipeline(&make_late_named_source_chain(&directory.0)).unwrap();
+    let directory = TempDir::new("mfd_pipeline_export").unwrap();
+    let imported = mfd::import_pipeline(&make_late_named_source_chain(directory.path())).unwrap();
 
     let mut changed = imported.pipeline.clone();
     changed.stages[1]
@@ -4838,7 +4823,7 @@ fn late_named_xml_source_rejects_changed_boundary_or_name_without_publishing() {
         .find(|source| source.name == "catalog")
         .unwrap()
         .path = "different.xml".into();
-    let destination = directory.0.join("not-created/changed.mfd");
+    let destination = directory.path().join("not-created/changed.mfd");
     let error = mfd::export_pipeline(&changed, &destination)
         .unwrap_err()
         .to_string();
@@ -4850,7 +4835,7 @@ fn late_named_xml_source_rejects_changed_boundary_or_name_without_publishing() {
 
     let mut renamed = imported.pipeline;
     renamed.stages[1].extra_sources[0].name = "other".into();
-    let destination = directory.0.join("not-created/renamed.mfd");
+    let destination = directory.path().join("not-created/renamed.mfd");
     let error = mfd::export_pipeline(&renamed, &destination)
         .unwrap_err()
         .to_string();
@@ -4860,8 +4845,8 @@ fn late_named_xml_source_rejects_changed_boundary_or_name_without_publishing() {
 
 #[test]
 fn synthetic_terminal_xml_fanout_imports_exports_and_runs() {
-    let directory = TempDir::new();
-    let source_path = make_terminal_fanout(&directory.0);
+    let directory = TempDir::new("mfd_pipeline_export").unwrap();
+    let source_path = make_terminal_fanout(directory.path());
     let original = mfd::import_pipeline(&source_path).unwrap();
     assert!(original.warnings.is_empty(), "{:?}", original.warnings);
     assert_eq!(original.pipeline.stages.len(), 2);
@@ -4882,7 +4867,7 @@ fn synthetic_terminal_xml_fanout_imports_exports_and_runs() {
         Some(&Value::String("serial value".into()))
     );
 
-    let exported_path = directory.0.join("fanout-export.mfd");
+    let exported_path = directory.path().join("fanout-export.mfd");
     let report = mfd::preflight_pipeline_export(&original.pipeline, &exported_path).unwrap();
     assert!(report.warnings.is_empty(), "{:?}", report.warnings);
     assert!(
@@ -4930,15 +4915,18 @@ fn synthetic_terminal_xml_fanout_imports_exports_and_runs() {
 
 #[test]
 fn disconnected_terminal_target_rejects_before_publishing() {
-    let directory = TempDir::new();
-    let mut pipeline = mfd::import_pipeline(&make_terminal_fanout(&directory.0))
+    let directory = TempDir::new("mfd_pipeline_export").unwrap();
+    let mut pipeline = mfd::import_pipeline(&make_terminal_fanout(directory.path()))
         .unwrap()
         .pipeline;
     pipeline.stages[1].project.extra_targets[0]
         .root
         .bindings
         .clear();
-    let destination = directory.0.join("not-created").join("disconnected.mfd");
+    let destination = directory
+        .path()
+        .join("not-created")
+        .join("disconnected.mfd");
     let error = mfd::export_pipeline(&pipeline, &destination)
         .err()
         .unwrap()
@@ -4953,14 +4941,14 @@ fn disconnected_terminal_target_rejects_before_publishing() {
 
 #[test]
 fn nonserial_pipeline_rejects_without_publishing() {
-    let directory = TempDir::new();
-    let mut pipeline = mfd::import_pipeline(&make_chain(&directory.0))
+    let directory = TempDir::new("mfd_pipeline_export").unwrap();
+    let mut pipeline = mfd::import_pipeline(&make_chain(directory.path()))
         .unwrap()
         .pipeline;
     pipeline.stages[1].source = PipelineInput::Host {
         name: "second-host".into(),
     };
-    let destination = directory.0.join("not-created").join("rejected.mfd");
+    let destination = directory.path().join("not-created").join("rejected.mfd");
     let error = mfd::export_pipeline(&pipeline, &destination)
         .err()
         .unwrap()
@@ -4972,15 +4960,15 @@ fn nonserial_pipeline_rejects_without_publishing() {
 
 #[test]
 fn late_unused_host_input_rejects_without_publishing() {
-    let directory = TempDir::new();
-    let mut pipeline = mfd::import_pipeline(&make_chain(&directory.0))
+    let directory = TempDir::new("mfd_pipeline_export").unwrap();
+    let mut pipeline = mfd::import_pipeline(&make_chain(directory.path()))
         .unwrap()
         .pipeline;
     let binding = pipeline.stages[1].extra_sources.first_mut().unwrap();
     binding.from = PipelineInput::Host {
         name: "new-unused-host".into(),
     };
-    let destination = directory.0.join("not-created").join("rejected.mfd");
+    let destination = directory.path().join("not-created").join("rejected.mfd");
     let error = mfd::export_pipeline(&pipeline, &destination)
         .err()
         .unwrap()

@@ -64,16 +64,16 @@ fn stage(dir: &TempDir, design: &str) -> PathBuf {
         "input.xml",
         "input-numeric-text.xml",
     ] {
-        fs::copy(fixtures.join(file), dir.0.join(file)).expect("fixture file copies");
+        fs::copy(fixtures.join(file), dir.path().join(file)).expect("fixture file copies");
     }
-    let path = dir.0.join("mapping.mfd");
+    let path = dir.path().join("mapping.mfd");
     fs::copy(fixtures.join(design), &path).expect("design copies");
     path
 }
 
 fn import_text(dir: &TempDir, text: &str) -> mfd::Imported {
     stage(dir, "designs/upper.mfd");
-    let path = dir.0.join("mapping.mfd");
+    let path = dir.path().join("mapping.mfd");
     fs::write(&path, text).expect("design writes");
     mfd::import(&path).expect("the design imports")
 }
@@ -178,7 +178,7 @@ fn admitted_computed_key_designs_reproduce_their_frozen_tuples() {
             continue;
         }
         admitted += 1;
-        let dir = TempDir::new();
+        let dir = TempDir::new("mfd-join").unwrap();
         let imported = mfd::import(&stage(&dir, case["design"].as_str().expect("design")))
             .unwrap_or_else(|error| panic!("{id}: {error}"));
         assert!(
@@ -232,7 +232,7 @@ fn a_computed_key_as_the_second_input_keeps_its_tuples() {
             r#"<first-key path-id="1" input-index="0"/><second-key path-id="2" input-index="1"/>"#,
             r#"<first-key path-id="2" input-index="0"/><second-key path-id="1" input-index="1"/>"#,
         );
-    let dir = TempDir::new();
+    let dir = TempDir::new("mfd-join").unwrap();
     let imported = import_text(&dir, &text);
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert_eq!(engine::validate(&imported.project), []);
@@ -255,7 +255,7 @@ fn a_computed_key_as_the_second_input_keeps_its_tuples() {
 #[test]
 fn refused_computed_key_designs_keep_the_join_out_with_their_reason() {
     for (id, reason) in REFUSED {
-        let dir = TempDir::new();
+        let dir = TempDir::new("mfd-join").unwrap();
         let imported = mfd::import(&stage(&dir, &format!("designs/{id}.mfd")))
             .unwrap_or_else(|error| panic!("{id}: {error}"));
         assert!(
@@ -272,7 +272,7 @@ fn refused_computed_key_designs_keep_the_join_out_with_their_reason() {
 
 /// A design variant that the observed set or the bounds refuse.
 fn assert_refused(text: &str, reason: &str) {
-    let dir = TempDir::new();
+    let dir = TempDir::new("mfd-join").unwrap();
     let imported = import_text(&dir, text);
     assert!(
         imported

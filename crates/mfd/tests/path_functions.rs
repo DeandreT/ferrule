@@ -1,30 +1,9 @@
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::path::Path;
 
 use ir::{Instance, Value};
 use mapping::{Node, RuntimeValue};
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Self {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_path_functions_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn write_design(path: &Path) {
     std::fs::write(
@@ -120,8 +99,8 @@ fn assert_output(output: &Instance) {
 
 #[test]
 fn path_functions_import_execute_and_round_trip() {
-    let dir = TempDir::new();
-    let design = dir.0.join("path-functions.mfd");
+    let dir = TempDir::new("mfd_path_functions").unwrap();
+    let design = dir.path().join("path-functions.mfd");
     write_design(&design);
 
     let imported = mfd::import(&design).unwrap();
@@ -157,7 +136,7 @@ fn path_functions_import_execute_and_round_trip() {
         engine::run_with_context(&imported.project, &source("../report.xml"), &execution).unwrap();
     assert_output(&output);
 
-    let exported = dir.0.join("round-trip.mfd");
+    let exported = dir.path().join("round-trip.mfd");
     let warnings = mfd::export(&imported.project, &exported).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
     let reimported = mfd::import(&exported).unwrap();

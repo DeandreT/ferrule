@@ -1,36 +1,16 @@
-use std::path::PathBuf;
-
 use ir::{Instance, Value};
 use mapping::Node;
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Result<Self, std::io::Error> {
-        let path = std::env::temp_dir().join(format!(
-            "ferrule-mfd-sparse-group-key-{}",
-            std::process::id()
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 #[test]
 fn sparse_group_key_output_keeps_its_positional_input() -> Result<(), Box<dyn std::error::Error>> {
-    let dir = TempDir::new()?;
+    let dir = TempDir::new("mfd-sparse-group-key")?;
     std::fs::write(
-        dir.0.join("target.xsd"),
+        dir.path().join("target.xsd"),
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Summary"><xs:complexType><xs:sequence><xs:element name="Company" type="xs:string"/></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
     )?;
-    let design = dir.0.join("sparse-group-key.mfd");
+    let design = dir.path().join("sparse-group-key.mfd");
     std::fs::write(
         &design,
         r#"<mapping version="26"><component name="map"><structure><children>

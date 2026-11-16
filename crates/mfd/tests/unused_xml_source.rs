@@ -1,28 +1,11 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{Instance, ScalarType, SchemaNode, Value};
 use mapping::{Binding, FormatOptions, FunctionId, Graph, Node, Project, Scope, UserFunction};
 
-struct Directory(PathBuf);
-impl Directory {
-    fn new() -> Self {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_unused_xml_input_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir(&path).unwrap();
-        Self(path)
-    }
-}
-impl Drop for Directory {
-    fn drop(&mut self) {
-        std::fs::remove_dir_all(&self.0).unwrap();
-    }
-}
+use test_support::TempDir as Directory;
+
 fn project(ty: ScalarType, value: Value, function: bool) -> Project {
     let mut p = Project {
         execution_contract: None,
@@ -152,9 +135,9 @@ fn explicit_unused_input_constant_and_zero_argument_scalar_bodies_are_executable
         (ScalarType::Bool, Value::Bool(true)),
     ] {
         for function in [false, true] {
-            let directory = Directory::new();
+            let directory = Directory::new("unused_xml_input").unwrap();
             let p = project(ty, value.clone(), function);
-            let path = export(&p, &directory.0);
+            let path = export(&p, directory.path());
             let input =
                 Instance::Group((vec![("Value".into(), Instance::Scalar(value.clone()))]).into());
             let expected = engine::run(&p, &input).unwrap();
@@ -171,7 +154,7 @@ fn explicit_unused_input_constant_and_zero_argument_scalar_bodies_are_executable
             );
             // Both independently exported cycles retain explicit ownership.
             for cycle in 0..2 {
-                let next = directory.0.join(format!("cycle-{cycle}.mfd"));
+                let next = directory.path().join(format!("cycle-{cycle}.mfd"));
                 mfd::export_with_profile(
                     &imported.imported.project,
                     &next,
@@ -196,10 +179,10 @@ fn explicit_unused_input_constant_and_zero_argument_scalar_bodies_are_executable
 
 #[test]
 fn ambiguous_direction_controls_and_raw_keys_keep_the_inventory_warning() {
-    let directory = Directory::new();
+    let directory = Directory::new("unused_xml_input").unwrap();
     let path = export(
         &project(ScalarType::String, Value::String("constant".into()), false),
-        &directory.0,
+        directory.path(),
     );
     let base = std::fs::read_to_string(&path).unwrap();
     let mutations = [
@@ -292,9 +275,9 @@ fn ambiguous_direction_controls_and_raw_keys_keep_the_inventory_warning() {
 
 #[test]
 fn malformed_feed_and_unsupported_expression_do_not_become_executable() {
-    let directory = Directory::new();
+    let directory = Directory::new("unused_xml_input").unwrap();
     let p = project(ScalarType::String, Value::String("constant".into()), true);
-    let path = export(&p, &directory.0);
+    let path = export(&p, directory.path());
     let base = std::fs::read_to_string(&path).unwrap();
     let doc = roxmltree::Document::parse(&base).unwrap();
     let edge = doc.descendants().find(|n| n.has_tag_name("edge")).unwrap();
@@ -326,14 +309,14 @@ fn malformed_feed_and_unsupported_expression_do_not_become_executable() {
             value: mapping::RuntimeValue::MappingFilePath,
         },
     );
-    export(&dynamic, &directory.0);
+    export(&dynamic, directory.path());
     check_warning(&path);
 }
 
 #[test]
 fn constrained_and_optional_targets_are_outside_the_unused_input_proof() {
     for optional in [false, true] {
-        let directory = Directory::new();
+        let directory = Directory::new("unused_xml_input").unwrap();
         let mut p = project(ScalarType::String, Value::String("constant".into()), false);
         if let ir::SchemaKind::Group { children, .. } = &mut p.target.kind {
             if optional {
@@ -342,17 +325,17 @@ fn constrained_and_optional_targets_are_outside_the_unused_input_proof() {
                 children[0].fixed = Some("constant".into());
             }
         }
-        let path = export(&p, &directory.0);
+        let path = export(&p, directory.path());
         check_warning(&path);
     }
 }
 
 #[test]
 fn namespace_hidden_interface_and_other_diagnostics_are_preserved() {
-    let directory = Directory::new();
+    let directory = Directory::new("unused_xml_input").unwrap();
     let path = export(
         &project(ScalarType::String, Value::String("constant".into()), true),
-        &directory.0,
+        directory.path(),
     );
     let base = std::fs::read_to_string(&path).unwrap();
     let definition = roxmltree::Document::parse(&base)
@@ -442,10 +425,10 @@ fn physical_leaf_replacement(schema: &str, replacement: &str) -> String {
 
 #[test]
 fn physical_facets_and_aliases_are_not_proved_by_plain_scalar_projection() {
-    let directory = Directory::new();
+    let directory = Directory::new("unused_xml_input").unwrap();
     let path = export(
         &project(ScalarType::String, Value::String("constant".into()), false),
-        &directory.0,
+        directory.path(),
     );
     for component in ["Input", "Output"] {
         let schema_path = physical_schema_path(&path, component);
@@ -472,12 +455,12 @@ fn physical_facets_and_aliases_are_not_proved_by_plain_scalar_projection() {
 
 #[test]
 fn physical_resource_graphs_and_unproved_metadata_keep_the_diagnostic() {
-    let directory = Directory::new();
+    let directory = Directory::new("unused_xml_input").unwrap();
     let path = export(
         &project(ScalarType::String, Value::String("constant".into()), true),
-        &directory.0,
+        directory.path(),
     );
-    std::fs::write(directory.0.join("included.xsd"), "<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\"><xs:simpleType name=\"Unused\"><xs:restriction base=\"xs:string\"/></xs:simpleType></xs:schema>").unwrap();
+    std::fs::write(directory.path().join("included.xsd"), "<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\"><xs:simpleType name=\"Unused\"><xs:restriction base=\"xs:string\"/></xs:simpleType></xs:schema>").unwrap();
     for component in ["Input", "Output"] {
         let schema_path = physical_schema_path(&path, component);
         let original = std::fs::read_to_string(&schema_path).unwrap();
@@ -497,10 +480,10 @@ fn physical_resource_graphs_and_unproved_metadata_keep_the_diagnostic() {
 
 #[test]
 fn physical_builtin_qnames_are_resolved_and_plain_formatting_is_preserved() {
-    let directory = Directory::new();
+    let directory = Directory::new("unused_xml_input").unwrap();
     let path = export(
         &project(ScalarType::String, Value::String("constant".into()), false),
-        &directory.0,
+        directory.path(),
     );
     for component in ["Input", "Output"] {
         let schema_path = physical_schema_path(&path, component);
@@ -543,10 +526,10 @@ fn physical_builtin_qnames_are_resolved_and_plain_formatting_is_preserved() {
 
 #[test]
 fn physical_dtd_and_utf16_profiles_remain_outside_the_plain_witness() {
-    let directory = Directory::new();
+    let directory = Directory::new("unused_xml_input").unwrap();
     let path = export(
         &project(ScalarType::String, Value::String("constant".into()), false),
-        &directory.0,
+        directory.path(),
     );
     let schema_path = physical_schema_path(&path, "Input");
     let original = std::fs::read_to_string(&schema_path).unwrap();
@@ -566,7 +549,7 @@ fn physical_dtd_and_utf16_profiles_remain_outside_the_plain_witness() {
     assert_ne!(altered, mapping);
     std::fs::write(&path, altered).unwrap();
     std::fs::write(
-        directory.0.join("source.dtd"),
+        directory.path().join("source.dtd"),
         "<!ELEMENT Input (Value)>\n<!ELEMENT Value (#PCDATA)>\n",
     )
     .unwrap();

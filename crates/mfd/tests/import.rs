@@ -18,22 +18,7 @@ fn fixture(name: &str) -> PathBuf {
         .join(name)
 }
 
-/// A scratch dir for export roundtrips, removed on drop.
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new(tag: &str) -> Self {
-        let dir = std::env::temp_dir().join(format!("ferrule_mfd_{tag}_{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        Self(dir)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn scalar(instance: &Instance, field: &str) -> Value {
     instance
@@ -45,9 +30,9 @@ fn scalar(instance: &Instance, field: &str) -> Value {
 
 #[test]
 fn zero_input_create_guid_imports_and_executes() {
-    let temp = TempDir::new("create_guid");
+    let temp = TempDir::new("create_guid").unwrap();
     std::fs::write(
-        temp.0.join("source.xsd"),
+        temp.path().join("source.xsd"),
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:element name="Source"><xs:complexType><xs:sequence>
     <xs:element name="Seed" type="xs:string"/>
@@ -56,7 +41,7 @@ fn zero_input_create_guid_imports_and_executes() {
     )
     .unwrap();
     std::fs::write(
-        temp.0.join("target.xsd"),
+        temp.path().join("target.xsd"),
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:element name="Target"><xs:complexType><xs:sequence>
     <xs:element name="Guid" type="xs:string"/>
@@ -64,7 +49,7 @@ fn zero_input_create_guid_imports_and_executes() {
 </xs:schema>"#,
     )
     .unwrap();
-    let mapping = temp.0.join("mapping.mfd");
+    let mapping = temp.path().join("mapping.mfd");
     std::fs::write(
         &mapping,
         r#"<mapping version="31"><component name="map"><structure><children>
@@ -103,7 +88,7 @@ fn zero_input_create_guid_imports_and_executes() {
     assert_eq!(guid.len(), 32);
     assert!(guid.bytes().all(|byte| byte.is_ascii_hexdigit()));
 
-    let exported_path = temp.0.join("exported.mfd");
+    let exported_path = temp.path().join("exported.mfd");
     let export_warnings = mfd::export(&imported.project, &exported_path).unwrap();
     assert!(export_warnings.is_empty(), "{export_warnings:?}");
     let exported = std::fs::read_to_string(&exported_path).unwrap();
@@ -115,10 +100,10 @@ fn zero_input_create_guid_imports_and_executes() {
 
 #[test]
 fn target_node_defaults_fill_missing_connected_and_unconnected_scalars() {
-    let temp = TempDir::new("target_node_defaults");
-    let source_xsd = temp.0.join("source.xsd");
-    let target_xsd = temp.0.join("target.xsd");
-    let mapping = temp.0.join("defaults.mfd");
+    let temp = TempDir::new("target_node_defaults").unwrap();
+    let source_xsd = temp.path().join("source.xsd");
+    let target_xsd = temp.path().join("target.xsd");
+    let mapping = temp.path().join("defaults.mfd");
     std::fs::write(
         &source_xsd,
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
@@ -241,9 +226,9 @@ fn target_node_defaults_fill_missing_connected_and_unconnected_scalars() {
 
 #[test]
 fn structural_filter_false_output_inverts_the_iteration_predicate() {
-    let temp = TempDir::new("false_filter_output");
+    let temp = TempDir::new("false_filter_output").unwrap();
     std::fs::write(
-        temp.0.join("source.xsd"),
+        temp.path().join("source.xsd"),
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:element name="Source"><xs:complexType><xs:sequence>
     <xs:element name="Item" maxOccurs="unbounded"><xs:complexType><xs:sequence>
@@ -254,7 +239,7 @@ fn structural_filter_false_output_inverts_the_iteration_predicate() {
     )
     .unwrap();
     std::fs::write(
-        temp.0.join("target.xsd"),
+        temp.path().join("target.xsd"),
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:element name="Target"><xs:complexType><xs:sequence>
     <xs:element name="Item" maxOccurs="unbounded"><xs:complexType><xs:sequence>
@@ -264,7 +249,7 @@ fn structural_filter_false_output_inverts_the_iteration_predicate() {
 </xs:schema>"#,
     )
     .unwrap();
-    let mapping = temp.0.join("filter.mfd");
+    let mapping = temp.path().join("filter.mfd");
     std::fs::write(
         &mapping,
         r#"<mapping version="31"><component name="defaultmap1" uid="1"><structure><children>
@@ -317,9 +302,9 @@ fn structural_filter_false_output_inverts_the_iteration_predicate() {
 
 #[test]
 fn filtered_structural_ancestor_constrains_nested_target_iteration() {
-    let temp = TempDir::new("ancestor_filter");
+    let temp = TempDir::new("ancestor_filter").unwrap();
     std::fs::write(
-        temp.0.join("source.xsd"),
+        temp.path().join("source.xsd"),
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:element name="Source"><xs:complexType><xs:sequence>
     <xs:element name="Office" maxOccurs="unbounded"><xs:complexType><xs:sequence>
@@ -333,7 +318,7 @@ fn filtered_structural_ancestor_constrains_nested_target_iteration() {
     )
     .unwrap();
     std::fs::write(
-        temp.0.join("target.xsd"),
+        temp.path().join("target.xsd"),
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:element name="Target"><xs:complexType><xs:sequence>
     <xs:element name="Person" maxOccurs="unbounded"><xs:complexType><xs:sequence>
@@ -343,7 +328,7 @@ fn filtered_structural_ancestor_constrains_nested_target_iteration() {
 </xs:schema>"#,
     )
     .unwrap();
-    let mapping = temp.0.join("filter.mfd");
+    let mapping = temp.path().join("filter.mfd");
     std::fs::write(
         &mapping,
         r#"<mapping version="31"><component name="defaultmap1" uid="1"><structure><children>
@@ -737,8 +722,8 @@ fn xml_attributes_import_run_and_roundtrip() {
     assert_eq!(scalar(&entries[0], "Name"), Value::String("Systems".into()));
     assert_eq!(scalar(&entries[1], "Pages"), Value::Int(180));
 
-    let dir = TempDir::new("books");
-    let out = dir.0.join("books.mfd");
+    let dir = TempDir::new("books").unwrap();
+    let out = dir.path().join("books.mfd");
     let warnings = mfd::export(project, &out).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
     let reimported = mfd::import(&out).unwrap();
@@ -749,7 +734,7 @@ fn xml_attributes_import_run_and_roundtrip() {
     // so compare the written documents, whose field order the schema fixes.
     let out_b = engine::run(&reimported.project, &source).unwrap();
     let write = |name: &str, instance: &Instance| {
-        let path = dir.0.join(name);
+        let path = dir.path().join(name);
         format_xml::write(&path, &project.target, instance).unwrap();
         std::fs::read_to_string(path).unwrap()
     };
@@ -788,13 +773,13 @@ fn xml_simple_content_imports_runs_and_roundtrips() {
     assert_eq!(scalar(amount, ir::XML_TEXT_FIELD), Value::Float(8.75));
     assert_eq!(scalar(amount, "currency"), Value::String("EUR".into()));
 
-    let dir = TempDir::new("simple_content");
-    let xml_out = dir.0.join("prices.xml");
+    let dir = TempDir::new("simple_content").unwrap();
+    let xml_out = dir.path().join("prices.xml");
     format_xml::write(&xml_out, &project.target, &target).unwrap();
     let xml = std::fs::read_to_string(&xml_out).unwrap();
     assert!(xml.contains("<Amount currency=\"USD\">12.5</Amount>"));
 
-    let mfd_out = dir.0.join("prices.mfd");
+    let mfd_out = dir.path().join("prices.mfd");
     let warnings = mfd::export(project, &mfd_out).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
     let exported = std::fs::read_to_string(&mfd_out).unwrap();
@@ -853,11 +838,11 @@ fn xml_to_json_with_ref_schema_imports_runs_and_roundtrips() {
     assert_eq!(batches.len(), 2);
     assert_eq!(scalar(&batches[1], "code"), Value::String("B2".into()));
 
-    let dir = TempDir::new("stock");
-    let out = dir.0.join("stock.mfd");
+    let dir = TempDir::new("stock").unwrap();
+    let out = dir.path().join("stock.mfd");
     let warnings = mfd::export(project, &out).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
-    assert!(dir.0.join("stock-target.schema.json").exists());
+    assert!(dir.path().join("stock-target.schema.json").exists());
     let reimported = mfd::import(&out).unwrap();
     assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
     assert_eq!(project.source, reimported.project.source);
@@ -1004,8 +989,8 @@ fn csv_target_designs_import_run_and_roundtrip() {
     );
     assert_eq!(scalar(&rows[1], "Age"), Value::Int(41));
 
-    let dir = TempDir::new("people_to_csv");
-    let out = dir.0.join("people-to-csv.mfd");
+    let dir = TempDir::new("people_to_csv").unwrap();
+    let out = dir.path().join("people-to-csv.mfd");
     let warnings = mfd::export(project, &out).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
     let reimported = mfd::import(&out).unwrap();
@@ -1029,9 +1014,9 @@ fn db_target_designs_import_run_and_roundtrip() {
     // Stage the design in a scratch dir with a typed (empty) SQLite table
     // next to it, so the importer's introspection path is exercised
     // without a binary fixture in the repo.
-    let dir = TempDir::new("people_to_db");
+    let dir = TempDir::new("people_to_db").unwrap();
     for f in ["people-to-db.mfd", "people-source.xsd", "people.xml"] {
-        std::fs::copy(fixture(f), dir.0.join(f)).unwrap();
+        std::fs::copy(fixture(f), dir.path().join(f)).unwrap();
     }
     let table = ir::SchemaNode::group(
         "People",
@@ -1041,10 +1026,10 @@ fn db_target_designs_import_run_and_roundtrip() {
         ],
     )
     .repeating();
-    let db_path = dir.0.join("people-out.sqlite");
+    let db_path = dir.path().join("people-out.sqlite");
     format_db::write(&db_path, &table, &[]).unwrap();
 
-    let imported = mfd::import(&dir.0.join("people-to-db.mfd")).unwrap();
+    let imported = mfd::import(&dir.path().join("people-to-db.mfd")).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     let project = &imported.project;
 
@@ -1077,7 +1062,7 @@ fn db_target_designs_import_run_and_roundtrip() {
     assert_eq!(scalar(&read_back[1], "Age"), Value::Int(41));
 
     // Export emits a db component + datasource; reimport is faithful.
-    let out = dir.0.join("people-to-db-2.mfd");
+    let out = dir.path().join("people-to-db-2.mfd");
     let warnings = mfd::export(project, &out).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
     let text = std::fs::read_to_string(&out).unwrap();
@@ -1222,8 +1207,8 @@ fn aggregate_position_filter_and_scalar_designs_import_run_and_roundtrip() {
     );
     assert_eq!(scalar(&orders[0], "WithinLimit"), Value::Bool(true));
 
-    let dir = TempDir::new("orders");
-    let out = dir.0.join("orders.mfd");
+    let dir = TempDir::new("orders").unwrap();
+    let out = dir.path().join("orders.mfd");
     let warnings = mfd::export(project, &out).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
     let exported = std::fs::read_to_string(&out).unwrap();
@@ -1277,8 +1262,8 @@ fn group_by_designs_import_run_and_roundtrip() {
     assert_eq!(scalar(&years[1], "Year"), Value::String("2025".into()));
     assert_eq!(scalar(&years[1], "AvgTemp"), Value::Float(4.0));
 
-    let dir = TempDir::new("temps");
-    let out = dir.0.join("temps.mfd");
+    let dir = TempDir::new("temps").unwrap();
+    let out = dir.path().join("temps.mfd");
     let warnings = mfd::export(project, &out).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
     let reimported = mfd::import(&out).unwrap();
@@ -1377,8 +1362,8 @@ fn sorted_first_items_import_run_and_roundtrip() {
         ]
     );
 
-    let dir = TempDir::new("ranked");
-    let out = dir.0.join("ranked.mfd");
+    let dir = TempDir::new("ranked").unwrap();
+    let out = dir.path().join("ranked.mfd");
     let warnings = mfd::export(project, &out).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
     let exported = std::fs::read_to_string(&out).unwrap();
@@ -1452,8 +1437,8 @@ fn constructed_variables_preserve_nested_source_frames() {
         ]
     );
 
-    let dir = TempDir::new("framed");
-    let out = dir.0.join("framed.mfd");
+    let dir = TempDir::new("framed").unwrap();
+    let out = dir.path().join("framed.mfd");
     let warnings = mfd::export(project, &out).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
     let reimported = mfd::import(&out).unwrap();
@@ -1518,8 +1503,8 @@ fn indexed_xml_entry_names_import_run_and_roundtrip() {
     assert_eq!(scalar(&expenses[1], "amount"), Value::Float(50.0));
     assert_eq!(scalar(&expenses[1], "status"), Value::String("cash".into()));
 
-    let dir = TempDir::new("indexed");
-    let out = dir.0.join("indexed.mfd");
+    let dir = TempDir::new("indexed").unwrap();
+    let out = dir.path().join("indexed.mfd");
     let warnings = mfd::export(project, &out).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
     let reimported = mfd::import(&out).unwrap();
@@ -1586,8 +1571,8 @@ fn mapped_xpath2_scalar_function_imports_and_runs() {
 fn json_lines_format_option_survives_mfd_export_and_reimport() {
     let mut project = mfd::import(&fixture("people.mfd")).unwrap().project;
     project.target_path = Some("people.jsonl".into());
-    let dir = TempDir::new("json_lines");
-    let design = dir.0.join("mapping.mfd");
+    let dir = TempDir::new("json_lines").unwrap();
+    let design = dir.path().join("mapping.mfd");
 
     let warnings = mfd::export(&project, &design).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
@@ -1619,12 +1604,12 @@ fn scalar_document_root_binding_warns_instead_of_panicking() {
 #[test]
 fn failed_export_preserves_existing_design_and_schema_artifacts() {
     let mut project = mfd::import(&fixture("people.mfd")).unwrap().project;
-    let dir = TempDir::new("atomic_export");
-    let design = dir.0.join("atomic.mfd");
+    let dir = TempDir::new("atomic_export").unwrap();
+    let design = dir.path().join("atomic.mfd");
     mfd::export(&project, &design).unwrap();
 
-    let source_schema = dir.0.join("atomic-source.xsd");
-    let target_schema = dir.0.join("atomic-target.xsd");
+    let source_schema = dir.path().join("atomic-source.xsd");
+    let target_schema = dir.path().join("atomic-target.xsd");
     let before = [
         std::fs::read(&design).unwrap(),
         std::fs::read(&source_schema).unwrap(),
@@ -1654,8 +1639,8 @@ fn invalid_xml_schema_roles_do_not_publish_export_artifacts() {
             SchemaNode::scalar("Child", ScalarType::String),
         ],
     );
-    let dir = TempDir::new("invalid_schema_export");
-    let design = dir.0.join("invalid.mfd");
+    let dir = TempDir::new("invalid_schema_export").unwrap();
+    let design = dir.path().join("invalid.mfd");
 
     assert!(matches!(
         mfd::export(&project, &design),
@@ -1664,18 +1649,18 @@ fn invalid_xml_schema_roles_do_not_publish_export_artifacts() {
         ))
     ));
     assert!(!design.exists());
-    assert!(!dir.0.join("invalid-source.xsd").exists());
-    assert!(!dir.0.join("invalid-target.xsd").exists());
+    assert!(!dir.path().join("invalid-source.xsd").exists());
+    assert!(!dir.path().join("invalid-target.xsd").exists());
 }
 
 #[test]
 fn failed_design_write_does_not_replace_schema_siblings() {
     let project = mfd::import(&fixture("people.mfd")).unwrap().project;
-    let dir = TempDir::new("blocked_design_export");
-    let design = dir.0.join("blocked.mfd");
+    let dir = TempDir::new("blocked_design_export").unwrap();
+    let design = dir.path().join("blocked.mfd");
     std::fs::create_dir(&design).unwrap();
-    let source_schema = dir.0.join("blocked-source.xsd");
-    let target_schema = dir.0.join("blocked-target.xsd");
+    let source_schema = dir.path().join("blocked-source.xsd");
+    let target_schema = dir.path().join("blocked-target.xsd");
     std::fs::write(&source_schema, "old source").unwrap();
     std::fs::write(&target_schema, "old target").unwrap();
 
@@ -1696,12 +1681,12 @@ fn failed_design_write_does_not_replace_schema_siblings() {
 #[test]
 fn blocked_schema_destination_does_not_publish_other_artifacts() {
     let mut project = mfd::import(&fixture("people.mfd")).unwrap().project;
-    let dir = TempDir::new("blocked_schema_export");
-    let design = dir.0.join("blocked-schema.mfd");
+    let dir = TempDir::new("blocked_schema_export").unwrap();
+    let design = dir.path().join("blocked-schema.mfd");
     mfd::export(&project, &design).unwrap();
 
-    let source_schema = dir.0.join("blocked-schema-source.xsd");
-    let target_schema = dir.0.join("blocked-schema-target.xsd");
+    let source_schema = dir.path().join("blocked-schema-source.xsd");
+    let target_schema = dir.path().join("blocked-schema-target.xsd");
     let old_design = std::fs::read(&design).unwrap();
     let old_source = std::fs::read(&source_schema).unwrap();
     std::fs::remove_file(&target_schema).unwrap();

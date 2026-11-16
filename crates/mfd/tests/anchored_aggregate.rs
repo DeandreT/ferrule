@@ -1,36 +1,12 @@
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
-
 use ir::{Instance, Value};
 use mapping::{AggregateOp, Node};
 
-struct TempDir(PathBuf);
-
-static TEMP_ID: AtomicU64 = AtomicU64::new(0);
-
-impl TempDir {
-    fn new() -> Self {
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_anchored_aggregate_{}_{}",
-            std::process::id(),
-            TEMP_ID.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn setup() -> TempDir {
-    let directory = TempDir::new();
+    let directory = TempDir::new("mfd_anchored_aggregate").unwrap();
     std::fs::write(
-        directory.0.join("source.xsd"),
+        directory.path().join("source.xsd"),
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
           <xs:element name="Source"><xs:complexType><xs:sequence>
             <xs:element name="Office" maxOccurs="unbounded"><xs:complexType><xs:sequence>
@@ -43,7 +19,7 @@ fn setup() -> TempDir {
     )
     .unwrap();
     std::fs::write(
-        directory.0.join("target.xsd"),
+        directory.path().join("target.xsd"),
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
           <xs:element name="Target"><xs:complexType><xs:sequence>
             <xs:element name="Office" maxOccurs="unbounded"><xs:complexType><xs:sequence>
@@ -57,7 +33,7 @@ fn setup() -> TempDir {
     )
     .unwrap();
     std::fs::write(
-        directory.0.join("mapping.mfd"),
+        directory.path().join("mapping.mfd"),
         r#"<mapping version="26"><component name="map"><structure><children>
           <component name="source" library="xml" kind="14"><data>
             <root><entry name="Source"><entry name="Office" outkey="1"><entry name="Address" outkey="2"><entry name="line" outkey="3"/></entry></entry></entry></root>
@@ -109,7 +85,7 @@ fn office(lines: &[&str]) -> Instance {
 #[test]
 fn sibling_aggregate_keeps_an_unentered_nested_collection_in_its_path() {
     let directory = setup();
-    let imported = mfd::import(&directory.0.join("mapping.mfd")).unwrap();
+    let imported = mfd::import(&directory.path().join("mapping.mfd")).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
 

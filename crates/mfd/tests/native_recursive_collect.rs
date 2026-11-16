@@ -2,35 +2,14 @@
 mod private_corpus;
 
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::path::Path;
 
 use ir::{Instance, ScalarType, SchemaKind, SchemaNode, Value, XmlRepeatingChoice};
 use mapping::{
     FormatOptions, Graph, Node, Project, Scope, ScopeConstruction, ScopeIteration, SequenceExpr,
 };
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Result<Self, std::io::Error> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_native_recursive_collect_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn project() -> Project {
     let name = SchemaNode::scalar("name", ScalarType::String).attribute();
@@ -205,8 +184,8 @@ fn interleaved_choice_still_emits_direct_files_before_child_files()
         vec!["\\root\\direct.xml", "\\root\\child\\nested.xml"]
     );
 
-    let dir = TempDir::new()?;
-    let design = dir.0.join("native.mfd");
+    let dir = TempDir::new("mfd_native_recursive_collect")?;
+    let design = dir.path().join("native.mfd");
     let report = mfd::preflight_export(&project, &design)?;
     assert!(report.is_native_compatible(), "{report}");
     mfd::export_with_profile(&project, &design, mfd::ExportProfile::NativeMfd)?;
@@ -252,7 +231,7 @@ fn interleaved_choice_still_emits_direct_files_before_child_files()
 #[test]
 fn altered_prefix_separator_and_schema_keep_native_guard_closed()
 -> Result<(), Box<dyn std::error::Error>> {
-    let dir = TempDir::new()?;
+    let dir = TempDir::new("mfd_native_recursive_collect")?;
     let baseline = project();
     for (label, id, value) in [("prefix", 0, "prefix"), ("separator", 1, "/")] {
         let mut changed = baseline.clone();
@@ -263,7 +242,7 @@ fn altered_prefix_separator_and_schema_keep_native_guard_closed()
             },
         );
         assert!(engine::validate(&changed).is_empty());
-        strict_rejected(&changed, &dir.0.join(format!("{label}.mfd")))?;
+        strict_rejected(&changed, &dir.path().join(format!("{label}.mfd")))?;
     }
     let mut changed_schema = baseline.clone();
     let SchemaKind::Group { children, .. } = &mut changed_schema.source.kind else {
@@ -278,14 +257,14 @@ fn altered_prefix_separator_and_schema_keep_native_guard_closed()
     };
     file_fields.push(SchemaNode::scalar("extra", ScalarType::String).attribute());
     assert!(engine::validate(&changed_schema).is_empty());
-    strict_rejected(&changed_schema, &dir.0.join("changed-schema.mfd"))?;
+    strict_rejected(&changed_schema, &dir.path().join("changed-schema.mfd"))?;
     Ok(())
 }
 
 #[test]
 fn shared_graph_and_sequence_controls_keep_native_guard_closed()
 -> Result<(), Box<dyn std::error::Error>> {
-    let dir = TempDir::new()?;
+    let dir = TempDir::new("mfd_native_recursive_collect")?;
     let mut shared_graph = project();
     shared_graph.graph.nodes.insert(
         3,
@@ -295,24 +274,24 @@ fn shared_graph_and_sequence_controls_keep_native_guard_closed()
         },
     );
     assert!(engine::validate(&shared_graph).is_empty());
-    strict_rejected(&shared_graph, &dir.0.join("shared-graph.mfd"))?;
+    strict_rejected(&shared_graph, &dir.path().join("shared-graph.mfd"))?;
 
     let mut sorted = project();
     sorted.root.children[0].sort_by = Some(0);
     assert!(engine::validate(&sorted).is_empty());
     assert!(matches!(
-        mfd::preflight_export(&sorted, &dir.0.join("sorted.mfd")),
+        mfd::preflight_export(&sorted, &dir.path().join("sorted.mfd")),
         Err(mfd::MfdError::Unsupported(_))
     ));
     assert!(matches!(
         mfd::export_with_profile(
             &sorted,
-            &dir.0.join("sorted.mfd"),
+            &dir.path().join("sorted.mfd"),
             mfd::ExportProfile::NativeMfd
         ),
         Err(mfd::MfdError::Unsupported(_))
     ));
-    assert!(!dir.0.join("sorted.mfd").exists());
+    assert!(!dir.path().join("sorted.mfd").exists());
     Ok(())
 }
 
@@ -356,8 +335,8 @@ fn local_flatten_hierarchy_native_roundtrip_keeps_exact_90_paths()
         5
     );
 
-    let dir = TempDir::new()?;
-    let design = dir.0.join("native.mfd");
+    let dir = TempDir::new("mfd_native_recursive_collect")?;
+    let design = dir.path().join("native.mfd");
     let report = mfd::preflight_export(&imported.project, &design)?;
     assert!(report.is_native_compatible(), "{report}");
     mfd::export_with_profile(&imported.project, &design, mfd::ExportProfile::NativeMfd)?;

@@ -1,29 +1,8 @@
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{Instance, Value};
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Result<Self, std::io::Error> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_protobuf_package_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn write_package(package: &Path, schema_reference: &str) -> Result<PathBuf, std::io::Error> {
     let maps = package.join("maps/orders");
@@ -107,10 +86,10 @@ fn embedded_layout(options: &mapping::ProtobufOptions) -> format_protobuf::Layou
 #[test]
 fn relocated_package_resolves_windows_parent_path_and_embeds_import_graph()
 -> Result<(), Box<dyn std::error::Error>> {
-    let directory = TempDir::new()?;
-    let original = directory.0.join("original");
+    let directory = TempDir::new("mfd_protobuf_package")?;
+    let original = directory.path().join("original");
     let mapping = write_package(&original, r"..\..\schemas\api\root.proto")?;
-    let relocated = directory.0.join("relocated");
+    let relocated = directory.path().join("relocated");
     std::fs::rename(&original, &relocated)?;
     let relocated_mapping = relocated.join(mapping.strip_prefix(&original)?);
     let options = mfd::ImportOptions::default().with_package_root(&relocated);
@@ -165,8 +144,8 @@ fn relocated_package_resolves_windows_parent_path_and_embeds_import_graph()
 #[test]
 fn protobuf_root_cannot_traverse_above_selected_package() -> Result<(), Box<dyn std::error::Error>>
 {
-    let directory = TempDir::new()?;
-    let package = directory.0.join("package");
+    let directory = TempDir::new("mfd_protobuf_package")?;
+    let package = directory.path().join("package");
     let mapping = write_package(&package, r"..\..\..\outside\root.proto")?;
     let options = mfd::ImportOptions::default().with_package_root(&package);
 
@@ -186,10 +165,10 @@ fn protobuf_import_symlink_cannot_escape_selected_package() -> Result<(), Box<dy
 {
     use std::os::unix::fs::symlink;
 
-    let directory = TempDir::new()?;
-    let package = directory.0.join("package");
+    let directory = TempDir::new("mfd_protobuf_package")?;
+    let package = directory.path().join("package");
     let mapping = write_package(&package, r"..\..\schemas\api\root.proto")?;
-    let outside = directory.0.join("outside-value.proto");
+    let outside = directory.path().join("outside-value.proto");
     std::fs::write(
         &outside,
         r#"syntax = "proto3"; package shared; message Value { string text = 1; }"#,

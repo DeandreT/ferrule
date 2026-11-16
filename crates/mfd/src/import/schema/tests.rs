@@ -1,6 +1,5 @@
 use std::collections::BTreeMap;
 use std::path::Path;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{ScalarType, SchemaKind, SchemaNode};
 
@@ -69,13 +68,7 @@ fn repeated_input_keys_keep_legacy_ancestry_but_refuse_unique_clone_ownership() 
 }
 
 /// Removes a per-test directory on drop, including after a panic.
-struct TempDir(std::path::PathBuf);
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 #[test]
 fn marked_nested_json_array_ports_preserve_each_declared_level()
@@ -83,17 +76,8 @@ fn marked_nested_json_array_ports_preserve_each_declared_level()
     let project: mapping::Project = serde_json::from_str(include_str!(
         "../../../tests/fixtures/nested_array_wrappers/project.json"
     ))?;
-    static NEXT: AtomicUsize = AtomicUsize::new(0);
-    let stamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)?
-        .as_nanos();
-    let root = std::env::temp_dir().join(format!(
-        "ferrule-nested-array-ports-{}-{stamp}-{}",
-        std::process::id(),
-        NEXT.fetch_add(1, Ordering::Relaxed)
-    ));
-    std::fs::create_dir(&root)?;
-    let _cleanup = TempDir(root.clone());
+    let _cleanup = TempDir::new("nested-array-ports")?;
+    let root = _cleanup.path().to_path_buf();
     std::fs::write(
         root.join("schema.json"),
         format_json::json_schema::export(&project.source)?,

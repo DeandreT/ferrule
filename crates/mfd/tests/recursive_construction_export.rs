@@ -1,38 +1,16 @@
 use std::collections::BTreeMap;
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{Instance, ScalarType, SchemaNode, Value};
 use mapping::{
     Binding, Graph, Node, Project, Scope, ScopeConstruction, ScopeIteration, SequenceExpr,
 };
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Result<Self, std::io::Error> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_recursive_construction_export_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 #[test]
 fn recursive_collect_round_trips_and_executes_identically() -> Result<(), Box<dyn std::error::Error>>
 {
-    let dir = TempDir::new()?;
+    let dir = TempDir::new("mfd_recursive_construction_export")?;
     let project = project();
     let source = directory(
         "root",
@@ -40,7 +18,7 @@ fn recursive_collect_round_trips_and_executes_identically() -> Result<(), Box<dy
         vec![directory("child", &["nested.txt"], Vec::new())],
     );
     let expected = engine::run(&project, &source)?;
-    let design = dir.0.join("recursive-collect.mfd");
+    let design = dir.path().join("recursive-collect.mfd");
 
     let report = mfd::preflight_export(&project, &design)?;
     assert!(report.warnings.is_empty());
@@ -55,7 +33,7 @@ fn recursive_collect_round_trips_and_executes_identically() -> Result<(), Box<dy
     let error =
         mfd::export_with_profile(&project, &design, mfd::ExportProfile::NativeMfd).unwrap_err();
     assert!(matches!(error, mfd::MfdError::IncompatibleExport(_)));
-    assert_eq!(std::fs::read_dir(&dir.0)?.count(), 0);
+    assert_eq!(std::fs::read_dir(dir.path())?.count(), 0);
     assert!(mfd::export(&project, &design)?.is_empty());
     let imported = mfd::import(&design)?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
@@ -76,7 +54,7 @@ fn recursive_collect_round_trips_and_executes_identically() -> Result<(), Box<dy
 #[test]
 fn recursive_collect_item_at_round_trips_and_executes_identically()
 -> Result<(), Box<dyn std::error::Error>> {
-    let dir = TempDir::new()?;
+    let dir = TempDir::new("mfd_recursive_construction_export")?;
     let mut project = project();
     let sequence = project
         .root
@@ -113,7 +91,7 @@ fn recursive_collect_item_at_round_trips_and_executes_identically()
         vec![directory("child", &["nested.txt"], Vec::new())],
     );
     let expected = engine::run(&project, &source)?;
-    let design = dir.0.join("recursive-item-at.mfd");
+    let design = dir.path().join("recursive-item-at.mfd");
     assert!(mfd::export(&project, &design)?.is_empty());
     let imported = mfd::import(&design)?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
@@ -134,8 +112,8 @@ fn recursive_collect_item_at_round_trips_and_executes_identically()
 #[test]
 fn malformed_recursive_metadata_warns_and_is_not_applied() -> Result<(), Box<dyn std::error::Error>>
 {
-    let dir = TempDir::new()?;
-    let design = dir.0.join("recursive-collect.mfd");
+    let dir = TempDir::new("mfd_recursive_construction_export")?;
+    let design = dir.path().join("recursive-collect.mfd");
     assert!(mfd::export(&project(), &design)?.is_empty());
     let malformed = std::fs::read_to_string(&design)?.replacen(
         "<ferrule-recursive version=\"1\"",

@@ -3,32 +3,11 @@ mod private_corpus;
 
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use mapping::{EdiBoundaryKind, Project};
 use mfd::{ExportCompatibility, ExportCompatibilityFeature as Feature, ExportProfile};
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Self {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_idoc_text_settings_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 const VALIDATION_CASES: [(&str, &str); 16] = [
     ("missing-segment", "stop"),
@@ -206,8 +185,8 @@ fn assert_native_text_settings(xml: &str) -> String {
 
 #[test]
 fn native_text_settings_survive_project_export_and_relocated_reimport() {
-    let dir = TempDir::new();
-    let project = imported_project(&dir.0);
+    let dir = TempDir::new("mfd_idoc_text_settings").unwrap();
+    let project = imported_project(dir.path());
     let encoded = serde_json::to_string(&project).unwrap();
     let decoded: Project = serde_json::from_str(&encoded).unwrap();
     assert_eq!(
@@ -215,7 +194,7 @@ fn native_text_settings_survive_project_export_and_relocated_reimport() {
         project.source_options.idoc_native_text_settings
     );
 
-    let bundle = dir.0.join("portable");
+    let bundle = dir.path().join("portable");
     let output = bundle.join("design.mfd");
     let warnings = mfd::export(&project, &output).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
@@ -223,9 +202,9 @@ fn native_text_settings_survive_project_export_and_relocated_reimport() {
     let config = assert_native_text_settings(&xml);
     assert!(bundle.join(config).is_file());
 
-    let moved = dir.0.join("moved");
+    let moved = dir.path().join("moved");
     std::fs::rename(&bundle, &moved).unwrap();
-    std::fs::remove_file(dir.0.join("parser.txt")).unwrap();
+    std::fs::remove_file(dir.path().join("parser.txt")).unwrap();
     let reimported = mfd::import(&moved.join("design.mfd")).unwrap();
     assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
     assert_eq!(reimported.project.source, project.source);
@@ -255,7 +234,7 @@ fn native_text_settings_survive_project_export_and_relocated_reimport() {
 
 #[test]
 fn malformed_duplicate_missing_or_unknown_settings_drop_only_text_certificate() {
-    let dir = TempDir::new();
+    let dir = TempDir::new("mfd_idoc_text_settings").unwrap();
     let settings = native_settings();
     let variants = [
         (
@@ -286,7 +265,7 @@ fn malformed_duplicate_missing_or_unknown_settings_drop_only_text_certificate() 
         ),
     ];
     for (index, (name, variant)) in variants.into_iter().enumerate() {
-        let case_dir = dir.0.join(format!("{index}-{name}"));
+        let case_dir = dir.path().join(format!("{index}-{name}"));
         std::fs::create_dir_all(&case_dir).unwrap();
         let imported = mfd::import(&write_design(&case_dir, &variant)).unwrap();
         assert!(
@@ -328,8 +307,8 @@ fn malformed_duplicate_missing_or_unknown_settings_drop_only_text_certificate() 
 
 #[test]
 fn stale_idoc_text_settings_reject_export_without_artifacts() {
-    let dir = TempDir::new();
-    let base = imported_project(&dir.0);
+    let dir = TempDir::new("mfd_idoc_text_settings").unwrap();
+    let base = imported_project(dir.path());
     type ProjectMutation = fn(&mut Project);
     let mutations: [(&str, ProjectMutation); 5] = [
         ("stale-schema", |project| {
@@ -351,7 +330,7 @@ fn stale_idoc_text_settings_reject_export_without_artifacts() {
     for (name, mutate) in mutations {
         let mut project = base.clone();
         mutate(&mut project);
-        let output_dir = dir.0.join(name);
+        let output_dir = dir.path().join(name);
         let output = output_dir.join("design.mfd");
         assert!(mfd::export(&project, &output).is_err(), "{name}");
         assert!(!output_dir.exists(), "{name} published artifacts");
@@ -374,8 +353,8 @@ fn local_idoc_order_preserves_native_text_settings_after_relocation() {
         .unwrap()
         .clone();
 
-    let dir = TempDir::new();
-    let bundle = dir.0.join("bundle");
+    let dir = TempDir::new("mfd_idoc_text_settings").unwrap();
+    let bundle = dir.path().join("bundle");
     let output = bundle.join("portable.mfd");
     let warnings = mfd::export(&imported.project, &output).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
@@ -390,7 +369,7 @@ fn local_idoc_order_preserves_native_text_settings_after_relocation() {
     );
     assert!(bundle.join(config).is_file());
 
-    let moved = dir.0.join("relocated");
+    let moved = dir.path().join("relocated");
     std::fs::rename(&bundle, &moved).unwrap();
     let reimported = mfd::import(&moved.join("portable.mfd")).unwrap();
     assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);

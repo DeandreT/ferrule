@@ -1,40 +1,14 @@
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
-
 use ir::{Instance, Value};
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Self {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_xsd_groups_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
-
-fn write(path: &Path, contents: &str) {
-    std::fs::write(path, contents).unwrap();
-}
+use test_support::TempDir;
 
 #[test]
 fn named_xsd_groups_supply_executable_ports_and_roundtrip() {
-    let directory = TempDir::new();
-    write(
-        &directory.0.join("shared.xsd"),
-        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+    let directory = TempDir::new("mfd_xsd_groups").unwrap();
+    directory
+        .write(
+            "shared.xsd",
+            r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
                 xmlns:t="urn:ferrule:mfd-groups"
                 targetNamespace="urn:ferrule:mfd-groups"
                 elementFormDefault="qualified">
@@ -46,10 +20,12 @@ fn named_xsd_groups_supply_executable_ports_and_roundtrip() {
             <xs:attribute name="id" type="xs:string"/>
           </xs:attributeGroup>
         </xs:schema>"#,
-    );
-    write(
-        &directory.0.join("source.xsd"),
-        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+        )
+        .unwrap();
+    directory
+        .write(
+            "source.xsd",
+            r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
                 xmlns:t="urn:ferrule:mfd-groups"
                 targetNamespace="urn:ferrule:mfd-groups"
                 elementFormDefault="qualified">
@@ -59,18 +35,19 @@ fn named_xsd_groups_supply_executable_ports_and_roundtrip() {
             <xs:attributeGroup ref="t:Identity"/>
           </xs:complexType></xs:element>
         </xs:schema>"#,
-    );
-    write(
-        &directory.0.join("target.xsd"),
-        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+        )
+        .unwrap();
+    directory
+        .write(
+            "target.xsd",
+            r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
           <xs:element name="Result"><xs:complexType><xs:sequence>
             <xs:element name="Actor" type="xs:string"/>
           </xs:sequence></xs:complexType></xs:element>
         </xs:schema>"#,
-    );
-    write(
-        &directory.0.join("mapping.mfd"),
-        r#"<mapping version="26"><component name="map"><structure><children>
+        )
+        .unwrap();
+    directory.write("mapping.mfd", r#"<mapping version="26"><component name="map"><structure><children>
           <component name="source" library="xml" kind="14"><data><root>
             <entry name="FileInstance"><entry name="document"><entry name="Envelope">
               <entry name="Actor" outkey="10"/><entry name="Timestamp"/><entry name="@id"/>
@@ -85,10 +62,9 @@ fn named_xsd_groups_supply_executable_ports_and_roundtrip() {
             instanceroot="{}Result"/></data></component>
         </children><graph><vertices>
           <vertex vertexkey="10"><edges><edge vertexkey="20"/></edges></vertex>
-        </vertices></graph></structure></component></mapping>"#,
-    );
+        </vertices></graph></structure></component></mapping>"#).unwrap();
 
-    let imported = mfd::import(&directory.0.join("mapping.mfd")).unwrap();
+    let imported = mfd::import(&directory.path().join("mapping.mfd")).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(imported.project.source.child("Actor").is_some());
     assert!(imported.project.source.child("Timestamp").is_some());
@@ -106,7 +82,7 @@ fn named_xsd_groups_supply_executable_ports_and_roundtrip() {
         Some(&Value::String("Ada".into()))
     );
 
-    let exported_path = directory.0.join("roundtrip.mfd");
+    let exported_path = directory.path().join("roundtrip.mfd");
     let warnings = mfd::export(&imported.project, &exported_path).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
     let roundtripped = mfd::import(&exported_path).unwrap();

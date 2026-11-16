@@ -1,29 +1,8 @@
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{Instance, Value};
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Result<Self, std::io::Error> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_left_right_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn write_design(directory: &Path) -> Result<PathBuf, std::io::Error> {
     std::fs::write(
@@ -70,8 +49,8 @@ fn write_design(directory: &Path) -> Result<PathBuf, std::io::Error> {
 
 #[test]
 fn left_and_right_import_execute_and_roundtrip() -> Result<(), Box<dyn std::error::Error>> {
-    let directory = TempDir::new()?;
-    let imported = mfd::import(&write_design(&directory.0)?)?;
+    let directory = TempDir::new("mfd_left_right")?;
+    let imported = mfd::import(&write_design(directory.path())?)?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
 
@@ -89,7 +68,7 @@ fn left_and_right_import_execute_and_roundtrip() -> Result<(), Box<dyn std::erro
         Some(&Value::String("BC".into()))
     );
 
-    let exported_path = directory.0.join("roundtrip.mfd");
+    let exported_path = directory.path().join("roundtrip.mfd");
     let warnings = mfd::export(&imported.project, &exported_path)?;
     assert!(warnings.is_empty(), "{warnings:?}");
     let exported = std::fs::read_to_string(&exported_path)?;

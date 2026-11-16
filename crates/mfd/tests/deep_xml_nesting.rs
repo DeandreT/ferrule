@@ -2,7 +2,6 @@
 //! result. The XML parser and the XSD importer once recursed per level and
 //! aborted the whole process.
 
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc;
 use std::time::Duration;
 
@@ -285,9 +284,9 @@ fn schema_depth(schema: &SchemaNode) -> usize {
 #[test]
 fn entry_trees_past_the_depth_limit_are_refused() {
     on_main_thread_stack(|| {
-        let directory = TempDir::new();
+        let directory = TempDir::new("mfd_deep_entries").unwrap();
         for tree in EntryTree::ALL {
-            let path = directory.0.join(format!("{tree:?}.mfd"));
+            let path = directory.path().join(format!("{tree:?}.mfd"));
             std::fs::write(&path, tree.design(LEVELS)).unwrap();
             assert_entry_depth_refusal(mfd::import(&path));
             assert_entry_depth_refusal(mfd::import_pipeline(&path));
@@ -308,9 +307,9 @@ fn entry_trees_past_the_depth_limit_are_refused() {
 #[test]
 fn entry_trees_at_the_depth_limit_import() {
     on_main_thread_stack(|| {
-        let directory = TempDir::new();
+        let directory = TempDir::new("mfd_deep_entries").unwrap();
         for tree in EntryTree::ALL {
-            let path = directory.0.join(format!("{tree:?}.mfd"));
+            let path = directory.path().join(format!("{tree:?}.mfd"));
             std::fs::write(&path, tree.design(MAX_MFD_ENTRY_DEPTH)).unwrap();
             let imported = mfd::import(&path).unwrap_or_else(|error| panic!("{tree:?}: {error}"));
             let project = &imported.project;
@@ -336,23 +335,4 @@ fn entry_trees_at_the_depth_limit_import() {
     });
 }
 
-struct TempDir(std::path::PathBuf);
-
-impl TempDir {
-    fn new() -> Self {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_deep_entries_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;

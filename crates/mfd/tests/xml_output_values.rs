@@ -1,31 +1,11 @@
 use std::collections::BTreeMap;
 use std::error::Error;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{Instance, ScalarType, SchemaNode, Value, XML_ELEMENTS_FIELD, XML_TEXT_FIELD};
 use mapping::{Binding, Graph, Node, Project, Scope};
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> std::io::Result<Self> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_xml_output_values_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn scalar(name: &str) -> SchemaNode {
     SchemaNode::scalar(name, ScalarType::String)
@@ -265,8 +245,8 @@ fn write_node_function_fixture(dir: &Path) -> Result<PathBuf, Box<dyn Error>> {
 #[test]
 fn output_node_function_removes_invalid_numeric_sentinel_before_xml_write()
 -> Result<(), Box<dyn Error>> {
-    let dir = TempDir::new()?;
-    let imported = mfd::import(&write_node_function_fixture(&dir.0)?)?;
+    let dir = TempDir::new("mfd_xml_output_values")?;
+    let imported = mfd::import(&write_node_function_fixture(dir.path())?)?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
 

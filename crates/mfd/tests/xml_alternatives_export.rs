@@ -1,27 +1,6 @@
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> std::io::Result<Self> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_xml_alternatives_export_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn fixture(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -33,8 +12,8 @@ fn fixture(name: &str) -> PathBuf {
 fn compatible_xml_type_alternatives_export_reimport_and_execute() {
     let imported = mfd::import(&fixture("json-alternatives.mfd")).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
-    let dir = TempDir::new().unwrap();
-    let design = dir.0.join("mapping.mfd");
+    let dir = TempDir::new("mfd_xml_alternatives_export").unwrap();
+    let design = dir.path().join("mapping.mfd");
 
     let warnings = mfd::export(&imported.project, &design).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");

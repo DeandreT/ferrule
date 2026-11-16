@@ -1,27 +1,6 @@
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Result<Self, std::io::Error> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_dynamic_source_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn write_fixture(dir: &Path) -> Result<PathBuf, std::io::Error> {
     std::fs::write(
@@ -80,8 +59,8 @@ fn write_fixture(dir: &Path) -> Result<PathBuf, std::io::Error> {
 #[test]
 fn connected_document_input_becomes_a_typed_dynamic_source()
 -> Result<(), Box<dyn std::error::Error>> {
-    let dir = TempDir::new()?;
-    let imported = mfd::import(&write_fixture(&dir.0)?)?;
+    let dir = TempDir::new("mfd_dynamic_source")?;
+    let imported = mfd::import(&write_fixture(dir.path())?)?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
 

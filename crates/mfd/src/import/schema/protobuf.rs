@@ -416,37 +416,21 @@ fn boundary_ports(
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
-    use std::sync::atomic::{AtomicUsize, Ordering};
 
     use super::{normalize_root_name, read};
     use crate::resource::ResourceResolver;
 
-    struct TempDir(PathBuf);
+    struct TempDir(test_support::TempDir);
 
     impl TempDir {
         fn new() -> Result<Self, std::io::Error> {
-            static NEXT: AtomicUsize = AtomicUsize::new(0);
-            let path = std::env::temp_dir().join(format!(
-                "ferrule_mfd_protobuf_unit_{}_{}",
-                std::process::id(),
-                NEXT.fetch_add(1, Ordering::Relaxed)
-            ));
-            let _ = std::fs::remove_dir_all(&path);
-            std::fs::create_dir_all(&path)?;
-            Ok(Self(path))
+            test_support::TempDir::new("mfd-protobuf-unit").map(Self)
         }
 
         fn resolver(&self) -> Result<ResourceResolver, std::io::Error> {
             let mapping = self.0.join("mapping.mfd");
             std::fs::write(&mapping, "<mapping/>")?;
             ResourceResolver::new(&mapping, None).map_err(std::io::Error::other)
-        }
-    }
-
-    impl Drop for TempDir {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_dir_all(&self.0);
         }
     }
 

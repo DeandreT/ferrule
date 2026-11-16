@@ -216,38 +216,12 @@ fn schema_node_at_mut<'a>(
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
-    use std::sync::atomic::{AtomicU64, Ordering};
 
     use ir::{ScalarType, SchemaKind};
 
     use super::*;
 
-    struct TempDir(PathBuf);
-
-    impl TempDir {
-        fn new() -> Result<Self, std::io::Error> {
-            static NEXT: AtomicU64 = AtomicU64::new(0);
-            let path = std::env::temp_dir().join(format!(
-                "ferrule-mfd-wsdl-package-{}-{}",
-                std::process::id(),
-                NEXT.fetch_add(1, Ordering::Relaxed)
-            ));
-            match std::fs::remove_dir_all(&path) {
-                Ok(()) => {}
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-                Err(error) => return Err(error),
-            }
-            std::fs::create_dir_all(&path)?;
-            Ok(Self(path))
-        }
-    }
-
-    impl Drop for TempDir {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_dir_all(&self.0);
-        }
-    }
+    use test_support::TempDir;
 
     fn parse_component(xml: &str) -> roxmltree::Document<'_> {
         roxmltree::Document::parse(xml).unwrap_or_else(|error| panic!("invalid test XML: {error}"))
@@ -313,9 +287,9 @@ mod tests {
     #[test]
     fn request_message_schema_resolves_from_a_sibling_package_directory()
     -> Result<(), Box<dyn std::error::Error>> {
-        let package = TempDir::new()?;
-        let maps = package.0.join("maps");
-        let schemas = package.0.join("resources");
+        let package = TempDir::new("mfd-wsdl-package")?;
+        let maps = package.path().join("maps");
+        let schemas = package.path().join("resources");
         std::fs::create_dir_all(&maps)?;
         std::fs::create_dir_all(&schemas)?;
         let mapping = maps.join("mapping.mfd");
@@ -324,7 +298,7 @@ mod tests {
             schemas.join("request.xsd"),
             r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="FindRecord"><xs:complexType><xs:sequence><xs:element name="Criteria" type="xs:int"/></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
         )?;
-        let resources = ResourceResolver::new(&mapping, Some(&package.0))?;
+        let resources = ResourceResolver::new(&mapping, Some(package.path()))?;
         let document = parse_component(
             r#"<component name="request" library="wsdl" kind="17"><data>
               <root><entry name="FindRecord"><entry name="Criteria" outkey="10"/></entry></root>

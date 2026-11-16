@@ -6,8 +6,7 @@ mod support;
 
 use std::collections::BTreeMap;
 use std::error::Error;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::path::Path;
 
 use ir::{Instance, ScalarType, SchemaNode, Value};
 use mapping::{
@@ -27,27 +26,7 @@ const CONTEXTS: [ScalarContext; 3] = [
     ScalarContext::NestedUserDefined,
 ];
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Result<Self, std::io::Error> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_builtin_function_export_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn run(project: &Project) -> TestResult<Option<Value>> {
     let source = format_xml::from_str("<Source><Seed>fixture</Seed></Source>", &project.source)?;
@@ -361,8 +340,8 @@ fn native_rounding_function_exports_under_both_arities() -> TestResult {
             ScalarType::Float,
         );
         assert_eq!(run(&native)?, Some(expected.clone()));
-        let directory = TempDir::new()?;
-        let path = directory.0.join("mapping.mfd");
+        let directory = TempDir::new("mfd_builtin_function_export")?;
+        let path = directory.path().join("mapping.mfd");
         let warnings = mfd::export(&native, &path)?;
         assert!(warnings.is_empty(), "{warnings:?}");
         let components = function_components(&std::fs::read_to_string(&path)?)?;
@@ -498,8 +477,8 @@ fn function_project(body: Graph, output: ScalarType) -> Project {
 }
 
 fn assert_refused(project: &Project, function: &str, reason: &str, label: &str) -> TestResult {
-    let directory = TempDir::new()?;
-    let path = directory.0.join("mapping.mfd");
+    let directory = TempDir::new("mfd_builtin_function_export")?;
+    let path = directory.path().join("mapping.mfd");
     for error in [
         mfd::preflight_export(project, &path)
             .map(|_| ())
@@ -519,7 +498,7 @@ fn assert_refused(project: &Project, function: &str, reason: &str, label: &str) 
             "{label}: {message}"
         );
     }
-    assert_eq!(std::fs::read_dir(&directory.0)?.count(), 0, "{label}");
+    assert_eq!(std::fs::read_dir(directory.path())?.count(), 0, "{label}");
     Ok(())
 }
 
@@ -617,12 +596,12 @@ fn functions_without_built_in_equivalents_are_refused_before_writing() -> TestRe
 #[test]
 fn refusal_names_the_owning_user_defined_function() -> TestResult {
     let project = function_project(call_graph("trim", &[text(" a ")]), ScalarType::String);
-    let directory = TempDir::new()?;
-    let error = mfd::export(&project, &directory.0.join("mapping.mfd")).unwrap_err();
+    let directory = TempDir::new("mfd_builtin_function_export")?;
+    let error = mfd::export(&project, &directory.path().join("mapping.mfd")).unwrap_err();
     assert!(
         matches!(&error, mfd::MfdError::Unsupported(message) if message.contains("`Wrapped`")),
         "{error:?}"
     );
-    assert!(Path::new(&directory.0).read_dir()?.next().is_none());
+    assert!(Path::new(directory.path()).read_dir()?.next().is_none());
     Ok(())
 }
