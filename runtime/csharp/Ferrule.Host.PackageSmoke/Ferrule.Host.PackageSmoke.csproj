@@ -6,6 +6,9 @@
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <UseAppHost>false</UseAppHost>
+    <!-- Exercise package asset selection with the installed shared framework. -->
+    <EnableRuntimePackDownload>false</EnableRuntimePackDownload>
+    <EnableAppHostPackDownload>false</EnableAppHostPackDownload>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Ferrule.Host" Version="[$(FerruleHostPackageVersion)]" />
