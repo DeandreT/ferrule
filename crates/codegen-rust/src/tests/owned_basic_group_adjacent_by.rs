@@ -499,7 +499,7 @@ fn consumer_projects() -> Vec<(&'static str, mapping::Project)> {
 
 #[test]
 fn adjacent_public_consumers_compare_complete_literal_products_errors_and_empty_catalogues() {
-    let directory = TempDir::new("owned_adjacent_consumer");
+    let directory = TempDir::new("owned_adjacent_consumer").unwrap();
     let mut library = String::new();
     for (name, project) in consumer_projects() {
         fs::write(

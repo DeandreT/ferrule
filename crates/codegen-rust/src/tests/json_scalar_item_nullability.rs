@@ -48,7 +48,7 @@ fn generated_scalar_item_nullability_builds_and_preserves_complete_values()
             runtime_dependency: RuntimeDependency::Path(runtime.display().to_string()),
         },
     )?;
-    let output = TempDir::new("rust_json_scalar_item_nullability");
+    let output = TempDir::new("rust_json_scalar_item_nullability").unwrap();
     write_artifacts(output.path(), &artifacts);
     fs::write(output.path().join("src/main.rs"), HARNESS)?;
     let result = Command::new("cargo")

@@ -50,7 +50,7 @@ fn repeated_copy_current_source_emits_owned_groups_and_executes()
         .ok_or("generated Rust source is present UTF-8")?;
     assert!(generated_source.contains("let output = (&item_context).copy_current_group()?;"));
 
-    let output = TempDir::new("rust_repeated_copy_current_source_codegen");
+    let output = TempDir::new("rust_repeated_copy_current_source_codegen").unwrap();
     write_artifacts(output.path(), &artifacts);
     fs::write(
         output.path().join("src/main.rs"),

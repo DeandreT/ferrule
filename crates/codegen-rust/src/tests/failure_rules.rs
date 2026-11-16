@@ -252,7 +252,7 @@ fn generated_failure_project_builds_and_preserves_pre_target_semantics() {
         .parent()
         .map(|parent| parent.join("codegen-runtime"))
         .unwrap();
-    let output = TempDir::new("rust_failure_codegen");
+    let output = TempDir::new("rust_failure_codegen").unwrap();
     let artifacts = emit(
         &failure_program(),
         &Options {

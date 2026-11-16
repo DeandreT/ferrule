@@ -127,7 +127,7 @@ fn generated_json_entry_point_enforces_exact_allowed_values() {
     };
     assert!(generated_source.contains(r#"\"json_allowed_values\""#));
 
-    let output = TempDir::new("rust_json_allowed_values_codegen");
+    let output = TempDir::new("rust_json_allowed_values_codegen").unwrap();
     write_artifacts(output.path(), &artifacts);
     let harness = r##"use codegen_runtime::JsonBoundaryError;
 
