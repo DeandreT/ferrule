@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <Deterministic>true</Deterministic>
+    <PackageId>Ferrule.Host</PackageId>
+    <Authors>Ferrule contributors</Authors>
+    <Description>Read-only .NET bindings for loading, inspecting, and validating native Ferrule projects on Linux x64.</Description>
+    <PackageLicenseExpression>GPL-3.0-only</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageProjectUrl>https://github.com/DeandreT/ferrule</PackageProjectUrl>
+    <RepositoryType>git</RepositoryType>
+    <RepositoryUrl Condition="'$(RepositoryUrl)' == ''">https://github.com/DeandreT/ferrule</RepositoryUrl>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Update="README.md" Pack="true" PackagePath="/" />
+    <None Include="../../../LICENSE" Pack="true" PackagePath="/" />
+    <None Include="$(FerruleNativeLibrary)" Pack="true"
+          PackagePath="runtimes/linux-x64/native/libferrule_host_ffi.so"
+          Condition="'$(FerruleNativeLibrary)' != ''" />
+  </ItemGroup>
+  <Target Name="RequireFerrulePackageInputs" BeforeTargets="GenerateNuspec">
+    <Error Condition="'$(FerruleNativeLibrary)' == '' Or !Exists('$(FerruleNativeLibrary)')"
+           Text="Ferrule.Host requires its Linux x64 native library. Run scripts/dev/pack-host-nuget.sh." />
+    <Error Condition="'$(RepositoryCommit)' == ''"
+           Text="Ferrule.Host requires the full Git commit of its corresponding source." />
+  </Target>
+</Project>

@@ -28,6 +28,14 @@ path = "crates/engine"
 role = "Project validation and mapping interpreter"
 
 [[area.component]]
+path = "crates/host"
+role = "Read-only project loading, inspection, and validation for embedding hosts"
+
+[[area.component]]
+path = "crates/host-ffi"
+role = "Versioned C ABI for read-only project hosting"
+
+[[area.component]]
 path = "crates/edit-ops"
 role = "Typed, replayable headless mapping edits"
 

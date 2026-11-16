@@ -1,0 +1,30 @@
+{
+  "__ferrule_file": {
+    "kind": "project",
+    "version": 2,
+    "float_bits": {"/graph/nodes/10/value": "8000000000000000"}
+  },
+  "document": {
+    "source": {"name": "Ledger", "kind": {"kind": "group", "children": []}},
+    "target": {"name": "Summary", "kind": {"kind": "group", "children": []}},
+    "graph": {"nodes": {
+      "9": {"kind": "const", "value": 9007199254741029},
+      "10": {"kind": "const", "value": -0.0}
+    }},
+    "root": {"target_field": "", "bindings": [], "children": []},
+    "user_functions": {
+      "9007199254741027": {
+        "library": "Ledger", "name": "Audit", "parameters": [],
+        "output_name": "audit", "output_type": "string",
+        "body": {"nodes": {"17": {"kind": "call", "function": "fixture_missing_operation", "args": []}}},
+        "output": 17
+      },
+      "9007199254741031": {
+        "library": "", "name": "Summary", "parameters": [],
+        "output_name": "value", "output_type": "string",
+        "body": {"nodes": {"1": {"kind": "const", "value": "plain"}}},
+        "output": 1
+      }
+    }
+  }
+}
