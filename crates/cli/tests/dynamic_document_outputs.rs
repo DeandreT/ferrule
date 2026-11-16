@@ -1,30 +1,10 @@
 use std::error::Error;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{ScalarType, SchemaNode, Value};
 use mapping::{Binding, Graph, NamedTarget, Node, Project, Scope, ScopeIteration};
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> std::io::Result<Self> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule-cli-dynamic-documents-{}-{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn project(output_path: u32) -> Project {
     Project {
@@ -88,8 +68,8 @@ fn project(output_path: u32) -> Project {
 }
 
 fn prepare(project: &Project) -> Result<(TempDir, PathBuf), Box<dyn Error>> {
-    let directory = TempDir::new()?;
-    let input = directory.0.join("input");
+    let directory = TempDir::new("cli-dynamic-documents")?;
+    let input = directory.path().join("input");
     std::fs::create_dir(&input)?;
     std::fs::write(
         input.join("records-b.xml"),
@@ -99,7 +79,7 @@ fn prepare(project: &Project) -> Result<(TempDir, PathBuf), Box<dyn Error>> {
         input.join("records-a.xml"),
         "<Source><Value>A</Value></Source>",
     )?;
-    let project_path = directory.0.join("mapping.json");
+    let project_path = directory.path().join("mapping.json");
     std::fs::write(&project_path, serde_json::to_vec_pretty(project)?)?;
     Ok((directory, project_path))
 }
@@ -107,7 +87,7 @@ fn prepare(project: &Project) -> Result<(TempDir, PathBuf), Box<dyn Error>> {
 #[test]
 fn writes_every_dynamic_document_beneath_the_explicit_base() -> Result<(), Box<dyn Error>> {
     let (directory, project_path) = prepare(&project(3))?;
-    let output = directory.0.join("output");
+    let output = directory.path().join("output");
 
     let outcome = cli::run_project_with_paths(&project_path, None, Some(&output))?;
 
@@ -141,16 +121,16 @@ fn nested_collectors_publish_all_paths_and_payloads_without_partial_failures()
     let cases: serde_json::Value = serde_json::from_str(include_str!(
         "code_generation/document_collections/cases.json"
     ))?;
-    let directory = TempDir::new()?;
-    let project_path = directory.0.join("mapping.json");
+    let directory = TempDir::new("cli-dynamic-documents")?;
+    let project_path = directory.path().join("mapping.json");
     std::fs::write(
         &project_path,
         mapping::project_file::encode_pretty(&project)?,
     )?;
     for case in cases.as_array().unwrap() {
         let id = case["id"].as_str().unwrap();
-        let input = directory.0.join(format!("{id}.xml"));
-        let output = directory.0.join(id);
+        let input = directory.path().join(format!("{id}.xml"));
+        let output = directory.path().join(id);
         let xml = case["input"].as_str().unwrap();
         std::fs::write(&input, xml)?;
         let source = cli::PayloadDocument::new(std::path::Path::new("input.xml"), xml.as_bytes())?;
@@ -235,8 +215,8 @@ fn selected_primary_and_named_collectors_keep_document_destinations() -> Result<
     ))?;
     let xml = cases[0]["input"].as_str().unwrap();
     let input = cli::PayloadDocument::new(std::path::Path::new("input.xml"), xml.as_bytes())?;
-    let directory = TempDir::new()?;
-    let path = directory.0.join("mapping.json");
+    let directory = TempDir::new("cli-dynamic-documents")?;
+    let path = directory.path().join("mapping.json");
     let primary = cli::run_project_value_payloads(
         &project,
         &path,
@@ -275,8 +255,8 @@ fn collector_payload_limit_counts_documents_across_parent_contexts() -> Result<(
             value: Value::Int(1),
         },
     );
-    let directory = TempDir::new()?;
-    let path = directory.0.join("mapping.json");
+    let directory = TempDir::new("cli-dynamic-documents")?;
+    let path = directory.path().join("mapping.json");
     for count in [4096, 4097] {
         let mut xml = String::from("<Input>");
         // Every parent produces one document. The final count must not reset
@@ -302,7 +282,7 @@ fn collector_payload_limit_counts_documents_across_parent_contexts() -> Result<(
 #[test]
 fn protected_dynamic_output_base_fails_before_publication() -> Result<(), Box<dyn Error>> {
     let (directory, project_path) = prepare(&project(3))?;
-    let output = directory.0.join("trace.jsonl");
+    let output = directory.path().join("trace.jsonl");
     let trace = cli::JsonTraceFile::create(&output)?;
     let protected = [trace.destination()];
 
@@ -328,7 +308,7 @@ fn protected_dynamic_output_base_fails_before_publication() -> Result<(), Box<dy
 #[test]
 fn resolved_source_paths_are_rejected_as_dynamic_output_names() -> Result<(), Box<dyn Error>> {
     let (directory, project_path) = prepare(&project(0))?;
-    let output = directory.0.join("output");
+    let output = directory.path().join("output");
 
     let error = cli::run_project_with_paths(&project_path, None, Some(&output))
         .expect_err("resolved source paths must not escape the dynamic output base");
@@ -352,7 +332,7 @@ fn duplicate_paths_fail_before_any_document_is_published() -> Result<(), Box<dyn
         },
     );
     let (directory, project_path) = prepare(&project)?;
-    let output = directory.0.join("output");
+    let output = directory.path().join("output");
 
     let error = cli::run_project_with_paths(&project_path, None, Some(&output))
         .expect_err("duplicate output paths must fail");
@@ -372,14 +352,14 @@ fn escaping_paths_fail_before_any_document_is_published() -> Result<(), Box<dyn 
         },
     );
     let (directory, project_path) = prepare(&project)?;
-    let output = directory.0.join("output");
+    let output = directory.path().join("output");
 
     let error = cli::run_project_with_paths(&project_path, None, Some(&output))
         .expect_err("escaping output paths must fail");
 
     assert!(error.to_string().contains("cannot contain `..`"));
     assert!(!output.exists());
-    assert!(!directory.0.join("outside.xml").exists());
+    assert!(!directory.path().join("outside.xml").exists());
     Ok(())
 }
 
@@ -393,7 +373,7 @@ fn empty_paths_fail_before_the_output_directory_is_created() -> Result<(), Box<d
         },
     );
     let (directory, project_path) = prepare(&project)?;
-    let output = directory.0.join("output");
+    let output = directory.path().join("output");
 
     let error = cli::run_project_with_paths(&project_path, None, Some(&output))
         .expect_err("empty output paths must fail");
@@ -406,7 +386,7 @@ fn empty_paths_fail_before_the_output_directory_is_created() -> Result<(), Box<d
 #[test]
 fn destination_conflicts_do_not_replace_an_earlier_existing_file() -> Result<(), Box<dyn Error>> {
     let (directory, project_path) = prepare(&project(3))?;
-    let output = directory.0.join("output");
+    let output = directory.path().join("output");
     std::fs::create_dir(&output)?;
     std::fs::write(output.join("records-a.xml"), "keep me")?;
     std::fs::create_dir(output.join("records-b.xml"))?;
@@ -433,7 +413,7 @@ fn windows_drive_paths_are_rejected_portably() -> Result<(), Box<dyn Error>> {
         },
     );
     let (directory, project_path) = prepare(&project)?;
-    let output = directory.0.join("output");
+    let output = directory.path().join("output");
 
     let error = cli::run_project_with_paths(&project_path, None, Some(&output))
         .expect_err("Windows drive paths must fail on every host platform");
@@ -449,8 +429,8 @@ fn symlinked_output_base_is_rejected() -> Result<(), Box<dyn Error>> {
     use std::os::unix::fs::symlink;
 
     let (directory, project_path) = prepare(&project(3))?;
-    let actual = directory.0.join("actual-output");
-    let output = directory.0.join("output");
+    let actual = directory.path().join("actual-output");
+    let output = directory.path().join("output");
     std::fs::create_dir(&actual)?;
     symlink(&actual, &output)?;
 
@@ -475,9 +455,9 @@ fn symlinked_output_component_is_rejected() -> Result<(), Box<dyn Error>> {
         },
     );
     let (directory, project_path) = prepare(&project)?;
-    std::fs::remove_file(directory.0.join("input/records-b.xml"))?;
-    let output = directory.0.join("output");
-    let outside = directory.0.join("outside");
+    std::fs::remove_file(directory.path().join("input/records-b.xml"))?;
+    let output = directory.path().join("output");
+    let outside = directory.path().join("outside");
     std::fs::create_dir(&output)?;
     std::fs::create_dir(&outside)?;
     symlink(&outside, output.join("linked"))?;
@@ -508,7 +488,7 @@ fn dynamic_primary_child_cannot_collide_with_static_extra_target() -> Result<(),
         },
     });
     let (directory, project_path) = prepare(&project)?;
-    let output = directory.0.join("output");
+    let output = directory.path().join("output");
 
     let error = cli::run_project_with_paths(&project_path, None, Some(&output))
         .expect_err("cross-target output collisions must fail before publication");

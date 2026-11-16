@@ -1,33 +1,11 @@
 use std::collections::BTreeMap;
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{ScalarType, SchemaNode};
 use mapping::{
     Binding, DynamicSourcePath, Graph, NamedSource, Node, Project, Scope, ScopeIteration,
 };
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Result<Self, std::io::Error> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_cli_dynamic_sources_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn project() -> Project {
     Project {
@@ -113,10 +91,10 @@ fn project() -> Project {
 
 #[test]
 fn loads_relative_dynamic_xml_sources_per_primary_item() -> Result<(), Box<dyn std::error::Error>> {
-    let dir = TempDir::new()?;
-    let project_path = dir.0.join("mapping.json");
-    let source_path = dir.0.join("files.xml");
-    let output_path = dir.0.join("output.xml");
+    let dir = TempDir::new("cli_dynamic_sources")?;
+    let project_path = dir.path().join("mapping.json");
+    let source_path = dir.path().join("files.xml");
+    let output_path = dir.path().join("output.xml");
     let project = project();
     std::fs::write(&project_path, serde_json::to_vec_pretty(&project)?)?;
     std::fs::write(
@@ -124,11 +102,11 @@ fn loads_relative_dynamic_xml_sources_per_primary_item() -> Result<(), Box<dyn s
         "<Files><File>first.xml</File><File>second.xml</File></Files>",
     )?;
     std::fs::write(
-        dir.0.join("first.xml"),
+        dir.path().join("first.xml"),
         "<Document><Item><Value>alpha</Value></Item></Document>",
     )?;
     std::fs::write(
-        dir.0.join("second.xml"),
+        dir.path().join("second.xml"),
         "<Document><Item><Value>beta</Value></Item></Document>",
     )?;
 
@@ -145,24 +123,24 @@ fn loads_relative_dynamic_xml_sources_per_primary_item() -> Result<(), Box<dyn s
 fn second_document_failure(
     second: Option<&[u8]>,
 ) -> Result<(anyhow::Error, String), Box<dyn std::error::Error>> {
-    let dir = TempDir::new()?;
-    let project_path = dir.0.join("mapping.json");
-    let source_path = dir.0.join("files.xml");
+    let dir = TempDir::new("cli_dynamic_sources")?;
+    let project_path = dir.path().join("mapping.json");
+    let source_path = dir.path().join("files.xml");
     std::fs::write(&project_path, serde_json::to_vec_pretty(&project())?)?;
     std::fs::write(
         &source_path,
         "<Files><File>first.xml</File><File>second.xml</File></Files>",
     )?;
     std::fs::write(
-        dir.0.join("first.xml"),
+        dir.path().join("first.xml"),
         "<Document><Item><Value>alpha</Value></Item></Document>",
     )?;
     if let Some(second) = second {
-        std::fs::write(dir.0.join("second.xml"), second)?;
+        std::fs::write(dir.path().join("second.xml"), second)?;
     }
-    let error = cli::run_project(&project_path, &source_path, &dir.0.join("output.xml"))
+    let error = cli::run_project(&project_path, &source_path, &dir.path().join("output.xml"))
         .expect_err("second document fails");
-    Ok((error, dir.0.join("second.xml").display().to_string()))
+    Ok((error, dir.path().join("second.xml").display().to_string()))
 }
 
 #[test]

@@ -3,8 +3,7 @@
 
 use std::collections::BTreeMap;
 use std::error::Error;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::path::Path;
 
 use cli::{PayloadDocument, PipelineHostPayload, PipelinePreviewOptions};
 use ir::{ScalarType, SchemaNode, Value};
@@ -13,26 +12,7 @@ use mapping::{
     PipelineNamedInput, PipelineStage, Project, Scope, ScopeConstruction,
 };
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> std::io::Result<Self> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_pipeline_release_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn json() -> FormatOptions {
     FormatOptions {
@@ -205,15 +185,15 @@ fn file_output(stage: &str, target: Option<&str>, path: &Path) -> cli::PipelineO
 #[test]
 fn file_run_publishes_the_bytes_preview_renders_while_preview_keeps_every_intermediate()
 -> Result<(), Box<dyn Error>> {
-    let dir = TempDir::new()?;
+    let dir = TempDir::new("pipeline_release")?;
     let pipeline = fan_out_pipeline();
-    let pipeline_path = dir.0.join("pipeline.json");
+    let pipeline_path = dir.path().join("pipeline.json");
     std::fs::write(&pipeline_path, serde_json::to_vec_pretty(&pipeline)?)?;
     let input = br#"{"Value":"o"}"#;
-    let input_path = dir.0.join("orders.json");
+    let input_path = dir.path().join("orders.json");
     std::fs::write(&input_path, input)?;
-    let final_path = dir.0.join("final.json");
-    let audit_path = dir.0.join("audit.json");
+    let final_path = dir.path().join("final.json");
+    let audit_path = dir.path().join("audit.json");
 
     let outcome = cli::run_pipeline_file(
         &pipeline_path,

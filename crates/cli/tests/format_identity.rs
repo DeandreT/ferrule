@@ -1,20 +1,11 @@
 use std::path::{Path, PathBuf};
+use test_support::TempDir;
 
 use ir::{ScalarType, SchemaNode};
 use mapping::{
     Binding, EdiBoundaryKind, Graph, Node, Project, Scope, ScopeIteration, TabularBoundaryKind,
     WsdlMessageOptions,
 };
-
-fn test_dir(name: &str) -> PathBuf {
-    let path = std::env::temp_dir().join(format!(
-        "ferrule_cli_format_identity_{name}_{}",
-        std::process::id()
-    ));
-    let _ = std::fs::remove_dir_all(&path);
-    std::fs::create_dir_all(&path).unwrap();
-    path
-}
 
 fn write_project(directory: &Path, project: &Project) -> PathBuf {
     let path = directory.join("project.json");
@@ -24,7 +15,7 @@ fn write_project(directory: &Path, project: &Project) -> PathBuf {
 
 #[test]
 fn json_document_identity_overrides_neutral_instance_extensions() {
-    let directory = test_dir("json");
+    let directory = TempDir::new("json").unwrap();
     let schema = SchemaNode::group(
         "Root",
         vec![SchemaNode::scalar("value", ScalarType::String)],
@@ -74,12 +65,12 @@ fn json_document_identity_overrides_neutral_instance_extensions() {
         serde_json::from_slice::<serde_json::Value>(&std::fs::read(&output_path).unwrap()).unwrap(),
         serde_json::json!({"value": "retained"})
     );
-    std::fs::remove_dir_all(directory).unwrap();
+    directory.close().unwrap();
 }
 
 #[test]
 fn xml_document_identity_overrides_neutral_instance_extensions() {
-    let directory = test_dir("xml");
+    let directory = TempDir::new("xml").unwrap();
     let schema = SchemaNode::group(
         "Root",
         vec![SchemaNode::scalar("value", ScalarType::String)],
@@ -133,12 +124,12 @@ fn xml_document_identity_overrides_neutral_instance_extensions() {
         std::fs::read_to_string(&output_path).unwrap(),
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Root>\n  <value>retained</value>\n</Root>"
     );
-    std::fs::remove_dir_all(directory).unwrap();
+    directory.close().unwrap();
 }
 
 #[test]
 fn wsdl_message_identity_unwraps_soap_inputs() -> Result<(), Box<dyn std::error::Error>> {
-    let directory = test_dir("wsdl_soap");
+    let directory = TempDir::new("wsdl_soap").unwrap();
     let source = SchemaNode::group(
         "LookupSoapIn",
         vec![SchemaNode::group(
@@ -208,7 +199,7 @@ fn wsdl_message_identity_unwraps_soap_inputs() -> Result<(), Box<dyn std::error:
     );
     let output = std::fs::read_to_string(&output_path)?;
     assert!(output.contains("<city>Boston</city>"), "{output}");
-    std::fs::remove_dir_all(directory)?;
+    directory.close()?;
     Ok(())
 }
 
@@ -219,7 +210,7 @@ fn edi_identity_overrides_neutral_input_extension() {
         serde_json::from_slice(&std::fs::read(fixture.join("project.json")).unwrap()).unwrap();
     project.source_options.edi_kind = Some(EdiBoundaryKind::X12);
 
-    let directory = test_dir("edi");
+    let directory = TempDir::new("edi").unwrap();
     let project_path = write_project(&directory, &project);
     let input_path = directory.join("purchase-order.capture");
     let output_path = directory.join("output.csv");
@@ -233,7 +224,7 @@ fn edi_identity_overrides_neutral_input_extension() {
         std::fs::read_to_string(&output_path).unwrap(),
         std::fs::read_to_string(fixture.join("expected_po_lines.csv")).unwrap()
     );
-    std::fs::remove_dir_all(directory).unwrap();
+    directory.close().unwrap();
 }
 
 fn tabular_project(target_kind: TabularBoundaryKind) -> Project {
@@ -281,7 +272,7 @@ fn tabular_project(target_kind: TabularBoundaryKind) -> Project {
 
 #[test]
 fn tabular_identity_dispatches_neutral_paths() {
-    let directory = test_dir("tabular-neutral");
+    let directory = TempDir::new("tabular-neutral").unwrap();
     let project = tabular_project(TabularBoundaryKind::Xlsx);
     let project_path = write_project(&directory, &project);
     let input_path = directory.join("input.capture");
@@ -303,12 +294,12 @@ fn tabular_identity_dispatches_neutral_paths() {
             .into()
         )]
     );
-    std::fs::remove_dir_all(directory).unwrap();
+    directory.close().unwrap();
 }
 
 #[test]
 fn recognized_extension_overrides_tabular_fallback_identity() {
-    let directory = test_dir("tabular-explicit");
+    let directory = TempDir::new("tabular-explicit").unwrap();
     let project = tabular_project(TabularBoundaryKind::Xlsx);
     let project_path = write_project(&directory, &project);
     let input_path = directory.join("input.csv");
@@ -323,12 +314,12 @@ fn recognized_extension_overrides_tabular_fallback_identity() {
         std::fs::read_to_string(&output_path).unwrap(),
         "value\nretained\n"
     );
-    std::fs::remove_dir_all(directory).unwrap();
+    directory.close().unwrap();
 }
 
 #[test]
 fn neutral_tabular_paths_reject_mismatched_layout_options() {
-    let directory = test_dir("tabular-conflict");
+    let directory = TempDir::new("tabular-conflict").unwrap();
     let mut project = tabular_project(TabularBoundaryKind::Csv);
     project.target_options.xlsx_sheet = Some("Sheet1".into());
     let project_path = write_project(&directory, &project);
@@ -344,5 +335,5 @@ fn neutral_tabular_paths_reject_mismatched_layout_options() {
         "{error:#}"
     );
     assert!(!output_path.exists());
-    std::fs::remove_dir_all(directory).unwrap();
+    directory.close().unwrap();
 }

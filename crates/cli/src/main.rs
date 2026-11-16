@@ -47,7 +47,7 @@ impl From<CodegenX12EnvelopeProfile> for codegen::X12EnvelopeProfile {
         match profile {
             CodegenX12EnvelopeProfile::SingleTransaction => Self::SingleTransaction,
             CodegenX12EnvelopeProfile::GroupedTransactions => Self::GroupedTransactions,
-            CodegenX12EnvelopeProfile::RepeatingInterchanges => Self::MapForceInterchanges,
+            CodegenX12EnvelopeProfile::RepeatingInterchanges => Self::REPEATING_INTERCHANGES,
         }
     }
 }
@@ -1137,19 +1137,11 @@ fn parse_runtime_parameters(values: &[String]) -> anyhow::Result<engine::Runtime
 
 /// Removes a per-test directory on drop, including after a panic.
 #[cfg(test)]
-struct TempDir(std::path::PathBuf);
-
-#[cfg(test)]
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 #[cfg(test)]
 mod x12_envelope_flag_tests {
     use super::*;
-    use std::sync::atomic::{AtomicUsize, Ordering};
 
     #[test]
     fn explicit_envelope_flags_require_the_x12_companion_and_known_values() {
@@ -1204,7 +1196,7 @@ mod x12_envelope_flag_tests {
     }
 
     #[test]
-    fn repeating_envelope_envelope_value_selects_repeating_envelope_interchanges_on_each_side() {
+    fn legacy_envelope_value_selects_repeating_interchanges_on_each_side() {
         for (flag, source) in [
             ("--x12-source-envelope-profile", true),
             ("--x12-target-envelope-profile", false),
@@ -1238,7 +1230,7 @@ mod x12_envelope_flag_tests {
             };
             assert_eq!(
                 selected.map(codegen::X12EnvelopeProfile::from),
-                Some(codegen::X12EnvelopeProfile::MapForceInterchanges)
+                Some(codegen::X12EnvelopeProfile::REPEATING_INTERCHANGES)
             );
             assert!(other.is_none());
             let mut misspelled = arguments;
@@ -1250,18 +1242,8 @@ mod x12_envelope_flag_tests {
 
     #[test]
     fn rust_grouped_flag_requires_an_explicit_runtime_path() {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let root = std::env::temp_dir().join(format!(
-            "ferrule-grouped-x12-flag-{}-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir(&root).unwrap();
-        let _cleanup = TempDir(root.clone());
+        let _cleanup = TempDir::new("grouped-x12-flag").unwrap();
+        let root = _cleanup.path().to_path_buf();
         let output = root.join("absent-parent/output");
         let args = vec![
             OsString::from("ferrule"),
@@ -1290,7 +1272,6 @@ mod x12_envelope_flag_tests {
 #[cfg(test)]
 mod static_document_flag_tests {
     use super::*;
-    use std::sync::atomic::{AtomicUsize, Ordering};
 
     #[test]
     fn static_document_flag_conflicts_with_other_optional_profiles() {
@@ -1348,24 +1329,14 @@ mod static_document_flag_tests {
         assert!(static_document_adapters);
         assert_eq!(
             x12_target_envelope_profile.map(codegen::X12EnvelopeProfile::from),
-            Some(codegen::X12EnvelopeProfile::MapForceInterchanges)
+            Some(codegen::X12EnvelopeProfile::REPEATING_INTERCHANGES)
         );
     }
 
     #[test]
     fn static_document_flag_backend_refusal_precedes_project_and_runtime_loading() {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let root = std::env::temp_dir().join(format!(
-            "ferrule-static-document-flag-{}-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir(&root).unwrap();
-        let _cleanup = TempDir(root.clone());
+        let _cleanup = TempDir::new("static-document-flag").unwrap();
+        let root = _cleanup.path().to_path_buf();
         let input = root.join("absent-project.json");
         let output = root.join("absent-parent/output");
         let args = vec![
@@ -1393,7 +1364,6 @@ mod static_document_flag_tests {
 #[cfg(test)]
 mod csv_x12_flag_tests {
     use super::*;
-    use std::sync::atomic::{AtomicUsize, Ordering};
 
     #[test]
     fn csv_x12_target_profile_is_explicit_required_and_value_checked() {
@@ -1473,18 +1443,8 @@ mod csv_x12_flag_tests {
 
     #[test]
     fn csv_x12_grouped_target_flag_keeps_early_backend_refusal() {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let root = std::env::temp_dir().join(format!(
-            "ferrule-csv-x12-explicit-{}-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir(&root).unwrap();
-        let _cleanup = TempDir(root.clone());
+        let _cleanup = TempDir::new("csv-x12-explicit").unwrap();
+        let root = _cleanup.path().to_path_buf();
         let output = root.join("absent-parent/output");
         let args = vec![
             OsString::from("ferrule"),
@@ -1538,18 +1498,8 @@ mod csv_x12_flag_tests {
 
     #[test]
     fn csv_x12_flag_backend_refusal_precedes_project_and_runtime_loading() {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let root = std::env::temp_dir().join(format!(
-            "ferrule-csv-x12-flag-{}-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir(&root).unwrap();
-        let _cleanup = TempDir(root.clone());
+        let _cleanup = TempDir::new("csv-x12-flag").unwrap();
+        let root = _cleanup.path().to_path_buf();
         let output = root.join("absent-parent/output");
         let args = vec![
             OsString::from("ferrule"),
@@ -1576,7 +1526,6 @@ mod csv_x12_flag_tests {
 #[cfg(test)]
 mod csv_json_flag_tests {
     use super::*;
-    use std::sync::atomic::{AtomicUsize, Ordering};
 
     #[test]
     fn csv_json_flag_conflicts_before_project_loading() {
@@ -1610,18 +1559,8 @@ mod csv_json_flag_tests {
 
     #[test]
     fn csv_json_flag_backend_refusal_precedes_loading() {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let root = std::env::temp_dir().join(format!(
-            "ferrule-csv-json-flag-{}-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir(&root).unwrap();
-        let _cleanup = TempDir(root.clone());
+        let _cleanup = TempDir::new("csv-json-flag").unwrap();
+        let root = _cleanup.path().to_path_buf();
         let output = root.join("absent-parent/output");
         let args = vec![
             OsString::from("ferrule"),
@@ -1648,7 +1587,6 @@ mod csv_json_flag_tests {
 #[cfg(test)]
 mod primary_mapped_csv_flag_tests {
     use super::*;
-    use std::sync::atomic::{AtomicUsize, Ordering};
 
     fn arguments(language: &str, rows: &str) -> Vec<OsString> {
         [
@@ -1749,14 +1687,8 @@ mod primary_mapped_csv_flag_tests {
 
     #[test]
     fn primary_mapped_csv_flag_keeps_backend_checks_before_loading() {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let root = std::env::temp_dir().join(format!(
-            "ferrule-primary-mapped-csv-flags-{}-{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir(&root).unwrap();
-        let _cleanup = TempDir(root.clone());
+        let _cleanup = TempDir::new("primary-mapped-csv-flags").unwrap();
+        let root = _cleanup.path().to_path_buf();
         let output = root.join("absent-parent/library");
         for (language, extra, message) in [
             (
@@ -1821,7 +1753,6 @@ mod primary_mapped_csv_flag_tests {
 mod pdf_evidence_flag_tests {
     use super::*;
     use std::io::Write;
-    use std::sync::atomic::{AtomicUsize, Ordering};
 
     fn retain(path: &std::path::Path, bytes: &[u8]) {
         let mut file = std::fs::OpenOptions::new()
@@ -1892,18 +1823,8 @@ mod pdf_evidence_flag_tests {
 
     #[test]
     fn retained_worker_standard_stream_refusals_precede_loading_and_publication() {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let root = std::env::temp_dir().join(format!(
-            "ferrule-pdf-evidence-flags-{}-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir(&root).unwrap();
-        let _cleanup = TempDir(root.clone());
+        let _cleanup = TempDir::new("pdf-evidence-flags").unwrap();
+        let root = _cleanup.path().to_path_buf();
         for (key, input_stream) in [("stdin", true), ("stdout", false)] {
             let output = root.join(format!("{key}.xml"));
             std::fs::write(&output, b"sentinel").unwrap();

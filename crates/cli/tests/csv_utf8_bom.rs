@@ -1,31 +1,11 @@
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::path::Path;
 
 use ir::{ScalarType, SchemaNode};
 use mapping::{
     FormatOptions, Graph, NamedTarget, Project, Scope, ScopeConstruction, ScopeIteration,
 };
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> std::io::Result<Self> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule-cli-csv-bom-{}-{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn copy_rows() -> Scope {
     Scope {
@@ -71,10 +51,10 @@ fn project() -> Project {
 
 #[test]
 fn csv_bom_is_exact_across_saved_project_file_payload_and_named_targets() -> anyhow::Result<()> {
-    let temp = TempDir::new()?;
+    let temp = TempDir::new("cli-csv-bom")?;
     let project = project();
     assert!(engine::validate(&project).is_empty());
-    let project_path = temp.0.join("project.json");
+    let project_path = temp.path().join("project.json");
     std::fs::write(
         &project_path,
         mapping::project_file::encode_pretty(&project)?,
@@ -86,12 +66,12 @@ fn csv_bom_is_exact_across_saved_project_file_payload_and_named_targets() -> any
     let input = b"Name,Age\nCaf\xc3\xa9,29\n";
     let plain = b"Name,Age\nCaf\xc3\xa9,29\n";
     let marked = b"\xef\xbb\xbfName,Age\nCaf\xc3\xa9,29\n";
-    let input_path = temp.0.join("input.csv");
-    let output_path = temp.0.join("output.csv");
+    let input_path = temp.path().join("input.csv");
+    let output_path = temp.path().join("output.csv");
     std::fs::write(&input_path, input)?;
     cli::run_project(&project_path, &input_path, &output_path)?;
     assert_eq!(std::fs::read(&output_path)?, marked);
-    assert_eq!(std::fs::read(temp.0.join("plain.csv"))?, plain);
+    assert_eq!(std::fs::read(temp.path().join("plain.csv"))?, plain);
 
     let payload = cli::PayloadDocument::new(Path::new("input.csv"), input)?;
     let outcome = cli::run_project_value_payloads(
@@ -126,12 +106,12 @@ fn csv_bom_is_exact_across_saved_project_file_payload_and_named_targets() -> any
 
 #[test]
 fn bom_on_an_xml_target_rejects_without_changing_existing_output() -> anyhow::Result<()> {
-    let temp = TempDir::new()?;
+    let temp = TempDir::new("cli-csv-bom")?;
     let mut project = project();
     project.target_path = Some("output.xml".into());
-    let project_path = temp.0.join("project.json");
-    let input_path = temp.0.join("input.csv");
-    let output_path = temp.0.join("output.xml");
+    let project_path = temp.path().join("project.json");
+    let input_path = temp.path().join("input.csv");
+    let output_path = temp.path().join("output.xml");
     std::fs::write(
         &project_path,
         mapping::project_file::encode_pretty(&project)?,

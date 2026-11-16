@@ -1,6 +1,3 @@
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
-
 use anyhow::{Context, anyhow};
 use engine::{
     DynamicSourceCategory, DynamicSourceCodecKind, DynamicSourceFault, DynamicSourceLoader,
@@ -13,26 +10,7 @@ use mapping::{DynamicSourcePath, NamedSource};
 use super::*;
 use crate::ProjectDynamicSourceLoader;
 
-struct TestDir(PathBuf);
-
-impl TestDir {
-    fn new() -> Self {
-        static NEXT: AtomicU64 = AtomicU64::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_loader_faults_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for TestDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir as TestDir;
 
 fn json_source() -> NamedSource {
     NamedSource {
@@ -53,16 +31,16 @@ fn tokens(fault: &DynamicSourceFault) -> (&'static str, &'static str) {
 
 #[test]
 fn filesystem_reads_split_acquisition_encoding_and_document_faults() {
-    let dir = TestDir::new();
+    let dir = TestDir::new("loader_faults").unwrap();
     for (name, bytes) in [
         ("encoding.json", &b"{\"Value\":\"\xff\"}"[..]),
         ("syntax.json", b"{\"Value\":"),
         ("shape.json", b"\"text\""),
     ] {
-        std::fs::write(dir.0.join(name), bytes).unwrap();
+        std::fs::write(dir.path().join(name), bytes).unwrap();
     }
     let sources = [json_source()];
-    let loader = ProjectDynamicSourceLoader::new(&dir.0, &sources);
+    let loader = ProjectDynamicSourceLoader::new(dir.path(), &sources);
 
     for (path, expected) in [
         ("missing.json", ("acquisition", "host")),
@@ -101,9 +79,9 @@ fn filesystem_reads_split_acquisition_encoding_and_document_faults() {
 
 #[test]
 fn undeclared_sources_are_typed_codec_faults_with_the_legacy_message() {
-    let dir = TestDir::new();
+    let dir = TestDir::new("loader_faults").unwrap();
     let sources = [json_source()];
-    let loader = ProjectDynamicSourceLoader::new(&dir.0, &sources);
+    let loader = ProjectDynamicSourceLoader::new(dir.path(), &sources);
     let fault = loader.load_tagged("unknown", "a.json").unwrap_err();
     assert_eq!(tokens(&fault), ("codec", "undeclared_source"));
     assert_eq!(
@@ -122,10 +100,10 @@ fn undeclared_sources_are_typed_codec_faults_with_the_legacy_message() {
 
 #[test]
 fn restricted_refusals_stay_typed_before_any_read() {
-    let dir = TestDir::new();
-    let root = dir.0.join("root");
+    let dir = TestDir::new("loader_faults").unwrap();
+    let root = dir.path().join("root");
     std::fs::create_dir(&root).unwrap();
-    std::fs::write(dir.0.join("outside.json"), "{\"Value\":\"x\"}").unwrap();
+    std::fs::write(dir.path().join("outside.json"), "{\"Value\":\"x\"}").unwrap();
     let policy = RestrictedPolicy::new(ExecutionBudgets::new(1_000, 64, 0))
         .allow_root(&root, RootAccess::Read)
         .unwrap();

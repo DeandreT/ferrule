@@ -1,6 +1,5 @@
 use std::cell::{Cell, RefCell};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use engine::{
     DebugDecision, EngineError, PendingFunctionNodeInput, PendingFunctionNodeValue,
@@ -12,30 +11,7 @@ use mapping::{
     UserFunction,
 };
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> std::io::Result<Self> {
-        static NEXT: AtomicU64 = AtomicU64::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule-pipeline-debug-{}-{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-
-    fn path(&self, name: &str) -> PathBuf {
-        self.0.join(name)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn project(value: &str) -> Project {
     let schema = SchemaNode::group(
@@ -103,16 +79,16 @@ fn prepare(
             },
         ],
     };
-    let pipeline_path = directory.path("pipeline.json");
+    let pipeline_path = directory.join("pipeline.json");
     std::fs::write(&pipeline_path, serde_json::to_vec(&pipeline)?)?;
-    let input_path = directory.path("input.json");
+    let input_path = directory.join("input.json");
     std::fs::write(&input_path, r#"{"Value":"source"}"#)?;
     let outputs = ["prepare", "finish"]
         .into_iter()
         .map(|stage| cli::PipelineOutputFile {
             stage: stage.into(),
             target: None,
-            path: directory.path(&format!("{stage}.json")),
+            path: directory.join(format!("{stage}.json")),
         })
         .collect::<Vec<_>>();
     for output in &outputs {
@@ -137,7 +113,7 @@ fn assert_old_outputs(outputs: &[cli::PipelineOutputFile]) -> std::io::Result<()
 
 #[test]
 fn stage_debug_hook_cancels_later_stage_without_publishing() -> anyhow::Result<()> {
-    let directory = TempDir::new()?;
+    let directory = TempDir::new("pipeline-debug")?;
     let (pipeline, inputs, outputs) = prepare(&directory)?;
     let seen = RefCell::new(Vec::<String>::new());
     let hook = |stage: &str, write: &PendingTargetWrite| {
@@ -163,7 +139,7 @@ fn stage_debug_hook_cancels_later_stage_without_publishing() -> anyhow::Result<(
 
 #[test]
 fn stage_node_hook_alone_cancels_later_stage_before_publication() -> anyhow::Result<()> {
-    let directory = TempDir::new()?;
+    let directory = TempDir::new("pipeline-debug")?;
     let (pipeline, inputs, outputs) = prepare(&directory)?;
     let seen = RefCell::new(Vec::<String>::new());
     let hook = |stage: &str, value: &PendingNodeValue| {
@@ -192,7 +168,7 @@ fn stage_node_hook_alone_cancels_later_stage_before_publication() -> anyhow::Res
 #[test]
 fn stage_function_node_hook_keeps_function_and_stage_ids_and_cancels_publication()
 -> anyhow::Result<()> {
-    let directory = TempDir::new()?;
+    let directory = TempDir::new("pipeline-debug")?;
     let (pipeline_path, inputs, outputs) = prepare(&directory)?;
     let mut pipeline: Pipeline = serde_json::from_slice(&std::fs::read(&pipeline_path)?)?;
     let function_id = FunctionId::new(7);
@@ -257,7 +233,7 @@ fn stage_function_node_hook_keeps_function_and_stage_ids_and_cancels_publication
 
 #[test]
 fn stage_input_hook_alone_cancels_recorded_pin_before_publication() -> anyhow::Result<()> {
-    let directory = TempDir::new()?;
+    let directory = TempDir::new("pipeline-debug")?;
     let (pipeline_path, inputs, outputs) = prepare(&directory)?;
     let mut pipeline: Pipeline = serde_json::from_slice(&std::fs::read(&pipeline_path)?)?;
     for stage in &mut pipeline.stages {
@@ -308,7 +284,7 @@ fn stage_input_hook_alone_cancels_recorded_pin_before_publication() -> anyhow::R
 
 #[test]
 fn stage_function_input_hook_qualifies_pins_and_cancels_publication() -> anyhow::Result<()> {
-    let directory = TempDir::new()?;
+    let directory = TempDir::new("pipeline-debug")?;
     let (pipeline_path, inputs, outputs) = prepare(&directory)?;
     let mut pipeline: Pipeline = serde_json::from_slice(&std::fs::read(&pipeline_path)?)?;
     let function_id = FunctionId::new(7);
@@ -397,7 +373,7 @@ fn stage_function_input_hook_qualifies_pins_and_cancels_publication() -> anyhow:
 
 #[test]
 fn stage_failure_hook_cancels_only_the_failing_stage_before_publication() -> anyhow::Result<()> {
-    let directory = TempDir::new()?;
+    let directory = TempDir::new("pipeline-debug")?;
     let (pipeline_path, inputs, outputs) = prepare(&directory)?;
     let mut pipeline: Pipeline = serde_json::from_slice(&std::fs::read(&pipeline_path)?)?;
     let finish = pipeline
@@ -451,7 +427,7 @@ fn stage_failure_hook_cancels_only_the_failing_stage_before_publication() -> any
 
 #[test]
 fn pipeline_gate_cancels_after_all_stages_before_any_staging() -> anyhow::Result<()> {
-    let directory = TempDir::new()?;
+    let directory = TempDir::new("pipeline-debug")?;
     let (pipeline, inputs, outputs) = prepare(&directory)?;
     let calls = Cell::new(0usize);
     let gate = || {
@@ -472,7 +448,7 @@ fn pipeline_gate_cancels_after_all_stages_before_any_staging() -> anyhow::Result
 
 #[test]
 fn approved_pipeline_gate_publishes_all_selected_stages() -> anyhow::Result<()> {
-    let directory = TempDir::new()?;
+    let directory = TempDir::new("pipeline-debug")?;
     let (pipeline, inputs, outputs) = prepare(&directory)?;
     let calls = Cell::new(0usize);
     let gate = || {

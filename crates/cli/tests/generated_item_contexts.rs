@@ -1,6 +1,5 @@
 use std::cell::Cell;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use engine::{
     DebugDecision, DebugHook, PendingNodeInput, PendingNodeValue, PendingTargetWrite, TraceEvent,
@@ -12,27 +11,7 @@ use mapping::{
     Project, Scope, ScopeConstruction, ScopeIteration, SequenceExpr, SortKey,
 };
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> std::io::Result<Self> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_cli_item_context_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 #[derive(Default)]
 struct Observers {
@@ -381,7 +360,7 @@ fn assert_context_error(error: anyhow::Error, expected: &str) {
 #[test]
 fn invalid_item_contexts_precede_file_payload_decoding_and_all_execution_callbacks()
 -> anyhow::Result<()> {
-    let dir = TempDir::new()?;
+    let dir = TempDir::new("cli_item_context")?;
     for site in [
         InvalidSite::OtherTarget,
         InvalidSite::SecondarySort,
@@ -391,7 +370,7 @@ fn invalid_item_contexts_precede_file_payload_decoding_and_all_execution_callbac
     ] {
         for indirect in [false, true] {
             let (project, expected) = invalid_project(site, indirect);
-            let sandbox = dir.0.join(format!("{site:?}-{indirect}"));
+            let sandbox = dir.path().join(format!("{site:?}-{indirect}"));
             let project_path = save_fixture(&sandbox, &project)?;
             let before = snapshot(&sandbox)?;
             let observers = Observers::default();
@@ -440,7 +419,7 @@ fn invalid_item_contexts_precede_file_payload_decoding_and_all_execution_callbac
 
     // The same dynamic payload route is live when ownership is valid, so the
     // malformed bytes above are an observable competing failure, not dead data.
-    let sandbox = dir.0.join("valid-dynamic-control");
+    let sandbox = dir.path().join("valid-dynamic-control");
     let mut valid = project();
     add_dynamic_input(&mut valid);
     let project_path = save_fixture(&sandbox, &valid)?;
@@ -490,7 +469,7 @@ fn invalid_item_contexts_precede_file_payload_decoding_and_all_execution_callbac
 #[test]
 fn invalid_item_context_generation_creates_no_artifact_or_staging_directories() -> anyhow::Result<()>
 {
-    let dir = TempDir::new()?;
+    let dir = TempDir::new("cli_item_context")?;
     for site in [
         InvalidSite::OtherTarget,
         InvalidSite::SecondarySort,
@@ -500,7 +479,7 @@ fn invalid_item_context_generation_creates_no_artifact_or_staging_directories() 
     ] {
         for indirect in [false, true] {
             let (project, expected) = invalid_project(site, indirect);
-            let sandbox = dir.0.join(format!("{site:?}-{indirect}"));
+            let sandbox = dir.path().join(format!("{site:?}-{indirect}"));
             let project_path = save_fixture(&sandbox, &project)?;
             let before = snapshot(&sandbox)?;
             for csharp in [false, true] {
@@ -536,9 +515,9 @@ fn invalid_item_context_generation_creates_no_artifact_or_staging_directories() 
 #[test]
 fn json_payload_parent_aggregate_inputs_and_arguments_survive_saved_project_loading()
 -> anyhow::Result<()> {
-    let dir = TempDir::new()?;
+    let dir = TempDir::new("cli_item_context")?;
     for argument in [false, true] {
-        let sandbox = dir.0.join(if argument {
+        let sandbox = dir.path().join(if argument {
             "parent-argument"
         } else {
             "parent-input"

@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 use std::path::Path;
+use test_support::TempDir;
 
 use ir::{ScalarType, SchemaNode};
 use mapping::{
@@ -65,13 +66,12 @@ fn fixture_project() -> Project {
     serde_json::from_slice(&std::fs::read(fixture_dir.join("project.json")).unwrap()).unwrap()
 }
 
-fn paths(name: &str) -> (std::path::PathBuf, std::path::PathBuf) {
+fn paths(name: &str) -> (TempDir, std::path::PathBuf, std::path::PathBuf) {
     let tag = format!("pdf_{name}_{}", std::process::id());
-    let temporary = std::env::temp_dir();
-    (
-        temporary.join(format!("ferrule_cli_{tag}.json")),
-        temporary.join(format!("ferrule_cli_{tag}.pdf")),
-    )
+    let temporary = TempDir::new("cli-pdf").unwrap();
+    let project = temporary.join(format!("ferrule_cli_{tag}.json"));
+    let input = temporary.join(format!("ferrule_cli_{tag}.pdf"));
+    (temporary, project, input)
 }
 
 fn pdf_bytes(text: &str) -> Vec<u8> {
@@ -118,8 +118,9 @@ fn pdf_bytes(text: &str) -> Vec<u8> {
 
 #[test]
 fn configured_pdf_input_overrides_extension_and_stored_path() {
+    let _scratch = TempDir::new("cli-pdf").unwrap();
     let tag = format!("pdf_override_{}", std::process::id());
-    let temporary = std::env::temp_dir();
+    let temporary = _scratch.path();
     let project_path = temporary.join(format!("ferrule_cli_{tag}.json"));
     let input_path = temporary.join(format!("ferrule_cli_{tag}.data"));
     let output_path = temporary.join(format!("ferrule_cli_{tag}.xml"));
@@ -140,14 +141,12 @@ fn configured_pdf_input_overrides_extension_and_stored_path() {
         "{output}"
     );
 
-    for path in [project_path, input_path, output_path] {
-        std::fs::remove_file(path).unwrap();
-    }
+    _scratch.close().unwrap();
 }
 
 #[test]
 fn pdf_options_reject_other_format_options_before_reading() {
-    let (project_path, input_path) = paths("conflict");
+    let (_scratch, project_path, input_path) = paths("conflict");
     let conflicts = vec![
         (
             "CSV",
@@ -241,13 +240,11 @@ fn pdf_options_reject_other_format_options_before_reading() {
             "{format}: {message}"
         );
     }
-
-    std::fs::remove_file(project_path).unwrap();
 }
 
 #[test]
 fn pdf_input_without_embedded_options_is_rejected_explicitly() {
-    let (project_path, input_path) = paths("missing_layout");
+    let (_scratch, project_path, input_path) = paths("missing_layout");
     std::fs::write(
         &project_path,
         serde_json::to_vec(&fixture_project()).unwrap(),
@@ -265,14 +262,12 @@ fn pdf_input_without_embedded_options_is_rejected_explicitly() {
             .to_string()
             .contains("PDF input requires embedded `pdf` extraction options")
     );
-
-    std::fs::remove_file(project_path).unwrap();
 }
 
 #[test]
 fn pdf_output_is_rejected_before_creating_the_file() {
     let fixture_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
-    let (project_path, output_path) = paths("target");
+    let (_scratch, project_path, output_path) = paths("target");
     std::fs::write(
         &project_path,
         serde_json::to_vec(&fixture_project()).unwrap(),
@@ -283,14 +278,12 @@ fn pdf_output_is_rejected_before_creating_the_file() {
         cli::run_project(&project_path, &fixture_dir.join("input.csv"), &output_path).unwrap_err();
     assert!(error.to_string().contains("PDF output is not supported"));
     assert!(!output_path.exists());
-
-    std::fs::remove_file(project_path).unwrap();
 }
 
 #[test]
 fn configured_pdf_target_is_rejected_before_creating_the_file() {
     let fixture_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
-    let (project_path, output_path) = paths("configured_target");
+    let (_scratch, project_path, output_path) = paths("configured_target");
     let output_path = output_path.with_extension("data");
     let mut project = fixture_project();
     project.target_options.pdf = Some(layout());
@@ -304,6 +297,4 @@ fn configured_pdf_target_is_rejected_before_creating_the_file() {
             .contains("PDF extraction is valid only for mapping sources")
     );
     assert!(!output_path.exists());
-
-    std::fs::remove_file(project_path).unwrap();
 }

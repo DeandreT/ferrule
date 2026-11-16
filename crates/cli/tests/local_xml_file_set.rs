@@ -1,31 +1,10 @@
 use std::collections::BTreeMap;
 use std::error::Error;
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{ScalarType, SchemaNode, Value};
 use mapping::{Binding, FormatOptions, Graph, Node, Project, Scope, ScopeIteration};
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> std::io::Result<Self> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule-cli-local-xml-file-set-{}-{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn source_row(name: &str) -> SchemaNode {
     SchemaNode::group(name, vec![SchemaNode::scalar("Value", ScalarType::String)]).repeating()
@@ -44,14 +23,14 @@ fn target_row(name: &str) -> SchemaNode {
 
 #[test]
 fn runs_a_sorted_bounded_local_xml_file_set() -> Result<(), Box<dyn Error>> {
-    let directory = TempDir::new()?;
-    let project_path = directory.0.join("mapping.json");
+    let directory = TempDir::new("cli-local-xml-file-set")?;
+    let project_path = directory.path().join("mapping.json");
     std::fs::write(
-        directory.0.join("records-b.xml"),
+        directory.path().join("records-b.xml"),
         "<Source><Item><Value>b</Value></Item></Source>",
     )?;
     std::fs::write(
-        directory.0.join("records-a.xml"),
+        directory.path().join("records-a.xml"),
         "<Source><Item><Value>a</Value></Item></Source>",
     )?;
     let project = Project {
@@ -115,8 +94,8 @@ fn runs_a_sorted_bounded_local_xml_file_set() -> Result<(), Box<dyn Error>> {
 
     let outcome = cli::run_project_with_paths(&project_path, None, None)?;
 
-    assert_eq!(outcome.input_path, directory.0.join("records-*.xml"));
-    let output = format_xml::read(&directory.0.join("output.xml"), &project.target)?;
+    assert_eq!(outcome.input_path, directory.path().join("records-*.xml"));
+    let output = format_xml::read(&directory.path().join("output.xml"), &project.target)?;
     let items = output
         .field("Item")
         .and_then(ir::Instance::as_repeated)

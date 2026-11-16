@@ -1,6 +1,5 @@
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::path::Path;
 
 use cli::{
     PayloadArtifact, PayloadDocument, PayloadRunOptions, PayloadRunOutcome, TargetSelection,
@@ -308,37 +307,18 @@ fn leading_parent_file_directory_overlaps_are_still_rejected() {
     }
 }
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> std::io::Result<Self> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_payload_parent_paths_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 #[test]
 fn file_loaded_payload_runs_preserve_paths_and_never_publish_outputs() -> anyhow::Result<()> {
-    let directory = TempDir::new()?;
-    let nested = directory.0.join("nested");
+    let directory = TempDir::new("payload_parent_paths")?;
+    let nested = directory.path().join("nested");
     std::fs::create_dir(&nested)?;
     let project_path = nested.join("project.json");
     let primary_path = nested.join("../result.json");
     let named_path = nested.join("result.json");
     let override_path = nested.join("../unused/result.json");
-    let sentinel_path = directory.0.join("result.json");
+    let sentinel_path = directory.path().join("result.json");
     std::fs::write(&sentinel_path, b"existing output must remain unchanged")?;
     let mut project = project("../result.json", "result.json");
     let saved = serde_json::to_vec_pretty(&project)?;
@@ -386,8 +366,8 @@ fn file_loaded_payload_runs_preserve_paths_and_never_publish_outputs() -> anyhow
     );
     assert!(!named_path.exists());
     assert!(!override_path.exists());
-    assert!(!directory.0.join("missing").exists());
-    assert_eq!(std::fs::read_dir(&directory.0)?.count(), 2);
+    assert!(!directory.path().join("missing").exists());
+    assert_eq!(std::fs::read_dir(directory.path())?.count(), 2);
     assert_eq!(std::fs::read_dir(&nested)?.count(), 1);
     Ok(())
 }
@@ -395,13 +375,17 @@ fn file_loaded_payload_runs_preserve_paths_and_never_publish_outputs() -> anyhow
 #[cfg(unix)]
 #[test]
 fn rooted_parents_still_clamp_without_changing_returned_paths() -> anyhow::Result<()> {
-    let directory = TempDir::new()?;
+    let directory = TempDir::new("payload_parent_paths")?;
     let primary = format!(
         "/../../{}",
-        directory.0.strip_prefix("/")?.join("result.json").display()
+        directory
+            .path()
+            .strip_prefix("/")?
+            .join("result.json")
+            .display()
     );
-    let named = directory.0.join("named.json");
-    let project_path = directory.0.join("project.json");
+    let named = directory.path().join("named.json");
+    let project_path = directory.path().join("project.json");
     assert_outcome(
         cli::run_project_value_payloads(
             &project(&primary, named.to_str().unwrap()),
@@ -410,13 +394,13 @@ fn rooted_parents_still_clamp_without_changing_returned_paths() -> anyhow::Resul
         )?,
         &[("Result", Path::new(&primary)), ("named", &named)],
     );
-    let alias = directory.0.join("result.json");
+    let alias = directory.path().join("result.json");
     assert_collision(
         &project(&primary, alias.to_str().unwrap()),
         &project_path,
         &format!("multiple output artifacts use path `{}`", alias.display()),
     );
-    assert_eq!(std::fs::read_dir(&directory.0)?.count(), 0);
+    assert_eq!(std::fs::read_dir(directory.path())?.count(), 0);
     Ok(())
 }
 
@@ -441,7 +425,7 @@ fn drive_relative_prefixes_keep_unmatched_parents() -> anyhow::Result<()> {
 
 #[test]
 fn dynamic_parent_traversal_is_still_refused() -> anyhow::Result<()> {
-    let directory = TempDir::new()?;
+    let directory = TempDir::new("payload_parent_paths")?;
     for path in ["../result.json", "dir/../result.json"] {
         let mut project = project("unused.json", "named.json");
         project.target_path = None;
@@ -457,7 +441,7 @@ fn dynamic_parent_traversal_is_still_refused() -> anyhow::Result<()> {
         };
         let error = cli::run_project_value_payloads(
             &project,
-            &directory.0.join("project.json"),
+            &directory.path().join("project.json"),
             &options(),
         )
         .expect_err("static parent admission must not admit dynamic traversal");
@@ -466,6 +450,6 @@ fn dynamic_parent_traversal_is_still_refused() -> anyhow::Result<()> {
             "{error:#}"
         );
     }
-    assert_eq!(std::fs::read_dir(&directory.0)?.count(), 0);
+    assert_eq!(std::fs::read_dir(directory.path())?.count(), 0);
     Ok(())
 }

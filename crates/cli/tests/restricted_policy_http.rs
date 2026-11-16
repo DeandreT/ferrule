@@ -7,23 +7,14 @@ use std::path::{Path, PathBuf};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
-struct TestDir(PathBuf);
+struct TestDir(test_support::TempDir);
 
 impl TestDir {
     fn new(name: &str) -> Self {
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_cli_restricted_http_{name}_{}",
-            std::process::id()
-        ));
-        let _ = std::fs::remove_dir_all(&path);
+        let path =
+            test_support::TempDir::new(&format!("cli-restricted-policy-http-{name}")).unwrap();
         std::fs::create_dir_all(path.join("out")).unwrap();
         Self(path)
-    }
-}
-
-impl Drop for TestDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
     }
 }
 

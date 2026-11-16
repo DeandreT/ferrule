@@ -8,25 +8,7 @@ use std::path::{Path, PathBuf};
 use calamine::{Data, Reader, Xlsx};
 use rust_xlsxwriter::{Formula, Workbook};
 
-struct Scratch(PathBuf);
-
-impl Scratch {
-    fn new(name: &str) -> Self {
-        let path = std::env::temp_dir().join(format!(
-            "ferrule-cli-xlsx-hierarchical-update-{}-{name}",
-            std::process::id()
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for Scratch {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir as Scratch;
 
 fn mfd_fixture(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -48,7 +30,7 @@ fn update_project(scratch: &Scratch) -> PathBuf {
         "{:?}",
         engine::validate(&project)
     );
-    let path = scratch.0.join("project.json");
+    let path = scratch.path().join("project.json");
     std::fs::write(&path, serde_json::to_vec(&project).unwrap()).unwrap();
     path
 }
@@ -126,9 +108,9 @@ fn sheet_names(bytes: &[u8]) -> Vec<String> {
 
 #[test]
 fn hierarchical_target_updates_existing_workbook_through_file_run() {
-    let scratch = Scratch::new("update");
+    let scratch = Scratch::new("update").unwrap();
     let project = update_project(&scratch);
-    let output = scratch.0.join("report.xlsx");
+    let output = scratch.path().join("report.xlsx");
     template().save(&output).unwrap();
 
     let written = cli::run_project(
@@ -181,9 +163,9 @@ fn hierarchical_target_updates_existing_workbook_through_file_run() {
 
 #[test]
 fn hierarchical_update_refusal_leaves_workbook_unchanged() {
-    let scratch = Scratch::new("refusal");
+    let scratch = Scratch::new("refusal").unwrap();
     let project = update_project(&scratch);
-    let output = scratch.0.join("report.xlsx");
+    let output = scratch.path().join("report.xlsx");
     let mut workbook = template();
     workbook
         .worksheet_from_name("Design")
@@ -211,9 +193,9 @@ fn hierarchical_update_refusal_leaves_workbook_unchanged() {
 
 #[test]
 fn hierarchical_update_requires_every_mapped_worksheet() {
-    let scratch = Scratch::new("missing-sheet");
+    let scratch = Scratch::new("missing-sheet").unwrap();
     let project = update_project(&scratch);
-    let output = scratch.0.join("report.xlsx");
+    let output = scratch.path().join("report.xlsx");
     let mut workbook = Workbook::new();
     workbook.add_worksheet().set_name("Design").unwrap();
     workbook.save(&output).unwrap();
@@ -234,7 +216,7 @@ fn hierarchical_update_requires_every_mapped_worksheet() {
 
 #[test]
 fn update_existing_still_refuses_composite_grid_and_worksheet_set_targets() {
-    let scratch = Scratch::new("refused-layouts");
+    let scratch = Scratch::new("refused-layouts").unwrap();
     let fixture_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
     let base: mapping::Project =
         serde_json::from_str(&std::fs::read_to_string(fixture_dir.join("project.json")).unwrap())
@@ -300,9 +282,9 @@ fn update_existing_still_refuses_composite_grid_and_worksheet_set_targets() {
             xlsx_update_existing: true,
             ..options
         };
-        let project_path = scratch.0.join(format!("{layout}.json"));
+        let project_path = scratch.path().join(format!("{layout}.json"));
         std::fs::write(&project_path, serde_json::to_vec(&project).unwrap()).unwrap();
-        let output = scratch.0.join(format!("{layout}.xlsx"));
+        let output = scratch.path().join(format!("{layout}.xlsx"));
         let mut workbook = Workbook::new();
         workbook.add_worksheet().write_string(0, 0, "Keep").unwrap();
         workbook.save(&output).unwrap();

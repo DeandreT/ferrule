@@ -1,7 +1,6 @@
 use std::cell::Cell;
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::path::Path;
 
 use cli::{PayloadDocument, PayloadRunOptions, PipelineHostPayload, PipelinePreviewOptions};
 use engine::{DebugDecision, ExecutionPurpose};
@@ -12,24 +11,8 @@ use mapping::{
     ScopeIteration, TabularBoundaryKind,
 };
 
-struct TempDir(PathBuf);
-impl TempDir {
-    fn new() -> Self {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_cli_csv_repair_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
+
 fn dependency() -> CsvTextRepairDependency {
     CsvTextRepairDependency::new(CsvTextRepairCause::Encoding)
 }
@@ -108,15 +91,15 @@ fn mark(project: &mut Project, boundary: usize) {
 
 #[test]
 fn saved_repairs_block_file_and_payload_paths_in_run_and_preview() {
-    let temp = TempDir::new();
-    let input = temp.0.join("input.csv");
+    let temp = TempDir::new("cli_csv_repair").unwrap();
+    let input = temp.path().join("input.csv");
     std::fs::write(&input, b"data\n").unwrap();
-    let renamed = temp.0.join("renamed.json");
+    let renamed = temp.path().join("renamed.json");
     std::fs::write(&renamed, b"not JSON").unwrap();
     for boundary in 0..4 {
         let mut project = project();
         mark(&mut project, boundary);
-        let saved = temp.0.join(format!("project-{boundary}.json"));
+        let saved = temp.path().join(format!("project-{boundary}.json"));
         std::fs::write(
             &saved,
             mapping::project_file::encode_pretty(&project).unwrap(),
@@ -136,9 +119,9 @@ fn saved_repairs_block_file_and_payload_paths_in_run_and_preview() {
             engine::run(&project, &typed).is_ok(),
             "typed input does not perform CSV byte I/O"
         );
-        let output = temp.0.join("sentinel.csv");
+        let output = temp.path().join("sentinel.csv");
         std::fs::write(&output, b"sentinel").unwrap();
-        let audit = temp.0.join("audit.json");
+        let audit = temp.path().join("audit.json");
         std::fs::write(&audit, b"audit sentinel").unwrap();
         let actual_input = if boundary == 0 { &renamed } else { &input };
         assert_dependency(
@@ -203,8 +186,8 @@ fn pipeline(project: Project) -> Pipeline {
 
 #[test]
 fn pipeline_preflight_blocks_actual_csv_boundaries_before_any_callbacks_or_files() {
-    let temp = TempDir::new();
-    let path = temp.0.join("pipeline.json");
+    let temp = TempDir::new("cli_csv_repair").unwrap();
+    let path = temp.path().join("pipeline.json");
     for boundary in 0..4 {
         let mut project = project();
         mark(&mut project, boundary);
@@ -254,12 +237,12 @@ fn pipeline_preflight_blocks_actual_csv_boundaries_before_any_callbacks_or_files
             &cli::preview_pipeline_value_payloads(&pipeline, &path, &options).unwrap_err(),
         );
         assert_eq!(callbacks.get(), 0);
-        assert!(!temp.0.join("output.csv").exists());
-        assert!(!temp.0.join("audit.json").exists());
+        assert!(!temp.path().join("output.csv").exists());
+        assert!(!temp.path().join("audit.json").exists());
         // Filesystem pipeline execution shares the same configured decoder.
         let saved = mapping::pipeline_file::encode_pretty(&pipeline).unwrap();
         std::fs::write(&path, saved).unwrap();
-        let primary_path = temp.0.join(if boundary == 0 {
+        let primary_path = temp.path().join(if boundary == 0 {
             "host-renamed.json"
         } else {
             "host.csv"
@@ -272,10 +255,10 @@ fn pipeline_preflight_blocks_actual_csv_boundaries_before_any_callbacks_or_files
         if boundary == 2 {
             file_inputs.push(cli::PipelineHostFile {
                 name: "lookup-input".into(),
-                path: temp.0.join("missing.json"),
+                path: temp.path().join("missing.json"),
             });
         }
-        let output = temp.0.join(if boundary == 1 {
+        let output = temp.path().join(if boundary == 1 {
             "sentinel-renamed.json"
         } else {
             "sentinel.csv"
@@ -290,12 +273,12 @@ fn pipeline_preflight_blocks_actual_csv_boundaries_before_any_callbacks_or_files
             file_outputs.push(cli::PipelineOutputFile {
                 stage: "one".into(),
                 target: Some("audit".into()),
-                path: temp.0.join("audit.csv"),
+                path: temp.path().join("audit.csv"),
             });
         }
         assert_dependency(&cli::run_pipeline_file(&path, &file_inputs, &file_outputs).unwrap_err());
         assert_eq!(std::fs::read(&output).unwrap(), b"sentinel");
-        assert!(!temp.0.join("audit.csv").exists());
+        assert!(!temp.path().join("audit.csv").exists());
     }
 }
 
@@ -322,7 +305,7 @@ fn ordinary_csv_payload_and_pipeline_preview_still_render_identical_bytes() {
 
 #[test]
 fn dynamic_csv_target_repair_rejects_during_metadata_preflight() {
-    let temp = TempDir::new();
+    let temp = TempDir::new("cli_csv_repair").unwrap();
     let mut project = project();
     project.target_path = None;
     project.target_options.csv_text_repair_dependency = Some(dependency());
@@ -349,7 +332,7 @@ fn dynamic_csv_target_repair_rejects_during_metadata_preflight() {
     let identities = [cli::PipelinePreviewOutputIdentity {
         stage: "one".into(),
         target: None,
-        path: temp.0.join("uncreated"),
+        path: temp.path().join("uncreated"),
     }];
     let options = PipelinePreviewOptions::new(&hosts)
         .with_output_identities(&identities)
@@ -367,5 +350,5 @@ fn dynamic_csv_target_repair_rejects_during_metadata_preflight() {
         .unwrap_err(),
     );
     assert_eq!(count.get(), 0);
-    assert!(!temp.0.join("uncreated").exists());
+    assert!(!temp.path().join("uncreated").exists());
 }

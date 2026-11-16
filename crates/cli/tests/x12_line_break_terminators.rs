@@ -1,6 +1,4 @@
 //! X12 projects that select an LF or CR segment terminator write it alone.
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{ScalarType, SchemaNode};
 use mapping::{
@@ -15,26 +13,7 @@ SE*3*0009\n\
 GE*1*00321\n\
 IEA*1*000000321\n";
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> std::io::Result<Self> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule-cli-x12-line-break-{}-{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn segment(name: &str, count: usize) -> SchemaNode {
     SchemaNode::group(
@@ -91,18 +70,18 @@ fn project(segment_terminator: char) -> Project {
 
 #[test]
 fn line_break_terminated_interchanges_write_back_byte_identical() -> anyhow::Result<()> {
-    let temp = TempDir::new()?;
+    let temp = TempDir::new("cli-x12-line-break")?;
     for terminator in ['\n', '\r'] {
         let project = project(terminator);
         assert!(engine::validate(&project).is_empty());
-        let project_path = temp.0.join("project.json");
+        let project_path = temp.path().join("project.json");
         std::fs::write(
             &project_path,
             mapping::project_file::encode_pretty(&project)?,
         )?;
         let wire = LF_INTERCHANGE.replace('\n', &terminator.to_string());
-        let input = temp.0.join("input.x12");
-        let output = temp.0.join("output.x12");
+        let input = temp.path().join("input.x12");
+        let output = temp.path().join("output.x12");
         std::fs::write(&input, &wire)?;
         cli::run_project(&project_path, &input, &output)?;
         assert_eq!(std::fs::read(&output)?, wire.as_bytes(), "{terminator:?}");
@@ -112,14 +91,14 @@ fn line_break_terminated_interchanges_write_back_byte_identical() -> anyhow::Res
 
 #[test]
 fn a_cr_lf_segment_terminator_cannot_be_selected() -> anyhow::Result<()> {
-    let temp = TempDir::new()?;
+    let temp = TempDir::new("cli-x12-line-break")?;
     let encoded = mapping::project_file::encode_pretty(&project('\r'))?;
     let crlf = encoded.replace("\"segment\": \"\\r\"", "\"segment\": \"\\r\\n\"");
     assert_ne!(crlf, encoded);
-    let project_path = temp.0.join("project.json");
+    let project_path = temp.path().join("project.json");
     std::fs::write(&project_path, crlf)?;
-    let input = temp.0.join("input.x12");
-    let output = temp.0.join("output.x12");
+    let input = temp.path().join("input.x12");
+    let output = temp.path().join("output.x12");
     std::fs::write(&input, LF_INTERCHANGE.replace('\n', "\r\n"))?;
     let error = cli::run_project(&project_path, &input, &output).unwrap_err();
     assert!(

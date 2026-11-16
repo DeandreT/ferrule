@@ -5,7 +5,6 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{ScalarType, SchemaNode};
 use mapping::{
@@ -15,17 +14,11 @@ use mapping::{
 
 /// `in` is readable, `out` is read-write, `outside` and `project` are not
 /// roots unless a test adds them.
-struct Layout(PathBuf);
+struct Layout(test_support::TempDir);
 
 impl Layout {
     fn new() -> Self {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_cli_restricted_policy_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
+        let path = test_support::TempDir::new("cli-restricted-policy").unwrap();
         for directory in ["in", "out", "outside", "project"] {
             std::fs::create_dir_all(path.join(directory)).unwrap();
         }
@@ -48,12 +41,6 @@ impl Layout {
                 .unwrap();
         }
         cli::ExecutionPolicy::Restricted(policy)
-    }
-}
-
-impl Drop for Layout {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
     }
 }
 
@@ -653,7 +640,7 @@ fn run_budgets_surface_as_typed_engine_errors() {
 fn policy_files_are_versioned_strict_and_deny_by_default() {
     let layout = Layout::new();
     std::fs::write(layout.join("in/a.xml"), "<a/>").unwrap();
-    let base = layout.0.as_path();
+    let base = layout.0.path();
     let budgets = r#""budgets":{"work":1,"depth":2,"join_rows":3}"#;
 
     let empty =
