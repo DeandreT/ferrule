@@ -991,7 +991,7 @@ fn observed_source(source: &str) -> String {
 
 #[test]
 fn generated_public_item_at_consumer_has_literal_outputs_errors_frames_and_edge_counts() {
-    let directory = TempDir::new("owned_item_at_consumer");
+    let directory = TempDir::new("owned_item_at_consumer").unwrap();
     let mut library = String::new();
     for (name, project) in cases() {
         fs::write(

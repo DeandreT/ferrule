@@ -5,7 +5,6 @@ use mapping::{
 };
 use std::collections::BTreeMap;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
 fn insert(nodes: &mut BTreeMap<NodeId, Node>, node: Node) -> NodeId {
     let id = nodes.keys().next_back().copied().unwrap_or(0) + 1;
     nodes.insert(id, node);
@@ -207,24 +206,9 @@ impl ChildMut for SchemaNode {
         }
     }
 }
-struct Directory(PathBuf);
-impl Directory {
-    fn new() -> Self {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_temperature_required_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir(&path).unwrap();
-        Self(path)
-    }
-}
-impl Drop for Directory {
-    fn drop(&mut self) {
-        std::fs::remove_dir_all(&self.0).unwrap();
-    }
-}
+
+use test_support::TempDir as Directory;
+
 fn required(project: &mut Project, mask: u8) {
     let source = project.source.child_mut("data").unwrap();
     for (bit, name) in [(1, "temp"), (2, "month"), (4, "desc")] {
@@ -269,12 +253,12 @@ fn public_roundtrip(project: &Project, path: &std::path::Path) -> Project {
 }
 #[test]
 fn all_sixteen_source_target_required_use_combinations_keep_native_recovery_and_schemas() {
-    let dir = Directory::new();
+    let dir = Directory::new("temperature_required").unwrap();
     let mut design = None;
     for mask in 0..16 {
         let mut p = project();
         required(&mut p, mask);
-        let folder = dir.0.join(format!("mask-{mask}"));
+        let folder = dir.path().join(format!("mask-{mask}"));
         std::fs::create_dir(&folder).unwrap();
         let path = folder.join("mapping.mfd");
         let restored = public_roundtrip(&p, &path);
@@ -300,7 +284,7 @@ fn all_sixteen_source_target_required_use_combinations_keep_native_recovery_and_
 #[test]
 fn changed_schema_role_type_order_domain_defaults_and_structure_cannot_use_recovery() {
     let base = project();
-    let dir = Directory::new();
+    let dir = Directory::new("temperature_required").unwrap();
     let mut cases = Vec::new();
     let mut p = base.clone();
     p.source
@@ -369,7 +353,7 @@ fn changed_schema_role_type_order_domain_defaults_and_structure_cannot_use_recov
         .repeating = true;
     cases.push(p);
     for (i, p) in cases.into_iter().enumerate() {
-        let path = dir.0.join(format!("rejected-{i}/mapping.mfd"));
+        let path = dir.path().join(format!("rejected-{i}/mapping.mfd"));
         let admitted = mfd::preflight_export(&p, &path).is_ok_and(|r| r.is_native_compatible());
         assert!(!admitted, "mutation {i}");
         assert!(mfd::export_with_profile(&p, &path, mfd::ExportProfile::NativeMfd).is_err());
@@ -378,7 +362,7 @@ fn changed_schema_role_type_order_domain_defaults_and_structure_cannot_use_recov
 }
 #[test]
 fn invalid_required_use_on_elements_or_groups_is_typed_rejection() {
-    let dir = Directory::new();
+    let dir = Directory::new("temperature_required").unwrap();
     for i in 0..3 {
         let mut p = project();
         match i {
@@ -409,7 +393,7 @@ fn invalid_required_use_on_elements_or_groups_is_typed_rejection() {
                 .xml_attribute_required = true;
         }
         assert!(!engine::validate(&p).is_empty());
-        let path = dir.0.join(format!("invalid-{i}/mapping.mfd"));
+        let path = dir.path().join(format!("invalid-{i}/mapping.mfd"));
         assert!(mfd::preflight_export(&p, &path).is_err());
         assert!(mfd::export_with_profile(&p, &path, mfd::ExportProfile::NativeMfd).is_err());
         assert!(!path.parent().unwrap().exists());
@@ -417,14 +401,14 @@ fn invalid_required_use_on_elements_or_groups_is_typed_rejection() {
 }
 #[test]
 fn authored_required_attribute_native_fixture_is_published_for_independent_review() {
-    let dir = Directory::new();
+    let dir = Directory::new("temperature_required").unwrap();
     let mut p = project();
     required(&mut p, 11);
     p.source_path = Some("input.xml".into());
     p.target_path = Some("output.xml".into());
     let destination = std::env::var_os("FERRULE_TEMPERATURE_EVIDENCE")
         .map(PathBuf::from)
-        .unwrap_or_else(|| dir.0.join("authored"));
+        .unwrap_or_else(|| dir.path().join("authored"));
     std::fs::create_dir_all(&destination).unwrap();
     std::fs::write(
         destination.join("project.json"),

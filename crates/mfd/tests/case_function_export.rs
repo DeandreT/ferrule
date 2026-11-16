@@ -1,29 +1,8 @@
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{Instance, Value};
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Result<Self, std::io::Error> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_case_function_export_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 /// One way a design can spell the case and date functions it uses.
 struct Spelling {
@@ -147,8 +126,8 @@ fn case_functions_export_under_built_in_language_libraries_and_round_trip()
 -> Result<(), Box<dyn std::error::Error>> {
     for spelling in &SPELLINGS {
         let label = spelling.label;
-        let directory = TempDir::new()?;
-        let imported = mfd::import(&write_design(&directory.0, spelling)?)?;
+        let directory = TempDir::new("mfd_case_function_export")?;
+        let imported = mfd::import(&write_design(directory.path(), spelling)?)?;
         assert!(
             imported.warnings.is_empty(),
             "{label}: {:?}",
@@ -168,7 +147,7 @@ fn case_functions_export_under_built_in_language_libraries_and_round_trip()
         );
         assert!(field(&original, "Day").is_some(), "{label}");
 
-        let exported_path = directory.0.join("roundtrip.mfd");
+        let exported_path = directory.path().join("roundtrip.mfd");
         let warnings = mfd::export(&imported.project, &exported_path)?;
         assert!(warnings.is_empty(), "{label}: {warnings:?}");
         let exported = std::fs::read_to_string(&exported_path)?;

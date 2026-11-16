@@ -1,31 +1,12 @@
 use std::collections::BTreeMap;
 use std::error::Error;
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{GroupAlternative, ScalarType, SchemaNode};
 use mapping::{Binding, FormatOptions, Graph, Node, Project, Scope};
 
 type TestResult = Result<(), Box<dyn Error>>;
 
-struct TempDir(PathBuf);
-impl TempDir {
-    fn new() -> std::io::Result<Self> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_xml_entry_identity_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir(&path)?;
-        Ok(Self(path))
-    }
-}
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn qualified(node: SchemaNode, namespace: &str) -> SchemaNode {
     node.xml_qualified(namespace)
@@ -140,12 +121,12 @@ fn document_entry<'a>(root: roxmltree::Node<'a, 'a>) -> roxmltree::Node<'a, 'a> 
         .unwrap()
 }
 fn exported(project: &Project, directory: &TempDir) -> Result<String, Box<dyn Error>> {
-    let design = directory.0.join("mapping.mfd");
+    let design = directory.path().join("mapping.mfd");
     assert!(mfd::export(project, &design)?.is_empty());
     Ok(std::fs::read_to_string(design)?)
 }
 fn roundtrip(project: &Project, directory: &TempDir, input: &str) -> TestResult {
-    let imported = mfd::import(&directory.0.join("mapping.mfd"))?;
+    let imported = mfd::import(&directory.path().join("mapping.mfd"))?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert_eq!(imported.project.source, project.source);
     assert_eq!(imported.project.target, project.target);
@@ -205,7 +186,7 @@ fn entry_slots_preserve_qualified_elements_and_attributes() -> TestResult {
             (&["Tag"], "Tag"),
         ],
     );
-    let directory = TempDir::new()?;
+    let directory = TempDir::new("xml_entry_identity")?;
     let text = exported(&project, &directory)?;
     let document = roxmltree::Document::parse(&text)?;
     for (name, namespace, foreign, local) in [
@@ -265,7 +246,7 @@ fn user_document_names_and_namespace_can_match_reserved_wrappers() -> TestResult
         namespace,
     );
     let project = project(source, target, &[(&["FileInstance"], "document")]);
-    let directory = TempDir::new()?;
+    let directory = TempDir::new("xml_entry_identity")?;
     let text = exported(&project, &directory)?;
     let document = roxmltree::Document::parse(&text)?;
     for name in ["document", "FileInstance"] {
@@ -325,7 +306,7 @@ fn recursive_entry_occurrences_keep_qualified_anchor_descendants() -> TestResult
         vec![SchemaNode::scalar("Result", ScalarType::String)],
     );
     let project = project(source, target, &[(&["Tree", "Value"], "Result")]);
-    let directory = TempDir::new()?;
+    let directory = TempDir::new("xml_entry_identity")?;
     let text = exported(&project, &directory)?;
     let document = roxmltree::Document::parse(&text)?;
     let root = component_root(&document, "Tree");
@@ -385,7 +366,7 @@ fn xsi_type_clone_entries_keep_the_element_namespace() -> TestResult {
         vec![SchemaNode::scalar("Result", ScalarType::String)],
     );
     let project = project(source, target, &[(&["Address", "Value"], "Result")]);
-    let directory = TempDir::new()?;
+    let directory = TempDir::new("xml_entry_identity")?;
     let text = exported(&project, &directory)?;
     let document = roxmltree::Document::parse(&text)?;
     let root = component_root(&document, "Input");
@@ -433,7 +414,7 @@ fn legacy_root_uses_exported_type_namespace_without_qualifying_children() -> Tes
         vec![SchemaNode::scalar("Result", ScalarType::String)],
     );
     let project = project(source, target, &[(&["Address", "Value"], "Result")]);
-    let directory = TempDir::new()?;
+    let directory = TempDir::new("xml_entry_identity")?;
     let text = exported(&project, &directory)?;
     let document = roxmltree::Document::parse(&text)?;
     let root = component_root(&document, "Input");

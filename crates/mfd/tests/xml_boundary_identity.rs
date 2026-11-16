@@ -1,32 +1,10 @@
 use std::collections::BTreeMap;
 use std::error::Error;
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{ScalarType, SchemaNode};
 use mapping::{Binding, FormatOptions, Graph, Node, Project, Scope};
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> std::io::Result<Self> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_xml_boundary_identity_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 #[test]
 fn pathless_xml_boundaries_roundtrip_without_format_inference() -> Result<(), Box<dyn Error>> {
@@ -73,8 +51,8 @@ fn pathless_xml_boundaries_roundtrip_without_format_inference() -> Result<(), Bo
             ..Scope::default()
         },
     };
-    let temp = TempDir::new()?;
-    let design = temp.0.join("pathless.mfd");
+    let temp = TempDir::new("mfd_xml_boundary_identity")?;
+    let design = temp.path().join("pathless.mfd");
 
     assert!(mfd::export(&project, &design)?.is_empty());
     let exported_text = std::fs::read_to_string(&design)?;

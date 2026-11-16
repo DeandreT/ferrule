@@ -2,32 +2,11 @@
 mod private_corpus;
 
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{Instance, ScalarType, SchemaKind, SchemaNode, Value};
 use mapping::Node;
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Self {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_target_datetime_cast_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn write_design(directory: &Path, cast_mode: bool) -> PathBuf {
     std::fs::write(
@@ -199,8 +178,8 @@ fn nested_cast<'a>(project: &'a mapping::Project, field: &str) -> &'a mapping::S
 
 #[test]
 fn nested_and_repeated_datetime_casts_export_with_native_xsd_types() {
-    let directory = TempDir::new();
-    let design = write_nested_design(&directory.0);
+    let directory = TempDir::new("mfd_target_datetime_cast").unwrap();
+    let design = write_nested_design(directory.path());
     let imported = mfd::import(&design).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
@@ -216,7 +195,7 @@ fn nested_and_repeated_datetime_casts_export_with_native_xsd_types() {
 
     let input = nested_source(&["2031-08-17T06:07:08Z", "2031-08-18+05:45"]);
     let expected = engine::run(&imported.project, &input).unwrap();
-    let exported = directory.0.join("nested-round-trip.mfd");
+    let exported = directory.path().join("nested-round-trip.mfd");
     let report = mfd::preflight_export(&imported.project, &exported).unwrap();
     assert!(report.is_native_compatible(), "{report:?}");
     assert!(
@@ -242,7 +221,7 @@ fn nested_and_repeated_datetime_casts_export_with_native_xsd_types() {
         .find(|node| node.has_tag_name("document"))
         .and_then(|node| node.attribute("schema"))
         .unwrap();
-    let xsd = std::fs::read_to_string(directory.0.join(schema_file)).unwrap();
+    let xsd = std::fs::read_to_string(directory.path().join(schema_file)).unwrap();
     let xsd_doc = roxmltree::Document::parse(&xsd).unwrap();
     let received = xsd_doc
         .descendants()
@@ -274,8 +253,8 @@ fn nested_and_repeated_datetime_casts_export_with_native_xsd_types() {
 
 #[test]
 fn nested_datetime_cast_shared_with_filter_stays_non_native() {
-    let directory = TempDir::new();
-    let mut project = mfd::import(&write_nested_design(&directory.0))
+    let directory = TempDir::new("mfd_target_datetime_cast").unwrap();
+    let mut project = mfd::import(&write_nested_design(directory.path()))
         .unwrap()
         .project;
     let call = nested_cast(&project, "Row").bindings[0].node;
@@ -294,7 +273,7 @@ fn nested_datetime_cast_shared_with_filter_stays_non_native() {
         .find(|scope| scope.target_field == "Row")
         .unwrap()
         .filter = Some(filter);
-    let rejected = directory.0.join("not-created/rejected.mfd");
+    let rejected = directory.path().join("not-created/rejected.mfd");
     let report = mfd::preflight_export(&project, &rejected).unwrap();
     assert!(!report.is_native_compatible(), "{report:?}");
     assert!(
@@ -308,8 +287,8 @@ fn nested_datetime_cast_shared_with_filter_stays_non_native() {
 
 #[test]
 fn nested_datetime_cast_with_multiple_binding_owners_stays_non_native() {
-    let directory = TempDir::new();
-    let mut project = mfd::import(&write_nested_design(&directory.0))
+    let directory = TempDir::new("mfd_target_datetime_cast").unwrap();
+    let mut project = mfd::import(&write_nested_design(directory.path()))
         .unwrap()
         .project;
     let header = project
@@ -319,7 +298,7 @@ fn nested_datetime_cast_with_multiple_binding_owners_stays_non_native() {
         .find(|scope| scope.target_field == "Header")
         .unwrap();
     header.bindings.push(header.bindings[0].clone());
-    let rejected = directory.0.join("not-created/rejected.mfd");
+    let rejected = directory.path().join("not-created/rejected.mfd");
     let report = mfd::preflight_export(&project, &rejected).unwrap();
     assert!(!report.is_native_compatible(), "{report:?}");
     assert!(
@@ -342,8 +321,9 @@ fn local_idoc_order_keeps_edi_native_export_blockers() {
     assert!(imported.project.graph.nodes.values().any(|node| {
         matches!(node, Node::Call { function, .. } if function == "coerce_datetime")
     }));
-    let directory = TempDir::new();
-    let report = mfd::preflight_export(&imported.project, &directory.0.join("idoc.mfd")).unwrap();
+    let directory = TempDir::new("mfd_target_datetime_cast").unwrap();
+    let report =
+        mfd::preflight_export(&imported.project, &directory.path().join("idoc.mfd")).unwrap();
     assert!(!report.is_native_compatible());
     assert!(
         report
@@ -368,8 +348,8 @@ fn local_idoc_order_keeps_edi_native_export_blockers() {
 
 #[test]
 fn cast_in_subtree_coerces_connected_datetime_leaves_and_serializes_them() {
-    let directory = TempDir::new();
-    let design = write_design(&directory.0, true);
+    let directory = TempDir::new("mfd_target_datetime_cast").unwrap();
+    let design = write_design(directory.path(), true);
     let imported = mfd::import(&design).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
@@ -401,7 +381,7 @@ fn cast_in_subtree_coerces_connected_datetime_leaves_and_serializes_them() {
     assert!(xml.contains("<Received>2031-08-17T00:00:00+05:45</Received>"));
     assert!(xml.contains("<Existing>2031-08-17T06:07:08.9Z</Existing>"));
 
-    let exported = directory.0.join("round-trip.mfd");
+    let exported = directory.path().join("round-trip.mfd");
     let report = mfd::preflight_export(&imported.project, &exported).unwrap();
     assert!(report.is_native_compatible(), "{report:?}");
     assert!(!exported.exists());
@@ -431,7 +411,7 @@ fn cast_in_subtree_coerces_connected_datetime_leaves_and_serializes_them() {
         .find(|node| node.has_tag_name("document"))
         .and_then(|node| node.attribute("schema"))
         .unwrap();
-    let schema_xml = std::fs::read_to_string(directory.0.join(schema_file)).unwrap();
+    let schema_xml = std::fs::read_to_string(directory.path().join(schema_file)).unwrap();
     let schema = roxmltree::Document::parse(&schema_xml).unwrap();
     for field in ["Received", "Existing"] {
         assert_eq!(
@@ -483,8 +463,8 @@ fn cast_in_subtree_coerces_connected_datetime_leaves_and_serializes_them() {
 
 #[test]
 fn shared_datetime_cast_stays_an_extension_and_native_export_writes_nothing() {
-    let directory = TempDir::new();
-    let design = write_design(&directory.0, true);
+    let directory = TempDir::new("mfd_target_datetime_cast").unwrap();
+    let design = write_design(directory.path(), true);
     let mut project = mfd::import(&design).unwrap().project;
     let received = project
         .root
@@ -500,7 +480,7 @@ fn shared_datetime_cast_stays_an_extension_and_native_export_writes_nothing() {
         .find(|binding| binding.target_field == "Existing")
         .unwrap()
         .node = received;
-    let rejected = directory.0.join("not-created/rejected.mfd");
+    let rejected = directory.path().join("not-created/rejected.mfd");
     let report = mfd::preflight_export(&project, &rejected).unwrap();
     assert!(!report.is_native_compatible(), "{report:?}");
     assert!(
@@ -518,8 +498,8 @@ fn shared_datetime_cast_stays_an_extension_and_native_export_writes_nothing() {
 
 #[test]
 fn datetime_cast_with_defaulted_sibling_rejects_native_export_without_artifacts() {
-    let directory = TempDir::new();
-    let design = write_design(&directory.0, true);
+    let directory = TempDir::new("mfd_target_datetime_cast").unwrap();
+    let design = write_design(directory.path(), true);
     let mut project = mfd::import(&design).unwrap().project;
     let SchemaKind::Group { children, .. } = &mut project.target.kind else {
         panic!("target must be a group");
@@ -528,7 +508,7 @@ fn datetime_cast_with_defaulted_sibling_rejects_native_export_without_artifacts(
     sibling.default = Some("untouched".into());
     children.push(sibling);
 
-    let rejected = directory.0.join("not-created/rejected.mfd");
+    let rejected = directory.path().join("not-created/rejected.mfd");
     let report = mfd::preflight_export(&project, &rejected).unwrap();
     assert!(!report.is_native_compatible(), "{report:?}");
     assert!(
@@ -546,8 +526,8 @@ fn datetime_cast_with_defaulted_sibling_rejects_native_export_without_artifacts(
 
 #[test]
 fn target_without_cast_mode_preserves_the_connected_lexical_value() {
-    let directory = TempDir::new();
-    let imported = mfd::import(&write_design(&directory.0, false)).unwrap();
+    let directory = TempDir::new("mfd_target_datetime_cast").unwrap();
+    let imported = mfd::import(&write_design(directory.path(), false)).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     let output = engine::run(&imported.project, &source()).unwrap();
     assert_eq!(
@@ -558,9 +538,9 @@ fn target_without_cast_mode_preserves_the_connected_lexical_value() {
 
 #[test]
 fn cast_in_subtree_reads_utf16_target_schema_metadata() {
-    let directory = TempDir::new();
-    let design = write_design(&directory.0, true);
-    let target_schema = directory.0.join("target.xsd");
+    let directory = TempDir::new("mfd_target_datetime_cast").unwrap();
+    let design = write_design(directory.path(), true);
+    let target_schema = directory.path().join("target.xsd");
     let text = std::fs::read_to_string(&target_schema).unwrap();
     let mut bytes = vec![0xff, 0xfe];
     for unit in text.encode_utf16() {
@@ -586,10 +566,10 @@ fn cast_in_subtree_reads_utf16_target_schema_metadata() {
 
 #[test]
 fn cast_in_subtree_accepts_dtd_without_xsd_type_metadata() {
-    let directory = TempDir::new();
-    let design = write_design(&directory.0, true);
+    let directory = TempDir::new("mfd_target_datetime_cast").unwrap();
+    let design = write_design(directory.path(), true);
     std::fs::write(
-        directory.0.join("target.dtd"),
+        directory.path().join("target.dtd"),
         r#"<!ELEMENT Target (Received, Existing)>
            <!ELEMENT Received (#PCDATA)>
            <!ELEMENT Existing (#PCDATA)>"#,
@@ -619,8 +599,8 @@ fn cast_in_subtree_accepts_dtd_without_xsd_type_metadata() {
 #[test]
 fn relocated_package_resolves_windows_parent_target_cast_schema()
 -> Result<(), Box<dyn std::error::Error>> {
-    let directory = TempDir::new();
-    let original = directory.0.join("original");
+    let directory = TempDir::new("mfd_target_datetime_cast").unwrap();
+    let original = directory.path().join("original");
     let maps = original.join("maps/orders");
     let schemas = original.join("schemas");
     std::fs::create_dir_all(&maps)?;
@@ -633,7 +613,7 @@ fn relocated_package_resolves_windows_parent_target_cast_schema()
     );
     std::fs::write(&design, mapping)?;
 
-    let relocated = directory.0.join("relocated");
+    let relocated = directory.path().join("relocated");
     std::fs::rename(&original, &relocated)?;
     let relocated_design = relocated.join(design.strip_prefix(&original)?);
     let options = mfd::ImportOptions::default().with_package_root(&relocated);
@@ -660,14 +640,14 @@ fn target_cast_schema_symlink_escape_falls_back_without_reopening_it()
 -> Result<(), Box<dyn std::error::Error>> {
     use std::os::unix::fs::symlink;
 
-    let directory = TempDir::new();
-    let package = directory.0.join("package");
+    let directory = TempDir::new("mfd_target_datetime_cast").unwrap();
+    let package = directory.path().join("package");
     let maps = package.join("maps/orders");
     let schemas = package.join("schemas");
     std::fs::create_dir_all(&maps)?;
     std::fs::create_dir_all(&schemas)?;
     let design = write_design(&maps, true);
-    let outside_schema = directory.0.join("outside-target.xsd");
+    let outside_schema = directory.path().join("outside-target.xsd");
     std::fs::rename(maps.join("target.xsd"), &outside_schema)?;
     symlink(&outside_schema, schemas.join("target.xsd"))?;
     let mapping = std::fs::read_to_string(&design)?.replace(

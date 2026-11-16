@@ -2,44 +2,21 @@
 mod private_corpus;
 
 use std::fs;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::path::Path;
 
 use engine::{ExecutionContext, RuntimeParameters};
 use ir::{Instance, Value};
 use mapping::{Node, Project, ScopeConstruction};
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Self {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule-mfd-recursive-filter-{}-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map_or(0, |duration| duration.as_nanos()),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 #[test]
 fn recursive_udf_filters_each_level_and_preserves_the_group_shape() {
-    let dir = TempDir::new();
-    fs::write(dir.0.join("folder.xsd"), schema()).unwrap();
-    fs::write(dir.0.join("mapping.mfd"), mapping()).unwrap();
+    let dir = TempDir::new("mfd-recursive-filter").unwrap();
+    fs::write(dir.path().join("folder.xsd"), schema()).unwrap();
+    fs::write(dir.path().join("mapping.mfd"), mapping()).unwrap();
 
-    let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+    let imported = mfd::import(&dir.path().join("mapping.mfd")).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(matches!(
         imported.project.root.construction,
@@ -61,7 +38,7 @@ fn recursive_udf_filters_each_level_and_preserves_the_group_shape() {
     let initial = engine::run(&imported.project, &source).unwrap();
     assert_eq!(initial, expected);
 
-    let export_path = dir.0.join("roundtrip.mfd");
+    let export_path = dir.path().join("roundtrip.mfd");
     let report = mfd::preflight_export(&imported.project, &export_path).unwrap();
     assert!(report.is_native_compatible(), "{report}");
     mfd::export_with_profile(
@@ -102,10 +79,12 @@ fn native_rejected(project: &Project, path: &Path) {
 
 #[test]
 fn changed_predicate_and_shared_predicate_keep_native_guard_closed() {
-    let dir = TempDir::new();
-    fs::write(dir.0.join("folder.xsd"), schema()).unwrap();
-    fs::write(dir.0.join("mapping.mfd"), mapping()).unwrap();
-    let original = mfd::import(&dir.0.join("mapping.mfd")).unwrap().project;
+    let dir = TempDir::new("mfd-recursive-filter").unwrap();
+    fs::write(dir.path().join("folder.xsd"), schema()).unwrap();
+    fs::write(dir.path().join("mapping.mfd"), mapping()).unwrap();
+    let original = mfd::import(&dir.path().join("mapping.mfd"))
+        .unwrap()
+        .project;
     let ScopeConstruction::RecursiveFilter { plan } = &original.root.construction else {
         panic!("expected recursive filter");
     };
@@ -117,7 +96,7 @@ fn changed_predicate_and_shared_predicate_keep_native_guard_closed() {
     };
     *function = "equal".into();
     assert!(engine::validate(&changed).is_empty());
-    native_rejected(&changed, &dir.0.join("changed.mfd"));
+    native_rejected(&changed, &dir.path().join("changed.mfd"));
 
     let mut shared = original;
     shared.graph.nodes.insert(
@@ -128,20 +107,22 @@ fn changed_predicate_and_shared_predicate_keep_native_guard_closed() {
         },
     );
     assert!(engine::validate(&shared).is_empty());
-    native_rejected(&shared, &dir.0.join("shared.mfd"));
+    native_rejected(&shared, &dir.path().join("shared.mfd"));
 }
 
 #[test]
 fn scope_control_keeps_native_guard_closed() {
-    let dir = TempDir::new();
-    fs::write(dir.0.join("folder.xsd"), schema()).unwrap();
-    fs::write(dir.0.join("mapping.mfd"), mapping()).unwrap();
-    let mut project = mfd::import(&dir.0.join("mapping.mfd")).unwrap().project;
+    let dir = TempDir::new("mfd-recursive-filter").unwrap();
+    fs::write(dir.path().join("folder.xsd"), schema()).unwrap();
+    fs::write(dir.path().join("mapping.mfd"), mapping()).unwrap();
+    let mut project = mfd::import(&dir.path().join("mapping.mfd"))
+        .unwrap()
+        .project;
     let ScopeConstruction::RecursiveFilter { plan } = &project.root.construction else {
         panic!("expected recursive filter");
     };
     project.root.filter = Some(plan.predicate());
-    let path = dir.0.join("controlled.mfd");
+    let path = dir.path().join("controlled.mfd");
     assert!(mfd::preflight_export(&project, &path).is_err());
     assert!(!path.exists());
 }
@@ -209,8 +190,8 @@ fn local_recursive_directory_filter_native_roundtrip_keeps_33_xml_files()
         assert!(names.iter().any(|candidate| candidate == name));
     }
 
-    let dir = TempDir::new();
-    let design = dir.0.join("native.mfd");
+    let dir = TempDir::new("mfd-recursive-filter").unwrap();
+    let design = dir.path().join("native.mfd");
     let report = mfd::preflight_export(&imported.project, &design)?;
     assert!(report.is_native_compatible(), "{report}");
     mfd::export_with_profile(&imported.project, &design, mfd::ExportProfile::NativeMfd)?;

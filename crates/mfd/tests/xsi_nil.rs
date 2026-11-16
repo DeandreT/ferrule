@@ -1,7 +1,5 @@
 use std::collections::BTreeMap;
 use std::error::Error;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{Instance, ScalarType, SchemaNode, Value};
 use mapping::{
@@ -9,45 +7,13 @@ use mapping::{
     UserFunction,
 };
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Self {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_xsi_nil_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
-
-fn write(path: &Path, text: &str) {
-    std::fs::write(path, text).unwrap();
-}
+use test_support::TempDir;
 
 fn setup() -> TempDir {
-    let dir = TempDir::new();
-    write(
-        &dir.0.join("source.xsd"),
-        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Source"><xs:complexType><xs:sequence><xs:element name="Row" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Name" type="xs:string"/><xs:element name="State" type="xs:string" nillable="true" minOccurs="0"/><xs:element name="Detail" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Code" type="xs:string"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
-    );
-    write(
-        &dir.0.join("target.xsd"),
-        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Target"><xs:complexType><xs:sequence><xs:element name="Item" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="NilValue" type="xs:string" nillable="true"/><xs:element name="Detail" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Code" type="xs:string"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element><xs:element name="NilRow" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Name" type="xs:string"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
-    );
-    write(
-        &dir.0.join("mapping.mfd"),
-        r#"<mapping version="26"><component name="map"><structure><children>
+    let dir = TempDir::new("mfd_xsi_nil").unwrap();
+    dir.write("source.xsd", r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Source"><xs:complexType><xs:sequence><xs:element name="Row" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Name" type="xs:string"/><xs:element name="State" type="xs:string" nillable="true" minOccurs="0"/><xs:element name="Detail" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Code" type="xs:string"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#).unwrap();
+    dir.write("target.xsd", r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Target"><xs:complexType><xs:sequence><xs:element name="Item" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="NilValue" type="xs:string" nillable="true"/><xs:element name="Detail" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Code" type="xs:string"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element><xs:element name="NilRow" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Name" type="xs:string"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#).unwrap();
+    dir.write("mapping.mfd", r#"<mapping version="26"><component name="map"><structure><children>
           <component name="source" library="xml" kind="14"><data><root><entry name="Source"><entry name="Row" outkey="10"><entry name="Name" outkey="11"/><entry name="State" outkey="12"/><entry name="Detail" outkey="13"/></entry></entry></root><document schema="source.xsd" inputinstance="source.xml" instanceroot="{}Source"/></data></component>
           <component name="set-xsi-nil" library="core" kind="5"><targets><datapoint pos="0" key="20"/></targets></component>
           <component name="is-xsi-nil" library="core" kind="5"><sources><datapoint pos="0" key="21"/></sources><targets><datapoint pos="0" key="22"/></targets></component>
@@ -61,8 +27,7 @@ fn setup() -> TempDir {
           <vertex vertexkey="20"><edges><edge vertexkey="31"/></edges></vertex>
           <vertex vertexkey="22"><edges><edge vertexkey="24"/></edges></vertex>
           <vertex vertexkey="25"><edges><edge vertexkey="32"/></edges></vertex>
-        </vertices></graph></structure></component></mapping>"#,
-    );
+        </vertices></graph></structure></component></mapping>"#).unwrap();
     dir
 }
 
@@ -113,12 +78,12 @@ fn assert_output(project: &mapping::Project, output: &Instance) {
 #[test]
 fn xsi_nil_functions_import_execute_and_round_trip() {
     let dir = setup();
-    let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+    let imported = mfd::import(&dir.path().join("mapping.mfd")).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     let output = run(&imported.project);
     assert_output(&imported.project, &output);
 
-    let exported = dir.0.join("round-trip.mfd");
+    let exported = dir.path().join("round-trip.mfd");
     assert!(
         mfd::export(&imported.project, &exported)
             .unwrap()
@@ -288,12 +253,12 @@ fn assert_udf_results(project: &Project) -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn nested_scalar_udf_with_xml_nil_exports_reimports_and_executes() -> Result<(), Box<dyn Error>> {
-    let dir = TempDir::new();
+    let dir = TempDir::new("mfd_xsi_nil").unwrap();
     let project = nested_nil_udf_project();
     assert!(engine::validate(&project).is_empty());
     assert_udf_results(&project)?;
 
-    let design = dir.0.join("nil-udf.mfd");
+    let design = dir.path().join("nil-udf.mfd");
     let warnings = mfd::export(&project, &design)?;
     assert!(warnings.is_empty(), "{warnings:?}");
     let xml = std::fs::read_to_string(&design)?;

@@ -10,25 +10,7 @@ fn fixture(name: &str) -> PathBuf {
         .join(name)
 }
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new(tag: &str) -> Self {
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_{tag}_{}_{}",
-            std::process::id(),
-            std::thread::current().name().unwrap_or("test")
-        ));
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn expense(allowed: bool, description: &str) -> Instance {
     Instance::Group(
@@ -49,19 +31,19 @@ fn expenses(items: Vec<Instance>) -> Instance {
 
 fn import_variant(tag: &str, transform: impl FnOnce(String) -> String) -> mfd::Imported {
     let source = std::fs::read_to_string(fixture("exception.mfd")).unwrap();
-    let temp = TempDir::new(tag);
-    std::fs::write(temp.0.join("exception.mfd"), transform(source)).unwrap();
+    let temp = TempDir::new(tag).unwrap();
+    std::fs::write(temp.path().join("exception.mfd"), transform(source)).unwrap();
     std::fs::copy(
         fixture("exception-source.xsd"),
-        temp.0.join("exception-source.xsd"),
+        temp.path().join("exception-source.xsd"),
     )
     .unwrap();
     std::fs::copy(
         fixture("exception-target.xsd"),
-        temp.0.join("exception-target.xsd"),
+        temp.path().join("exception-target.xsd"),
     )
     .unwrap();
-    mfd::import(&temp.0.join("exception.mfd")).unwrap()
+    mfd::import(&temp.path().join("exception.mfd")).unwrap()
 }
 
 fn add_generated_sequence(source: String) -> String {

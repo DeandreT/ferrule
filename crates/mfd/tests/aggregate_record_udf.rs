@@ -1,49 +1,13 @@
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
-
 use ir::{Instance, Value};
 use mapping::Node;
 
-struct TempDir(PathBuf);
-
-static NEXT_DIR: AtomicU64 = AtomicU64::new(0);
-
-impl TempDir {
-    fn new() -> Self {
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_aggregate_udf_{}_{}",
-            std::process::id(),
-            NEXT_DIR.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
-
-fn write(path: &Path, contents: &str) {
-    std::fs::write(path, contents).unwrap();
-}
+use test_support::TempDir;
 
 fn setup() -> TempDir {
-    let dir = TempDir::new();
-    write(
-        &dir.0.join("source.xsd"),
-        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Readings"><xs:complexType><xs:sequence><xs:element name="Reading" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Bucket" type="xs:string"/><xs:element name="Value" type="xs:decimal"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
-    );
-    write(
-        &dir.0.join("target.xsd"),
-        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Report"><xs:complexType><xs:sequence><xs:element name="Summary" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Label" type="xs:string"/><xs:element name="Minimum" type="xs:decimal"/><xs:element name="Maximum" type="xs:decimal"/><xs:element name="Average" type="xs:decimal"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
-    );
-    write(
-        &dir.0.join("mapping.mfd"),
-        r#"<mapping version="26"><component name="map"><structure><children>
+    let dir = TempDir::new("mfd_aggregate_udf").unwrap();
+    dir.write("source.xsd", r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Readings"><xs:complexType><xs:sequence><xs:element name="Reading" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Bucket" type="xs:string"/><xs:element name="Value" type="xs:decimal"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#).unwrap();
+    dir.write("target.xsd", r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Report"><xs:complexType><xs:sequence><xs:element name="Summary" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Label" type="xs:string"/><xs:element name="Minimum" type="xs:decimal"/><xs:element name="Maximum" type="xs:decimal"/><xs:element name="Average" type="xs:decimal"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#).unwrap();
+    dir.write("mapping.mfd", r#"<mapping version="26"><component name="map"><structure><children>
   <component name="source" library="xml" kind="14"><data><root><entry name="Readings"><entry name="Reading" outkey="10"><entry name="Bucket" outkey="11"/><entry name="Value" outkey="12"/></entry></entry></root><document schema="source.xsd" inputinstance="source.xml" instanceroot="{}Readings"/></data></component>
   <component name="constant" library="core" kind="2"><targets><datapoint key="60"/></targets><data><constant value="A" datatype="string"/></data></component>
   <component name="equal" library="core" kind="5"><sources><datapoint key="52"/><datapoint key="53"/></sources><targets><datapoint key="61"/></targets></component>
@@ -75,8 +39,7 @@ fn setup() -> TempDir {
   <vertex vertexkey="71"><edges><edge vertexkey="77"/></edges></vertex>
   <vertex vertexkey="73"><edges><edge vertexkey="78"/></edges></vertex>
   <vertex vertexkey="75"><edges><edge vertexkey="79"/></edges></vertex>
-</vertices></graph></structure></component></mapping>"#,
-    );
+</vertices></graph></structure></component></mapping>"#).unwrap();
     dir
 }
 
@@ -104,7 +67,7 @@ fn scalar<'a>(instance: &'a Instance, field: &str) -> &'a Value {
 #[test]
 fn aggregate_record_udf_imports_filters_executes_and_roundtrips() {
     let dir = setup();
-    let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+    let imported = mfd::import(&dir.path().join("mapping.mfd")).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
     let summary = &imported.project.root.children[0];
@@ -157,7 +120,7 @@ fn aggregate_record_udf_imports_filters_executes_and_roundtrips() {
         assert_eq!(scalar(empty_summary, field), &Value::Null);
     }
 
-    let exported = dir.0.join("roundtrip.mfd");
+    let exported = dir.path().join("roundtrip.mfd");
     let warnings = mfd::export(&imported.project, &exported).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
     let reimported = mfd::import(&exported).unwrap();
@@ -176,11 +139,11 @@ fn aggregate_record_udf_imports_filters_executes_and_roundtrips() {
 #[test]
 fn unsupported_aggregate_record_shape_keeps_one_actionable_udf_warning() {
     let dir = setup();
-    let path = dir.0.join("mapping.mfd");
+    let path = dir.path().join("mapping.mfd");
     let design = std::fs::read_to_string(&path)
         .unwrap()
         .replace("name=\"min\"", "name=\"count\"");
-    write(&path, &design);
+    std::fs::write(&path, &design).unwrap();
 
     let imported = mfd::import(&path).unwrap();
     assert!(

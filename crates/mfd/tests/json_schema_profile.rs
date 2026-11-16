@@ -1,36 +1,13 @@
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
-
 use ir::{Instance, JsonAllowedValue, JsonContainsPredicate, NumericRange, SchemaKind, SchemaNode};
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Result<Self, std::io::Error> {
-        static NEXT: AtomicU64 = AtomicU64::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule-mfd-json-profile-{}-{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 #[test]
 fn imports_nullable_and_open_json_schema_without_fallback_warnings()
 -> Result<(), Box<dyn std::error::Error>> {
-    let directory = TempDir::new()?;
+    let directory = TempDir::new("mfd-json-profile")?;
     std::fs::write(
-        directory.0.join("source.schema.json"),
+        directory.path().join("source.schema.json"),
         r#"{
   "title":"Envelope",
   "type":"object",
@@ -114,10 +91,10 @@ fn imports_nullable_and_open_json_schema_without_fallback_warnings()
 }"#,
     )?;
     std::fs::write(
-        directory.0.join("input.json"),
+        directory.path().join("input.json"),
         r#"{"MaybeObject":{"Code":"A","nested":{"enabled":true}},"ImplicitOpen":{"Known":"A","LegacyPeer":"B","arbitrary":{"nested":[true,null]}},"TypedOpen":{"Unit":"count","widgets":3},"PatternOpen":{"Label":"extensions","x-known":1,"x-extra":2,"meta-rank":3},"MaybeArray":[{"Id":1}],"Amount":12.5,"Status":"ready","Priority":"urgent"}"#,
     )?;
-    let design = directory.0.join("mapping.mfd");
+    let design = directory.path().join("mapping.mfd");
     std::fs::write(
         &design,
         r#"<mapping version="26"><component name="map"><structure><children>
@@ -377,7 +354,10 @@ fn imports_nullable_and_open_json_schema_without_fallback_warnings()
     );
     assert!(priority.nullable);
 
-    let input = format_json::read(&directory.0.join("input.json"), &imported.project.source)?;
+    let input = format_json::read(
+        &directory.path().join("input.json"),
+        &imported.project.source,
+    )?;
     assert!(matches!(input, Instance::Group(_)));
     assert_eq!(
         input
@@ -524,11 +504,11 @@ fn imports_nullable_and_open_json_schema_without_fallback_warnings()
     .map_err(|error| format!("Rust emission: {error}"))?;
     codegen_csharp::emit(&program).map_err(|error| format!("C# emission: {error}"))?;
 
-    let roundtrip_design = directory.0.join("roundtrip.mfd");
+    let roundtrip_design = directory.path().join("roundtrip.mfd");
     let export_warnings = mfd::export(&imported.project, &roundtrip_design)?;
     assert!(export_warnings.is_empty(), "{export_warnings:?}");
     let exported_schema: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(
-        directory.0.join("roundtrip-source.schema.json"),
+        directory.path().join("roundtrip-source.schema.json"),
     )?)?;
     assert_eq!(exported_schema["additionalProperties"], false);
     assert_eq!(exported_schema["minProperties"], 6);
@@ -666,8 +646,10 @@ fn imports_nullable_and_open_json_schema_without_fallback_warnings()
             ..
         }) if property == "other"
     ));
-    let reimported_input =
-        format_json::read(&directory.0.join("input.json"), &reimported.project.source)?;
+    let reimported_input = format_json::read(
+        &directory.path().join("input.json"),
+        &reimported.project.source,
+    )?;
     assert!(
         engine::run(&reimported.project, &reimported_input)?
             .field("Amount")
@@ -800,9 +782,9 @@ fn assert_contains_range(
 #[test]
 fn imports_executes_and_roundtrips_json_contains_constraints()
 -> Result<(), Box<dyn std::error::Error>> {
-    let directory = TempDir::new()?;
+    let directory = TempDir::new("mfd-json-profile")?;
     std::fs::write(
-        directory.0.join("source.schema.json"),
+        directory.path().join("source.schema.json"),
         r#"{
   "$schema":"https://json-schema.org/draft/2020-12/schema",
   "title":"ContainsEnvelope",
@@ -857,7 +839,7 @@ fn imports_executes_and_roundtrips_json_contains_constraints()
 }"#,
     )?;
     std::fs::write(
-        directory.0.join("input.json"),
+        directory.path().join("input.json"),
         r#"{
   "Codes":["keep","other","keep"],
   "DefaultCodes":["other","default"],
@@ -867,7 +849,7 @@ fn imports_executes_and_roundtrips_json_contains_constraints()
   "Amount":7
 }"#,
     )?;
-    let design = directory.0.join("mapping.mfd");
+    let design = directory.path().join("mapping.mfd");
     std::fs::write(
         &design,
         r#"<mapping version="26"><component name="map"><structure><children>
@@ -918,7 +900,7 @@ fn imports_executes_and_roundtrips_json_contains_constraints()
             .is_some_and(|maybe| maybe.container_nullable && maybe.json_contains.is_none())
     );
 
-    let valid = std::fs::read_to_string(directory.0.join("input.json"))?;
+    let valid = std::fs::read_to_string(directory.path().join("input.json"))?;
     assert!(format_json::from_str(&valid, source).is_ok());
     for invalid in [
         valid.replace(r#""keep","other","keep""#, r#""keep","other""#),
@@ -938,11 +920,11 @@ fn imports_executes_and_roundtrips_json_contains_constraints()
             .is_some()
     );
 
-    let roundtrip_design = directory.0.join("roundtrip.mfd");
+    let roundtrip_design = directory.path().join("roundtrip.mfd");
     let export_warnings = mfd::export(&imported.project, &roundtrip_design)?;
     assert!(export_warnings.is_empty(), "{export_warnings:?}");
     let exported: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(
-        directory.0.join("roundtrip-source.schema.json"),
+        directory.path().join("roundtrip-source.schema.json"),
     )?)?;
     assert_eq!(exported["properties"]["Codes"]["contains"]["const"], "keep");
     assert_eq!(exported["properties"]["Codes"]["minContains"], 2);
@@ -988,10 +970,10 @@ fn imports_executes_and_roundtrips_json_contains_constraints()
 #[test]
 fn package_root_confines_external_json_schema_references() -> Result<(), Box<dyn std::error::Error>>
 {
-    let directory = TempDir::new()?;
-    let maps = directory.0.join("maps");
-    let schemas = directory.0.join("schemas");
-    let shared = directory.0.join("shared");
+    let directory = TempDir::new("mfd-json-profile")?;
+    let maps = directory.path().join("maps");
+    let schemas = directory.path().join("schemas");
+    let shared = directory.path().join("shared");
     std::fs::create_dir_all(&maps)?;
     std::fs::create_dir_all(&schemas)?;
     std::fs::create_dir_all(&shared)?;
@@ -1042,7 +1024,7 @@ fn package_root_confines_external_json_schema_references() -> Result<(), Box<dyn
 </vertices></graph></structure></component></mapping>"#,
     )?;
 
-    let options = mfd::ImportOptions::default().with_package_root(&directory.0);
+    let options = mfd::ImportOptions::default().with_package_root(directory.path());
     let imported = mfd::import_with_options(&design, &options)?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(

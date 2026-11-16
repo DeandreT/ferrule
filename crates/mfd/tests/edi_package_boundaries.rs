@@ -1,13 +1,12 @@
 use std::error::Error;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::path::Path;
 
 use mapping::{EdiBoundaryKind, FormatOptions};
 
 #[test]
 fn package_manifest_resolves_all_edi_boundary_roles_after_relocation() -> Result<(), Box<dyn Error>>
 {
-    let directory = TempDir::new()?;
+    let directory = TempDir::new("mfd-edi-package-boundaries")?;
     let package = directory.path().join("original-package");
     write_package(&package)?;
 
@@ -34,7 +33,7 @@ fn package_manifest_resolves_all_edi_boundary_roles_after_relocation() -> Result
 
 #[test]
 fn plain_import_discovers_package_manifest_from_mapping_ancestors() -> Result<(), Box<dyn Error>> {
-    let directory = TempDir::new()?;
+    let directory = TempDir::new("mfd-edi-package-boundaries")?;
     let package = directory.path().join("package");
     write_package(&package)?;
 
@@ -51,7 +50,7 @@ fn plain_import_discovers_package_manifest_from_mapping_ancestors() -> Result<()
 fn manifest_catalog_is_reconfined_when_options_are_reused() -> Result<(), Box<dyn Error>> {
     use std::os::unix::fs::symlink;
 
-    let directory = TempDir::new()?;
+    let directory = TempDir::new("mfd-edi-package-boundaries")?;
     let package = directory.path().join("package");
     write_package(&package)?;
     let manifest = package.join("ferrule-package.json");
@@ -78,7 +77,7 @@ fn manifest_catalog_is_reconfined_when_options_are_reused() -> Result<(), Box<dy
 fn selected_manifest_rejects_package_directory_retargeting() -> Result<(), Box<dyn Error>> {
     use std::os::unix::fs::symlink;
 
-    let directory = TempDir::new()?;
+    let directory = TempDir::new("mfd-edi-package-boundaries")?;
     let package = directory.path().join("package");
     write_package(&package)?;
     let manifest = package.join("ferrule-package.json");
@@ -268,28 +267,4 @@ fn mapping_document() -> &'static str {
 </component></mapping>"#
 }
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Result<Self, std::io::Error> {
-        static NEXT: AtomicU64 = AtomicU64::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule-mfd-edi-package-boundaries-{}-{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-
-    fn path(&self) -> &Path {
-        &self.0
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;

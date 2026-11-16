@@ -1,12 +1,12 @@
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use mapping::EdiBoundaryKind;
 use zip::write::SimpleFileOptions;
 
 #[test]
 fn adjacent_zip_package_compiles_to_a_portable_executable_schema() {
-    let directory = TempDir::new("packaged_config");
+    let directory = TempDir::new("packaged_config").unwrap();
     let mapping_directory = directory.path().join("Tutorial");
     std::fs::create_dir(&mapping_directory).unwrap();
     let archive_path = mapping_directory.join("Custom.X12.zip");
@@ -118,28 +118,4 @@ fn write_package(path: &Path, entries: &[(&str, &str)]) {
     archive.finish().unwrap();
 }
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new(label: &str) -> Self {
-        static NEXT_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-        let id = NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_edi_{label}_{}_{id}",
-            std::process::id()
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-
-    fn path(&self) -> &Path {
-        &self.0
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;

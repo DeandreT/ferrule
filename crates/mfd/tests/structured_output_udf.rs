@@ -1,37 +1,7 @@
-use std::fs;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
-
 use ir::{Instance, Value};
 use mapping::IterationOutput;
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Self {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule-mfd-structured-output-{}-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map_or(0, |duration| duration.as_nanos()),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
-    }
-}
-
-fn write(path: &Path, contents: &str) {
-    fs::write(path, contents).unwrap();
-}
+use test_support::TempDir;
 
 fn mapping() -> &'static str {
     r#"<mapping version="26"><component name="map"><structure><children>
@@ -70,24 +40,12 @@ fn mapping() -> &'static str {
 }
 
 fn setup(mfd: &str) -> TempDir {
-    let dir = TempDir::new();
-    write(
-        &dir.0.join("source.xsd"),
-        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Source"><xs:complexType><xs:sequence><xs:element name="Order" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Needle" type="xs:string"/><xs:element name="Qty" type="xs:integer"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
-    );
-    write(
-        &dir.0.join("catalog.xsd"),
-        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Catalog"><xs:complexType><xs:sequence><xs:element name="Item" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Key" type="xs:string"/><xs:element name="Label" type="xs:string"/><xs:element name="Price" type="xs:integer"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
-    );
-    write(
-        &dir.0.join("article.xsd"),
-        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Article"><xs:complexType><xs:sequence><xs:element name="Key" type="xs:string"/><xs:element name="Label" type="xs:string"/><xs:element name="Total" type="xs:integer"/></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
-    );
-    write(
-        &dir.0.join("target.xsd"),
-        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Target"><xs:complexType><xs:sequence><xs:element name="Row" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Article"><xs:complexType><xs:sequence><xs:element name="Key" type="xs:string"/><xs:element name="Label" type="xs:string"/><xs:element name="Total" type="xs:integer"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
-    );
-    write(&dir.0.join("mapping.mfd"), mfd);
+    let dir = TempDir::new("mfd-structured-output").unwrap();
+    dir.write("source.xsd", r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Source"><xs:complexType><xs:sequence><xs:element name="Order" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Needle" type="xs:string"/><xs:element name="Qty" type="xs:integer"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#).unwrap();
+    dir.write("catalog.xsd", r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Catalog"><xs:complexType><xs:sequence><xs:element name="Item" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Key" type="xs:string"/><xs:element name="Label" type="xs:string"/><xs:element name="Price" type="xs:integer"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#).unwrap();
+    dir.write("article.xsd", r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Article"><xs:complexType><xs:sequence><xs:element name="Key" type="xs:string"/><xs:element name="Label" type="xs:string"/><xs:element name="Total" type="xs:integer"/></xs:sequence></xs:complexType></xs:element></xs:schema>"#).unwrap();
+    dir.write("target.xsd", r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Target"><xs:complexType><xs:sequence><xs:element name="Row" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Article"><xs:complexType><xs:sequence><xs:element name="Key" type="xs:string"/><xs:element name="Label" type="xs:string"/><xs:element name="Total" type="xs:integer"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#).unwrap();
+    dir.write("mapping.mfd", mfd).unwrap();
     dir
 }
 
@@ -123,7 +81,7 @@ fn item(key: &str, label: &str, price: i64) -> Instance {
 #[test]
 fn structured_lookup_output_emits_zero_or_many_constructed_occurrences() {
     let dir = setup(mapping());
-    let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+    let imported = mfd::import(&dir.path().join("mapping.mfd")).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert_eq!(imported.project.extra_sources.len(), 1);
     let source = Instance::Group(
@@ -190,7 +148,7 @@ fn edi_catalog_lookup_emits_constructed_occurrences() {
             r#"</root><text type="edi" kind="EDIX12" inputinstance="catalog.x12"/></data></component>"#,
         );
     let dir = setup(&design);
-    let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+    let imported = mfd::import(&dir.path().join("mapping.mfd")).unwrap();
 
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert_eq!(imported.project.extra_sources.len(), 1);
@@ -201,7 +159,7 @@ fn edi_catalog_lookup_emits_constructed_occurrences() {
 #[test]
 fn structured_lookup_with_sequence_output_expression_warns_and_skips() {
     let dir = setup(&mapping().replace("name=\"multiply\"", "name=\"sum\""));
-    let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+    let imported = mfd::import(&dir.path().join("mapping.mfd")).unwrap();
     assert!(
         imported.warnings.iter().any(|warning| warning
             .contains("structured lookup uses unsupported sequence operation `sum`")),

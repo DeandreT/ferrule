@@ -1,27 +1,6 @@
 use std::error::Error;
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> std::io::Result<Self> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule-mfd-csv-file-paths-{}-{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn design(source_wrapper: &str, target_wrapper: &str, edges: &str) -> String {
     format!(
@@ -45,12 +24,12 @@ fn design(source_wrapper: &str, target_wrapper: &str, edges: &str) -> String {
 
 #[test]
 fn connected_csv_filename_inputs_remain_warned_partial_imports() -> Result<(), Box<dyn Error>> {
-    let directory = TempDir::new()?;
+    let directory = TempDir::new("mfd-csv-file-paths")?;
     for (component, source, target, port) in [
         ("source", r#"inpkey="13""#, "", "13"),
         ("target", "", r#"inpkey="23""#, "23"),
     ] {
-        let path = directory.0.join(format!("{component}.mfd"));
+        let path = directory.path().join(format!("{component}.mfd"));
         let xml = design(
             source,
             target,
@@ -83,12 +62,12 @@ fn connected_csv_filename_inputs_remain_warned_partial_imports() -> Result<(), B
 
 #[test]
 fn connected_csv_filename_outputs_are_not_ordinary_value_ports() -> Result<(), Box<dyn Error>> {
-    let directory = TempDir::new()?;
+    let directory = TempDir::new("mfd-csv-file-paths")?;
     for (component, source, target, port) in [
         ("source", r#"outkey="14""#, "", "14"),
         ("target", "", r#"outkey="24""#, "24"),
     ] {
-        let path = directory.0.join(format!("{component}.mfd"));
+        let path = directory.path().join(format!("{component}.mfd"));
         let xml = design(source, target, "").replace(
             r#"vertex vertexkey="11""#,
             &format!(r#"vertex vertexkey="{port}""#),
@@ -118,7 +97,7 @@ fn connected_csv_filename_outputs_are_not_ordinary_value_ports() -> Result<(), B
 #[test]
 fn unconnected_csv_wrappers_and_fileinstance_named_fields_stay_executable()
 -> Result<(), Box<dyn Error>> {
-    let directory = TempDir::new()?;
+    let directory = TempDir::new("mfd-csv-file-paths")?;
     let xml = design(
         r#"inpkey="13" outkey="14""#,
         r#"inpkey="23" outkey="24""#,
@@ -131,7 +110,7 @@ fn unconnected_csv_wrappers_and_fileinstance_named_fields_stay_executable()
             xml.replace("name=\"Value\"", "name=\"FileInstance\""),
         ),
     ] {
-        let path = directory.0.join(format!("{name}.mfd"));
+        let path = directory.path().join(format!("{name}.mfd"));
         std::fs::write(&path, xml)?;
         let imported = mfd::import(&path)?;
         assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);

@@ -1,7 +1,6 @@
 use std::collections::BTreeMap;
 use std::error::Error;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{
     Instance, ScalarType, SchemaNode, Value, XML_ATTRIBUTES_FIELD, XML_ELEMENTS_FIELD,
@@ -9,33 +8,7 @@ use ir::{
 };
 use mapping::{Binding, Graph, Node, Project, Scope};
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new(tag: &str) -> Result<Self, std::io::Error> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule-mfd-generic-xml-{tag}-{}-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map_or(0, |duration| duration.as_nanos()),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-
-    fn path(&self, name: &str) -> PathBuf {
-        self.0.join(name)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn source_schema() -> SchemaNode {
     let attributes = SchemaNode::group(
@@ -101,7 +74,7 @@ fn project() -> Project {
 }
 
 fn export_project(directory: &TempDir) -> Result<PathBuf, Box<dyn Error>> {
-    let path = directory.path("mapping.mfd");
+    let path = directory.join("mapping.mfd");
     let warnings = mfd::export(&project(), &path)?;
     assert!(warnings.is_empty(), "{warnings:?}");
     Ok(path)
@@ -128,7 +101,7 @@ fn typed_entry_schema_preserves_mixed_fixed_and_generic_children() -> Result<(),
     assert!(mapping.contains("ferrule-kind=\"group\""), "{mapping}");
     assert!(mapping.contains("ferrule-repeating=\"1\""), "{mapping}");
 
-    let generated_xsd = directory.path("mapping-source.xsd");
+    let generated_xsd = directory.join("mapping-source.xsd");
     assert!(matches!(
         format_xml::xsd::import_root(&generated_xsd, Some("Envelope")),
         Err(format_xml::XmlFormatError::UnsupportedXmlWildcard { .. })

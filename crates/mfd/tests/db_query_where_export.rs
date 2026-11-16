@@ -3,33 +3,13 @@ mod private_corpus;
 
 use std::collections::BTreeMap;
 use std::error::Error;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::path::Path;
 
 use ir::{ScalarType, SchemaNode, Value};
 use mapping::{Binding, FormatOptions, Graph, Node, Project, Scope, ScopeIteration};
 use rusqlite::Connection;
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Result<Self, std::io::Error> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_db_query_where_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn database(path: &Path) -> Result<(), rusqlite::Error> {
     Connection::open(path)?.execute_batch(
@@ -244,20 +224,20 @@ fn xml(project: &Project, database: &Path, path: &Path) -> Result<String, Box<dy
 
 #[test]
 fn root_query_where_with_residual_key_is_native_and_round_trips() -> Result<(), Box<dyn Error>> {
-    let dir = TempDir::new()?;
-    database(&dir.0.join("people.sqlite"))?;
+    let dir = TempDir::new("db_query_where")?;
+    database(&dir.path().join("people.sqlite"))?;
     let project = project();
     assert!(engine::validate(&project).is_empty());
     let expected = xml(
         &project,
-        &dir.0.join("people.sqlite"),
-        &dir.0.join("before.xml"),
+        &dir.path().join("people.sqlite"),
+        &dir.path().join("before.xml"),
     )?;
     assert_eq!(expected.matches("<Employee>").count(), 2);
     assert!(expected.contains("<FirstName>Ada</FirstName>"));
     assert!(expected.contains("<FirstName>Bea</FirstName>"));
 
-    let design = dir.0.join("native.mfd");
+    let design = dir.path().join("native.mfd");
     let report = mfd::preflight_export(&project, &design)?;
     assert!(report.is_native_compatible(), "{report}");
     mfd::export_with_profile(&project, &design, mfd::ExportProfile::NativeMfd)?;
@@ -270,8 +250,8 @@ fn root_query_where_with_residual_key_is_native_and_round_trips() -> Result<(), 
     assert!(engine::validate(&reimported.project).is_empty());
     let actual = xml(
         &reimported.project,
-        &dir.0.join("people.sqlite"),
-        &dir.0.join("after.xml"),
+        &dir.path().join("people.sqlite"),
+        &dir.path().join("after.xml"),
     )?;
     assert_eq!(actual, expected);
     Ok(())
@@ -280,8 +260,8 @@ fn root_query_where_with_residual_key_is_native_and_round_trips() -> Result<(), 
 #[test]
 fn optional_title_pattern_preserves_default_override_and_null_in_native_where()
 -> Result<(), Box<dyn Error>> {
-    let dir = TempDir::new()?;
-    let database_path = dir.0.join("people.sqlite");
+    let dir = TempDir::new("db_query_where")?;
+    let database_path = dir.path().join("people.sqlite");
     database(&database_path)?;
     let mut project = project();
     project.graph.nodes.insert(
@@ -315,13 +295,13 @@ fn optional_title_pattern_preserves_default_override_and_null_in_native_where()
         },
     );
     assert!(engine::validate(&project).is_empty());
-    let design = dir.0.join("optional-pattern.mfd");
+    let design = dir.path().join("optional-pattern.mfd");
     let report = mfd::export_with_profile(&project, &design, mfd::ExportProfile::NativeMfd)?;
     assert!(report.is_native_compatible(), "{report}");
     let restored = mfd::import(&design)?;
     assert!(restored.warnings.is_empty(), "{:?}", restored.warnings);
     assert!(engine::validate(&restored.project).is_empty());
-    let second_design = dir.0.join("optional-pattern-second.mfd");
+    let second_design = dir.path().join("optional-pattern-second.mfd");
     mfd::export_with_profile(
         &restored.project,
         &second_design,
@@ -351,8 +331,8 @@ fn optional_title_pattern_preserves_default_override_and_null_in_native_where()
             engine::run_with_context(&second.project, &source, &context)?,
             after
         );
-        let before_path = dir.0.join("before-optional.xml");
-        let after_path = dir.0.join("after-optional.xml");
+        let before_path = dir.path().join("before-optional.xml");
+        let after_path = dir.path().join("after-optional.xml");
         format_xml::write(&before_path, &project.target, &before)?;
         format_xml::write(&after_path, &restored.project.target, &after)?;
         let expected = std::fs::read_to_string(&before_path)?;
@@ -397,14 +377,14 @@ fn optional_title_pattern_preserves_default_override_and_null_in_native_where()
             value: Value::String("%Man_ger%".into()),
         },
     );
-    assert_rejected(&project, &dir.0.join("changed-optional-pattern.mfd"))?;
+    assert_rejected(&project, &dir.path().join("changed-optional-pattern.mfd"))?;
     Ok(())
 }
 
 #[test]
 fn required_host_title_pattern_survives_two_native_where_cycles() -> Result<(), Box<dyn Error>> {
-    let dir = TempDir::new()?;
-    let database_path = dir.0.join("people.sqlite");
+    let dir = TempDir::new("db_query_where")?;
+    let database_path = dir.path().join("people.sqlite");
     database(&database_path)?;
     let mut project = project();
     project.graph.nodes.insert(
@@ -418,7 +398,7 @@ fn required_host_title_pattern_survives_two_native_where_cycles() -> Result<(), 
     assert!(engine::validate(&project).is_empty());
     let mut projects = vec![project];
     for cycle in 0..2 {
-        let design = dir.0.join(format!("required-pattern-{cycle}.mfd"));
+        let design = dir.path().join(format!("required-pattern-{cycle}.mfd"));
         let report = mfd::export_with_profile(
             projects.last().unwrap(),
             &design,
@@ -483,7 +463,7 @@ fn required_host_title_pattern_survives_two_native_where_cycles() -> Result<(), 
             let context =
                 engine::ExecutionContext::new(&database_path).with_parameters(&parameters);
             let output = engine::run_with_context(project, &source, &context)?;
-            let path = dir.0.join(format!("required-{index}.xml"));
+            let path = dir.path().join(format!("required-{index}.xml"));
             format_xml::write(&path, &project.target, &output)?;
             let actual = std::fs::read_to_string(path)?;
             assert_eq!(actual.matches("<Employee>").count(), count);
@@ -499,7 +479,7 @@ fn required_host_title_pattern_survives_two_native_where_cycles() -> Result<(), 
 
 #[test]
 fn title_where_keeps_nonmatching_graphs_strictly_rejected() -> Result<(), Box<dyn Error>> {
-    let dir = TempDir::new()?;
+    let dir = TempDir::new("db_query_where")?;
     let mut changed = project();
     if let Node::Const {
         value: Value::String(pattern),
@@ -507,17 +487,17 @@ fn title_where_keeps_nonmatching_graphs_strictly_rejected() -> Result<(), Box<dy
     {
         *pattern = "%Man_ger%".into();
     }
-    assert_rejected(&changed, &dir.0.join("wildcard.mfd"))?;
+    assert_rejected(&changed, &dir.path().join("wildcard.mfd"))?;
 
     let mut changed = project();
     changed.root.children[0].children[0].bindings[1].node = 2;
-    assert_rejected(&changed, &dir.0.join("shared.mfd"))?;
+    assert_rejected(&changed, &dir.path().join("shared.mfd"))?;
 
     let mut changed = project();
     if let Node::Call { args, .. } = changed.graph.nodes.get_mut(&16).unwrap() {
         args.swap(0, 1);
     }
-    assert_rejected(&changed, &dir.0.join("changed-guard.mfd"))?;
+    assert_rejected(&changed, &dir.path().join("changed-guard.mfd"))?;
     Ok(())
 }
 
@@ -550,7 +530,7 @@ fn local_employee_and_manager_queries_export_natively_and_keep_exact_xml()
         "DB_ManagerList_SelectedDepartment",
         "DB_ManagerList_SelectedOffice",
     ] {
-        let dir = TempDir::new()?;
+        let dir = TempDir::new("db_query_where")?;
         let imported = mfd::import(&samples.join(format!("{name}.mfd")))?;
         assert!(
             imported.warnings.is_empty(),
@@ -560,9 +540,9 @@ fn local_employee_and_manager_queries_export_natively_and_keep_exact_xml()
         let source =
             format_db::read_instance(&samples.join("Altova.sqlite"), &imported.project.source)?;
         let before = engine::run(&imported.project, &source)?;
-        let before_path = dir.0.join("before.xml");
+        let before_path = dir.path().join("before.xml");
         format_xml::write(&before_path, &imported.project.target, &before)?;
-        let design = dir.0.join("native.mfd");
+        let design = dir.path().join("native.mfd");
         let report = mfd::preflight_export(&imported.project, &design)?;
         assert!(report.is_native_compatible(), "{name}: {report}");
         mfd::export_with_profile(&imported.project, &design, mfd::ExportProfile::NativeMfd)?;
@@ -579,7 +559,7 @@ fn local_employee_and_manager_queries_export_natively_and_keep_exact_xml()
         let source =
             format_db::read_instance(&samples.join("Altova.sqlite"), &reimported.project.source)?;
         let after = engine::run(&reimported.project, &source)?;
-        let after_path = dir.0.join("after.xml");
+        let after_path = dir.path().join("after.xml");
         format_xml::write(&after_path, &reimported.project.target, &after)?;
         assert_eq!(
             std::fs::read(&after_path)?,

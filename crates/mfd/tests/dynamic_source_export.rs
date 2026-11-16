@@ -1,9 +1,8 @@
 use std::collections::BTreeMap;
 use std::error::Error;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use engine::{DynamicSourceLoader, ExecutionContext};
 use ir::{Instance, ScalarType, SchemaNode, Value};
@@ -11,27 +10,7 @@ use mapping::{
     Binding, DynamicSourcePath, Graph, NamedSource, Node, Project, Scope, ScopeIteration,
 };
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Result<Self, std::io::Error> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_dynamic_source_export_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = fs::remove_dir_all(&path);
-        fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 struct FixtureLoader;
 
@@ -148,8 +127,8 @@ fn dynamic_xml_source_roundtrips_and_executes_in_each_driver_context() -> Result
     let project = project();
     assert!(engine::validate(&project).is_empty());
 
-    let temp = TempDir::new()?;
-    let design = temp.0.join("roundtrip.mfd");
+    let temp = TempDir::new("mfd_dynamic_source_export")?;
+    let design = temp.path().join("roundtrip.mfd");
     let warnings = mfd::export(&project, &design)?;
     assert!(warnings.is_empty(), "{warnings:?}");
 

@@ -2,32 +2,11 @@
 mod private_corpus;
 
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use mapping::{EdiBoundaryKind, IdocNativeNode, NamedSource, NamedTarget, Project, Scope};
 use mfd::{ExportCompatibility, ExportCompatibilityFeature as Feature, ExportProfile};
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Self {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_idoc_descriptor_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn config() -> &'static str {
     "BEGIN_SEGMENT_SECTION\nBEGIN_IDOC ORDERS01\nBEGIN_GROUP 1\nLEVEL 01\nSTATUS MANDATORY\nLOOPMIN 0000000001\nLOOPMAX 0000000001\nBEGIN_SEGMENT E2ITEM\nSEGMENTTYPE E1ITEM\nQUALIFIED\nLEVEL 02\nSTATUS OPTIONAL\nLOOPMIN 0000000000\nLOOPMAX 9999999999\nBEGIN_FIELDS\nNAME DOCNO\nTEXT Document number\nTYPE CHARACTER\nLENGTH 000005\nFIELD_POS 0001\nBYTE_FIRST 000064\nBYTE_LAST 000068\nVALUE 'A'\nVALUE_TEXT Active\nEND_FIELDS\nEND_SEGMENT\nEND_GROUP\nEND_IDOC\nEND_SEGMENT_SECTION\n"
@@ -149,10 +128,10 @@ fn assert_portable_config_reference(dir: &Path, reference: &str) -> String {
 
 #[test]
 fn exported_idoc_config_sibling_survives_relocation_and_keeps_native_blockers() {
-    let dir = TempDir::new();
-    let (project, _) = exported_project(&dir.0);
-    let original_config = dir.0.join("parser.txt");
-    let bundle = dir.0.join("exported");
+    let dir = TempDir::new("mfd_idoc_descriptor").unwrap();
+    let (project, _) = exported_project(dir.path());
+    let original_config = dir.path().join("parser.txt");
+    let bundle = dir.path().join("exported");
     std::fs::create_dir_all(&bundle).unwrap();
     let output = bundle.join("portable.mfd");
     mfd::export(&project, &output).unwrap();
@@ -173,7 +152,7 @@ fn exported_idoc_config_sibling_survives_relocation_and_keeps_native_blockers() 
         project.source_options.idoc.clone().unwrap()
     );
 
-    let relocated = dir.0.join("relocated");
+    let relocated = dir.path().join("relocated");
     std::fs::rename(&bundle, &relocated).unwrap();
     std::fs::remove_file(original_config).unwrap();
     let reimported = mfd::import(&relocated.join("portable.mfd")).unwrap();
@@ -194,8 +173,8 @@ fn exported_idoc_config_sibling_survives_relocation_and_keeps_native_blockers() 
 
 #[test]
 fn multiple_idoc_boundaries_receive_distinct_config_siblings() {
-    let dir = TempDir::new();
-    let (mut project, _) = exported_project(&dir.0);
+    let dir = TempDir::new("mfd_idoc_descriptor").unwrap();
+    let (mut project, _) = exported_project(dir.path());
     project.extra_sources.push(NamedSource {
         name: "secondary".into(),
         path: "secondary.idoc".into(),
@@ -203,7 +182,7 @@ fn multiple_idoc_boundaries_receive_distinct_config_siblings() {
         options: project.source_options.clone(),
         dynamic_path: None,
     });
-    let bundle = dir.0.join("multiple");
+    let bundle = dir.path().join("multiple");
     let output = bundle.join("portable.mfd");
     mfd::export(&project, &output).unwrap();
     let xml = std::fs::read_to_string(output).unwrap();
@@ -221,15 +200,15 @@ fn multiple_idoc_boundaries_receive_distinct_config_siblings() {
 
 #[test]
 fn certified_idoc_provenance_survives_project_and_ferrule_mfd_roundtrips() {
-    let dir = TempDir::new();
-    let (project, _) = exported_project(&dir.0);
-    let reimported = mfd::import(&dir.0.join("ferrule.mfd")).unwrap();
+    let dir = TempDir::new("mfd_idoc_descriptor").unwrap();
+    let (project, _) = exported_project(dir.path());
+    let reimported = mfd::import(&dir.path().join("ferrule.mfd")).unwrap();
     assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
     assert!(engine::validate(&reimported.project).is_empty());
     assert_eq!(reimported.project.source, project.source);
     assert_eq!(reimported.project.source_options, project.source_options);
 
-    let strict_path = dir.0.join("native-not-published.mfd");
+    let strict_path = dir.path().join("native-not-published.mfd");
     let report = mfd::preflight_export(&project, &strict_path).unwrap();
     assert_eq!(report.compatibility, ExportCompatibility::FerruleExtensions);
     for feature in [
@@ -247,7 +226,7 @@ fn certified_idoc_provenance_survives_project_and_ferrule_mfd_roundtrips() {
         Err(mfd::MfdError::IncompatibleExport(_))
     ));
     assert!(!strict_path.exists());
-    assert!(!std::fs::read_dir(&dir.0).unwrap().any(|entry| {
+    assert!(!std::fs::read_dir(dir.path()).unwrap().any(|entry| {
         let name = entry.unwrap().file_name();
         let name = name.to_string_lossy();
         name.starts_with("native-not-published-") && name.ends_with(".idoc-config.txt")
@@ -256,8 +235,8 @@ fn certified_idoc_provenance_survives_project_and_ferrule_mfd_roundtrips() {
 
 #[test]
 fn edited_or_conflicting_embedded_metadata_cannot_certify_provenance() {
-    let dir = TempDir::new();
-    let (project, xml) = exported_project(&dir.0);
+    let dir = TempDir::new("mfd_idoc_descriptor").unwrap();
+    let (project, xml) = exported_project(dir.path());
     let embedded_only = without_idoc_config_reference(&xml);
     let altered = [
         replace_within(
@@ -278,7 +257,7 @@ fn edited_or_conflicting_embedded_metadata_cannot_certify_provenance() {
     ];
     for (index, modified) in altered.into_iter().enumerate() {
         assert_ne!(modified, xml);
-        let path = dir.0.join(format!("altered-{index}.mfd"));
+        let path = dir.path().join(format!("altered-{index}.mfd"));
         std::fs::write(&path, modified).unwrap();
         let imported = mfd::import(&path).unwrap();
         assert!(imported.project.source_options.idoc_native_config.is_none());
@@ -297,7 +276,7 @@ fn edited_or_conflicting_embedded_metadata_cannot_certify_provenance() {
         &embedded_only[start..end],
         &embedded_only[start..]
     );
-    let duplicate_path = dir.0.join("duplicate.mfd");
+    let duplicate_path = dir.path().join("duplicate.mfd");
     std::fs::write(&duplicate_path, duplicate).unwrap();
     let imported = mfd::import(&duplicate_path).unwrap();
     assert!(imported.project.source_options.idoc_native_config.is_none());
@@ -319,7 +298,7 @@ fn edited_or_conflicting_embedded_metadata_cannot_certify_provenance() {
         &embedded_only[..layout_start],
         &embedded_only[layout_end..]
     );
-    let no_layout_path = dir.0.join("missing-layout.mfd");
+    let no_layout_path = dir.path().join("missing-layout.mfd");
     std::fs::write(&no_layout_path, without_layout).unwrap();
     let imported = mfd::import(&no_layout_path).unwrap();
     assert!(imported.project.source_options.idoc_native_config.is_none());
@@ -332,7 +311,7 @@ fn edited_or_conflicting_embedded_metadata_cannot_certify_provenance() {
     );
 
     let tampered = replace_within(&xml, "ferrule-idoc-native-config", "Active", "Tampered");
-    let path = dir.0.join("external-authoritative.mfd");
+    let path = dir.path().join("external-authoritative.mfd");
     std::fs::write(&path, tampered).unwrap();
     let imported = mfd::import(&path).unwrap();
     assert_eq!(
@@ -343,9 +322,9 @@ fn edited_or_conflicting_embedded_metadata_cannot_certify_provenance() {
 
 #[test]
 fn unsupported_external_config_remains_executable_without_certificate() {
-    let dir = TempDir::new();
+    let dir = TempDir::new("mfd_idoc_descriptor").unwrap();
     let text = config().replace("QUALIFIED", "UNKNOWN_DIRECTIVE x");
-    let imported = mfd::import(&write_design(&dir.0, &text)).unwrap();
+    let imported = mfd::import(&write_design(dir.path(), &text)).unwrap();
     assert!(imported.project.source_options.idoc.is_some());
     assert!(imported.project.source_options.idoc_native_config.is_none());
     assert!(engine::validate(&imported.project).is_empty());
@@ -353,9 +332,9 @@ fn unsupported_external_config_remains_executable_without_certificate() {
 
 #[test]
 fn export_preflight_pairs_descriptor_with_every_source_and_target_boundary() {
-    let dir = TempDir::new();
-    let (base, _) = exported_project(&dir.0);
-    let output = dir.0.join("should-not-exist.mfd");
+    let dir = TempDir::new("mfd_idoc_descriptor").unwrap();
+    let (base, _) = exported_project(dir.path());
+    let output = dir.path().join("should-not-exist.mfd");
 
     let mut primary_source = base.clone();
     primary_source.source.name = "Altered".into();
@@ -437,8 +416,8 @@ fn export_preflight_pairs_descriptor_with_every_source_and_target_boundary() {
 
 #[test]
 fn invalid_stale_and_unresolved_descriptors_publish_no_artifacts() {
-    let dir = TempDir::new();
-    let (base, _) = exported_project(&dir.0);
+    let dir = TempDir::new("mfd_idoc_descriptor").unwrap();
+    let (base, _) = exported_project(dir.path());
     type ProjectMutation = fn(&mut Project);
     let mutations: [(&str, ProjectMutation); 4] = [
         ("wrong-dialect", |project| {
@@ -457,7 +436,7 @@ fn invalid_stale_and_unresolved_descriptors_publish_no_artifacts() {
     for (name, mutate) in mutations {
         let mut project = base.clone();
         mutate(&mut project);
-        let output_dir = dir.0.join(name);
+        let output_dir = dir.path().join(name);
         let output = output_dir.join("portable.mfd");
         assert!(mfd::export(&project, &output).is_err(), "{name}");
         assert!(!output_dir.exists(), "{name} published artifacts");
@@ -485,8 +464,8 @@ fn local_idoc_order_retains_descriptor_without_claiming_native_compatibility() {
             imported.project.source_options.idoc.clone().unwrap()
         )
     );
-    let dir = TempDir::new();
-    let output = dir.0.join("idoc-ferrule.mfd");
+    let dir = TempDir::new("mfd_idoc_descriptor").unwrap();
+    let output = dir.path().join("idoc-ferrule.mfd");
     mfd::export(&imported.project, &output).unwrap();
     let reimported = mfd::import(&output).unwrap();
     assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
@@ -494,7 +473,8 @@ fn local_idoc_order_retains_descriptor_without_claiming_native_compatibility() {
         reimported.project.source_options.idoc_native_config,
         Some(descriptor.clone())
     );
-    let report = mfd::preflight_export(&reimported.project, &dir.0.join("native.mfd")).unwrap();
+    let report =
+        mfd::preflight_export(&reimported.project, &dir.path().join("native.mfd")).unwrap();
     assert!(!report.is_native_compatible());
     assert!(
         report

@@ -1,34 +1,10 @@
 use std::error::Error;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use ir::{Instance, Value};
 use mapping::Scope;
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Result<Self, std::io::Error> {
-        static NEXT: AtomicU64 = AtomicU64::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_nested_xml_variable_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
-
-fn write(path: &Path, contents: &str) -> Result<(), std::io::Error> {
-    std::fs::write(path, contents)
-}
+use test_support::TempDir;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum VariableShape {
@@ -39,8 +15,8 @@ enum VariableShape {
 }
 
 fn write_fixture(dir: &Path, shape: VariableShape) -> Result<PathBuf, std::io::Error> {
-    write(
-        &dir.join("source.xsd"),
+    std::fs::write(
+        dir.join("source.xsd"),
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:element name="Batch"><xs:complexType><xs:sequence>
     <xs:element name="BatchId" type="xs:string"/>
@@ -82,9 +58,9 @@ fn write_fixture(dir: &Path, shape: VariableShape) -> Result<PathBuf, std::io::E
     </xs:sequence></xs:complexType></xs:element>"#
             .to_string()
     };
-    write(
-        &dir.join("variable.xsd"),
-        &format!(
+    std::fs::write(
+        dir.join("variable.xsd"),
+        format!(
             r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:element name="Envelope"><xs:complexType><xs:sequence>
     <xs:element name="BatchId" type="xs:string"/>
@@ -94,8 +70,8 @@ fn write_fixture(dir: &Path, shape: VariableShape) -> Result<PathBuf, std::io::E
 </xs:schema>"#
         ),
     )?;
-    write(
-        &dir.join("target.xsd"),
+    std::fs::write(
+        dir.join("target.xsd"),
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:element name="Report"><xs:complexType><xs:sequence>
     <xs:element name="BatchId" type="xs:string"/>
@@ -124,9 +100,9 @@ fn write_fixture(dir: &Path, shape: VariableShape) -> Result<PathBuf, std::io::E
         r#"<entry name="Line" inpkey="12" outkey="13"><entry name="Code" inpkey="14"/><entry name="Qty" inpkey="15"/></entry>"#
     };
     let design = dir.join("mapping.mfd");
-    write(
+    std::fs::write(
         &design,
-        &format!(
+        format!(
             r#"<mapping version="26"><component name="map"><structure><children>
   <component name="batch" library="xml" kind="14"><data><root><entry name="FileInstance"><entry name="document"><entry name="Batch"><entry name="BatchId" outkey="1"/><entry name="Item" outkey="2"><entry name="Code" outkey="3"/><entry name="Qty" outkey="4"/></entry></entry></entry></entry></root><document schema="source.xsd" inputinstance="source.xml" instanceroot="{{}}Batch"/></data></component>
   <component name="envelope" library="xml" kind="14"><data><parameter usageKind="variable"/><root><entry name="document"><entry name="Envelope"><entry name="BatchId" inpkey="10" outkey="11"/>{line_entry}</entry></entry></root><document schema="variable.xsd" instanceroot="{{}}Envelope"/></data></component>
@@ -193,8 +169,8 @@ fn assert_execution(project: &mapping::Project) -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn constructed_variable_repeated_child_executes_and_roundtrips() -> Result<(), Box<dyn Error>> {
-    let dir = TempDir::new()?;
-    let imported = mfd::import(&write_fixture(&dir.0, VariableShape::Supported)?)?;
+    let dir = TempDir::new("mfd_nested_xml_variable")?;
+    let imported = mfd::import(&write_fixture(dir.path(), VariableShape::Supported)?)?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
     let rows = row(&imported.project.root, "Row").ok_or("missing Row scope")?;
@@ -204,7 +180,7 @@ fn constructed_variable_repeated_child_executes_and_roundtrips() -> Result<(), B
     );
     assert_execution(&imported.project)?;
 
-    let exported = dir.0.join("round-trip.mfd");
+    let exported = dir.path().join("round-trip.mfd");
     let warnings = mfd::export(&imported.project, &exported)?;
     assert!(warnings.is_empty(), "{warnings:?}");
     let reimported = mfd::import(&exported)?;
@@ -216,8 +192,8 @@ fn constructed_variable_repeated_child_executes_and_roundtrips() -> Result<(), B
 
 #[test]
 fn wrapped_repeated_child_executes_and_roundtrips() -> Result<(), Box<dyn Error>> {
-    let dir = TempDir::new()?;
-    let imported = mfd::import(&write_fixture(&dir.0, VariableShape::Deep)?)?;
+    let dir = TempDir::new("mfd_nested_xml_variable")?;
+    let imported = mfd::import(&write_fixture(dir.path(), VariableShape::Deep)?)?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
     let rows = row(&imported.project.root, "Row").ok_or("missing Row scope")?;
@@ -227,7 +203,7 @@ fn wrapped_repeated_child_executes_and_roundtrips() -> Result<(), Box<dyn Error>
     );
     assert_execution(&imported.project)?;
 
-    let exported = dir.0.join("deep-round-trip.mfd");
+    let exported = dir.path().join("deep-round-trip.mfd");
     let warnings = mfd::export(&imported.project, &exported)?;
     assert!(warnings.is_empty(), "{warnings:?}");
     let reimported = mfd::import(&exported)?;
@@ -239,8 +215,8 @@ fn wrapped_repeated_child_executes_and_roundtrips() -> Result<(), Box<dyn Error>
 
 #[test]
 fn ambiguous_nested_variable_construction_warns_once() -> Result<(), Box<dyn Error>> {
-    let dir = TempDir::new()?;
-    let imported = mfd::import(&write_fixture(&dir.0, VariableShape::Ambiguous)?)?;
+    let dir = TempDir::new("mfd_nested_xml_variable")?;
+    let imported = mfd::import(&write_fixture(dir.path(), VariableShape::Ambiguous)?)?;
     let warnings = imported
         .warnings
         .iter()
@@ -253,13 +229,13 @@ fn ambiguous_nested_variable_construction_warns_once() -> Result<(), Box<dyn Err
 
 #[test]
 fn unconnected_nested_repetition_does_not_block_projected_siblings() -> Result<(), Box<dyn Error>> {
-    let dir = TempDir::new()?;
-    let imported = mfd::import(&write_fixture(&dir.0, VariableShape::NestedRepetition)?)?;
+    let dir = TempDir::new("mfd_nested_xml_variable")?;
+    let imported = mfd::import(&write_fixture(dir.path(), VariableShape::NestedRepetition)?)?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
     assert_execution(&imported.project)?;
 
-    let exported = dir.0.join("nested-round-trip.mfd");
+    let exported = dir.path().join("nested-round-trip.mfd");
     let warnings = mfd::export(&imported.project, &exported)?;
     assert!(warnings.is_empty(), "{warnings:?}");
     let reimported = mfd::import(&exported)?;
@@ -271,8 +247,8 @@ fn unconnected_nested_repetition_does_not_block_projected_siblings() -> Result<(
 
 #[test]
 fn projection_across_nested_repetition_remains_unsupported() -> Result<(), Box<dyn Error>> {
-    let dir = TempDir::new()?;
-    let design = write_fixture(&dir.0, VariableShape::NestedRepetition)?;
+    let dir = TempDir::new("mfd_nested_xml_variable")?;
+    let design = write_fixture(dir.path(), VariableShape::NestedRepetition)?;
     let mapping = std::fs::read_to_string(&design)?;
     let qty_entry = r#"<entry name="Qty" inpkey="15"/></entry>"#;
     let code_edge = r#"<vertex vertexkey="3"><edges><edge vertexkey="14"/></edges></vertex>"#;
@@ -287,7 +263,7 @@ fn projection_across_nested_repetition_remains_unsupported() -> Result<(), Box<d
             code_edge,
             r#"<vertex vertexkey="3"><edges><edge vertexkey="14"/><edge vertexkey="16"/></edges></vertex>"#,
         );
-    write(&design, &mapping)?;
+    std::fs::write(&design, &mapping)?;
 
     let imported = mfd::import(&design)?;
     let warnings = imported

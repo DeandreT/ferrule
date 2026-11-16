@@ -1,33 +1,13 @@
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
-
 use ir::{Instance, Value};
 use mapping::IterationOutput;
 
-struct Fixture(PathBuf);
-impl Fixture {
-    fn new() -> Self {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_first_parent_presence_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-impl Drop for Fixture {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir as Fixture;
 
 fn fixture() -> Fixture {
-    let directory = Fixture::new();
-    std::fs::write(directory.0.join("source.xsd"), r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Source"><xs:complexType><xs:sequence><xs:element name="Department" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Id" type="xs:string"/><xs:element name="Person" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Name" type="xs:string"/><xs:element name="Keep" type="xs:boolean"/><xs:element name="Score" type="xs:int"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#).unwrap();
-    std::fs::write(directory.0.join("target.xsd"), r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Target"><xs:complexType><xs:sequence><xs:element name="Department" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Id" type="xs:string"/><xs:element name="Selected"><xs:complexType><xs:sequence><xs:element name="Name" minOccurs="0" type="xs:string"/><xs:element name="Position" minOccurs="0" type="xs:int"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#).unwrap();
-    std::fs::write(directory.0.join("mapping.mfd"), r#"<mapping version="26"><component name="map"><structure><children>
+    let directory = Fixture::new("first_parent_presence").unwrap();
+    std::fs::write(directory.path().join("source.xsd"), r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Source"><xs:complexType><xs:sequence><xs:element name="Department" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Id" type="xs:string"/><xs:element name="Person" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Name" type="xs:string"/><xs:element name="Keep" type="xs:boolean"/><xs:element name="Score" type="xs:int"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#).unwrap();
+    std::fs::write(directory.path().join("target.xsd"), r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Target"><xs:complexType><xs:sequence><xs:element name="Department" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Id" type="xs:string"/><xs:element name="Selected"><xs:complexType><xs:sequence><xs:element name="Name" minOccurs="0" type="xs:string"/><xs:element name="Position" minOccurs="0" type="xs:int"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#).unwrap();
+    std::fs::write(directory.path().join("mapping.mfd"), r#"<mapping version="26"><component name="map"><structure><children>
       <component name="source" library="xml" kind="14"><data><root><entry name="Source"><entry name="Department" outkey="10"><entry name="Id" outkey="11"/><entry name="Person" outkey="12"><entry name="Name" outkey="13"/><entry name="Keep" outkey="14"/><entry name="Score" outkey="15"/></entry></entry></entry></root><document schema="source.xsd" inputinstance="source.xml" instanceroot="{}Source"/></data></component>
       <component name="target" library="xml" kind="14"><properties XSLTDefaultOutput="1"/><data><root><entry name="Target"><entry name="Department" inpkey="80"><entry name="Id" inpkey="81"/><entry name="Selected" inpkey="82"><entry name="Name" inpkey="83"/><entry name="Position" inpkey="84"/></entry></entry></entry></root><document schema="target.xsd" outputinstance="target.xml" instanceroot="{}Target"/></data></component>
       <component name="sort" library="core" kind="30"><sources><datapoint pos="0" key="20"/><datapoint pos="1" key="21"/></sources><targets><datapoint pos="0" key="22"/></targets><data><sort><collation/><key direction="descending"/></sort></data></component>
@@ -53,12 +33,12 @@ fn fixture() -> Fixture {
 }
 
 fn rewrite(directory: &Fixture, change: impl FnOnce(String) -> String) {
-    let path = directory.0.join("mapping.mfd");
+    let path = directory.path().join("mapping.mfd");
     std::fs::write(&path, change(std::fs::read_to_string(&path).unwrap())).unwrap();
 }
 
 fn assert_rejected(directory: &Fixture) {
-    let imported = mfd::import(&directory.0.join("mapping.mfd")).unwrap();
+    let imported = mfd::import(&directory.path().join("mapping.mfd")).unwrap();
     assert!(
         imported
             .warnings
@@ -69,7 +49,7 @@ fn assert_rejected(directory: &Fixture) {
     );
     assert!(matches!(
         mfd::import_with_profile(
-            &directory.0.join("mapping.mfd"),
+            &directory.path().join("mapping.mfd"),
             &mfd::ImportOptions::default(),
             mfd::ImportProfile::Executable,
         ),
@@ -91,7 +71,7 @@ fn assert_rejected(directory: &Fixture) {
 #[test]
 fn parent_presence_reconstructs_controls_and_empty_first_group() {
     let directory = fixture();
-    let imported = mfd::import(&directory.0.join("mapping.mfd")).unwrap();
+    let imported = mfd::import(&directory.path().join("mapping.mfd")).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     let selected = &imported.project.root.children[0].children[0];
     assert_eq!(selected.iteration_output, IterationOutput::First);
@@ -123,7 +103,7 @@ fn parent_presence_reconstructs_controls_and_empty_first_group() {
         departments[1].field("Selected"),
         Some(&Instance::Group((Vec::new()).into()))
     );
-    let second = directory.0.join("second.mfd");
+    let second = directory.path().join("second.mfd");
     assert!(mfd::export(&imported.project, &second).unwrap().is_empty());
     let imported_twice = mfd::import(&second).unwrap();
     assert!(
@@ -332,7 +312,7 @@ fn unrelated_unkeyed_sibling_condition_keeps_first_reconstruction() {
         "<entry name=\"Ignored\"><condition><expression><constant value=\"false\" datatype=\"boolean\"/></expression></condition><entry name=\"Marker\" inpkey=\"270\"/></entry><entry name=\"Selected\" inpkey=\"82\">",
     )
     });
-    let imported = mfd::import(&directory.0.join("mapping.mfd")).unwrap();
+    let imported = mfd::import(&directory.path().join("mapping.mfd")).unwrap();
     assert!(
         imported
             .warnings

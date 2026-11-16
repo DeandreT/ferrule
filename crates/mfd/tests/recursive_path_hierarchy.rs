@@ -2,37 +2,12 @@
 mod private_corpus;
 
 use std::collections::BTreeSet;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::path::Path;
 
 use ir::{Instance, ScalarType, SchemaNode, Value};
 use mapping::{FormatOptions, Graph, PathHierarchyPlan, Project, Scope, ScopeConstruction};
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Result<Self, std::io::Error> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_recursive_path_hierarchy_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
-
-fn write(path: &Path, value: &str) -> Result<(), std::io::Error> {
-    std::fs::write(path, value)
-}
+use test_support::TempDir;
 
 fn scalar<'a>(instance: &'a Instance, field: &str) -> Option<&'a str> {
     match instance.field(field) {
@@ -76,22 +51,11 @@ fn directory_paths(
 #[test]
 fn imports_and_executes_bounded_recursive_path_grouping() -> Result<(), Box<dyn std::error::Error>>
 {
-    let dir = TempDir::new()?;
-    write(
-        &dir.0.join("paths.xsd"),
-        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Paths"><xs:complexType><xs:sequence><xs:element name="Path" type="xs:string" minOccurs="0" maxOccurs="unbounded"/></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
-    )?;
-    write(
-        &dir.0.join("directory.xsd"),
-        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="directory"><xs:complexType><xs:choice minOccurs="0" maxOccurs="unbounded"><xs:element name="file"><xs:complexType><xs:attribute name="name" type="xs:string"/></xs:complexType></xs:element><xs:element ref="directory"/></xs:choice><xs:attribute name="name" type="xs:string"/></xs:complexType></xs:element></xs:schema>"#,
-    )?;
-    write(
-        &dir.0.join("paths.xml"),
-        "<Paths><Path>Project\\README.md</Path><Path>Project\\src\\main.rs</Path><Path>Project\\src\\lib.rs</Path><Path>Project\\tests\\smoke.rs</Path></Paths>",
-    )?;
-    write(
-        &dir.0.join("mapping.mfd"),
-        r#"<mapping version="26">
+    let dir = TempDir::new("mfd_recursive_path_hierarchy")?;
+    dir.write("paths.xsd", r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Paths"><xs:complexType><xs:sequence><xs:element name="Path" type="xs:string" minOccurs="0" maxOccurs="unbounded"/></xs:sequence></xs:complexType></xs:element></xs:schema>"#)?;
+    dir.write("directory.xsd", r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="directory"><xs:complexType><xs:choice minOccurs="0" maxOccurs="unbounded"><xs:element name="file"><xs:complexType><xs:attribute name="name" type="xs:string"/></xs:complexType></xs:element><xs:element ref="directory"/></xs:choice><xs:attribute name="name" type="xs:string"/></xs:complexType></xs:element></xs:schema>"#)?;
+    dir.write("paths.xml", "<Paths><Path>Project\\README.md</Path><Path>Project\\src\\main.rs</Path><Path>Project\\src\\lib.rs</Path><Path>Project\\tests\\smoke.rs</Path></Paths>")?;
+    dir.write("mapping.mfd", r#"<mapping version="26">
 <component name="map"><structure><children>
   <component name="source" library="xml" uid="1" kind="14"><data><root><entry name="FileInstance"><entry name="document"><entry name="Paths" outkey="101"/></entry></entry></root><document schema="paths.xsd" inputinstance="paths.xml" instanceroot="{}Paths"/></data></component>
   <component name="target" library="xml" uid="2" kind="14"><properties XSLTDefaultOutput="1"/><data><root><entry name="FileInstance"><entry name="document"><entry name="directory" inpkey="201"/></entry></entry></root><document schema="directory.xsd" outputinstance="directory.xml" instanceroot="{}directory"/></data></component>
@@ -126,17 +90,16 @@ fn imports_and_executes_bounded_recursive_path_grouping() -> Result<(), Box<dyn 
   <vertex vertexkey="620"><edges><edge vertexkey="505" edgekey="904"/></edges></vertex>
   <vertex vertexkey="621"><edges><edge vertexkey="506" edgekey="905"/></edges></vertex>
 </vertices></graph></structure></component>
-</mapping>"#,
-    )?;
+</mapping>"#)?;
 
-    let imported = mfd::import(&dir.0.join("mapping.mfd"))?;
+    let imported = mfd::import(&dir.path().join("mapping.mfd"))?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(matches!(
         imported.project.root.construction,
         ScopeConstruction::PathHierarchy { .. }
     ));
     assert!(engine::validate(&imported.project).is_empty());
-    let input = format_xml::read(&dir.0.join("paths.xml"), &imported.project.source)?;
+    let input = format_xml::read(&dir.path().join("paths.xml"), &imported.project.source)?;
     let output = engine::run(&imported.project, &input)?;
     assert_eq!(scalar(&output, "name"), Some("Project"));
     let files = output
@@ -151,7 +114,7 @@ fn imports_and_executes_bounded_recursive_path_grouping() -> Result<(), Box<dyn 
     assert_eq!(scalar(&directories[0], "name"), Some("src"));
     assert_eq!(scalar(&directories[1], "name"), Some("tests"));
 
-    let export = dir.0.join("roundtrip.mfd");
+    let export = dir.path().join("roundtrip.mfd");
     let report = mfd::preflight_export(&imported.project, &export)?;
     assert!(report.is_native_compatible(), "{report}");
     mfd::export_with_profile(&imported.project, &export, mfd::ExportProfile::NativeMfd)?;
@@ -222,8 +185,8 @@ fn nested_path_collection_keeps_the_native_guard_closed() -> Result<(), Box<dyn 
         },
     };
     assert!(engine::validate(&project).is_empty());
-    let dir = TempDir::new()?;
-    let design = dir.0.join("nested.mfd");
+    let dir = TempDir::new("mfd_recursive_path_hierarchy")?;
+    let design = dir.path().join("nested.mfd");
     let report = mfd::preflight_export(&project, &design)?;
     assert!(
         report
@@ -277,8 +240,8 @@ fn local_path_hierarchy_native_roundtrip_keeps_directory_tree()
         reference_files.into_iter().collect::<BTreeSet<_>>()
     );
 
-    let dir = TempDir::new()?;
-    let design = dir.0.join("native.mfd");
+    let dir = TempDir::new("mfd_recursive_path_hierarchy")?;
+    let design = dir.path().join("native.mfd");
     let report = mfd::preflight_export(&imported.project, &design)?;
     assert!(report.is_native_compatible(), "{report}");
     mfd::export_with_profile(&imported.project, &design, mfd::ExportProfile::NativeMfd)?;
@@ -293,8 +256,8 @@ fn local_path_hierarchy_native_roundtrip_keeps_directory_tree()
         imported.project.root.construction
     );
     let after = engine::run(&restored.project, &source)?;
-    let before_path = dir.0.join("before.xml");
-    let after_path = dir.0.join("after.xml");
+    let before_path = dir.path().join("before.xml");
+    let after_path = dir.path().join("after.xml");
     format_xml::write(&before_path, &imported.project.target, &before)?;
     format_xml::write(&after_path, &restored.project.target, &after)?;
     assert_eq!(std::fs::read(before_path)?, std::fs::read(after_path)?);

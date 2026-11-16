@@ -1,8 +1,7 @@
 use std::collections::BTreeMap;
 use std::error::Error;
 use std::num::NonZeroU32;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::path::Path;
 
 use ir::{ScalarType, SchemaNode, Value};
 use mapping::{
@@ -15,26 +14,7 @@ use mfd::{
     ExportCompatibility, ExportCompatibilityFeature as Feature, ExportProfile, ExportReport,
 };
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> std::io::Result<Self> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_export_compatibility_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn project() -> Project {
     Project {
@@ -84,8 +64,8 @@ fn assert_rejected(project: &Project, path: &Path, expected: &ExportReport) {
 
 #[test]
 fn json5_boundary_rejects_mfd_export_before_publishing() -> Result<(), Box<dyn Error>> {
-    let temp = TempDir::new()?;
-    let design = temp.0.join("mapping.mfd");
+    let temp = TempDir::new("mfd_export_compatibility")?;
+    let design = temp.path().join("mapping.mfd");
     let mut project = project();
     project.source_options.json5 = true;
     let error = mfd::preflight_export(&project, &design).unwrap_err();
@@ -110,8 +90,8 @@ fn json5_boundary_rejects_mfd_export_before_publishing() -> Result<(), Box<dyn E
 
 #[test]
 fn native_preflight_is_read_only_and_matches_published_report() -> Result<(), Box<dyn Error>> {
-    let temp = TempDir::new()?;
-    let path = temp.0.join("new-directory/mapping.mfd");
+    let temp = TempDir::new("mfd_export_compatibility")?;
+    let path = temp.path().join("new-directory/mapping.mfd");
     let project = project();
     let report = mfd::preflight_export(&project, &path)?;
     assert_eq!(report.compatibility, ExportCompatibility::NativeMfd);
@@ -142,10 +122,10 @@ fn native_preflight_is_read_only_and_matches_published_report() -> Result<(), Bo
 #[test]
 fn internal_functions_reject_before_replacing_any_existing_artifact() -> Result<(), Box<dyn Error>>
 {
-    let temp = TempDir::new()?;
-    let path = temp.0.join("mapping.mfd");
-    let source_schema = temp.0.join("mapping-source.xsd");
-    let target_schema = temp.0.join("mapping-target.xsd");
+    let temp = TempDir::new("mfd_export_compatibility")?;
+    let path = temp.path().join("mapping.mfd");
+    let source_schema = temp.path().join("mapping-source.xsd");
+    let target_schema = temp.path().join("mapping-target.xsd");
     for file in [&path, &source_schema, &target_schema] {
         std::fs::write(file, "preserve existing content")?;
     }
@@ -169,7 +149,7 @@ fn internal_functions_reject_before_replacing_any_existing_artifact() -> Result<
     for file in [&path, &source_schema, &target_schema] {
         assert_eq!(std::fs::read_to_string(file)?, "preserve existing content");
     }
-    assert_eq!(std::fs::read_dir(&temp.0)?.count(), 3);
+    assert_eq!(std::fs::read_dir(temp.path())?.count(), 3);
     assert_eq!(
         mfd::export_with_profile(&project, &path, ExportProfile::default())?,
         report
@@ -181,8 +161,8 @@ fn internal_functions_reject_before_replacing_any_existing_artifact() -> Result<
 #[test]
 fn edi_reports_schema_layout_and_each_retained_constraint_on_named_boundaries()
 -> Result<(), Box<dyn Error>> {
-    let temp = TempDir::new()?;
-    let path = temp.0.join("unpublished/mapping.mfd");
+    let temp = TempDir::new("mfd_export_compatibility")?;
+    let path = temp.path().join("unpublished/mapping.mfd");
     let mut project = project();
     let options = FormatOptions {
         edi_kind: Some(EdiBoundaryKind::Idoc),
@@ -248,11 +228,11 @@ fn edi_reports_schema_layout_and_each_retained_constraint_on_named_boundaries()
 
 #[test]
 fn unresolved_edi_configuration_is_a_typed_blocker() -> Result<(), Box<dyn Error>> {
-    let temp = TempDir::new()?;
+    let temp = TempDir::new("mfd_export_compatibility")?;
     let mut project = project();
     project.source_options.edi_kind = Some(EdiBoundaryKind::Edifact);
     project.source_options.edi_config_reference = Some(EdiConfigDependency::MissingConfiguration);
-    let report = mfd::preflight_export(&project, &temp.0.join("mapping.mfd"))?;
+    let report = mfd::preflight_export(&project, &temp.path().join("mapping.mfd"))?;
     assert!(
         report
             .issues
@@ -266,8 +246,8 @@ fn unresolved_edi_configuration_is_a_typed_blocker() -> Result<(), Box<dyn Error
 #[test]
 fn captured_sources_report_behavior_differences_without_changing_legacy_warnings()
 -> Result<(), Box<dyn Error>> {
-    let temp = TempDir::new()?;
-    let path = temp.0.join("mapping.mfd");
+    let temp = TempDir::new("mfd_export_compatibility")?;
+    let path = temp.path().join("mapping.mfd");
     let mut project = project();
     project.source_path = Some("https://example.test/query".into());
     project.source_options.external_source = Some(ExternalSourceOptions::http_post(
@@ -301,8 +281,8 @@ fn captured_sources_report_behavior_differences_without_changing_legacy_warnings
 
 #[test]
 fn lossy_warnings_cannot_be_mistaken_for_a_native_export() -> Result<(), Box<dyn Error>> {
-    let temp = TempDir::new()?;
-    let path = temp.0.join("mapping.mfd");
+    let temp = TempDir::new("mfd_export_compatibility")?;
+    let path = temp.path().join("mapping.mfd");
     let mut project = project();
     project.graph.nodes.insert(
         0,
@@ -322,7 +302,7 @@ fn lossy_warnings_cannot_be_mistaken_for_a_native_export() -> Result<(), Box<dyn
 
 #[test]
 fn ordinary_constants_stay_in_the_native_profile() -> Result<(), Box<dyn Error>> {
-    let temp = TempDir::new()?;
+    let temp = TempDir::new("mfd_export_compatibility")?;
     let mut project = project();
     project.graph.nodes.insert(
         0,
@@ -330,7 +310,7 @@ fn ordinary_constants_stay_in_the_native_profile() -> Result<(), Box<dyn Error>>
             value: Value::String("literal".into()),
         },
     );
-    let report = mfd::preflight_export(&project, &temp.0.join("mapping.mfd"))?;
+    let report = mfd::preflight_export(&project, &temp.path().join("mapping.mfd"))?;
     assert!(report.is_native_compatible(), "{report}");
     Ok(())
 }

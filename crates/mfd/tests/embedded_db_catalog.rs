@@ -1,30 +1,9 @@
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::path::Path;
 
 use ir::{Instance, Value};
 use rusqlite::Connection;
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Self {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_embedded_db_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn prepare_database(dir: &Path) {
     let connection = Connection::open(dir.join("company.sqlite")).unwrap();
@@ -103,9 +82,9 @@ fn output_rows(output: &Instance) -> Vec<[String; 3]> {
 
 #[test]
 fn inline_correlated_query_imports_and_executes_without_a_query_component() {
-    let dir = TempDir::new();
-    prepare_database(&dir.0);
-    let path = dir.0.join("department-leads.mfd");
+    let dir = TempDir::new("mfd_embedded_db").unwrap();
+    prepare_database(dir.path());
+    let path = dir.path().join("department-leads.mfd");
     std::fs::write(&path, design()).unwrap();
 
     let imported = mfd::import(&path).unwrap();
@@ -113,7 +92,8 @@ fn inline_correlated_query_imports_and_executes_without_a_query_component() {
     let department = imported.project.source.child("Department").unwrap();
     assert!(department.child("Staff|DepartmentId").is_some());
     let input =
-        format_db::read_instance(&dir.0.join("company.sqlite"), &imported.project.source).unwrap();
+        format_db::read_instance(&dir.path().join("company.sqlite"), &imported.project.source)
+            .unwrap();
     let output = engine::run(&imported.project, &input).unwrap();
     assert_eq!(
         output_rows(&output),
@@ -126,9 +106,9 @@ fn inline_correlated_query_imports_and_executes_without_a_query_component() {
 
 #[test]
 fn unsupported_multiple_inline_queries_fall_back_with_an_actionable_warning() {
-    let dir = TempDir::new();
-    prepare_database(&dir.0);
-    let path = dir.0.join("ambiguous-catalog.mfd");
+    let dir = TempDir::new("mfd_embedded_db").unwrap();
+    prepare_database(dir.path());
+    let path = dir.path().join("ambiguous-catalog.mfd");
     let text = design().replace(
         "<entry name=\"Label\" outkey=\"20\"/>",
         "<entry name=\"Label\" outkey=\"20\"/><entry name=\"OtherQuery|Id\" type=\"routine\" outkey=\"24\"><entry name=\"OtherQuery\" type=\"table\"/></entry>",

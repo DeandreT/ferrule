@@ -1,29 +1,10 @@
 use std::error::Error;
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{Instance, ScalarType, SchemaNode, Value};
 use mapping::{CsvTextRepairCause as Cause, CsvTextRepairDependency as Dependency, FormatOptions};
 use mfd::{ExportProfile, ImportIssueKind, ImportOptions, ImportProfile, MfdError};
 
-struct TempDir(PathBuf);
-impl TempDir {
-    fn new() -> std::io::Result<Self> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_csv_settings_repair_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn component(source: bool, settings: &str, second_type: &str) -> String {
     let (name, port, base, properties) = if source {
@@ -67,7 +48,7 @@ fn is_repair<T>(result: Result<T, format_csv::CsvFormatError>, cause: Cause) {
 #[test]
 fn invalid_csv_settings_keep_source_and_target_repairs_after_warning_clear()
 -> Result<(), Box<dyn Error>> {
-    let temp = TempDir::new()?;
+    let temp = TempDir::new("csv_settings_repair")?;
     let cases = [
         ("empty-policy", "removeempty=\"nope\"", Cause::EmptyPolicy),
         ("empty-separator", "separator=\"\"", Cause::Separator),
@@ -94,7 +75,7 @@ fn invalid_csv_settings_keep_source_and_target_repairs_after_warning_clear()
     ];
     for (case, settings, cause) in cases {
         for source in [true, false] {
-            let path = temp.0.join(format!("{case}-{source}.mfd"));
+            let path = temp.path().join(format!("{case}-{source}.mfd"));
             std::fs::write(
                 &path,
                 design(
@@ -144,7 +125,7 @@ fn invalid_csv_settings_keep_source_and_target_repairs_after_warning_clear()
             if source {
                 is_repair(
                     format_csv::read_with_options(
-                        &temp.0.join("missing.renamed"),
+                        &temp.path().join("missing.renamed"),
                         &reopened.project.source,
                         &format_csv::CsvReadOptions::from(options),
                     ),
@@ -159,7 +140,7 @@ fn invalid_csv_settings_keep_source_and_target_repairs_after_warning_clear()
                     cause,
                 );
             } else {
-                let output = temp.0.join("sentinel.csv");
+                let output = temp.path().join("sentinel.csv");
                 std::fs::write(&output, b"sentinel")?;
                 is_repair(
                     format_csv::write_with_options(
@@ -174,12 +155,12 @@ fn invalid_csv_settings_keep_source_and_target_repairs_after_warning_clear()
             }
             for profile in [ExportProfile::FerruleExtensions, ExportProfile::NativeMfd] {
                 let output = temp
-                    .0
+                    .path()
                     .join(format!("absent-{case}-{source}-{profile:?}/mapping.mfd"));
                 assert!(mfd::export_with_profile(&reopened.project, &output, profile).is_err());
                 assert!(!output.parent().unwrap().exists());
                 let sentinel = temp
-                    .0
+                    .path()
                     .join(format!("sentinel-{case}-{source}-{profile:?}.mfd"));
                 std::fs::write(&sentinel, b"sentinel")?;
                 assert!(mfd::export_with_profile(&reopened.project, &sentinel, profile).is_err());
@@ -193,7 +174,7 @@ fn invalid_csv_settings_keep_source_and_target_repairs_after_warning_clear()
 #[test]
 fn unsupported_setting_diagnostics_and_persisted_causes_drop_raw_text() -> Result<(), Box<dyn Error>>
 {
-    let temp = TempDir::new()?;
+    let temp = TempDir::new("csv_settings_repair")?;
     let raw = "x".repeat(16_384);
     for (field, cause) in [
         ("removeempty", Cause::EmptyPolicy),
@@ -201,7 +182,7 @@ fn unsupported_setting_diagnostics_and_persisted_causes_drop_raw_text() -> Resul
         ("quote", Cause::Quote),
         ("firstrownames", Cause::HeaderRow),
     ] {
-        let path = temp.0.join(format!("{field}.mfd"));
+        let path = temp.path().join(format!("{field}.mfd"));
         let settings = format!("{field}=\"{raw}\"");
         let design = design(&settings, "", "string", "string");
         let design = design.replace(
@@ -223,7 +204,7 @@ fn unsupported_setting_diagnostics_and_persisted_causes_drop_raw_text() -> Resul
 
 #[test]
 fn supported_settings_survive_native_cycles_without_repair_marker() -> Result<(), Box<dyn Error>> {
-    let temp = TempDir::new()?;
+    let temp = TempDir::new("csv_settings_repair")?;
     for (case, settings, input, header, preserve) in [
         ("defaults", "", "data,7\n", false, false),
         (
@@ -263,7 +244,7 @@ fn supported_settings_survive_native_cycles_without_repair_marker() -> Result<()
             false,
         ),
     ] {
-        let path = temp.0.join(format!("{case}.mfd"));
+        let path = temp.path().join(format!("{case}.mfd"));
         std::fs::write(&path, design(settings, settings, "string", "string"))?;
         let outcome =
             mfd::import_with_profile(&path, &ImportOptions::default(), ImportProfile::Executable)?;
@@ -291,7 +272,7 @@ fn supported_settings_survive_native_cycles_without_repair_marker() -> Result<()
                 )?,
                 rows
             );
-            let output = temp.0.join(format!("{case}-{cycle}.mfd"));
+            let output = temp.path().join(format!("{case}-{cycle}.mfd"));
             let report = mfd::export_with_profile(&project, &output, ExportProfile::NativeMfd)?;
             assert!(report.is_native_compatible());
             let next = mfd::import_with_profile(
@@ -309,8 +290,8 @@ fn supported_settings_survive_native_cycles_without_repair_marker() -> Result<()
 #[test]
 fn native_typed_empty_source_is_persistently_blocked_but_typed_targets_are_supported()
 -> Result<(), Box<dyn Error>> {
-    let temp = TempDir::new()?;
-    let path = temp.0.join("typed-source.mfd");
+    let temp = TempDir::new("csv_settings_repair")?;
+    let path = temp.path().join("typed-source.mfd");
     std::fs::write(
         &path,
         design(
@@ -351,7 +332,7 @@ fn native_typed_empty_source_is_persistently_blocked_but_typed_targets_are_suppo
     assert_eq!(report.issues[0].kind, ImportIssueKind::RuntimeDependency);
     is_repair(
         format_csv::read_with_options(
-            &temp.0.join("missing.json"),
+            &temp.path().join("missing.json"),
             &reopened.project.source,
             &format_csv::CsvReadOptions::from(&reopened.project.source_options),
         ),
@@ -367,12 +348,12 @@ fn native_typed_empty_source_is_persistently_blocked_but_typed_targets_are_suppo
     assert!(engine::run(&reopened.project, &typed).is_ok());
     for profile in [ExportProfile::FerruleExtensions, ExportProfile::NativeMfd] {
         let output = temp
-            .0
+            .path()
             .join(format!("typed-blocked-{profile:?}/mapping.mfd"));
         assert!(mfd::export_with_profile(&reopened.project, &output, profile).is_err());
         assert!(!output.parent().unwrap().exists());
     }
-    let target_path = temp.0.join("typed-target.mfd");
+    let target_path = temp.path().join("typed-target.mfd");
     std::fs::write(
         &target_path,
         design(
@@ -406,7 +387,7 @@ fn native_typed_empty_source_is_persistently_blocked_but_typed_targets_are_suppo
         assert!(
             mfd::export_with_profile(
                 &target.imported.project,
-                &temp.0.join(format!("target-control-{profile:?}.mfd")),
+                &temp.path().join(format!("target-control-{profile:?}.mfd")),
                 profile
             )
             .is_ok()
@@ -443,8 +424,8 @@ fn native_typed_empty_source_is_persistently_blocked_but_typed_targets_are_suppo
 
 #[test]
 fn original_text_and_new_settings_causes_merge_without_losing_any() -> Result<(), Box<dyn Error>> {
-    let temp = TempDir::new()?;
-    let path = temp.0.join("combined.mfd");
+    let temp = TempDir::new("csv_settings_repair")?;
+    let path = temp.path().join("combined.mfd");
     let text = design(
         "removeempty=\"nope\" separator=\"||\" quote=\"||\" firstrownames=\"1\"",
         "",

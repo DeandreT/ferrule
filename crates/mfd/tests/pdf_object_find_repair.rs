@@ -1,28 +1,8 @@
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
-
 use ir::{Instance, Value};
 use mapping::PdfRepairDependency;
 use mfd::{ExportProfile, ImportIssueKind, ImportOptions, ImportProfile, MfdError};
 
-struct TempDir(PathBuf);
-impl TempDir {
-    fn new() -> Self {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_pdf_object_repair_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn template(text_groups: bool) -> String {
     let kind = if text_groups {
@@ -45,10 +25,10 @@ fn design() -> &'static str {
 #[test]
 fn object_finder_preserves_repair_ports_but_blocks_execution_and_export_after_reload() {
     for text_groups in [false, true] {
-        let temp = TempDir::new();
-        let path = temp.0.join("mapping.mfd");
+        let temp = TempDir::new("pdf_object_repair").unwrap();
+        let path = temp.path().join("mapping.mfd");
         std::fs::write(&path, design()).unwrap();
-        std::fs::write(temp.0.join("layout.pxt"), template(text_groups)).unwrap();
+        std::fs::write(temp.path().join("layout.pxt"), template(text_groups)).unwrap();
         let imported = mfd::import(&path).unwrap();
         assert_eq!(imported.warnings.len(), 1, "{:?}", imported.warnings);
         assert!(imported.warnings[0].contains("ObjectFind"));
@@ -95,7 +75,7 @@ fn object_finder_preserves_repair_ports_but_blocks_execution_and_export_after_re
             Some(PdfRepairDependency::ObjectFind)
         );
         assert!(matches!(
-            format_pdf::read(&temp.0.join("does-not-exist.bin"), layout),
+            format_pdf::read(&temp.path().join("does-not-exist.bin"), layout),
             Err(format_pdf::PdfError::RepairDependency(
                 PdfRepairDependency::ObjectFind
             ))
@@ -113,7 +93,7 @@ fn object_finder_preserves_repair_ports_but_blocks_execution_and_export_after_re
             .replace('<', "&lt;")
             .replace('>', "&gt;");
         std::fs::write(
-            temp.0.join("layout.pxt"),
+            temp.path().join("layout.pxt"),
             format!("<Document><FerruleLayout version=\"1\">{payload}</FerruleLayout></Document>"),
         )
         .unwrap();
@@ -122,7 +102,7 @@ fn object_finder_preserves_repair_ports_but_blocks_execution_and_export_after_re
         assert_eq!(canonical.project.pdf_runtime_dependencies().len(), 1);
         assert!(!mfd::assess_import(&canonical).executable);
         for profile in [ExportProfile::FerruleExtensions, ExportProfile::NativeMfd] {
-            let output = temp.0.join(format!("blocked-{profile:?}/mapping.mfd"));
+            let output = temp.path().join(format!("blocked-{profile:?}/mapping.mfd"));
             assert!(
                 matches!(mfd::export_with_profile(&clean_reload.project, &output, profile), Err(MfdError::Unsupported(message)) if message.contains("ObjectFind"))
             );

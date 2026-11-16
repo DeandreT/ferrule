@@ -2,33 +2,11 @@
 mod private_corpus;
 
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use ir::{Instance, Value};
 use rusqlite::Connection;
 
-static NEXT_DIR: AtomicU64 = AtomicU64::new(0);
-
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Self {
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_db_where_export_{}_{}",
-            std::process::id(),
-            NEXT_DIR.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn fixture(directory: &Path) -> PathBuf {
     let database = directory.join("people.sqlite");
@@ -97,16 +75,18 @@ fn names(output: &Instance) -> Vec<String> {
 #[test]
 fn direct_sqlite_like_filter_and_order_round_trip_as_native_where()
 -> Result<(), Box<dyn std::error::Error>> {
-    let directory = TempDir::new();
-    let original_path = fixture(&directory.0);
+    let directory = TempDir::new("db_where_export").unwrap();
+    let original_path = fixture(directory.path());
     let imported = mfd::import(&original_path)?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
-    let source =
-        format_db::read_instance(&directory.0.join("people.sqlite"), &imported.project.source)?;
+    let source = format_db::read_instance(
+        &directory.path().join("people.sqlite"),
+        &imported.project.source,
+    )?;
     let original = engine::run(&imported.project, &source)?;
     assert_eq!(names(&original), ["Bob", "Bex", "Bea"]);
 
-    let native_path = directory.0.join("native.mfd");
+    let native_path = directory.path().join("native.mfd");
     let report = mfd::preflight_export(&imported.project, &native_path)?;
     assert!(report.is_native_compatible(), "{report}");
     mfd::export_with_profile(
@@ -128,7 +108,7 @@ fn direct_sqlite_like_filter_and_order_round_trip_as_native_where()
     }));
     let roundtrip = engine::run(&reimported.project, &source)?;
     assert_eq!(roundtrip, original);
-    let connection = Connection::open(directory.0.join("people.sqlite"))?;
+    let connection = Connection::open(directory.path().join("people.sqlite"))?;
     assert_eq!(
         connection.query_row("SELECT count(*) FROM People", [], |row| row
             .get::<_, i64>(0))?,
@@ -140,8 +120,8 @@ fn direct_sqlite_like_filter_and_order_round_trip_as_native_where()
 #[test]
 fn non_prefix_like_pattern_keeps_the_strict_export_blocker()
 -> Result<(), Box<dyn std::error::Error>> {
-    let directory = TempDir::new();
-    let imported = mfd::import(&fixture(&directory.0))?;
+    let directory = TempDir::new("db_where_export").unwrap();
+    let imported = mfd::import(&fixture(directory.path()))?;
     assert!(imported.warnings.is_empty());
     let mut changed = imported.project;
     let pattern = changed
@@ -156,7 +136,7 @@ fn non_prefix_like_pattern_keeps_the_strict_export_blocker()
         })
         .unwrap();
     *pattern = "_%".to_string();
-    let report = mfd::preflight_export(&changed, &directory.0.join("changed.mfd"))?;
+    let report = mfd::preflight_export(&changed, &directory.path().join("changed.mfd"))?;
     assert!(!report.is_native_compatible());
     assert!(
         report
@@ -170,8 +150,8 @@ fn non_prefix_like_pattern_keeps_the_strict_export_blocker()
 #[test]
 fn shared_like_expression_is_not_absorbed_into_the_database_control()
 -> Result<(), Box<dyn std::error::Error>> {
-    let directory = TempDir::new();
-    let imported = mfd::import(&fixture(&directory.0))?;
+    let directory = TempDir::new("db_where_export").unwrap();
+    let imported = mfd::import(&fixture(directory.path()))?;
     let mut changed = imported.project;
     let like = changed
         .graph
@@ -183,7 +163,7 @@ fn shared_like_expression_is_not_absorbed_into_the_database_control()
         })
         .unwrap();
     changed.root.children[0].bindings[0].node = like;
-    let report = mfd::preflight_export(&changed, &directory.0.join("shared.mfd"))?;
+    let report = mfd::preflight_export(&changed, &directory.path().join("shared.mfd"))?;
     assert!(!report.is_native_compatible());
     assert!(
         report
@@ -197,8 +177,8 @@ fn shared_like_expression_is_not_absorbed_into_the_database_control()
 #[test]
 fn optional_prefix_and_computed_projection_round_trip_with_host_overrides()
 -> Result<(), Box<dyn std::error::Error>> {
-    let directory = TempDir::new();
-    let imported = mfd::import(&fixture(&directory.0))?;
+    let directory = TempDir::new("db_where_export").unwrap();
+    let imported = mfd::import(&fixture(directory.path()))?;
     let mut project = imported.project;
     let default = project.graph.nodes.keys().max().copied().unwrap() + 1;
     let prefix = project
@@ -237,8 +217,9 @@ fn optional_prefix_and_computed_projection_round_trip_with_host_overrides()
     );
     project.root.children[0].bindings[1].node = label;
     assert!(engine::validate(&project).is_empty());
-    let source = format_db::read_instance(&directory.0.join("people.sqlite"), &project.source)?;
-    let native = directory.0.join("optional.mfd");
+    let source =
+        format_db::read_instance(&directory.path().join("people.sqlite"), &project.source)?;
+    let native = directory.path().join("optional.mfd");
     let report = mfd::preflight_export(&project, &native)?;
     assert!(report.is_native_compatible(), "{report}");
     mfd::export_with_profile(&project, &native, mfd::ExportProfile::NativeMfd)?;
@@ -256,7 +237,7 @@ fn optional_prefix_and_computed_projection_round_trip_with_host_overrides()
         let before = engine::run_with_context(&project, &source, &context)?;
         let after = engine::run_with_context(&restored.project, &source, &context)?;
         assert_eq!(after, before, "prefix {prefix:?}");
-        let connection = Connection::open(directory.0.join("people.sqlite"))?;
+        let connection = Connection::open(directory.path().join("people.sqlite"))?;
         let sql_names = connection
             .prepare("SELECT Name FROM People WHERE Name LIKE ?1 ORDER BY Name DESC")?
             .query_map([format!("{prefix}%")], |row| row.get::<_, String>(0))?
@@ -269,7 +250,7 @@ fn optional_prefix_and_computed_projection_round_trip_with_host_overrides()
     let context = engine::ExecutionContext::new(&native).with_parameters(&too_long);
     assert!(engine::run_with_context(&project, &source, &context).is_err());
     assert!(engine::run_with_context(&restored.project, &source, &context).is_err());
-    let connection = Connection::open(directory.0.join("people.sqlite"))?;
+    let connection = Connection::open(directory.path().join("people.sqlite"))?;
     assert!(
         connection
             .query_row(
@@ -292,8 +273,8 @@ fn optional_prefix_and_computed_projection_round_trip_with_host_overrides()
 #[test]
 fn required_host_prefix_keeps_preview_and_run_contract_through_two_native_cycles()
 -> Result<(), Box<dyn std::error::Error>> {
-    let directory = TempDir::new();
-    let original = fixture(&directory.0);
+    let directory = TempDir::new("db_where_export").unwrap();
+    let original = fixture(directory.path());
     let imported = mfd::import(&original)?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     let mut project = imported.project;
@@ -315,11 +296,12 @@ fn required_host_prefix_keeps_preview_and_run_contract_through_two_native_cycles
         },
     );
     assert!(engine::validate(&project).is_empty());
-    let source = format_db::read_instance(&directory.0.join("people.sqlite"), &project.source)?;
+    let source =
+        format_db::read_instance(&directory.path().join("people.sqlite"), &project.source)?;
 
     let mut variants = vec![(original, project)];
     for cycle in 1..=2 {
-        let native = directory.0.join(format!("required-{cycle}.mfd"));
+        let native = directory.path().join(format!("required-{cycle}.mfd"));
         let report = mfd::preflight_export(&variants.last().unwrap().1, &native)?;
         assert!(report.is_native_compatible(), "cycle {cycle}: {report}");
         mfd::export_with_profile(
@@ -401,8 +383,8 @@ fn local_phone_list_native_roundtrip_keeps_optional_prefix_and_related_fields()
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     let source =
         format_db::read_instance(&samples.join("Altova.sqlite"), &imported.project.source)?;
-    let directory = TempDir::new();
-    let native = directory.0.join("phone-list.mfd");
+    let directory = TempDir::new("db_where_export").unwrap();
+    let native = directory.path().join("phone-list.mfd");
     let report = mfd::preflight_export(&imported.project, &native)?;
     assert!(report.is_native_compatible(), "{report}");
     mfd::export_with_profile(&imported.project, &native, mfd::ExportProfile::NativeMfd)?;
@@ -431,7 +413,7 @@ fn local_phone_list_native_roundtrip_keeps_optional_prefix_and_related_fields()
     );
     let after = engine::run(&restored.project, &source)?;
     let xml_bytes = |project: &mapping::Project, value: &Instance, name: &str| {
-        let path = directory.0.join(name);
+        let path = directory.path().join(name);
         format_xml::write(&path, &project.target, value)?;
         std::fs::read(path).map_err(Box::<dyn std::error::Error>::from)
     };
@@ -464,8 +446,8 @@ fn local_filter_database_records_strict_export_reimports_same_output()
         .join("../../samples/ReferenceSamples/Tutorial/FilterDatabaseRecords.mfd");
     let imported = mfd::import(&sample)?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
-    let directory = TempDir::new();
-    let native = directory.0.join("native.mfd");
+    let directory = TempDir::new("db_where_export").unwrap();
+    let native = directory.path().join("native.mfd");
     let report = mfd::preflight_export(&imported.project, &native)?;
     assert!(report.is_native_compatible(), "{report}");
     mfd::export_with_profile(&imported.project, &native, mfd::ExportProfile::NativeMfd)?;

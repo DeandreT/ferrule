@@ -1,46 +1,21 @@
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::path::Path;
 
 use ir::{Instance, Value, XML_TEXT_FIELD};
 use mapping::IterationOutput;
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Self {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_generated_occurrence_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
-
-fn write(path: &Path, text: &str) {
-    std::fs::write(path, text).unwrap();
-}
+use test_support::TempDir;
 
 fn write_fixture(dir: &Path) {
-    write(
-        &dir.join("source.xsd"),
+    std::fs::write(
+        dir.join("source.xsd"),
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Source"><xs:complexType><xs:sequence><xs:element name="Record" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Label" type="xs:string"/><xs:element name="Base" type="xs:decimal"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
-    );
-    write(
-        &dir.join("target.xsd"),
+    ).unwrap();
+    std::fs::write(
+        dir.join("target.xsd"),
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Target"><xs:complexType><xs:sequence><xs:element name="Item" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Label" type="xs:string"/><xs:element name="Literal" type="xs:string"/><xs:element name="Price"><xs:complexType><xs:simpleContent><xs:extension base="xs:decimal"><xs:attribute name="discount" type="xs:decimal"/></xs:extension></xs:simpleContent></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
-    );
-    write(
-        &dir.join("mapping.mfd"),
+    ).unwrap();
+    std::fs::write(
+        dir.join("mapping.mfd"),
         r#"<mapping version="26"><component name="map"><structure><children>
           <component name="source" library="xml" kind="14"><data><root><entry name="FileInstance"><entry name="document"><entry name="Source"><entry name="Record" outkey="10"><entry name="Label" outkey="11"/><entry name="Base" outkey="12"/></entry></entry></entry></entry></root><document schema="source.xsd" inputinstance="source.xml" instanceroot="{}Source"/></data></component>
           <component name="constant" library="core" kind="2"><targets><datapoint pos="0" key="20"/></targets><data><constant value="0" datatype="decimal"/></data></component>
@@ -61,13 +36,13 @@ fn write_fixture(dir: &Path) {
           <vertex vertexkey="33"><edges><edge vertexkey="42"/></edges></vertex>
           <vertex vertexkey="36"><edges><edge vertexkey="43"/></edges></vertex>
         </vertices></graph></structure></component></mapping>"#,
-    );
+    ).unwrap();
 }
 
 fn rewrite_mapping(dir: &Path, rewrite: impl FnOnce(String) -> String) {
     let path = dir.join("mapping.mfd");
     let mapping = std::fs::read_to_string(&path).unwrap();
-    write(&path, &rewrite(mapping));
+    std::fs::write(&path, rewrite(mapping)).unwrap();
 }
 
 fn price_values(item: &Instance) -> Vec<(f64, f64)> {
@@ -101,9 +76,9 @@ fn number(value: &Value) -> Option<f64> {
 
 #[test]
 fn computed_descendants_generate_mapped_text_occurrences_per_outer_item() {
-    let dir = TempDir::new();
-    write_fixture(&dir.0);
-    let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+    let dir = TempDir::new("mfd_generated_occurrence").unwrap();
+    write_fixture(dir.path());
+    let imported = mfd::import(&dir.path().join("mapping.mfd")).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(
         engine::validate(&imported.project).is_empty(),
@@ -159,7 +134,7 @@ fn computed_descendants_generate_mapped_text_occurrences_per_outer_item() {
     assert!(xml.contains("<Label>A</Label>"));
     assert!(xml.contains("<Label>B</Label>"));
 
-    let exported = dir.0.join("roundtrip.mfd");
+    let exported = dir.path().join("roundtrip.mfd");
     assert!(
         mfd::export(&imported.project, &exported)
             .unwrap()
@@ -179,9 +154,9 @@ fn computed_descendants_generate_mapped_text_occurrences_per_outer_item() {
 
 #[test]
 fn scalar_reducer_owns_its_sequence_and_does_not_create_an_occurrence_scope() {
-    let dir = TempDir::new();
-    write_fixture(&dir.0);
-    rewrite_mapping(&dir.0, |mapping| {
+    let dir = TempDir::new("mfd_generated_occurrence").unwrap();
+    write_fixture(dir.path());
+    rewrite_mapping(dir.path(), |mapping| {
         mapping
             .replace(
                 r#"<component name="add" library="core" kind="5"><sources><datapoint pos="0" key="31"/><datapoint pos="1" key="32"/></sources><targets><datapoint pos="0" key="33"/></targets></component>"#,
@@ -197,7 +172,7 @@ fn scalar_reducer_owns_its_sequence_and_does_not_create_an_occurrence_scope() {
             )
     });
 
-    let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+    let imported = mfd::import(&dir.path().join("mapping.mfd")).unwrap();
     assert!(imported.warnings.iter().any(|warning| {
         warning.contains(
             "sequence function `generate-sequence` is not connected to a repeating target",
@@ -217,9 +192,9 @@ fn scalar_reducer_owns_its_sequence_and_does_not_create_an_occurrence_scope() {
 
 #[test]
 fn multiple_generated_dependencies_warn_and_do_not_guess_sequence_alignment() {
-    let dir = TempDir::new();
-    write_fixture(&dir.0);
-    rewrite_mapping(&dir.0, |mapping| {
+    let dir = TempDir::new("mfd_generated_occurrence").unwrap();
+    write_fixture(dir.path());
+    rewrite_mapping(dir.path(), |mapping| {
         mapping
             .replace(
                 r#"<component name="add" library="core" kind="5"><sources><datapoint pos="0" key="31"/><datapoint pos="1" key="32"/></sources>"#,
@@ -243,7 +218,7 @@ fn multiple_generated_dependencies_warn_and_do_not_guess_sequence_alignment() {
             )
     });
 
-    let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+    let imported = mfd::import(&dir.path().join("mapping.mfd")).unwrap();
     assert!(imported.warnings.iter().any(|warning| {
         warning.contains("depends on multiple generated sequences; occurrence inference skipped")
     }));

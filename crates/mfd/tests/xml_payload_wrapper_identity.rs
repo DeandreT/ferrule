@@ -1,31 +1,12 @@
 use std::collections::BTreeMap;
 use std::error::Error;
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{ScalarType, SchemaNode};
 use mapping::{Binding, FormatOptions, Graph, Node, Project, Scope};
 
 type TestResult = Result<(), Box<dyn Error>>;
 
-struct TempDir(PathBuf);
-impl TempDir {
-    fn new() -> std::io::Result<Self> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_xml_entry_identity_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir(&path)?;
-        Ok(Self(path))
-    }
-}
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn qualified(node: SchemaNode, namespace: &str) -> SchemaNode {
     node.xml_qualified(namespace)
@@ -100,8 +81,8 @@ fn check_payloads(namespace: Option<Option<&str>>) -> TestResult {
             vec![name(SchemaNode::scalar("document", ScalarType::String))],
         ));
         let project = project(source, target, &[(&["FileInstance"], "document")]);
-        let directory = TempDir::new()?;
-        let design = directory.0.join("mapping.mfd");
+        let directory = TempDir::new("xml_entry_identity")?;
+        let design = directory.path().join("mapping.mfd");
         assert!(mfd::export(&project, &design)?.is_empty());
         let imported = mfd::import(&design)?;
         assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);

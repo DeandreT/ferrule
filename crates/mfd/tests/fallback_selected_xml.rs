@@ -1,45 +1,14 @@
 use std::error::Error;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::path::Path;
 
 use ir::{Instance, Value};
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new(tag: &str) -> Result<Self, std::io::Error> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule-mfd-selected-xml-{tag}-{}-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map_or(0, |duration| duration.as_nanos()),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-
-    fn path(&self, name: &str) -> PathBuf {
-        self.0.join(name)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
-
-fn write(path: &Path, contents: &str) -> Result<(), std::io::Error> {
-    std::fs::write(path, contents)
-}
+use test_support::TempDir;
 
 fn write_payload_schema(path: &Path, namespace: &str, field: &str) -> Result<(), std::io::Error> {
-    write(
+    std::fs::write(
         path,
-        &format!(
+        format!(
             r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
     targetNamespace="{namespace}" elementFormDefault="qualified">
   <xs:element name="Order"><xs:complexType><xs:sequence>
@@ -51,7 +20,7 @@ fn write_payload_schema(path: &Path, namespace: &str, field: &str) -> Result<(),
 }
 
 fn write_target_schema(path: &Path) -> Result<(), std::io::Error> {
-    write(
+    std::fs::write(
         path,
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:element name="Results"><xs:complexType><xs:sequence>
@@ -99,12 +68,12 @@ fn selected_qname_replaces_an_existing_fallback_placeholder_and_executes()
 -> Result<(), Box<dyn Error>> {
     let directory = TempDir::new("exact")?;
     write_payload_schema(
-        &directory.path("payload.xsd"),
+        &directory.join("payload.xsd"),
         "urn:ferrule:selected-order",
         "Code",
     )?;
-    write(
-        &directory.path("source.xsd"),
+    directory.write(
+        "source.xsd",
         r###"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
     targetNamespace="urn:ferrule:envelope"
     xmlns:e="urn:ferrule:envelope">
@@ -117,11 +86,11 @@ fn selected_qname_replaces_an_existing_fallback_placeholder_and_executes()
   </xs:sequence></xs:complexType></xs:element>
 </xs:schema>"###,
     )?;
-    write_target_schema(&directory.path("target.xsd"))?;
-    let design = directory.path("mapping.mfd");
-    write(
+    write_target_schema(&directory.join("target.xsd"))?;
+    let design = directory.join("mapping.mfd");
+    std::fs::write(
         &design,
-        &mapping(r#"<qname QNameAsString="{urn:ferrule:selected-order}Order"/>"#),
+        mapping(r#"<qname QNameAsString="{urn:ferrule:selected-order}Order"/>"#),
     )?;
 
     let imported = mfd::import(&design)?;
@@ -167,17 +136,17 @@ fn colliding_selected_qnames_warn_and_retain_the_fallback_placeholder() -> Resul
 {
     let directory = TempDir::new("ambiguous")?;
     write_payload_schema(
-        &directory.path("payload-a.xsd"),
+        &directory.join("payload-a.xsd"),
         "urn:ferrule:selected-a",
         "Code",
     )?;
     write_payload_schema(
-        &directory.path("payload-b.xsd"),
+        &directory.join("payload-b.xsd"),
         "urn:ferrule:selected-b",
         "Reference",
     )?;
-    write(
-        &directory.path("source.xsd"),
+    directory.write(
+        "source.xsd",
         r###"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
     targetNamespace="urn:ferrule:envelope">
   <xs:import namespace="urn:ferrule:selected-a" schemaLocation="payload-a.xsd"/>
@@ -190,11 +159,11 @@ fn colliding_selected_qnames_warn_and_retain_the_fallback_placeholder() -> Resul
   </xs:sequence></xs:complexType></xs:element>
 </xs:schema>"###,
     )?;
-    write_target_schema(&directory.path("target.xsd"))?;
-    let design = directory.path("mapping.mfd");
-    write(
+    write_target_schema(&directory.join("target.xsd"))?;
+    let design = directory.join("mapping.mfd");
+    std::fs::write(
         &design,
-        &mapping(
+        mapping(
             r#"<qname QNameAsString="{urn:ferrule:selected-a}Order"/>
                <qname QNameAsString="{urn:ferrule:selected-b}Order"/>"#,
         ),
@@ -224,8 +193,8 @@ fn colliding_selected_qnames_warn_and_retain_the_fallback_placeholder() -> Resul
 fn structured_selected_field_does_not_replace_an_exposed_fallback_scalar()
 -> Result<(), Box<dyn Error>> {
     let directory = TempDir::new("incompatible")?;
-    write(
-        &directory.path("payload.xsd"),
+    directory.write(
+        "payload.xsd",
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
     targetNamespace="urn:ferrule:selected-order" elementFormDefault="qualified">
   <xs:element name="Order"><xs:complexType><xs:sequence>
@@ -235,8 +204,8 @@ fn structured_selected_field_does_not_replace_an_exposed_fallback_scalar()
   </xs:sequence></xs:complexType></xs:element>
 </xs:schema>"#,
     )?;
-    write(
-        &directory.path("source.xsd"),
+    directory.write(
+        "source.xsd",
         r###"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
     targetNamespace="urn:ferrule:envelope">
   <xs:import namespace="urn:ferrule:selected-order" schemaLocation="payload.xsd"/>
@@ -248,11 +217,11 @@ fn structured_selected_field_does_not_replace_an_exposed_fallback_scalar()
   </xs:sequence></xs:complexType></xs:element>
 </xs:schema>"###,
     )?;
-    write_target_schema(&directory.path("target.xsd"))?;
-    let design = directory.path("mapping.mfd");
-    write(
+    write_target_schema(&directory.join("target.xsd"))?;
+    let design = directory.join("mapping.mfd");
+    std::fs::write(
         &design,
-        &mapping(r#"<qname QNameAsString="{urn:ferrule:selected-order}Order"/>"#),
+        mapping(r#"<qname QNameAsString="{urn:ferrule:selected-order}Order"/>"#),
     )?;
 
     let imported = mfd::import(&design)?;

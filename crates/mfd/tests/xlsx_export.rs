@@ -9,24 +9,7 @@ fn fixture(name: &str) -> PathBuf {
         .join(name)
 }
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new(tag: &str) -> Self {
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_xlsx_export_{tag}_{}",
-            std::process::id()
-        ));
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn scalar(value: Value) -> Instance {
     Instance::Scalar(value)
@@ -54,8 +37,8 @@ fn exports_and_reimports_flat_xlsx_target() {
     project.target_options.has_header_row = Some(true);
     project.target_options.xlsx_update_existing = true;
 
-    let dir = TempDir::new("target");
-    let design = dir.0.join("mapping.mfd");
+    let dir = TempDir::new("target").unwrap();
+    let design = dir.path().join("mapping.mfd");
     let warnings = mfd::export(&project, &design).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
 
@@ -75,7 +58,7 @@ fn exports_and_reimports_flat_xlsx_target() {
     assert!(text.contains("constant value=\"5\" datatype=\"long\""));
     assert!(text.contains("enabletitlerow=\"1\""), "{text}");
     assert!(text.contains("updateexistingfile=\"1\""), "{text}");
-    assert!(!dir.0.join("mapping-target.xsd").exists());
+    assert!(!dir.path().join("mapping-target.xsd").exists());
 
     let imported = mfd::import(&design).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
@@ -110,8 +93,8 @@ fn pathless_xlsx_identity_exports_and_reimports() {
     project.target_options.delimiter = None;
     project.target_options.xlsx_sheet = Some("People".into());
 
-    let dir = TempDir::new("pathless-target");
-    let design = dir.0.join("mapping.mfd");
+    let dir = TempDir::new("pathless-target").unwrap();
+    let design = dir.path().join("mapping.mfd");
     let warnings = mfd::export(&project, &design).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
 
@@ -136,8 +119,8 @@ fn exports_and_reimports_flat_xlsx_source() {
     project.source_options.xlsx_columns = vec![1, 3, 4];
     project.source_options.has_header_row = Some(true);
 
-    let dir = TempDir::new("source");
-    let design = dir.0.join("mapping.mfd");
+    let dir = TempDir::new("source").unwrap();
+    let design = dir.path().join("mapping.mfd");
     let warnings = mfd::export(&project, &design).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
 
@@ -170,8 +153,8 @@ fn unsupported_xlsx_schema_does_not_replace_existing_design() {
     project.target_options.xml_document = false;
     project.target_options.xlsx_sheet = Some("Nested".into());
 
-    let dir = TempDir::new("atomic");
-    let design = dir.0.join("mapping.mfd");
+    let dir = TempDir::new("atomic").unwrap();
+    let design = dir.path().join("mapping.mfd");
     std::fs::write(&design, "existing design").unwrap();
 
     assert!(matches!(
@@ -180,7 +163,7 @@ fn unsupported_xlsx_schema_does_not_replace_existing_design() {
             if message.contains("XLSX worksheet") && message.contains("not a flat group")
     ));
     assert_eq!(std::fs::read_to_string(&design).unwrap(), "existing design");
-    assert!(!dir.0.join("mapping-source.xsd").exists());
+    assert!(!dir.path().join("mapping-source.xsd").exists());
 }
 
 #[test]
@@ -189,8 +172,8 @@ fn exports_and_reimports_transposed_xlsx_source() {
         .unwrap()
         .project;
 
-    let dir = TempDir::new("transposed");
-    let design = dir.0.join("mapping.mfd");
+    let dir = TempDir::new("transposed").unwrap();
+    let design = dir.path().join("mapping.mfd");
     let warnings = mfd::export(&project, &design).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
 
@@ -225,8 +208,8 @@ fn exports_and_reimports_transposed_xlsx_source() {
 fn exports_and_reimports_composite_xlsx_sources() {
     for fixture_name in ["xlsx-composite-xml.mfd", "xlsx-composite-json.mfd"] {
         let project = mfd::import(&fixture(fixture_name)).unwrap().project;
-        let dir = TempDir::new(fixture_name);
-        let design = dir.0.join("mapping.mfd");
+        let dir = TempDir::new(fixture_name).unwrap();
+        let design = dir.path().join("mapping.mfd");
         let warnings = mfd::export(&project, &design).unwrap();
         assert!(warnings.is_empty(), "{fixture_name}: {warnings:?}");
 
@@ -310,8 +293,8 @@ fn exports_and_reimports_composite_xlsx_sources() {
 fn exports_and_reimports_all_worksheet_sources() {
     let imported = mfd::import(&fixture("xlsx-worksheet-set.mfd")).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
-    let dir = TempDir::new("worksheet_set");
-    let design = dir.0.join("mapping.mfd");
+    let dir = TempDir::new("worksheet_set").unwrap();
+    let design = dir.path().join("mapping.mfd");
 
     let warnings = mfd::export(&imported.project, &design).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
@@ -337,8 +320,8 @@ fn exports_and_reimports_all_worksheet_sources() {
 fn exports_and_reimports_multiple_static_xlsx_tables() {
     let imported = mfd::import(&fixture("xlsx-multi-table.mfd")).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
-    let dir = TempDir::new("multiple_tables");
-    let design = dir.0.join("mapping.mfd");
+    let dir = TempDir::new("multiple_tables").unwrap();
+    let design = dir.path().join("mapping.mfd");
 
     let warnings = mfd::export(&imported.project, &design).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
@@ -366,8 +349,8 @@ fn exports_and_reimports_multiple_static_xlsx_tables() {
 #[test]
 fn exports_and_reimports_grid_xlsx_source() {
     let project = mfd::import(&fixture("xlsx-grid.mfd")).unwrap().project;
-    let dir = TempDir::new("grid");
-    let design = dir.0.join("mapping.mfd");
+    let dir = TempDir::new("grid").unwrap();
+    let design = dir.path().join("mapping.mfd");
     let warnings = mfd::export(&project, &design).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
 
@@ -417,8 +400,8 @@ fn invalid_special_xlsx_layout_does_not_replace_existing_design() {
         .project;
     project.source_options.xlsx_rows[1] = project.source_options.xlsx_rows[0];
 
-    let dir = TempDir::new("special-atomic");
-    let design = dir.0.join("mapping.mfd");
+    let dir = TempDir::new("special-atomic").unwrap();
+    let design = dir.path().join("mapping.mfd");
     std::fs::write(&design, "existing design").unwrap();
 
     assert!(matches!(
@@ -436,8 +419,8 @@ fn exports_and_reimports_hierarchical_xlsx_target() {
     assert!(project.target_options.xlsx_hierarchical.is_some());
     project.target_path = Some("report.xlsx".into());
 
-    let dir = TempDir::new("hierarchical");
-    let design = dir.0.join("mapping.mfd");
+    let dir = TempDir::new("hierarchical").unwrap();
+    let design = dir.path().join("mapping.mfd");
     let warnings = mfd::export(&project, &design).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
 
@@ -461,12 +444,12 @@ fn exports_and_reimports_hierarchical_xlsx_target() {
 
 #[test]
 fn hierarchical_update_existing_target_imports_runs_and_roundtrips() {
-    let dir = TempDir::new("hierarchical-update");
+    let dir = TempDir::new("hierarchical-update").unwrap();
     for name in [
         "xlsx-hierarchical-source.xsd",
         "xlsx-hierarchical-source.xml",
     ] {
-        std::fs::copy(fixture(name), dir.0.join(name)).unwrap();
+        std::fs::copy(fixture(name), dir.path().join(name)).unwrap();
     }
     let original = std::fs::read_to_string(fixture("xlsx-hierarchical.mfd")).unwrap();
     let text = original.replace(
@@ -474,7 +457,7 @@ fn hierarchical_update_existing_target_imports_runs_and_roundtrips() {
         "<excel outputinstance=\"report.xlsx\" updateexistingfile=\"1\"/>",
     );
     assert_ne!(text, original);
-    let design = dir.0.join("update.mfd");
+    let design = dir.path().join("update.mfd");
     std::fs::write(&design, text).unwrap();
 
     let imported = mfd::import(&design).unwrap();
@@ -492,7 +475,7 @@ fn hierarchical_update_existing_target_imports_runs_and_roundtrips() {
     let source =
         format_xml::read(&fixture("xlsx-hierarchical-source.xml"), &project.source).unwrap();
     let target = engine::run(&project, &source).unwrap();
-    let workbook_path = dir.0.join("report.xlsx");
+    let workbook_path = dir.path().join("report.xlsx");
     let mut workbook = rust_xlsxwriter::Workbook::new();
     workbook
         .add_worksheet()
@@ -519,7 +502,7 @@ fn hierarchical_update_existing_target_imports_runs_and_roundtrips() {
         format_xlsx::from_bytes_hierarchical(&fresh, &project.target, layout).unwrap()
     );
 
-    let exported = dir.0.join("exported.mfd");
+    let exported = dir.path().join("exported.mfd");
     let warnings = mfd::export(&project, &exported).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
     let text = std::fs::read_to_string(&exported).unwrap();
@@ -548,8 +531,8 @@ fn invalid_hierarchical_xlsx_layout_does_not_replace_existing_design() {
         .ranges[0]
         .count = None;
 
-    let dir = TempDir::new("hierarchical-atomic");
-    let design = dir.0.join("mapping.mfd");
+    let dir = TempDir::new("hierarchical-atomic").unwrap();
+    let design = dir.path().join("mapping.mfd");
     std::fs::write(&design, "existing design").unwrap();
 
     assert!(matches!(
@@ -558,7 +541,7 @@ fn invalid_hierarchical_xlsx_layout_does_not_replace_existing_design() {
             if message.contains("row count of one")
     ));
     assert_eq!(std::fs::read_to_string(&design).unwrap(), "existing design");
-    assert!(!dir.0.join("mapping-source.xsd").exists());
+    assert!(!dir.path().join("mapping-source.xsd").exists());
 }
 
 #[test]
@@ -567,8 +550,8 @@ fn invalid_xlsx_coordinates_are_rejected() {
     project.target_path = Some("people.xlsx".into());
     project.target_options.xlsx_start_row = Some(0);
 
-    let dir = TempDir::new("coordinates");
-    let design = dir.0.join("mapping.mfd");
+    let dir = TempDir::new("coordinates").unwrap();
+    let design = dir.path().join("mapping.mfd");
     assert!(matches!(
         mfd::export(&project, &design),
         Err(mfd::MfdError::Unsupported(message)) if message.contains("start row")

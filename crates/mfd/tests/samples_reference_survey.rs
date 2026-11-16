@@ -283,7 +283,9 @@ fn require_registered_server() -> Result<(), Box<dyn Error>> {
     let prefix = std::env::var_os("WINEPREFIX")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from(home).join(".wine"));
-    let server = prefix.join("drive_c/Program Files/ReferenceApp").join(REFERENCE_EXECUTABLE);
+    let server = prefix
+        .join("drive_c/Program Files/ReferenceApp")
+        .join(REFERENCE_EXECUTABLE);
     if !server.is_file() {
         return Err(format!(
             "the registered Wine COM server is unavailable at {}; link the local ref-app directory there without copying it",
@@ -987,30 +989,30 @@ fn safety_preflight_rejects_external_publication_and_network_inputs() {
         r#"<mapping><component library="db"/></mapping>"#,
         r#"<mapping><excel updateexistingfile="1"/></mapping>"#,
     ];
-    let directory = TestDir::new("unsafe");
+    let directory = TestDir::new("unsafe").unwrap();
     for (index, contents) in cases.iter().enumerate() {
-        let path = directory.0.join(format!("case-{index}.mfd"));
+        let path = directory.path().join(format!("case-{index}.mfd"));
         fs::write(&path, contents).unwrap();
-        assert!(safe_mapping(&path, &directory.0).is_err(), "{contents}");
+        assert!(safe_mapping(&path, directory.path()).is_err(), "{contents}");
     }
 }
 
 #[test]
 fn safety_preflight_accepts_local_inputs_and_pathless_outputs() {
-    let directory = TestDir::new("safe");
-    let path = directory.0.join("safe.mfd");
+    let directory = TestDir::new("safe").unwrap();
+    let path = directory.path().join("safe.mfd");
     fs::write(
         &path,
         r#"<mapping><component library="xml"><document inputinstance="input.xml" outputinstance="unused-source.xml"/></component><component library="json"><json outputinstance="result.json"/></component></mapping>"#,
     )
     .unwrap();
-    assert!(safe_mapping(&path, &directory.0).is_ok());
+    assert!(safe_mapping(&path, directory.path()).is_ok());
 }
 
 #[test]
 fn database_source_preflight_stages_an_independent_local_context() {
-    let directory = TestDir::new("database_source");
-    let samples = directory.0.join("samples");
+    let directory = TestDir::new("database_source").unwrap();
+    let samples = directory.path().join("samples");
     fs::create_dir(&samples).unwrap();
     let database = samples.join("source.sqlite");
     fs::write(&database, b"SQLite format 3\0self-authored fixture").unwrap();
@@ -1027,7 +1029,7 @@ fn database_source_preflight_stages_an_independent_local_context() {
         safety.database_sources,
         vec![database.canonicalize().unwrap()]
     );
-    let stage_root = directory.0.join("stage");
+    let stage_root = directory.path().join("stage");
     let staged = stage_mapping_context(&mapping, &stage_root, &safety).unwrap();
     assert!(staged.design().is_file());
     assert_eq!(
@@ -1046,8 +1048,8 @@ fn database_source_preflight_stages_an_independent_local_context() {
 
 #[test]
 fn database_source_preflight_rejects_target_mixed_and_mutating_components() {
-    let directory = TestDir::new("database_direction");
-    let database = directory.0.join("source.sqlite");
+    let directory = TestDir::new("database_direction").unwrap();
+    let database = directory.path().join("source.sqlite");
     fs::write(&database, b"SQLite format 3\0self-authored fixture").unwrap();
     let cases = [
         (r#"<entry name="Rows" inpkey="1"/>"#, "", "connected target"),
@@ -1068,14 +1070,14 @@ fn database_source_preflight_rejects_target_mixed_and_mutating_components() {
         ),
     ];
     for (index, (entry, connection_extra, label)) in cases.iter().enumerate() {
-        let mapping = directory.0.join(format!("case-{index}.mfd"));
+        let mapping = directory.path().join(format!("case-{index}.mfd"));
         fs::write(
             &mapping,
             database_mapping("source.sqlite", entry, connection_extra),
         )
         .unwrap();
         assert!(
-            safe_mapping(&mapping, &directory.0).is_err(),
+            safe_mapping(&mapping, directory.path()).is_err(),
             "{label} was accepted"
         );
     }
@@ -1083,64 +1085,64 @@ fn database_source_preflight_rejects_target_mixed_and_mutating_components() {
 
 #[test]
 fn database_source_preflight_rejects_missing_ambiguous_and_sidecar_paths() {
-    let directory = TestDir::new("database_paths");
-    let database = directory.0.join("source.sqlite");
+    let directory = TestDir::new("database_paths").unwrap();
+    let database = directory.path().join("source.sqlite");
     fs::write(&database, b"SQLite format 3\0self-authored fixture").unwrap();
 
-    let missing = directory.0.join("missing.mfd");
+    let missing = directory.path().join("missing.mfd");
     fs::write(
         &missing,
         database_mapping("missing.sqlite", r#"<entry outkey="1"/>"#, ""),
     )
     .unwrap();
-    assert!(safe_mapping(&missing, &directory.0).is_err());
+    assert!(safe_mapping(&missing, directory.path()).is_err());
 
-    let outside = directory.0.join("outside.mfd");
+    let outside = directory.path().join("outside.mfd");
     fs::write(
         &outside,
         database_mapping("../source.sqlite", r#"<entry outkey="1"/>"#, ""),
     )
     .unwrap();
-    assert!(safe_mapping(&outside, &directory.0).is_err());
+    assert!(safe_mapping(&outside, directory.path()).is_err());
 
-    let ambiguous = directory.0.join("ambiguous.mfd");
+    let ambiguous = directory.path().join("ambiguous.mfd");
     let text = database_mapping("source.sqlite", r#"<entry outkey="1"/>"#, "").replace(
         "DBDataSource=\"source.sqlite\"",
         "DBDataSource=\"other.sqlite\"",
     );
     fs::write(&ambiguous, text).unwrap();
-    assert!(safe_mapping(&ambiguous, &directory.0).is_err());
+    assert!(safe_mapping(&ambiguous, directory.path()).is_err());
 
-    let sidecar = directory.0.join("sidecar.mfd");
+    let sidecar = directory.path().join("sidecar.mfd");
     fs::write(
         &sidecar,
         database_mapping("source.sqlite", r#"<entry outkey="1"/>"#, ""),
     )
     .unwrap();
-    fs::write(directory.0.join("source.sqlite-wal"), b"active").unwrap();
-    assert!(safe_mapping(&sidecar, &directory.0).is_err());
+    fs::write(directory.path().join("source.sqlite-wal"), b"active").unwrap();
+    assert!(safe_mapping(&sidecar, directory.path()).is_err());
 }
 
 #[cfg(unix)]
 #[test]
 fn database_source_preflight_rejects_symlinked_database_paths() {
-    let directory = TestDir::new("database_symlink");
-    let database = directory.0.join("real.sqlite");
+    let directory = TestDir::new("database_symlink").unwrap();
+    let database = directory.path().join("real.sqlite");
     fs::write(&database, b"SQLite format 3\0self-authored fixture").unwrap();
-    std::os::unix::fs::symlink(&database, directory.0.join("source.sqlite")).unwrap();
-    let mapping = directory.0.join("source.mfd");
+    std::os::unix::fs::symlink(&database, directory.path().join("source.sqlite")).unwrap();
+    let mapping = directory.path().join("source.mfd");
     fs::write(
         &mapping,
         database_mapping("source.sqlite", r#"<entry outkey="1"/>"#, ""),
     )
     .unwrap();
-    assert!(safe_mapping(&mapping, &directory.0).is_err());
+    assert!(safe_mapping(&mapping, directory.path()).is_err());
 }
 
 #[test]
 fn wine_paths_use_the_local_z_drive_without_loss() {
-    let directory = TestDir::new("wine_path");
-    let path = directory.0.join("mapping.mfd");
+    let directory = TestDir::new("wine_path").unwrap();
+    let path = directory.path().join("mapping.mfd");
     fs::write(&path, "<mapping/>").unwrap();
     let converted = wine_path(&path).unwrap();
     assert!(converted.starts_with("Z:\\"), "{converted}");
@@ -1162,22 +1164,4 @@ fn database_mapping(database: &str, entries: &str, connection_extra: &str) -> St
     )
 }
 
-struct TestDir(PathBuf);
-
-impl TestDir {
-    fn new(label: &str) -> Self {
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_reference_output_{label}_{}",
-            std::process::id()
-        ));
-        let _ = fs::remove_dir_all(&path);
-        fs::create_dir(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for TestDir {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir as TestDir;

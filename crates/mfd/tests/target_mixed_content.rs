@@ -1,45 +1,22 @@
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
-
 use ir::{Instance, Value, XML_MIXED_CONTENT_FIELD, XML_NODE_NAME_FIELD};
 use mapping::ScopeConstruction;
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Self {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_target_mixed_content_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 #[test]
 fn mapped_mixed_children_retain_source_document_order() {
-    let directory = TempDir::new();
+    let directory = TempDir::new("mfd_target_mixed_content").unwrap();
     std::fs::write(
-        directory.0.join("source.xsd"),
+        directory.path().join("source.xsd"),
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Input"><xs:complexType><xs:sequence><xs:element name="Body" maxOccurs="unbounded"><xs:complexType mixed="true"><xs:choice minOccurs="0" maxOccurs="unbounded"><xs:element name="Strong" type="xs:string"/><xs:element name="Em" type="xs:string"/></xs:choice></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
     )
     .unwrap();
     std::fs::write(
-        directory.0.join("target.xsd"),
+        directory.path().join("target.xsd"),
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Output"><xs:complexType><xs:sequence><xs:element name="Description"><xs:complexType mixed="true"><xs:choice minOccurs="0" maxOccurs="unbounded"><xs:element name="Bold" type="xs:string"/><xs:element name="Italic" type="xs:string"/></xs:choice></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
     )
     .unwrap();
-    let design = directory.0.join("mapping.mfd");
+    let design = directory.path().join("mapping.mfd");
     std::fs::write(
         &design,
         r##"<mapping version="26"><component name="map"><structure><children>
@@ -103,7 +80,7 @@ fn mapped_mixed_children_retain_source_document_order() {
         "{xml}"
     );
 
-    let exported = directory.0.join("roundtrip.mfd");
+    let exported = directory.path().join("roundtrip.mfd");
     assert!(
         mfd::export(&imported.project, &exported)
             .unwrap()

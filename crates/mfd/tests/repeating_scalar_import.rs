@@ -1,42 +1,22 @@
-use std::path::PathBuf;
-
 use ir::Instance;
 use mapping::ScopeConstruction;
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Self {
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_repeating_scalar_import_{}",
-            std::process::id()
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 #[test]
 fn direct_repeating_scalar_wire_imports_as_scalar_iteration() {
-    let directory = TempDir::new();
+    let directory = TempDir::new("mfd_repeating_scalar_import").unwrap();
     std::fs::write(
-        directory.0.join("source.xsd"),
+        directory.path().join("source.xsd"),
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Source"><xs:complexType><xs:sequence><xs:element name="Value" type="xs:string" maxOccurs="unbounded"/></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
     )
     .unwrap();
     std::fs::write(
-        directory.0.join("target.xsd"),
+        directory.path().join("target.xsd"),
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Target"><xs:complexType><xs:sequence><xs:element name="Value" type="xs:string" maxOccurs="unbounded"/></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
     )
     .unwrap();
-    let design = directory.0.join("mapping.mfd");
+    let design = directory.path().join("mapping.mfd");
     std::fs::write(
         &design,
         r#"<mapping version="26"><component name="map"><structure><children>
@@ -75,7 +55,7 @@ fn direct_repeating_scalar_wire_imports_as_scalar_iteration() {
         Some(&ir::Value::String("second".into()))
     );
 
-    let exported_design = directory.0.join("roundtrip.mfd");
+    let exported_design = directory.path().join("roundtrip.mfd");
     assert!(
         mfd::export(&imported.project, &exported_design)
             .unwrap()

@@ -1,6 +1,5 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{Instance, ScalarType, Value};
 use mapping::{FunctionParameter, Graph, Node, NodeId, Project};
@@ -12,31 +11,12 @@ mod fixtures;
 
 use fixtures::NestedFailure;
 
-struct Directory(PathBuf);
-
-impl Directory {
-    fn new() -> Self {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_udf_multi_case_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for Directory {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir as Directory;
 
 // The feed list describes physical positions, including declared keyless pins.
 // First/Second are boolean inputs; A/B/C/D are independently authored literals.
 fn fixture(dir: &Directory, multi: bool, feeds: &[Option<u32>], bad: Option<u32>) -> PathBuf {
-    fixtures::fixture(&dir.0, multi, feeds, bad)
+    fixtures::fixture(dir.path(), multi, feeds, bad)
 }
 
 fn strict(path: &Path) -> Project {
@@ -57,7 +37,7 @@ fn strict(path: &Path) -> Project {
 
 fn twice(dir: &Directory, multi: bool, feeds: &[Option<u32>], bad: Option<u32>) -> [Project; 2] {
     let first = strict(&fixture(dir, multi, feeds, bad));
-    let path = dir.0.join("second.mfd");
+    let path = dir.path().join("second.mfd");
     let report = mfd::export_with_profile(&first, &path, mfd::ExportProfile::NativeMfd).unwrap();
     assert!(report.warnings.is_empty(), "{:?}", report.warnings);
     let second = strict(&path);
@@ -212,7 +192,7 @@ fn scalar_udf_preserves_ordered_cases_default_and_both_output_routes_twice() {
         branch(variable("Second"), text("B"), text("C")),
     );
     for multi in [false, true] {
-        let dir = Directory::new();
+        let dir = Directory::new("udf_multi_case").unwrap();
         for project in twice(&dir, multi, FULL, None) {
             assert_structure(&project, multi, &expected);
             assert_values(
@@ -262,7 +242,7 @@ fn scalar_udf_keeps_binary_even_keyless_and_incomplete_pin_semantics_twice() {
     ];
     for multi in [false, true] {
         for (feeds, expected, values) in variants {
-            let dir = Directory::new();
+            let dir = Directory::new("udf_multi_case").unwrap();
             for project in twice(&dir, multi, feeds, None) {
                 assert_structure(&project, multi, expected);
                 assert_values(
@@ -294,7 +274,7 @@ fn selected_late_value_or_default_retains_typed_failure_and_other_branches_are_l
                     if second { text("C") } else { failure.clone() },
                 ),
             );
-            let dir = Directory::new();
+            let dir = Directory::new("udf_multi_case").unwrap();
             for project in twice(&dir, multi, FULL, Some(bad)) {
                 assert_structure(&project, multi, &expected);
                 assert_values(
@@ -338,12 +318,12 @@ fn selected_late_value_or_default_retains_typed_failure_and_other_branches_are_l
 // Independently authored definitions are saved caller-first: ChooseNested ->
 // Pick -> Join. Every call binds by componentid, not by declaration/port order.
 fn nested_fixture(dir: &Directory, multi: bool, bad: Option<NestedFailure>) -> PathBuf {
-    fixtures::nested_fixture(&dir.0, multi, bad)
+    fixtures::nested_fixture(dir.path(), multi, bad)
 }
 
 fn nested_twice(dir: &Directory, multi: bool, bad: Option<NestedFailure>) -> [Project; 2] {
     let first = strict(&nested_fixture(dir, multi, bad));
-    let path = dir.0.join("nested-second.mfd");
+    let path = dir.path().join("nested-second.mfd");
     let report = mfd::export_with_profile(&first, &path, mfd::ExportProfile::NativeMfd).unwrap();
     assert!(report.warnings.is_empty(), "{:?}", report.warnings);
     [first, strict(&path)]
@@ -601,7 +581,7 @@ fn assert_nested_structure(project: &Project, multi: bool, expected: &Tree) {
 fn public_registry_resolves_parameterized_nested_definitions_and_both_outer_routes_twice() {
     let (expected, _, _) = nested_choice(None);
     for multi in [false, true] {
-        let dir = Directory::new();
+        let dir = Directory::new("udf_multi_case").unwrap();
         for project in nested_twice(&dir, multi, None) {
             assert_nested_structure(&project, multi, &expected);
             assert_values(
@@ -627,7 +607,7 @@ fn public_nested_late_branch_and_default_fail_only_when_selected_twice() {
                 NestedFailure::Late => (true, late, "C?"),
                 NestedFailure::Default => (false, default, "B!"),
             };
-            let dir = Directory::new();
+            let dir = Directory::new("udf_multi_case").unwrap();
             for project in nested_twice(&dir, multi, Some(bad)) {
                 assert_nested_structure(&project, multi, &expected);
                 assert_values(

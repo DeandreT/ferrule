@@ -493,25 +493,7 @@ fn survey_export_reimport_execution() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-struct TestDir(PathBuf);
-
-impl TestDir {
-    fn new(tag: &str) -> Self {
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_roundtrip_execution_{tag}_{}",
-            std::process::id()
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for TestDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir as TestDir;
 
 #[test]
 fn controlled_mapping_failures_are_compared_as_semantic_outcomes() {
@@ -534,11 +516,11 @@ fn controlled_mapping_failures_are_compared_as_semantic_outcomes() {
 
 #[test]
 fn self_authored_csv_repair_blocks_roundtrip_and_reload_validation() -> Result<(), Box<dyn Error>> {
-    let samples = TestDir::new("csv-repair");
-    let design = super::write_self_authored_csv_repair_case(&samples.0)?;
+    let samples = TestDir::new("csv-repair").unwrap();
+    let design = super::write_self_authored_csv_repair_case(samples.path())?;
     let workspace = SurveyWorkspace::new()?;
     let options = mfd::ImportOptions::default();
-    let outcome = survey_roundtrip_file(0, &design, &samples.0, &workspace, &options);
+    let outcome = survey_roundtrip_file(0, &design, samples.path(), &workspace, &options);
     assert_eq!(outcome.validation.status, Status::DependencyBlocked);
     assert_eq!(outcome.original_execution.status, Status::DependencyBlocked);
     assert_eq!(outcome.source_load.status, Status::Skipped);
@@ -556,11 +538,11 @@ fn self_authored_csv_repair_blocks_roundtrip_and_reload_validation() -> Result<(
 
 #[test]
 fn self_authored_pdf_repair_blocks_roundtrip_and_reload_validation() -> Result<(), Box<dyn Error>> {
-    let samples = TestDir::new("pdf-repair");
-    let design = super::write_self_authored_pdf_repair_case(&samples.0)?;
+    let samples = TestDir::new("pdf-repair").unwrap();
+    let design = super::write_self_authored_pdf_repair_case(samples.path())?;
     let workspace = SurveyWorkspace::new()?;
-    let options = mfd::ImportOptions::default().with_package_root(&samples.0);
-    let outcome = survey_roundtrip_file(0, &design, &samples.0, &workspace, &options);
+    let options = mfd::ImportOptions::default().with_package_root(samples.path());
+    let outcome = survey_roundtrip_file(0, &design, samples.path(), &workspace, &options);
     assert_eq!(outcome.validation.status, Status::DependencyBlocked);
     assert_eq!(outcome.original_execution.status, Status::DependencyBlocked);
     assert_eq!(outcome.source_load.status, Status::Skipped);
@@ -578,20 +560,20 @@ fn self_authored_pdf_repair_blocks_roundtrip_and_reload_validation() -> Result<(
 
 #[test]
 fn self_authored_roundtrip_executes_without_writing_to_inputs() -> Result<(), Box<dyn Error>> {
-    let samples = TestDir::new("samples");
+    let samples = TestDir::new("samples").unwrap();
     std::fs::write(
-        samples.0.join("input.xsd"),
+        samples.path().join("input.xsd"),
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Input"><xs:complexType><xs:sequence><xs:element name="Value" type="xs:string"/></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
     )?;
     std::fs::write(
-        samples.0.join("output.xsd"),
+        samples.path().join("output.xsd"),
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Output"><xs:complexType><xs:sequence><xs:element name="Value" type="xs:string"/></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
     )?;
     std::fs::write(
-        samples.0.join("input.xml"),
+        samples.path().join("input.xml"),
         "<Input><Value>kept</Value></Input>",
     )?;
-    let design = samples.0.join("mapping.mfd");
+    let design = samples.path().join("mapping.mfd");
     std::fs::write(
         &design,
         r#"<mapping version="22"><component name="defaultmap" editable="1"><structure><children>
@@ -599,13 +581,13 @@ fn self_authored_roundtrip_executes_without_writing_to_inputs() -> Result<(), Bo
           <component name="target" library="xml" kind="14"><properties XSLTDefaultOutput="1"/><data><root><entry name="FileInstance"><entry name="document"><entry name="Output"><entry name="Value" inpkey="20"/></entry></entry></entry></root><document schema="output.xsd" instanceroot="{}Output"/></data></component>
           </children><graph directed="1"><edges/><vertices><vertex vertexkey="10"><edges><edge vertexkey="20"/></edges></vertex></vertices></graph></structure></component></mapping>"#,
     )?;
-    let before = std::fs::read_dir(&samples.0)?
+    let before = std::fs::read_dir(samples.path())?
         .map(|entry| entry.map(|entry| entry.file_name()))
         .collect::<Result<Vec<_>, _>>()?;
     let workspace = SurveyWorkspace::new()?;
-    let options = mfd::ImportOptions::default().with_package_root(&samples.0);
+    let options = mfd::ImportOptions::default().with_package_root(samples.path());
 
-    let outcome = survey_roundtrip_file(0, &design, &samples.0, &workspace, &options);
+    let outcome = survey_roundtrip_file(0, &design, samples.path(), &workspace, &options);
 
     assert_eq!(outcome.original_execution.status, Status::Passed);
     assert_eq!(
@@ -622,7 +604,7 @@ fn self_authored_roundtrip_executes_without_writing_to_inputs() -> Result<(), Bo
     );
     assert_eq!(outcome.roundtrip_execution.status, Status::Passed);
     assert_eq!(outcome.output_match.status, Status::Passed);
-    let after = std::fs::read_dir(&samples.0)?
+    let after = std::fs::read_dir(samples.path())?
         .map(|entry| entry.map(|entry| entry.file_name()))
         .collect::<Result<Vec<_>, _>>()?;
     assert_eq!(before, after);

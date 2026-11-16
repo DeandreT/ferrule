@@ -1,5 +1,4 @@
 use std::collections::BTreeMap;
-use std::path::PathBuf;
 
 use ir::{
     Instance, ScalarType, SchemaNode, Value, XML_ELEMENTS_FIELD, XML_LOCAL_NAME_FIELD,
@@ -7,25 +6,7 @@ use ir::{
 };
 use mapping::{Binding, Graph, Node, Project, Scope, ScopeIteration};
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Self {
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_explicit_text_export_{}",
-            std::process::id()
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn project() -> Project {
     let source = SchemaNode::group(
@@ -107,8 +88,8 @@ fn project() -> Project {
 
 #[test]
 fn ordinary_constructed_generic_elements_keep_explicit_text_ports() {
-    let directory = TempDir::new();
-    let design = directory.0.join("mapping.mfd");
+    let directory = TempDir::new("mfd_explicit_text_export").unwrap();
+    let design = directory.path().join("mapping.mfd");
     let project = project();
 
     let warnings = mfd::export(&project, &design).unwrap();
