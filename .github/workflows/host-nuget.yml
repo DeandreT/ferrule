@@ -1,0 +1,84 @@
+name: Ferrule.Host NuGet
+
+on:
+  push:
+    paths: &host-package-paths
+      - '.github/workflows/host-nuget.yml'
+      - '.cargo/config.toml'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'LICENSE'
+      - 'rust-toolchain.toml'
+      - 'global.json'
+      - 'crates/**'
+      - 'runtime/csharp/Ferrule.Host/**'
+      - 'runtime/csharp/Ferrule.Host.PackageSmoke/**'
+      - 'scripts/ci/setup-mold.py'
+      - 'scripts/dev/*host-nuget.sh'
+      - 'vendor/**'
+  pull_request:
+    paths: *host-package-paths
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PACKAGE_VERSION: 0.1.0-ci.${{ github.run_id }}
+  SOURCE_REPOSITORY: https://github.com/${{ github.event.pull_request.head.repo.full_name || github.repository }}
+  DOTNET_CLI_TELEMETRY_OPTOUT: 1
+  DOTNET_NOLOGO: 1
+
+jobs:
+  pack:
+    name: Pack Linux x64
+    # Push builds cover pull requests from branches in this repository.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.98.1
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      - name: Set up the pinned native linker
+        run: python3 -B scripts/ci/setup-mold.py
+      - name: Build the native library and pack Ferrule.Host
+        run: bash scripts/dev/pack-host-nuget.sh "$RUNNER_TEMP/packages" "$PACKAGE_VERSION" "$SOURCE_REPOSITORY"
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: Ferrule.Host-linux-x64
+          path: ${{ runner.temp }}/packages/*.nupkg
+          if-no-files-found: error
+          overwrite: true
+
+  package-smoke:
+    name: Verify a package-only .NET 10 app
+    needs: pack
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: Ferrule.Host-linux-x64
+          path: ${{ runner.temp }}/package
+      - name: Restore and run from the package
+        run: >-
+          bash scripts/dev/test-host-nuget.sh
+          "$RUNNER_TEMP/package/Ferrule.Host.$PACKAGE_VERSION.nupkg"
+          "$PACKAGE_VERSION" "$SOURCE_REPOSITORY"

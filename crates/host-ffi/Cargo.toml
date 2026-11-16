@@ -1,0 +1,14 @@
+[package]
+name = "ferrule-host-ffi"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Versioned C ABI for read-only Ferrule hosting"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+ferrule-host = { workspace = true }
+serde_json = { workspace = true }

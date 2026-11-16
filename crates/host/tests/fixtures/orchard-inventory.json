@@ -1,0 +1,54 @@
+{
+  "source": {
+    "name": "Orchard",
+    "kind": {"kind": "group", "children": [
+      {"name": "code", "kind": {"kind": "scalar", "ty": "string"}},
+      {"name": "lot", "repeating": true, "kind": {"kind": "scalar", "ty": "string"}}
+    ]}
+  },
+  "source_path": "fixture-private/orchard.json",
+  "source_options": {
+    "external_source": {
+      "payload": "json",
+      "origin": {"kind": "user_function", "name": "fixture-private", "reason": "host-owned input"}
+    },
+    "json_schema_unresolved_reference": "https://fixture-private.invalid/orchard.json"
+  },
+  "extra_sources": [{
+    "name": "Rates",
+    "path": "fixture-private/rates.json",
+    "schema": {"name": "Rate", "kind": {"kind": "scalar_union", "types": ["string", "int"]}},
+    "options": {"edi_config_reference": "fixture-private/edi.cfg"},
+    "dynamic_path": {"node": 2, "iteration": ["lot"]}
+  }],
+  "target": {
+    "name": "Report",
+    "kind": {"kind": "group", "children": [
+      {"name": "summary", "kind": {"kind": "scalar", "ty": "string"}},
+      {"name": "detail", "kind": {"kind": "group", "children": [
+        {"name": "code", "kind": {"kind": "scalar", "ty": "string"}}
+      ]}}
+    ]}
+  },
+  "target_path": "fixture-private/report.xml",
+  "target_options": {"xml_schema_hints": {"no_namespace_location": "fixture-private/report.xsd"}},
+  "extra_targets": [{
+    "name": "Archive",
+    "path": "fixture-private/archive.json",
+    "schema": {"name": "ArchiveEntry", "repeating": true, "kind": {"kind": "group", "children": []}},
+    "root": {"target_field": "", "source": ["lot"], "output_path": 2, "bindings": [], "children": []}
+  }],
+  "failure_rules": [{
+    "iteration": {"kind": "source", "collection": ["lot"]},
+    "selection": {"kind": "all"}
+  }],
+  "graph": {"nodes": {
+    "1": {"kind": "source_field", "path": ["code"]},
+    "2": {"kind": "value_map", "input": 1, "table": [["north", "N"], ["south", "S"]]}
+  }},
+  "root": {
+    "target_field": "",
+    "bindings": [{"target_field": "summary", "node": 2}],
+    "children": [{"target_field": "detail", "bindings": [{"target_field": "code", "node": 1}], "children": []}]
+  }
+}

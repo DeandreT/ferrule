@@ -196,7 +196,33 @@ pub(crate) fn decode_bytes<T: FileModel>(
     bytes: &[u8],
     kind: &'static str,
 ) -> Result<T, FileCodecError> {
-    decode_str(
+    decode_bytes_with_layout(bytes, kind).map(|(model, _)| model)
+}
+
+/// Location of the model in an admitted native file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FileLayout {
+    /// The file root is the model.
+    Bare,
+    /// The model is under the versioned envelope's `document` member.
+    Envelope,
+}
+
+impl FileLayout {
+    /// Prefix for JSON pointers into the model in the original file.
+    pub const fn document_pointer_prefix(self) -> &'static str {
+        match self {
+            Self::Bare => "",
+            Self::Envelope => "/document",
+        }
+    }
+}
+
+pub(crate) fn decode_bytes_with_layout<T: FileModel>(
+    bytes: &[u8],
+    kind: &'static str,
+) -> Result<(T, FileLayout), FileCodecError> {
+    decode_str_with_layout(
         std::str::from_utf8(bytes).map_err(FileCodecError::InvalidUtf8)?,
         kind,
     )
@@ -205,12 +231,19 @@ pub(crate) fn decode_str<T: FileModel>(
     text: &str,
     kind: &'static str,
 ) -> Result<T, FileCodecError> {
+    decode_str_with_layout(text, kind).map(|(model, _)| model)
+}
+
+fn decode_str_with_layout<T: FileModel>(
+    text: &str,
+    kind: &'static str,
+) -> Result<(T, FileLayout), FileCodecError> {
     if !strict::has_marker(text) {
         let model: T = serde_json::from_str(text).map_err(FileCodecError::Deserialization)?;
         if let Some(capability) = model.file_capabilities().first() {
             return Err(FileCodecError::CapabilityRequiresEnvelope { capability });
         }
-        return Ok(model);
+        return Ok((model, FileLayout::Bare));
     }
     check_bytes(text.len())?;
     let envelope: strict::Envelope =
@@ -278,7 +311,7 @@ pub(crate) fn decode_str<T: FileModel>(
     {
         return Err(FileCodecError::CapabilityMismatch);
     }
-    Ok(model)
+    Ok((model, FileLayout::Envelope))
 }
 
 /// Checks the header's version/capability pairing in that order.

@@ -11,6 +11,8 @@ members = [
     "crates/document-source",
     "crates/functions",
     "crates/engine",
+    "crates/host",
+    "crates/host-ffi",
     "crates/codegen",
     "crates/codegen-schema",
     "crates/codegen-runtime",
@@ -52,6 +54,7 @@ mapping = { path = "crates/mapping" }
 document-source = { path = "crates/document-source" }
 functions = { path = "crates/functions" }
 engine = { path = "crates/engine" }
+ferrule-host = { path = "crates/host" }
 test-support = { path = "crates/test-support" }
 codegen = { path = "crates/codegen" }
 codegen-schema = { path = "crates/codegen-schema" }

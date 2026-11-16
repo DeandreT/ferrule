@@ -360,6 +360,9 @@ compilation separate from runtime codecs and documents the public API migration.
   assembly, and explicit local-file policy
 - `crates/functions`: Scalar built-in function library
 - `crates/engine`: Project validation and mapping interpreter
+- `crates/host`: Read-only project loading, inspection, and validation for
+  embedding hosts
+- `crates/host-ffi`: Versioned C ABI for read-only project hosting
 - `crates/edit-ops`: Typed, replayable headless mapping edits
 
 ### Code generation
