@@ -76,33 +76,18 @@ fn unique_case_insensitive_sibling(parent: &Path, expected: &str) -> Option<Stri
 mod tests {
     use std::error::Error;
     use std::path::PathBuf;
-    use std::sync::atomic::{AtomicU64, Ordering};
 
     use super::*;
 
-    struct TempDir(PathBuf);
+    struct TempDir(test_support::TempDir);
 
     impl TempDir {
         fn new() -> Result<Self, std::io::Error> {
-            static NEXT: AtomicU64 = AtomicU64::new(0);
-            let path = std::env::temp_dir().join(format!(
-                "ferrule-mfd-instance-path-{}-{}",
-                std::process::id(),
-                NEXT.fetch_add(1, Ordering::Relaxed)
-            ));
-            let _ = std::fs::remove_dir_all(&path);
-            std::fs::create_dir_all(&path)?;
-            Ok(Self(path))
+            test_support::TempDir::new("mfd-instance-path").map(Self)
         }
 
         fn mapping(&self) -> PathBuf {
             self.0.join("Design").join("mapping.mfd")
-        }
-    }
-
-    impl Drop for TempDir {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_dir_all(&self.0);
         }
     }
 

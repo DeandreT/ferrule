@@ -361,7 +361,7 @@ fn owned_json_companion_uses_canonical_descriptors_and_one_checked_context() {
 
 #[test]
 fn owned_json_generated_external_api_and_required_policy_compile_checks() {
-    let directory = TempDir::new("owned_json_api");
+    let directory = TempDir::new("owned_json_api").unwrap();
     let options = options();
     let mut invalid_output = scalar_program();
     let mut fixed_value = SchemaNode::scalar("Value", ScalarType::String);

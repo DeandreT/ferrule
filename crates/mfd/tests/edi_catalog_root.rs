@@ -1,7 +1,6 @@
 use std::error::Error;
 use std::io::Write;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::path::Path;
 
 use mapping::EdiBoundaryKind;
 
@@ -310,28 +309,4 @@ fn write_mapping(path: &Path, config: &str) -> Result<(), std::io::Error> {
     )
 }
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new(label: &str) -> Result<Self, std::io::Error> {
-        static NEXT: AtomicU64 = AtomicU64::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_catalog_{label}_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-
-    fn path(&self) -> &Path {
-        &self.0
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;

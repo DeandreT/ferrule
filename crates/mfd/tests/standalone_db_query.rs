@@ -1,31 +1,10 @@
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{Instance, Value};
 use mapping::{IterationOutput, Node, SequenceWindow};
 use rusqlite::Connection;
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Self {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_standalone_query_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn prepare(dir: &Path, populated: bool) -> PathBuf {
     let connection = Connection::open(dir.join("inventory.sqlite")).unwrap();
@@ -118,9 +97,9 @@ fn run(dir: &Path, design: &Path) -> (mapping::Project, Instance) {
 
 #[test]
 fn all_columns_descending_limit_one_imports_the_winner() {
-    let dir = TempDir::new();
-    let design = prepare(&dir.0, true);
-    let (project, output) = run(&dir.0, &design);
+    let dir = TempDir::new("mfd_standalone_query").unwrap();
+    let design = prepare(dir.path(), true);
+    let (project, output) = run(dir.path(), &design);
 
     assert_eq!(
         output.field("Number").and_then(Instance::as_scalar),
@@ -137,7 +116,7 @@ fn all_columns_descending_limit_one_imports_the_winner() {
     let xml = format_xml::to_string(&project.target, &output).unwrap();
     assert!(xml.contains("<Name>Monitor</Name>"), "{xml}");
 
-    let exported = dir.0.join("roundtrip.mfd");
+    let exported = dir.path().join("roundtrip.mfd");
     assert!(mfd::export(&project, &exported).unwrap().is_empty());
     let design = std::fs::read_to_string(&exported).unwrap();
     assert!(design.contains("component name=\"sort\""), "{design}");
@@ -156,20 +135,22 @@ fn all_columns_descending_limit_one_imports_the_winner() {
         reimported.project.root.iteration_output,
         IterationOutput::First
     );
-    let source =
-        format_db::read_instance(&dir.0.join("inventory.sqlite"), &reimported.project.source)
-            .unwrap();
+    let source = format_db::read_instance(
+        &dir.path().join("inventory.sqlite"),
+        &reimported.project.source,
+    )
+    .unwrap();
     assert_eq!(output, engine::run(&reimported.project, &source).unwrap());
 }
 
 #[test]
 fn all_columns_descending_top_one_imports_the_winner() {
-    let dir = TempDir::new();
-    let design = prepare(&dir.0, true);
+    let dir = TempDir::new("mfd_standalone_query").unwrap();
+    let design = prepare(dir.path(), true);
     let sql_server_style =
         design_xml("").replace("SELECT * FROM Articles", "SELECT TOP (1) * FROM Articles");
     std::fs::write(&design, sql_server_style).unwrap();
-    let (_, output) = run(&dir.0, &design);
+    let (_, output) = run(dir.path(), &design);
 
     assert_eq!(
         output.field("Number").and_then(Instance::as_scalar),
@@ -183,10 +164,10 @@ fn all_columns_descending_top_one_imports_the_winner() {
 
 #[test]
 fn all_columns_descending_limit_one_offset_zero_imports_the_winner() {
-    let dir = TempDir::new();
-    let design = prepare(&dir.0, true);
+    let dir = TempDir::new("mfd_standalone_query").unwrap();
+    let design = prepare(dir.path(), true);
     std::fs::write(&design, design_xml("LIMIT 1 OFFSET 0")).unwrap();
-    let (_, output) = run(&dir.0, &design);
+    let (_, output) = run(dir.path(), &design);
 
     assert_eq!(
         output.field("Number").and_then(Instance::as_scalar),
@@ -200,9 +181,9 @@ fn all_columns_descending_limit_one_offset_zero_imports_the_winner() {
 
 #[test]
 fn root_first_export_preserves_an_explicit_window_before_cardinality_selection() {
-    let dir = TempDir::new();
-    let design = prepare(&dir.0, true);
-    let (mut project, expected) = run(&dir.0, &design);
+    let dir = TempDir::new("mfd_standalone_query").unwrap();
+    let design = prepare(dir.path(), true);
+    let (mut project, expected) = run(dir.path(), &design);
     let [SequenceWindow::First { count }] = project.root.windows.as_slice() else {
         panic!("standalone LIMIT 1 query should import one first-items window")
     };
@@ -213,7 +194,7 @@ fn root_first_export_preserves_an_explicit_window_before_cardinality_selection()
         },
     );
 
-    let exported = dir.0.join("windowed.mfd");
+    let exported = dir.path().join("windowed.mfd");
     assert!(mfd::export(&project, &exported).unwrap().is_empty());
     let exported_xml = std::fs::read_to_string(&exported).unwrap();
     assert_eq!(
@@ -229,17 +210,19 @@ fn root_first_export_preserves_an_explicit_window_before_cardinality_selection()
         IterationOutput::First
     );
     assert_eq!(reimported.project.root.windows.len(), 1);
-    let source =
-        format_db::read_instance(&dir.0.join("inventory.sqlite"), &reimported.project.source)
-            .unwrap();
+    let source = format_db::read_instance(
+        &dir.path().join("inventory.sqlite"),
+        &reimported.project.source,
+    )
+    .unwrap();
     assert_eq!(engine::run(&reimported.project, &source).unwrap(), expected);
 }
 
 #[test]
 fn an_empty_query_still_produces_the_empty_document_root() {
-    let dir = TempDir::new();
-    let design = prepare(&dir.0, false);
-    let (project, output) = run(&dir.0, &design);
+    let dir = TempDir::new("mfd_standalone_query").unwrap();
+    let design = prepare(dir.path(), false);
+    let (project, output) = run(dir.path(), &design);
 
     assert!(matches!(output, Instance::Group(ref fields) if fields.is_empty()));
     let xml = format_xml::to_string(&project.target, &output).unwrap();
@@ -253,8 +236,8 @@ fn an_empty_query_still_produces_the_empty_document_root() {
 fn unsupported_limit_forms_fall_back_with_an_actionable_warning() {
     {
         let limit = "LIMIT :count";
-        let dir = TempDir::new();
-        let design = prepare(&dir.0, false);
+        let dir = TempDir::new("mfd_standalone_query").unwrap();
+        let design = prepare(dir.path(), false);
         std::fs::write(&design, design_xml(limit)).unwrap();
         let imported = mfd::import(&design).unwrap();
         assert!(
@@ -267,8 +250,8 @@ fn unsupported_limit_forms_fall_back_with_an_actionable_warning() {
         );
     }
 
-    let dir = TempDir::new();
-    let design = prepare(&dir.0, false);
+    let dir = TempDir::new("mfd_standalone_query").unwrap();
+    let design = prepare(dir.path(), false);
     std::fs::write(&design, design_xml("LIMIT 2")).unwrap();
     let imported = mfd::import(&design).unwrap();
     assert!(
@@ -283,8 +266,8 @@ fn unsupported_limit_forms_fall_back_with_an_actionable_warning() {
 
 #[test]
 fn inline_result_columns_must_match_the_expanded_projection() {
-    let dir = TempDir::new();
-    let design = prepare(&dir.0, false);
+    let dir = TempDir::new("mfd_standalone_query").unwrap();
+    let design = prepare(dir.path(), false);
     let mismatched = design_xml("LIMIT 1").replace(
         "<entry name=\"Name\" outkey=\"7\"/>",
         "<entry name=\"Label\" outkey=\"7\"/>",
@@ -304,8 +287,8 @@ fn inline_result_columns_must_match_the_expanded_projection() {
 
 #[test]
 fn controls_after_sql_limit_one_are_rejected_instead_of_reordered() {
-    let dir = TempDir::new();
-    let design = prepare(&dir.0, true);
+    let dir = TempDir::new("mfd_standalone_query").unwrap();
+    let design = prepare(dir.path(), true);
     let controlled = design_xml("LIMIT 1")
         .replace(
             "<component name=\"db\"",

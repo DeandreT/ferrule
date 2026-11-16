@@ -1,32 +1,11 @@
 use std::error::Error;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::Value;
 use mapping::{Node, Scope};
 use rusqlite::Connection;
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> std::io::Result<Self> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_xbrl_db_rows_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn write_fixture(dir: &Path) -> Result<PathBuf, Box<dyn Error>> {
     let connection = Connection::open(dir.join("facts.sqlite"))?;
@@ -95,8 +74,8 @@ fn child_scope<'a>(scope: &'a Scope, field: &str) -> Result<&'a Scope, Box<dyn E
 #[test]
 fn xbrl_row_uses_database_collection_without_lifting_attribute_feed() -> Result<(), Box<dyn Error>>
 {
-    let dir = TempDir::new()?;
-    let imported = mfd::import(&write_fixture(&dir.0)?)?;
+    let dir = TempDir::new("mfd_xbrl_db_rows")?;
+    let imported = mfd::import(&write_fixture(dir.path())?)?;
     let normalized_row = imported
         .project
         .target

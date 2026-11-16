@@ -1,32 +1,10 @@
 use std::collections::BTreeMap;
 use std::error::Error;
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{Instance, ScalarType, SchemaNode, Value};
 use mapping::{Binding, Graph, NamedSource, Node, Project, Scope, ScopeIteration, ScopeSequence};
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new(tag: &str) -> Result<Self, std::io::Error> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_{tag}_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn binding(target_field: &str, node: u32) -> Binding {
     Binding {
@@ -151,7 +129,7 @@ fn multi_hop_scope_positions_roundtrip_with_each_collection_stage() -> Result<()
     let expected = engine::run(&project, &source)?;
 
     let dir = TempDir::new("multi_hop_position")?;
-    let design = dir.0.join("mapping.mfd");
+    let design = dir.path().join("mapping.mfd");
     let warnings = mfd::export(&project, &design)?;
     assert!(warnings.is_empty(), "{warnings:?}");
 
@@ -370,7 +348,7 @@ fn nested_concatenation_can_switch_absolute_collections_in_one_named_source()
     )?;
 
     let dir = TempDir::new("named_source_concat")?;
-    let design = dir.0.join("mapping.mfd");
+    let design = dir.path().join("mapping.mfd");
     let warnings = mfd::export(&project, &design)?;
     assert!(warnings.is_empty(), "{warnings:?}");
     let imported = mfd::import(&design)?;

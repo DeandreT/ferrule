@@ -1,7 +1,6 @@
 use std::collections::BTreeMap;
 use std::fs;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::path::Path;
 
 use ir::{Instance, ScalarType, SchemaNode, Value};
 use mapping::{
@@ -10,33 +9,7 @@ use mapping::{
     NamedSource, Node, Project, Scope, ScopeIteration, SequenceWindow,
 };
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new(tag: &str) -> Self {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule-mfd-join-export-{tag}-{}-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map_or(0, |duration| duration.as_nanos()),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-
-    fn path(&self, name: &str) -> PathBuf {
-        self.0.join(name)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn scalar(name: &str, value: &str) -> (String, Instance) {
     (
@@ -369,8 +342,8 @@ fn join_virtual_wrappers_and_ordinary_keypaths_have_separate_namespace_tables() 
         ("namespace-primary", two_way_project()),
         ("namespace-named", named_source_project()),
     ] {
-        let dir = TempDir::new(tag);
-        let path = dir.path("mapping.mfd");
+        let dir = TempDir::new(tag).unwrap();
+        let path = dir.join("mapping.mfd");
         let report =
             mfd::export_with_profile(&project, &path, mfd::ExportProfile::NativeMfd).unwrap();
         assert!(report.is_native_compatible());
@@ -440,8 +413,8 @@ fn repeating_join_inputs_are_source_driven_and_constructed_outputs_keep_default_
         ("feeds-named", named_source_project()),
         ("feeds-aggregate", root_aggregate_project()),
     ] {
-        let dir = TempDir::new(tag);
-        let path = dir.path("mapping.mfd");
+        let dir = TempDir::new(tag).unwrap();
+        let path = dir.join("mapping.mfd");
         assert!(mfd::export(&project, &path).unwrap().is_empty());
         let xml = fs::read_to_string(&path).unwrap();
         assert_join_input_modes(&xml, &[true, true]);
@@ -491,8 +464,8 @@ fn singleton_join_inputs_are_source_driven_and_keep_exact_tuple_execution() {
         .into(),
     );
     let expected = engine::run(&project, &source).unwrap();
-    let dir = TempDir::new("scalar-feed");
-    let path = dir.path("mapping.mfd");
+    let dir = TempDir::new("scalar-feed").unwrap();
+    let path = dir.join("mapping.mfd");
     assert!(mfd::export(&project, &path).unwrap().is_empty());
     assert_join_input_modes(&fs::read_to_string(&path).unwrap(), &[true, true]);
     let imported = import_exported(&path);
@@ -501,8 +474,8 @@ fn singleton_join_inputs_are_source_driven_and_keep_exact_tuple_execution() {
 
 #[test]
 fn exports_and_round_trips_composite_join_fields_position_and_window() {
-    let dir = TempDir::new("two-way");
-    let output = dir.path("mapping.mfd");
+    let dir = TempDir::new("two-way").unwrap();
+    let output = dir.join("mapping.mfd");
     let warnings = mfd::export(&two_way_project(), &output).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
 
@@ -553,8 +526,8 @@ fn exports_and_round_trips_composite_join_fields_position_and_window() {
 
 #[test]
 fn exports_and_executes_a_root_join_over_a_static_named_source() {
-    let dir = TempDir::new("named-source");
-    let output = dir.path("mapping.mfd");
+    let dir = TempDir::new("named-source").unwrap();
+    let output = dir.join("mapping.mfd");
     let project = named_source_project();
     let (primary, extras) = named_source_instances();
     let expected = engine::run_with_sources(&project, &primary, extras.clone()).unwrap();
@@ -584,8 +557,8 @@ fn exports_and_executes_a_root_join_over_a_static_named_source() {
 
 #[test]
 fn dynamic_named_source_join_rejects_before_replacing_artifacts() {
-    let dir = TempDir::new("dynamic-named-source");
-    let output = dir.path("mapping.mfd");
+    let dir = TempDir::new("dynamic-named-source").unwrap();
+    let output = dir.join("mapping.mfd");
     fs::write(&output, "sentinel").unwrap();
     let mut project = named_source_project();
     project.graph.nodes.insert(
@@ -607,9 +580,9 @@ fn dynamic_named_source_join_rejects_before_replacing_artifacts() {
         "{error}"
     );
     assert_eq!(fs::read_to_string(&output).unwrap(), "sentinel");
-    assert!(!dir.path("mapping-source.xsd").exists());
-    assert!(!dir.path("mapping-source-2.xsd").exists());
-    assert!(!dir.path("mapping-target.xsd").exists());
+    assert!(!dir.join("mapping-source.xsd").exists());
+    assert!(!dir.join("mapping-source-2.xsd").exists());
+    assert!(!dir.join("mapping-target.xsd").exists());
 }
 
 #[test]
@@ -647,8 +620,8 @@ fn computed_join_sources_reject_before_replacing_artifacts() {
         },
     );
     for project in [scope, aggregate] {
-        let dir = TempDir::new("computed-key");
-        let output = dir.path("mapping.mfd");
+        let dir = TempDir::new("computed-key").unwrap();
+        let output = dir.join("mapping.mfd");
         fs::write(&output, "sentinel").unwrap();
         let error = mfd::export(&project, &output).unwrap_err();
         assert!(
@@ -659,15 +632,15 @@ fn computed_join_sources_reject_before_replacing_artifacts() {
             "{error}"
         );
         assert_eq!(fs::read_to_string(&output).unwrap(), "sentinel");
-        assert!(!dir.path("mapping-source.xsd").exists());
-        assert!(!dir.path("mapping-target.xsd").exists());
+        assert!(!dir.join("mapping-source.xsd").exists());
+        assert!(!dir.join("mapping-target.xsd").exists());
     }
 }
 
 #[test]
 fn exports_and_round_trips_a_three_way_join() {
-    let dir = TempDir::new("three-way");
-    let output = dir.path("mapping.mfd");
+    let dir = TempDir::new("three-way").unwrap();
+    let output = dir.join("mapping.mfd");
     let join = JoinId::new(9);
     let plan = JoinPlan::new(
         JoinSource::new(vec!["A".into()]),
@@ -803,8 +776,8 @@ fn exports_and_round_trips_a_three_way_join() {
 
 #[test]
 fn unsupported_join_plan_is_not_partially_exported() {
-    let dir = TempDir::new("unsupported");
-    let output = dir.path("mapping.mfd");
+    let dir = TempDir::new("unsupported").unwrap();
+    let output = dir.join("mapping.mfd");
     let mut project = two_way_project();
     let join = JoinId::new(8);
     let unsupported = JoinPlan::new(
@@ -1017,8 +990,8 @@ fn root_aggregate_source() -> Instance {
 
 #[test]
 fn root_join_aggregates_round_trip_raw_count_computed_values_and_parent_argument() {
-    let dir = TempDir::new("root-aggregate");
-    let output = dir.path("mapping.mfd");
+    let dir = TempDir::new("root-aggregate").unwrap();
+    let output = dir.join("mapping.mfd");
     let project = root_aggregate_project();
     assert!(engine::validate(&project).is_empty());
     let expected = engine::run(&project, &root_aggregate_source()).unwrap();
@@ -1042,7 +1015,7 @@ fn root_join_aggregates_round_trip_raw_count_computed_values_and_parent_argument
     assert!(xml.contains("component name=\"sum\""));
     assert!(xml.contains("component name=\"string-join\""));
 
-    let imported = import_exported(&dir.path("mapping.mfd"));
+    let imported = import_exported(&dir.join("mapping.mfd"));
     let aggregate_shapes = imported
         .project
         .graph
@@ -1069,8 +1042,8 @@ fn root_join_aggregates_round_trip_raw_count_computed_values_and_parent_argument
 
 #[test]
 fn nested_join_aggregate_is_blocked_without_partial_components_or_edges() {
-    let dir = TempDir::new("nested-aggregate");
-    let output = dir.path("mapping.mfd");
+    let dir = TempDir::new("nested-aggregate").unwrap();
+    let output = dir.join("mapping.mfd");
     let mut project = two_way_project();
     let (join, plan) = two_way_plan(JoinId::new(8));
     project.graph.nodes.insert(
@@ -1100,7 +1073,7 @@ fn nested_join_aggregate_is_blocked_without_partial_components_or_edges() {
     assert!(!xml.contains("component name=\"count\""));
     assert!(!xml.contains("component name=\"string\""));
 
-    let imported = import_exported(&dir.path("mapping.mfd"));
+    let imported = import_exported(&dir.join("mapping.mfd"));
     assert!(
         imported
             .project
@@ -1163,8 +1136,8 @@ fn unsupported_join_aggregate_expression_and_argument_are_atomic() {
             "string-join",
         ),
     ] {
-        let dir = TempDir::new(tag);
-        let output = dir.path("mapping.mfd");
+        let dir = TempDir::new(tag).unwrap();
+        let output = dir.join("mapping.mfd");
         let warnings = mfd::export(&project, &output).unwrap();
         assert_eq!(warnings.len(), 1, "{tag}: {warnings:?}");
         assert!(warnings[0].contains(message), "{tag}: {warnings:?}");
@@ -1188,8 +1161,8 @@ fn unsupported_join_aggregate_expression_and_argument_are_atomic() {
 
 #[test]
 fn mapped_join_sequence_round_trips_named_and_singleton_sources() {
-    let dir = TempDir::new("mapped-named-singleton");
-    let output = dir.path("mapping.mfd");
+    let dir = TempDir::new("mapped-named-singleton").unwrap();
+    let output = dir.join("mapping.mfd");
     let join = JoinId::new(21);
     let plan = JoinPlan::new(
         JoinSource::singleton(vec!["Order".into(), "CustomerNumber".into()]),
@@ -1310,7 +1283,7 @@ fn mapped_join_sequence_round_trips_named_and_singleton_sources() {
 
     project.root.children[0].iteration_output = IterationOutput::First;
     let expected_first = engine::run_with_sources(&project, &primary, extras.clone()).unwrap();
-    let first_output = dir.path("first.mfd");
+    let first_output = dir.join("first.mfd");
     let warnings = mfd::export(&project, &first_output).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
     let first = import_exported(&first_output);
@@ -1326,7 +1299,7 @@ fn mapped_join_sequence_round_trips_named_and_singleton_sources() {
     project.root.children[0].iteration_output = IterationOutput::MappedSequence;
     project.graph.nodes.clear();
     project.root.children[0].bindings.clear();
-    let structural_output = dir.path("structural.mfd");
+    let structural_output = dir.join("structural.mfd");
     let warnings = mfd::export(&project, &structural_output).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
     let xml = fs::read_to_string(&structural_output).unwrap();

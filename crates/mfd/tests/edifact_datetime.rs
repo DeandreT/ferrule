@@ -1,29 +1,8 @@
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::path::Path;
 
 use ir::{Instance, Value};
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Self {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_edifact_datetime_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn write_design(path: &Path) {
     std::fs::write(
@@ -63,15 +42,15 @@ fn assert_output(project: &mapping::Project) {
 
 #[test]
 fn edifact_to_datetime_imports_executes_and_round_trips() {
-    let dir = TempDir::new();
-    let design = dir.0.join("edifact-datetime.mfd");
+    let dir = TempDir::new("mfd_edifact_datetime").unwrap();
+    let design = dir.path().join("edifact-datetime.mfd");
     write_design(&design);
 
     let imported = mfd::import(&design).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert_output(&imported.project);
 
-    let exported = dir.0.join("round-trip.mfd");
+    let exported = dir.path().join("round-trip.mfd");
     assert!(
         mfd::export(&imported.project, &exported)
             .unwrap()

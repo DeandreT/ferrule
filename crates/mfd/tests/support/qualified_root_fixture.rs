@@ -1,8 +1,6 @@
 use ir::{GroupAlternative, ScalarType, SchemaNode, Value, XmlNamespace};
 use mapping::{Binding, FormatOptions, Graph, Node, Project, Scope};
 use std::collections::BTreeMap;
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 #[derive(Clone, Copy, Debug)]
 pub enum Shape {
@@ -195,21 +193,9 @@ pub fn read(project: &Project, xml: &str) -> ir::Instance {
     .unwrap()
 }
 
-pub struct Directory(pub PathBuf);
+pub struct Directory(pub test_support::TempDir);
 impl Directory {
     pub fn new() -> Self {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule-qualified-root-test-{}-{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir(&path).unwrap();
-        Self(path)
-    }
-}
-impl Drop for Directory {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
+        Self(test_support::TempDir::new("mfd-qualified-root").unwrap())
     }
 }

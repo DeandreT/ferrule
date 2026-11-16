@@ -1,38 +1,18 @@
 //! Independently authored pre-filter position regressions.
 
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
-
 use ir::{Instance, Value};
 
-struct Directory(PathBuf);
-impl Directory {
-    fn new() -> Self {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_pre_filter_position_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir(&path).unwrap();
-        Self(path)
-    }
-}
-impl Drop for Directory {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir as Directory;
 
 fn fixture() -> (Directory, mapping::Project) {
     fixture_variant(false)
 }
 
 fn fixture_variant(user_function: bool) -> (Directory, mapping::Project) {
-    let directory = Directory::new();
-    std::fs::write(directory.0.join("source.xsd"), r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Input"><xs:complexType><xs:sequence><xs:element name="Token" type="xs:string"/></xs:sequence></xs:complexType></xs:element></xs:schema>"#).unwrap();
-    std::fs::write(directory.0.join("target.xsd"), r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Output"><xs:complexType><xs:sequence><xs:element name="Rows" minOccurs="0" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Value" type="xs:integer"/><xs:element name="Position" type="xs:integer"/></xs:sequence></xs:complexType></xs:element><xs:element name="Label" type="xs:string"/></xs:sequence></xs:complexType></xs:element></xs:schema>"#).unwrap();
-    let path = directory.0.join("mapping.mfd");
+    let directory = Directory::new("pre_filter_position").unwrap();
+    std::fs::write(directory.path().join("source.xsd"), r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Input"><xs:complexType><xs:sequence><xs:element name="Token" type="xs:string"/></xs:sequence></xs:complexType></xs:element></xs:schema>"#).unwrap();
+    std::fs::write(directory.path().join("target.xsd"), r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Output"><xs:complexType><xs:sequence><xs:element name="Rows" minOccurs="0" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Value" type="xs:integer"/><xs:element name="Position" type="xs:integer"/></xs:sequence></xs:complexType></xs:element><xs:element name="Label" type="xs:string"/></xs:sequence></xs:complexType></xs:element></xs:schema>"#).unwrap();
+    let path = directory.path().join("mapping.mfd");
     std::fs::write(&path, r#"<mapping version="22"><component name="Mapping"><structure><children>
 <component name="Input" library="xml" kind="14"><data><root><entry name="Input"><entry name="Token" outkey="11"/></entry></root><document schema="source.xsd" inputinstance="input.xml" instanceroot="{}Input"/></data></component>
 <component name="Output" library="xml" kind="14"><properties XSLTDefaultOutput="1"/><data><root><entry name="Output"><entry name="Rows" inpkey="20"><entry name="Value" inpkey="21"/><entry name="Position" inpkey="22"/></entry><entry name="Label" inpkey="23"/></entry></root><document schema="target.xsd" outputinstance="output.xml" instanceroot="{}Output"/></data></component>
@@ -112,7 +92,7 @@ fn exported_position_is_wired_to_the_original_producer() {
     let input =
         format_xml::from_str("<Input><Token>safe</Token></Input>", &project.source).unwrap();
     let expected = engine::run(&project, &input).unwrap();
-    let path = directory.0.join("exported.mfd");
+    let path = directory.path().join("exported.mfd");
     mfd::export(&project, &path).unwrap();
     let imported =
         mfd::import_with_profile(&path, &Default::default(), mfd::ImportProfile::Executable)

@@ -2,33 +2,12 @@
 mod private_corpus;
 
 use std::error::Error;
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{Instance, Value};
 use mapping::Project;
 use mfd::{ImportIssueKind, ImportOptions, ImportProfile, MfdError};
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> std::io::Result<Self> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule-csv-encoding-{}-{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn component(name: &str, source: bool, encoding: Option<&str>, extra_attrs: &str) -> String {
     let port = if source { "outkey" } else { "inpkey" };
@@ -107,7 +86,7 @@ fn execute(project: &Project) -> Result<String, Box<dyn Error>> {
 #[test]
 fn utf8_and_absent_encoding_preserve_typed_mapping_through_strict_cycles()
 -> Result<(), Box<dyn Error>> {
-    let temp = TempDir::new()?;
+    let temp = TempDir::new("csv-encoding")?;
     for (index, (source, target)) in [
         (None, None),
         (Some("1000"), None),
@@ -117,7 +96,7 @@ fn utf8_and_absent_encoding_preserve_typed_mapping_through_strict_cycles()
     .into_iter()
     .enumerate()
     {
-        let path = temp.0.join(format!("utf8-{index}.mfd"));
+        let path = temp.path().join(format!("utf8-{index}.mfd"));
         std::fs::write(&path, design(source, target))?;
         let outcome =
             mfd::import_with_profile(&path, &ImportOptions::default(), ImportProfile::Executable)?;
@@ -128,7 +107,7 @@ fn utf8_and_absent_encoding_preserve_typed_mapping_through_strict_cycles()
         let target_schema = project.target.clone();
         for cycle in 0..2 {
             assert_eq!(execute(&project)?, "café,7\n");
-            let exported = temp.0.join(format!("strict-{index}-{cycle}.mfd"));
+            let exported = temp.path().join(format!("strict-{index}-{cycle}.mfd"));
             let report =
                 mfd::export_with_profile(&project, &exported, mfd::ExportProfile::NativeMfd)?;
             assert!(report.is_native_compatible());
@@ -150,14 +129,16 @@ fn utf8_and_absent_encoding_preserve_typed_mapping_through_strict_cycles()
 #[test]
 fn unsupported_source_and_target_encodings_warn_for_repair_and_reject_executable_import()
 -> Result<(), Box<dyn Error>> {
-    let temp = TempDir::new()?;
+    let temp = TempDir::new("csv-encoding")?;
     let long_code = "9".repeat(16_384);
     for (index, code) in ["52", "utf-16", "", "unknown", long_code.as_str()]
         .into_iter()
         .enumerate()
     {
         for source in [true, false] {
-            let path = temp.0.join(format!("unsupported-{index}-{source}.mfd"));
+            let path = temp
+                .path()
+                .join(format!("unsupported-{index}-{source}.mfd"));
             std::fs::write(
                 &path,
                 if source {
@@ -201,7 +182,7 @@ fn unsupported_source_and_target_encodings_warn_for_repair_and_reject_executable
 #[test]
 fn utf8_bom_metadata_and_bytes_survive_project_save_and_two_strict_native_cycles()
 -> Result<(), Box<dyn Error>> {
-    let temp = TempDir::new()?;
+    let temp = TempDir::new("csv-encoding")?;
     for (case, source_mark, target_mark) in [
         ("unmarked", "0", "0"),
         ("target-bom", "0", "1"),
@@ -209,7 +190,7 @@ fn utf8_bom_metadata_and_bytes_survive_project_save_and_two_strict_native_cycles
     ] {
         let source_attrs = format!(" byteorder=\"1\" byteordermark=\"{source_mark}\"");
         let target_attrs = format!(" byteorder=\"1\" byteordermark=\"{target_mark}\"");
-        let path = temp.0.join(format!("{case}.mfd"));
+        let path = temp.path().join(format!("{case}.mfd"));
         std::fs::write(
             &path,
             design_with_text_attrs(Some("1000"), Some("1000"), &source_attrs, &target_attrs),
@@ -229,7 +210,7 @@ fn utf8_bom_metadata_and_bytes_survive_project_save_and_two_strict_native_cycles
                 "café,7\n"
             };
             assert_eq!(execute(&project)?.as_bytes(), expected.as_bytes());
-            let exported = temp.0.join(format!("{case}-{cycle}.mfd"));
+            let exported = temp.path().join(format!("{case}-{cycle}.mfd"));
             let report =
                 mfd::export_with_profile(&project, &exported, mfd::ExportProfile::NativeMfd)?;
             assert!(report.is_native_compatible());
@@ -260,7 +241,7 @@ fn utf8_bom_metadata_and_bytes_survive_project_save_and_two_strict_native_cycles
 
 #[test]
 fn unknown_csv_byte_order_codes_warn_then_reject_executable_import() -> Result<(), Box<dyn Error>> {
-    let temp = TempDir::new()?;
+    let temp = TempDir::new("csv-encoding")?;
     for (case, attrs, expected) in [
         (
             "byteorder",
@@ -274,7 +255,7 @@ fn unknown_csv_byte_order_codes_warn_then_reject_executable_import() -> Result<(
         ),
     ] {
         for source in [true, false] {
-            let path = temp.0.join(format!("{case}-{source}.mfd"));
+            let path = temp.path().join(format!("{case}-{source}.mfd"));
             let (source_attrs, target_attrs) = if source { (attrs, "") } else { ("", attrs) };
             std::fs::write(
                 &path,
@@ -308,8 +289,8 @@ fn unknown_csv_byte_order_codes_warn_then_reject_executable_import() -> Result<(
 
 #[test]
 fn bom_on_a_non_csv_boundary_rejects_before_export_publication() -> Result<(), Box<dyn Error>> {
-    let temp = TempDir::new()?;
-    let source = temp.0.join("source.mfd");
+    let temp = TempDir::new("csv-encoding")?;
+    let source = temp.path().join("source.mfd");
     std::fs::write(
         &source,
         design_with_text_attrs(
@@ -321,7 +302,7 @@ fn bom_on_a_non_csv_boundary_rejects_before_export_publication() -> Result<(), B
     )?;
     let mut project = mfd::import(&source)?.project;
     project.target_path = Some("output.xml".into());
-    let output = temp.0.join("unpublished").join("invalid.mfd");
+    let output = temp.path().join("unpublished").join("invalid.mfd");
     assert!(mfd::export_with_profile(&project, &output, mfd::ExportProfile::NativeMfd).is_err());
     assert!(!output.exists());
     assert!(!output.parent().unwrap().exists());

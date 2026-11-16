@@ -3,33 +3,11 @@ mod private_corpus;
 
 use std::error::Error;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use ir::{Instance, Value};
 use mapping::{Node, NodeId, Project};
 
-static NEXT_DIR: AtomicU64 = AtomicU64::new(0);
-
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Result<Self, std::io::Error> {
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_decimal_input_export_{}_{}",
-            std::process::id(),
-            NEXT_DIR.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn samples() -> Result<PathBuf, Box<dyn Error>> {
     private_corpus::require(&[&private_corpus::root()]);
@@ -135,8 +113,8 @@ fn native_decimal_inputs_keep_price_calculation_xml() -> Result<(), Box<dyn Erro
         Some(3)
     );
     let baseline_xml = xml(&project, &expected)?;
-    let directory = TempDir::new()?;
-    let path = directory.0.join("price.mfd");
+    let directory = TempDir::new("decimal_input_export")?;
+    let path = directory.path().join("price.mfd");
     let report = mfd::preflight_export(&project, &path)?;
     assert!(report.is_native_compatible(), "{report}");
     mfd::export_with_profile(&project, &path, mfd::ExportProfile::NativeMfd)?;
@@ -214,8 +192,8 @@ fn native_decimal_inputs_keep_temperature_classification_xml() -> Result<(), Box
         }
     }
     let baseline_xml = xml(&project, &expected)?;
-    let directory = TempDir::new()?;
-    let path = directory.0.join("temperatures.mfd");
+    let directory = TempDir::new("decimal_input_export")?;
+    let path = directory.path().join("temperatures.mfd");
     let report = mfd::preflight_export(&project, &path)?;
     assert!(report.is_native_compatible(), "{report}");
     mfd::export_with_profile(&project, &path, mfd::ExportProfile::NativeMfd)?;
@@ -261,7 +239,7 @@ fn invalid_or_stale_decimal_names_fall_back_with_diagnostics() -> Result<(), Box
     let samples = samples()?;
     let project = import_sample(&samples, "PriceCalculation.mfd")?;
     let (call, _) = conversion(&project, "1.5");
-    let directory = TempDir::new()?;
+    let directory = TempDir::new("decimal_input_export")?;
     let oversize = "x".repeat(257);
     for (label, name) in [("control", "bad\0name"), ("oversize", oversize.as_str())] {
         let mut invalid = project.clone();
@@ -269,7 +247,7 @@ fn invalid_or_stale_decimal_names_fall_back_with_diagnostics() -> Result<(), Box
             .source_options
             .mfd_decimal_input_names
             .insert(call, name.to_string());
-        let path = directory.0.join(format!("{label}.mfd"));
+        let path = directory.path().join(format!("{label}.mfd"));
         let report = mfd::preflight_export(&invalid, &path)?;
         assert!(!report.is_native_compatible());
         assert!(
@@ -295,7 +273,7 @@ fn invalid_or_stale_decimal_names_fall_back_with_diagnostics() -> Result<(), Box
         .source_options
         .mfd_decimal_input_names
         .insert(u32::MAX, "Unused".to_string());
-    let path = directory.0.join("stale.mfd");
+    let path = directory.path().join("stale.mfd");
     let report = mfd::preflight_export(&stale, &path)?;
     assert!(
         report
@@ -303,7 +281,7 @@ fn invalid_or_stale_decimal_names_fall_back_with_diagnostics() -> Result<(), Box
             .iter()
             .any(|warning| warning.contains("ignored"))
     );
-    assert_strict_rejected(&stale, &directory.0)?;
+    assert_strict_rejected(&stale, directory.path())?;
 
     let mut duplicate = import_sample(&samples, "ClassifyTemperatures.mfd")?;
     let (upper, _) = conversion(&duplicate, "20");
@@ -311,7 +289,7 @@ fn invalid_or_stale_decimal_names_fall_back_with_diagnostics() -> Result<(), Box
         .source_options
         .mfd_decimal_input_names
         .insert(upper, "lower".to_string());
-    let report = mfd::preflight_export(&duplicate, &directory.0.join("duplicate.mfd"))?;
+    let report = mfd::preflight_export(&duplicate, &directory.path().join("duplicate.mfd"))?;
     assert!(
         report
             .warnings
@@ -327,7 +305,7 @@ fn dynamic_nonfinite_and_shared_conversions_remain_non_native() -> Result<(), Bo
     let samples = samples()?;
     let project = import_sample(&samples, "PriceCalculation.mfd")?;
     let (call, argument) = conversion(&project, "1.5");
-    let directory = TempDir::new()?;
+    let directory = TempDir::new("decimal_input_export")?;
 
     let mut dynamic = project.clone();
     dynamic.graph.nodes.insert(
@@ -337,7 +315,7 @@ fn dynamic_nonfinite_and_shared_conversions_remain_non_native() -> Result<(), Bo
             frame: None,
         },
     );
-    assert_strict_rejected(&dynamic, &directory.0)?;
+    assert_strict_rejected(&dynamic, directory.path())?;
 
     for invalid in ["NaN", "1e309", " 1.5 ", "1e2"] {
         let mut noncanonical = project.clone();
@@ -347,7 +325,7 @@ fn dynamic_nonfinite_and_shared_conversions_remain_non_native() -> Result<(), Bo
                 value: Value::String(invalid.to_string()),
             },
         );
-        assert_strict_rejected(&noncanonical, &directory.0)?;
+        assert_strict_rejected(&noncanonical, directory.path())?;
     }
 
     let mut shared = project.clone();
@@ -371,6 +349,6 @@ fn dynamic_nonfinite_and_shared_conversions_remain_non_native() -> Result<(), Bo
         .find(|binding| binding.target_field == "Name")
         .expect("name binding")
         .node = new_node;
-    assert_strict_rejected(&shared, &directory.0)?;
+    assert_strict_rejected(&shared, directory.path())?;
     Ok(())
 }

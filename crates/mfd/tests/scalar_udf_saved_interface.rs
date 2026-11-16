@@ -1,6 +1,5 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{Instance, ScalarType, SchemaNode, Value};
 use mapping::{
@@ -8,24 +7,8 @@ use mapping::{
     Project, Scope, UserFunction,
 };
 
-struct Directory(PathBuf);
-impl Directory {
-    fn new() -> Self {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_saved_udf_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir(&path).unwrap();
-        Self(path)
-    }
-}
-impl Drop for Directory {
-    fn drop(&mut self) {
-        std::fs::remove_dir_all(&self.0).unwrap();
-    }
-}
+use test_support::TempDir as Directory;
+
 fn project(ty: ScalarType, value: Value) -> Project {
     Project {
         execution_contract: None,
@@ -146,7 +129,7 @@ fn remove_output_key(xml: &str, name: &str) -> String {
 }
 fn export(p: &Project, dir: &Directory) -> PathBuf {
     assert!(engine::validate(p).is_empty());
-    let path = dir.0.join("mapping.mfd");
+    let path = dir.path().join("mapping.mfd");
     assert!(
         mfd::export_with_profile(p, &path, mfd::ExportProfile::NativeMfd)
             .unwrap()
@@ -190,7 +173,7 @@ fn saved_keyless_unused_scalar_declarations_preserve_order_and_typed_calls_twice
         (ScalarType::Float, Value::Float(1.25)),
         (ScalarType::Bool, Value::Bool(true)),
     ] {
-        let dir = Directory::new();
+        let dir = Directory::new("saved_udf").unwrap();
         let p = project(ty, value.clone());
         let input = Instance::Group((vec![("Value".into(), Instance::Scalar(value))]).into());
         let expected = engine::run(&p, &input).unwrap();
@@ -203,7 +186,7 @@ fn saved_keyless_unused_scalar_declarations_preserve_order_and_typed_calls_twice
         let restored = strict(&path);
         assert_interface(&restored, ty);
         assert_eq!(engine::run(&restored, &input).unwrap(), expected);
-        let second = dir.0.join("second.mfd");
+        let second = dir.path().join("second.mfd");
         mfd::export_with_profile(&restored, &second, mfd::ExportProfile::NativeMfd).unwrap();
         let twice = strict(&second);
         assert_interface(&twice, ty);
@@ -212,7 +195,7 @@ fn saved_keyless_unused_scalar_declarations_preserve_order_and_typed_calls_twice
 }
 #[test]
 fn saved_keyless_unused_nested_callee_keeps_full_signature() {
-    let dir = Directory::new();
+    let dir = Directory::new("saved_udf").unwrap();
     let mut p = project(ScalarType::String, Value::String("ignored".into()));
     let mut outer = p.user_functions[&FunctionId::new(1)].clone();
     outer.name = "Outer".into();
@@ -256,7 +239,7 @@ fn saved_keyless_unused_nested_callee_keeps_full_signature() {
 }
 #[test]
 fn keyless_inputs_require_exact_scalar_metadata_and_cannot_hide_structured_interfaces() {
-    let dir = Directory::new();
+    let dir = Directory::new("saved_udf").unwrap();
     let path = export(
         &project(ScalarType::String, Value::String("ignored".into())),
         &dir,
@@ -294,7 +277,7 @@ fn keyless_inputs_require_exact_scalar_metadata_and_cannot_hide_structured_inter
 }
 #[test]
 fn keyless_connected_parameters_cannot_invent_body_feeds() {
-    let dir = Directory::new();
+    let dir = Directory::new("saved_udf").unwrap();
     let path = export(
         &project(ScalarType::String, Value::String("ignored".into())),
         &dir,
@@ -315,18 +298,18 @@ fn keyless_connected_parameters_cannot_invent_body_feeds() {
 }
 #[test]
 fn malformed_callable_interfaces_still_reject_atomically_on_native_export() {
-    let dir = Directory::new();
+    let dir = Directory::new("saved_udf").unwrap();
     let mut p = project(ScalarType::String, Value::String("ignored".into()));
     p.user_functions
         .get_mut(&FunctionId::new(1))
         .unwrap()
         .parameters[1]
         .id = FunctionParameterId::new(9);
-    let existing = dir.0.join("existing.mfd");
+    let existing = dir.path().join("existing.mfd");
     std::fs::write(&existing, b"sentinel").unwrap();
     assert!(mfd::export_with_profile(&p, &existing, mfd::ExportProfile::NativeMfd).is_err());
     assert_eq!(std::fs::read(&existing).unwrap(), b"sentinel");
-    let fresh = dir.0.join("absent/mapping.mfd");
+    let fresh = dir.path().join("absent/mapping.mfd");
     assert!(mfd::export_with_profile(&p, &fresh, mfd::ExportProfile::NativeMfd).is_err());
     assert!(!fresh.parent().unwrap().exists());
 }

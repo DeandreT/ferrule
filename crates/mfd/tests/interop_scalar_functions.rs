@@ -1,29 +1,8 @@
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{Instance, Value};
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Result<Self, std::io::Error> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_interop_scalar_functions_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn write_design(directory: &Path) -> Result<PathBuf, std::io::Error> {
     std::fs::write(
@@ -104,13 +83,13 @@ fn assert_output(output: &Instance) {
 #[test]
 fn interoperable_scalar_components_import_execute_and_roundtrip_warning_free()
 -> Result<(), Box<dyn std::error::Error>> {
-    let directory = TempDir::new()?;
-    let imported = mfd::import(&write_design(&directory.0)?)?;
+    let directory = TempDir::new("mfd_interop_scalar_functions")?;
+    let imported = mfd::import(&write_design(directory.path())?)?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
     assert_output(&execute(&imported.project)?);
 
-    let exported_path = directory.0.join("roundtrip.mfd");
+    let exported_path = directory.path().join("roundtrip.mfd");
     assert!(mfd::export(&imported.project, &exported_path)?.is_empty());
     let exported = std::fs::read_to_string(&exported_path)?;
     for (name, library) in [

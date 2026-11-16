@@ -1,28 +1,9 @@
 use std::collections::BTreeMap;
-use std::path::PathBuf;
 
 use ir::{Instance, ScalarType, SchemaNode, Value};
 use mapping::{Binding, Graph, Node, Project, Scope, ScopeIteration, ScopeSequence};
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Self {
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_repeated_scalar_binding_{}",
-            std::process::id()
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn source_branch(name: &str) -> SchemaNode {
     SchemaNode::group(
@@ -142,8 +123,8 @@ fn row(street: &str, city: &str) -> Instance {
 
 #[test]
 fn duplicate_repeating_scalar_bindings_keep_order_in_each_concatenated_branch() {
-    let directory = TempDir::new();
-    let design = directory.0.join("mapping.mfd");
+    let directory = TempDir::new("mfd_repeated_scalar_binding").unwrap();
+    let design = directory.path().join("mapping.mfd");
     let project = project();
     let source = Instance::Group(
         (vec![

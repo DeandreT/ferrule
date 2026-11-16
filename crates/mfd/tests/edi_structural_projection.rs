@@ -1,30 +1,9 @@
 use std::error::Error;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use mapping::Node;
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> std::io::Result<Self> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_edi_structural_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn write_fixture(dir: &Path) -> Result<PathBuf, Box<dyn Error>> {
     std::fs::write(
@@ -77,8 +56,8 @@ fn write_fixture(dir: &Path) -> Result<PathBuf, Box<dyn Error>> {
 #[test]
 fn edi_groups_feed_simple_content_target_context_without_atomization() -> Result<(), Box<dyn Error>>
 {
-    let dir = TempDir::new()?;
-    let imported = mfd::import(&write_fixture(&dir.0)?)?;
+    let dir = TempDir::new("mfd_edi_structural")?;
+    let imported = mfd::import(&write_fixture(dir.path())?)?;
     assert_eq!(imported.warnings.len(), 1, "{:?}", imported.warnings);
     assert!(imported.warnings[0].contains("entry-tree schema inferred"));
     assert!(engine::validate(&imported.project).is_empty());

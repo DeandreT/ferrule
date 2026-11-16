@@ -1,38 +1,7 @@
 use std::error::Error;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::path::Path;
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new(tag: &str) -> Result<Self, std::io::Error> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule-mfd-fallback-group-{tag}-{}-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map_or(0, |duration| duration.as_nanos()),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-
-    fn path(&self, name: &str) -> PathBuf {
-        self.0.join(name)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
-
-fn write(path: &Path, contents: &str) -> Result<(), std::io::Error> {
-    std::fs::write(path, contents)
-}
+use test_support::TempDir;
 
 fn mapping(source_schema: Option<&str>, source_name: &str, target_name: &str) -> String {
     let source_schema = source_schema
@@ -88,9 +57,9 @@ fn mapping(source_schema: Option<&str>, source_name: &str, target_name: &str) ->
 }
 
 fn write_target_schema(path: &Path, group_name: &str) -> Result<(), std::io::Error> {
-    write(
+    std::fs::write(
         path,
-        &format!(
+        format!(
             r#"<?xml version="1.0" encoding="UTF-8"?>
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:element name="Output">
@@ -114,9 +83,9 @@ fn write_target_schema(path: &Path, group_name: &str) -> Result<(), std::io::Err
 }
 
 fn write_group_schema(path: &Path, root: &str) -> Result<(), std::io::Error> {
-    write(
+    std::fs::write(
         path,
-        &format!(
+        format!(
             r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:element name="{root}"><xs:complexType><xs:sequence>
     <xs:element name="Line" minOccurs="0" maxOccurs="unbounded">
@@ -158,7 +127,7 @@ fn reverse_mapping(source_name: &str, target_name: &str) -> String {
 }
 
 fn write_fallback_target_schema(path: &Path) -> Result<(), std::io::Error> {
-    write(
+    std::fs::write(
         path,
         r###"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:element name="Output"><xs:complexType><xs:sequence>
@@ -175,8 +144,8 @@ fn write_fallback_target_schema(path: &Path) -> Result<(), std::io::Error> {
 fn copy_all_recovers_a_same_named_group_lost_by_entry_tree_fallback() -> Result<(), Box<dyn Error>>
 {
     let directory = TempDir::new("copy")?;
-    write(
-        &directory.path("source.xsd"),
+    directory.write(
+        "source.xsd",
         r###"<?xml version="1.0" encoding="UTF-8"?>
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:element name="Inbound">
@@ -188,9 +157,9 @@ fn copy_all_recovers_a_same_named_group_lost_by_entry_tree_fallback() -> Result<
 </xs:schema>
 "###,
     )?;
-    write_target_schema(&directory.path("target.xsd"), "Items")?;
-    let design = directory.path("mapping.mfd");
-    write(&design, &mapping(Some("source.xsd"), "Items", "Items"))?;
+    write_target_schema(&directory.join("target.xsd"), "Items")?;
+    let design = directory.join("mapping.mfd");
+    std::fs::write(&design, mapping(Some("source.xsd"), "Items", "Items"))?;
 
     let imported = mfd::import(&design)?;
     assert_eq!(imported.warnings.len(), 1, "{:?}", imported.warnings);
@@ -221,7 +190,7 @@ fn copy_all_recovers_a_same_named_group_lost_by_entry_tree_fallback() -> Result<
     let expected = format_xml::from_str(output_xml, &imported.project.target)?;
     assert_eq!(engine::run(&imported.project, &source)?, expected);
 
-    let roundtrip_design = directory.path("roundtrip.mfd");
+    let roundtrip_design = directory.join("roundtrip.mfd");
     let export_warnings = mfd::export(&imported.project, &roundtrip_design)?;
     assert!(export_warnings.is_empty(), "{export_warnings:?}");
     let roundtrip = mfd::import(&roundtrip_design)?;
@@ -236,9 +205,9 @@ fn copy_all_recovers_a_same_named_group_lost_by_entry_tree_fallback() -> Result<
 #[test]
 fn mismatched_fallback_leaf_to_group_keeps_the_unsupported_warning() -> Result<(), Box<dyn Error>> {
     let directory = TempDir::new("mismatch")?;
-    write_target_schema(&directory.path("target.xsd"), "Record")?;
-    let design = directory.path("mapping.mfd");
-    write(&design, &mapping(None, "Payload", "Record"))?;
+    write_target_schema(&directory.join("target.xsd"), "Record")?;
+    let design = directory.join("mapping.mfd");
+    std::fs::write(&design, mapping(None, "Payload", "Record"))?;
 
     let imported = mfd::import(&design)?;
     assert!(
@@ -254,10 +223,10 @@ fn mismatched_fallback_leaf_to_group_keeps_the_unsupported_warning() -> Result<(
 #[test]
 fn copy_all_recovers_a_fallback_target_group_from_an_exact_source() -> Result<(), Box<dyn Error>> {
     let directory = TempDir::new("target-copy")?;
-    write_group_schema(&directory.path("source.xsd"), "Items")?;
-    write_fallback_target_schema(&directory.path("target.xsd"))?;
-    let design = directory.path("mapping.mfd");
-    write(&design, &reverse_mapping("Items", "Items"))?;
+    write_group_schema(&directory.join("source.xsd"), "Items")?;
+    write_fallback_target_schema(&directory.join("target.xsd"))?;
+    let design = directory.join("mapping.mfd");
+    std::fs::write(&design, reverse_mapping("Items", "Items"))?;
 
     let imported = mfd::import(&design)?;
     assert_eq!(imported.warnings.len(), 1, "{:?}", imported.warnings);
@@ -288,10 +257,10 @@ fn copy_all_recovers_a_fallback_target_group_from_an_exact_source() -> Result<()
 #[test]
 fn mismatched_exact_source_cannot_define_a_fallback_target_group() -> Result<(), Box<dyn Error>> {
     let directory = TempDir::new("target-mismatch")?;
-    write_group_schema(&directory.path("source.xsd"), "Payload")?;
-    write_fallback_target_schema(&directory.path("target.xsd"))?;
-    let design = directory.path("mapping.mfd");
-    write(&design, &reverse_mapping("Payload", "Items"))?;
+    write_group_schema(&directory.join("source.xsd"), "Payload")?;
+    write_fallback_target_schema(&directory.join("target.xsd"))?;
+    let design = directory.join("mapping.mfd");
+    std::fs::write(&design, reverse_mapping("Payload", "Items"))?;
 
     let imported = mfd::import(&design)?;
     assert!(

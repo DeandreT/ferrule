@@ -1,30 +1,9 @@
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{Instance, Value};
 use mapping::{ExternalPayloadFormat, ExternalSourceOrigin};
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Result<Self, std::io::Error> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_http_post_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn write_fixture(dir: &Path) -> Result<PathBuf, std::io::Error> {
     std::fs::write(
@@ -100,8 +79,8 @@ fn write_fixture(dir: &Path) -> Result<PathBuf, std::io::Error> {
 #[test]
 fn post_request_schema_uses_immutable_bound_json_bytes() -> Result<(), Box<dyn std::error::Error>> {
     use sha2::{Digest, Sha256};
-    let dir = TempDir::new()?;
-    let design = write_fixture(&dir.0)?;
+    let dir = TempDir::new("mfd_http_post")?;
+    let design = write_fixture(dir.path())?;
     let original = std::fs::read_to_string(&design)?;
     std::fs::write(
         &design,
@@ -113,19 +92,19 @@ fn post_request_schema_uses_immutable_bound_json_bytes() -> Result<(), Box<dyn s
     )?;
     let root = r##"{"type":"object","additionalProperties":false,"properties":{"query":{"$ref":"text.json"}}}"##;
     let text = r#"{"type":"string","minLength":2}"#;
-    std::fs::write(dir.0.join("request.json"), root)?;
-    std::fs::write(dir.0.join("text.json"), text)?;
+    std::fs::write(dir.path().join("request.json"), root)?;
+    std::fs::write(dir.path().join("text.json"), text)?;
     let binding = mfd::ResourceBindingV1::new(
         mfd::ResourceBindingKindV1::JsonSchema,
         &design,
         "OldRequest.json",
-        &dir.0,
+        dir.path(),
         "request.json",
         Sha256::digest(root.as_bytes()).into(),
     )?
     .with_dependency_pin("text.json", Sha256::digest(text.as_bytes()).into())?
     .prepare()?;
-    std::fs::write(dir.0.join("request.json"), "not JSON")?;
+    std::fs::write(dir.path().join("request.json"), "not JSON")?;
     let reads = mfd::ResourceReadSetV1::default();
     let options = mfd::ImportOptions::default()
         .with_resource_readset_v1(reads.clone())
@@ -190,8 +169,8 @@ fn write_legacy_copy_fixture(dir: &Path) -> Result<PathBuf, std::io::Error> {
 #[test]
 fn post_response_is_an_executable_captured_json_boundary() -> Result<(), Box<dyn std::error::Error>>
 {
-    let dir = TempDir::new()?;
-    let design = write_fixture(&dir.0)?;
+    let dir = TempDir::new("mfd_http_post")?;
+    let design = write_fixture(dir.path())?;
     let imported = mfd::import(&design)?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
@@ -242,7 +221,7 @@ fn post_response_is_an_executable_captured_json_boundary() -> Result<(), Box<dyn
         Some(&Value::String("ready".into()))
     );
 
-    let exported = dir.0.join("roundtrip.mfd");
+    let exported = dir.path().join("roundtrip.mfd");
     assert!(mfd::export(&imported.project, &exported)?.is_empty());
     let roundtrip = mfd::import(&exported)?;
     assert!(roundtrip.warnings.is_empty(), "{:?}", roundtrip.warnings);
@@ -269,8 +248,8 @@ fn post_response_is_an_executable_captured_json_boundary() -> Result<(), Box<dyn
 #[test]
 fn legacy_copy_all_refines_an_unconstrained_json_preview() -> Result<(), Box<dyn std::error::Error>>
 {
-    let dir = TempDir::new()?;
-    let imported = mfd::import(&write_legacy_copy_fixture(&dir.0)?)?;
+    let dir = TempDir::new("mfd_http_post")?;
+    let imported = mfd::import(&write_legacy_copy_fixture(dir.path())?)?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert_eq!(imported.project.target, imported.project.source);
     assert_eq!(
@@ -287,7 +266,7 @@ fn legacy_copy_all_refines_an_unconstrained_json_preview() -> Result<(), Box<dyn
     )?;
     assert_eq!(engine::run(&imported.project, &source)?, source);
 
-    let exported = dir.0.join("legacy-copy-roundtrip.mfd");
+    let exported = dir.path().join("legacy-copy-roundtrip.mfd");
     assert!(mfd::export(&imported.project, &exported)?.is_empty());
     let rendered = std::fs::read_to_string(&exported)?;
     assert!(rendered.contains("library=\"json\""));

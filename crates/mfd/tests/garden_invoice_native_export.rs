@@ -2,31 +2,11 @@
 mod private_corpus;
 
 use std::error::Error;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::path::Path;
 
 use ir::Instance;
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Result<Self, std::io::Error> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_garden_invoice_native_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn mapped_xml(
     project: &mapping::Project,
@@ -49,7 +29,7 @@ fn garden_invoice_native_roundtrip_preserves_ten_services_and_xml() -> Result<()
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
 
-    let dir = TempDir::new()?;
+    let dir = TempDir::new("garden_invoice_native")?;
     let baseline_source =
         format_pdf::read(&pdf, imported.project.source_options.pdf.as_ref().unwrap())?;
     assert_eq!(
@@ -63,17 +43,18 @@ fn garden_invoice_native_roundtrip_preserves_ten_services_and_xml() -> Result<()
     let baseline_xml = mapped_xml(
         &imported.project,
         &baseline_source,
-        &dir.0.join("baseline.xml"),
+        &dir.path().join("baseline.xml"),
     )?;
 
     let mut current = imported.project;
     for cycle in 0..2 {
-        let design = dir.0.join(format!("garden-{cycle}.mfd"));
+        let design = dir.path().join(format!("garden-{cycle}.mfd"));
         let report = mfd::preflight_export(&current, &design)?;
         assert!(report.is_native_compatible(), "{report}");
         mfd::export_with_profile(&current, &design, mfd::ExportProfile::NativeMfd)?;
 
-        let template = std::fs::read_to_string(dir.0.join(format!("garden-{cycle}-source.pxt")))?;
+        let template =
+            std::fs::read_to_string(dir.path().join(format!("garden-{cycle}-source.pxt")))?;
         assert!(template.contains("<VerticalAnchorAssignment"));
         assert!(template.contains("<HorizontalAnchorAssignment"));
         assert!(template.contains("<Splitter"));
@@ -90,7 +71,7 @@ fn garden_invoice_native_roundtrip_preserves_ten_services_and_xml() -> Result<()
         let xml = mapped_xml(
             &restored.project,
             &source,
-            &dir.0.join(format!("garden-{cycle}.xml")),
+            &dir.path().join(format!("garden-{cycle}.xml")),
         )?;
         assert_eq!(xml, baseline_xml, "cycle {cycle} changed mapped XML");
         current = restored.project;

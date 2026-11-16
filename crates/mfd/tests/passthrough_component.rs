@@ -3,35 +3,10 @@ mod private_corpus;
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use ir::{Instance, Value};
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Self {
-        static NEXT: AtomicU64 = AtomicU64::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_passthrough_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
-
-fn write(path: &Path, contents: &str) {
-    std::fs::write(path, contents).unwrap();
-}
+use test_support::TempDir;
 
 fn write_three_stage_chain(directory: &Path) -> PathBuf {
     let schema = |root: &str, required: &str, optional: &str| {
@@ -39,26 +14,30 @@ fn write_three_stage_chain(directory: &Path) -> PathBuf {
             "<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\"><xs:element name=\"{root}\"><xs:complexType><xs:sequence><xs:element name=\"{required}\" type=\"xs:string\"/><xs:element name=\"{optional}\" type=\"xs:string\" minOccurs=\"0\"/></xs:sequence></xs:complexType></xs:element></xs:schema>"
         )
     };
-    write(
-        &directory.join("source.xsd"),
-        &schema("Source", "Start", "Unused"),
-    );
-    write(
-        &directory.join("first.xsd"),
-        &schema("FirstBuffer", "First", "Cycle"),
-    );
-    write(
-        &directory.join("second.xsd"),
-        &schema("SecondBuffer", "Second", "Skipped"),
-    );
-    write(
-        &directory.join("target.xsd"),
-        &schema("Target", "Result", "Bypass"),
-    );
+    std::fs::write(
+        directory.join("source.xsd"),
+        schema("Source", "Start", "Unused"),
+    )
+    .unwrap();
+    std::fs::write(
+        directory.join("first.xsd"),
+        schema("FirstBuffer", "First", "Cycle"),
+    )
+    .unwrap();
+    std::fs::write(
+        directory.join("second.xsd"),
+        schema("SecondBuffer", "Second", "Skipped"),
+    )
+    .unwrap();
+    std::fs::write(
+        directory.join("target.xsd"),
+        schema("Target", "Result", "Bypass"),
+    )
+    .unwrap();
     let mapping = directory.join("three-stage.mfd");
     // The intermediate components are deliberately declared in reverse stage
     // order so the importer must derive their order from the graph.
-    write(
+    std::fs::write(
         &mapping,
         r#"<mapping version="26"><component name="map"><structure><children>
           <component name="source" library="xml" kind="14"><data><root><entry name="Source"><entry name="Start" outkey="10"/></entry></root><document schema="source.xsd" inputinstance="source.xml" instanceroot="{}Source"/></data></component>
@@ -66,7 +45,7 @@ fn write_three_stage_chain(directory: &Path) -> PathBuf {
           <component name="first-buffer" library="xml" kind="14"><properties PassThrough="1"/><data><root><entry name="FirstBuffer"><entry name="First" inpkey="20" outkey="30"/><entry name="Cycle" inpkey="21" outkey="31"/></entry></root><document schema="first.xsd" instanceroot="{}FirstBuffer"/></data></component>
           <component name="target" library="xml" kind="14"><properties XSLTDefaultOutput="1"/><data><root><entry name="Target"><entry name="Result" inpkey="60"/><entry name="Bypass" inpkey="61"/></entry></root><document schema="target.xsd" outputinstance="target.xml" instanceroot="{}Target"/></data></component>
         </children><graph><vertices><vertex vertexkey="10"><edges><edge vertexkey="20"/></edges></vertex><vertex vertexkey="30"><edges><edge vertexkey="40"/></edges></vertex><vertex vertexkey="50"><edges><edge vertexkey="60"/></edges></vertex></vertices></graph></structure></component></mapping>"#,
-    );
+    ).unwrap();
     mapping
 }
 
@@ -77,8 +56,8 @@ fn write_serial_chain(directory: &Path, intermediate_count: usize) -> PathBuf {
             "<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\"><xs:element name=\"{root}\"><xs:complexType><xs:sequence><xs:element name=\"{field}\" type=\"xs:string\"/></xs:sequence></xs:complexType></xs:element></xs:schema>"
         )
     };
-    write(&directory.join("source.xsd"), &schema("Source", "Start"));
-    write(&directory.join("target.xsd"), &schema("Target", "Result"));
+    std::fs::write(directory.join("source.xsd"), schema("Source", "Start")).unwrap();
+    std::fs::write(directory.join("target.xsd"), schema("Target", "Result")).unwrap();
     let mut children = String::from(
         r#"<component name="source" library="xml" kind="14"><data><root><entry name="Source"><entry name="Start" outkey="10"/></entry></root><document schema="source.xsd" inputinstance="source.xml" instanceroot="{}Source"/></data></component>"#,
     );
@@ -87,10 +66,11 @@ fn write_serial_chain(directory: &Path, intermediate_count: usize) -> PathBuf {
     for index in (1..=intermediate_count).rev() {
         let root = format!("Buffer{index}");
         let field = format!("Step{index}");
-        write(
-            &directory.join(format!("buffer{index}.xsd")),
-            &schema(&root, &field),
-        );
+        std::fs::write(
+            directory.join(format!("buffer{index}.xsd")),
+            schema(&root, &field),
+        )
+        .unwrap();
         children.push_str(&format!(
             "<component name=\"buffer-{index}\" library=\"xml\" kind=\"14\"><properties PassThrough=\"1\"/><data><root><entry name=\"{root}\"><entry name=\"{field}\" inpkey=\"{}\" outkey=\"{}\"/></entry></root><document schema=\"buffer{index}.xsd\" instanceroot=\"{{}}{root}\"/></data></component>",
             index * 20,
@@ -110,19 +90,19 @@ fn write_serial_chain(directory: &Path, intermediate_count: usize) -> PathBuf {
         ));
     }
     let mapping = directory.join("serial-chain.mfd");
-    write(
+    std::fs::write(
         &mapping,
-        &format!(
+        format!(
             "<mapping version=\"26\"><component name=\"map\"><structure><children>{children}</children><graph><vertices>{vertices}</vertices></graph></structure></component></mapping>"
         ),
-    );
+    ).unwrap();
     mapping
 }
 
 #[test]
 fn four_serial_xml_stages_import_and_execute_in_graph_order() {
-    let dir = TempDir::new();
-    let mapping = write_serial_chain(&dir.0, 3);
+    let dir = TempDir::new("mfd_passthrough").unwrap();
+    let mapping = write_serial_chain(dir.path(), 3);
     let imported = mfd::import_pipeline(&mapping).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert_eq!(imported.pipeline.stages.len(), 4);
@@ -179,8 +159,8 @@ fn four_serial_xml_stages_import_and_execute_in_graph_order() {
 
 #[test]
 fn serial_xml_chain_rejects_bypass_cycle_and_disconnected_component() {
-    let dir = TempDir::new();
-    let mapping = write_serial_chain(&dir.0, 3);
+    let dir = TempDir::new("mfd_passthrough").unwrap();
+    let mapping = write_serial_chain(dir.path(), 3);
     let original = std::fs::read_to_string(&mapping).unwrap();
     let bypass = original
         .replace(
@@ -191,7 +171,7 @@ fn serial_xml_chain_rejects_bypass_cycle_and_disconnected_component() {
             "<vertex vertexkey=\"30\"><edges><edge vertexkey=\"40\"/></edges></vertex>",
             "<vertex vertexkey=\"30\"><edges><edge vertexkey=\"40\"/><edge vertexkey=\"81\"/></edges></vertex>",
         );
-    write(&mapping, &bypass);
+    std::fs::write(&mapping, &bypass).unwrap();
     let error = mfd::import_pipeline(&mapping).err().unwrap().to_string();
     assert!(
         error.contains("without branches, cycles, or bypasses"),
@@ -207,7 +187,7 @@ fn serial_xml_chain_rejects_bypass_cycle_and_disconnected_component() {
             "<vertex vertexkey=\"70\"><edges><edge vertexkey=\"80\"/></edges></vertex>",
             "<vertex vertexkey=\"70\"><edges><edge vertexkey=\"80\"/><edge vertexkey=\"21\"/></edges></vertex>",
         );
-    write(&mapping, &cycle);
+    std::fs::write(&mapping, &cycle).unwrap();
     let error = mfd::import_pipeline(&mapping).err().unwrap().to_string();
     assert!(
         error.contains("without branches, cycles, or bypasses"),
@@ -218,7 +198,7 @@ fn serial_xml_chain_rejects_bypass_cycle_and_disconnected_component() {
         "</children><graph>",
         "<component name=\"detached\" library=\"xml\" kind=\"14\"><properties PassThrough=\"1\"/><data><root><entry name=\"Buffer1\"><entry name=\"Step1\" inpkey=\"91\" outkey=\"90\"/></entry></root><document schema=\"buffer1.xsd\" instanceroot=\"{}Buffer1\"/></data></component></children><graph>",
     );
-    write(&mapping, &disconnected);
+    std::fs::write(&mapping, &disconnected).unwrap();
     let error = mfd::import_pipeline(&mapping).err().unwrap().to_string();
     assert!(
         error.contains("cannot classify component `detached`"),
@@ -228,16 +208,16 @@ fn serial_xml_chain_rejects_bypass_cycle_and_disconnected_component() {
 
 #[test]
 fn serial_xml_chain_rejects_more_than_64_intermediates_before_lowering() {
-    let dir = TempDir::new();
-    let mapping = write_serial_chain(&dir.0, 65);
+    let dir = TempDir::new("mfd_passthrough").unwrap();
+    let mapping = write_serial_chain(dir.path(), 65);
     let error = mfd::import_pipeline(&mapping).err().unwrap().to_string();
     assert!(error.contains("at most 64 intermediate targets"), "{error}");
 }
 
 #[test]
 fn three_serial_xml_stages_import_and_execute_in_graph_order() {
-    let dir = TempDir::new();
-    let mapping = write_three_stage_chain(&dir.0);
+    let dir = TempDir::new("mfd_passthrough").unwrap();
+    let mapping = write_three_stage_chain(dir.path());
     let imported = mfd::import_pipeline(&mapping).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert_eq!(imported.pipeline.stages.len(), 3);
@@ -293,12 +273,9 @@ fn three_serial_xml_stages_import_and_execute_in_graph_order() {
 
 #[test]
 fn three_stage_xml_binds_original_host_sources_in_later_stages() {
-    let dir = TempDir::new();
-    let mapping = write_three_stage_chain(&dir.0);
-    write(
-        &dir.0.join("supplement.xsd"),
-        "<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\"><xs:element name=\"Supplement\"><xs:complexType><xs:sequence><xs:element name=\"Addition\" type=\"xs:string\"/></xs:sequence></xs:complexType></xs:element></xs:schema>",
-    );
+    let dir = TempDir::new("mfd_passthrough").unwrap();
+    let mapping = write_three_stage_chain(dir.path());
+    dir.write("supplement.xsd", "<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\"><xs:element name=\"Supplement\"><xs:complexType><xs:sequence><xs:element name=\"Addition\" type=\"xs:string\"/></xs:sequence></xs:complexType></xs:element></xs:schema>").unwrap();
     let modified = std::fs::read_to_string(&mapping)
         .unwrap()
         .replace(
@@ -309,7 +286,7 @@ fn three_stage_xml_binds_original_host_sources_in_later_stages() {
             "</vertices></graph>",
             "<vertex vertexkey=\"70\"><edges><edge vertexkey=\"41\"/><edge vertexkey=\"61\"/></edges></vertex></vertices></graph>",
         );
-    write(&mapping, &modified);
+    std::fs::write(&mapping, &modified).unwrap();
 
     let imported = mfd::import_pipeline(&mapping).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
@@ -364,14 +341,14 @@ fn three_stage_xml_binds_original_host_sources_in_later_stages() {
 
 #[test]
 fn three_stage_xml_rejects_bypass_and_cycle() {
-    let dir = TempDir::new();
-    let mapping = write_three_stage_chain(&dir.0);
+    let dir = TempDir::new("mfd_passthrough").unwrap();
+    let mapping = write_three_stage_chain(dir.path());
     let original = std::fs::read_to_string(&mapping).unwrap();
     let bypass = original.replace(
         "<vertex vertexkey=\"30\"><edges><edge vertexkey=\"40\"/></edges></vertex>",
         "<vertex vertexkey=\"30\"><edges><edge vertexkey=\"40\"/><edge vertexkey=\"61\"/></edges></vertex>",
     );
-    write(&mapping, &bypass);
+    std::fs::write(&mapping, &bypass).unwrap();
     let error = mfd::import_pipeline(&mapping).err().unwrap().to_string();
     assert!(
         error.contains("without branches, cycles, or bypasses"),
@@ -382,7 +359,7 @@ fn three_stage_xml_rejects_bypass_and_cycle() {
         "<vertex vertexkey=\"50\"><edges><edge vertexkey=\"60\"/></edges></vertex>",
         "<vertex vertexkey=\"50\"><edges><edge vertexkey=\"60\"/><edge vertexkey=\"21\"/></edges></vertex>",
     );
-    write(&mapping, &cycle);
+    std::fs::write(&mapping, &cycle).unwrap();
     let error = mfd::import_pipeline(&mapping).err().unwrap().to_string();
     assert!(
         error.contains("without branches, cycles, or bypasses"),
@@ -392,23 +369,21 @@ fn three_stage_xml_rejects_bypass_and_cycle() {
 
 #[test]
 fn connected_xml_passthrough_reports_unrepresented_chain() {
-    let dir = TempDir::new();
+    let dir = TempDir::new("mfd_passthrough").unwrap();
     let schema = r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Source"><xs:complexType><xs:sequence><xs:element name="Value" type="xs:string"/></xs:sequence></xs:complexType></xs:element></xs:schema>"#;
-    write(&dir.0.join("source.xsd"), schema);
-    write(
-        &dir.0.join("target.xsd"),
-        &schema.replace("name=\"Source\"", "name=\"Target\""),
-    );
-    write(
-        &dir.0.join("mapping.mfd"),
-        r#"<mapping version="26"><component name="map"><structure><children>
+    dir.write("source.xsd", schema).unwrap();
+    dir.write(
+        "target.xsd",
+        schema.replace("name=\"Source\"", "name=\"Target\""),
+    )
+    .unwrap();
+    dir.write("mapping.mfd", r#"<mapping version="26"><component name="map"><structure><children>
           <component name="source" library="xml" kind="14"><data><root><entry name="Source"><entry name="Value" outkey="10"/></entry></root><document schema="source.xsd" inputinstance="source.xml" instanceroot="{}Source"/></data></component>
           <component name="buffer" library="xml" kind="14"><properties PassThrough="1"/><data><root><entry name="Source"><entry name="Value" inpkey="20" outkey="30"/></entry></root><document schema="source.xsd" instanceroot="{}Source"/></data></component>
           <component name="target" library="xml" kind="14"><properties XSLTDefaultOutput="1"/><data><root><entry name="Target"><entry name="Value" inpkey="40"/></entry></root><document schema="target.xsd" outputinstance="target.xml" instanceroot="{}Target"/></data></component>
-        </children><graph><vertices><vertex vertexkey="10"><edges><edge vertexkey="20"/></edges></vertex><vertex vertexkey="30"><edges><edge vertexkey="40"/></edges></vertex></vertices></graph></structure></component></mapping>"#,
-    );
+        </children><graph><vertices><vertex vertexkey="10"><edges><edge vertexkey="20"/></edges></vertex><vertex vertexkey="30"><edges><edge vertexkey="40"/></edges></vertex></vertices></graph></structure></component></mapping>"#).unwrap();
 
-    let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+    let imported = mfd::import(&dir.path().join("mapping.mfd")).unwrap();
     assert_eq!(imported.warnings.len(), 1, "{:?}", imported.warnings);
     assert!(
         imported.warnings[0].contains("chained target `buffer`"),
@@ -416,7 +391,7 @@ fn connected_xml_passthrough_reports_unrepresented_chain() {
         imported.warnings
     );
     let strict = mfd::import_with_profile(
-        &dir.0.join("mapping.mfd"),
+        &dir.path().join("mapping.mfd"),
         &mfd::ImportOptions::default(),
         mfd::ImportProfile::Executable,
     );
@@ -438,7 +413,7 @@ fn connected_xml_passthrough_reports_unrepresented_chain() {
         )])
         .into(),
     );
-    let pipeline_import = mfd::import_pipeline(&dir.0.join("mapping.mfd")).unwrap();
+    let pipeline_import = mfd::import_pipeline(&dir.path().join("mapping.mfd")).unwrap();
     assert!(
         pipeline_import.warnings.is_empty(),
         "{:?}",
@@ -486,7 +461,7 @@ fn connected_xml_passthrough_reports_unrepresented_chain() {
         Some(&Value::String("passed through".to_string()))
     );
 
-    let roundtrip_path = dir.0.join("roundtrip.mfd");
+    let roundtrip_path = dir.path().join("roundtrip.mfd");
     let warnings = mfd::export(&imported.project, &roundtrip_path).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
     let exported = std::fs::read_to_string(&roundtrip_path).unwrap();
@@ -514,7 +489,7 @@ fn connected_xml_passthrough_reports_unrepresented_chain() {
 
     // A connected intermediate output is insufficient when the final target
     // actually reads the original source instead.
-    let mapping = dir.0.join("mapping.mfd");
+    let mapping = dir.path().join("mapping.mfd");
     let disconnected = std::fs::read_to_string(&mapping)
         .unwrap()
         .replace(
@@ -525,7 +500,7 @@ fn connected_xml_passthrough_reports_unrepresented_chain() {
             "<vertex vertexkey=\"30\"><edges><edge vertexkey=\"40\"/></edges></vertex>",
             "<vertex vertexkey=\"30\"><edges><edge vertexkey=\"50\"/></edges></vertex>",
         );
-    write(&mapping, &disconnected);
+    std::fs::write(&mapping, &disconnected).unwrap();
     let error = mfd::import_pipeline(&mapping).err().unwrap().to_string();
     assert!(error.contains("unclassified component"), "{error}");
 }

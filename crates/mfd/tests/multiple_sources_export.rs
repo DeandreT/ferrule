@@ -1,32 +1,11 @@
 use std::error::Error;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{Instance, ScalarType, SchemaNode, Value};
 use mapping::{DynamicSourcePath, Node};
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> std::io::Result<Self> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_multiple_sources_export_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = fs::remove_dir_all(&path);
-        fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn fixture(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -65,13 +44,13 @@ fn static_xml_sources_export_as_owned_components_and_roundtrip() -> Result<(), B
     let imported = mfd::import(&fixture("multi-source-nested-files.mfd"))?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
 
-    let temp = TempDir::new()?;
-    let design = temp.0.join("roundtrip.mfd");
+    let temp = TempDir::new("mfd_multiple_sources_export")?;
+    let design = temp.path().join("roundtrip.mfd");
     let warnings = mfd::export(&imported.project, &design)?;
     assert!(warnings.is_empty(), "{warnings:?}");
 
-    let source_schema = temp.0.join("roundtrip-source.xsd");
-    let beta_schema = temp.0.join("roundtrip-source-2.xsd");
+    let source_schema = temp.path().join("roundtrip-source.xsd");
+    let beta_schema = temp.path().join("roundtrip-source-2.xsd");
     assert!(source_schema.is_file(), "missing {source_schema:?}");
     assert!(beta_schema.is_file(), "missing {beta_schema:?}");
 
@@ -160,8 +139,8 @@ fn dynamic_non_xml_source_rejects_without_replacing_the_design() -> Result<(), B
     secondary.options.has_header_row = Some(true);
     secondary.dynamic_path = Some(DynamicSourcePath::legacy(path_node, vec!["RowsA".into()]));
 
-    let temp = TempDir::new()?;
-    let design = temp.0.join("dynamic-csv.mfd");
+    let temp = TempDir::new("mfd_multiple_sources_export")?;
+    let design = temp.path().join("dynamic-csv.mfd");
     fs::write(&design, "keep existing design")?;
     let error = mfd::export(&project, &design)
         .expect_err("a dynamically addressed CSV source must reject atomically");

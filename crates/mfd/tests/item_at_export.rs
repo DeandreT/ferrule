@@ -1,6 +1,4 @@
 use std::collections::BTreeMap;
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{Instance, ScalarType, SchemaNode, Value};
 use mapping::{
@@ -8,26 +6,7 @@ use mapping::{
     NamedSource, Node, Project, Scope, SequenceExpr,
 };
 
-struct Scratch(PathBuf);
-
-impl Scratch {
-    fn new() -> Self {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule-item-at-ports-{}-{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed),
-        ));
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for Scratch {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir as Scratch;
 
 fn project(computed: bool, function: AggregateOp) -> Project {
     Project {
@@ -125,7 +104,7 @@ fn source() -> Instance {
 }
 
 fn assert_item_at_roundtrip(mut project: Project, source: Instance, selected: i64) {
-    let directory = Scratch::new();
+    let directory = Scratch::new("item-at-ports").unwrap();
     let issues = engine::validate(&project);
     assert!(issues.is_empty(), "{issues:?}");
     let expected = engine::run(&project, &source).unwrap();
@@ -134,7 +113,7 @@ fn assert_item_at_roundtrip(mut project: Project, source: Instance, selected: i6
         Some(&Instance::Scalar(Value::Int(selected)))
     );
     for round in 0..2 {
-        let path = directory.0.join(format!("round-{round}.mfd"));
+        let path = directory.path().join(format!("round-{round}.mfd"));
         let report =
             mfd::export_with_profile(&project, &path, mfd::ExportProfile::NativeMfd).unwrap();
         assert!(report.warnings.is_empty(), "{:?}", report.warnings);
@@ -184,8 +163,8 @@ fn direct_and_computed_item_at_export_native_nodes_and_position_ports() {
 #[test]
 fn item_at_without_a_collection_dependent_expression_is_refused_before_publication() {
     for root_field in [false, true] {
-        let directory = Scratch::new();
-        let path = directory.0.join("unchanged.mfd");
+        let directory = Scratch::new("item-at-ports").unwrap();
+        let path = directory.path().join("unchanged.mfd");
         let mut project = project(true, AggregateOp::ItemAt);
         let expression = if root_field {
             let SchemaNode {
@@ -238,7 +217,7 @@ fn item_at_without_a_collection_dependent_expression_is_refused_before_publicati
                 .contains("cannot preserve the collection's cardinality")
         );
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "original");
-        assert_eq!(std::fs::read_dir(&directory.0).unwrap().count(), 1);
+        assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 1);
     }
 }
 
@@ -249,8 +228,8 @@ fn assert_cardinality_refusal(project: &Project, source: &Instance, expected: i6
         engine::run(project, source).unwrap().field("Selected"),
         Some(&Instance::Scalar(Value::Int(expected)))
     );
-    let directory = Scratch::new();
-    let path = directory.0.join("existing.mfd");
+    let directory = Scratch::new("item-at-ports").unwrap();
+    let path = directory.path().join("existing.mfd");
     std::fs::write(&path, "original").unwrap();
     let error =
         mfd::export_with_profile(project, &path, mfd::ExportProfile::NativeMfd).unwrap_err();
@@ -261,7 +240,7 @@ fn assert_cardinality_refusal(project: &Project, source: &Instance, expected: i6
         "{error}"
     );
     assert_eq!(std::fs::read_to_string(&path).unwrap(), "original");
-    assert_eq!(std::fs::read_dir(&directory.0).unwrap().count(), 1);
+    assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 1);
 }
 
 #[test]
@@ -427,8 +406,8 @@ fn computed_named_collection_is_refused_without_losing_its_owner() {
         output.field("Selected"),
         Some(&Instance::Scalar(Value::Int(120)))
     );
-    let directory = Scratch::new();
-    let path = directory.0.join("existing.mfd");
+    let directory = Scratch::new("item-at-ports").unwrap();
+    let path = directory.path().join("existing.mfd");
     std::fs::write(&path, "original").unwrap();
     let error =
         mfd::export_with_profile(&project, &path, mfd::ExportProfile::NativeMfd).unwrap_err();
@@ -439,7 +418,7 @@ fn computed_named_collection_is_refused_without_losing_its_owner() {
         "{error}"
     );
     assert_eq!(std::fs::read_to_string(&path).unwrap(), "original");
-    assert_eq!(std::fs::read_dir(&directory.0).unwrap().count(), 1);
+    assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 1);
 }
 
 #[test]
@@ -577,8 +556,8 @@ fn generated_item_at_refuses_broadcast_only_expressions_before_publication() {
 }
 
 fn assert_transformed_sequence_refusal(project: &Project) {
-    let directory = Scratch::new();
-    let path = directory.0.join("existing.mfd");
+    let directory = Scratch::new("item-at-ports").unwrap();
+    let path = directory.path().join("existing.mfd");
     std::fs::write(&path, "original").unwrap();
     let error =
         mfd::export_with_profile(project, &path, mfd::ExportProfile::NativeMfd).unwrap_err();
@@ -589,7 +568,7 @@ fn assert_transformed_sequence_refusal(project: &Project) {
         "{error}"
     );
     assert_eq!(std::fs::read_to_string(&path).unwrap(), "original");
-    assert_eq!(std::fs::read_dir(&directory.0).unwrap().count(), 1);
+    assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 1);
 }
 
 #[test]
@@ -741,9 +720,9 @@ fn joined_item_at_uses_the_same_two_ports() {
 
 #[test]
 fn other_collection_aggregates_keep_their_parent_context_slot() {
-    let directory = Scratch::new();
+    let directory = Scratch::new("item-at-ports").unwrap();
     let project = project(true, AggregateOp::Sum);
-    let path = directory.0.join("sum.mfd");
+    let path = directory.path().join("sum.mfd");
     mfd::export_with_profile(&project, &path, mfd::ExportProfile::NativeMfd).unwrap();
     let text = std::fs::read_to_string(&path).unwrap();
     let document = roxmltree::Document::parse(&text).unwrap();

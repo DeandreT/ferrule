@@ -723,37 +723,12 @@ fn child<'a, 'input>(
 
 #[cfg(test)]
 mod tests {
-    use std::sync::atomic::{AtomicU64, Ordering};
 
     use super::*;
     use crate::resource::ResourceResolver;
     use ir::{Instance, Value};
 
-    struct TempDir(PathBuf);
-
-    impl TempDir {
-        fn new() -> Result<Self, std::io::Error> {
-            static NEXT: AtomicU64 = AtomicU64::new(0);
-            let path = std::env::temp_dir().join(format!(
-                "ferrule-mfd-flextext-package-{}-{}",
-                std::process::id(),
-                NEXT.fetch_add(1, Ordering::Relaxed)
-            ));
-            match std::fs::remove_dir_all(&path) {
-                Ok(()) => {}
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-                Err(error) => return Err(error),
-            }
-            std::fs::create_dir_all(&path)?;
-            Ok(Self(path))
-        }
-    }
-
-    impl Drop for TempDir {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_dir_all(&self.0);
-        }
-    }
+    use test_support::TempDir;
 
     #[test]
     fn parses_line_delimiter_and_column_splitters() {
@@ -845,9 +820,9 @@ mod tests {
     #[test]
     fn resolves_parent_configuration_inside_package_and_keeps_data_path_portable()
     -> Result<(), Box<dyn std::error::Error>> {
-        let package = TempDir::new()?;
-        let maps = package.0.join("maps");
-        let resources = package.0.join("resources");
+        let package = TempDir::new("mfd-flextext-package")?;
+        let maps = package.path().join("maps");
+        let resources = package.path().join("resources");
         std::fs::create_dir_all(&maps)?;
         std::fs::create_dir_all(&resources)?;
         let mapping = maps.join("mapping.mfd");
@@ -856,7 +831,7 @@ mod tests {
             resources.join("layout.mft"),
             r#"<FlexText><Commands><Project FileName="input.txt"><RootName Value="Root"/><Connections><Connection><Store Type="string"><Name Value="Value"/></Store></Connection></Connections></Project></Commands></FlexText>"#,
         )?;
-        let resolver = ResourceResolver::new(&mapping, Some(&package.0))?;
+        let resolver = ResourceResolver::new(&mapping, Some(package.path()))?;
         let document = roxmltree::Document::parse(
             r#"<component name="Text" library="text" kind="16"><data><text type="txt" config="..\resources\layout.mft"/><root><entry name="Root"><entry name="Value" outkey="1"/></entry></root></data></component>"#,
         )?;
@@ -876,21 +851,21 @@ mod tests {
     fn rejects_flextext_configuration_symlink_escape() -> Result<(), Box<dyn std::error::Error>> {
         use std::os::unix::fs::symlink;
 
-        let package = TempDir::new()?;
-        let outside = TempDir::new()?;
-        let maps = package.0.join("maps");
-        let resources = package.0.join("resources");
+        let package = TempDir::new("mfd-flextext-package")?;
+        let outside = TempDir::new("mfd-flextext-package")?;
+        let maps = package.path().join("maps");
+        let resources = package.path().join("resources");
         std::fs::create_dir_all(&maps)?;
         std::fs::create_dir_all(&resources)?;
         let mapping = maps.join("mapping.mfd");
         std::fs::write(&mapping, "<mapping/>")?;
-        let external = outside.0.join("layout.mft");
+        let external = outside.path().join("layout.mft");
         std::fs::write(
             &external,
             r#"<FlexText><Commands><Project><RootName Value="Root"/><Connections><Connection><Store Type="string"><Name Value="Value"/></Store></Connection></Connections></Project></Commands></FlexText>"#,
         )?;
         symlink(&external, resources.join("layout.mft"))?;
-        let resolver = ResourceResolver::new(&mapping, Some(&package.0))?;
+        let resolver = ResourceResolver::new(&mapping, Some(package.path()))?;
         let document = roxmltree::Document::parse(
             r#"<component name="Text" library="text" kind="16"><data><text type="txt" config="../resources/layout.mft"/><root><entry name="Root"><entry name="Value" outkey="1"/></entry></root></data></component>"#,
         )?;

@@ -1,6 +1,4 @@
 use std::collections::BTreeMap;
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use ir::{Instance, ScalarType, SchemaNode, Value};
 use mapping::{
@@ -12,26 +10,7 @@ use mfd::{ExportCompatibilityFeature, ExportProfile};
 
 const UNSTABLE: u64 = 0x3feffffffffffc19;
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> std::io::Result<Self> {
-        static NEXT: AtomicU64 = AtomicU64::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule-native-pdf-rows-{}-{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn two_page_pdf() -> Vec<u8> {
     let stream = |first: &str, second: &str| {
@@ -240,7 +219,7 @@ fn changed_layout(edit: impl FnOnce(&mut Vec<PdfCommand>)) -> PdfLayout {
 #[test]
 fn boundary_edge_rows_map_four_physical_pdf_rows_through_two_strict_cycles()
 -> Result<(), Box<dyn std::error::Error>> {
-    let temp = TempDir::new()?;
+    let temp = TempDir::new("native-pdf-rows")?;
     let pdf = two_page_pdf();
     let expected = expected_output();
     let mut current = project(layout());
@@ -251,11 +230,12 @@ fn boundary_edge_rows_map_four_physical_pdf_rows_through_two_strict_cycles()
         if cycle == 2 {
             break;
         }
-        let design = temp.0.join(format!("rows-{cycle}.mfd"));
+        let design = temp.path().join(format!("rows-{cycle}.mfd"));
         let report = mfd::preflight_export(&current, &design)?;
         assert!(report.is_native_compatible(), "{report}");
         mfd::export_with_profile(&current, &design, ExportProfile::NativeMfd)?;
-        let template = std::fs::read_to_string(temp.0.join(format!("rows-{cycle}-source.pxt")))?;
+        let template =
+            std::fs::read_to_string(temp.path().join(format!("rows-{cycle}-source.pxt")))?;
         assert!(template.contains("<BoundaryFindVertical id=\"2\">"));
         assert!(template.contains("<Splitter id=\"3\">"));
         assert!(template.contains("<NameBegin>Begin</NameBegin>"));
@@ -323,7 +303,7 @@ fn changed_inferred_fallback_and_other_row_shapes_reject_atomically()
         layout().commands().to_vec(),
     )?;
 
-    let temp = TempDir::new()?;
+    let temp = TempDir::new("native-pdf-rows")?;
     for (name, layout) in [
         ("no-fallback", no_fallback),
         ("wrong-fallback", wrong_fallback),
@@ -333,8 +313,8 @@ fn changed_inferred_fallback_and_other_row_shapes_reject_atomically()
         ("first-page", first_page),
     ] {
         let project = project(layout);
-        let design = temp.0.join(format!("{name}.mfd"));
-        let sibling = temp.0.join(format!("{name}-source.pxt"));
+        let design = temp.path().join(format!("{name}.mfd"));
+        let sibling = temp.path().join(format!("{name}-source.pxt"));
         let report = mfd::preflight_export(&project, &design)?;
         assert!(report.issues.iter().any(|issue| {
             issue.feature == ExportCompatibilityFeature::PdfLayout && issue.component == "Document"

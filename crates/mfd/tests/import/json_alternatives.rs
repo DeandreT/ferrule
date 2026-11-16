@@ -176,11 +176,12 @@ fn required_typed_and_null_const_json_alternatives_export_reimport_and_execute()
         },
     };
 
-    let temp = TempDir::new("json_const_alternatives");
-    let design = temp.0.join("events.mfd");
+    let temp = TempDir::new("json_const_alternatives").unwrap();
+    let design = temp.path().join("events.mfd");
     let warnings = mfd::export(&project, &design).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
-    let schema_text = std::fs::read_to_string(temp.0.join("events-source.schema.json")).unwrap();
+    let schema_text =
+        std::fs::read_to_string(temp.path().join("events-source.schema.json")).unwrap();
     assert!(schema_text.contains(r#""const": true"#));
     assert!(schema_text.contains(r#""const": false"#));
     assert!(schema_text.contains(r#""const": null"#));

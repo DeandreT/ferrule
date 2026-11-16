@@ -89,7 +89,7 @@ fn generated_json_entry_point_enforces_exact_input_and_normalized_output_multipl
     };
     assert!(generated_source.contains(r#"\"json_multiple_of\""#));
 
-    let output = TempDir::new("rust_json_multiple_of_codegen");
+    let output = TempDir::new("rust_json_multiple_of_codegen").unwrap();
     write_artifacts(output.path(), &artifacts);
     let harness = r##"use codegen_runtime::JsonBoundaryError;
 

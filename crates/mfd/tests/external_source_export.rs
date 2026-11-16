@@ -1,7 +1,5 @@
 use std::collections::BTreeMap;
 use std::error::Error;
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{ScalarType, SchemaNode};
 use mapping::{
@@ -9,27 +7,7 @@ use mapping::{
     FormatOptions, Graph, HttpTimeoutSeconds, NamedSource, Node, Project, Scope, ScopeIteration,
 };
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> std::io::Result<Self> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_external_source_export_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn response_schema() -> SchemaNode {
     SchemaNode::group(
@@ -104,8 +82,8 @@ fn project_with_http_source() -> Result<Project, Box<dyn Error>> {
 #[test]
 fn captured_http_post_roundtrips_and_executes_identically() -> Result<(), Box<dyn Error>> {
     let project = project_with_http_source()?;
-    let temp = TempDir::new()?;
-    let design = temp.0.join("captured-post.mfd");
+    let temp = TempDir::new("mfd_external_source_export")?;
+    let design = temp.path().join("captured-post.mfd");
 
     assert!(mfd::export(&project, &design)?.is_empty());
     let roundtrip = mfd::import(&design)?;
@@ -135,8 +113,8 @@ fn captured_user_function_roundtrips_its_result_contract() -> Result<(), Box<dyn
         ExternalPayloadFormat::Json,
     )?);
     project.source_path = Some("captured.json".into());
-    let temp = TempDir::new()?;
-    let design = temp.0.join("opaque.mfd");
+    let temp = TempDir::new("mfd_external_source_export")?;
+    let design = temp.path().join("opaque.mfd");
     std::fs::write(&design, "keep design")?;
 
     assert!(mfd::export(&project, &design)?.is_empty());
@@ -165,8 +143,8 @@ fn captured_external_schema_rejects_unserializable_json_nullability() -> Result<
                 .ok_or("string scalar is nullable")?,
         ],
     );
-    let temp = TempDir::new()?;
-    let design = temp.0.join("nullable-response.mfd");
+    let temp = TempDir::new("mfd_external_source_export")?;
+    let design = temp.path().join("nullable-response.mfd");
 
     let error = mfd::export(&project, &design).unwrap_err();
     assert!(
@@ -201,8 +179,8 @@ fn captured_secondary_source_roundtrips_with_its_owner() -> Result<(), Box<dyn E
             frame: None,
         },
     );
-    let temp = TempDir::new()?;
-    let design = temp.0.join("secondary.mfd");
+    let temp = TempDir::new("mfd_external_source_export")?;
+    let design = temp.path().join("secondary.mfd");
 
     assert!(mfd::export(&project, &design)?.is_empty());
     let roundtrip = mfd::import(&design)?;
@@ -300,8 +278,8 @@ fn database_primary_survives_secondary_http_iteration() -> Result<(), Box<dyn Er
         },
     };
     assert!(engine::validate(&project).is_empty());
-    let temp = TempDir::new()?;
-    let design = temp.0.join("database-primary.mfd");
+    let temp = TempDir::new("mfd_external_source_export")?;
+    let design = temp.path().join("database-primary.mfd");
 
     assert!(mfd::export(&project, &design)?.is_empty());
     let exported = std::fs::read_to_string(&design)?;

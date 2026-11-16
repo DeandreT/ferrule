@@ -1,36 +1,11 @@
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use ir::{Instance, Value};
 
 const WARNING: &str = "source output-node function `missing-rule` for output key 11 has no supported definition; rule skipped; restore a supported definition or remove the rule";
 const MISSING: &str = r#"<outputnodefunctions><rule applyto="self"><function name="missing-rule"/><filter datatype="string"/></rule></outputnodefunctions>"#;
 
-struct Directory(PathBuf);
-
-impl Directory {
-    fn new() -> Self {
-        static NEXT: AtomicU64 = AtomicU64::new(0);
-        loop {
-            let path = std::env::temp_dir().join(format!(
-                "ferrule_mfd_source_rule_diagnostics_{}_{}",
-                std::process::id(),
-                NEXT.fetch_add(1, Ordering::Relaxed)
-            ));
-            match std::fs::create_dir(&path) {
-                Ok(()) => return Self(path),
-                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
-                Err(error) => panic!("cannot create fixture directory: {error}"),
-            }
-        }
-    }
-}
-
-impl Drop for Directory {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir as Directory;
 
 fn write_design(
     directory: &Path,
@@ -123,11 +98,11 @@ fn clean_executable(design: &Path) -> mfd::Imported {
 
 #[test]
 fn used_missing_rule_warns_once_and_preserves_the_repair_graph() {
-    let directory = Directory::new();
-    let design = write_design(&directory.0, "", MISSING, "");
+    let directory = Directory::new("mfd_source_rule_diagnostics").unwrap();
+    let design = write_design(directory.path(), "", MISSING, "");
     let imported = mfd::import(&design).unwrap();
     assert_eq!(imported.warnings, vec![WARNING.to_string()]);
-    let baseline = write_design(&directory.0, "", "", "");
+    let baseline = write_design(directory.path(), "", "", "");
     let baseline = clean_executable(&baseline);
     assert_same_graph(&imported.project, &baseline.project);
     assert_outputs(&imported.project, Value::String("Ada".into()), "Ada");
@@ -135,8 +110,8 @@ fn used_missing_rule_warns_once_and_preserves_the_repair_graph() {
 
 #[test]
 fn executable_profile_refuses_the_used_missing_rule() {
-    let directory = Directory::new();
-    let design = write_design(&directory.0, "", MISSING, "");
+    let directory = Directory::new("mfd_source_rule_diagnostics").unwrap();
+    let design = write_design(directory.path(), "", MISSING, "");
     let Err(mfd::MfdError::IncompatibleImport(report)) = mfd::import_with_profile(
         &design,
         &mfd::ImportOptions::default(),
@@ -156,38 +131,38 @@ fn executable_profile_refuses_the_used_missing_rule() {
 
 #[test]
 fn unconnected_missing_rule_is_inert() {
-    let directory = Directory::new();
-    let design = write_design(&directory.0, "", "", MISSING);
+    let directory = Directory::new("mfd_source_rule_diagnostics").unwrap();
+    let design = write_design(directory.path(), "", "", MISSING);
     let imported = clean_executable(&design);
     assert_outputs(&imported.project, Value::String("Ada".into()), "Ada");
 }
 
 #[test]
 fn nonmatching_scalar_filter_is_inert() {
-    let directory = Directory::new();
+    let directory = Directory::new("mfd_source_rule_diagnostics").unwrap();
     let rules = MISSING.replace("datatype=\"string\"", "datatype=\"integer\"");
-    let design = write_design(&directory.0, "", &rules, "");
+    let design = write_design(directory.path(), "", &rules, "");
     let imported = clean_executable(&design);
-    let baseline = write_design(&directory.0, "", "", "");
+    let baseline = write_design(directory.path(), "", "", "");
     assert_same_graph(&imported.project, &clean_executable(&baseline).project);
 }
 
 #[test]
 fn defaults_keep_their_order_around_an_unresolved_rule() {
-    let directory = Directory::new();
+    let directory = Directory::new("mfd_source_rule_diagnostics").unwrap();
     let rules = r#"<outputnodefunctions>
       <rule><default value="first"/><filter datatype="string"/></rule>
       <rule><function name="missing-rule"/><filter datatype="string"/></rule>
       <rule><default value="second"/><filter datatype="string"/></rule>
     </outputnodefunctions>"#;
-    let design = write_design(&directory.0, "", rules, "");
+    let design = write_design(directory.path(), "", rules, "");
     let imported = mfd::import(&design).unwrap();
     assert_eq!(imported.warnings, vec![WARNING.to_string()]);
     let baseline_rules = r#"<outputnodefunctions>
       <rule><default value="first"/><filter datatype="string"/></rule>
       <rule><default value="second"/><filter datatype="string"/></rule>
     </outputnodefunctions>"#;
-    let baseline = write_design(&directory.0, "", baseline_rules, "");
+    let baseline = write_design(directory.path(), "", baseline_rules, "");
     assert_same_graph(&imported.project, &clean_executable(&baseline).project);
     assert_outputs(&imported.project, Value::Null, "first");
     assert_outputs(&imported.project, Value::String("Ada".into()), "Ada");
@@ -195,14 +170,14 @@ fn defaults_keep_their_order_around_an_unresolved_rule() {
 
 #[test]
 fn inherited_missing_rule_respects_the_existing_block_boundary() {
-    let directory = Directory::new();
+    let directory = Directory::new("mfd_source_rule_diagnostics").unwrap();
     let inherited = MISSING.replace("applyto=\"self\"", "applyto=\"descendants\"");
-    let design = write_design(&directory.0, &inherited, "", "");
+    let design = write_design(directory.path(), &inherited, "", "");
     let imported = mfd::import(&design).unwrap();
     assert_eq!(imported.warnings, vec![WARNING.to_string()]);
     assert_outputs(&imported.project, Value::String("Ada".into()), "Ada");
     let blocked = write_design(
-        &directory.0,
+        directory.path(),
         &inherited,
         r#"<outputnodefunctions inherit="block"/>"#,
         "",
@@ -213,8 +188,8 @@ fn inherited_missing_rule_respects_the_existing_block_boundary() {
 
 #[test]
 fn malformed_or_unsupported_rules_remain_inert() {
-    let directory = Directory::new();
-    let baseline = write_design(&directory.0, "", "", "");
+    let directory = Directory::new("mfd_source_rule_diagnostics").unwrap();
+    let baseline = write_design(directory.path(), "", "", "");
     let baseline = clean_executable(&baseline);
     for rules in [
         r#"<outputnodefunctions><rule><function/></rule></outputnodefunctions>"#,
@@ -222,7 +197,7 @@ fn malformed_or_unsupported_rules_remain_inert() {
         r#"<outputnodefunctions><rule><function name="missing-rule"/><filter datatype="date"/></rule></outputnodefunctions>"#,
         r#"<outputnodefunctions><rule applyto="somewhere"><function name="missing-rule"/><filter datatype="string"/></rule></outputnodefunctions>"#,
     ] {
-        let design = write_design(&directory.0, "", rules, "");
+        let design = write_design(directory.path(), "", rules, "");
         let imported = clean_executable(&design);
         assert_same_graph(&imported.project, &baseline.project);
     }
@@ -230,9 +205,9 @@ fn malformed_or_unsupported_rules_remain_inert() {
 
 #[test]
 fn non_scalar_source_rule_remains_inert() {
-    let directory = Directory::new();
-    let design = write_design(&directory.0, MISSING, "", "");
+    let directory = Directory::new("mfd_source_rule_diagnostics").unwrap();
+    let design = write_design(directory.path(), MISSING, "", "");
     let imported = clean_executable(&design);
-    let baseline = write_design(&directory.0, "", "", "");
+    let baseline = write_design(directory.path(), "", "", "");
     assert_same_graph(&imported.project, &clean_executable(&baseline).project);
 }

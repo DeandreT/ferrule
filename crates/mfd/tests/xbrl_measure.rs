@@ -1,36 +1,9 @@
 use std::error::Error;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use ir::{Instance, Value};
 use mapping::{Node, NodeId, Scope};
 
-struct TempDir(PathBuf);
-
-static NEXT_DIR: AtomicU64 = AtomicU64::new(0);
-
-impl TempDir {
-    fn new() -> std::io::Result<Self> {
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_xbrl_measure_{}_{}",
-            std::process::id(),
-            NEXT_DIR.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
-
-fn write(path: &Path, contents: &str) -> std::io::Result<()> {
-    std::fs::write(path, contents)
-}
+use test_support::TempDir;
 
 fn missing(description: &str) -> std::io::Error {
     std::io::Error::other(description)
@@ -71,17 +44,17 @@ fn scalar_field<'a>(instance: &'a Instance, wanted: &str) -> Option<&'a Value> {
 
 #[test]
 fn xbrl_measure_helpers_retain_qname_bindings() -> Result<(), Box<dyn Error>> {
-    let dir = TempDir::new()?;
-    write(
-        &dir.0.join("source.xsd"),
+    let dir = TempDir::new("mfd_xbrl_measure")?;
+    dir.write(
+        "source.xsd",
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:element name="Source"><xs:complexType><xs:sequence>
     <xs:element name="Currency" type="xs:string"/>
   </xs:sequence></xs:complexType></xs:element>
 </xs:schema>"#,
     )?;
-    write(
-        &dir.0.join("measure.mfd"),
+    dir.write(
+        "measure.mfd",
         r#"<mapping version="26"><resources/>
   <component name="map"><structure><children>
     <component name="Source" library="xml" kind="14"><data>
@@ -118,7 +91,7 @@ fn xbrl_measure_helpers_retain_qname_bindings() -> Result<(), Box<dyn Error>> {
 </mapping>"#,
     )?;
 
-    let imported = mfd::import(&dir.0.join("measure.mfd"))?;
+    let imported = mfd::import(&dir.path().join("measure.mfd"))?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
 
@@ -155,17 +128,17 @@ fn xbrl_measure_helpers_retain_qname_bindings() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn malformed_xbrl_measure_pins_retain_a_null_binding() -> Result<(), Box<dyn Error>> {
-    let dir = TempDir::new()?;
-    write(
-        &dir.0.join("source.xsd"),
+    let dir = TempDir::new("mfd_xbrl_measure")?;
+    dir.write(
+        "source.xsd",
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:element name="Source"><xs:complexType><xs:sequence>
     <xs:element name="Currency" type="xs:string"/>
   </xs:sequence></xs:complexType></xs:element>
 </xs:schema>"#,
     )?;
-    write(
-        &dir.0.join("malformed.mfd"),
+    dir.write(
+        "malformed.mfd",
         r#"<mapping version="26"><resources/>
   <component name="map"><structure><children>
     <component name="Source" library="xml" kind="14"><data>
@@ -194,7 +167,7 @@ fn malformed_xbrl_measure_pins_retain_a_null_binding() -> Result<(), Box<dyn Err
 </mapping>"#,
     )?;
 
-    let imported = mfd::import(&dir.0.join("malformed.mfd"))?;
+    let imported = mfd::import(&dir.path().join("malformed.mfd"))?;
     assert_eq!(imported.warnings.len(), 1, "{:?}", imported.warnings);
     assert_eq!(
         imported

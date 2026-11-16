@@ -1,39 +1,18 @@
 use std::error::Error;
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use std::collections::BTreeMap;
 
 use ir::{DocumentMember, Instance, ScalarType, SchemaNode, Value};
 use mapping::{Binding, Graph, Node, Project, Scope, ScopeIteration};
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> std::io::Result<Self> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule-mfd-dynamic-document-{}-{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 #[test]
 fn target_file_instance_roundtrips_and_executes_per_source_document() -> Result<(), Box<dyn Error>>
 {
-    let directory = TempDir::new()?;
+    let directory = TempDir::new("mfd-dynamic-document")?;
     std::fs::write(
-        directory.0.join("source.xsd"),
+        directory.path().join("source.xsd"),
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
           <xs:element name="Source"><xs:complexType><xs:sequence>
             <xs:element name="Value" type="xs:string"/>
@@ -41,7 +20,7 @@ fn target_file_instance_roundtrips_and_executes_per_source_document() -> Result<
         </xs:schema>"#,
     )?;
     std::fs::write(
-        directory.0.join("target.xsd"),
+        directory.path().join("target.xsd"),
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
           <xs:element name="Target"><xs:complexType><xs:sequence>
             <xs:element name="Value" type="xs:string"/>
@@ -49,7 +28,7 @@ fn target_file_instance_roundtrips_and_executes_per_source_document() -> Result<
         </xs:schema>"#,
     )?;
     std::fs::write(
-        directory.0.join("mapping.mfd"),
+        directory.path().join("mapping.mfd"),
         r#"<mapping version="26"><component name="map"><structure><children>
           <component name="source" library="xml" kind="14"><data><root>
             <entry name="FileInstance" outkey="9"><entry name="document"><entry name="Source">
@@ -73,7 +52,7 @@ fn target_file_instance_roundtrips_and_executes_per_source_document() -> Result<
         </vertices></graph></structure></component></mapping>"#,
     )?;
 
-    let imported = mfd::import(&directory.0.join("mapping.mfd"))?;
+    let imported = mfd::import(&directory.path().join("mapping.mfd"))?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
     assert_eq!(
@@ -116,7 +95,7 @@ fn target_file_instance_roundtrips_and_executes_per_source_document() -> Result<
         Some(&Value::String("B".into()))
     );
 
-    let exported = directory.0.join("roundtrip.mfd");
+    let exported = directory.path().join("roundtrip.mfd");
     assert!(mfd::export(&imported.project, &exported)?.is_empty());
     let roundtrip = mfd::import(&exported)?;
     assert!(roundtrip.warnings.is_empty(), "{:?}", roundtrip.warnings);
@@ -227,8 +206,8 @@ fn nested_current_and_restarted_collection_sources_roundtrip_distinctly()
     );
     let expected = engine::run(&project, &source)?;
 
-    let directory = TempDir::new()?;
-    let design = directory.0.join("nested-sources.mfd");
+    let directory = TempDir::new("mfd-dynamic-document")?;
+    let design = directory.path().join("nested-sources.mfd");
     assert!(mfd::export(&project, &design)?.is_empty());
     let exported = std::fs::read_to_string(&design)?;
     assert!(exported.contains("<ferrule-scope-sources version=\"1\">"));

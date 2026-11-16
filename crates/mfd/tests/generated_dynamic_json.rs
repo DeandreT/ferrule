@@ -2,26 +2,7 @@ use std::path::{Path, PathBuf};
 
 use mapping::{Node, SequenceExpr};
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new(label: &str) -> Result<Self, std::io::Error> {
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_generated_dynamic_json_{}_{}",
-            std::process::id(),
-            label
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn write_design(dir: &Path) -> Result<PathBuf, std::io::Error> {
     std::fs::write(
@@ -112,7 +93,7 @@ fn write_design(dir: &Path) -> Result<PathBuf, std::io::Error> {
 #[test]
 fn generated_tokens_build_a_nested_dynamic_object() -> Result<(), Box<dyn std::error::Error>> {
     let dir = TempDir::new("executes")?;
-    let imported = mfd::import(&write_design(&dir.0)?)?;
+    let imported = mfd::import(&write_design(dir.path())?)?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
 
@@ -132,9 +113,9 @@ fn generated_tokens_build_a_nested_dynamic_object() -> Result<(), Box<dyn std::e
     assert!(rates.merge_dynamic_fields);
     assert_eq!(rates.dynamic_bindings.len(), 1);
 
-    let source = format_json::read(&dir.0.join("rates.json"), &imported.project.source)?;
+    let source = format_json::read(&dir.path().join("rates.json"), &imported.project.source)?;
     let output = engine::run(&imported.project, &source)?;
-    let output_path = dir.0.join("actual.json");
+    let output_path = dir.path().join("actual.json");
     format_json::write(&output_path, &imported.project.target, &output)?;
     let actual: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(output_path)?)?;
     assert_eq!(
@@ -142,7 +123,7 @@ fn generated_tokens_build_a_nested_dynamic_object() -> Result<(), Box<dyn std::e
         serde_json::json!({"rates": {"USD": 1.25, "JPY": 150.5}})
     );
 
-    let export_path = dir.0.join("generated-dynamic-export.mfd");
+    let export_path = dir.path().join("generated-dynamic-export.mfd");
     let warnings = mfd::export(&imported.project, &export_path)?;
     assert!(warnings.is_empty(), "{warnings:?}");
     let roundtrip = mfd::import(&export_path)?;
@@ -160,7 +141,7 @@ fn generated_tokens_build_a_nested_dynamic_object() -> Result<(), Box<dyn std::e
 fn generated_dynamic_values_preserve_the_sequence_position_on_export()
 -> Result<(), Box<dyn std::error::Error>> {
     let dir = TempDir::new("position")?;
-    let mut imported = mfd::import(&write_design(&dir.0)?)?;
+    let mut imported = mfd::import(&write_design(dir.path())?)?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
 
     let position = imported
@@ -189,9 +170,9 @@ fn generated_dynamic_values_preserve_the_sequence_position_on_export()
     rates.dynamic_bindings[0].value = position;
     assert!(engine::validate(&imported.project).is_empty());
 
-    let source = format_json::read(&dir.0.join("rates.json"), &imported.project.source)?;
+    let source = format_json::read(&dir.path().join("rates.json"), &imported.project.source)?;
     let expected = engine::run(&imported.project, &source)?;
-    let export_path = dir.0.join("generated-position-export.mfd");
+    let export_path = dir.path().join("generated-position-export.mfd");
     let warnings = mfd::export(&imported.project, &export_path)?;
     assert!(warnings.is_empty(), "{warnings:?}");
 
@@ -205,7 +186,7 @@ fn generated_dynamic_values_preserve_the_sequence_position_on_export()
 #[test]
 fn failed_dynamic_lowering_releases_its_sequence_claim() -> Result<(), Box<dyn std::error::Error>> {
     let dir = TempDir::new("rollback")?;
-    let design = write_design(&dir.0)?;
+    let design = write_design(dir.path())?;
     let text = std::fs::read_to_string(&design)?.replace(
         r#"<vertex vertexkey="14"><edges><edge vertexkey="22"/></edges></vertex>"#,
         r#"<vertex vertexkey="14"><edges><edge vertexkey="999"/></edges></vertex>"#,
@@ -237,9 +218,9 @@ fn failed_dynamic_lowering_releases_its_sequence_claim() -> Result<(), Box<dyn s
 fn one_generated_sequence_cannot_own_two_dynamic_scopes() -> Result<(), Box<dyn std::error::Error>>
 {
     let dir = TempDir::new("shared")?;
-    let design = write_design(&dir.0)?;
+    let design = write_design(dir.path())?;
     std::fs::write(
-        dir.0.join("output.schema.json"),
+        dir.path().join("output.schema.json"),
         r#"{
   "title": "Output",
   "type": "object",

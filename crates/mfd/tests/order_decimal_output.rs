@@ -3,34 +3,12 @@ mod private_corpus;
 
 use std::collections::BTreeMap;
 use std::error::Error;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::path::Path;
 
 use ir::{Instance, ScalarType, SchemaNode, Value};
 use mapping::{Binding, FormatOptions, Graph, Node, Project, Scope, TabularBoundaryKind};
 
-static NEXT_DIR: AtomicU64 = AtomicU64::new(0);
-
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Self {
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_order_decimal_output_{}_{}",
-            std::process::id(),
-            NEXT_DIR.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn call(function: &str, args: &[u32]) -> Node {
     Node::Call {
@@ -245,7 +223,7 @@ fn assert_strict_rejected(project: &Project, directory: &Path) -> Result<(), Box
 
 #[test]
 fn exact_xml_decimal_products_reconstruct_native_source_rules() -> Result<(), Box<dyn Error>> {
-    let directory = TempDir::new();
+    let directory = TempDir::new("order_decimal_output").unwrap();
     let project = project();
     let source = format_xml::from_str(
         "<Order><Customer><CompanyName>Acme</CompanyName></Customer><LineItems>\
@@ -257,7 +235,7 @@ fn exact_xml_decimal_products_reconstruct_native_source_rules() -> Result<(), Bo
     let expected = "Acme,A,$9,1,$9\nAcme,B,$8.25,2,$16.5\n";
     assert_eq!(csv(&project, &source)?, expected);
 
-    let path = directory.0.join("native.mfd");
+    let path = directory.path().join("native.mfd");
     let report = mfd::preflight_export(&project, &path)?;
     assert!(report.is_native_compatible(), "{report}");
     mfd::export_with_profile(&project, &path, mfd::ExportProfile::NativeMfd)?;
@@ -321,7 +299,7 @@ fn exact_xml_decimal_products_reconstruct_native_source_rules() -> Result<(), Bo
 
 #[test]
 fn changed_decimal_product_shapes_remain_strictly_rejected() -> Result<(), Box<dyn Error>> {
-    let directory = TempDir::new();
+    let directory = TempDir::new("order_decimal_output").unwrap();
     let mut changed_constant = project();
     changed_constant.graph.nodes.insert(
         5,
@@ -329,11 +307,11 @@ fn changed_decimal_product_shapes_remain_strictly_rejected() -> Result<(), Box<d
             value: Value::Float(1.2),
         },
     );
-    assert_strict_rejected(&changed_constant, &directory.0)?;
+    assert_strict_rejected(&changed_constant, directory.path())?;
 
     let mut shared_wrapper = project();
     shared_wrapper.root.bindings[3].node = 4;
-    assert_strict_rejected(&shared_wrapper, &directory.0)?;
+    assert_strict_rejected(&shared_wrapper, directory.path())?;
 
     let mut string_field = project();
     let price = child_mut(
@@ -346,12 +324,12 @@ fn changed_decimal_product_shapes_remain_strictly_rejected() -> Result<(), Box<d
     price.kind = ir::SchemaKind::Scalar {
         ty: ScalarType::String,
     };
-    assert_strict_rejected(&string_field, &directory.0)?;
+    assert_strict_rejected(&string_field, directory.path())?;
 
     let mut not_xml = project();
     not_xml.source_path = Some("order.json".into());
     not_xml.source_options.xml_document = false;
-    assert_strict_rejected(&not_xml, &directory.0)?;
+    assert_strict_rejected(&not_xml, directory.path())?;
     Ok(())
 }
 
@@ -372,8 +350,8 @@ fn local_order_in_usd_exact_csv_after_strict_reimport() -> Result<(), Box<dyn Er
                     \"Nanonull, Inc.\",LASAGNE AL FORNO,$8.25,2,$16.5\n\
                     \"Nanonull, Inc.\",CHIANTI DOCG,$9.375,1,$9.375\n";
     assert_eq!(csv(&imported.project, &source)?, expected);
-    let directory = TempDir::new();
-    let path = directory.0.join("native.mfd");
+    let directory = TempDir::new("order_decimal_output").unwrap();
+    let path = directory.path().join("native.mfd");
     let report = mfd::preflight_export(&imported.project, &path)?;
     assert!(report.is_native_compatible(), "{report}");
     mfd::export_with_profile(&imported.project, &path, mfd::ExportProfile::NativeMfd)?;

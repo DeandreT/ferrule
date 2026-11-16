@@ -660,44 +660,18 @@ fn child<'a, 'input>(
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
-    use std::sync::atomic::{AtomicU64, Ordering};
 
     use crate::resource::ResourceResolver;
     use ir::{SchemaKind, XML_TEXT_FIELD};
 
     use super::read;
 
-    struct TempDir(PathBuf);
-
-    impl TempDir {
-        fn new() -> Result<Self, String> {
-            static NEXT: AtomicU64 = AtomicU64::new(0);
-            let path = std::env::temp_dir().join(format!(
-                "ferrule-mfd-xbrl-component-{}-{}",
-                std::process::id(),
-                NEXT.fetch_add(1, Ordering::Relaxed)
-            ));
-            match std::fs::remove_dir_all(&path) {
-                Ok(()) => {}
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-                Err(error) => return Err(error.to_string()),
-            }
-            std::fs::create_dir_all(&path).map_err(|error| error.to_string())?;
-            Ok(Self(path))
-        }
-    }
-
-    impl Drop for TempDir {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_dir_all(&self.0);
-        }
-    }
+    use test_support::TempDir;
 
     fn parse(xml: &str) -> Result<(super::SchemaComponent, Vec<String>), String> {
         let document = roxmltree::Document::parse(xml).map_err(|error| error.to_string())?;
-        let directory = TempDir::new()?;
-        let mapping = directory.0.join("mapping.mfd");
+        let directory = TempDir::new("mfd-xbrl-component").map_err(|error| error.to_string())?;
+        let mapping = directory.path().join("mapping.mfd");
         std::fs::write(&mapping, "<mapping/>").map_err(|error| error.to_string())?;
         let resources = ResourceResolver::new(&mapping, None).map_err(|error| error.to_string())?;
         let mut warnings = Vec::new();

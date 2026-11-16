@@ -710,27 +710,16 @@ mod tests {
     use super::*;
 
     /// Removes a per-test directory on drop, including after a panic.
-    struct TempDir(std::path::PathBuf);
-
-    impl Drop for TempDir {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_dir_all(&self.0);
-        }
-    }
+    use test_support::TempDir;
 
     #[test]
     fn selected_roots_and_conditioned_types_keep_the_authorizing_resource_root()
     -> Result<(), Box<dyn std::error::Error>> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
         for (location, contained) in [("types.xsd", true), ("../outside/types.xsd", false)] {
-            let folder = std::env::temp_dir().join(format!(
-                "ferrule_alternative_boundary_{}_{}",
-                std::process::id(),
-                NEXT.fetch_add(1, Ordering::Relaxed)
-            ));
+            let _cleanup = TempDir::new("alternative_boundary")?;
+            let folder = _cleanup.path().to_path_buf();
             let package = folder.join("package");
             std::fs::create_dir_all(&package)?;
-            let _cleanup = TempDir(folder.clone());
             std::fs::create_dir_all(folder.join("outside"))?;
             let types = r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:t="urn:neutral:types" targetNamespace="urn:neutral:types">
               <xs:element name="Chosen"><xs:complexType><xs:sequence><xs:element name="Count" type="xs:int"/></xs:sequence></xs:complexType></xs:element>

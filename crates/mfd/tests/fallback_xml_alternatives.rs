@@ -1,45 +1,14 @@
 use std::error::Error;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{Instance, Value, XML_TYPE_FIELD};
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new(tag: &str) -> Result<Self, std::io::Error> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule-mfd-fallback-alternatives-{tag}-{}-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map_or(0, |duration| duration.as_nanos()),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-
-    fn path(&self, name: &str) -> PathBuf {
-        self.0.join(name)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
-
-fn write(path: &Path, contents: &str) -> Result<(), std::io::Error> {
-    std::fs::write(path, contents)
-}
+use test_support::TempDir;
 
 fn write_types(path: &Path, state_type: &str) -> Result<(), std::io::Error> {
-    write(
+    std::fs::write(
         path,
-        &format!(
+        format!(
             r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
     xmlns:t="urn:ferrule:fallback-types"
     targetNamespace="urn:ferrule:fallback-types"
@@ -63,7 +32,7 @@ fn write_types(path: &Path, state_type: &str) -> Result<(), std::io::Error> {
 }
 
 fn write_source_schema(path: &Path) -> Result<(), std::io::Error> {
-    write(
+    std::fs::write(
         path,
         r###"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
     xmlns:t="urn:ferrule:fallback-types">
@@ -78,9 +47,9 @@ fn write_source_schema(path: &Path) -> Result<(), std::io::Error> {
 }
 
 fn write_target_schema(path: &Path, types: &str) -> Result<(), std::io::Error> {
-    write(
+    std::fs::write(
         path,
-        &format!(
+        format!(
             r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
     xmlns:t="urn:ferrule:fallback-types" elementFormDefault="unqualified">
   <xs:import namespace="urn:ferrule:fallback-types" schemaLocation="{types}"/>
@@ -129,11 +98,11 @@ fn mapping(target_schema: &str) -> String {
 }
 
 fn write_design(directory: &TempDir, target_schema: &str) -> Result<PathBuf, Box<dyn Error>> {
-    write_types(&directory.path("types.xsd"), "xs:string")?;
-    write_source_schema(&directory.path("source.xsd"))?;
-    write_target_schema(&directory.path("target.xsd"), target_schema)?;
-    let design = directory.path("mapping.mfd");
-    write(&design, &mapping("target.xsd"))?;
+    write_types(&directory.join("types.xsd"), "xs:string")?;
+    write_source_schema(&directory.join("source.xsd"))?;
+    write_target_schema(&directory.join("target.xsd"), target_schema)?;
+    let design = directory.join("mapping.mfd");
+    std::fs::write(&design, mapping("target.xsd"))?;
     Ok(design)
 }
 
@@ -197,7 +166,7 @@ fn copy_all_recovers_exact_missing_fallback_xml_type_alternatives() -> Result<()
 fn incompatible_fallback_xml_type_alternatives_warn_and_keep_the_conditioned_subset()
 -> Result<(), Box<dyn Error>> {
     let directory = TempDir::new("incompatible")?;
-    write_types(&directory.path("target-types.xsd"), "xs:integer")?;
+    write_types(&directory.join("target-types.xsd"), "xs:integer")?;
     let design = write_design(&directory, "target-types.xsd")?;
 
     let imported = mfd::import(&design)?;

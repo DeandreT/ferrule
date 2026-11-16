@@ -1,33 +1,14 @@
 //! Self-authored SQLite-oracle checks for WHERE membership with nullable hosts.
 
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::path::Path;
+use std::path::PathBuf;
 
 use engine::{ExecutionContext, ExecutionPurpose, RuntimeParameters};
 use ir::{Instance, ScalarType, Value};
 use mapping::{Node, Project};
 use rusqlite::{Connection, named_params};
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Self {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_not_in_null_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn prepare_database(dir: &Path) {
     Connection::open(dir.join("numbers.sqlite"))
@@ -253,18 +234,18 @@ fn execute_values(
 
 #[test]
 fn required_not_in_hosts_match_sqlite_through_native_and_ferrule_cycles() {
-    let dir = TempDir::new();
-    prepare_database(&dir.0);
-    let (path, sql) = write_design(&dir.0, "NOT IN (:First, :Second, 9)", false);
-    let projects = projects_after_cycles(&dir.0, import(&path));
+    let dir = TempDir::new("not_in_null").unwrap();
+    prepare_database(dir.path());
+    let (path, sql) = write_design(dir.path(), "NOT IN (:First, :Second, 9)", false);
+    let projects = projects_after_cycles(dir.path(), import(&path));
     for project in &projects {
         assert!(matches!(
-            execute(&dir.0, project, ExecutionPurpose::Run, &[]),
+            execute(dir.path(), project, ExecutionPurpose::Run, &[]),
             Err(engine::EngineError::MissingRuntimeParameter { .. })
         ));
         assert_eq!(
-            execute(&dir.0, project, ExecutionPurpose::Preview, &[]).unwrap(),
-            oracle(&dir.0, &sql, Some(2), Some(3))
+            execute(dir.path(), project, ExecutionPurpose::Preview, &[]).unwrap(),
+            oracle(dir.path(), &sql, Some(2), Some(3))
         );
         for (first, second) in [
             (None, None),
@@ -275,11 +256,11 @@ fn required_not_in_hosts_match_sqlite_through_native_and_ferrule_cycles() {
             (Some(1), Some(4)),
             (Some(2), Some(2)),
         ] {
-            let expected = oracle(&dir.0, &sql, first, second);
+            let expected = oracle(dir.path(), &sql, first, second);
             for purpose in [ExecutionPurpose::Run, ExecutionPurpose::Preview] {
                 assert_eq!(
                     execute(
-                        &dir.0,
+                        dir.path(),
                         project,
                         purpose,
                         &[("First", first), ("Second", second)]
@@ -291,15 +272,15 @@ fn required_not_in_hosts_match_sqlite_through_native_and_ferrule_cycles() {
             }
         }
     }
-    assert_eq!(oracle(&dir.0, &sql, Some(2), Some(3)), [2, 5]);
+    assert_eq!(oracle(dir.path(), &sql, Some(2), Some(3)), [2, 5]);
 }
 
 #[test]
 fn null_hosts_override_connected_defaults_and_previews() {
-    let dir = TempDir::new();
-    prepare_database(&dir.0);
-    let (path, sql) = write_design(&dir.0, "NOT IN (:First, :Second)", true);
-    let projects = projects_after_cycles(&dir.0, import(&path));
+    let dir = TempDir::new("not_in_null").unwrap();
+    prepare_database(dir.path());
+    let (path, sql) = write_design(dir.path(), "NOT IN (:First, :Second)", true);
+    let projects = projects_after_cycles(dir.path(), import(&path));
     for project in &projects {
         assert!(project.graph.nodes.values().any(|node| matches!(
             node,
@@ -311,8 +292,8 @@ fn null_hosts_override_connected_defaults_and_previews() {
             (ExecutionPurpose::Preview, (Some(2), Some(3))),
         ] {
             assert_eq!(
-                execute(&dir.0, project, purpose, &[]).unwrap(),
-                oracle(&dir.0, &sql, fallback.0, fallback.1)
+                execute(dir.path(), project, purpose, &[]).unwrap(),
+                oracle(dir.path(), &sql, fallback.0, fallback.1)
             );
             for supplied in [
                 vec![("First", None)],
@@ -329,8 +310,8 @@ fn null_hosts_override_connected_defaults_and_previews() {
                     .find(|(name, _)| *name == "Second")
                     .map_or(fallback.1, |(_, value)| *value);
                 assert_eq!(
-                    execute(&dir.0, project, purpose, &supplied).unwrap(),
-                    oracle(&dir.0, &sql, first, second),
+                    execute(dir.path(), project, purpose, &supplied).unwrap(),
+                    oracle(dir.path(), &sql, first, second),
                     "purpose={purpose:?}, supplied={supplied:?}"
                 );
             }
@@ -340,9 +321,9 @@ fn null_hosts_override_connected_defaults_and_previews() {
 
 #[test]
 fn in_keeps_matches_when_another_list_operand_is_null() {
-    let dir = TempDir::new();
-    prepare_database(&dir.0);
-    let (path, sql) = write_design(&dir.0, "IN (:First, :Second)", false);
+    let dir = TempDir::new("not_in_null").unwrap();
+    prepare_database(dir.path());
+    let (path, sql) = write_design(dir.path(), "IN (:First, :Second)", false);
     let project = import(&path);
     for (first, second) in [
         (None, None),
@@ -352,37 +333,43 @@ fn in_keeps_matches_when_another_list_operand_is_null() {
     ] {
         assert_eq!(
             execute(
-                &dir.0,
+                dir.path(),
                 &project,
                 ExecutionPurpose::Run,
                 &[("First", first), ("Second", second)],
             )
             .unwrap(),
-            oracle(&dir.0, &sql, first, second)
+            oracle(dir.path(), &sql, first, second)
         );
     }
-    assert_eq!(oracle(&dir.0, &sql, None, Some(2)), [3, 6]);
+    assert_eq!(oracle(dir.path(), &sql, None, Some(2)), [3, 6]);
 }
 
 #[test]
 fn one_operand_not_in_excludes_null_source_and_null_host() {
-    let dir = TempDir::new();
-    prepare_database(&dir.0);
-    let (path, sql) = write_design(&dir.0, "NOT IN (:First)", false);
+    let dir = TempDir::new("not_in_null").unwrap();
+    prepare_database(dir.path());
+    let (path, sql) = write_design(dir.path(), "NOT IN (:First)", false);
     let project = import(&path);
     for first in [None, Some(2), Some(9)] {
         assert_eq!(
-            execute(&dir.0, &project, ExecutionPurpose::Run, &[("First", first)]).unwrap(),
-            oracle(&dir.0, &sql, first, None)
+            execute(
+                dir.path(),
+                &project,
+                ExecutionPurpose::Run,
+                &[("First", first)]
+            )
+            .unwrap(),
+            oracle(dir.path(), &sql, first, None)
         );
     }
-    assert_eq!(oracle(&dir.0, &sql, Some(9), None), [2, 3, 4, 5, 6]);
+    assert_eq!(oracle(dir.path(), &sql, Some(9), None), [2, 3, 4, 5, 6]);
 }
 
 #[test]
 fn quoted_and_malformed_memberships_remain_explicit_import_blockers() {
-    let dir = TempDir::new();
-    prepare_database(&dir.0);
+    let dir = TempDir::new("not_in_null").unwrap();
+    prepare_database(dir.path());
     for membership in [
         r#"IN ("NULL")"#,
         "IN ([NULL])",
@@ -394,7 +381,7 @@ fn quoted_and_malformed_memberships_remain_explicit_import_blockers() {
         "IN (NULL",
         "IN (SELECT RowID FROM Numbers)",
     ] {
-        let (path, _) = write_design(&dir.0, membership, false);
+        let (path, _) = write_design(dir.path(), membership, false);
         // The rejected query is the only source, so even best-effort import
         // must fail rather than returning an unfiltered mapping.
         assert!(
@@ -414,7 +401,7 @@ fn quoted_and_malformed_memberships_remain_explicit_import_blockers() {
     // That result differs from a nonempty list containing one NULL.
     assert_eq!(
         oracle(
-            &dir.0,
+            dir.path(),
             "SELECT RowID FROM Numbers WHERE Number NOT IN () ORDER BY RowID",
             None,
             None
@@ -423,7 +410,7 @@ fn quoted_and_malformed_memberships_remain_explicit_import_blockers() {
     );
     assert!(
         oracle(
-            &dir.0,
+            dir.path(),
             "SELECT RowID FROM Numbers WHERE Number NOT IN (NULL) ORDER BY RowID",
             None,
             None,
@@ -434,10 +421,10 @@ fn quoted_and_malformed_memberships_remain_explicit_import_blockers() {
 
 #[test]
 fn quoted_null_string_keeps_numeric_coercion_refusal_and_repair_policy() {
-    let dir = TempDir::new();
-    prepare_database(&dir.0);
-    let (path, _) = write_design(&dir.0, "IN ('NULL')", false);
-    assert_late_query_coercion_refusal(&dir.0, &path, "query operand is not an integer");
+    let dir = TempDir::new("not_in_null").unwrap();
+    prepare_database(dir.path());
+    let (path, _) = write_design(dir.path(), "IN ('NULL')", false);
+    assert_late_query_coercion_refusal(dir.path(), &path, "query operand is not an integer");
 }
 
 #[test]
@@ -477,9 +464,9 @@ fn literal_null_numeric_members_match_sqlite_through_both_profiles() {
             ]
         };
         for &(membership, expected) in cases {
-            let dir = TempDir::new();
+            let dir = TempDir::new("not_in_null").unwrap();
             if real {
-                Connection::open(dir.0.join("numbers.sqlite"))
+                Connection::open(dir.path().join("numbers.sqlite"))
                     .unwrap()
                     .execute_batch(
                         "CREATE TABLE Numbers (RowID INTEGER PRIMARY KEY, Number REAL); \
@@ -488,11 +475,11 @@ fn literal_null_numeric_members_match_sqlite_through_both_profiles() {
                     )
                     .unwrap();
             } else {
-                prepare_database(&dir.0);
+                prepare_database(dir.path());
             }
-            let (path, sql) = write_design(&dir.0, membership, false);
-            assert_eq!(oracle(&dir.0, &sql, None, None), expected);
-            let projects = projects_after_cycles(&dir.0, import(&path));
+            let (path, sql) = write_design(dir.path(), membership, false);
+            assert_eq!(oracle(dir.path(), &sql, None, None), expected);
+            let projects = projects_after_cycles(dir.path(), import(&path));
             for project in &projects {
                 let column = project.source.child("Number").unwrap();
                 let expected_type = if real {
@@ -506,7 +493,7 @@ fn literal_null_numeric_members_match_sqlite_through_both_profiles() {
                 ));
                 for purpose in [ExecutionPurpose::Run, ExecutionPurpose::Preview] {
                     assert_eq!(
-                        execute(&dir.0, project, purpose, &[]).unwrap(),
+                        execute(dir.path(), project, purpose, &[]).unwrap(),
                         expected,
                         "real={real}, membership={membership}, purpose={purpose:?}"
                     );
@@ -526,23 +513,23 @@ fn literal_null_members_keep_required_hosts_typed_and_empty_rows_lazy() {
         "NOT IN (:First, NULL, :Second)",
         "NOT IN (:First, :Second, NULL)",
     ] {
-        let dir = TempDir::new();
-        prepare_database(&dir.0);
-        let (path, sql) = write_design(&dir.0, membership, false);
-        let projects = projects_after_cycles(&dir.0, import(&path));
+        let dir = TempDir::new("not_in_null").unwrap();
+        prepare_database(dir.path());
+        let (path, sql) = write_design(dir.path(), membership, false);
+        let projects = projects_after_cycles(dir.path(), import(&path));
         for project in &projects {
             assert!(matches!(
-                execute(&dir.0, project, ExecutionPurpose::Run, &[]),
+                execute(dir.path(), project, ExecutionPurpose::Run, &[]),
                 Err(engine::EngineError::MissingRuntimeParameter { name, .. })
                     if name == "First"
             ));
             assert_eq!(
-                execute(&dir.0, project, ExecutionPurpose::Preview, &[]).unwrap(),
-                oracle(&dir.0, &sql, Some(2), Some(3))
+                execute(dir.path(), project, ExecutionPurpose::Preview, &[]).unwrap(),
+                oracle(dir.path(), &sql, Some(2), Some(3))
             );
             for first in [None, Some(2)] {
                 assert!(matches!(
-                    execute(&dir.0, project, ExecutionPurpose::Run, &[("First", first)]),
+                    execute(dir.path(), project, ExecutionPurpose::Run, &[("First", first)]),
                     Err(engine::EngineError::MissingRuntimeParameter { name, .. })
                         if name == "Second"
                 ));
@@ -559,7 +546,7 @@ fn literal_null_members_keep_required_hosts_typed_and_empty_rows_lazy() {
                     ),
                 ] {
                     assert!(matches!(
-                        execute_values(&dir.0, project, purpose, &values),
+                        execute_values(dir.path(), project, purpose, &values),
                         Err(engine::EngineError::RuntimeParameterType {
                             name,
                             expected: ScalarType::Int,
@@ -579,31 +566,31 @@ fn literal_null_members_keep_required_hosts_typed_and_empty_rows_lazy() {
                 ] {
                     assert_eq!(
                         execute(
-                            &dir.0,
+                            dir.path(),
                             project,
                             purpose,
                             &[("First", first), ("Second", second)]
                         )
                         .unwrap(),
-                        oracle(&dir.0, &sql, first, second),
+                        oracle(dir.path(), &sql, first, second),
                         "membership={membership}, purpose={purpose:?}, First={first:?}, Second={second:?}"
                     );
                 }
             }
         }
-        Connection::open(dir.0.join("numbers.sqlite"))
+        Connection::open(dir.path().join("numbers.sqlite"))
             .unwrap()
             .execute("DELETE FROM Numbers", [])
             .unwrap();
         for project in &projects {
             for purpose in [ExecutionPurpose::Run, ExecutionPurpose::Preview] {
                 assert_eq!(
-                    execute(&dir.0, project, purpose, &[]).unwrap(),
-                    oracle(&dir.0, &sql, None, None)
+                    execute(dir.path(), project, purpose, &[]).unwrap(),
+                    oracle(dir.path(), &sql, None, None)
                 );
                 assert!(
                     execute_values(
-                        &dir.0,
+                        dir.path(),
                         project,
                         purpose,
                         &[("First", Value::Bool(true)), ("Second", Value::Int(2))]
@@ -626,18 +613,18 @@ fn literal_null_members_keep_optional_defaults_previews_and_null_overrides() {
         "NOT IN (:First, NULL, :Second)",
         "NOT IN (:First, :Second, NULL)",
     ] {
-        let dir = TempDir::new();
-        prepare_database(&dir.0);
-        let (path, sql) = write_design(&dir.0, membership, true);
-        let projects = projects_after_cycles(&dir.0, import(&path));
+        let dir = TempDir::new("not_in_null").unwrap();
+        prepare_database(dir.path());
+        let (path, sql) = write_design(dir.path(), membership, true);
+        let projects = projects_after_cycles(dir.path(), import(&path));
         for project in &projects {
             for (purpose, fallback) in [
                 (ExecutionPurpose::Run, (Some(1), Some(4))),
                 (ExecutionPurpose::Preview, (Some(2), Some(3))),
             ] {
                 assert_eq!(
-                    execute(&dir.0, project, purpose, &[]).unwrap(),
-                    oracle(&dir.0, &sql, fallback.0, fallback.1)
+                    execute(dir.path(), project, purpose, &[]).unwrap(),
+                    oracle(dir.path(), &sql, fallback.0, fallback.1)
                 );
                 for supplied in [
                     vec![("First", None)],
@@ -655,14 +642,14 @@ fn literal_null_members_keep_optional_defaults_previews_and_null_overrides() {
                         .find(|(name, _)| *name == "Second")
                         .map_or(fallback.1, |(_, value)| *value);
                     assert_eq!(
-                        execute(&dir.0, project, purpose, &supplied).unwrap(),
-                        oracle(&dir.0, &sql, first, second),
+                        execute(dir.path(), project, purpose, &supplied).unwrap(),
+                        oracle(dir.path(), &sql, first, second),
                         "membership={membership}, purpose={purpose:?}, supplied={supplied:?}"
                     );
                 }
                 assert!(matches!(
                     execute_values(
-                        &dir.0,
+                        dir.path(),
                         project,
                         purpose,
                         &[("First", Value::Bool(true))]
@@ -683,19 +670,19 @@ fn literal_null_members_keep_optional_defaults_previews_and_null_overrides() {
 fn literal_null_members_at_the_256_item_limit_keep_exact_row_effects() {
     for operator in ["IN", "NOT IN"] {
         for first in [true, false] {
-            let dir = TempDir::new();
-            prepare_database(&dir.0);
+            let dir = TempDir::new("not_in_null").unwrap();
+            prepare_database(dir.path());
             let mut operands = vec!["NULL"; 255];
             operands.insert(if first { 0 } else { operands.len() }, "1");
             let membership = format!("{operator} ({})", operands.join(", "));
-            let (path, sql) = write_design(&dir.0, &membership, false);
+            let (path, sql) = write_design(dir.path(), &membership, false);
             let expected: &[i64] = if operator == "IN" { &[2] } else { &[] };
-            assert_eq!(oracle(&dir.0, &sql, None, None), expected);
-            let projects = projects_after_cycles(&dir.0, import(&path));
+            assert_eq!(oracle(dir.path(), &sql, None, None), expected);
+            let projects = projects_after_cycles(dir.path(), import(&path));
             for project in &projects {
                 for purpose in [ExecutionPurpose::Run, ExecutionPurpose::Preview] {
                     assert_eq!(
-                        execute(&dir.0, project, purpose, &[]).unwrap(),
+                        execute(dir.path(), project, purpose, &[]).unwrap(),
                         expected,
                         "operator={operator}, first={first}, purpose={purpose:?}"
                     );
@@ -703,7 +690,7 @@ fn literal_null_members_at_the_256_item_limit_keep_exact_row_effects() {
             }
             operands.push("NULL");
             let membership = format!("{operator} ({})", operands.join(", "));
-            let (path, _) = write_design(&dir.0, &membership, false);
+            let (path, _) = write_design(dir.path(), &membership, false);
             assert!(matches!(
                 mfd::import(&path),
                 Err(mfd::MfdError::UnsupportedImport(_))
@@ -723,31 +710,31 @@ fn literal_null_members_at_the_256_item_limit_keep_exact_row_effects() {
 #[test]
 fn literal_null_members_at_the_256_item_limit_keep_late_host_reads_ordered() {
     for operator in ["IN", "NOT IN"] {
-        let dir = TempDir::new();
-        prepare_database(&dir.0);
+        let dir = TempDir::new("not_in_null").unwrap();
+        prepare_database(dir.path());
         let mut operands = vec!["NULL"; 254];
         // Reverse declaration order and place both hosts after every Null.
         operands.extend([":Second", ":First"]);
         let membership = format!("{operator} ({})", operands.join(", "));
-        let (path, sql) = write_design(&dir.0, &membership, false);
+        let (path, sql) = write_design(dir.path(), &membership, false);
         let expected: &[i64] = if operator == "IN" { &[3, 4, 6] } else { &[] };
-        assert_eq!(oracle(&dir.0, &sql, Some(2), Some(3)), expected);
-        let projects = projects_after_cycles(&dir.0, import(&path));
+        assert_eq!(oracle(dir.path(), &sql, Some(2), Some(3)), expected);
+        let projects = projects_after_cycles(dir.path(), import(&path));
         for project in &projects {
             assert!(matches!(
-                execute(&dir.0, project, ExecutionPurpose::Run, &[]),
+                execute(dir.path(), project, ExecutionPurpose::Run, &[]),
                 Err(engine::EngineError::MissingRuntimeParameter { name, .. })
                     if name == "Second"
             ));
             assert!(matches!(
-                execute(&dir.0, project, ExecutionPurpose::Run, &[("Second", None)]),
+                execute(dir.path(), project, ExecutionPurpose::Run, &[("Second", None)]),
                 Err(engine::EngineError::MissingRuntimeParameter { name, .. })
                     if name == "First"
             ));
             for purpose in [ExecutionPurpose::Run, ExecutionPurpose::Preview] {
                 assert!(matches!(
                     execute_values(
-                        &dir.0,
+                        dir.path(),
                         project,
                         purpose,
                         &[("First", Value::Bool(true)), ("Second", Value::Bool(true))]
@@ -761,7 +748,7 @@ fn literal_null_members_at_the_256_item_limit_keep_late_host_reads_ordered() {
                 ));
                 assert!(matches!(
                     execute_values(
-                        &dir.0,
+                        dir.path(),
                         project,
                         purpose,
                         &[("First", Value::Bool(true)), ("Second", Value::Null)]
@@ -775,7 +762,7 @@ fn literal_null_members_at_the_256_item_limit_keep_late_host_reads_ordered() {
                 ));
                 assert_eq!(
                     execute(
-                        &dir.0,
+                        dir.path(),
                         project,
                         purpose,
                         &[("First", Some(2)), ("Second", Some(3))]
@@ -785,7 +772,7 @@ fn literal_null_members_at_the_256_item_limit_keep_late_host_reads_ordered() {
                 );
             }
             assert_eq!(
-                execute(&dir.0, project, ExecutionPurpose::Preview, &[]).unwrap(),
+                execute(dir.path(), project, ExecutionPurpose::Preview, &[]).unwrap(),
                 expected
             );
         }
@@ -795,9 +782,9 @@ fn literal_null_members_at_the_256_item_limit_keep_late_host_reads_ordered() {
 #[test]
 fn literal_null_members_do_not_admit_null_connected_query_defaults() {
     for membership in ["IN (:First)", "IN (NULL, :First)", "NOT IN (:First, NULL)"] {
-        let dir = TempDir::new();
-        prepare_database(&dir.0);
-        let (path, sql) = write_design(&dir.0, membership, true);
+        let dir = TempDir::new("not_in_null").unwrap();
+        prepare_database(dir.path());
+        let (path, sql) = write_design(dir.path(), membership, true);
         let numeric_control = import(&path);
         assert!(numeric_control.graph.nodes.values().any(|node| matches!(
             node,
@@ -808,8 +795,8 @@ fn literal_null_members_do_not_admit_null_connected_query_defaults() {
                 )
         )));
         assert_eq!(
-            execute(&dir.0, &numeric_control, ExecutionPurpose::Run, &[]).unwrap(),
-            oracle(&dir.0, &sql, Some(1), Some(4))
+            execute(dir.path(), &numeric_control, ExecutionPurpose::Run, &[]).unwrap(),
+            oracle(dir.path(), &sql, Some(1), Some(4))
         );
         let xml = std::fs::read_to_string(&path).unwrap().replace(
             r#"datatype="integer" value="1""#,
@@ -829,7 +816,7 @@ fn literal_null_members_do_not_admit_null_connected_query_defaults() {
         assert_eq!(constant.attribute("value"), Some(""));
         std::fs::write(&path, &xml).unwrap();
         assert_late_query_coercion_refusal(
-            &dir.0,
+            dir.path(),
             &path,
             "query `Selected` parameter `:First` declared as Int cannot be converted: query parameters cannot be null",
         );
@@ -839,10 +826,10 @@ fn literal_null_members_do_not_admit_null_connected_query_defaults() {
 #[test]
 fn literal_null_members_lower_and_emit_both_languages_without_building() {
     for membership in ["IN (NULL, :First, 2)", "NOT IN (:First, 2, NULL)"] {
-        let dir = TempDir::new();
-        prepare_database(&dir.0);
-        let (path, _) = write_design(&dir.0, membership, false);
-        let projects = projects_after_cycles(&dir.0, import(&path));
+        let dir = TempDir::new("not_in_null").unwrap();
+        prepare_database(dir.path());
+        let (path, _) = write_design(dir.path(), membership, false);
+        let projects = projects_after_cycles(dir.path(), import(&path));
         for project in &projects {
             let program = codegen::lower(project).unwrap();
             assert!(program.expressions.iter().any(|node| matches!(
@@ -925,11 +912,11 @@ fn assert_empty_membership_emits_both_languages(project: &Project, expected: boo
 fn sqlite_empty_memberships_match_exact_rows_for_numeric_and_text_columns() {
     for ty in [ScalarType::Int, ScalarType::Float, ScalarType::String] {
         for operator in ["IN", "NOT IN"] {
-            let dir = TempDir::new();
+            let dir = TempDir::new("not_in_null").unwrap();
             match ty {
-                ScalarType::Int => prepare_database(&dir.0),
+                ScalarType::Int => prepare_database(dir.path()),
                 ScalarType::Float => {
-                    Connection::open(dir.0.join("numbers.sqlite"))
+                    Connection::open(dir.path().join("numbers.sqlite"))
                         .unwrap()
                         .execute_batch(
                             "CREATE TABLE Numbers (RowID INTEGER PRIMARY KEY, Number REAL); \
@@ -939,7 +926,7 @@ fn sqlite_empty_memberships_match_exact_rows_for_numeric_and_text_columns() {
                         .unwrap();
                 }
                 ScalarType::String => {
-                    Connection::open(dir.0.join("numbers.sqlite"))
+                    Connection::open(dir.path().join("numbers.sqlite"))
                         .unwrap()
                         .execute_batch(
                             "CREATE TABLE Numbers (RowID INTEGER PRIMARY KEY, Number TEXT); \
@@ -951,14 +938,14 @@ fn sqlite_empty_memberships_match_exact_rows_for_numeric_and_text_columns() {
                 ScalarType::Bool => unreachable!(),
             }
             let membership = format!("{operator} ()");
-            let (path, sql) = write_design(&dir.0, &membership, false);
+            let (path, sql) = write_design(dir.path(), &membership, false);
             let expected: &[i64] = if operator == "IN" {
                 &[]
             } else {
                 &[1, 2, 3, 4, 5, 6]
             };
-            assert_eq!(oracle(&dir.0, &sql, None, None), expected);
-            let projects = projects_after_cycles(&dir.0, import(&path));
+            assert_eq!(oracle(dir.path(), &sql, None, None), expected);
+            let projects = projects_after_cycles(dir.path(), import(&path));
             for project in &projects {
                 assert!(matches!(
                     project.source.child("Number").unwrap().kind,
@@ -966,13 +953,16 @@ fn sqlite_empty_memberships_match_exact_rows_for_numeric_and_text_columns() {
                 ));
                 assert_empty_membership_emits_both_languages(project, operator == "NOT IN");
                 for purpose in [ExecutionPurpose::Run, ExecutionPurpose::Preview] {
-                    assert_eq!(execute(&dir.0, project, purpose, &[]).unwrap(), expected);
+                    assert_eq!(
+                        execute(dir.path(), project, purpose, &[]).unwrap(),
+                        expected
+                    );
                 }
             }
             if ty == ScalarType::String {
-                let (path, _) = write_design(&dir.0, "IN ('alpha')", false);
+                let (path, _) = write_design(dir.path(), "IN ('alpha')", false);
                 assert_late_query_coercion_refusal(
-                    &dir.0,
+                    dir.path(),
                     &path,
                     "text IN collation cannot be established from SQLite schema metadata",
                 );
@@ -984,17 +974,17 @@ fn sqlite_empty_memberships_match_exact_rows_for_numeric_and_text_columns() {
 #[test]
 fn sqlite_empty_memberships_keep_source_sort_and_window_controls() {
     for operator in ["IN", "NOT IN"] {
-        let dir = TempDir::new();
-        prepare_database(&dir.0);
-        let (path, sql) = write_design(&dir.0, &format!("{operator} ()"), false);
+        let dir = TempDir::new("not_in_null").unwrap();
+        prepare_database(dir.path());
+        let (path, sql) = write_design(dir.path(), &format!("{operator} ()"), false);
         let order = "ORDER BY RowID DESC LIMIT 3 OFFSET 1";
         let sql = sql.replace("ORDER BY RowID", order);
         let xml = std::fs::read_to_string(&path).unwrap();
         assert_eq!(xml.matches("ORDER BY RowID").count(), 1);
         std::fs::write(&path, xml.replace("ORDER BY RowID", order)).unwrap();
         let expected: &[i64] = if operator == "IN" { &[] } else { &[5, 4, 3] };
-        assert_eq!(oracle(&dir.0, &sql, None, None), expected);
-        let projects = projects_after_cycles(&dir.0, import(&path));
+        assert_eq!(oracle(dir.path(), &sql, None, None), expected);
+        let projects = projects_after_cycles(dir.path(), import(&path));
         for project in &projects {
             assert!(
                 project
@@ -1008,7 +998,10 @@ fn sqlite_empty_memberships_keep_source_sort_and_window_controls() {
             assert!(project.root.sort_descending);
             assert_eq!(project.root.windows.len(), 2);
             for purpose in [ExecutionPurpose::Run, ExecutionPurpose::Preview] {
-                assert_eq!(execute(&dir.0, project, purpose, &[]).unwrap(), expected);
+                assert_eq!(
+                    execute(dir.path(), project, purpose, &[]).unwrap(),
+                    expected
+                );
             }
         }
     }
@@ -1019,36 +1012,36 @@ fn sqlite_empty_memberships_keep_unrelated_host_reads_and_empty_source_laziness(
     for operator in ["IN", "NOT IN"] {
         for empty_first in [false, true] {
             for defaults in [false, true] {
-                let dir = TempDir::new();
-                prepare_database(&dir.0);
+                let dir = TempDir::new("not_in_null").unwrap();
+                prepare_database(dir.path());
                 let membership = if empty_first {
                     format!("{operator} () AND Number > :First")
                 } else {
                     format!("> :First AND Number {operator} ()")
                 };
-                let (path, sql) = write_design(&dir.0, &membership, defaults);
-                let projects = projects_after_cycles(&dir.0, import(&path));
+                let (path, sql) = write_design(dir.path(), &membership, defaults);
+                let projects = projects_after_cycles(dir.path(), import(&path));
                 for project in &projects {
                     if defaults {
-                        let expected = oracle(&dir.0, &sql, Some(1), None);
+                        let expected = oracle(dir.path(), &sql, Some(1), None);
                         assert_eq!(
-                            execute(&dir.0, project, ExecutionPurpose::Run, &[]).unwrap(),
+                            execute(dir.path(), project, ExecutionPurpose::Run, &[]).unwrap(),
                             expected
                         );
                     } else {
                         assert!(matches!(
-                            execute(&dir.0, project, ExecutionPurpose::Run, &[]),
+                            execute(dir.path(), project, ExecutionPurpose::Run, &[]),
                             Err(engine::EngineError::MissingRuntimeParameter { name, .. })
                                 if name == "First"
                         ));
                     }
                     assert_eq!(
-                        execute(&dir.0, project, ExecutionPurpose::Preview, &[]).unwrap(),
-                        oracle(&dir.0, &sql, Some(2), None)
+                        execute(dir.path(), project, ExecutionPurpose::Preview, &[]).unwrap(),
+                        oracle(dir.path(), &sql, Some(2), None)
                     );
                     for purpose in [ExecutionPurpose::Run, ExecutionPurpose::Preview] {
                         assert!(matches!(
-                            execute_values(&dir.0, project, purpose, &[("First", Value::Bool(true))]),
+                            execute_values(dir.path(), project, purpose, &[("First", Value::Bool(true))]),
                             Err(engine::EngineError::RuntimeParameterType {
                                 name,
                                 expected: ScalarType::Int,
@@ -1058,24 +1051,28 @@ fn sqlite_empty_memberships_keep_unrelated_host_reads_and_empty_source_laziness(
                         ));
                         for first in [None, Some(1), Some(2), Some(9)] {
                             assert_eq!(
-                                execute(&dir.0, project, purpose, &[("First", first)]).unwrap(),
-                                oracle(&dir.0, &sql, first, None),
+                                execute(dir.path(), project, purpose, &[("First", first)]).unwrap(),
+                                oracle(dir.path(), &sql, first, None),
                                 "operator={operator}, empty_first={empty_first}, defaults={defaults}, first={first:?}"
                             );
                         }
                     }
                 }
-                Connection::open(dir.0.join("numbers.sqlite"))
+                Connection::open(dir.path().join("numbers.sqlite"))
                     .unwrap()
                     .execute("DELETE FROM Numbers", [])
                     .unwrap();
                 for project in &projects {
                     for purpose in [ExecutionPurpose::Run, ExecutionPurpose::Preview] {
-                        assert!(oracle(&dir.0, &sql, None, None).is_empty());
-                        assert!(execute(&dir.0, project, purpose, &[]).unwrap().is_empty());
+                        assert!(oracle(dir.path(), &sql, None, None).is_empty());
+                        assert!(
+                            execute(dir.path(), project, purpose, &[])
+                                .unwrap()
+                                .is_empty()
+                        );
                         assert!(
                             execute_values(
-                                &dir.0,
+                                dir.path(),
                                 project,
                                 purpose,
                                 &[("First", Value::Bool(true))]
@@ -1093,9 +1090,9 @@ fn sqlite_empty_memberships_keep_unrelated_host_reads_and_empty_source_laziness(
 #[test]
 fn sqlite_empty_memberships_require_both_explicit_sqlite_boundary_kinds() {
     for operator in ["IN", "NOT IN"] {
-        let dir = TempDir::new();
-        prepare_database(&dir.0);
-        let (path, _) = write_design(&dir.0, &format!("{operator} ()"), false);
+        let dir = TempDir::new("not_in_null").unwrap();
+        prepare_database(dir.path());
+        let (path, _) = write_design(dir.path(), &format!("{operator} ()"), false);
         let sqlite = std::fs::read_to_string(&path).unwrap();
         let qualified = sqlite.replace(
             r#"database_kind="SQLite" import_kind="SQLite""#,
@@ -1109,7 +1106,7 @@ fn sqlite_empty_memberships_require_both_explicit_sqlite_boundary_kinds() {
             &[1, 2, 3, 4, 5, 6]
         };
         assert_eq!(
-            execute(&dir.0, &import(&path), ExecutionPurpose::Run, &[]).unwrap(),
+            execute(dir.path(), &import(&path), ExecutionPurpose::Run, &[]).unwrap(),
             expected
         );
         for (from, to) in [
@@ -1139,10 +1136,10 @@ fn sqlite_empty_memberships_require_both_explicit_sqlite_boundary_kinds() {
 
 #[test]
 fn sqlite_empty_memberships_still_require_a_resolved_column_and_exact_list_grammar() {
-    let dir = TempDir::new();
-    prepare_database(&dir.0);
+    let dir = TempDir::new("not_in_null").unwrap();
+    prepare_database(dir.path());
     for membership in ["IN (,)", "IN (())", "IN (1,)", "NOT IN (1,,2)", "IN (,1)"] {
-        let (path, _) = write_design(&dir.0, membership, false);
+        let (path, _) = write_design(dir.path(), membership, false);
         assert!(matches!(
             mfd::import(&path),
             Err(mfd::MfdError::UnsupportedImport(_))
@@ -1157,7 +1154,7 @@ fn sqlite_empty_memberships_still_require_a_resolved_column_and_exact_list_gramm
         ));
     }
     for operator in ["IN", "NOT IN"] {
-        let (path, _) = write_design(&dir.0, &format!("{operator} ()"), false);
+        let (path, _) = write_design(dir.path(), &format!("{operator} ()"), false);
         let xml = std::fs::read_to_string(&path)
             .unwrap()
             .replace("WHERE Number", "WHERE Missing");

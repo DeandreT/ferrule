@@ -1,34 +1,6 @@
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
-
 use ir::{Instance, Value};
 
-struct TempDir(PathBuf);
-
-static NEXT_DIR: AtomicU64 = AtomicU64::new(0);
-
-impl TempDir {
-    fn new() -> Self {
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_dtd_post_group_filter_{}_{}",
-            std::process::id(),
-            NEXT_DIR.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
-
-fn write(path: &Path, contents: &str) {
-    std::fs::write(path, contents).unwrap();
-}
+use test_support::TempDir;
 
 fn rows(output: &Instance) -> Vec<(String, String)> {
     output
@@ -47,9 +19,9 @@ fn rows(output: &Instance) -> Vec<(String, String)> {
 
 #[test]
 fn dtd_generic_members_filter_after_grouping_and_round_trip() {
-    let dir = TempDir::new();
-    write(
-        &dir.0.join("config.dtd"),
+    let dir = TempDir::new("dtd_post_group_filter").unwrap();
+    dir.write(
+        "config.dtd",
         r#"<!ENTITY % value "(text | number)">
 <!ELEMENT Root (dict)>
 <!ATTLIST Root version CDATA "1">
@@ -57,14 +29,10 @@ fn dtd_generic_members_filter_after_grouping_and_round_trip() {
 <!ELEMENT key (#PCDATA)>
 <!ELEMENT text (#PCDATA)>
 <!ELEMENT number (#PCDATA)>"#,
-    );
-    write(
-        &dir.0.join("config.xml"),
-        r#"<!DOCTYPE Root SYSTEM "config.dtd"><Root version="2"><dict><key>Color</key><text>blue</text><key>Count</key><number>7</number><key>Shape</key><text>round</text></dict></Root>"#,
-    );
-    write(
-        &dir.0.join("mapping.mfd"),
-        r#"<mapping><component name="map"><structure><children>
+    )
+    .unwrap();
+    dir.write("config.xml", r#"<!DOCTYPE Root SYSTEM "config.dtd"><Root version="2"><dict><key>Color</key><text>blue</text><key>Count</key><number>7</number><key>Shape</key><text>round</text></dict></Root>"#).unwrap();
+    dir.write("mapping.mfd", r#"<mapping><component name="map"><structure><children>
   <component name="source" library="xml" kind="14"><data><root><entry name="Root"><entry name="dict"><entry name="element()" outkey="10"><entry name="LocalName" outkey="11"/><entry name="key" outkey="12"/><entry name="text" outkey="13"/></entry></entry></entry></root><document schema="config.dtd" inputinstance="config.xml" instanceroot="{}Root"/></data></component>
   <component name="exists" library="core" kind="5"><sources><datapoint pos="0" key="20"/></sources><targets><datapoint pos="0" key="21"/></targets></component>
   <component name="group-starting-with" library="core" kind="5"><sources><datapoint pos="0" key="22"/><datapoint pos="1" key="23"/></sources><targets><datapoint pos="0" key="24"/></targets></component>
@@ -82,16 +50,15 @@ fn dtd_generic_members_filter_after_grouping_and_round_trip() {
   <vertex vertexkey="25"><edges><edge vertexkey="27"/></edges></vertex>
   <vertex vertexkey="28"><edges><edge vertexkey="30"/></edges></vertex>
   <vertex vertexkey="31"><edges><edge vertexkey="40"/></edges></vertex>
-</vertices></graph></structure></component></mapping>"#,
-    );
+</vertices></graph></structure></component></mapping>"#).unwrap();
 
-    let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+    let imported = mfd::import(&dir.path().join("mapping.mfd")).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
     assert!(imported.project.root.filter.is_none());
     assert!(imported.project.root.post_group_filter.is_some());
 
-    let input = format_xml::read(&dir.0.join("config.xml"), &imported.project.source).unwrap();
+    let input = format_xml::read(&dir.path().join("config.xml"), &imported.project.source).unwrap();
     let output = engine::run(&imported.project, &input).unwrap();
     assert_eq!(
         rows(&output),
@@ -101,7 +68,7 @@ fn dtd_generic_members_filter_after_grouping_and_round_trip() {
         ]
     );
 
-    let exported = dir.0.join("roundtrip.mfd");
+    let exported = dir.path().join("roundtrip.mfd");
     assert!(
         mfd::export(&imported.project, &exported)
             .unwrap()
@@ -112,7 +79,7 @@ fn dtd_generic_members_filter_after_grouping_and_round_trip() {
     let issues = engine::validate(&roundtrip.project);
     assert!(issues.is_empty(), "{issues:?}");
     let roundtrip_input =
-        format_xml::read(&dir.0.join("config.xml"), &roundtrip.project.source).unwrap();
+        format_xml::read(&dir.path().join("config.xml"), &roundtrip.project.source).unwrap();
     let roundtrip_output = engine::run(&roundtrip.project, &roundtrip_input).unwrap();
     assert_eq!(rows(&roundtrip_output), rows(&output));
 }

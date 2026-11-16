@@ -1,39 +1,12 @@
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
-
 use ir::{Instance, Value};
 use mapping::Node;
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Self {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_nested_scalar_udf_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
-
-fn write(path: &Path, contents: &str) {
-    std::fs::write(path, contents).unwrap();
-}
+use test_support::TempDir;
 
 fn setup() -> TempDir {
-    let dir = TempDir::new();
-    write(
-        &dir.0.join("source.xsd"),
+    let dir = TempDir::new("mfd_nested_scalar_udf").unwrap();
+    dir.write(
+        "source.xsd",
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:element name="Pairs"><xs:complexType><xs:sequence>
     <xs:element name="Pair" maxOccurs="unbounded"><xs:complexType><xs:sequence>
@@ -41,9 +14,10 @@ fn setup() -> TempDir {
     </xs:sequence></xs:complexType></xs:element>
   </xs:sequence></xs:complexType></xs:element>
 </xs:schema>"#,
-    );
-    write(
-        &dir.0.join("target.xsd"),
+    )
+    .unwrap();
+    dir.write(
+        "target.xsd",
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:element name="Results"><xs:complexType><xs:sequence>
     <xs:element name="Result" maxOccurs="unbounded"><xs:complexType><xs:sequence>
@@ -51,10 +25,9 @@ fn setup() -> TempDir {
     </xs:sequence></xs:complexType></xs:element>
   </xs:sequence></xs:complexType></xs:element>
 </xs:schema>"#,
-    );
-    write(
-        &dir.0.join("mapping.mfd"),
-        r#"<mapping version="26">
+    )
+    .unwrap();
+    dir.write("mapping.mfd", r#"<mapping version="26">
   <component name="main"><structure><children>
     <component name="Pairs" library="xml" uid="1" kind="14"><data>
       <root><entry name="Pairs"><entry name="Pair" outkey="10"><entry name="Left" outkey="11"/><entry name="Right" outkey="12"/></entry></entry></root>
@@ -110,15 +83,14 @@ fn setup() -> TempDir {
     <vertex vertexkey="2009"><edges><edge vertexkey="2004"/></edges></vertex>
     <vertex vertexkey="2006"><edges><edge vertexkey="2007"/></edges></vertex>
   </vertices></graph></structure></component>
-</mapping>"#,
-    );
+</mapping>"#).unwrap();
     dir
 }
 
 #[test]
 fn forward_declared_nested_scalar_udfs_preserve_callable_definitions() {
     let dir = setup();
-    let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+    let imported = mfd::import(&dir.path().join("mapping.mfd")).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
     assert_eq!(imported.project.user_functions.len(), 2);
@@ -173,17 +145,18 @@ fn forward_declared_nested_scalar_udfs_preserve_callable_definitions() {
 
 #[test]
 fn omitted_scalar_udf_inputs_use_definition_defaults_only_when_unconnected() {
-    let dir = TempDir::new();
-    write(
-        &dir.0.join("source.xsd"),
+    let dir = TempDir::new("mfd_nested_scalar_udf").unwrap();
+    dir.write(
+        "source.xsd",
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:element name="Input"><xs:complexType><xs:sequence>
     <xs:element name="Value" type="xs:string"/>
   </xs:sequence></xs:complexType></xs:element>
 </xs:schema>"#,
-    );
-    write(
-        &dir.0.join("target.xsd"),
+    )
+    .unwrap();
+    dir.write(
+        "target.xsd",
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:element name="Results"><xs:complexType><xs:sequence>
     <xs:element name="Defaulted" type="xs:boolean"/>
@@ -192,10 +165,9 @@ fn omitted_scalar_udf_inputs_use_definition_defaults_only_when_unconnected() {
     <xs:element name="Echo" type="xs:string"/>
   </xs:sequence></xs:complexType></xs:element>
 </xs:schema>"#,
-    );
-    write(
-        &dir.0.join("mapping.mfd"),
-        r#"<mapping version="26">
+    )
+    .unwrap();
+    dir.write("mapping.mfd", r#"<mapping version="26">
   <component name="main"><structure><children>
     <component name="Input" library="xml" uid="1" kind="14"><data>
       <root><entry name="Input"><entry name="Value" outkey="10"/></entry></root>
@@ -240,10 +212,9 @@ fn omitted_scalar_udf_inputs_use_definition_defaults_only_when_unconnected() {
     <vertex vertexkey="1002"><edges><edge vertexkey="1000"/></edges></vertex>
     <vertex vertexkey="1001"><edges><edge vertexkey="1003"/></edges></vertex>
   </vertices></graph></structure></component>
-</mapping>"#,
-    );
+</mapping>"#).unwrap();
 
-    let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+    let imported = mfd::import(&dir.path().join("mapping.mfd")).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
 

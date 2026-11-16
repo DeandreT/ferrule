@@ -1,34 +1,12 @@
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
-
 use ir::{Instance, Value};
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Result<Self, std::io::Error> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_csv_quote_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 #[test]
 fn native_csv_quote_setting_roundtrips_and_executes_locally()
 -> Result<(), Box<dyn std::error::Error>> {
-    let temp = TempDir::new()?;
-    let design = temp.0.join("custom-quote.mfd");
+    let temp = TempDir::new("mfd_csv_quote")?;
+    let design = temp.path().join("custom-quote.mfd");
     std::fs::write(
         &design,
         r#"<mapping version="26"><component name="map"><structure><children>
@@ -78,7 +56,7 @@ fn native_csv_quote_setting_roundtrips_and_executes_locally()
     )?;
     assert_eq!(output_text, source_text);
 
-    let exported = temp.0.join("roundtrip.mfd");
+    let exported = temp.path().join("roundtrip.mfd");
     let report = mfd::export_with_profile(&project, &exported, mfd::ExportProfile::NativeMfd)?;
     assert!(report.is_native_compatible());
     assert_eq!(
@@ -94,7 +72,7 @@ fn native_csv_quote_setting_roundtrips_and_executes_locally()
     for (quote, encoded) in [('&', "&amp;"), ('<', "&lt;")] {
         project.source_options.csv_quote = Some(quote);
         project.target_options.csv_quote = Some(quote);
-        let escaped_design = temp.0.join(format!("escaped-{}.mfd", quote as u32));
+        let escaped_design = temp.path().join(format!("escaped-{}.mfd", quote as u32));
         mfd::export_with_profile(&project, &escaped_design, mfd::ExportProfile::NativeMfd)?;
         let xml = std::fs::read_to_string(&escaped_design)?;
         assert_eq!(xml.matches(&format!("quote=\"{encoded}\"")).count(), 2);
@@ -131,7 +109,7 @@ fn native_csv_quote_setting_roundtrips_and_executes_locally()
         )?,
         raw_quote_text
     );
-    let no_quote_design = temp.0.join("no-quote.mfd");
+    let no_quote_design = temp.path().join("no-quote.mfd");
     mfd::export_with_profile(&project, &no_quote_design, mfd::ExportProfile::NativeMfd)?;
     assert_eq!(
         std::fs::read_to_string(&no_quote_design)?
@@ -144,10 +122,10 @@ fn native_csv_quote_setting_roundtrips_and_executes_locally()
     assert!(reimported.project.source_options.csv_quote_disabled);
     assert!(reimported.project.target_options.csv_quote_disabled);
     project.source_options.csv_quote = Some('\'');
-    assert!(mfd::preflight_export(&project, &temp.0.join("conflicting.mfd")).is_err());
+    assert!(mfd::preflight_export(&project, &temp.path().join("conflicting.mfd")).is_err());
     project.source_options.csv_quote = None;
 
-    let invalid = temp.0.join("invalid-quote.mfd");
+    let invalid = temp.path().join("invalid-quote.mfd");
     let original = std::fs::read_to_string(&design)?;
     std::fs::write(&invalid, original.replace("quote=\"'\"", "quote=\"||\""))?;
     let best_effort = mfd::import(&invalid)?;
