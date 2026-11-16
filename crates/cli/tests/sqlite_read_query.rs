@@ -5,7 +5,6 @@
 use std::cell::Cell;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use cli::{HostRoute, InputRole, RouteRefusal};
@@ -18,18 +17,11 @@ const FIXTURES: &str = concat!(
     "/../../docs/design/fixtures/sqlite-read-v1"
 );
 
-struct TempDir(PathBuf);
+struct TempDir(test_support::TempDir);
 
 impl TempDir {
     fn new() -> Self {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_cli_sqlite_read_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path).unwrap();
+        let path = test_support::TempDir::new("cli-sqlite-read-query").unwrap();
         Self(path)
     }
 
@@ -54,12 +46,6 @@ impl TempDir {
         )
         .unwrap();
         path
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
     }
 }
 

@@ -10,29 +10,7 @@ fn fixture_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/orders")
 }
 
-struct TestDir(PathBuf);
-
-impl TestDir {
-    fn new(name: &str) -> Self {
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_cli_http_get_{name}_{}",
-            std::process::id()
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-
-    fn path(&self) -> &Path {
-        &self.0
-    }
-}
-
-impl Drop for TestDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir as TestDir;
 
 struct TestServer {
     url: String,
@@ -143,7 +121,7 @@ fn stored_http_source_executes_an_xml_mapping() {
         "200 OK",
         std::fs::read(fixture_dir().join("Orders.xml")).unwrap(),
     );
-    let dir = TestDir::new("success");
+    let dir = TestDir::new("success").unwrap();
     let output = dir.path().join("output.json");
     let project = configured_project(&server.url, &output);
     let project_path = write_project(dir.path(), &project, Some(5));
@@ -164,7 +142,7 @@ fn stored_http_source_executes_an_xml_mapping() {
 
 #[test]
 fn explicit_local_input_overrides_a_stored_http_source() {
-    let dir = TestDir::new("local_override");
+    let dir = TestDir::new("local_override").unwrap();
     let output = dir.path().join("output.json");
     let project = configured_project("http://127.0.0.1:9/not-requested", &output);
     let project_path = write_project(dir.path(), &project, Some(5));
@@ -179,7 +157,7 @@ fn explicit_local_input_overrides_a_stored_http_source() {
 
 #[test]
 fn stored_http_output_is_rejected_before_reading_input() {
-    let dir = TestDir::new("remote_output");
+    let dir = TestDir::new("remote_output").unwrap();
     let mut project = configured_project("missing.xml", Path::new("unused.xml"));
     project.target_path = Some("https://example.invalid/output.xml".to_string());
     let project_path = write_project(dir.path(), &project, None);
@@ -201,7 +179,7 @@ fn explicit_http_input_overrides_a_stored_local_source() {
         "200 OK",
         std::fs::read(fixture_dir().join("Orders.xml")).unwrap(),
     );
-    let dir = TestDir::new("http_override");
+    let dir = TestDir::new("http_override").unwrap();
     let output = dir.path().join("output.json");
     let project = configured_project("missing.xml", &output);
     let project_path = write_project(dir.path(), &project, Some(5));
@@ -220,7 +198,7 @@ fn explicit_http_input_overrides_a_stored_local_source() {
 #[test]
 fn http_status_error_omits_the_url_query() {
     let server = TestServer::spawn("/orders.xml?token=private", "503 Unavailable", Vec::new());
-    let dir = TestDir::new("status");
+    let dir = TestDir::new("status").unwrap();
     let project = configured_project(&server.url, &dir.path().join("output.json"));
     let project_path = write_project(dir.path(), &project, Some(5));
 
@@ -241,7 +219,7 @@ fn oversized_http_response_is_rejected_before_xml_parsing() {
         "200 OK",
         vec![b'x'; MAX_HTTP_RESPONSE_BYTES + 1],
     );
-    let dir = TestDir::new("oversized");
+    let dir = TestDir::new("oversized").unwrap();
     let project = configured_project(&server.url, &dir.path().join("output.json"));
     let project_path = write_project(dir.path(), &project, Some(5));
 
@@ -260,7 +238,7 @@ fn non_utf8_http_response_is_rejected() {
         "200 OK",
         b"<Orders>\xff</Orders>".to_vec(),
     );
-    let dir = TestDir::new("invalid_utf8");
+    let dir = TestDir::new("invalid_utf8").unwrap();
     let project = configured_project(&server.url, &dir.path().join("output.json"));
     let project_path = write_project(dir.path(), &project, Some(5));
 
@@ -275,7 +253,7 @@ fn non_utf8_http_response_is_rejected() {
 #[test]
 fn malformed_xml_http_response_has_remote_context() {
     let server = TestServer::spawn("/malformed.xml", "200 OK", b"<Orders>".to_vec());
-    let dir = TestDir::new("malformed_xml");
+    let dir = TestDir::new("malformed_xml").unwrap();
     let project = configured_project(&server.url, &dir.path().join("output.json"));
     let project_path = write_project(dir.path(), &project, Some(5));
 
@@ -301,7 +279,7 @@ fn stored_http_extra_source_is_loaded() {
         "200 OK",
         b"<Catalog><Version>v1</Version></Catalog>".to_vec(),
     );
-    let dir = TestDir::new("extra_source");
+    let dir = TestDir::new("extra_source").unwrap();
     std::fs::copy(
         fixture_dir().join("Orders.xml"),
         dir.path().join("Orders.xml"),

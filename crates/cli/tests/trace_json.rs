@@ -1,7 +1,6 @@
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{ScalarType, SchemaNode, Value};
 use mapping::{
@@ -9,27 +8,7 @@ use mapping::{
     Scope, ScopeIteration, SequenceExpr, SequenceWindow, SortFilterOrder,
 };
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new(label: &str) -> Result<Self, std::io::Error> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_cli_trace_{label}_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn ferrule(dir: &Path, args: &[&str]) -> Result<Output, std::io::Error> {
     Command::new(env!("CARGO_BIN_EXE_ferrule"))
@@ -240,12 +219,12 @@ fn failing_project() -> Project {
 #[test]
 fn run_writes_versioned_node_and_control_events() -> Result<(), Box<dyn std::error::Error>> {
     let dir = TempDir::new("controls")?;
-    let project = write_project(&dir.0, &control_project())?;
-    std::fs::write(dir.0.join("input.json"), "{}")?;
-    let trace = dir.0.join("run.trace.jsonl");
+    let project = write_project(dir.path(), &control_project())?;
+    std::fs::write(dir.path().join("input.json"), "{}")?;
+    let trace = dir.path().join("run.trace.jsonl");
 
     let output = ferrule(
-        &dir.0,
+        dir.path(),
         &[
             "--diagnostics",
             "json",
@@ -307,10 +286,10 @@ fn run_writes_versioned_node_and_control_events() -> Result<(), Box<dyn std::err
     }));
 
     let first_trace = std::fs::read(&trace)?;
-    let second_trace = dir.0.join("second.trace.jsonl");
+    let second_trace = dir.path().join("second.trace.jsonl");
     std::fs::write(&second_trace, "previous trace\n")?;
     let second_output = ferrule(
-        &dir.0,
+        dir.path(),
         &[
             "run",
             "--project",
@@ -383,15 +362,15 @@ fn source_candidates_write_bounded_rows_to_v3_json_lines() -> Result<(), Box<dyn
         }],
         ..Scope::default()
     };
-    let project = write_project(&dir.0, &project)?;
+    let project = write_project(dir.path(), &project)?;
     std::fs::write(
-        dir.0.join("input.json"),
+        dir.path().join("input.json"),
         r#"{"Rows":[{"Value":"a","Nested":{"Items":[{"Code":"A"},{"Code":"B"}]}},{"Value":"b","Nested":{"Items":[]}}]}"#,
     )?;
-    let trace = dir.0.join("run.trace.jsonl");
+    let trace = dir.path().join("run.trace.jsonl");
 
     let output = ferrule(
-        &dir.0,
+        dir.path(),
         &[
             "run",
             "--project",
@@ -429,7 +408,9 @@ fn source_candidates_write_bounded_rows_to_v3_json_lines() -> Result<(), Box<dyn
     assert_eq!(items["omitted_children"], 0);
     assert_eq!(items["depth_limited"], false);
     assert_eq!(
-        serde_json::from_slice::<serde_json::Value>(&std::fs::read(dir.0.join("output.json"))?)?,
+        serde_json::from_slice::<serde_json::Value>(&std::fs::read(
+            dir.path().join("output.json")
+        )?)?,
         serde_json::json!({"Rows": [{"Value": "a"}, {"Value": "b"}]})
     );
     assert!(lines.iter().all(|line| line["schema_version"] == 5));
@@ -439,12 +420,12 @@ fn source_candidates_write_bounded_rows_to_v3_json_lines() -> Result<(), Box<dyn
 #[test]
 fn selected_target_trace_identifies_only_that_target() -> Result<(), Box<dyn std::error::Error>> {
     let dir = TempDir::new("selected")?;
-    let project = write_project(&dir.0, &selected_target_project())?;
-    std::fs::write(dir.0.join("input.json"), r#"{"Value":"selected"}"#)?;
-    let trace = dir.0.join("selected.trace.jsonl");
+    let project = write_project(dir.path(), &selected_target_project())?;
+    std::fs::write(dir.path().join("input.json"), r#"{"Value":"selected"}"#)?;
+    let trace = dir.path().join("selected.trace.jsonl");
 
     let output = ferrule(
-        &dir.0,
+        dir.path(),
         &[
             "--diagnostics",
             "json",
@@ -462,7 +443,7 @@ fn selected_target_trace_identifies_only_that_target() -> Result<(), Box<dyn std
         "{}",
         String::from_utf8_lossy(&output.stderr)
     );
-    assert!(!dir.0.join("primary.json").exists());
+    assert!(!dir.path().join("primary.json").exists());
 
     let scope_targets = json_lines(&trace)?
         .into_iter()
@@ -479,13 +460,13 @@ fn selected_target_trace_identifies_only_that_target() -> Result<(), Box<dyn std
 #[test]
 fn failed_execution_preserves_existing_trace() -> Result<(), Box<dyn std::error::Error>> {
     let dir = TempDir::new("failure")?;
-    let project = write_project(&dir.0, &failing_project())?;
-    std::fs::write(dir.0.join("input.json"), "{}")?;
-    let trace = dir.0.join("run.trace.jsonl");
+    let project = write_project(dir.path(), &failing_project())?;
+    std::fs::write(dir.path().join("input.json"), "{}")?;
+    let trace = dir.path().join("run.trace.jsonl");
     std::fs::write(&trace, "existing trace\n")?;
 
     let output = ferrule(
-        &dir.0,
+        dir.path(),
         &[
             "--diagnostics",
             "json",
@@ -511,9 +492,9 @@ fn failed_execution_preserves_existing_trace() -> Result<(), Box<dyn std::error:
         "{diagnostics:?}"
     );
     assert_eq!(std::fs::read_to_string(trace)?, "existing trace\n");
-    assert!(!dir.0.join("output.json").exists());
+    assert!(!dir.path().join("output.json").exists());
     assert!(
-        std::fs::read_dir(&dir.0)?
+        std::fs::read_dir(dir.path())?
             .filter_map(Result::ok)
             .all(|entry| !entry.file_name().to_string_lossy().contains("trace-stage"))
     );
@@ -523,13 +504,13 @@ fn failed_execution_preserves_existing_trace() -> Result<(), Box<dyn std::error:
 #[test]
 fn invalid_trace_destinations_fail_before_execution() -> Result<(), Box<dyn std::error::Error>> {
     let dir = TempDir::new("invalid")?;
-    let project = write_project(&dir.0, &control_project())?;
-    std::fs::write(dir.0.join("input.json"), "{}")?;
-    let trace_directory = dir.0.join("trace");
+    let project = write_project(dir.path(), &control_project())?;
+    std::fs::write(dir.path().join("input.json"), "{}")?;
+    let trace_directory = dir.path().join("trace");
     std::fs::create_dir(&trace_directory)?;
 
     let directory_output = ferrule(
-        &dir.0,
+        dir.path(),
         &[
             "run",
             "--project",
@@ -544,10 +525,10 @@ fn invalid_trace_destinations_fail_before_execution() -> Result<(), Box<dyn std:
         "{}",
         String::from_utf8_lossy(&directory_output.stderr)
     );
-    assert!(!dir.0.join("output.json").exists());
+    assert!(!dir.path().join("output.json").exists());
 
     let stdout_output = ferrule(
-        &dir.0,
+        dir.path(),
         &[
             "run",
             "--project",
@@ -562,18 +543,18 @@ fn invalid_trace_destinations_fail_before_execution() -> Result<(), Box<dyn std:
         "{}",
         String::from_utf8_lossy(&stdout_output.stderr)
     );
-    assert!(!dir.0.join("output.json").exists());
+    assert!(!dir.path().join("output.json").exists());
     Ok(())
 }
 
 #[test]
 fn trace_cannot_replace_a_mapping_output() -> Result<(), Box<dyn std::error::Error>> {
     let dir = TempDir::new("output_collision")?;
-    let project = write_project(&dir.0, &control_project())?;
-    std::fs::write(dir.0.join("input.json"), "{}")?;
+    let project = write_project(dir.path(), &control_project())?;
+    std::fs::write(dir.path().join("input.json"), "{}")?;
 
     let output = ferrule(
-        &dir.0,
+        dir.path(),
         &[
             "run",
             "--project",
@@ -589,7 +570,7 @@ fn trace_cannot_replace_a_mapping_output() -> Result<(), Box<dyn std::error::Err
         String::from_utf8_lossy(&output.stderr)
     );
     assert!(
-        !dir.0.join("output.json").exists(),
+        !dir.path().join("output.json").exists(),
         "collision must fail before publishing the mapping output"
     );
     Ok(())

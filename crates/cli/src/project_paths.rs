@@ -444,28 +444,7 @@ mod tests {
     use super::*;
 
     #[cfg(unix)]
-    struct Scratch(PathBuf);
-
-    #[cfg(unix)]
-    impl Scratch {
-        fn new() -> Self {
-            static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-            let path = std::env::temp_dir().join(format!(
-                "ferrule-save-as-links-{}-{}",
-                std::process::id(),
-                NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
-            ));
-            std::fs::create_dir_all(&path).unwrap();
-            Self(path)
-        }
-    }
-
-    #[cfg(unix)]
-    impl Drop for Scratch {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_dir_all(&self.0);
-        }
-    }
+    use test_support::TempDir as Scratch;
 
     #[cfg(unix)]
     fn filesystem_path(stored: &str, from: &Path, to: &Path) -> std::io::Result<Option<String>> {
@@ -475,10 +454,10 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn save_as_through_directory_symlink_keeps_resource_identity() {
-        let scratch = Scratch::new();
-        let original = scratch.0.join("maps[archive]");
-        let physical = scratch.0.join("physical/deep");
-        let wrong = scratch.0.join("physical/maps");
+        let scratch = Scratch::new("save-as-links").unwrap();
+        let original = scratch.path().join("maps[archive]");
+        let physical = scratch.path().join("physical/deep");
+        let wrong = scratch.path().join("physical/maps");
         for directory in [&original, &physical, &wrong] {
             std::fs::create_dir_all(directory).unwrap();
         }
@@ -492,7 +471,7 @@ mod tests {
             "linked*archive",
             "linked?archive",
         ] {
-            let linked = scratch.0.join(name);
+            let linked = scratch.path().join(name);
             std::os::unix::fs::symlink(&physical, &linked).unwrap();
             for resource in ["source.xml", "target.xml", "catalog.xml", "audit.xml"] {
                 let rebased = filesystem_path(
@@ -513,15 +492,19 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn stored_symlink_dotdot_is_resolved_before_rebasing() {
-        let scratch = Scratch::new();
-        let original = scratch.0.join("maps");
-        let physical = scratch.0.join("physical/deep");
-        let destination = scratch.0.join("saved");
+        let scratch = Scratch::new("save-as-links").unwrap();
+        let original = scratch.path().join("maps");
+        let physical = scratch.path().join("physical/deep");
+        let destination = scratch.path().join("saved");
         for directory in [&original, &physical, &destination] {
             std::fs::create_dir_all(directory).unwrap();
         }
         std::os::unix::fs::symlink(&physical, original.join("route")).unwrap();
-        std::fs::write(scratch.0.join("physical/source.xml"), b"physical parent").unwrap();
+        std::fs::write(
+            scratch.path().join("physical/source.xml"),
+            b"physical parent",
+        )
+        .unwrap();
         std::fs::write(original.join("source.xml"), b"lexical parent").unwrap();
         let rebased = filesystem_path("route/../source.xml", &original, &destination)
             .unwrap()
@@ -535,10 +518,10 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn linked_directories_preserve_missing_outputs_and_glob_suffixes() {
-        let scratch = Scratch::new();
-        let original = scratch.0.join("maps");
-        let physical = scratch.0.join("physical/deep");
-        let destination = scratch.0.join("saved");
+        let scratch = Scratch::new("save-as-links").unwrap();
+        let original = scratch.path().join("maps");
+        let physical = scratch.path().join("physical/deep");
+        let destination = scratch.path().join("saved");
         for directory in [&original, &physical, &destination] {
             std::fs::create_dir_all(directory).unwrap();
         }
@@ -558,19 +541,19 @@ mod tests {
                 Some(expected)
             );
         }
-        assert!(!scratch.0.join("physical/missing").exists());
+        assert!(!scratch.path().join("physical/missing").exists());
     }
 
     #[cfg(unix)]
     #[test]
     fn rebasing_does_not_follow_resource_file_links() {
-        let scratch = Scratch::new();
-        let original = scratch.0.join("maps");
-        let destination = scratch.0.join("saved");
+        let scratch = Scratch::new("save-as-links").unwrap();
+        let original = scratch.path().join("maps");
+        let destination = scratch.path().join("saved");
         for directory in [&original, &destination] {
             std::fs::create_dir_all(directory).unwrap();
         }
-        let target = scratch.0.join("real-output.xml");
+        let target = scratch.path().join("real-output.xml");
         std::fs::write(&target, b"target").unwrap();
         std::os::unix::fs::symlink(&target, original.join("output.xml")).unwrap();
         let rebased =
@@ -589,13 +572,14 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn rebasing_rejects_unresolvable_existing_directory_entries() {
-        let scratch = Scratch::new();
-        let original = scratch.0.join("maps");
-        let destination = scratch.0.join("saved");
+        let scratch = Scratch::new("save-as-links").unwrap();
+        let original = scratch.path().join("maps");
+        let destination = scratch.path().join("saved");
         for directory in [&original, &destination] {
             std::fs::create_dir_all(directory).unwrap();
         }
-        std::os::unix::fs::symlink(scratch.0.join("missing"), original.join("broken")).unwrap();
+        std::os::unix::fs::symlink(scratch.path().join("missing"), original.join("broken"))
+            .unwrap();
         std::fs::write(original.join("file"), b"not a directory").unwrap();
         for stored in ["broken/../source.xml", "file/../source.xml"] {
             assert!(
@@ -608,10 +592,10 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn literal_output_directories_and_virtual_paths_have_distinct_rules() {
-        let scratch = Scratch::new();
-        let original = scratch.0.join("maps");
-        let destination = scratch.0.join("saved");
-        let physical = scratch.0.join("physical/deep");
+        let scratch = Scratch::new("save-as-links").unwrap();
+        let original = scratch.path().join("maps");
+        let destination = scratch.path().join("saved");
+        let physical = scratch.path().join("physical/deep");
         for directory in [&original, &destination, &physical] {
             std::fs::create_dir_all(directory).unwrap();
         }
@@ -641,15 +625,15 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn mapping_identity_uses_the_actual_pipeline_directory() {
-        let scratch = Scratch::new();
-        let original = scratch.0.join("maps");
-        let physical = scratch.0.join("physical/deep");
+        let scratch = Scratch::new("save-as-links").unwrap();
+        let original = scratch.path().join("maps");
+        let physical = scratch.path().join("physical/deep");
         for directory in [&original, &physical] {
             std::fs::create_dir_all(directory).unwrap();
         }
         let mapping = original.join("design.mfd");
         std::fs::write(&mapping, b"mapping").unwrap();
-        let linked = scratch.0.join("linked[archive]");
+        let linked = scratch.path().join("linked[archive]");
         std::os::unix::fs::symlink(&physical, &linked).unwrap();
         let relative =
             mapping_identity_relative_to(&mapping, &linked.join("pipeline.json")).unwrap();

@@ -12,7 +12,7 @@ use std::collections::BTreeMap;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::Ordering;
 
 use anyhow::Context;
 use ir::{ScalarType, SchemaNode};
@@ -27,20 +27,11 @@ use mapping::{
 #[path = "code_generation/primary_mapped_csv_documents/fixture.rs"]
 mod primary_mapped_csv_fixture;
 
-struct TempDir(PathBuf);
+struct TempDir(test_support::TempDir);
 
 impl TempDir {
     fn new(name: &str) -> anyhow::Result<Self> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_cli_route_preflight_{name}_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        if path.exists() {
-            std::fs::remove_dir_all(&path)?;
-        }
-        std::fs::create_dir_all(&path)?;
+        let path = test_support::TempDir::new(&format!("cli-route-preflight-{name}"))?;
         Ok(Self(path))
     }
 
@@ -70,12 +61,6 @@ impl TempDir {
         let mut entries = BTreeMap::new();
         walk(&self.0, &self.0, &mut entries)?;
         Ok(entries)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
     }
 }
 

@@ -1,31 +1,13 @@
 use std::collections::BTreeMap;
 use std::io::Read;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::path::Path;
 
 use ir::{ScalarType, SchemaNode, Value};
 use mapping::{Binding, FormatOptions, Graph, Json5InterchangeDependency, Node, Project, Scope};
 
 const REFUSAL: &str = "native JSON5 interchange";
 
-struct Directory(PathBuf);
-impl Directory {
-    fn new() -> Self {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule-json5-hosts-{}-{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir(&path).unwrap();
-        Self(path)
-    }
-}
-impl Drop for Directory {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir as Directory;
 
 fn project() -> Project {
     let schema = SchemaNode::group(
@@ -88,7 +70,7 @@ fn retained_dependencies_refuse_before_native_io_or_generated_publication() -> a
                 true,
             ),
         ] {
-            let directory = Directory::new();
+            let directory = Directory::new("json5-hosts").unwrap();
             let mut project = project();
             let options = if source {
                 &mut project.source_options
@@ -108,15 +90,15 @@ fn retained_dependencies_refuse_before_native_io_or_generated_publication() -> a
             } else {
                 options.json5_interchange_dependency = Some(dependency);
             }
-            let project_path = directory.0.join("project.json");
+            let project_path = directory.path().join("project.json");
             std::fs::write(
                 &project_path,
                 mapping::project_file::encode_pretty(&project)?,
             )?;
             let project = cli::load_project(&project_path)?;
-            let output = directory.0.join("output.json");
+            let output = directory.path().join("output.json");
             std::fs::write(&output, b"keep existing output")?;
-            let missing = directory.0.join("not-there.json");
+            let missing = directory.path().join("not-there.json");
             refuse(cli::run_project(&project_path, &missing, &output).unwrap_err());
             assert_eq!(std::fs::read(&output)?, b"keep existing output");
             let payload = cli::PayloadDocument::new(Path::new("input.json"), b"not JSON")?;
@@ -164,12 +146,12 @@ fn retained_dependencies_refuse_before_native_io_or_generated_publication() -> a
             for target in [
                 cli::GenerateTarget::CSharp,
                 cli::GenerateTarget::Rust {
-                    runtime_path: directory.0.join("nonexistent-runtime"),
+                    runtime_path: directory.path().join("nonexistent-runtime"),
                 },
             ] {
                 for profile in [cli::GenerateProfile::Ordinary, cli::GenerateProfile::Json5] {
                     for existing in [false, true] {
-                        let destination = directory.0.join(if existing {
+                        let destination = directory.path().join(if existing {
                             "existing"
                         } else {
                             "absent/generated"
@@ -241,8 +223,8 @@ fn named_boundary_dependencies_are_validated_even_without_active_json5_flag() ->
                 .unwrap_err(),
         );
         assert!(codegen::lower(&project).is_err());
-        let directory = Directory::new();
-        let saved = directory.0.join("project.json");
+        let directory = Directory::new("json5-hosts").unwrap();
+        let saved = directory.path().join("project.json");
         std::fs::write(&saved, mapping::project_file::encode_pretty(&project)?)?;
         let options = cli::StandardIoRunOptions::new()
             .with_input_path(Path::new("-"))
@@ -275,13 +257,13 @@ fn primary_filename_plans_refuse_retained_dependencies_before_acquisition() -> a
         let document = mapping::DocumentProject::new(project, mapping::PrimarySourcePlan::new(1));
         refuse(document.primary_route().unwrap_err());
         refuse(cli::check_primary_document(&document).unwrap_err());
-        let directory = Directory::new();
-        let design = directory.0.join("document.json");
+        let directory = Directory::new("json5-hosts").unwrap();
+        let design = directory.path().join("document.json");
         std::fs::write(
             &design,
             mapping::document_project_file::encode_pretty(&document)?,
         )?;
-        let destination = directory.0.join("generated");
+        let destination = directory.path().join("generated");
         refuse(
             cli::generate_project_with_profile(
                 &design,
@@ -298,25 +280,25 @@ fn primary_filename_plans_refuse_retained_dependencies_before_acquisition() -> a
 
 #[test]
 fn executable_import_refuses_without_replacing_a_saved_project() -> anyhow::Result<()> {
-    let directory = Directory::new();
+    let directory = Directory::new("json5-hosts").unwrap();
     let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("../mfd/tests/fixtures");
     std::fs::copy(
         fixtures.join("json5-boundary.schema.json"),
-        directory.0.join("json5-boundary.schema.json"),
+        directory.path().join("json5-boundary.schema.json"),
     )?;
     let xml = std::fs::read_to_string(fixtures.join("json5-boundary.mfd"))?.replacen(
         "inputinstance=\"source.json\"",
         "inputinstance=\"source.json\" json5=\"1\"",
         1,
     );
-    let design = directory.0.join("design.mfd");
+    let design = directory.path().join("design.mfd");
     std::fs::write(&design, xml)?;
-    let destination = directory.0.join("project.json");
+    let destination = directory.path().join("project.json");
     std::fs::write(&destination, b"keep saved project")?;
     let error = cli::import_mfd_with_profile(
         &design,
         &destination,
-        Some(&directory.0),
+        Some(directory.path()),
         None,
         &[],
         &[],
@@ -328,7 +310,7 @@ fn executable_import_refuses_without_replacing_a_saved_project() -> anyhow::Resu
     cli::import_mfd_with_profile(
         &design,
         &destination,
-        Some(&directory.0),
+        Some(directory.path()),
         None,
         &[],
         &[],

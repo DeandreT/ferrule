@@ -1,33 +1,12 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use engine::RuntimeParameters;
 use ir::{ScalarType, SchemaNode, Value};
 use mapping::{Binding, Graph, Node, Project, Scope};
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Result<Self, std::io::Error> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_cli_runtime_parameters_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn project() -> Project {
     Project {
@@ -121,9 +100,9 @@ fn assert_output(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn run_options_supply_parameters_and_report_every_artifact_in_order()
 -> Result<(), Box<dyn std::error::Error>> {
-    let directory = TempDir::new()?;
-    let (project_path, source_path) = write_fixture(&directory.0)?;
-    let output_path = directory.0.join("library-output.json");
+    let directory = TempDir::new("cli_runtime_parameters")?;
+    let (project_path, source_path) = write_fixture(directory.path())?;
+    let output_path = directory.path().join("library-output.json");
     let mut parameters = RuntimeParameters::new();
     parameters.insert("correlation_id", Value::String("txn=42".into()))?;
     parameters.insert("control_number", Value::String("42".into()))?;
@@ -152,9 +131,9 @@ fn run_options_supply_parameters_and_report_every_artifact_in_order()
 #[test]
 fn run_command_accepts_repeated_parameters_and_rejects_ambiguous_input()
 -> Result<(), Box<dyn std::error::Error>> {
-    let directory = TempDir::new()?;
-    let (project_path, source_path) = write_fixture(&directory.0)?;
-    let output_path = directory.0.join("command-output.json");
+    let directory = TempDir::new("cli_runtime_parameters")?;
+    let (project_path, source_path) = write_fixture(directory.path())?;
+    let output_path = directory.path().join("command-output.json");
     let output = Command::new(env!("CARGO_BIN_EXE_ferrule"))
         .args([
             "run",

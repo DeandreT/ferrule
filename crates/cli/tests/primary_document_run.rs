@@ -2,9 +2,8 @@
 //! complete documents and typed failures as the interpreter for every
 //! primary filename document cohort case.
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use format_csv::LocalPrimaryFiles;
 use ir::{ScalarType, SchemaNode, Value};
@@ -65,26 +64,7 @@ fn int(name: &str) -> SchemaNode {
     SchemaNode::scalar(name, ScalarType::Int)
 }
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new(name: &str) -> std::io::Result<Self> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_primary_document_run_{name}_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path.canonicalize()?))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn cases(cohort: &Cohort) -> TestResult<Vec<Json>> {
     let mut cases: Json = serde_json::from_str(cohort.cases)?;
@@ -174,7 +154,7 @@ fn run_cohort(cohort: &Cohort) -> TestResult<()> {
         let id = case["id"].as_str().ok_or("id")?;
         let model = cohort.models[case["model"].as_u64().ok_or("model")? as usize];
         let document = (cohort.document)(model);
-        let root = temp.0.join("trees").join(id);
+        let root = temp.path().join("trees").join(id);
         materialize(&root, &case)?;
         let expected = interpreter(&document, &root, &case)?;
         let authored = &case["expected"];
@@ -188,7 +168,7 @@ fn run_cohort(cohort: &Cohort) -> TestResult<()> {
         }
 
         // The library route returns the same typed stage and complete bytes.
-        let project_path = temp.0.join("projects").join(format!("{id}.json"));
+        let project_path = temp.path().join("projects").join(format!("{id}.json"));
         std::fs::create_dir_all(project_path.parent().ok_or("parent")?)?;
         std::fs::write(
             &project_path,
@@ -210,7 +190,7 @@ fn run_cohort(cohort: &Cohort) -> TestResult<()> {
         }
 
         // The command publishes exactly that document or nothing.
-        let output = temp.0.join("outputs").join(format!("{id}.out"));
+        let output = temp.path().join("outputs").join(format!("{id}.out"));
         let mut command = Command::new(env!("CARGO_BIN_EXE_ferrule"));
         command
             .args(["--diagnostics", "json", "run-document", "--project"])
@@ -264,8 +244,11 @@ fn run_cohort(cohort: &Cohort) -> TestResult<()> {
 fn document_runs_refuse_unrouted_identities_missing_roots_and_input_replacement() -> TestResult<()>
 {
     let temp = TempDir::new("refusals")?;
-    std::fs::create_dir_all(temp.0.join("orders"))?;
-    std::fs::write(temp.0.join("orders/input.csv"), "Key,Text,Count\nk1,x,1\n")?;
+    std::fs::create_dir_all(temp.path().join("orders"))?;
+    std::fs::write(
+        temp.path().join("orders/input.csv"),
+        "Key,Text,Count\nk1,x,1\n",
+    )?;
     let document = projects::document("literal_direct");
     let mut json = document.project().clone();
     json.target_options.tabular_kind = None;
@@ -276,8 +259,8 @@ fn document_runs_refuse_unrouted_identities_missing_roots_and_input_replacement(
     assert!(matches!(
         cli::execute_primary_document(
             &json,
-            &temp.0.join("project.json"),
-            &cli::PrimaryDocumentPolicy::new(&temp.0),
+            &temp.path().join("project.json"),
+            &cli::PrimaryDocumentPolicy::new(temp.path()),
             Some(&parameters),
         ),
         Err(cli::PrimaryDocumentError::Route(
@@ -290,24 +273,24 @@ fn document_runs_refuse_unrouted_identities_missing_roots_and_input_replacement(
     assert!(matches!(
         cli::execute_primary_document(
             &document,
-            &temp.0.join("project.json"),
-            &cli::PrimaryDocumentPolicy::new(temp.0.join("absent")),
+            &temp.path().join("project.json"),
+            &cli::PrimaryDocumentPolicy::new(temp.path().join("absent")),
             Some(&parameters),
         ),
         Err(cli::PrimaryDocumentError::Root(_))
     ));
 
-    let project_path = temp.0.join("project.json");
+    let project_path = temp.path().join("project.json");
     std::fs::write(
         &project_path,
         mapping::document_project_file::encode_pretty(&document)?,
     )?;
-    for output in [temp.0.join("orders/input.csv"), project_path.clone()] {
+    for output in [temp.path().join("orders/input.csv"), project_path.clone()] {
         let before = std::fs::read(&output)?;
         let error = cli::run_primary_document_file(
             &project_path,
             Some(&output),
-            &cli::PrimaryDocumentPolicy::new(&temp.0),
+            &cli::PrimaryDocumentPolicy::new(temp.path()),
             Some(&parameters),
         )
         .expect_err("an input or the project is never replaced");
@@ -320,10 +303,13 @@ fn document_runs_refuse_unrouted_identities_missing_roots_and_input_replacement(
     let outcome = cli::run_primary_document_file(
         &project_path,
         None,
-        &cli::PrimaryDocumentPolicy::new(&temp.0),
+        &cli::PrimaryDocumentPolicy::new(temp.path()),
         Some(&parameters),
     )?;
-    assert_eq!(outcome.output_path, temp.0.join("never-preview-output.csv"));
+    assert_eq!(
+        outcome.output_path,
+        temp.path().join("never-preview-output.csv")
+    );
     assert_eq!(
         std::fs::read_to_string(&outcome.output_path)?,
         "Key,Text,Count,Status\nk1,x,1,ok\n"
@@ -331,7 +317,7 @@ fn document_runs_refuse_unrouted_identities_missing_roots_and_input_replacement(
     assert_eq!(outcome.records_written, 1);
 
     // An ordinary project is not a document project, and the reverse.
-    let ordinary = temp.0.join("ordinary.json");
+    let ordinary = temp.path().join("ordinary.json");
     std::fs::write(
         &ordinary,
         mapping::project_file::encode_pretty(document.project())?,
@@ -371,8 +357,8 @@ impl format_csv::PrimarySourceHost for NeverRead {
 fn unsupported_endpoints_and_conflicting_options_refuse_before_any_host_call() -> TestResult<()> {
     use mapping::{PrimaryRouteError, PrimaryRouteSide};
     let temp = TempDir::new("preflight_controls")?;
-    std::fs::create_dir(temp.0.join("orders"))?;
-    std::fs::create_dir(temp.0.join("in"))?;
+    std::fs::create_dir(temp.path().join("orders"))?;
+    std::fs::create_dir(temp.path().join("in"))?;
     let mut parameters = engine::RuntimeParameters::new();
     parameters.insert("Input", Value::String("in/*.xml".into()))?;
     parameters.insert("Status", Value::String("ok".into()))?;
@@ -382,7 +368,7 @@ fn unsupported_endpoints_and_conflicting_options_refuse_before_any_host_call() -
         let control = cli::execute_primary_document(
             &base,
             Path::new("project.json"),
-            &cli::PrimaryDocumentPolicy::new(&temp.0),
+            &cli::PrimaryDocumentPolicy::new(temp.path()),
             Some(&parameters),
         );
         if model == "literal_direct" {
@@ -448,7 +434,7 @@ fn unsupported_endpoints_and_conflicting_options_refuse_before_any_host_call() -
             let document = DocumentProject::new(project, base.primary_source().clone());
             assert_eq!(document.primary_route(), Err(expected.clone()));
             assert!(
-                matches!(cli::execute_primary_document(&document, Path::new("project.json"), &cli::PrimaryDocumentPolicy::new(&temp.0), Some(&parameters)),
+                matches!(cli::execute_primary_document(&document, Path::new("project.json"), &cli::PrimaryDocumentPolicy::new(temp.path()), Some(&parameters)),
                 Err(cli::PrimaryDocumentError::Route(error)) if error == expected)
             );
             assert!(
@@ -473,8 +459,11 @@ fn unsupported_endpoints_and_conflicting_options_refuse_before_any_host_call() -
 #[test]
 fn explicit_csv_route_never_redispatches_using_the_output_extension() -> TestResult<()> {
     let temp = TempDir::new("csv_identity")?;
-    std::fs::create_dir(temp.0.join("orders"))?;
-    std::fs::write(temp.0.join("orders/input.csv"), "Key,Text,Count\nk1,x,1\n")?;
+    std::fs::create_dir(temp.path().join("orders"))?;
+    std::fs::write(
+        temp.path().join("orders/input.csv"),
+        "Key,Text,Count\nk1,x,1\n",
+    )?;
     let base = projects::document("literal_direct");
     let mut parameters = engine::RuntimeParameters::new();
     parameters.insert("Status", Value::String("ok".into()))?;
@@ -482,7 +471,7 @@ fn explicit_csv_route_never_redispatches_using_the_output_extension() -> TestRes
         let mut project = base.project().clone();
         project.target_path = Some(format!("output.{suffix}"));
         let document = DocumentProject::new(project, base.primary_source().clone());
-        let path = temp.0.join("project.json");
+        let path = temp.path().join("project.json");
         std::fs::write(
             &path,
             mapping::document_project_file::encode_pretty(&document)?,
@@ -490,7 +479,7 @@ fn explicit_csv_route_never_redispatches_using_the_output_extension() -> TestRes
         let result = cli::run_primary_document_file(
             &path,
             None,
-            &cli::PrimaryDocumentPolicy::new(&temp.0),
+            &cli::PrimaryDocumentPolicy::new(temp.path()),
             Some(&parameters),
         )?;
         assert_eq!(

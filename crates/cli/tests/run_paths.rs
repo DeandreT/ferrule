@@ -1,19 +1,10 @@
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
+use test_support::TempDir;
 
 fn fixture_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")
-}
-
-fn test_dir(name: &str) -> PathBuf {
-    let path = std::env::temp_dir().join(format!(
-        "ferrule_cli_run_paths_{name}_{}",
-        std::process::id()
-    ));
-    let _ = std::fs::remove_dir_all(&path);
-    std::fs::create_dir_all(&path).unwrap();
-    path
 }
 
 fn project_with_paths(source_path: Option<&str>, target_path: Option<&str>) -> mapping::Project {
@@ -40,7 +31,7 @@ fn ferrule(current_dir: &Path, args: &[&str]) -> Output {
 
 #[test]
 fn run_uses_project_relative_input_and_output_defaults() {
-    let dir = test_dir("defaults");
+    let dir = TempDir::new("defaults").unwrap();
     std::fs::copy(fixture_dir().join("input.csv"), dir.join("input.csv")).unwrap();
     std::fs::create_dir(dir.join("results")).unwrap();
     let project = write_project(
@@ -66,12 +57,12 @@ fn run_uses_project_relative_input_and_output_defaults() {
         String::from_utf8_lossy(&output.stdout)
             .contains(dir.join("results/output.csv").to_str().unwrap())
     );
-    std::fs::remove_dir_all(dir).unwrap();
+    dir.close().unwrap();
 }
 
 #[test]
 fn in_memory_project_runs_before_its_project_file_exists() {
-    let dir = test_dir("unsaved_project");
+    let dir = TempDir::new("unsaved_project").unwrap();
     std::fs::copy(fixture_dir().join("input.csv"), dir.join("input.csv")).unwrap();
     let project = project_with_paths(Some("input.csv"), Some("output.csv"));
     let virtual_project_path = dir.join("not-saved-yet.json");
@@ -86,7 +77,7 @@ fn in_memory_project_runs_before_its_project_file_exists() {
         std::fs::read_to_string(dir.join("output.csv")).unwrap(),
         std::fs::read_to_string(fixture_dir().join("expected_output.csv")).unwrap()
     );
-    std::fs::remove_dir_all(dir).unwrap();
+    dir.close().unwrap();
 }
 
 #[derive(Default)]
@@ -100,7 +91,7 @@ impl cli::TraceSink for TraceCollector {
 
 #[test]
 fn in_memory_run_forwards_deterministic_trace_events() {
-    let dir = test_dir("trace");
+    let dir = TempDir::new("trace").unwrap();
     std::fs::copy(fixture_dir().join("input.csv"), dir.join("input.csv")).unwrap();
     let project = project_with_paths(Some("input.csv"), Some("output.csv"));
     let trace = TraceCollector::default();
@@ -116,12 +107,12 @@ fn in_memory_run_forwards_deterministic_trace_events() {
 
     assert_eq!(outcome.records_written, 2);
     assert!(!trace.0.into_inner().is_empty());
-    std::fs::remove_dir_all(dir).unwrap();
+    dir.close().unwrap();
 }
 
 #[test]
 fn explicit_paths_override_project_defaults() {
-    let dir = test_dir("overrides");
+    let dir = TempDir::new("overrides").unwrap();
     std::fs::copy(
         fixture_dir().join("input.csv"),
         dir.join("explicit-input.csv"),
@@ -154,12 +145,12 @@ fn explicit_paths_override_project_defaults() {
         std::fs::read_to_string(dir.join("explicit-output.csv")).unwrap(),
         std::fs::read_to_string(fixture_dir().join("expected_output.csv")).unwrap()
     );
-    std::fs::remove_dir_all(dir).unwrap();
+    dir.close().unwrap();
 }
 
 #[test]
 fn json_lines_extensions_run_as_repeated_json_documents() {
-    let dir = test_dir("json_lines");
+    let dir = TempDir::new("json_lines").unwrap();
     std::fs::write(
         dir.join("input.jsonl"),
         "{\"first_name\":\"Jane\",\"last_name\":\"Doe\",\"age\":29}\n\
@@ -186,7 +177,7 @@ fn json_lines_extensions_run_as_repeated_json_documents() {
     assert_eq!(values.len(), 2);
     assert_eq!(values[0]["full_name"], "Jane Doe");
     assert_eq!(values[1]["age_next_year"], 42);
-    std::fs::remove_dir_all(dir).unwrap();
+    dir.close().unwrap();
 }
 
 #[test]
@@ -195,7 +186,7 @@ fn json5_extension_and_explicit_mode_run_schema_shaped_mappings() {
         ("json5_extension", "json5", false),
         ("json5_explicit", "json", true),
     ] {
-        let dir = test_dir(name);
+        let dir = TempDir::new(name).unwrap();
         let input = format!("input.{extension}");
         let output = format!("output.{extension}");
         std::fs::write(
@@ -222,13 +213,13 @@ fn json5_extension_and_explicit_mode_run_schema_shaped_mappings() {
         assert!(
             format_json::from_json5_str(&rendered, &project.target.clone().repeating()).is_ok()
         );
-        std::fs::remove_dir_all(dir).unwrap();
+        dir.close().unwrap();
     }
 }
 
 #[test]
 fn missing_input_default_reports_how_to_configure_it() {
-    let dir = test_dir("missing_input");
+    let dir = TempDir::new("missing_input").unwrap();
     let project = write_project(&dir, &project_with_paths(None, Some("output.csv")));
 
     let output = ferrule(
@@ -249,12 +240,12 @@ fn missing_input_default_reports_how_to_configure_it() {
     let message = diagnostic["message"].as_str().unwrap();
     assert!(message.contains("--input <PATH>"), "{message}");
     assert!(message.contains("source_path"), "{message}");
-    std::fs::remove_dir_all(dir).unwrap();
+    dir.close().unwrap();
 }
 
 #[test]
 fn missing_output_default_reports_how_to_configure_it() {
-    let dir = test_dir("missing_output");
+    let dir = TempDir::new("missing_output").unwrap();
     std::fs::copy(fixture_dir().join("input.csv"), dir.join("input.csv")).unwrap();
     let project = write_project(&dir, &project_with_paths(Some("input.csv"), None));
 
@@ -264,12 +255,12 @@ fn missing_output_default_reports_how_to_configure_it() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("--output <PATH>"), "{stderr}");
     assert!(stderr.contains("target_path"), "{stderr}");
-    std::fs::remove_dir_all(dir).unwrap();
+    dir.close().unwrap();
 }
 
 #[test]
 fn run_supplies_the_active_project_path_to_runtime_nodes() {
-    let dir = test_dir("runtime_project_path");
+    let dir = TempDir::new("runtime_project_path").unwrap();
     std::fs::copy(fixture_dir().join("input.csv"), dir.join("input.csv")).unwrap();
     let mut project = project_with_paths(Some("input.csv"), Some("output.csv"));
     project.graph.nodes.insert(
@@ -293,12 +284,12 @@ fn run_supplies_the_active_project_path_to_runtime_nodes() {
     let expected_path = std::fs::canonicalize(&project_path).unwrap();
     let csv = std::fs::read_to_string(dir.join("output.csv")).unwrap();
     assert_eq!(csv.matches(expected_path.to_str().unwrap()).count(), 2);
-    std::fs::remove_dir_all(dir).unwrap();
+    dir.close().unwrap();
 }
 
 #[test]
 fn run_supplies_one_valid_current_datetime_to_every_row() {
-    let dir = test_dir("runtime_current_datetime");
+    let dir = TempDir::new("runtime_current_datetime").unwrap();
     std::fs::copy(fixture_dir().join("input.csv"), dir.join("input.csv")).unwrap();
     let mut project = project_with_paths(Some("input.csv"), Some("output.csv"));
     project.graph.nodes.insert(
@@ -328,5 +319,5 @@ fn run_supplies_one_valid_current_datetime_to_every_row() {
     assert_eq!(timestamps.len(), 2);
     assert_eq!(timestamps[0], timestamps[1]);
     assert!(timestamps[0].parse::<jiff::Timestamp>().is_ok());
-    std::fs::remove_dir_all(dir).unwrap();
+    dir.close().unwrap();
 }

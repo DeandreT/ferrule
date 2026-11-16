@@ -673,7 +673,6 @@ fn same_metadata(a: &Metadata, b: &Metadata) -> anyhow::Result<bool> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::atomic::{AtomicU64, Ordering};
 
     #[test]
     fn configured_paths_refuse_cancelled_normal_components() {
@@ -748,24 +747,7 @@ mod tests {
         assert!(!is_database("input.json", &default));
     }
 
-    struct Temp(PathBuf);
-    impl Temp {
-        fn new() -> anyhow::Result<Self> {
-            static NEXT: AtomicU64 = AtomicU64::new(0);
-            let root = std::env::temp_dir().join(format!(
-                "ferrule-bundle-publish-{}-{}",
-                std::process::id(),
-                NEXT.fetch_add(1, Ordering::Relaxed)
-            ));
-            std::fs::create_dir(&root)?;
-            Ok(Self(root))
-        }
-    }
-    impl Drop for Temp {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_dir_all(&self.0);
-        }
-    }
+    use test_support::TempDir as Temp;
 
     fn artifacts() -> anyhow::Result<ArtifactSet> {
         Ok(ArtifactSet::new([GeneratedFile::new(
@@ -776,8 +758,8 @@ mod tests {
 
     #[test]
     fn failed_staged_validation_removes_stage_and_never_publishes() -> anyhow::Result<()> {
-        let root = Temp::new()?;
-        let out = root.0.join("bundle");
+        let root = Temp::new("bundle-publish")?;
+        let out = root.path().join("bundle");
         let result = super::super::code_generation::write_artifacts_validated(
             &out,
             &artifacts()?,
@@ -791,14 +773,14 @@ mod tests {
         eprintln!("complete validation refusal: {result:#?}");
         assert!(result.is_err());
         assert!(!out.exists());
-        assert_eq!(std::fs::read_dir(&root.0)?.count(), 0);
+        assert_eq!(std::fs::read_dir(root.path())?.count(), 0);
         Ok(())
     }
 
     #[test]
     fn late_destination_is_not_replaced_and_staging_is_removed() -> anyhow::Result<()> {
-        let root = Temp::new()?;
-        let out = root.0.join("bundle");
+        let root = Temp::new("bundle-publish")?;
+        let out = root.path().join("bundle");
         let result = super::super::code_generation::write_artifacts_validated(
             &out,
             &artifacts()?,
@@ -819,7 +801,7 @@ mod tests {
             b"LATE DESTINATION\0\xff"
         );
         assert_eq!(
-            std::fs::read_dir(&root.0)?
+            std::fs::read_dir(root.path())?
                 .map(|e| e.unwrap().file_name())
                 .collect::<Vec<_>>(),
             vec!["bundle"]

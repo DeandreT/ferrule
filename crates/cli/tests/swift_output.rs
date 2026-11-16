@@ -3,7 +3,6 @@
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{Instance, ScalarType, SchemaNode, Value};
 use mapping::{
@@ -17,27 +16,7 @@ const INPUT: &str =
 const EXPECTED: &str = "{1:F01BANKBEBBAXXX0000000001}{2:I950BANKDEFFXXXXN}{4:\r\n:20:STMT-1\r\n:32:1250,\r\n-}\
 {1:F01BANKBEBBAXXX0000000002}{2:I950BANKDEFFXXXXN}{4:\r\n:20:STMT-2\r\n:32:7,\r\n-}";
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Self {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_cli_swift_output_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn capture(charset: SwiftCharset, max: u16) -> SwiftValueExpr {
     SwiftValueExpr::Capture {
@@ -227,8 +206,8 @@ fn read_back(bytes: &[u8], options: &FormatOptions) -> Instance {
 
 #[test]
 fn saved_swift_targets_write_through_the_file_and_payload_paths() {
-    let directory = TempDir::new();
-    let project_path = save(&directory.0, &project());
+    let directory = TempDir::new("cli_swift_output").unwrap();
+    let project_path = save(directory.path(), &project());
     let project =
         mapping::project_file::decode_str(&std::fs::read_to_string(&project_path).unwrap())
             .unwrap();
@@ -266,14 +245,14 @@ fn saved_swift_targets_write_through_the_file_and_payload_paths() {
 
 #[test]
 fn configuration_supplies_an_unmapped_direction() {
-    let directory = TempDir::new();
+    let directory = TempDir::new("cli_swift_output").unwrap();
     let mut project = project();
     if let Some(message) = project.root.children.first_mut() {
         message
             .children
             .retain(|child| child.target_field != "Application Header");
     }
-    let project_path = save(&directory.0, &project);
+    let project_path = save(directory.path(), &project);
     let outcome = cli::run_project_with_paths(&project_path, None, None).unwrap();
     assert_eq!(
         std::fs::read_to_string(outcome.output_path).unwrap(),
@@ -283,8 +262,8 @@ fn configuration_supplies_an_unmapped_direction() {
 
 #[test]
 fn missing_or_mismatched_headers_are_refused_before_publication() {
-    let directory = TempDir::new();
-    let output = directory.0.join("output.fin");
+    let directory = TempDir::new("cli_swift_output").unwrap();
+    let output = directory.path().join("output.fin");
 
     let mut missing = project();
     missing.target_options.swift_mt_output = None;
@@ -293,14 +272,14 @@ fn missing_or_mismatched_headers_are_refused_before_publication() {
             .message
             .contains("no `swift_mt_output` message headers")
     }));
-    let project_path = save(&directory.0, &missing);
+    let project_path = save(directory.path(), &missing);
     std::fs::write(&output, b"sentinel").unwrap();
     assert!(cli::run_project_with_paths(&project_path, None, None).is_err());
     assert_eq!(std::fs::read(&output).unwrap(), b"sentinel");
 
     let mut short = project();
     short.target_options.swift_mt_output = Some(headers(1));
-    let project_path = save(&directory.0, &short);
+    let project_path = save(directory.path(), &short);
     let error = cli::run_project_with_paths(&project_path, None, None).unwrap_err();
     assert!(
         format!("{error:#}").contains("2 messages but 1 header sets"),
@@ -342,7 +321,7 @@ fn missing_or_mismatched_headers_are_refused_before_publication() {
             .iter()
             .any(|issue| issue.message.contains(CONTRADICTION))
     );
-    let project_path = save(&directory.0, &contradicting);
+    let project_path = save(directory.path(), &contradicting);
     let error = cli::run_project_with_paths(&project_path, None, None).unwrap_err();
     assert!(format!("{error:#}").contains(CONTRADICTION), "{error:#}");
     assert_eq!(std::fs::read(&output).unwrap(), b"sentinel");
@@ -351,7 +330,7 @@ fn missing_or_mismatched_headers_are_refused_before_publication() {
 #[test]
 fn targets_producing_separate_documents_are_refused_on_every_route() {
     const SHARED: &str = "cannot be shared by the separate documents";
-    let directory = TempDir::new();
+    let directory = TempDir::new("cli_swift_output").unwrap();
     let mut documents = project();
     documents.root.construction = mapping::ScopeConstruction::CollectDocuments;
     assert!(
@@ -359,7 +338,7 @@ fn targets_producing_separate_documents_are_refused_on_every_route() {
             .iter()
             .any(|issue| issue.message.contains(SHARED))
     );
-    let project_path = save(&directory.0, &documents);
+    let project_path = save(directory.path(), &documents);
     let error = cli::run_project_with_paths(&project_path, None, None).unwrap_err();
     assert!(format!("{error:#}").contains(SHARED), "{error:#}");
     let payload = cli::PayloadDocument::new(Path::new("input.json"), INPUT.as_bytes()).unwrap();
@@ -370,7 +349,7 @@ fn targets_producing_separate_documents_are_refused_on_every_route() {
     )
     .unwrap_err();
     assert!(format!("{error:#}").contains(SHARED), "{error:#}");
-    assert!(!directory.0.join("output.fin").exists());
+    assert!(!directory.path().join("output.fin").exists());
 }
 
 #[test]

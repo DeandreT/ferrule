@@ -1,4 +1,5 @@
 use std::path::Path;
+use test_support::TempDir;
 
 use ir::ScalarType;
 use mapping::{
@@ -25,6 +26,7 @@ fn layout() -> FlexTextLayout {
 
 #[test]
 fn flextext_input_overrides_extension_and_rejects_conflicting_options() {
+    let _scratch = TempDir::new("cli-flextext").unwrap();
     let fixture_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
     let mut project: mapping::Project =
         serde_json::from_slice(&std::fs::read(fixture_dir.join("project.json")).unwrap()).unwrap();
@@ -34,9 +36,9 @@ fn flextext_input_overrides_extension_and_rejects_conflicting_options() {
     project.root.set_source(Some(vec!["rows".into()]));
 
     let tag = format!("flextext_{}", std::process::id());
-    let project_path = std::env::temp_dir().join(format!("ferrule_cli_{tag}.json"));
-    let input_path = std::env::temp_dir().join(format!("ferrule_cli_{tag}.ini"));
-    let output_path = std::env::temp_dir().join(format!("ferrule_cli_{tag}.csv"));
+    let project_path = _scratch.path().join(format!("ferrule_cli_{tag}.json"));
+    let input_path = _scratch.path().join(format!("ferrule_cli_{tag}.ini"));
+    let output_path = _scratch.path().join(format!("ferrule_cli_{tag}.csv"));
     let write_project = |project: &mapping::Project| {
         std::fs::write(&project_path, serde_json::to_vec(project).unwrap()).unwrap();
     };
@@ -59,7 +61,5 @@ fn flextext_input_overrides_extension_and_rejects_conflicting_options() {
         "full_name,age_next_year\nJane Doe,30\nJohn Smith,42\n"
     );
 
-    for path in [project_path, input_path, output_path] {
-        std::fs::remove_file(path).unwrap();
-    }
+    _scratch.close().unwrap();
 }

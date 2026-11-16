@@ -1,46 +1,24 @@
-use std::path::PathBuf;
 use std::process::Command;
-use std::sync::atomic::{AtomicU64, Ordering};
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Self {
-        static NEXT: AtomicU64 = AtomicU64::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_cli_pipeline_export_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 #[test]
 fn cli_import_then_export_serial_xml_pipeline() {
-    let directory = TempDir::new();
+    let directory = TempDir::new("cli_pipeline_export").unwrap();
     for (file, root, field) in [
         ("source.xsd", "Source", "Start"),
         ("buffer.xsd", "Buffer", "Value"),
         ("target.xsd", "Target", "Result"),
     ] {
         std::fs::write(
-            directory.0.join(file),
+            directory.path().join(file),
             format!(
                 "<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\"><xs:element name=\"{root}\"><xs:complexType><xs:sequence><xs:element name=\"{field}\" type=\"xs:string\"/></xs:sequence></xs:complexType></xs:element></xs:schema>"
             ),
         )
         .unwrap();
     }
-    let source = directory.0.join("source.mfd");
+    let source = directory.path().join("source.mfd");
     std::fs::write(
         &source,
         r#"<mapping version="26"><component name="map"><structure><children>
@@ -50,7 +28,7 @@ fn cli_import_then_export_serial_xml_pipeline() {
         </children><graph><vertices><vertex vertexkey="10"><edges><edge vertexkey="20"/></edges></vertex><vertex vertexkey="30"><edges><edge vertexkey="40"/></edges></vertex></vertices></graph></structure></component></mapping>"#,
     )
     .unwrap();
-    let pipeline = directory.0.join("pipeline.json");
+    let pipeline = directory.path().join("pipeline.json");
     let output = Command::new(env!("CARGO_BIN_EXE_ferrule"))
         .args(["import-mfd", "--mfd"])
         .arg(&source)
@@ -65,7 +43,7 @@ fn cli_import_then_export_serial_xml_pipeline() {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    let exported = directory.0.join("exported.mfd");
+    let exported = directory.path().join("exported.mfd");
     for check in [true, false] {
         let mut command = Command::new(env!("CARGO_BIN_EXE_ferrule"));
         command

@@ -2,27 +2,9 @@ use ir::{GroupAlternative, ScalarType, SchemaNode, Value, XmlNamespace};
 use mapping::{Binding, FormatOptions, Graph, Node, Project, Scope};
 use std::collections::BTreeMap;
 use std::error::Error;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::path::Path;
 
-struct TempDir(PathBuf);
-impl TempDir {
-    fn new() -> std::io::Result<Self> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule-inactive-root-cli-{}-{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir(&path)?;
-        Ok(Self(path))
-    }
-}
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 fn schema() -> SchemaNode {
     let attribute = |name: &str| {
@@ -146,7 +128,7 @@ fn root_view_policy_defaults_options_and_generated_adapter() {
 }
 #[test]
 fn root_view_payload_filesystem_and_lazy_required_reads_match() -> Result<(), Box<dyn Error>> {
-    let directory = TempDir::new()?;
+    let directory = TempDir::new("inactive-root-cli")?;
     let mut project = project();
     let Node::SourceRootField { required, .. } = project.graph.nodes.get_mut(&1).unwrap() else {
         panic!()
@@ -160,7 +142,7 @@ fn root_view_payload_filesystem_and_lazy_required_reads_match() -> Result<(), Bo
         .find(|field| field.name == "Extra")
         .unwrap()
         .xml_attribute_required = true;
-    let project_path = directory.0.join("project.json");
+    let project_path = directory.path().join("project.json");
     std::fs::write(&project_path, serde_json::to_vec_pretty(&project)?)?;
     let original = std::str::from_utf8(XML)?;
     for (index, (text, populated, failure)) in [
@@ -190,8 +172,8 @@ fn root_view_payload_filesystem_and_lazy_required_reads_match() -> Result<(), Bo
     .into_iter()
     .enumerate()
     {
-        let input = directory.0.join(format!("input-{index}.xml"));
-        let output = directory.0.join(format!("output-{index}.xml"));
+        let input = directory.path().join(format!("input-{index}.xml"));
+        let output = directory.path().join(format!("output-{index}.xml"));
         std::fs::write(&input, &text)?;
         let sentinel = b"owned sentinel";
         if failure {
@@ -227,7 +209,7 @@ fn root_view_payload_filesystem_and_lazy_required_reads_match() -> Result<(), Bo
 
 #[test]
 fn root_view_policy_mfd_export_refuses_without_publication() -> Result<(), Box<dyn Error>> {
-    let directory = TempDir::new()?;
+    let directory = TempDir::new("inactive-root-cli")?;
     let mut project = project();
     project.graph.nodes = BTreeMap::from([(
         0,
@@ -240,7 +222,7 @@ fn root_view_policy_mfd_export_refuses_without_publication() -> Result<(), Box<d
         node: 0,
     }];
     assert!(engine::validate(&project).is_empty());
-    let path = directory.0.join("mapping.mfd");
+    let path = directory.path().join("mapping.mfd");
     std::fs::write(&path, b"owned sentinel")?;
     let before = std::fs::metadata(&path)?.modified()?;
     let error = mfd::export(&project, &path).unwrap_err();
@@ -251,6 +233,6 @@ fn root_view_policy_mfd_export_refuses_without_publication() -> Result<(), Box<d
     );
     assert_eq!(std::fs::read(&path)?, b"owned sentinel");
     assert_eq!(std::fs::metadata(&path)?.modified()?, before);
-    assert_eq!(std::fs::read_dir(&directory.0)?.count(), 1);
+    assert_eq!(std::fs::read_dir(directory.path())?.count(), 1);
     Ok(())
 }

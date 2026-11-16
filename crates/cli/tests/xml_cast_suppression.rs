@@ -1,17 +1,10 @@
 use std::error::Error;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::path::Path;
 
-struct Package(PathBuf);
+struct Package(test_support::TempDir);
 impl Package {
     fn new() -> Result<Self, Box<dyn Error>> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_cli_suppress_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir(&path)?;
+        let path = test_support::TempDir::new("cli-xml-cast-suppression")?;
         let package = Self(path);
         let fixtures =
             Path::new(env!("CARGO_MANIFEST_DIR")).join("../mfd/tests/fixtures/target_float_cast");
@@ -34,11 +27,7 @@ impl Package {
         Ok(project)
     }
 }
-impl Drop for Package {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+
 fn xml(value: &str, denominator: &str) -> String {
     format!(
         "<Envelope><Numerator>34</Numerator><Denominator>{denominator}</Denominator><Text>{value}</Text><Label>safe</Label></Envelope>"

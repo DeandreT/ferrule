@@ -6,25 +6,7 @@ use std::path::{Path, PathBuf};
 use ir::{Instance, ScalarType, SchemaNode, Value};
 use mapping::{Binding, FormatOptions, Graph, Node, Project, Scope, ScopeIteration};
 
-struct Scratch(PathBuf);
-
-impl Scratch {
-    fn new(name: &str) -> Self {
-        let path = std::env::temp_dir().join(format!(
-            "ferrule-cli-xlsx-transposed-{}-{name}",
-            std::process::id()
-        ));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for Scratch {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir as Scratch;
 
 const ROWS: [u32; 2] = [2, 4];
 const INPUT: &[u8] = br#"{"Item":[
@@ -126,20 +108,21 @@ fn write_project(scratch: &Scratch, project: &Project) -> PathBuf {
         "{:?}",
         engine::validate(project)
     );
-    let path = scratch.0.join("project.json");
+    let path = scratch.path().join("project.json");
     std::fs::write(&path, serde_json::to_vec(project).unwrap()).unwrap();
-    std::fs::write(scratch.0.join("input.json"), INPUT).unwrap();
+    std::fs::write(scratch.path().join("input.json"), INPUT).unwrap();
     path
 }
 
 #[test]
 fn transposed_target_writes_through_the_file_route() {
-    let scratch = Scratch::new("file");
+    let scratch = Scratch::new("file").unwrap();
     let project = project();
     let project_path = write_project(&scratch, &project);
-    let output = scratch.0.join("pivot.xlsx");
+    let output = scratch.path().join("pivot.xlsx");
 
-    let written = cli::run_project(&project_path, &scratch.0.join("input.json"), &output).unwrap();
+    let written =
+        cli::run_project(&project_path, &scratch.path().join("input.json"), &output).unwrap();
 
     assert_eq!(written, 3);
     assert_eq!(
@@ -150,7 +133,7 @@ fn transposed_target_writes_through_the_file_route() {
 
 #[test]
 fn transposed_target_renders_through_the_payload_route() {
-    let scratch = Scratch::new("payload");
+    let scratch = Scratch::new("payload").unwrap();
     let project = project();
     let project_path = write_project(&scratch, &project);
 
@@ -178,18 +161,18 @@ fn transposed_target_renders_through_the_payload_route() {
 
 #[test]
 fn invalid_records_refuse_before_any_output_is_written() {
-    let scratch = Scratch::new("invalid");
+    let scratch = Scratch::new("invalid").unwrap();
     let project = project();
     let project_path = write_project(&scratch, &project);
     std::fs::write(
-        scratch.0.join("input.json"),
+        scratch.path().join("input.json"),
         br#"{"Item":[{"Name":"Alpha","Col":3},{"Name":"Bravo","Col":3}]}"#,
     )
     .unwrap();
-    let output = scratch.0.join("pivot.xlsx");
+    let output = scratch.path().join("pivot.xlsx");
 
     let error =
-        cli::run_project(&project_path, &scratch.0.join("input.json"), &output).unwrap_err();
+        cli::run_project(&project_path, &scratch.path().join("input.json"), &output).unwrap_err();
 
     assert!(
         format!("{error:#}").contains("record 1: column 3 is already written by record 0"),
@@ -200,7 +183,7 @@ fn invalid_records_refuse_before_any_output_is_written() {
 
 #[test]
 fn transposed_target_refuses_streams_update_existing_and_bounded_profiles() {
-    let scratch = Scratch::new("refusals");
+    let scratch = Scratch::new("refusals").unwrap();
     let project = project();
     let project_path = write_project(&scratch, &project);
 
@@ -236,9 +219,9 @@ fn transposed_target_refuses_streams_update_existing_and_bounded_profiles() {
             == "`xlsx_update_existing` cannot update a transposed XLSX layout; only flat tables and hierarchical layouts update existing workbooks"
     }));
     std::fs::write(&project_path, serde_json::to_vec(&update).unwrap()).unwrap();
-    let output = scratch.0.join("pivot.xlsx");
+    let output = scratch.path().join("pivot.xlsx");
     let error =
-        cli::run_project(&project_path, &scratch.0.join("input.json"), &output).unwrap_err();
+        cli::run_project(&project_path, &scratch.path().join("input.json"), &output).unwrap_err();
     assert!(
         format!("{error:#}").contains("cannot update a transposed XLSX layout"),
         "{error:#}"

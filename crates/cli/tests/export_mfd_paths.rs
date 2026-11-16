@@ -2,7 +2,6 @@ use std::collections::BTreeMap;
 use std::error::Error;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::SystemTime;
 
 use ir::{Instance, ScalarType, SchemaNode, Value};
@@ -13,25 +12,16 @@ use mapping::{
 
 type Result<T = ()> = std::result::Result<T, Box<dyn Error>>;
 
-struct TempDir(PathBuf);
+struct TempDir(test_support::TempDir);
 
 impl TempDir {
     fn new() -> Result<Self> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_cli_export_paths_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir_all(&path)?;
+        let path = test_support::TempDir::new("cli-export-mfd-paths")?;
         Ok(Self(path))
     }
 
     fn write(&self, name: &str, contents: impl AsRef<[u8]>) -> Result<PathBuf> {
-        let path = self.0.join(name);
-        std::fs::create_dir_all(path.parent().unwrap())?;
-        std::fs::write(&path, contents)?;
-        Ok(path)
+        Ok(self.0.write(name, contents)?)
     }
 
     fn project(&self, project: &Project) -> Result<PathBuf> {
@@ -47,12 +37,6 @@ impl TempDir {
             .args(args)
             .output()
             .unwrap()
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
     }
 }
 

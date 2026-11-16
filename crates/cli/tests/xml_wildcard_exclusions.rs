@@ -1,31 +1,10 @@
 //! `import-xsd` and native file runs with XSD 1.1 wildcard exclusions.
 
-use std::path::PathBuf;
 use std::process::Command;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use mapping::{FormatOptions, Graph, Project, Scope, ScopeConstruction};
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> std::io::Result<Self> {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_cli_xml_wildcard_exclusions_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
 
 const SCHEMA: &str = r###"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
     xmlns:t="urn:ferrule:wx:t" targetNamespace="urn:ferrule:wx:t" elementFormDefault="qualified">
@@ -47,8 +26,8 @@ fn input(content: &str, attributes: &str) -> String {
 
 #[test]
 fn import_xsd_and_file_runs_apply_wildcard_exclusions() -> anyhow::Result<()> {
-    let temp = TempDir::new()?;
-    let xsd = temp.0.join("schema.xsd");
+    let temp = TempDir::new("cli_xml_wildcard_exclusions")?;
+    let xsd = temp.path().join("schema.xsd");
     std::fs::write(&xsd, SCHEMA)?;
 
     let output = Command::new(env!("CARGO_BIN_EXE_ferrule"))
@@ -94,14 +73,14 @@ fn import_xsd_and_file_runs_apply_wildcard_exclusions() -> anyhow::Result<()> {
         },
     };
     assert!(engine::validate(&project).is_empty());
-    let project_path = temp.0.join("project.json");
+    let project_path = temp.path().join("project.json");
     // The project file declares the exclusion capability.
     std::fs::write(
         &project_path,
         mapping::project_file::encode_pretty(&project)?,
     )?;
-    let input_path = temp.0.join("input.xml");
-    let output_path = temp.0.join("output.xml");
+    let input_path = temp.path().join("input.xml");
+    let output_path = temp.path().join("output.xml");
 
     std::fs::write(&input_path, input("<a:Other>o</a:Other>", r#"mode="m""#))?;
     cli::run_project(&project_path, &input_path, &output_path)?;

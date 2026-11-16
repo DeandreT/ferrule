@@ -1,7 +1,5 @@
 use std::error::Error;
-use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::atomic::{AtomicU64, Ordering};
 
 /// A label, the schema files to write, and the expected refusal text.
 type Case = (
@@ -39,7 +37,7 @@ fn import_json_schema_refuses_schemas_without_content() -> Result<(), Box<dyn Er
         ),
     ];
     for (label, schemas, reason) in cases {
-        let directory = TempDir::new()?;
+        let directory = TempDir::new("cli_contentless_json_schema")?;
         for (name, bytes) in schemas {
             std::fs::write(directory.path().join(name), bytes)?;
         }
@@ -58,7 +56,7 @@ fn import_json_schema_refuses_schemas_without_content() -> Result<(), Box<dyn Er
 #[test]
 fn import_json_schema_keeps_accept_anything_roots() -> Result<(), Box<dyn Error>> {
     for schema in ["true", "{}"] {
-        let directory = TempDir::new()?;
+        let directory = TempDir::new("cli_contentless_json_schema")?;
         let path = directory.path().join("any.schema.json");
         std::fs::write(&path, schema)?;
         let output = Command::new(env!("CARGO_BIN_EXE_ferrule"))
@@ -77,27 +75,4 @@ fn import_json_schema_keeps_accept_anything_roots() -> Result<(), Box<dyn Error>
     Ok(())
 }
 
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Result<Self, std::io::Error> {
-        static NEXT: AtomicU64 = AtomicU64::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_cli_contentless_json_schema_{}_{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir_all(&path)?;
-        Ok(Self(path))
-    }
-
-    fn path(&self) -> &Path {
-        &self.0
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use test_support::TempDir;
