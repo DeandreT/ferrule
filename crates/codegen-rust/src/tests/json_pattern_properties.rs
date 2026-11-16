@@ -95,7 +95,7 @@ fn generated_boundaries_enforce_pattern_property_names() -> Result<(), Box<dyn s
         r#"\"json_pattern_property_names\":{\"sources\":[\"^[a-z][A-Za-z]*$\",\"meta|overlap\"]}"#
     ));
 
-    let output = TempDir::new("rust_json_pattern_properties_codegen");
+    let output = TempDir::new("rust_json_pattern_properties_codegen").unwrap();
     write_artifacts(output.path(), &artifacts);
     let harness = r##"use codegen_runtime::JsonBoundaryError;
 

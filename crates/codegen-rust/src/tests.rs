@@ -3,8 +3,7 @@ mod filter_map_guard;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
+use test_support::TempDir;
 
 use super::*;
 use codegen::{
@@ -545,7 +544,7 @@ fn generated_project_builds_and_matches_the_static_mapping() {
         .parent()
         .map(|parent| parent.join("codegen-runtime"))
         .unwrap();
-    let output = TempDir::new("rust_codegen");
+    let output = TempDir::new("rust_codegen").unwrap();
     let mut program = program();
     let identity = FunctionParameterId::new(11);
     let first = FunctionParameterId::new(21);
@@ -950,7 +949,7 @@ fn generated_range_project_builds_runs_and_short_circuits_null_bounds() {
         .parent()
         .map(|parent| parent.join("codegen-runtime"))
         .unwrap();
-    let output = TempDir::new("rust_generated_sequence_codegen");
+    let output = TempDir::new("rust_generated_sequence_codegen").unwrap();
     let program = Program {
         execution_contract: None,
         xml_boundary: None,
@@ -1130,7 +1129,7 @@ fn generated_sequence_reducers_build_run_and_preserve_evaluation_order() {
         .parent()
         .map(|parent| parent.join("codegen-runtime"))
         .unwrap();
-    let output = TempDir::new("rust_generated_sequence_reducers");
+    let output = TempDir::new("rust_generated_sequence_reducers").unwrap();
     let program = Program {
         execution_contract: None,
         xml_boundary: None,
@@ -1506,36 +1505,6 @@ fn write_artifacts(directory: &Path, artifacts: &ArtifactSet) {
             fs::create_dir_all(parent).unwrap();
         }
         fs::write(path, &file.contents).unwrap();
-    }
-}
-
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new(tag: &str) -> Self {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let nonce = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|duration| duration.as_nanos())
-            .unwrap_or_default();
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_{tag}_{}_{}_{}",
-            std::process::id(),
-            nonce,
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-
-    fn path(&self) -> &Path {
-        &self.0
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
     }
 }
 

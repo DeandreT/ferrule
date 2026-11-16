@@ -10,7 +10,7 @@ fn generated_raise_preserves_lazy_messages_and_item_error_order() {
         .parent()
         .unwrap()
         .join("codegen-runtime");
-    let output = TempDir::new("rust_lazy_raise");
+    let output = TempDir::new("rust_lazy_raise").unwrap();
     let directory = output.path().to_path_buf();
     // Keep all originals after infrastructure/runtime failures as well as semantic panics.
     std::mem::forget(output);

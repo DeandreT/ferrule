@@ -107,7 +107,7 @@ fn generated_package_finds_first_true_named_item_and_preserves_errors() {
         .join("../codegen-runtime")
         .canonicalize()
         .unwrap();
-    let output = TempDir::new("rust_collection_find_codegen");
+    let output = TempDir::new("rust_collection_find_codegen").unwrap();
     let artifacts = emit(
         &collection_find_program(true),
         &Options {
