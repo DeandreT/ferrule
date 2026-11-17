@@ -45,7 +45,7 @@ def hook_ancestry():
         # account-owned ancestors must remain fully inspectable.
         if process.stat().st_uid == os.getuid():
             executable = os.path.realpath(process / "exe")
-            worker_seen |= executable == WORKER
+            worker_seen |= executable == os.path.realpath(WORKER)
         fields = (process / "stat").read_text().rsplit(")", 1)[1].split()
         pid = int(fields[1])
     require(worker_seen, "Evidence compaction requires the actual pre-job hook")
