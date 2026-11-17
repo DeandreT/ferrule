@@ -115,11 +115,12 @@ fn scope_sort_keeps_exact_boundaries_and_stable_scalar_ties_in_both_directions()
     let source = Instance::Repeated(
         keys.into_iter()
             .map(|(name, key)| {
-                let mut fields =
-                    vec![("name".into(), Instance::Scalar(Value::String(name.into())))];
-                if !matches!(key, Value::Null) {
-                    fields.push(("key".into(), Instance::Scalar(key)));
-                }
+                // An omitted field falls back to the first root row's key.
+                // Keep absence explicit so the comparator receives Value::Null.
+                let fields = vec![
+                    ("name".into(), Instance::Scalar(Value::String(name.into()))),
+                    ("key".into(), Instance::Scalar(key)),
+                ];
                 Instance::Group(fields.into())
             })
             .collect(),
