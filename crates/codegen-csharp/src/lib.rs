@@ -38,6 +38,8 @@ pub use primary_json_document::emit_with_primary_json_documents;
 mod runtime;
 mod static_documents;
 mod x12_output;
+mod xlsx_document;
+pub use xlsx_document::emit_with_flat_xlsx_output;
 
 #[cfg(test)]
 mod composition_tests;
