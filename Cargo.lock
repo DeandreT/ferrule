@@ -995,6 +995,7 @@ dependencies = [
  "codegen-rust",
  "engine",
  "format-edi",
+ "format-flextext",
  "format-json",
  "format-xbrl",
  "ir",

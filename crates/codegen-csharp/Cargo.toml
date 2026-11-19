@@ -19,5 +19,6 @@ codegen-rust = { workspace = true }
 codegen-runtime = { workspace = true }
 engine = { workspace = true }
 format-edi = { workspace = true }
+format-flextext = { workspace = true }
 format-json = { workspace = true }
 format-xbrl = { workspace = true }
