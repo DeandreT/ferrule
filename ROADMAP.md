@@ -186,15 +186,6 @@ their refusals.
 
 - [ ] Extend catalog-backed functions and reusable contexts with matching
   validation, interpreter, Rust, C#, and authoring contracts.
-- [ ] Define explicit same-scope singular-target multiple-feed semantics in
-  [#241](https://github.com/DeandreT/ferrule/issues/241) before admitting them. Preserve
-  distinct expressions and the existing duplicate-binding refusal; #239's
-  declared ancestor branches do not supply an inferred winner.
-- [ ] Define a faithful saved form in [#203](https://github.com/DeandreT/ferrule/issues/203).
-  Public Ferrule observations and typed refusal do not establish external saved-
-  design execution or save/reopen. Exact stage/capture/position/error preservation
-  is required before importer/exporter implementation. XML annotations and JSON5
-  metadata remain separate contracts.
 - [ ] Qualify one admitted native saved-file reopen/execute/save2 cycle in
   [#263](https://github.com/DeandreT/ferrule/issues/263), after complete independent
   XML oracles from [#268](https://github.com/DeandreT/ferrule/issues/268).
