@@ -1,0 +1,50 @@
+using Ferrule.Generated;
+using Ferrule.Runtime;
+using System.Text;
+
+byte[] small = "<Rows><Value>X</Value></Rows>"u8.ToArray();
+byte[] big = "<Rows><Value>X</Value><Item>q</Item><Item>q</Item></Rows>"u8.ToArray();
+var ctx = new FerruleExecutionContext("self.xml");
+var defaults = FerruleXmlProjectionLimits.Default;
+var exact = new FerruleXmlProjectionLimits(5, 12, 9);
+foreach (var invalid in new Action[] {
+    () => new FerruleXmlProjectionLimits(0), () => new FerruleXmlProjectionLimits(defaults.InstanceNodes + 1),
+    () => new FerruleXmlProjectionLimits(fieldAndStringBytes: -1), () => new FerruleXmlProjectionLimits(fieldAndStringBytes: defaults.FieldAndStringBytes + 1),
+    () => new FerruleXmlProjectionLimits(projectionWork: 0), () => new FerruleXmlProjectionLimits(projectionWork: defaults.ProjectionWork + 1) })
+{
+    try { invalid(); throw new Exception("Invalid projection limit accepted"); }
+    catch (ArgumentOutOfRangeException) { }
+}
+
+foreach (var named in new[] { false, true })
+foreach (var selected in new[] { false, true })
+{
+    byte[] primary = named ? small : big;
+    NamedXmlBytesInput[] inputs = [new("rates", named ? big : small)];
+    var selection = named ? FerruleTargetSelection.Named("audit") : FerruleTargetSelection.Primary();
+    var baseline = GeneratedMapping.ExecuteXmlBytesOutputsWithSources(primary, inputs, ctx);
+    byte[] Invoke(FerruleXmlProjectionLimits limits)
+    {
+        if (!selected) {
+            var all = GeneratedMapping.ExecuteXmlBytesOutputsWithSources(primary, inputs, ctx, limits);
+            if (!all.Primary.SequenceEqual(baseline.Primary) || all.Extras.Single().Name != "audit") throw new Exception("all identity");
+            return all.Extras.Single().Document;
+        }
+        return GeneratedMapping.ExecuteXmlBytesSelectedTargetWithHost(primary, selection, named ? inputs : [], ctx, limits) switch {
+            SelectedXmlBytesTargetOutput.Named n when named && n.Output.Name == "audit" => n.Output.Document,
+            SelectedXmlBytesTargetOutput.Primary p when !named => p.Document,
+            _ => throw new Exception("selected identity")
+        };
+    }
+    if (!Invoke(exact).SequenceEqual(selected && !named ? baseline.Primary : baseline.Extras.Single().Document)) throw new Exception("exact limit changed output");
+    foreach (var (limit, reason) in new[] {
+        (new FerruleXmlProjectionLimits(4), "materialized instance node"),
+        (new FerruleXmlProjectionLimits(fieldAndStringBytes: 11), "materialized field/string byte"),
+        (new FerruleXmlProjectionLimits(projectionWork: 8), "projection work") })
+    {
+        try { Invoke(limit); throw new Exception("Exceeded limit accepted"); }
+        catch (FerruleXmlExecutionException e) when (e.Boundary.Kind == FerruleXmlBoundaryErrorKind.Input &&
+            e.Boundary.Detail == $"XML input exceeds its {reason} limit" && ReferenceEquals(e.InnerException, e.Boundary) &&
+            e.Boundary.InnerException == null && (named ? e.Input?.Name == "rates" && e.Input.Index == 0 : e.Input?.Kind == FerruleXmlInputSourceKind.Primary)) { }
+    }
+}

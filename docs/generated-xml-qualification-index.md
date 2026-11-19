@@ -242,3 +242,21 @@ counts and host memory are different units. Retain each cohort's exact source,
 project/input, compiler result and raw output/error chain when reusing it on a
 new revision. Broader route combinations, input formats and repeated performance
 measurements remain separate work; JSON, typed and XML calls remain distinct.
+
+### C# host limits for static Structured byte inputs
+
+Pass a `FerruleXmlProjectionLimits` as the last argument to
+`ExecuteXmlBytesOutputsWithSources(source, inputs, executionContext, limits)` or
+`ExecuteXmlBytesSelectedTargetWithHost(source, selection, inputs, executionContext, limits)`.
+The all-output overload takes every declared static input; selected targets take
+only their required inputs. Existing overloads retain their signatures and defaults.
+
+`instanceNodes`, `fieldAndStringBytes`, and `projectionWork` are positive,
+inclusive limits, at most 1,000,000 nodes, 64 MiB, and 100,000,000 work units,
+respectively. Each parsed primary or named document gets a fresh counter set.
+Fields and string contents count in UTF-8 bytes; work measures prospective
+projection operations, not elapsed time. Crossing a limit raises the existing
+input boundary failure with its specific reason and input owner. It returns no
+output. A nonpositive or above-default limit throws `ArgumentOutOfRangeException`
+at construction. These limits do not change parser, transport, output or process
+limits, and do not bound peak process memory.
