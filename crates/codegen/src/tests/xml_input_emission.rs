@@ -27,7 +27,16 @@ fn structured_xml_emits_all_additive_sources_methods_and_original_delegates() {
         assert!(source.contains("map_err(codegen_runtime::XmlExecutionError::into_output_set)"));
     } else {
         for method in methods {
-            assert_eq!(source.matches(&format!("public static {}", if method.contains("BytesOutputs") { "XmlBytesExecutionOutputs ExecuteXmlBytesOutputsWithSources(" } else if method.contains("Outputs") { "XmlExecutionOutputs ExecuteXmlOutputsWithSources(" } else if method.contains("Bytes") { "byte[] ExecuteXmlBytesWithSources(" } else { "string ExecuteXmlWithSources(" })).count(), 2);
+            let (signature, overloads) = if method.contains("BytesOutputs") {
+                ("XmlBytesExecutionOutputs ExecuteXmlBytesOutputsWithSources(", 3)
+            } else if method.contains("Outputs") {
+                ("XmlExecutionOutputs ExecuteXmlOutputsWithSources(", 2)
+            } else if method.contains("Bytes") {
+                ("byte[] ExecuteXmlBytesWithSources(", 2)
+            } else {
+                ("string ExecuteXmlWithSources(", 2)
+            };
+            assert_eq!(source.matches(&format!("public static {signature}")).count(), overloads);
         }
         assert!(source.contains("ExtraXmlInputSchema_0"));
         assert!(source.contains("ExtraXmlInputSchema_1"));
