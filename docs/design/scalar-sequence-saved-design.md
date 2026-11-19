@@ -36,7 +36,7 @@ Every new `filter_map_v1` cell below is currently **Rejected by the exporter**, 
 | Cell | Source evidence | Interchange status |
 | --- | --- | --- |
 | Legacy inclusive Generate, explicit bounds | `export/node.rs` emits `core/generate-sequence` with lower/upper ordered pins; `import.rs::sequence_expr` reconstructs `Generate` | Limited native decimal/anySimpleType-bound controls saved/reopened and matched complete values; exact Int-bound descriptor reconstruction remains unverified |
-| Legacy omitted lower bound | Export leaves the lower connection absent; import retains optional `from`; native engine defaults to 1 | Source path exists; disconnected-input default in the authoring application UNVERIFIED |
+| Legacy omitted lower bound | Export leaves the lower connection absent; import retains optional `from`; native engine defaults to 1 | The saved and reopened decimal probe with upper bound 3 produced the same `1,2,3` as an explicit lower 1. |
 | Reversed or absent/null bounds | Native engine yields an empty sequence, with existing expression short circuits | Source result fixed; external empty/null/coercion/error order UNVERIFIED |
 | Dynamic bounds and bound errors | Both bound expressions complete before coercion, except an absent bound short circuit | Candidate UNVERIFIED; a later upper expression error must precede an earlier lower coercion error |
 | Primitive item cap | Existing Generate refuses more than 1,000,000 items before materialization | Native invariant; no inspected saved component establishes that same refusal |
@@ -129,7 +129,7 @@ describes the external evidence, not permission to export that recipe.
 | Index | Recipe | What the external controls decide |
 | --- | --- | --- |
 | 0 | Explicit range and positions | Complete values match the decimal and generic-literal controls; neither preserves the frozen Int declaration. |
-| 1 | Default lower bound | Disconnected lower input unverified. The [explicit/omitted probe pair](fixtures/native-feed-controls/README.md) isolates it. |
+| 1 | Default lower bound | The [explicit/omitted probe pair](fixtures/native-feed-controls/README.md) preserved its distinct lower connections but produced identical values before and after reopening. This establishes the decimal control, not an Int descriptor round trip. |
 | 2 | Reversed range | Empty rows observed in a transformed capture control; no exact legacy descriptor comparison. |
 | 3–6 | Filtered Exists; third ItemAt; computed Sum; computed rows | Legacy source paths exist; no exact external comparison for these four recipes. |
 | 7 | Identity rows | Matching values with an always-true filter hide the two positions. Repair import does not reconstruct the descriptor. |
