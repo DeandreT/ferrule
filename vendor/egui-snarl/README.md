@@ -41,3 +41,9 @@ not part of that integration.
 from the widget state identity. Ferrule reuses bounded canvas layer slots while
 retaining generation-specific camera, selection, and interaction state IDs.
 The default retains upstream behavior when no override is supplied.
+
+Connected wires route around measured card frames whenever a clear lane is
+available. Drawing and pointer interaction share the detour; if the original
+curve clears all cards, it keeps its configured geometry. `avoid_other_wires`
+also considers previously drawn edges in stable endpoint order. It defaults
+to false and allows shared pins and necessary crossings.
