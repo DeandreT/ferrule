@@ -25,7 +25,8 @@ material, but is not proof that Ferrule implements a connector.
 
 The CSV gives one identifying observation per leaf, not a complete contract
 for each operation on that leaf. Of the 462, **30** have the bounded
-manager contracts below; **432** are still at triage depth. The original
+manager contracts below; **93** have [mapping contracts](mapping-contracts.md)
+and **339** are still at triage depth. The original
 462-page classification remains the baseline for this comparison. The
 families' parent pages (`97`, `264`, for example) already have separate body
 reviews and are not counted again.
