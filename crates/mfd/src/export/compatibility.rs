@@ -247,6 +247,8 @@ pub(super) fn profile(
                 | "ferrule-fixed"
                 | "ferrule-default"
                 | "ferrule-text-index"
+                | "ferrule-datatype"
+                | "ferrule-row-alignment"
                 | "ferrulefield" => {}
                 name if name.starts_with("ferrule") => push_issue(
                     &mut issues,
