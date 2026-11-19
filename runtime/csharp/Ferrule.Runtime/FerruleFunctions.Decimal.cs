@@ -17,8 +17,13 @@ public static partial class FerruleFunctions
         }
         catch (FerruleDecimalException error)
         {
-            throw new FerruleRuntimeException(FerruleRuntimeError.DecimalConversion,
-                $"`{function}`: {error.Message}", error, function: function, detail: error.Error.ToString());
+            throw new FerruleRuntimeException(
+                FerruleRuntimeError.DecimalConversion,
+                $"`{function}`: {error.Message}",
+                error,
+                function: function,
+                detail: error.Error.ToString()
+            );
         }
     }
 }

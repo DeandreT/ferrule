@@ -13,9 +13,7 @@ public enum FerruleScalarType
 }
 
 /// <summary>One ordered input/output pair in a value map.</summary>
-public readonly record struct FerruleValueMapEntry(
-    FerruleValue From,
-    FerruleValue To);
+public readonly record struct FerruleValueMapEntry(FerruleValue From, FerruleValue To);
 
 /// <summary>Applies engine-compatible typed, ordered value-map lookups.</summary>
 public static class FerruleValueMaps
@@ -24,7 +22,8 @@ public static class FerruleValueMaps
         FerruleValue input,
         FerruleScalarType? inputType,
         IReadOnlyList<FerruleValueMapEntry> table,
-        FerruleValue? defaultValue = null)
+        FerruleValue? defaultValue = null
+    )
     {
         ArgumentNullException.ThrowIfNull(table);
         var value = input;
@@ -48,7 +47,8 @@ public static class FerruleValueMaps
         FerruleValue input,
         FerruleScalarType? inputType,
         IReadOnlyList<FerruleValueMapEntry> table,
-        FerruleValue? defaultValue = null)
+        FerruleValue? defaultValue = null
+    )
     {
         var value = input;
         if (inputType == FerruleScalarType.Double && input.Kind == FerruleValueKind.Int64)
@@ -56,9 +56,11 @@ public static class FerruleValueMaps
             var integer = input.Int64Value;
             var converted = (double)integer;
             // The upper bound is exclusive: long.MaxValue rounds to 2^63.
-            if (converted >= (double)long.MinValue &&
-                converted < -(double)long.MinValue &&
-                (long)converted == integer)
+            if (
+                converted >= (double)long.MinValue
+                && converted < -(double)long.MinValue
+                && (long)converted == integer
+            )
             {
                 value = FerruleValue.FromDouble(converted);
             }
@@ -73,9 +75,15 @@ public static class FerruleValueMaps
     internal static bool TryCoerce(
         FerruleValue value,
         FerruleScalarType type,
-        out FerruleValue coerced)
+        out FerruleValue coerced
+    )
     {
-        if (value.Kind is FerruleValueKind.Null or FerruleValueKind.JsonNull or FerruleValueKind.XmlNil)
+        if (
+            value.Kind
+            is FerruleValueKind.Null
+                or FerruleValueKind.JsonNull
+                or FerruleValueKind.XmlNil
+        )
         {
             coerced = value;
             return true;
@@ -91,25 +99,29 @@ public static class FerruleValueMaps
         };
         return (coerced.Kind, type) switch
         {
-            (FerruleValueKind.String, FerruleScalarType.String) or
-            (FerruleValueKind.Int64, FerruleScalarType.Int64) or
-            (FerruleValueKind.Double, FerruleScalarType.Double) or
-            (FerruleValueKind.Bool, FerruleScalarType.Bool) => true,
+
+            (FerruleValueKind.String, FerruleScalarType.String)
+            or
+            (FerruleValueKind.Int64, FerruleScalarType.Int64)
+            or
+            (FerruleValueKind.Double, FerruleScalarType.Double)
+            or (FerruleValueKind.Bool, FerruleScalarType.Bool) => true,
             _ => false,
         };
     }
 
-    private static FerruleValue CoerceString(FerruleValue value) => value.Kind switch
-    {
-        FerruleValueKind.String => value,
-        FerruleValueKind.Bool => FerruleValue.FromString(
-            value.BooleanValue ? "true" : "false"),
-        FerruleValueKind.Int64 => FerruleValue.FromString(
-            value.Int64Value.ToString(CultureInfo.InvariantCulture)),
-        FerruleValueKind.Double when double.IsFinite(value.DoubleValue) =>
-            FerruleValue.FromString(RustFloatText(value.DoubleValue)),
-        _ => value,
-    };
+    private static FerruleValue CoerceString(FerruleValue value) =>
+        value.Kind switch
+        {
+            FerruleValueKind.String => value,
+            FerruleValueKind.Bool => FerruleValue.FromString(value.BooleanValue ? "true" : "false"),
+            FerruleValueKind.Int64 => FerruleValue.FromString(
+                value.Int64Value.ToString(CultureInfo.InvariantCulture)
+            ),
+            FerruleValueKind.Double when double.IsFinite(value.DoubleValue) =>
+                FerruleValue.FromString(RustFloatText(value.DoubleValue)),
+            _ => value,
+        };
 
     private static FerruleValue CoerceInt64(FerruleValue value)
     {
@@ -120,21 +132,26 @@ public static class FerruleValueMaps
         if (value.Kind == FerruleValueKind.Double)
         {
             var number = value.DoubleValue;
-            if (double.IsFinite(number) &&
-                Math.Truncate(number) == number &&
-                number >= (double)long.MinValue &&
-                number < -(double)long.MinValue)
+            if (
+                double.IsFinite(number)
+                && Math.Truncate(number) == number
+                && number >= (double)long.MinValue
+                && number < -(double)long.MinValue
+            )
             {
                 return FerruleValue.FromInt64((long)number);
             }
             return value;
         }
-        if (value.Kind == FerruleValueKind.String &&
-            long.TryParse(
+        if (
+            value.Kind == FerruleValueKind.String
+            && long.TryParse(
                 value.StringValue.AsSpan().Trim(),
                 NumberStyles.Integer,
                 CultureInfo.InvariantCulture,
-                out var integer))
+                out var integer
+            )
+        )
         {
             return FerruleValue.FromInt64(integer);
         }
@@ -151,13 +168,16 @@ public static class FerruleValueMaps
         {
             return FerruleValue.FromDouble(value.Int64Value);
         }
-        if (value.Kind == FerruleValueKind.String &&
-            double.TryParse(
+        if (
+            value.Kind == FerruleValueKind.String
+            && double.TryParse(
                 value.StringValue.AsSpan().Trim(),
                 NumberStyles.Float,
                 CultureInfo.InvariantCulture,
-                out var number) &&
-            double.IsFinite(number))
+                out var number
+            )
+            && double.IsFinite(number)
+        )
         {
             return FerruleValue.FromDouble(number);
         }
@@ -197,16 +217,17 @@ public static class FerruleValueMaps
         var mantissa = text.AsSpan(mantissaStart, exponentIndex - mantissaStart);
         var decimalIndex = mantissa.IndexOf('.');
         var decimalPosition = decimalIndex < 0 ? mantissa.Length : decimalIndex;
-        var digits = decimalIndex < 0
-            ? mantissa.ToString()
-            : string.Concat(mantissa[..decimalIndex], mantissa[(decimalIndex + 1)..]);
+        var digits =
+            decimalIndex < 0
+                ? mantissa.ToString()
+                : string.Concat(mantissa[..decimalIndex], mantissa[(decimalIndex + 1)..]);
         var exponent = int.Parse(
             text.AsSpan(exponentIndex + 1),
             NumberStyles.AllowLeadingSign,
-            CultureInfo.InvariantCulture);
+            CultureInfo.InvariantCulture
+        );
         var outputDecimalPosition = decimalPosition + exponent;
-        var output = new StringBuilder(
-            digits.Length + Math.Abs(exponent) + 3);
+        var output = new StringBuilder(digits.Length + Math.Abs(exponent) + 3);
         if (negative)
         {
             output.Append('-');

@@ -17,7 +17,8 @@ public static partial class FerruleJson
         bool jsonAny,
         bool nullable,
         FerruleValue? fixedValue,
-        bool exactFloatMarkers)
+        bool exactFloatMarkers
+    )
     {
         JsonElement? declaredValues = null;
         foreach (var property in element.EnumerateObject())
@@ -29,12 +30,15 @@ public static partial class FerruleJson
             if (declaredValues is not null)
             {
                 throw Boundary(
-                    $"Embedded JSON schema node '{name}' has duplicate JSON allowed-values metadata.");
+                    $"Embedded JSON schema node '{name}' has duplicate JSON allowed-values metadata."
+                );
             }
             declaredValues = property.Value;
         }
-        if (declaredValues is not { } valuesElement ||
-            valuesElement.ValueKind == JsonValueKind.Null)
+        if (
+            declaredValues is not { } valuesElement
+            || valuesElement.ValueKind == JsonValueKind.Null
+        )
         {
             return null;
         }
@@ -42,11 +46,13 @@ public static partial class FerruleJson
             valuesElement,
             JsonValueKind.Array,
             $"schema node '{name}' JSON allowed values",
-            "array");
+            "array"
+        );
         if (scalarDomain == JsonScalarDomain.None || jsonAny || fixedValue is not null)
         {
             throw Boundary(
-                $"Embedded JSON schema node '{name}' has JSON allowed values outside a non-fixed concrete scalar domain.");
+                $"Embedded JSON schema node '{name}' has JSON allowed values outside a non-fixed concrete scalar domain."
+            );
         }
 
         var values = new List<JsonAllowedValue>();
@@ -56,13 +62,15 @@ public static partial class FerruleJson
             if (values.Count == MaximumJsonAllowedValues)
             {
                 throw Boundary(
-                    $"Embedded JSON schema node '{name}' has more than {MaximumJsonAllowedValues} JSON allowed values.");
+                    $"Embedded JSON schema node '{name}' has more than {MaximumJsonAllowedValues} JSON allowed values."
+                );
             }
             var value = ReadJsonAllowedValue(name, valueElement, exactFloatMarkers);
             if (!value.IsAdmittedBy(scalarDomain, nullable))
             {
                 throw Boundary(
-                    $"Embedded JSON schema node '{name}' has a JSON allowed value outside its declared scalar domain.");
+                    $"Embedded JSON schema node '{name}' has a JSON allowed value outside its declared scalar domain."
+                );
             }
             if (value.Kind == JsonAllowedValueKind.String)
             {
@@ -70,13 +78,15 @@ public static partial class FerruleJson
                 if (stringBytes > MaximumJsonAllowedValueStringBytes)
                 {
                     throw Boundary(
-                        $"Embedded JSON schema node '{name}' has a JSON allowed string larger than {MaximumJsonAllowedValueStringBytes} UTF-8 bytes.");
+                        $"Embedded JSON schema node '{name}' has a JSON allowed string larger than {MaximumJsonAllowedValueStringBytes} UTF-8 bytes."
+                    );
                 }
                 totalStringBytes = checked(totalStringBytes + stringBytes);
                 if (totalStringBytes > MaximumJsonAllowedValueTotalStringBytes)
                 {
                     throw Boundary(
-                        $"Embedded JSON schema node '{name}' has more than {MaximumJsonAllowedValueTotalStringBytes} UTF-8 bytes across JSON allowed strings.");
+                        $"Embedded JSON schema node '{name}' has more than {MaximumJsonAllowedValueTotalStringBytes} UTF-8 bytes across JSON allowed strings."
+                    );
                 }
             }
             if (values.Count != 0)
@@ -85,12 +95,14 @@ public static partial class FerruleJson
                 if (comparison == 0)
                 {
                     throw Boundary(
-                        $"Embedded JSON schema node '{name}' has a duplicate JSON allowed value.");
+                        $"Embedded JSON schema node '{name}' has a duplicate JSON allowed value."
+                    );
                 }
                 if (comparison > 0)
                 {
                     throw Boundary(
-                        $"Embedded JSON schema node '{name}' JSON allowed values are not in canonical order.");
+                        $"Embedded JSON schema node '{name}' JSON allowed values are not in canonical order."
+                    );
                 }
             }
             values.Add(value);
@@ -98,14 +110,16 @@ public static partial class FerruleJson
         if (values.Count < 2)
         {
             throw Boundary(
-                $"Embedded JSON schema node '{name}' must have at least two distinct JSON allowed values.");
+                $"Embedded JSON schema node '{name}' must have at least two distinct JSON allowed values."
+            );
         }
 
         var allowedValues = new JsonAllowedValues(values);
         if (nullable != allowedValues.ContainsJsonNull)
         {
             throw Boundary(
-                $"Embedded JSON schema node '{name}' nullability does not match its JSON allowed values.");
+                $"Embedded JSON schema node '{name}' nullability does not match its JSON allowed values."
+            );
         }
         return allowedValues;
     }
@@ -113,21 +127,23 @@ public static partial class FerruleJson
     private static JsonAllowedValue ReadJsonAllowedValue(
         string name,
         JsonElement element,
-        bool exactFloatMarkers)
+        bool exactFloatMarkers
+    )
     {
         RequireKind(
             element,
             JsonValueKind.Object,
             $"schema node '{name}' JSON allowed value",
-            "object");
+            "object"
+        );
         var fields = new HashSet<string>(StringComparer.Ordinal);
         foreach (var property in element.EnumerateObject())
         {
-            if (property.Name is not ("type" or "value") ||
-                !fields.Add(property.Name))
+            if (property.Name is not ("type" or "value") || !fields.Add(property.Name))
             {
                 throw Boundary(
-                    $"Embedded JSON schema node '{name}' JSON allowed value has an unknown or duplicate field '{property.Name}'.");
+                    $"Embedded JSON schema node '{name}' JSON allowed value has an unknown or duplicate field '{property.Name}'."
+                );
             }
         }
         var type = RequiredString(element, "type");
@@ -136,7 +152,8 @@ public static partial class FerruleJson
             if (fields.Contains("value"))
             {
                 throw Boundary(
-                    $"Embedded JSON schema node '{name}' JSON null allowed value cannot have a payload.");
+                    $"Embedded JSON schema node '{name}' JSON null allowed value cannot have a payload."
+                );
             }
             return JsonAllowedValue.JsonNull;
         }
@@ -146,37 +163,41 @@ public static partial class FerruleJson
         {
             "bool" when payload.ValueKind is JsonValueKind.True or JsonValueKind.False =>
                 JsonAllowedValue.FromBoolean(payload.GetBoolean()),
-            "int" when payload.ValueKind == JsonValueKind.Number &&
-                       TryGetSerdeInt64(payload, out var integer) =>
-                JsonAllowedValue.FromInt64(integer),
-            "float" when TryReadFiniteMetadataDouble(payload, exactFloatMarkers, out var number) &&
-                         !TryExactInt64(number, out _) =>
-                JsonAllowedValue.FromDouble(number),
-            "string" when payload.ValueKind == JsonValueKind.String =>
-                JsonAllowedValue.FromString(payload.GetString() ?? string.Empty),
+            "int"
+                when payload.ValueKind == JsonValueKind.Number
+                    && TryGetSerdeInt64(payload, out var integer) => JsonAllowedValue.FromInt64(
+                integer
+            ),
+            "float"
+                when TryReadFiniteMetadataDouble(payload, exactFloatMarkers, out var number)
+                    && !TryExactInt64(number, out _) => JsonAllowedValue.FromDouble(number),
+            "string" when payload.ValueKind == JsonValueKind.String => JsonAllowedValue.FromString(
+                payload.GetString() ?? string.Empty
+            ),
             "bool" or "int" or "float" or "string" => throw Boundary(
-                $"Embedded JSON schema node '{name}' has an invalid or non-canonical JSON allowed {type} payload."),
+                $"Embedded JSON schema node '{name}' has an invalid or non-canonical JSON allowed {type} payload."
+            ),
             _ => throw Boundary(
-                $"Embedded JSON schema node '{name}' has unknown JSON allowed value type '{type}'."),
+                $"Embedded JSON schema node '{name}' has unknown JSON allowed value type '{type}'."
+            ),
         };
     }
 
-    private static void ValidateJsonAllowedValues(
-        JsonSchemaNode schema,
-        FerruleValue value)
+    private static void ValidateJsonAllowedValues(JsonSchemaNode schema, FerruleValue value)
     {
-        if (schema.JsonAllowedValues is { } allowedValues &&
-            !allowedValues.Matches(value))
+        if (schema.JsonAllowedValues is { } allowedValues && !allowedValues.Matches(value))
         {
             throw Boundary(
-                $"JSON scalar '{schema.Name}' is not one of its declared allowed values: {value}.");
+                $"JSON scalar '{schema.Name}' is not one of its declared allowed values: {value}."
+            );
         }
     }
 
     private static void ValidateJsonAllowedValuesOutput(
         JsonSchemaNode schema,
         JsonScalarType scalar,
-        FerruleValue value)
+        FerruleValue value
+    )
     {
         if (schema.JsonAllowedValues is null)
         {
@@ -215,10 +236,12 @@ public static partial class FerruleJson
     private static bool TryExactInt64(double value, out long integer)
     {
         integer = 0;
-        if (!double.IsFinite(value) ||
-            Math.Truncate(value) != value ||
-            value < long.MinValue ||
-            value >= Int64UpperExclusive)
+        if (
+            !double.IsFinite(value)
+            || Math.Truncate(value) != value
+            || value < long.MinValue
+            || value >= Int64UpperExclusive
+        )
         {
             return false;
         }
@@ -235,9 +258,7 @@ public static partial class FerruleJson
         String,
     }
 
-    private readonly record struct JsonAllowedValue(
-        JsonAllowedValueKind Kind,
-        FerruleValue Value)
+    private readonly record struct JsonAllowedValue(JsonAllowedValueKind Kind, FerruleValue Value)
     {
         public static JsonAllowedValue JsonNull =>
             new(JsonAllowedValueKind.JsonNull, FerruleValue.JsonNull);
@@ -259,9 +280,8 @@ public static partial class FerruleJson
             {
                 JsonAllowedValueKind.JsonNull => nullable,
                 JsonAllowedValueKind.Bool => domain.HasFlag(JsonScalarDomain.Bool),
-                JsonAllowedValueKind.Int64 =>
-                    domain.HasFlag(JsonScalarDomain.Int64) ||
-                    domain.HasFlag(JsonScalarDomain.Double),
+                JsonAllowedValueKind.Int64 => domain.HasFlag(JsonScalarDomain.Int64)
+                    || domain.HasFlag(JsonScalarDomain.Double),
                 JsonAllowedValueKind.Double => domain.HasFlag(JsonScalarDomain.Double),
                 JsonAllowedValueKind.String => domain.HasFlag(JsonScalarDomain.String),
                 _ => false,
@@ -277,15 +297,14 @@ public static partial class FerruleJson
             return Kind switch
             {
                 JsonAllowedValueKind.JsonNull => 0,
-                JsonAllowedValueKind.Bool =>
-                    Value.BooleanValue.CompareTo(other.Value.BooleanValue),
-                JsonAllowedValueKind.Int64 =>
-                    Value.Int64Value.CompareTo(other.Value.Int64Value),
-                JsonAllowedValueKind.Double =>
-                    TotalOrderKey(Value.DoubleValue).CompareTo(
-                        TotalOrderKey(other.Value.DoubleValue)),
-                JsonAllowedValueKind.String =>
-                    CompareUtf8Strings(Value.StringValue, other.Value.StringValue),
+                JsonAllowedValueKind.Bool => Value.BooleanValue.CompareTo(other.Value.BooleanValue),
+                JsonAllowedValueKind.Int64 => Value.Int64Value.CompareTo(other.Value.Int64Value),
+                JsonAllowedValueKind.Double => TotalOrderKey(Value.DoubleValue)
+                    .CompareTo(TotalOrderKey(other.Value.DoubleValue)),
+                JsonAllowedValueKind.String => CompareUtf8Strings(
+                    Value.StringValue,
+                    other.Value.StringValue
+                ),
                 _ => 0,
             };
         }
@@ -294,23 +313,27 @@ public static partial class FerruleJson
             (Kind, actual.Kind) switch
             {
                 (JsonAllowedValueKind.JsonNull, FerruleValueKind.JsonNull) => true,
-                (JsonAllowedValueKind.Bool, FerruleValueKind.Bool) =>
-                    Value.BooleanValue == actual.BooleanValue,
-                (JsonAllowedValueKind.Int64, FerruleValueKind.Int64) =>
-                    Value.Int64Value == actual.Int64Value,
-                (JsonAllowedValueKind.Int64, FerruleValueKind.Double) =>
-                    TryExactInt64(actual.DoubleValue, out var integer) &&
-                    Value.Int64Value == integer,
-                (JsonAllowedValueKind.Double, FerruleValueKind.Double) =>
-                    Value.DoubleValue == actual.DoubleValue,
-                (JsonAllowedValueKind.Double, FerruleValueKind.Int64) =>
-                    TryExactDouble(actual.Int64Value, out var number) &&
-                    Value.DoubleValue == number,
-                (JsonAllowedValueKind.String, FerruleValueKind.String) =>
-                    string.Equals(
-                        Value.StringValue,
-                        actual.StringValue,
-                        StringComparison.Ordinal),
+                (JsonAllowedValueKind.Bool, FerruleValueKind.Bool) => Value.BooleanValue
+                    == actual.BooleanValue,
+                (JsonAllowedValueKind.Int64, FerruleValueKind.Int64) => Value.Int64Value
+                    == actual.Int64Value,
+                (JsonAllowedValueKind.Int64, FerruleValueKind.Double) => TryExactInt64(
+                    actual.DoubleValue,
+                    out var integer
+                )
+                    && Value.Int64Value == integer,
+                (JsonAllowedValueKind.Double, FerruleValueKind.Double) => Value.DoubleValue
+                    == actual.DoubleValue,
+                (JsonAllowedValueKind.Double, FerruleValueKind.Int64) => TryExactDouble(
+                    actual.Int64Value,
+                    out var number
+                )
+                    && Value.DoubleValue == number,
+                (JsonAllowedValueKind.String, FerruleValueKind.String) => string.Equals(
+                    Value.StringValue,
+                    actual.StringValue,
+                    StringComparison.Ordinal
+                ),
                 _ => false,
             };
 
@@ -333,8 +356,7 @@ public static partial class FerruleJson
                 {
                     return hasLeft.CompareTo(hasRight);
                 }
-                var comparison = leftRunes.Current.Value.CompareTo(
-                    rightRunes.Current.Value);
+                var comparison = leftRunes.Current.Value.CompareTo(rightRunes.Current.Value);
                 if (comparison != 0)
                 {
                     return comparison;
@@ -343,12 +365,10 @@ public static partial class FerruleJson
         }
     }
 
-    private sealed record JsonAllowedValues(
-        IReadOnlyList<JsonAllowedValue> Values)
+    private sealed record JsonAllowedValues(IReadOnlyList<JsonAllowedValue> Values)
     {
         public bool ContainsJsonNull =>
-            Values.Count != 0 &&
-            Values[0].Kind == JsonAllowedValueKind.JsonNull;
+            Values.Count != 0 && Values[0].Kind == JsonAllowedValueKind.JsonNull;
 
         public bool Matches(FerruleValue value) =>
             Values.Any(candidate => candidate.Matches(value));

@@ -12,6 +12,7 @@ public sealed class FerruleInvocationCounterLimits
         MaximumCount = maximumCount;
         MaximumTextBytes = maximumTextBytes;
     }
+
     public int MaximumCount { get; }
     public long MaximumTextBytes { get; }
 }
@@ -20,19 +21,32 @@ public static class FerruleInvocationCounterOperands
 {
     public static long RequireInteger(uint node, string operand, FerruleValue value)
     {
-        if (value.Kind == FerruleValueKind.Int64) return value.Int64Value;
-        throw new FerruleRuntimeException(FerruleRuntimeError.InvocationCounterOperand,
-            $"counter {operand} requires an integer", node: node, detail: operand,
-            expectedScalarType: FerruleScalarType.Int64, foundKind: value.Kind);
+        if (value.Kind == FerruleValueKind.Int64)
+            return value.Int64Value;
+        throw new FerruleRuntimeException(
+            FerruleRuntimeError.InvocationCounterOperand,
+            $"counter {operand} requires an integer",
+            node: node,
+            detail: operand,
+            expectedScalarType: FerruleScalarType.Int64,
+            foundKind: value.Kind
+        );
     }
 
     public static string? RequireRestart(uint node, FerruleValue value)
     {
-        if (value.Kind == FerruleValueKind.Null) return null;
-        if (value.Kind == FerruleValueKind.String) return value.StringValue;
-        throw new FerruleRuntimeException(FerruleRuntimeError.InvocationCounterOperand,
-            "counter restart requires a string or missing value", node: node, detail: "restart",
-            expectedScalarType: FerruleScalarType.String, foundKind: value.Kind);
+        if (value.Kind == FerruleValueKind.Null)
+            return null;
+        if (value.Kind == FerruleValueKind.String)
+            return value.StringValue;
+        throw new FerruleRuntimeException(
+            FerruleRuntimeError.InvocationCounterOperand,
+            "counter restart requires a string or missing value",
+            node: node,
+            detail: "restart",
+            expectedScalarType: FerruleScalarType.String,
+            foundKind: value.Kind
+        );
     }
 }
 
@@ -49,7 +63,10 @@ public sealed class FerruleInvocationCounterException : InvalidOperationExceptio
     public FerruleInvocationCounterFailure Failure { get; }
     public long? Maximum { get; }
 
-    internal FerruleInvocationCounterException(FerruleInvocationCounterFailure failure, long? maximum = null)
+    internal FerruleInvocationCounterException(
+        FerruleInvocationCounterFailure failure,
+        long? maximum = null
+    )
         : base($"Invocation counter refused: {failure}.")
     {
         Failure = failure;
@@ -65,7 +82,14 @@ public sealed class FerruleInvocationCounterException : InvalidOperationExceptio
 public sealed class FerruleInvocationCounters
 {
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
-    private readonly record struct Counter(long Value, string? Restart, int KeyBytes, int RestartBytes);
+
+    private readonly record struct Counter(
+        long Value,
+        string? Restart,
+        int KeyBytes,
+        int RestartBytes
+    );
+
     private readonly Dictionary<string, Counter> _counters = new(StringComparer.Ordinal);
     private readonly int _maximumCount;
     private readonly long _maximumTextBytes;
@@ -97,20 +121,30 @@ public sealed class FerruleInvocationCounters
             return next;
         }
         if (!exists && _counters.Count >= _maximumCount)
-            throw new FerruleInvocationCounterException(FerruleInvocationCounterFailure.CountLimit, _maximumCount);
+            throw new FerruleInvocationCounterException(
+                FerruleInvocationCounterFailure.CountLimit,
+                _maximumCount
+            );
         int keyBytes = exists ? old.KeyBytes : TextBytes(key);
         int restartBytes = restart is null ? 0 : TextBytes(restart);
         long retained;
         try
         {
-            retained = checked(RetainedTextBytes - old.RestartBytes + (exists ? 0 : keyBytes) + restartBytes);
+            retained = checked(
+                RetainedTextBytes - old.RestartBytes + (exists ? 0 : keyBytes) + restartBytes
+            );
         }
         catch (OverflowException)
         {
-            throw new FerruleInvocationCounterException(FerruleInvocationCounterFailure.SizeOverflow);
+            throw new FerruleInvocationCounterException(
+                FerruleInvocationCounterFailure.SizeOverflow
+            );
         }
         if (retained > _maximumTextBytes)
-            throw new FerruleInvocationCounterException(FerruleInvocationCounterFailure.TextLimit, _maximumTextBytes);
+            throw new FerruleInvocationCounterException(
+                FerruleInvocationCounterFailure.TextLimit,
+                _maximumTextBytes
+            );
         _counters[key] = new Counter(start, restart, keyBytes, restartBytes);
         RetainedTextBytes = retained;
         return start;
@@ -127,10 +161,15 @@ public sealed class FerruleInvocationCounters
 
     private static int TextBytes(string text)
     {
-        try { return StrictUtf8.GetByteCount(text); }
+        try
+        {
+            return StrictUtf8.GetByteCount(text);
+        }
         catch (EncoderFallbackException)
         {
-            throw new FerruleInvocationCounterException(FerruleInvocationCounterFailure.InvalidText);
+            throw new FerruleInvocationCounterException(
+                FerruleInvocationCounterFailure.InvalidText
+            );
         }
     }
 }

@@ -20,8 +20,16 @@ internal static partial class Program
         foreach (var jsonAny in new[] { false, true })
         foreach (var item in new bool?[] { null, false, true })
         {
-            var contradiction = FerruleJson.JsonNullLayers.Contradiction(scalar, repeating, nullable, container);
-            Equal(nullable && !scalar || container && scalar && !repeating, contradiction is not null);
+            var contradiction = FerruleJson.JsonNullLayers.Contradiction(
+                scalar,
+                repeating,
+                nullable,
+                container
+            );
+            Equal(
+                nullable && !scalar || container && scalar && !repeating,
+                contradiction is not null
+            );
             // The descriptor parser already refuses a misplaced nested-array frame
             // or object-item override before any layer is read.
             var frameRefused = wrapper && (scalar || !repeating || nullable || jsonAny);
@@ -33,7 +41,14 @@ internal static partial class Program
             }
             matched++;
             var layers = FerruleJson.JsonNullLayers.Derive(
-                scalar, repeating, nullable, container, item, wrapper, jsonAny);
+                scalar,
+                repeating,
+                nullable,
+                container,
+                item,
+                wrapper,
+                jsonAny
+            );
             // Previous reads: ContainerNullable, Nullable and SingleContainerNullable,
             // which frames and arbitrary JSON never consulted.
             Equal(container, layers.Whole);
@@ -46,31 +61,49 @@ internal static partial class Program
         Equal((26, 166), (matched, refused));
 
         static string Child(string metadata, string kind) =>
-            "{\"name\":\"Root\",\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"x\"," + metadata +
-            ",\"kind\":" + kind + "}]}}";
+            "{\"name\":\"Root\",\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"x\","
+            + metadata
+            + ",\"kind\":"
+            + kind
+            + "}]}}";
         const string Scalar = "{\"kind\":\"scalar\",\"ty\":\"int\"}";
         const string Group = "{\"kind\":\"group\",\"children\":[]}";
-        foreach (var (metadata, kind, reason) in new[]
-                 {
-                     ("\"nullable\":true", Group, "scalar nullability is declared on a group"),
-                     ("\"container_nullable\":true", Scalar, "container nullability is declared on a singular scalar"),
-                 })
+        foreach (
+            var (metadata, kind, reason) in new[]
+            {
+                ("\"nullable\":true", Group, "scalar nullability is declared on a group"),
+                (
+                    "\"container_nullable\":true",
+                    Scalar,
+                    "container nullability is declared on a singular scalar"
+                ),
+            }
+        )
         {
             try
             {
                 FerruleJson.Parse(Child(metadata, kind), "{}");
                 throw new InvalidOperationException($"Expected a refused schema: {metadata}");
             }
-            catch (FerruleRuntimeException error) when (error.Message.Contains(reason, StringComparison.Ordinal))
-            {
-            }
+            catch (FerruleRuntimeException error)
+                when (error.Message.Contains(reason, StringComparison.Ordinal)) { }
         }
 
         // Each layer admits only its own null.
         var nullableObject = Child("\"container_nullable\":true", Group);
-        Equal(FerruleValueKind.JsonNull, Field(FerruleJson.Parse(nullableObject, "{\"x\":null}")).Kind);
-        Equal("{\n  \"x\": null\n}\n", FerruleJson.Serialize(nullableObject,
-            new FerruleGroup(new[] { new FerruleField("x", new FerruleScalar(FerruleValue.JsonNull)) })));
+        Equal(
+            FerruleValueKind.JsonNull,
+            Field(FerruleJson.Parse(nullableObject, "{\"x\":null}")).Kind
+        );
+        Equal(
+            "{\n  \"x\": null\n}\n",
+            FerruleJson.Serialize(
+                nullableObject,
+                new FerruleGroup(
+                    new[] { new FerruleField("x", new FerruleScalar(FerruleValue.JsonNull)) }
+                )
+            )
+        );
         var scalarItems = Child("\"repeating\":true,\"nullable\":true", Scalar);
         Throws<FerruleRuntimeException>(() => FerruleJson.Parse(scalarItems, "{\"x\":null}"));
         _ = FerruleJson.Parse(scalarItems, "{\"x\":[null]}");
@@ -81,7 +114,9 @@ internal static partial class Program
         Throws<FerruleRuntimeException>(() => FerruleJson.Parse(objectItems, "{\"x\":null}"));
         _ = FerruleJson.Parse(objectItems, "{\"x\":[null]}");
         // XML nil is not JSON null.
-        Throws<FerruleRuntimeException>(() => FerruleJson.Parse(Child("\"nillable\":true", Scalar), "{\"x\":null}"));
+        Throws<FerruleRuntimeException>(() =>
+            FerruleJson.Parse(Child("\"nillable\":true", Scalar), "{\"x\":null}")
+        );
 
         static FerruleValue Field(FerruleInstance instance) =>
             ((FerruleScalar)((FerruleGroup)instance).Fields[0].Value).Value;

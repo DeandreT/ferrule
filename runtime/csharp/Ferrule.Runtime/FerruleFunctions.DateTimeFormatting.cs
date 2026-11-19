@@ -53,7 +53,8 @@ public static partial class FerruleFunctions
     private static FerruleValue FormatDateTimePictureValue(
         IReadOnlyList<FerruleValue> arguments,
         string function,
-        DateTimePictureInput input)
+        DateTimePictureInput input
+    )
     {
         var (value, picture) = FormatDateTimePictureArguments(arguments, function);
         FormattableDateTimePicture fields;
@@ -95,7 +96,8 @@ public static partial class FerruleFunctions
 
     private static (string Value, string Picture) FormatDateTimePictureArguments(
         IReadOnlyList<FerruleValue> arguments,
-        string function)
+        string function
+    )
     {
         if (arguments.Count is < 2 or > 5)
         {
@@ -121,7 +123,8 @@ public static partial class FerruleFunctions
             }
             throw InvalidArgument(
                 function,
-                "supports only default language, calendar, and place arguments");
+                "supports only default language, calendar, and place arguments"
+            );
         }
         return (arguments[0].StringValue, arguments[1].StringValue);
     }
@@ -140,7 +143,8 @@ public static partial class FerruleFunctions
     private static void SetDateTimePictureTime(
         FormattableDateTimePicture fields,
         string value,
-        string function)
+        string function
+    )
     {
         var (time, timezone) = SplitIsoTimezone(value, function, DateTimeDetail);
         var fractionStart = time.IndexOf('.');
@@ -155,7 +159,8 @@ public static partial class FerruleFunctions
     private static string RenderDateTimePicture(
         FormattableDateTimePicture fields,
         string picture,
-        string function)
+        string function
+    )
     {
         var parts = DateTimePictureParts(picture);
         if (parts is null)
@@ -171,10 +176,9 @@ public static partial class FerruleFunctions
             }
             else
             {
-                output.Append(RenderDateTimePictureComponent(
-                    fields,
-                    (DateTimePictureComponent)part,
-                    function));
+                output.Append(
+                    RenderDateTimePictureComponent(fields, (DateTimePictureComponent)part, function)
+                );
             }
         }
         return output.ToString();
@@ -183,13 +187,16 @@ public static partial class FerruleFunctions
     private static string RenderDateTimePictureComponent(
         FormattableDateTimePicture fields,
         DateTimePictureComponent component,
-        string function)
+        string function
+    )
     {
-        string Numeric(uint value) => RenderDateTimePictureNumber(
-            value.ToString(CultureInfo.InvariantCulture),
-            component,
-            truncateLeft: false,
-            function);
+        string Numeric(uint value) =>
+            RenderDateTimePictureNumber(
+                value.ToString(CultureInfo.InvariantCulture),
+                component,
+                truncateLeft: false,
+                function
+            );
 
         return component.Field switch
         {
@@ -197,12 +204,14 @@ public static partial class FerruleFunctions
                 fields.Year,
                 component,
                 truncateLeft: true,
-                function),
+                function
+            ),
             DateTimePictureField.Month => Numeric(fields.Month),
             DateTimePictureField.MonthName => RenderDateTimePictureMonth(
                 fields.Month,
                 component,
-                function),
+                function
+            ),
             DateTimePictureField.Day => Numeric(fields.Day),
             DateTimePictureField.DayOfYear => Numeric(fields.DayOfYear()),
             DateTimePictureField.Hour24 => Numeric(fields.Hour),
@@ -214,7 +223,8 @@ public static partial class FerruleFunctions
                 fields.Fraction ?? "0",
                 component,
                 truncateLeft: false,
-                function),
+                function
+            ),
             DateTimePictureField.Timezone => fields.Timezone ?? string.Empty,
             DateTimePictureField.GmtTimezone => fields.Timezone is null
                 ? string.Empty
@@ -226,7 +236,8 @@ public static partial class FerruleFunctions
     private static string RenderDateTimePictureMonth(
         uint month,
         DateTimePictureComponent component,
-        string function)
+        string function
+    )
     {
         string[] months =
         [
@@ -265,9 +276,7 @@ public static partial class FerruleFunctions
         return value;
     }
 
-    private static string RenderDateTimePicturePeriod(
-        uint hour,
-        DateTimePictureComponent component)
+    private static string RenderDateTimePicturePeriod(uint hour, DateTimePictureComponent component)
     {
         var value = hour >= 12 ? "PM" : "AM";
         return component.LetterCase switch
@@ -282,7 +291,8 @@ public static partial class FerruleFunctions
         string value,
         DateTimePictureComponent component,
         bool truncateLeft,
-        string function)
+        string function
+    )
     {
         var negative = value.StartsWith("-", StringComparison.Ordinal);
         var digits = negative ? value[1..] : value;

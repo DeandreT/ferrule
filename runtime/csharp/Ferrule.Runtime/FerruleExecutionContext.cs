@@ -21,8 +21,7 @@ public sealed class FerruleRuntimeParameters
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
     private readonly IReadOnlyDictionary<string, FerruleValue> _values;
 
-    public FerruleRuntimeParameters(
-        IEnumerable<KeyValuePair<string, FerruleValue>> parameters)
+    public FerruleRuntimeParameters(IEnumerable<KeyValuePair<string, FerruleValue>> parameters)
     {
         ArgumentNullException.ThrowIfNull(parameters);
         var values = new Dictionary<string, FerruleValue>(StringComparer.Ordinal);
@@ -32,45 +31,54 @@ public sealed class FerruleRuntimeParameters
             {
                 throw new ArgumentException(
                     "Runtime parameter name cannot be null.",
-                    nameof(parameters));
+                    nameof(parameters)
+                );
             }
             if (name.Length == 0)
             {
                 throw new ArgumentException(
                     "Runtime parameter name cannot be empty.",
-                    nameof(parameters));
+                    nameof(parameters)
+                );
             }
             if (name.Contains('\0', StringComparison.Ordinal))
             {
                 throw new ArgumentException(
                     "Runtime parameter name cannot contain NUL.",
-                    nameof(parameters));
+                    nameof(parameters)
+                );
             }
             if (Utf8ByteCount(name, nameof(parameters)) > MaximumNameUtf8Bytes)
             {
                 throw new ArgumentException(
                     $"Runtime parameter name exceeds {MaximumNameUtf8Bytes} UTF-8 bytes.",
-                    nameof(parameters));
+                    nameof(parameters)
+                );
             }
             if (values.ContainsKey(name))
             {
                 throw new ArgumentException(
                     $"Runtime parameter '{name}' is duplicated.",
-                    nameof(parameters));
+                    nameof(parameters)
+                );
             }
             if (values.Count >= MaximumCount)
             {
                 throw new ArgumentException(
                     $"Runtime parameter count exceeds {MaximumCount}.",
-                    nameof(parameters));
+                    nameof(parameters)
+                );
             }
-            if (value.Kind == FerruleValueKind.String &&
-                Utf8ByteCount(value.StringValue, nameof(parameters)) > MaximumStringUtf8Bytes)
+            if (
+                value.Kind == FerruleValueKind.String
+                && Utf8ByteCount(value.StringValue, nameof(parameters)) > MaximumStringUtf8Bytes
+            )
             {
                 throw new ArgumentException(
-                    $"Runtime parameter '{name}' string value exceeds " +
-                    $"{MaximumStringUtf8Bytes} UTF-8 bytes.",
-                    nameof(parameters));
+                    $"Runtime parameter '{name}' string value exceeds "
+                        + $"{MaximumStringUtf8Bytes} UTF-8 bytes.",
+                    nameof(parameters)
+                );
             }
             values.Add(name, value);
         }
@@ -96,7 +104,8 @@ public sealed class FerruleRuntimeParameters
             throw new ArgumentException(
                 "Runtime parameter names and strings must contain valid Unicode.",
                 parameterName,
-                error);
+                error
+            );
         }
     }
 }
@@ -105,19 +114,22 @@ public sealed class FerruleRuntimeParameters
 public sealed class FerruleExecutionContext
 {
     public FerruleExecutionContext(string mappingFilePath)
-        : this(mappingFilePath, mappingFilePath, null, null)
-    {
-    }
+        : this(mappingFilePath, mappingFilePath, null, null) { }
 
     public FerruleExecutionContext(
         string mappingFilePath,
         string mainMappingFilePath,
         string? currentDateTime = null,
-        FerruleRuntimeParameters? runtimeParameters = null)
-        : this(mappingFilePath, mainMappingFilePath, currentDateTime, runtimeParameters,
-            FerruleFilterMapLimits.Default, null)
-    {
-    }
+        FerruleRuntimeParameters? runtimeParameters = null
+    )
+        : this(
+            mappingFilePath,
+            mainMappingFilePath,
+            currentDateTime,
+            runtimeParameters,
+            FerruleFilterMapLimits.Default,
+            null
+        ) { }
 
     public FerruleExecutionContext(
         string mappingFilePath,
@@ -125,11 +137,17 @@ public sealed class FerruleExecutionContext
         string? currentDateTime,
         FerruleRuntimeParameters? runtimeParameters,
         FerruleFilterMapLimits filterMapLimits,
-        IFerruleFilterMapCancellation? filterMapCancellation)
-        : this(mappingFilePath, mainMappingFilePath, currentDateTime, runtimeParameters,
-            filterMapLimits, filterMapCancellation, null)
-    {
-    }
+        IFerruleFilterMapCancellation? filterMapCancellation
+    )
+        : this(
+            mappingFilePath,
+            mainMappingFilePath,
+            currentDateTime,
+            runtimeParameters,
+            filterMapLimits,
+            filterMapCancellation,
+            null
+        ) { }
 
     private FerruleExecutionContext(
         string mappingFilePath,
@@ -138,15 +156,16 @@ public sealed class FerruleExecutionContext
         FerruleRuntimeParameters? runtimeParameters,
         FerruleFilterMapLimits filterMapLimits,
         IFerruleFilterMapCancellation? filterMapCancellation,
-        FerruleInvocationCounterLimits? invocationCounterLimits)
+        FerruleInvocationCounterLimits? invocationCounterLimits
+    )
     {
         ArgumentNullException.ThrowIfNull(filterMapLimits);
         FilterMapLimits = filterMapLimits;
         FilterMapCancellation = filterMapCancellation;
-        MappingFilePath = mappingFilePath ??
-            throw new ArgumentNullException(nameof(mappingFilePath));
-        MainMappingFilePath = mainMappingFilePath ??
-            throw new ArgumentNullException(nameof(mainMappingFilePath));
+        MappingFilePath = mappingFilePath
+            ?? throw new ArgumentNullException(nameof(mappingFilePath));
+        MainMappingFilePath = mainMappingFilePath
+            ?? throw new ArgumentNullException(nameof(mainMappingFilePath));
         if (currentDateTime is not null)
         {
             FerruleUnicode.RequireWellFormed(currentDateTime, nameof(currentDateTime));
@@ -170,39 +189,67 @@ public sealed class FerruleExecutionContext
 
     public FerruleInvocationCounterLimits? InvocationCounterLimits { get; }
 
-    public FerruleExecutionContext WithInvocationCounterLimits(FerruleInvocationCounterLimits limits)
+    public FerruleExecutionContext WithInvocationCounterLimits(
+        FerruleInvocationCounterLimits limits
+    )
     {
         ArgumentNullException.ThrowIfNull(limits);
-        return new(MappingFilePath, MainMappingFilePath, CurrentDateTime, RuntimeParameters,
-            FilterMapLimits, FilterMapCancellation, limits);
+        return new(
+            MappingFilePath,
+            MainMappingFilePath,
+            CurrentDateTime,
+            RuntimeParameters,
+            FilterMapLimits,
+            FilterMapCancellation,
+            limits
+        );
     }
 
     public FerruleExecutionContext WithFilterMapLimits(FerruleFilterMapLimits limits) =>
-        new(MappingFilePath, MainMappingFilePath, CurrentDateTime, RuntimeParameters,
-            limits, FilterMapCancellation, InvocationCounterLimits);
+        new(
+            MappingFilePath,
+            MainMappingFilePath,
+            CurrentDateTime,
+            RuntimeParameters,
+            limits,
+            FilterMapCancellation,
+            InvocationCounterLimits
+        );
 
     public FerruleExecutionContext WithFilterMapCancellation(IFerruleFilterMapCancellation checker)
     {
         ArgumentNullException.ThrowIfNull(checker);
-        return new(MappingFilePath, MainMappingFilePath, CurrentDateTime, RuntimeParameters,
-            FilterMapLimits, checker, InvocationCounterLimits);
+        return new(
+            MappingFilePath,
+            MainMappingFilePath,
+            CurrentDateTime,
+            RuntimeParameters,
+            FilterMapLimits,
+            checker,
+            InvocationCounterLimits
+        );
     }
 
     public static FerruleExecutionContext WithParameters(
         string mappingFilePath,
-        FerruleRuntimeParameters runtimeParameters)
+        FerruleRuntimeParameters runtimeParameters
+    )
     {
         ArgumentNullException.ThrowIfNull(runtimeParameters);
         return new FerruleExecutionContext(
             mappingFilePath,
             mappingFilePath,
             null,
-            runtimeParameters);
+            runtimeParameters
+        );
     }
 
     /// <summary>Resolves a host scalar without requiring an acquired source.</summary>
-    public FerruleValue ResolveRuntimeParameter(uint node, string name, FerruleScalarType expected) =>
-        ResolveParameter(this, node, name, expected);
+    public FerruleValue ResolveRuntimeParameter(
+        uint node,
+        string name,
+        FerruleScalarType expected
+    ) => ResolveParameter(this, node, name, expected);
 
     /// <summary>Resolves filename text without a source or preview fallback; performs no I/O.</summary>
     public string ResolvePrimaryFilename(uint node, string name)
@@ -214,7 +261,8 @@ public sealed class FerruleExecutionContext
                 FerruleRuntimeError.PrimaryFilenameType,
                 $"primary filename node {node} must produce a string, got {value.Kind}",
                 node: node,
-                foundKind: value.Kind);
+                foundKind: value.Kind
+            );
         }
         return value.StringValue;
     }
@@ -223,7 +271,8 @@ public sealed class FerruleExecutionContext
         FerruleExecutionContext? context,
         uint node,
         string name,
-        FerruleScalarType expected)
+        FerruleScalarType expected
+    )
     {
         ArgumentNullException.ThrowIfNull(name);
         if (context is null || !context.TryGetParameter(name, out var value))
@@ -232,7 +281,8 @@ public sealed class FerruleExecutionContext
                 FerruleRuntimeError.MissingRuntimeParameter,
                 $"node {node}: execution context does not provide runtime parameter '{name}'",
                 node: node,
-                runtimeParameter: name);
+                runtimeParameter: name
+            );
         }
         if (!FerruleValueMaps.TryCoerce(value, expected, out var coerced))
         {
@@ -242,20 +292,22 @@ public sealed class FerruleExecutionContext
                 node: node,
                 foundKind: value.Kind,
                 expectedScalarType: expected,
-                runtimeParameter: name);
+                runtimeParameter: name
+            );
         }
         return coerced;
     }
 
-    internal string? GetValue(FerruleRuntimeValue value) => value switch
-    {
-        FerruleRuntimeValue.MappingFilePath =>
-            FerruleUnicode.ReplaceMalformed(MappingFilePath),
-        FerruleRuntimeValue.MainMappingFilePath =>
-            FerruleUnicode.ReplaceMalformed(MainMappingFilePath),
-        FerruleRuntimeValue.CurrentDateTime => CurrentDateTime,
-        _ => throw new ArgumentOutOfRangeException(nameof(value), value, null),
-    };
+    internal string? GetValue(FerruleRuntimeValue value) =>
+        value switch
+        {
+            FerruleRuntimeValue.MappingFilePath => FerruleUnicode.ReplaceMalformed(MappingFilePath),
+            FerruleRuntimeValue.MainMappingFilePath => FerruleUnicode.ReplaceMalformed(
+                MainMappingFilePath
+            ),
+            FerruleRuntimeValue.CurrentDateTime => CurrentDateTime,
+            _ => throw new ArgumentOutOfRangeException(nameof(value), value, null),
+        };
 
     internal bool TryGetParameter(string name, out FerruleValue value) =>
         RuntimeParameters.TryGetValue(name, out value);

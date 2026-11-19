@@ -7,20 +7,35 @@ public sealed record FerruleCsvSourceData(byte[] Bytes, string? ResolvedPath = n
 
 public enum FerruleCsvAcquisitionError
 {
-    InvalidLimit, Filename, Selection, Request, Documents, Load, Input,
+    InvalidLimit,
+    Filename,
+    Selection,
+    Request,
+    Documents,
+    Load,
+    Input,
 }
 
 public sealed class FerruleCsvAcquisitionException : Exception
 {
-    public FerruleCsvAcquisitionException(FerruleCsvAcquisitionError error, string? path = null,
-        int? maximum = null, Exception? source = null)
-        : base($"CSV acquisition {error}" + (path is null ? "" : $" for {path}") +
-            (maximum is null ? "" : $" ({maximum})"), source)
+    public FerruleCsvAcquisitionException(
+        FerruleCsvAcquisitionError error,
+        string? path = null,
+        int? maximum = null,
+        Exception? source = null
+    )
+        : base(
+            $"CSV acquisition {error}"
+                + (path is null ? "" : $" for {path}")
+                + (maximum is null ? "" : $" ({maximum})"),
+            source
+        )
     {
         Error = error;
         Path = path;
         Maximum = maximum;
     }
+
     public FerruleCsvAcquisitionError Error { get; }
     public string? Path { get; }
     public int? Maximum { get; }
@@ -47,16 +62,25 @@ public sealed class FerruleCsvAcquisition : IEnumerator<FerruleCsvRowOccurrence>
     private int _count;
     private int _row;
 
-    public FerruleCsvAcquisition(Func<string> filename, Func<string, IEnumerable<string>> select,
-        Func<string, FerruleCsvSourceData> load, IReadOnlyList<FerruleCsvReadField> fields,
-        FerruleCsvReadOptions? options, FerruleCsvByteDecodingPolicy decoding, int maximum)
+    public FerruleCsvAcquisition(
+        Func<string> filename,
+        Func<string, IEnumerable<string>> select,
+        Func<string, FerruleCsvSourceData> load,
+        IReadOnlyList<FerruleCsvReadField> fields,
+        FerruleCsvReadOptions? options,
+        FerruleCsvByteDecodingPolicy decoding,
+        int maximum
+    )
     {
         ArgumentNullException.ThrowIfNull(filename);
         ArgumentNullException.ThrowIfNull(select);
         ArgumentNullException.ThrowIfNull(load);
         ArgumentNullException.ThrowIfNull(fields);
         if (maximum is < 0 or > FerruleCsvSourceRows.MaximumDocuments)
-            throw new FerruleCsvAcquisitionException(FerruleCsvAcquisitionError.InvalidLimit, maximum: maximum);
+            throw new FerruleCsvAcquisitionException(
+                FerruleCsvAcquisitionError.InvalidLimit,
+                maximum: maximum
+            );
         _filename = filename;
         _select = select;
         _load = load;
@@ -66,26 +90,36 @@ public sealed class FerruleCsvAcquisition : IEnumerator<FerruleCsvRowOccurrence>
         _maximum = maximum;
     }
 
-    public FerruleCsvRowOccurrence Current => _current ?? throw new InvalidOperationException("No current CSV row.");
+    public FerruleCsvRowOccurrence Current =>
+        _current ?? throw new InvalidOperationException("No current CSV row.");
     object IEnumerator.Current => Current;
 
     private static T At<T>(FerruleCsvAcquisitionError error, Func<T> call, string? path = null)
     {
-        try { return call(); }
-        catch (Exception source) { throw new FerruleCsvAcquisitionException(error, path, source: source); }
+        try
+        {
+            return call();
+        }
+        catch (Exception source)
+        {
+            throw new FerruleCsvAcquisitionException(error, path, source: source);
+        }
     }
 
     public bool MoveNext()
     {
         _current = null;
-        if (_finished) return false;
+        if (_finished)
+            return false;
         _finished = true;
         if (!_started)
         {
             _started = true;
             string filename = At(FerruleCsvAcquisitionError.Filename, _filename);
-            var selected = At(FerruleCsvAcquisitionError.Selection, () => _select(filename)
-                ?? throw new InvalidOperationException("CSV selector returned no sequence."));
+            var selected = At(FerruleCsvAcquisitionError.Selection, () =>
+                _select(filename)
+                ?? throw new InvalidOperationException("CSV selector returned no sequence.")
+            );
             _requests = At(FerruleCsvAcquisitionError.Request, selected.GetEnumerator);
         }
         while (true)
@@ -98,15 +132,43 @@ public sealed class FerruleCsvAcquisition : IEnumerator<FerruleCsvRowOccurrence>
             }
             _document = null;
             _row = 0;
-            if (!At(FerruleCsvAcquisitionError.Request, () => _requests!.MoveNext())) return false;
+            if (!At(FerruleCsvAcquisitionError.Request, () => _requests!.MoveNext()))
+                return false;
             string path = At(FerruleCsvAcquisitionError.Request, () => _requests!.Current);
             if (_count == _maximum)
-                throw new FerruleCsvAcquisitionException(FerruleCsvAcquisitionError.Documents, maximum: _maximum);
-            At(FerruleCsvAcquisitionError.Input, () => { FerruleCsvSourceDocument.ValidatePath(path, nameof(path)); return true; }, path);
-            var data = At(FerruleCsvAcquisitionError.Load, () => _load(path)
-                ?? throw new InvalidOperationException("CSV loader returned no bytes."), path);
-            _document = At(FerruleCsvAcquisitionError.Input, () => FerruleCsvSourceDocument.ParseBytes(
-                path, data.ResolvedPath, data.Bytes, _fields, _decoding, _options), path);
+                throw new FerruleCsvAcquisitionException(
+                    FerruleCsvAcquisitionError.Documents,
+                    maximum: _maximum
+                );
+            At(
+                FerruleCsvAcquisitionError.Input,
+                () =>
+                {
+                    FerruleCsvSourceDocument.ValidatePath(path, nameof(path));
+                    return true;
+                },
+                path
+            );
+            var data = At(
+                FerruleCsvAcquisitionError.Load,
+                () =>
+                    _load(path)
+                    ?? throw new InvalidOperationException("CSV loader returned no bytes."),
+                path
+            );
+            _document = At(
+                FerruleCsvAcquisitionError.Input,
+                () =>
+                    FerruleCsvSourceDocument.ParseBytes(
+                        path,
+                        data.ResolvedPath,
+                        data.Bytes,
+                        _fields,
+                        _decoding,
+                        _options
+                    ),
+                path
+            );
             _count++;
         }
     }

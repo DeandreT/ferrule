@@ -11,7 +11,8 @@ public sealed partial class ScopeContext
         IReadOnlyList<ScopeContext> candidates,
         IReadOnlyList<string> sourcePath,
         Func<ScopeContext, FerruleValue> keySelector,
-        Func<ScopeContext, bool>? retainIfAny = null)
+        Func<ScopeContext, bool>? retainIfAny = null
+    )
     {
         ValidateGroupingArguments(candidates, sourcePath);
         ArgumentNullException.ThrowIfNull(keySelector);
@@ -25,10 +26,7 @@ public sealed partial class ScopeContext
             var existing = groups.Find(group => group.Key.HasValue && group.Key.Value == key);
             if (existing is null)
             {
-                existing = new GroupBucket(
-                    key,
-                    CandidateMember(candidate, sourcePath),
-                    retained);
+                existing = new GroupBucket(key, CandidateMember(candidate, sourcePath), retained);
                 groups.Add(existing);
             }
             else
@@ -47,7 +45,8 @@ public sealed partial class ScopeContext
         IReadOnlyList<ScopeContext> candidates,
         IReadOnlyList<string> sourcePath,
         Func<ScopeContext, FerruleValue> keySelector,
-        Func<ScopeContext, bool>? retainIfAny = null)
+        Func<ScopeContext, bool>? retainIfAny = null
+    )
     {
         ValidateGroupingArguments(candidates, sourcePath);
         ArgumentNullException.ThrowIfNull(keySelector);
@@ -61,10 +60,7 @@ public sealed partial class ScopeContext
             var current = groups.Count == 0 ? null : groups[^1];
             if (current is null || !current.Key.HasValue || current.Key.Value != key)
             {
-                groups.Add(new GroupBucket(
-                    key,
-                    CandidateMember(candidate, sourcePath),
-                    retained));
+                groups.Add(new GroupBucket(key, CandidateMember(candidate, sourcePath), retained));
             }
             else
             {
@@ -82,7 +78,8 @@ public sealed partial class ScopeContext
         IReadOnlyList<ScopeContext> candidates,
         IReadOnlyList<string> sourcePath,
         Func<ScopeContext, bool> startsGroup,
-        Func<ScopeContext, bool>? retainIfAny = null)
+        Func<ScopeContext, bool>? retainIfAny = null
+    )
     {
         ValidateGroupingArguments(candidates, sourcePath);
         ArgumentNullException.ThrowIfNull(startsGroup);
@@ -114,7 +111,8 @@ public sealed partial class ScopeContext
         IReadOnlyList<ScopeContext> candidates,
         IReadOnlyList<string> sourcePath,
         Func<ScopeContext, bool> endsGroup,
-        Func<ScopeContext, bool>? retainIfAny = null)
+        Func<ScopeContext, bool>? retainIfAny = null
+    )
     {
         ValidateGroupingArguments(candidates, sourcePath);
         ArgumentNullException.ThrowIfNull(endsGroup);
@@ -145,7 +143,8 @@ public sealed partial class ScopeContext
         IReadOnlyList<ScopeContext> candidates,
         IReadOnlyList<string> sourcePath,
         ulong size,
-        Func<ScopeContext, bool>? retainIfAny = null)
+        Func<ScopeContext, bool>? retainIfAny = null
+    )
     {
         ValidateGroupingArguments(candidates, sourcePath);
         if (size == 0)
@@ -173,23 +172,25 @@ public sealed partial class ScopeContext
 
     private void ValidateGroupingArguments(
         IReadOnlyList<ScopeContext> candidates,
-        IReadOnlyList<string> sourcePath)
+        IReadOnlyList<string> sourcePath
+    )
     {
         ArgumentNullException.ThrowIfNull(candidates);
         ArgumentNullException.ThrowIfNull(sourcePath);
         ValidatePath(sourcePath);
     }
 
-    private GroupMember CandidateMember(
-        ScopeContext candidate,
-        IReadOnlyList<string> sourcePath)
+    private GroupMember CandidateMember(ScopeContext candidate, IReadOnlyList<string> sourcePath)
     {
-        if (candidate._frames.Count <= _frames.Count ||
-            candidate._collections.Count < _collections.Count)
+        if (
+            candidate._frames.Count <= _frames.Count
+            || candidate._collections.Count < _collections.Count
+        )
         {
             throw new ArgumentException(
                 "Grouped candidates must extend their parent scope context.",
-                nameof(candidate));
+                nameof(candidate)
+            );
         }
 
         var frames = candidate._frames.Skip(_frames.Count).ToArray();
@@ -197,27 +198,39 @@ public sealed partial class ScopeContext
         // A singleton source group adds an instance but no repetition frame.
         // Its enclosing generated origin remains part of the parent context.
         if (collections.Length == 0 && sourcePath.Count != 0)
-            return new GroupMember(frames[^1], frames[..^1], collections, sourcePath.ToArray(), null);
+            return new GroupMember(
+                frames[^1],
+                frames[..^1],
+                collections,
+                sourcePath.ToArray(),
+                null
+            );
         if (collections.Length == 0)
-            throw new ArgumentException("Grouped candidates must identify a source collection.", nameof(candidate));
+            throw new ArgumentException(
+                "Grouped candidates must identify a source collection.",
+                nameof(candidate)
+            );
         var terminal = collections[^1];
         if (sourcePath.Count != 0 && !SamePath(terminal.Path, sourcePath))
         {
             throw new ArgumentException(
                 "Grouped candidates must end in the declared source collection.",
-                nameof(candidate));
+                nameof(candidate)
+            );
         }
         return new GroupMember(
             frames[^1],
             frames[..^1],
             collections[..^1],
             terminal.Path,
-            terminal.DocumentPath);
+            terminal.DocumentPath
+        );
     }
 
     private IReadOnlyList<ScopeContext> BuildGroupedContexts(
         IReadOnlyList<GroupBucket> groups,
-        IReadOnlyList<string> sourcePath)
+        IReadOnlyList<string> sourcePath
+    )
     {
         var retainedGroups = groups.Where(group => group.Retained).ToArray();
         var contexts = new ScopeContext[retainedGroups.Length];
@@ -226,35 +239,39 @@ public sealed partial class ScopeContext
             var group = retainedGroups[index];
             var members = new FerruleRepeated(group.Members);
             var frames = new List<FerruleInstance>(
-                _frames.Count + group.IntermediateFrames.Count + 2);
+                _frames.Count + group.IntermediateFrames.Count + 2
+            );
             frames.AddRange(_frames);
             frames.AddRange(group.IntermediateFrames);
             if (sourcePath.Count != 0)
             {
-                frames.Add(new FerruleGroup(new[]
-                {
-                    new FerruleField(sourcePath[^1], members),
-                }));
+                frames.Add(new FerruleGroup(new[] { new FerruleField(sourcePath[^1], members) }));
             }
             frames.Add(members);
 
             var collections = new List<CollectionIdentity>(
-                _collections.Count + group.IntermediateCollections.Count + 1);
+                _collections.Count + group.IntermediateCollections.Count + 1
+            );
             collections.AddRange(_collections);
             collections.AddRange(group.IntermediateCollections);
-            collections.Add(new CollectionIdentity(
-                group.CollectionPath,
-                members,
-                index + 1,
-                Grouped: sourcePath.Count != 0,
-                DocumentPath: group.DocumentPath));
+            collections.Add(
+                new CollectionIdentity(
+                    group.CollectionPath,
+                    members,
+                    index + 1,
+                    Grouped: sourcePath.Count != 0,
+                    DocumentPath: group.DocumentPath
+                )
+            );
             contexts[index] = new ScopeContext(
                 _jsonProjections,
                 _primarySource,
                 new ReadOnlyCollection<FerruleInstance>(frames),
                 new ReadOnlyCollection<CollectionIdentity>(collections),
                 _executionContext,
-                _dynamicSourceLoader, invocationCounters: _invocationCounters);
+                _dynamicSourceLoader,
+                invocationCounters: _invocationCounters
+            );
         }
         return new ReadOnlyCollection<ScopeContext>(contexts);
     }
@@ -298,5 +315,6 @@ public sealed partial class ScopeContext
         IReadOnlyList<FerruleInstance> IntermediateFrames,
         IReadOnlyList<CollectionIdentity> IntermediateCollections,
         IReadOnlyList<string> CollectionPath,
-        string? DocumentPath);
+        string? DocumentPath
+    );
 }

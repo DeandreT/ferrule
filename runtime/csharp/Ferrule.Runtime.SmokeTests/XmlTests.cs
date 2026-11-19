@@ -7,19 +7,26 @@ internal static partial class Program
     private static void XmlTextWhitespace()
     {
         const string text = "a\r\nb\rc\nd\te&<>\"' &#xD;";
-        const string plain = """{"name":"Root","kind":{"kind":"group","children":[{"name":"id","attribute":true,"kind":{"kind":"scalar","ty":"string"}},{"name":"Value","kind":{"kind":"scalar","ty":"string"}}]}}""";
-        const string simple = """{"name":"Root","kind":{"kind":"group","children":[{"name":"id","attribute":true,"kind":{"kind":"scalar","ty":"string"}},{"name":"#text","text":true,"kind":{"kind":"scalar","ty":"string"}}]}}""";
+        const string plain =
+            """{"name":"Root","kind":{"kind":"group","children":[{"name":"id","attribute":true,"kind":{"kind":"scalar","ty":"string"}},{"name":"Value","kind":{"kind":"scalar","ty":"string"}}]}}""";
+        const string simple =
+            """{"name":"Root","kind":{"kind":"group","children":[{"name":"id","attribute":true,"kind":{"kind":"scalar","ty":"string"}},{"name":"#text","text":true,"kind":{"kind":"scalar","ty":"string"}}]}}""";
         foreach (var (schema, field) in new[] { (plain, "Value"), (simple, "#text") })
         {
-            var serialized = FerruleXml.Serialize(
-                19,
-                schema,
-                Group(Field("id", Scalar(Text(text))), Field(field, Scalar(Text(text)))),
-                false,
-                false,
-                null).StringValue!;
+            var serialized = FerruleXml
+                .Serialize(
+                    19,
+                    schema,
+                    Group(Field("id", Scalar(Text(text))), Field(field, Scalar(Text(text)))),
+                    false,
+                    false,
+                    null
+                )
+                .StringValue!;
             var parsed = System.Xml.Linq.XElement.Parse(
-                serialized, System.Xml.Linq.LoadOptions.PreserveWhitespace);
+                serialized,
+                System.Xml.Linq.LoadOptions.PreserveWhitespace
+            );
             Equal(text, parsed.Attribute("id")!.Value);
             Equal(text, field == "#text" ? parsed.Value : parsed.Element("Value")!.Value);
             Equal(false, serialized.Contains('\r'));
@@ -42,19 +49,22 @@ internal static partial class Program
             7,
             XmlTypeSchema,
             Group(
-                Field(
-                    "\u001fferrule-xml-type",
-                    Scalar(Text("{urn:ferrule:types}Domestic"))),
+                Field("\u001fferrule-xml-type", Scalar(Text("{urn:ferrule:types}Domestic"))),
                 Field("Name", Scalar(Text("Ada"))),
                 Field("State", Scalar(Text("WA"))),
                 Field("Zip", Scalar(FerruleValue.FromInt64(98101))),
-                Field("Postcode", Scalar(FerruleValue.Null))),
+                Field("Postcode", Scalar(FerruleValue.Null))
+            ),
             false,
             false,
-            null);
+            null
+        );
         Equal(
-            Text("<Address xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:ft=\"urn:ferrule:types\" xsi:type=\"ft:Domestic\"><Name>Ada</Name><State>WA</State><Zip>98101</Zip></Address>"),
-            domestic);
+            Text(
+                "<Address xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:ft=\"urn:ferrule:types\" xsi:type=\"ft:Domestic\"><Name>Ada</Name><State>WA</State><Zip>98101</Zip></Address>"
+            ),
+            domestic
+        );
 
         var international = FerruleXml.Serialize(
             8,
@@ -63,41 +73,44 @@ internal static partial class Program
                 Field("Name", Scalar(Text("Ada"))),
                 Field("State", Scalar(FerruleValue.Null)),
                 Field("Zip", Scalar(FerruleValue.Null)),
-                Field("Postcode", Scalar(Text("SW1A 1AA")))),
+                Field("Postcode", Scalar(Text("SW1A 1AA")))
+            ),
             false,
             false,
-            null);
+            null
+        );
         Equal(
-            Text("<Address xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:ft=\"urn:ferrule:types\" xsi:type=\"ft:International\"><Name>Ada</Name><Postcode>SW1A 1AA</Postcode></Address>"),
-            international);
+            Text(
+                "<Address xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:ft=\"urn:ferrule:types\" xsi:type=\"ft:International\"><Name>Ada</Name><Postcode>SW1A 1AA</Postcode></Address>"
+            ),
+            international
+        );
 
-        Error(
-            FerruleRuntimeError.XmlSerialization,
-            () => FerruleXml.Serialize(
+        Error(FerruleRuntimeError.XmlSerialization, () =>
+            FerruleXml.Serialize(
                 9,
                 XmlTypeSchema,
-                Group(
-                    Field(
-                        "\u001fferrule-xml-type",
-                        Scalar(Text("{urn:ferrule:types}Missing")))),
+                Group(Field("\u001fferrule-xml-type", Scalar(Text("{urn:ferrule:types}Missing")))),
                 false,
                 false,
-                null));
-        Error(
-            FerruleRuntimeError.XmlSerialization,
-            () => FerruleXml.Serialize(
+                null
+            )
+        );
+        Error(FerruleRuntimeError.XmlSerialization, () =>
+            FerruleXml.Serialize(
                 10,
                 XmlTypeSchema,
                 Group(
-                    Field(
-                        "\u001fferrule-xml-type",
-                        Scalar(Text("{urn:ferrule:types}Domestic"))),
+                    Field("\u001fferrule-xml-type", Scalar(Text("{urn:ferrule:types}Domestic"))),
                     Field("Name", Scalar(Text("Ada"))),
                     Field("State", Scalar(Text("WA"))),
-                    Field("Zip", Scalar(FerruleValue.Null))),
+                    Field("Zip", Scalar(FerruleValue.Null))
+                ),
                 false,
                 false,
-                null));
+                null
+            )
+        );
     }
 
     private static void XmlRepeatingChoices()
@@ -105,37 +118,27 @@ internal static partial class Program
         const string mixed = "\u001fferrule-xml-mixed-content";
         const string value = "\u001fferrule-xml-mixed-value";
         var instance = Group(
-            Field(
-                "Code",
-                Repeated(Scalar(Text("A")), Scalar(Text("B")))),
-            Field(
-                "Amount",
-                Repeated(Scalar(FerruleValue.FromInt64(2)))),
+            Field("Code", Repeated(Scalar(Text("A")), Scalar(Text("B")))),
+            Field("Amount", Repeated(Scalar(FerruleValue.FromInt64(2)))),
             Field(
                 mixed,
                 Repeated(
-                    Group(
-                        Field("NodeName", Scalar(Text("Code"))),
-                        Field(value, Scalar(Text("A")))),
+                    Group(Field("NodeName", Scalar(Text("Code"))), Field(value, Scalar(Text("A")))),
                     Group(
                         Field("NodeName", Scalar(Text("Amount"))),
-                        Field(value, Scalar(FerruleValue.FromInt64(2)))),
-                    Group(
-                        Field("NodeName", Scalar(Text("Code"))),
-                        Field(value, Scalar(Text("B")))))));
+                        Field(value, Scalar(FerruleValue.FromInt64(2)))
+                    ),
+                    Group(Field("NodeName", Scalar(Text("Code"))), Field(value, Scalar(Text("B"))))
+                )
+            )
+        );
         Equal(
             Text("<Values><Code>A</Code><Amount>2</Amount><Code>B</Code></Values>"),
-            FerruleXml.Serialize(
-                11,
-                XmlRepeatingChoiceSchema,
-                instance,
-                false,
-                false,
-                null));
+            FerruleXml.Serialize(11, XmlRepeatingChoiceSchema, instance, false, false, null)
+        );
 
-        Error(
-            FerruleRuntimeError.XmlSerialization,
-            () => FerruleXml.Serialize(
+        Error(FerruleRuntimeError.XmlSerialization, () =>
+            FerruleXml.Serialize(
                 12,
                 XmlRepeatingChoiceSchema,
                 Group(
@@ -144,33 +147,41 @@ internal static partial class Program
                         Repeated(
                             Group(
                                 Field("NodeName", Scalar(Text("Missing"))),
-                                Field(value, Scalar(Text("x"))))))),
+                                Field(value, Scalar(Text("x")))
+                            )
+                        )
+                    )
+                ),
                 false,
                 false,
-                null));
+                null
+            )
+        );
 
         Equal(
             Text("<Value><Code>A</Code></Value>"),
             FerruleXml.Serialize(
                 13,
                 XmlSingularChoiceSchema,
-                Group(
-                    Field("Code", Scalar(Text("A"))),
-                    Field("Amount", Scalar(FerruleValue.Null))),
+                Group(Field("Code", Scalar(Text("A"))), Field("Amount", Scalar(FerruleValue.Null))),
                 false,
                 false,
-                null));
-        Error(
-            FerruleRuntimeError.XmlSerialization,
-            () => FerruleXml.Serialize(
+                null
+            )
+        );
+        Error(FerruleRuntimeError.XmlSerialization, () =>
+            FerruleXml.Serialize(
                 14,
                 XmlSingularChoiceSchema,
                 Group(
                     Field("Code", Scalar(Text("A"))),
-                    Field("Amount", Scalar(FerruleValue.FromInt64(2)))),
+                    Field("Amount", Scalar(FerruleValue.FromInt64(2)))
+                ),
                 false,
                 false,
-                null));
+                null
+            )
+        );
         Equal(
             Text("<Value></Value>"),
             FerruleXml.Serialize(
@@ -178,15 +189,19 @@ internal static partial class Program
                 XmlSingularChoiceSchema,
                 Group(
                     Field("Code", Scalar(FerruleValue.Null)),
-                    Field("Amount", Scalar(FerruleValue.Null))),
+                    Field("Amount", Scalar(FerruleValue.Null))
+                ),
                 false,
                 false,
-                null));
+                null
+            )
+        );
     }
 
     private static void XmlVirtualTextName()
     {
-        const string schema = """{"name":"Root","kind":{"kind":"group","children":[{"name":"#text","text":true,"kind":{"kind":"scalar","ty":"string"}}]}}""";
+        const string schema =
+            """{"name":"Root","kind":{"kind":"group","children":[{"name":"#text","text":true,"kind":{"kind":"scalar","ty":"string"}}]}}""";
         Equal(
             Text("<Root>A&amp;B</Root>"),
             FerruleXml.Serialize(
@@ -195,28 +210,41 @@ internal static partial class Program
                 Group(Field("#text", Scalar(Text("A&B")))),
                 false,
                 false,
-                null));
+                null
+            )
+        );
 
-        foreach (var invalid in new[]
+        foreach (
+            var invalid in new[]
+            {
+                schema.Replace("\"text\":true", "\"text\":false", StringComparison.Ordinal),
+                schema.Replace("\"#text\"", "\"#bad\"", StringComparison.Ordinal),
+                schema.Replace(
+                    "\"text\":true",
+                    "\"text\":true,\"attribute\":true",
+                    StringComparison.Ordinal
+                ),
+                schema.Replace(
+                    "\"kind\":\"scalar\",\"ty\":\"string\"",
+                    "\"kind\":\"group\",\"children\":[]",
+                    StringComparison.Ordinal
+                ),
+            }
+        )
         {
-            schema.Replace("\"text\":true", "\"text\":false", StringComparison.Ordinal),
-            schema.Replace("\"#text\"", "\"#bad\"", StringComparison.Ordinal),
-            schema.Replace("\"text\":true", "\"text\":true,\"attribute\":true", StringComparison.Ordinal),
-            schema.Replace("\"kind\":\"scalar\",\"ty\":\"string\"", "\"kind\":\"group\",\"children\":[]", StringComparison.Ordinal),
-        })
-        {
-            Error(
-                FerruleRuntimeError.XmlSerialization,
-                () => FerruleXml.Serialize(17, invalid, Group(), false, false, null));
+            Error(FerruleRuntimeError.XmlSerialization, () =>
+                FerruleXml.Serialize(17, invalid, Group(), false, false, null)
+            );
         }
-        Error(
-            FerruleRuntimeError.XmlSerialization,
-            () => FerruleXml.Serialize(
+        Error(FerruleRuntimeError.XmlSerialization, () =>
+            FerruleXml.Serialize(
                 18,
                 """{"name":"#text","text":true,"kind":{"kind":"scalar","ty":"string"}}""",
                 Scalar(Text("root")),
                 false,
                 false,
-                null));
+                null
+            )
+        );
     }
 }

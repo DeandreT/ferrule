@@ -7,9 +7,18 @@ public interface IFerruleDynamicXmlSourceLoader
 }
 
 public sealed record FerruleXmlDynamicInputRequest(
-    int DeclarationIndex, string Source, string Path, ulong Ordinal, bool CallbackInvoked);
+    int DeclarationIndex,
+    string Source,
+    string Path,
+    ulong Ordinal,
+    bool CallbackInvoked
+);
 
-public sealed record FerruleXmlDynamicSourcePolicy(int DeclarationIndex, string Source, string Schema);
+public sealed record FerruleXmlDynamicSourcePolicy(
+    int DeclarationIndex,
+    string Source,
+    string Schema
+);
 
 /// <summary>One execution's byte admission and explicit product-error recovery channel.</summary>
 /// <remarks>
@@ -29,8 +38,11 @@ public sealed class FerruleXmlDynamicSourceAdapter : IFerruleDynamicSourceLoader
     private FerruleXmlExecutionException? _failure;
     private Exception? _marker;
 
-    public FerruleXmlDynamicSourceAdapter(IFerruleDynamicXmlSourceLoader loader,
-        FerruleXmlDynamicSourcePolicy policy, FerruleXmlInputSetBudget budget)
+    public FerruleXmlDynamicSourceAdapter(
+        IFerruleDynamicXmlSourceLoader loader,
+        FerruleXmlDynamicSourcePolicy policy,
+        FerruleXmlInputSetBudget budget
+    )
     {
         ArgumentNullException.ThrowIfNull(loader);
         ArgumentNullException.ThrowIfNull(policy);
@@ -45,8 +57,11 @@ public sealed class FerruleXmlDynamicSourceAdapter : IFerruleDynamicSourceLoader
     /// source names and their original indices and schemas. All sources share one
     /// budget, ordinal and first-failure channel.
     /// As with the single-policy constructor, any failed load is terminal.</remarks>
-    public static FerruleXmlDynamicSourceAdapter ForSources(IFerruleDynamicXmlSourceLoader loader,
-        IReadOnlyList<FerruleXmlDynamicSourcePolicy> sourcePolicies, FerruleXmlInputSetBudget budget)
+    public static FerruleXmlDynamicSourceAdapter ForSources(
+        IFerruleDynamicXmlSourceLoader loader,
+        IReadOnlyList<FerruleXmlDynamicSourcePolicy> sourcePolicies,
+        FerruleXmlInputSetBudget budget
+    )
     {
         ArgumentNullException.ThrowIfNull(loader);
         ArgumentNullException.ThrowIfNull(sourcePolicies);
@@ -61,8 +76,12 @@ public sealed class FerruleXmlDynamicSourceAdapter : IFerruleDynamicSourceLoader
         return new FerruleXmlDynamicSourceAdapter(loader, policies, budget, true);
     }
 
-    private FerruleXmlDynamicSourceAdapter(IFerruleDynamicXmlSourceLoader loader,
-        FerruleXmlDynamicSourcePolicy[] policies, FerruleXmlInputSetBudget budget, bool _)
+    private FerruleXmlDynamicSourceAdapter(
+        IFerruleDynamicXmlSourceLoader loader,
+        FerruleXmlDynamicSourcePolicy[] policies,
+        FerruleXmlInputSetBudget budget,
+        bool _
+    )
     {
         _loader = loader;
         _policies = policies;
@@ -77,26 +96,41 @@ public sealed class FerruleXmlDynamicSourceAdapter : IFerruleDynamicSourceLoader
     {
         var original = _failure;
         var request = original?.Request;
-        if (original is not null && request is not null && _marker is not null &&
-            error.Error == FerruleRuntimeError.DynamicSourceLoad &&
-            ReferenceEquals(error.InnerException, _marker) &&
-            string.Equals(error.SourceField, request.Source, StringComparison.Ordinal) &&
-            string.Equals(error.Detail, request.Path, StringComparison.Ordinal))
+        if (
+            original is not null
+            && request is not null
+            && _marker is not null
+            && error.Error == FerruleRuntimeError.DynamicSourceLoad
+            && ReferenceEquals(error.InnerException, _marker)
+            && string.Equals(error.SourceField, request.Source, StringComparison.Ordinal)
+            && string.Equals(error.Detail, request.Path, StringComparison.Ordinal)
+        )
         {
             _failure = null;
             _marker = null;
             return original;
         }
-        return FerruleXmlExecutionException.Unowned(new FerruleXmlBoundaryException(
-            FerruleXmlBoundaryErrorKind.Mapping, error.Message, error));
+        return FerruleXmlExecutionException.Unowned(
+            new FerruleXmlBoundaryException(
+                FerruleXmlBoundaryErrorKind.Mapping,
+                error.Message,
+                error
+            )
+        );
     }
 
-    private Exception Refuse(FerruleXmlDynamicInputRequest request, FerruleXmlBoundaryException boundary)
+    private Exception Refuse(
+        FerruleXmlDynamicInputRequest request,
+        FerruleXmlBoundaryException boundary
+    )
     {
         if (_failure is null)
         {
             _failure = FerruleXmlExecutionException.ForDynamicInput(request, boundary);
-            _marker = new InvalidOperationException("generated XML input adapter refused a dynamic document", boundary);
+            _marker = new InvalidOperationException(
+                "generated XML input adapter refused a dynamic document",
+                boundary
+            );
         }
         return _marker!;
     }
@@ -119,22 +153,39 @@ public sealed class FerruleXmlDynamicSourceAdapter : IFerruleDynamicSourceLoader
             throw FerruleDynamicSourceFault.ForUndeclaredSource(sourceName);
         var owner = FerruleXmlInputSource.Named(policy.DeclarationIndex, policy.Source);
         var ordinal = _ordinal == ulong.MaxValue ? ulong.MaxValue : _ordinal + 1;
-        var request = new FerruleXmlDynamicInputRequest(policy.DeclarationIndex, policy.Source,
-            logicalPath, ordinal, false);
-        try { _budget.Reserve(owner); }
-        catch (FerruleXmlExecutionException error) { throw Refuse(request, error.Boundary); }
+        var request = new FerruleXmlDynamicInputRequest(
+            policy.DeclarationIndex,
+            policy.Source,
+            logicalPath,
+            ordinal,
+            false
+        );
+        try
+        {
+            _budget.Reserve(owner);
+        }
+        catch (FerruleXmlExecutionException error)
+        {
+            throw Refuse(request, error.Boundary);
+        }
         _ordinal = ordinal;
         request = request with { CallbackInvoked = true };
         // No external loader exception is caught by a product-parser handler.
-        var document = _loader.Load(sourceName, logicalPath) ??
-            throw new InvalidOperationException("loader returned null");
+        var document = _loader.Load(sourceName, logicalPath)
+            ?? throw new InvalidOperationException("loader returned null");
         try
         {
             FerruleXmlInputSetBudget.RequireDocumentSize(owner, document.LongLength);
             _budget.Charge(owner, document.LongLength);
             return FerruleXml.ParseStructuredEmbeddedBytes(policy.Schema, document);
         }
-        catch (FerruleXmlExecutionException error) { throw Refuse(request, error.Boundary); }
-        catch (FerruleXmlBoundaryException error) { throw Refuse(request, error); }
+        catch (FerruleXmlExecutionException error)
+        {
+            throw Refuse(request, error.Boundary);
+        }
+        catch (FerruleXmlBoundaryException error)
+        {
+            throw Refuse(request, error);
+        }
     }
 }

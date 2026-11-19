@@ -37,7 +37,8 @@ public sealed class FerruleDynamicSourceItems
         string source,
         IReadOnlyList<string> tail,
         IReadOnlyList<ScopeContext> drivers,
-        IReadOnlyList<FerruleInstance> documents)
+        IReadOnlyList<FerruleInstance> documents
+    )
     {
         _source = source;
         _tail = tail;
@@ -51,7 +52,8 @@ public sealed class FerruleDynamicSourceItems
         IReadOnlyList<string> driver,
         IReadOnlyList<string> tail,
         uint node,
-        Func<ScopeContext, FerruleValue> path)
+        Func<ScopeContext, FerruleValue> path
+    )
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentException.ThrowIfNullOrEmpty(source);
@@ -81,15 +83,21 @@ public sealed class FerruleDynamicSourceItems
             source,
             new ReadOnlyCollection<string>(tail.ToArray()),
             new ReadOnlyCollection<ScopeContext>(drivers),
-            new ReadOnlyCollection<FerruleInstance>(documents));
+            new ReadOnlyCollection<FerruleInstance>(documents)
+        );
     }
 
     /// <summary>A reached dynamic scope needs a loader, even for an empty driver walk.</summary>
-    internal static IFerruleDynamicSourceLoader RequireLoader(IFerruleDynamicSourceLoader? loader, string source) =>
-        loader ?? throw new FerruleRuntimeException(
+    internal static IFerruleDynamicSourceLoader RequireLoader(
+        IFerruleDynamicSourceLoader? loader,
+        string source
+    ) =>
+        loader
+        ?? throw new FerruleRuntimeException(
             FerruleRuntimeError.MissingDynamicSourceLoader,
             $"dynamic source '{source}' requires a host source loader",
-            sourceField: source);
+            sourceField: source
+        );
 
     internal static void RequireDriverCount(int count, string source)
     {
@@ -97,10 +105,11 @@ public sealed class FerruleDynamicSourceItems
         {
             throw new FerruleRuntimeException(
                 FerruleRuntimeError.DynamicSourceTooMany,
-                $"dynamic source '{source}' requested more than " +
-                    $"{FerruleDynamicSourceLimits.MaximumLoads} documents",
+                $"dynamic source '{source}' requested more than "
+                    + $"{FerruleDynamicSourceLimits.MaximumLoads} documents",
                 maximumItems: (UInt128)FerruleDynamicSourceLimits.MaximumLoads,
-                sourceField: source);
+                sourceField: source
+            );
         }
     }
 
@@ -115,28 +124,36 @@ public sealed class FerruleDynamicSourceItems
         {
             throw new FerruleRuntimeException(
                 FerruleRuntimeError.DynamicSourcePath,
-                $"node {node}: dynamic source '{source}' path expected a string " +
-                    $"or absent value, got {pathValue.Kind}",
+                $"node {node}: dynamic source '{source}' path expected a string "
+                    + $"or absent value, got {pathValue.Kind}",
                 node: node,
                 foundKind: pathValue.Kind,
-                sourceField: source);
+                sourceField: source
+            );
         }
         var logicalPath = pathValue.StringValue;
-        if (global::System.Text.Encoding.UTF8.GetByteCount(logicalPath) >
-            FerruleDynamicSourceLimits.MaximumPathBytes)
+        if (
+            global::System.Text.Encoding.UTF8.GetByteCount(logicalPath)
+            > FerruleDynamicSourceLimits.MaximumPathBytes
+        )
         {
             throw new FerruleRuntimeException(
                 FerruleRuntimeError.DynamicSourcePathTooLong,
-                $"dynamic source '{source}' path exceeds the " +
-                    $"{FerruleDynamicSourceLimits.MaximumPathBytes}-byte limit",
+                $"dynamic source '{source}' path exceeds the "
+                    + $"{FerruleDynamicSourceLimits.MaximumPathBytes}-byte limit",
                 maximumItems: (UInt128)FerruleDynamicSourceLimits.MaximumPathBytes,
-                sourceField: source);
+                sourceField: source
+            );
         }
         return logicalPath;
     }
 
     /// <summary>One host callback; every failure keeps its source and path.</summary>
-    internal static FerruleInstance LoadDocument(IFerruleDynamicSourceLoader loader, string source, string logicalPath)
+    internal static FerruleInstance LoadDocument(
+        IFerruleDynamicSourceLoader loader,
+        string source,
+        string logicalPath
+    )
     {
         try
         {
@@ -154,7 +171,8 @@ public sealed class FerruleDynamicSourceItems
                 $"dynamic source '{source}' could not load '{logicalPath}': {error.Message}",
                 error,
                 detail: logicalPath,
-                sourceField: source);
+                sourceField: source
+            );
         }
     }
 
@@ -164,7 +182,8 @@ public sealed class FerruleDynamicSourceItems
         for (var index = 0; index < _documents.Count; index++)
         {
             contexts.AddRange(
-                _drivers[index].IterateLoadedSource(_source, _documents[index], _tail));
+                _drivers[index].IterateLoadedSource(_source, _documents[index], _tail)
+            );
         }
         return new ReadOnlyCollection<ScopeContext>(contexts);
     }
@@ -175,10 +194,13 @@ public enum FerruleDynamicSourcePhase
 {
     /// <summary>Before any host callback: loader, path or request-count checks.</summary>
     Request,
+
     /// <summary>The host could not acquire the document.</summary>
     Acquisition,
+
     /// <summary>The returned document failed its endpoint codec.</summary>
     Codec,
+
     /// <summary>A generated boundary resource limit refused the document.</summary>
     Resource,
 }
@@ -216,7 +238,10 @@ public enum FerruleDynamicSourceResource
 }
 
 public sealed record FerruleDynamicSourceResourceLimit(
-    FerruleDynamicSourceResource Resource, ulong Observed, ulong Limit);
+    FerruleDynamicSourceResource Resource,
+    ulong Observed,
+    ulong Limit
+);
 
 /// <summary>Tagged failure a host or generated adapter throws for one dynamic document.</summary>
 /// <remarks>
@@ -231,7 +256,8 @@ public sealed class FerruleDynamicSourceFault : InvalidOperationException
         FerruleDynamicSourceCodecKind? codecKind,
         FerruleDynamicSourceResourceLimit? resourceLimit,
         string message,
-        Exception? cause)
+        Exception? cause
+    )
         : base(message, cause)
     {
         Phase = phase;
@@ -245,22 +271,25 @@ public sealed class FerruleDynamicSourceFault : InvalidOperationException
 
     public FerruleDynamicSourceResourceLimit? ResourceLimit { get; }
 
-    public FerruleDynamicSourceCategory Category => Phase switch
-    {
-        FerruleDynamicSourcePhase.Acquisition => FerruleDynamicSourceCategory.Host,
-        FerruleDynamicSourcePhase.Codec => CodecKind switch
+    public FerruleDynamicSourceCategory Category =>
+        Phase switch
         {
-            FerruleDynamicSourceCodecKind.Encoding => FerruleDynamicSourceCategory.Encoding,
-            FerruleDynamicSourceCodecKind.UndeclaredSource => FerruleDynamicSourceCategory.UndeclaredSource,
-            _ => FerruleDynamicSourceCategory.Document,
-        },
-        _ => ResourceLimit!.Resource switch
-        {
-            FerruleDynamicSourceResource.DocumentBytes => FerruleDynamicSourceCategory.DocumentBytes,
-            FerruleDynamicSourceResource.TotalBytes => FerruleDynamicSourceCategory.TotalBytes,
-            _ => FerruleDynamicSourceCategory.RequestCount,
-        },
-    };
+            FerruleDynamicSourcePhase.Acquisition => FerruleDynamicSourceCategory.Host,
+            FerruleDynamicSourcePhase.Codec => CodecKind switch
+            {
+                FerruleDynamicSourceCodecKind.Encoding => FerruleDynamicSourceCategory.Encoding,
+                FerruleDynamicSourceCodecKind.UndeclaredSource =>
+                    FerruleDynamicSourceCategory.UndeclaredSource,
+                _ => FerruleDynamicSourceCategory.Document,
+            },
+            _ => ResourceLimit!.Resource switch
+            {
+                FerruleDynamicSourceResource.DocumentBytes =>
+                    FerruleDynamicSourceCategory.DocumentBytes,
+                FerruleDynamicSourceResource.TotalBytes => FerruleDynamicSourceCategory.TotalBytes,
+                _ => FerruleDynamicSourceCategory.RequestCount,
+            },
+        };
 
     public static FerruleDynamicSourceFault ForAcquisition(Exception cause)
     {
@@ -268,24 +297,36 @@ public sealed class FerruleDynamicSourceFault : InvalidOperationException
         return new(FerruleDynamicSourcePhase.Acquisition, null, null, cause.Message, cause);
     }
 
-    public static FerruleDynamicSourceFault ForCodec(FerruleDynamicSourceCodecKind kind, Exception cause)
+    public static FerruleDynamicSourceFault ForCodec(
+        FerruleDynamicSourceCodecKind kind,
+        Exception cause
+    )
     {
         ArgumentNullException.ThrowIfNull(cause);
-        var message = kind == FerruleDynamicSourceCodecKind.Encoding
-            ? $"document is not UTF-8: {cause.Message}"
-            : cause.Message;
+        var message =
+            kind == FerruleDynamicSourceCodecKind.Encoding
+                ? $"document is not UTF-8: {cause.Message}"
+                : cause.Message;
         return new(FerruleDynamicSourcePhase.Codec, kind, null, message, cause);
     }
 
     public static FerruleDynamicSourceFault ForUndeclaredSource(string sourceName)
     {
         ArgumentNullException.ThrowIfNull(sourceName);
-        return new(FerruleDynamicSourcePhase.Codec, FerruleDynamicSourceCodecKind.UndeclaredSource, null,
-            $"undeclared dynamic source '{sourceName}'", null);
+        return new(
+            FerruleDynamicSourcePhase.Codec,
+            FerruleDynamicSourceCodecKind.UndeclaredSource,
+            null,
+            $"undeclared dynamic source '{sourceName}'",
+            null
+        );
     }
 
     public static FerruleDynamicSourceFault ForResource(
-        FerruleDynamicSourceResource resource, ulong observed, ulong limit)
+        FerruleDynamicSourceResource resource,
+        ulong observed,
+        ulong limit
+    )
     {
         var message = resource switch
         {
@@ -295,8 +336,13 @@ public sealed class FerruleDynamicSourceFault : InvalidOperationException
                 $"documents exceed the {limit}-byte combined dynamic-source limit",
             _ => $"requests exceed the {limit}-request dynamic-source limit",
         };
-        return new(FerruleDynamicSourcePhase.Resource, null,
-            new FerruleDynamicSourceResourceLimit(resource, observed, limit), message, null);
+        return new(
+            FerruleDynamicSourcePhase.Resource,
+            null,
+            new FerruleDynamicSourceResourceLimit(resource, observed, limit),
+            message,
+            null
+        );
     }
 }
 
@@ -308,39 +354,44 @@ public sealed record FerruleDynamicSourceDiagnostic(
     string Endpoint,
     FerruleDynamicSourceCategory Category,
     string? Path,
-    FerruleDynamicSourceResourceLimit? Resource)
+    FerruleDynamicSourceResourceLimit? Resource
+)
 {
     public string PhaseToken => Token(Phase);
 
     public string CategoryToken => Token(Category);
 
-    public static string Token(FerruleDynamicSourcePhase phase) => phase switch
-    {
-        FerruleDynamicSourcePhase.Request => "request",
-        FerruleDynamicSourcePhase.Acquisition => "acquisition",
-        FerruleDynamicSourcePhase.Codec => "codec",
-        FerruleDynamicSourcePhase.Resource => "resource",
-        _ => throw new ArgumentOutOfRangeException(nameof(phase)),
-    };
+    public static string Token(FerruleDynamicSourcePhase phase) =>
+        phase switch
+        {
+            FerruleDynamicSourcePhase.Request => "request",
+            FerruleDynamicSourcePhase.Acquisition => "acquisition",
+            FerruleDynamicSourcePhase.Codec => "codec",
+            FerruleDynamicSourcePhase.Resource => "resource",
+            _ => throw new ArgumentOutOfRangeException(nameof(phase)),
+        };
 
-    public static string Token(FerruleDynamicSourceCategory category) => category switch
-    {
-        FerruleDynamicSourceCategory.MissingLoader => "missing_loader",
-        FerruleDynamicSourceCategory.PathType => "path_type",
-        FerruleDynamicSourceCategory.PathTooLong => "path_too_long",
-        FerruleDynamicSourceCategory.TooManyRequests => "too_many_requests",
-        FerruleDynamicSourceCategory.Host => "host",
-        FerruleDynamicSourceCategory.Encoding => "encoding",
-        FerruleDynamicSourceCategory.Document => "document",
-        FerruleDynamicSourceCategory.UndeclaredSource => "undeclared_source",
-        FerruleDynamicSourceCategory.DocumentBytes => "document_bytes",
-        FerruleDynamicSourceCategory.TotalBytes => "total_bytes",
-        FerruleDynamicSourceCategory.RequestCount => "request_count",
-        _ => throw new ArgumentOutOfRangeException(nameof(category)),
-    };
+    public static string Token(FerruleDynamicSourceCategory category) =>
+        category switch
+        {
+            FerruleDynamicSourceCategory.MissingLoader => "missing_loader",
+            FerruleDynamicSourceCategory.PathType => "path_type",
+            FerruleDynamicSourceCategory.PathTooLong => "path_too_long",
+            FerruleDynamicSourceCategory.TooManyRequests => "too_many_requests",
+            FerruleDynamicSourceCategory.Host => "host",
+            FerruleDynamicSourceCategory.Encoding => "encoding",
+            FerruleDynamicSourceCategory.Document => "document",
+            FerruleDynamicSourceCategory.UndeclaredSource => "undeclared_source",
+            FerruleDynamicSourceCategory.DocumentBytes => "document_bytes",
+            FerruleDynamicSourceCategory.TotalBytes => "total_bytes",
+            FerruleDynamicSourceCategory.RequestCount => "request_count",
+            _ => throw new ArgumentOutOfRangeException(nameof(category)),
+        };
 
     /// <summary>Projects the runtime's own dynamic-source failures; others are null.</summary>
-    public static FerruleDynamicSourceDiagnostic? FromRuntimeException(FerruleRuntimeException error)
+    public static FerruleDynamicSourceDiagnostic? FromRuntimeException(
+        FerruleRuntimeException error
+    )
     {
         ArgumentNullException.ThrowIfNull(error);
         if (error.SourceField is not { } endpoint)
@@ -351,21 +402,35 @@ public sealed record FerruleDynamicSourceDiagnostic(
             new(FerruleDynamicSourcePhase.Request, endpoint, category, null, null);
         return error.Error switch
         {
-            FerruleRuntimeError.MissingDynamicSourceLoader => Request(FerruleDynamicSourceCategory.MissingLoader),
+            FerruleRuntimeError.MissingDynamicSourceLoader => Request(
+                FerruleDynamicSourceCategory.MissingLoader
+            ),
             FerruleRuntimeError.DynamicSourcePath => Request(FerruleDynamicSourceCategory.PathType),
-            FerruleRuntimeError.DynamicSourcePathTooLong => Request(FerruleDynamicSourceCategory.PathTooLong),
-            FerruleRuntimeError.DynamicSourceTooMany => Request(FerruleDynamicSourceCategory.TooManyRequests),
-            FerruleRuntimeError.DynamicSourceLoad => error.InnerException is FerruleDynamicSourceFault fault
+            FerruleRuntimeError.DynamicSourcePathTooLong => Request(
+                FerruleDynamicSourceCategory.PathTooLong
+            ),
+            FerruleRuntimeError.DynamicSourceTooMany => Request(
+                FerruleDynamicSourceCategory.TooManyRequests
+            ),
+            FerruleRuntimeError.DynamicSourceLoad => error.InnerException
+                is FerruleDynamicSourceFault fault
                 ? new(fault.Phase, endpoint, fault.Category, error.Detail, fault.ResourceLimit)
-                : new(FerruleDynamicSourcePhase.Acquisition, endpoint, FerruleDynamicSourceCategory.Host,
-                    error.Detail, null),
+                : new(
+                    FerruleDynamicSourcePhase.Acquisition,
+                    endpoint,
+                    FerruleDynamicSourceCategory.Host,
+                    error.Detail,
+                    null
+                ),
             _ => null,
         };
     }
 
     /// <summary>Projects a generated XML adapter's owned dynamic-input refusal.
     /// Unowned XML failures are null; <see cref="Find"/> continues to their cause.</summary>
-    public static FerruleDynamicSourceDiagnostic? FromXmlExecutionException(FerruleXmlExecutionException error)
+    public static FerruleDynamicSourceDiagnostic? FromXmlExecutionException(
+        FerruleXmlExecutionException error
+    )
     {
         ArgumentNullException.ThrowIfNull(error);
         if (error.Request is not { } request)
@@ -375,24 +440,50 @@ public sealed record FerruleDynamicSourceDiagnostic(
         var boundary = error.Boundary;
         if (boundary.Kind == FerruleXmlBoundaryErrorKind.DocumentLimit)
         {
-            var limit = boundary.Bytes is { } bytes && boundary.Limit is { } maximum
-                ? new FerruleDynamicSourceResourceLimit(
-                    FerruleDynamicSourceResource.DocumentBytes, (ulong)bytes, (ulong)maximum)
-                : null;
-            return new(FerruleDynamicSourcePhase.Resource, request.Source,
-                FerruleDynamicSourceCategory.DocumentBytes, request.Path, limit);
+            var limit =
+                boundary.Bytes is { } bytes && boundary.Limit is { } maximum
+                    ? new FerruleDynamicSourceResourceLimit(
+                        FerruleDynamicSourceResource.DocumentBytes,
+                        (ulong)bytes,
+                        (ulong)maximum
+                    )
+                    : null;
+            return new(
+                FerruleDynamicSourcePhase.Resource,
+                request.Source,
+                FerruleDynamicSourceCategory.DocumentBytes,
+                request.Path,
+                limit
+            );
         }
         if (boundary.InnerException is FerruleXmlInputSetResourceException counter)
         {
-            var (category, resource) = counter.Resource == "xml_input_artifact_count"
-                ? (FerruleDynamicSourceCategory.RequestCount, FerruleDynamicSourceResource.RequestCount)
-                : (FerruleDynamicSourceCategory.TotalBytes, FerruleDynamicSourceResource.TotalBytes);
-            return new(FerruleDynamicSourcePhase.Resource, request.Source, category, request.Path,
-                new FerruleDynamicSourceResourceLimit(resource, counter.ObservedCount, counter.Limit));
+            var (category, resource) =
+                counter.Resource == "xml_input_artifact_count"
+                    ? (
+                        FerruleDynamicSourceCategory.RequestCount,
+                        FerruleDynamicSourceResource.RequestCount
+                    )
+                    : (
+                        FerruleDynamicSourceCategory.TotalBytes,
+                        FerruleDynamicSourceResource.TotalBytes
+                    );
+            return new(
+                FerruleDynamicSourcePhase.Resource,
+                request.Source,
+                category,
+                request.Path,
+                new FerruleDynamicSourceResourceLimit(
+                    resource,
+                    counter.ObservedCount,
+                    counter.Limit
+                )
+            );
         }
-        var codec = boundary.Kind == FerruleXmlBoundaryErrorKind.Utf8
-            ? FerruleDynamicSourceCategory.Encoding
-            : FerruleDynamicSourceCategory.Document;
+        var codec =
+            boundary.Kind == FerruleXmlBoundaryErrorKind.Utf8
+                ? FerruleDynamicSourceCategory.Encoding
+                : FerruleDynamicSourceCategory.Document;
         return new(FerruleDynamicSourcePhase.Codec, request.Source, codec, request.Path, null);
     }
 
@@ -435,17 +526,23 @@ public sealed class FerruleJsonDynamicSourceAdapter : IFerruleDynamicSourceLoade
 
     /// <param name="loader">The host loader.</param>
     /// <param name="schema">Resolves an exact declared endpoint name to its embedded schema.</param>
-    public FerruleJsonDynamicSourceAdapter(IFerruleDynamicJsonSourceLoader loader, Func<string, string?> schema)
-        : this(loader, schema, FerruleDynamicSourceLimits.MaximumDocumentBytes,
-            FerruleDynamicSourceLimits.MaximumTotalBytes)
-    {
-    }
+    public FerruleJsonDynamicSourceAdapter(
+        IFerruleDynamicJsonSourceLoader loader,
+        Func<string, string?> schema
+    )
+        : this(
+            loader,
+            schema,
+            FerruleDynamicSourceLimits.MaximumDocumentBytes,
+            FerruleDynamicSourceLimits.MaximumTotalBytes
+        ) { }
 
     internal FerruleJsonDynamicSourceAdapter(
         IFerruleDynamicJsonSourceLoader loader,
         Func<string, string?> schema,
         long documentLimit,
-        long totalLimit)
+        long totalLimit
+    )
     {
         ArgumentNullException.ThrowIfNull(loader);
         ArgumentNullException.ThrowIfNull(schema);
@@ -457,19 +554,25 @@ public sealed class FerruleJsonDynamicSourceAdapter : IFerruleDynamicSourceLoade
 
     public FerruleInstance Load(string sourceName, string logicalPath)
     {
-        var document = _loader.Load(sourceName, logicalPath) ??
-            throw new InvalidOperationException("loader returned null");
+        var document = _loader.Load(sourceName, logicalPath)
+            ?? throw new InvalidOperationException("loader returned null");
         var bytes = document.LongLength;
         if (bytes > _documentLimit)
         {
             throw FerruleDynamicSourceFault.ForResource(
-                FerruleDynamicSourceResource.DocumentBytes, (ulong)bytes, (ulong)_documentLimit);
+                FerruleDynamicSourceResource.DocumentBytes,
+                (ulong)bytes,
+                (ulong)_documentLimit
+            );
         }
         var total = _totalBytes + bytes;
         if (total > _totalLimit)
         {
             throw FerruleDynamicSourceFault.ForResource(
-                FerruleDynamicSourceResource.TotalBytes, (ulong)total, (ulong)_totalLimit);
+                FerruleDynamicSourceResource.TotalBytes,
+                (ulong)total,
+                (ulong)_totalLimit
+            );
         }
         _totalBytes = total;
         string text;
@@ -481,7 +584,8 @@ public sealed class FerruleJsonDynamicSourceAdapter : IFerruleDynamicSourceLoade
         {
             throw FerruleDynamicSourceFault.ForCodec(FerruleDynamicSourceCodecKind.Encoding, error);
         }
-        var schema = _schema(sourceName) ?? throw FerruleDynamicSourceFault.ForUndeclaredSource(sourceName);
+        var schema = _schema(sourceName)
+            ?? throw FerruleDynamicSourceFault.ForUndeclaredSource(sourceName);
         try
         {
             return FerruleJson.ParseEmbedded(schema, text);

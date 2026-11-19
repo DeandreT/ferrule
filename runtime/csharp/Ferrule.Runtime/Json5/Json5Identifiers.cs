@@ -51,8 +51,13 @@ internal static class Json5Identifiers
         internal readonly int First;
         internal readonly int Last;
         internal readonly byte Mask;
+
         internal Range(int first, int last, byte mask)
-        { First = first; Last = last; Mask = mask; }
+        {
+            First = first;
+            Last = last;
+            Mask = mask;
+        }
     }
 
     private static readonly Range[] Ranges =
@@ -1139,16 +1144,21 @@ internal static class Json5Identifiers
     };
 
     internal static bool IsStart(int scalar) => (Mask(scalar) & 1) != 0;
+
     internal static bool IsContinue(int scalar) => (Mask(scalar) & 2) != 0;
 
     private static byte Mask(int scalar)
     {
         if (scalar < 0 || scalar > 0x10FFFF || scalar is >= 0xD800 and <= 0xDFFF)
-        { return 0; }
+        {
+            return 0;
+        }
         if (scalar < 0x80)
         {
             if (scalar is 0x24 or 0x5F or >= 0x41 and <= 0x5A or >= 0x61 and <= 0x7A)
-            { return 3; }
+            {
+                return 3;
+            }
             return scalar is >= 0x30 and <= 0x39 ? (byte)2 : (byte)0;
         }
         var low = 0;
@@ -1157,9 +1167,18 @@ internal static class Json5Identifiers
         {
             var middle = low + (high - low) / 2;
             var range = Ranges[middle];
-            if (scalar < range.First) { high = middle; }
-            else if (scalar > range.Last) { low = middle + 1; }
-            else { return range.Mask; }
+            if (scalar < range.First)
+            {
+                high = middle;
+            }
+            else if (scalar > range.Last)
+            {
+                low = middle + 1;
+            }
+            else
+            {
+                return range.Mask;
+            }
         }
         return 0;
     }

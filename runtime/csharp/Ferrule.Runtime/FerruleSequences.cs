@@ -8,7 +8,8 @@ namespace Ferrule.Runtime;
 /// <summary>One scalar sort expression and its direction.</summary>
 public readonly record struct FerruleSortKey<T>(
     Func<T, FerruleValue> Selector,
-    bool Descending = false);
+    bool Descending = false
+);
 
 /// <summary>Closed sequence-window operations supported by generated mappings.</summary>
 public enum FerruleSequenceWindowKind
@@ -23,10 +24,7 @@ public enum FerruleSequenceWindowKind
 /// <summary>An evaluated sequence window whose bounds are valid item counts.</summary>
 public readonly struct FerruleSequenceWindow
 {
-    private FerruleSequenceWindow(
-        FerruleSequenceWindowKind kind,
-        ulong first,
-        ulong last = 0)
+    private FerruleSequenceWindow(FerruleSequenceWindowKind kind, ulong first, ulong last = 0)
     {
         Kind = kind;
         FirstValue = first;
@@ -63,9 +61,7 @@ public static class FerruleSequences
     private const int MaximumTokenizeRegexPatternBytes = 64 * 1024;
 
     /// <summary>Splits around a literal delimiter while preserving empty items.</summary>
-    public static IReadOnlyList<FerruleValue> Tokenize(
-        FerruleValue input,
-        FerruleValue delimiter)
+    public static IReadOnlyList<FerruleValue> Tokenize(FerruleValue input, FerruleValue delimiter)
     {
         var text = RequireString(input, "tokenize");
         var separator = RequireString(delimiter, "tokenize");
@@ -80,7 +76,8 @@ public static class FerruleSequences
         while (true)
         {
             var next = text.IndexOf(separator, search, StringComparison.Ordinal);
-            if (next < 0) break;
+            if (next < 0)
+                break;
             requested++;
             search = next + separator.Length;
         }
@@ -90,7 +87,8 @@ public static class FerruleSequences
                 FerruleRuntimeError.GeneratedSequenceTooLarge,
                 $"generate-sequence requested {requested} items; maximum is {MaximumGeneratedSequenceItems}",
                 requestedItems: requested,
-                maximumItems: MaximumGeneratedSequenceItems);
+                maximumItems: MaximumGeneratedSequenceItems
+            );
         }
 
         var values = new List<FerruleValue>();
@@ -112,43 +110,41 @@ public static class FerruleSequences
     /// <summary>Chunks text by Unicode scalar count.</summary>
     public static IReadOnlyList<FerruleValue> TokenizeByLength(
         FerruleValue input,
-        FerruleValue length)
+        FerruleValue length
+    )
     {
         var text = RequireString(input, "tokenize-by-length");
         var chunkLength = length.Kind switch
         {
             FerruleValueKind.Int64 => length.Int64Value,
-            FerruleValueKind.Double when double.IsFinite(length.DoubleValue) =>
-                TruncatedInt64(length.DoubleValue),
+            FerruleValueKind.Double when double.IsFinite(length.DoubleValue) => TruncatedInt64(
+                length.DoubleValue
+            ),
             FerruleValueKind.String => ParseItemCount(length.StringValue),
             _ => null,
         };
         if (!chunkLength.HasValue || chunkLength.Value <= 0)
         {
-            throw InvalidArgument(
-                "tokenize-by-length",
-                "requires a positive integer length");
+            throw InvalidArgument("tokenize-by-length", "requires a positive integer length");
         }
 
         // Count before allocating rune storage or any output items.
         var scalarCount = (UInt128)text.EnumerateRunes().Count();
-        var requested = (scalarCount + (UInt128)chunkLength.Value - 1)
-            / (UInt128)chunkLength.Value;
+        var requested = (scalarCount + (UInt128)chunkLength.Value - 1) / (UInt128)chunkLength.Value;
         if (requested > MaximumGeneratedSequenceItems)
         {
             throw new FerruleRuntimeException(
                 FerruleRuntimeError.GeneratedSequenceTooLarge,
                 $"generate-sequence requested {requested} items; maximum is {MaximumGeneratedSequenceItems}",
                 requestedItems: requested,
-                maximumItems: MaximumGeneratedSequenceItems);
+                maximumItems: MaximumGeneratedSequenceItems
+            );
         }
 
         var runes = text.EnumerateRunes().ToArray();
-        var size = chunkLength.Value > int.MaxValue
-            ? int.MaxValue
-            : (int)chunkLength.Value;
+        var size = chunkLength.Value > int.MaxValue ? int.MaxValue : (int)chunkLength.Value;
         var values = new List<FerruleValue>();
-        for (var start = 0; start < runes.Length;)
+        for (var start = 0; start < runes.Length; )
         {
             var count = Math.Min(size, runes.Length - start);
             var builder = new StringBuilder();
@@ -166,7 +162,8 @@ public static class FerruleSequences
     public static IReadOnlyList<FerruleValue> TokenizeRegex(
         FerruleValue input,
         FerruleValue pattern,
-        FerruleValue? flags)
+        FerruleValue? flags
+    )
     {
         var text = RequireString(input, "tokenize-regexp");
         var expression = RequireString(pattern, "tokenize-regexp");
@@ -180,7 +177,8 @@ public static class FerruleSequences
                 FerruleRuntimeError.TokenizeRegexPatternTooLarge,
                 $"tokenize-regexp pattern is {patternBytes} bytes; maximum is {MaximumTokenizeRegexPatternBytes}",
                 detail: patternBytes.ToString(CultureInfo.InvariantCulture),
-                maximumItems: MaximumTokenizeRegexPatternBytes);
+                maximumItems: MaximumTokenizeRegexPatternBytes
+            );
         }
 
         var options = RegexOptions.CultureInvariant | RegexOptions.NonBacktracking;
@@ -195,7 +193,8 @@ public static class FerruleSequences
                 _ => throw new FerruleRuntimeException(
                     FerruleRuntimeError.InvalidTokenizeRegexFlags,
                     $"tokenize-regexp flags `{flagText}` contain an unsupported flag",
-                    detail: flagText),
+                    detail: flagText
+                ),
             };
         }
 
@@ -210,7 +209,8 @@ public static class FerruleSequences
                 FerruleRuntimeError.InvalidTokenizeRegex,
                 $"tokenize-regexp pattern is invalid: {error.Message}",
                 error,
-                detail: error.Message);
+                detail: error.Message
+            );
         }
         var work = new FerruleScalarRegex.BoundaryWork();
         try
@@ -226,15 +226,19 @@ public static class FerruleSequences
 
             var values = new List<FerruleValue>();
             var start = 0;
-            regex.VisitMatches(text, (index, length) =>
-            {
-                if (length == 0)
+            regex.VisitMatches(
+                text,
+                (index, length) =>
                 {
-                    throw ZeroWidthRegex();
-                }
-                AddRegexToken(values, text[start..index]);
-                start = index + length;
-            }, work);
+                    if (length == 0)
+                    {
+                        throw ZeroWidthRegex();
+                    }
+                    AddRegexToken(values, text[start..index]);
+                    start = index + length;
+                },
+                work
+            );
             AddRegexToken(values, text[start..]);
             return new ReadOnlyCollection<FerruleValue>(values);
         }
@@ -244,14 +248,13 @@ public static class FerruleSequences
                 FerruleRuntimeError.InvalidTokenizeRegex,
                 error.Message,
                 error,
-                detail: error.Message);
+                detail: error.Message
+            );
         }
     }
 
     /// <summary>Generates a bounded inclusive integer range.</summary>
-    public static IReadOnlyList<FerruleValue> GenerateRange(
-        FerruleValue? from,
-        FerruleValue to)
+    public static IReadOnlyList<FerruleValue> GenerateRange(FerruleValue? from, FerruleValue to)
     {
         var first = from.HasValue ? SequenceInteger(from.Value) : 1L;
         var last = SequenceInteger(to);
@@ -267,7 +270,8 @@ public static class FerruleSequences
                 FerruleRuntimeError.GeneratedSequenceTooLarge,
                 $"generate-sequence requested {requested} items; maximum is {MaximumGeneratedSequenceItems}",
                 requestedItems: requested,
-                maximumItems: MaximumGeneratedSequenceItems);
+                maximumItems: MaximumGeneratedSequenceItems
+            );
         }
 
         var values = new List<FerruleValue>((int)requested);
@@ -299,7 +303,8 @@ public static class FerruleSequences
         IReadOnlyList<string> values,
         IReadOnlyList<string> value,
         string prefix,
-        string separator)
+        string separator
+    )
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(collection);
@@ -348,7 +353,8 @@ public static class FerruleSequences
                 prefix,
                 separator,
                 0,
-                output);
+                output
+            );
         }
         return new ReadOnlyCollection<FerruleValue>(output);
     }
@@ -368,7 +374,8 @@ public static class FerruleSequences
         IReadOnlyList<string> values,
         IReadOnlyList<string> value,
         string prefix,
-        string separator)
+        string separator
+    )
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(collection);
@@ -401,7 +408,8 @@ public static class FerruleSequences
                     prefix,
                     separator,
                     0,
-                    output);
+                    output
+                );
             }
         }
         GC.KeepAlive(cohort);
@@ -425,14 +433,16 @@ public static class FerruleSequences
         string prefix,
         string separator,
         int depth,
-        List<FerruleValue> output)
+        List<FerruleValue> output
+    )
     {
         if (depth >= MaximumRecursiveSequenceDepth)
         {
             throw new FerruleRuntimeException(
                 FerruleRuntimeError.RecursiveSequenceDepth,
                 $"recursive sequence exceeds the {MaximumRecursiveSequenceDepth}-group depth limit",
-                maximumDepth: MaximumRecursiveSequenceDepth);
+                maximumDepth: MaximumRecursiveSequenceDepth
+            );
         }
         if (!TryScalarAt(group, descentValue, 0, out var segment))
         {
@@ -453,10 +463,12 @@ public static class FerruleSequences
                 throw new FerruleRuntimeException(
                     FerruleRuntimeError.RecursiveSequenceTooLarge,
                     $"recursive sequence produced more than {MaximumGeneratedSequenceItems} items",
-                    maximumItems: MaximumGeneratedSequenceItems);
+                    maximumItems: MaximumGeneratedSequenceItems
+                );
             }
-            output.Add(FerruleValue.FromString(
-                currentPrefix + separator + RecursiveScalarText(leafValue)));
+            output.Add(
+                FerruleValue.FromString(currentPrefix + separator + RecursiveScalarText(leafValue))
+            );
         }
 
         var childGroups = new List<FerruleInstance>();
@@ -472,7 +484,8 @@ public static class FerruleSequences
                 currentPrefix,
                 separator,
                 depth + 1,
-                output);
+                output
+            );
         }
     }
 
@@ -480,7 +493,8 @@ public static class FerruleSequences
         FerruleInstance instance,
         IReadOnlyList<string> path,
         int pathIndex,
-        List<FerruleInstance> output)
+        List<FerruleInstance> output
+    )
     {
         if (pathIndex == path.Count)
         {
@@ -532,7 +546,8 @@ public static class FerruleSequences
         FerruleInstance instance,
         IReadOnlyList<string> path,
         int pathIndex,
-        out FerruleValue value)
+        out FerruleValue value
+    )
     {
         if (pathIndex == path.Count)
         {
@@ -561,18 +576,23 @@ public static class FerruleSequences
         }
     }
 
-    private static bool HasField(FerruleInstance instance, string name) => instance switch
-    {
-        FerruleGroup group => group.TryGetField(name, out _),
-        FerruleDocumentSet { Documents.Count: > 0 } documents =>
-            HasField(documents.Documents[0].Value, name),
-        _ => false,
-    };
+    private static bool HasField(FerruleInstance instance, string name) =>
+        instance switch
+        {
+            FerruleGroup group => group.TryGetField(name, out _),
+            FerruleDocumentSet { Documents.Count: > 0 } documents => HasField(
+                documents.Documents[0].Value,
+                name
+            ),
+            _ => false,
+        };
 
     private static string RecursiveScalarText(FerruleValue value)
     {
-        if (value.Kind is FerruleValueKind.Bool or FerruleValueKind.Int64 or FerruleValueKind.String ||
-            value.Kind == FerruleValueKind.Double && double.IsFinite(value.DoubleValue))
+        if (
+            value.Kind is FerruleValueKind.Bool or FerruleValueKind.Int64 or FerruleValueKind.String
+            || value.Kind == FerruleValueKind.Double && double.IsFinite(value.DoubleValue)
+        )
         {
             return FerruleFunctions.ScalarText(value);
         }
@@ -580,7 +600,8 @@ public static class FerruleSequences
             FerruleRuntimeError.FunctionType,
             $"`recursive-collect` cannot accept a {ValueTypeName(value)} argument.",
             function: "recursive-collect",
-            foundKind: value.Kind);
+            foundKind: value.Kind
+        );
     }
 
     /// <summary>
@@ -589,7 +610,8 @@ public static class FerruleSequences
     /// </summary>
     public static IReadOnlyList<T> StableSort<T>(
         IReadOnlyList<T> items,
-        IReadOnlyList<FerruleSortKey<T>> keys)
+        IReadOnlyList<FerruleSortKey<T>> keys
+    )
     {
         ArgumentNullException.ThrowIfNull(items);
         ArgumentNullException.ThrowIfNull(keys);
@@ -629,22 +651,33 @@ public static class FerruleSequences
 
         return (left.Kind, right.Kind) switch
         {
-            (FerruleValueKind.Int64, FerruleValueKind.Int64) =>
-                left.Int64Value.CompareTo(right.Int64Value),
-            (FerruleValueKind.Double, FerruleValueKind.Double) =>
-                CompareFiniteDoubles(left.DoubleValue, right.DoubleValue),
-            (FerruleValueKind.Int64, FerruleValueKind.Double) when
-                double.IsFinite(right.DoubleValue) =>
-                CompareIntegerAndDouble(left.Int64Value, right.DoubleValue),
-            (FerruleValueKind.Double, FerruleValueKind.Int64) when
-                double.IsFinite(left.DoubleValue) =>
-                -CompareIntegerAndDouble(right.Int64Value, left.DoubleValue),
-            (FerruleValueKind.String, FerruleValueKind.String) =>
-                CompareUnicodeScalars(left.StringValue, right.StringValue),
-            (FerruleValueKind.Decimal, FerruleValueKind.Decimal) =>
-                left.DecimalValue.CompareTo(right.DecimalValue),
-            (FerruleValueKind.Bool, FerruleValueKind.Bool) =>
-                left.BooleanValue.CompareTo(right.BooleanValue),
+            (FerruleValueKind.Int64, FerruleValueKind.Int64) => left.Int64Value.CompareTo(
+                right.Int64Value
+            ),
+            (FerruleValueKind.Double, FerruleValueKind.Double) => CompareFiniteDoubles(
+                left.DoubleValue,
+                right.DoubleValue
+            ),
+            (FerruleValueKind.Int64, FerruleValueKind.Double)
+                when double.IsFinite(right.DoubleValue) => CompareIntegerAndDouble(
+                left.Int64Value,
+                right.DoubleValue
+            ),
+            (FerruleValueKind.Double, FerruleValueKind.Int64)
+                when double.IsFinite(left.DoubleValue) => -CompareIntegerAndDouble(
+                right.Int64Value,
+                left.DoubleValue
+            ),
+            (FerruleValueKind.String, FerruleValueKind.String) => CompareUnicodeScalars(
+                left.StringValue,
+                right.StringValue
+            ),
+            (FerruleValueKind.Decimal, FerruleValueKind.Decimal) => left.DecimalValue.CompareTo(
+                right.DecimalValue
+            ),
+            (FerruleValueKind.Bool, FerruleValueKind.Bool) => left.BooleanValue.CompareTo(
+                right.BooleanValue
+            ),
             _ => null,
         };
     }
@@ -655,8 +688,9 @@ public static class FerruleSequences
         long? count = value.Kind switch
         {
             FerruleValueKind.Int64 => value.Int64Value,
-            FerruleValueKind.Double when double.IsFinite(value.DoubleValue) =>
-                TruncatedInt64(value.DoubleValue),
+            FerruleValueKind.Double when double.IsFinite(value.DoubleValue) => TruncatedInt64(
+                value.DoubleValue
+            ),
             FerruleValueKind.String => ParseItemCount(value.StringValue),
             _ => null,
         };
@@ -666,7 +700,8 @@ public static class FerruleSequences
                 FerruleRuntimeError.NotAnItemCount,
                 $"Node {node}: expected an item count, found {value.Kind}.",
                 node: node,
-                foundKind: value.Kind);
+                foundKind: value.Kind
+            );
         }
         return count.Value <= 0 ? 0 : (ulong)count.Value;
     }
@@ -680,7 +715,8 @@ public static class FerruleSequences
             throw new FerruleRuntimeException(
                 FerruleRuntimeError.InvalidBlockSize,
                 $"Node {node}: grouping block size must be positive.",
-                node: node);
+                node: node
+            );
         }
         return size;
     }
@@ -688,7 +724,8 @@ public static class FerruleSequences
     /// <summary>Applies evaluated windows from left to right.</summary>
     public static IReadOnlyList<T> ApplyWindows<T>(
         IReadOnlyList<T> items,
-        IReadOnlyList<FerruleSequenceWindow> windows)
+        IReadOnlyList<FerruleSequenceWindow> windows
+    )
     {
         ArgumentNullException.ThrowIfNull(items);
         ArgumentNullException.ThrowIfNull(windows);
@@ -710,7 +747,8 @@ public static class FerruleSequences
     private static int CompareDecorated<T>(
         DecoratedItem<T> left,
         DecoratedItem<T> right,
-        IReadOnlyList<FerruleSortKey<T>> keys)
+        IReadOnlyList<FerruleSortKey<T>> keys
+    )
     {
         for (var index = 0; index < keys.Count; index++)
         {
@@ -740,25 +778,36 @@ public static class FerruleSequences
 
         return (left.Kind, right.Kind) switch
         {
-            (FerruleValueKind.Bool, FerruleValueKind.Bool) =>
-                left.BooleanValue.CompareTo(right.BooleanValue),
-            (FerruleValueKind.Int64, FerruleValueKind.Int64) =>
-                left.Int64Value.CompareTo(right.Int64Value),
-            (FerruleValueKind.Double, FerruleValueKind.Double) =>
-                CompareSortDoubles(left.DoubleValue, right.DoubleValue),
-            (FerruleValueKind.Int64, FerruleValueKind.Double) when
-                double.IsNaN(right.DoubleValue) => -1,
-            (FerruleValueKind.Double, FerruleValueKind.Int64) when
-                double.IsNaN(left.DoubleValue) => 1,
-            (FerruleValueKind.Int64, FerruleValueKind.Double) =>
-                CompareIntegerAndDouble(left.Int64Value, right.DoubleValue),
-            (FerruleValueKind.Double, FerruleValueKind.Int64) =>
-                -CompareIntegerAndDouble(right.Int64Value, left.DoubleValue),
-            (FerruleValueKind.String, FerruleValueKind.String) =>
-                CompareUnicodeScalars(left.StringValue, right.StringValue),
+            (FerruleValueKind.Bool, FerruleValueKind.Bool) => left.BooleanValue.CompareTo(
+                right.BooleanValue
+            ),
+            (FerruleValueKind.Int64, FerruleValueKind.Int64) => left.Int64Value.CompareTo(
+                right.Int64Value
+            ),
+            (FerruleValueKind.Double, FerruleValueKind.Double) => CompareSortDoubles(
+                left.DoubleValue,
+                right.DoubleValue
+            ),
+            (FerruleValueKind.Int64, FerruleValueKind.Double)
+                when double.IsNaN(right.DoubleValue) => -1,
+            (FerruleValueKind.Double, FerruleValueKind.Int64) when double.IsNaN(left.DoubleValue) =>
+                1,
+            (FerruleValueKind.Int64, FerruleValueKind.Double) => CompareIntegerAndDouble(
+                left.Int64Value,
+                right.DoubleValue
+            ),
+            (FerruleValueKind.Double, FerruleValueKind.Int64) => -CompareIntegerAndDouble(
+                right.Int64Value,
+                left.DoubleValue
+            ),
+            (FerruleValueKind.String, FerruleValueKind.String) => CompareUnicodeScalars(
+                left.StringValue,
+                right.StringValue
+            ),
             (FerruleValueKind.XmlNil, FerruleValueKind.XmlNil) => 0,
-            (FerruleValueKind.Decimal, FerruleValueKind.Decimal) =>
-                left.DecimalValue.CompareTo(right.DecimalValue),
+            (FerruleValueKind.Decimal, FerruleValueKind.Decimal) => left.DecimalValue.CompareTo(
+                right.DecimalValue
+            ),
             _ => SortValueRank(left.Kind).CompareTo(SortValueRank(right.Kind)),
         };
     }
@@ -772,16 +821,17 @@ public static class FerruleSequences
         return double.IsNaN(right) ? -1 : left.CompareTo(right);
     }
 
-    private static int SortValueRank(FerruleValueKind kind) => kind switch
-    {
-        FerruleValueKind.Null or FerruleValueKind.JsonNull => 0,
-        FerruleValueKind.Bool => 1,
-        FerruleValueKind.Int64 or FerruleValueKind.Double => 2,
-        FerruleValueKind.String => 3,
-        FerruleValueKind.XmlNil => 4,
-        FerruleValueKind.Decimal => 5,
-        _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
-    };
+    private static int SortValueRank(FerruleValueKind kind) =>
+        kind switch
+        {
+            FerruleValueKind.Null or FerruleValueKind.JsonNull => 0,
+            FerruleValueKind.Bool => 1,
+            FerruleValueKind.Int64 or FerruleValueKind.Double => 2,
+            FerruleValueKind.String => 3,
+            FerruleValueKind.XmlNil => 4,
+            FerruleValueKind.Decimal => 5,
+            _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
+        };
 
     private static int? CompareFiniteDoubles(double left, double right)
     {
@@ -862,7 +912,8 @@ public static class FerruleSequences
             trimmed,
             NumberStyles.AllowLeadingSign,
             CultureInfo.InvariantCulture,
-            out var count)
+            out var count
+        )
             ? count
             : null;
     }
@@ -877,7 +928,8 @@ public static class FerruleSequences
             FerruleRuntimeError.FunctionType,
             $"`{function}` cannot accept a {ValueTypeName(value)} argument.",
             function: function,
-            foundKind: value.Kind);
+            foundKind: value.Kind
+        );
     }
 
     private static void AddRegexToken(List<FerruleValue> values, string token)
@@ -887,7 +939,8 @@ public static class FerruleSequences
             throw new FerruleRuntimeException(
                 FerruleRuntimeError.TokenizeRegexTooLarge,
                 $"tokenize-regexp produced more than {MaximumGeneratedSequenceItems} items",
-                maximumItems: MaximumGeneratedSequenceItems);
+                maximumItems: MaximumGeneratedSequenceItems
+            );
         }
         values.Add(FerruleValue.FromString(token));
     }
@@ -895,7 +948,8 @@ public static class FerruleSequences
     private static FerruleRuntimeException ZeroWidthRegex() =>
         new(
             FerruleRuntimeError.ZeroWidthTokenizeRegex,
-            "tokenize-regexp pattern matches a zero-width string");
+            "tokenize-regexp pattern matches a zero-width string"
+        );
 
     internal static long SequenceInteger(FerruleValue value)
     {
@@ -914,17 +968,21 @@ public static class FerruleSequences
             FerruleRuntimeError.FunctionType,
             $"`generate-sequence` cannot accept a {ValueTypeName(value)} argument.",
             function: "generate-sequence",
-            foundKind: value.Kind);
+            foundKind: value.Kind
+        );
     }
 
     private static long? ParseSequenceInteger(string value)
     {
         var trimmed = value.Trim();
-        if (long.TryParse(
-            trimmed,
-            NumberStyles.AllowLeadingSign,
-            CultureInfo.InvariantCulture,
-            out var integer))
+        if (
+            long.TryParse(
+                trimmed,
+                NumberStyles.AllowLeadingSign,
+                CultureInfo.InvariantCulture,
+                out var integer
+            )
+        )
         {
             return integer;
         }
@@ -932,16 +990,17 @@ public static class FerruleSequences
             trimmed,
             NumberStyles.Float,
             CultureInfo.InvariantCulture,
-            out var floating)
+            out var floating
+        )
             ? ExactDoubleInteger(floating)
             : null;
     }
 
     private static long? ExactDoubleInteger(double value) =>
-        double.IsFinite(value) &&
-        Math.Truncate(value) == value &&
-        value >= (double)long.MinValue &&
-        value < (double)long.MaxValue
+        double.IsFinite(value)
+        && Math.Truncate(value) == value
+        && value >= (double)long.MinValue
+        && value < (double)long.MaxValue
             ? (long)value
             : null;
 
@@ -950,24 +1009,24 @@ public static class FerruleSequences
             FerruleRuntimeError.FunctionInvalidArgument,
             $"`{function}` {detail}.",
             function: function,
-            detail: detail);
+            detail: detail
+        );
 
-    private static string ValueTypeName(FerruleValue value) => value.Kind switch
-    {
-        FerruleValueKind.Null => "null",
-        FerruleValueKind.JsonNull => "json null",
-        FerruleValueKind.XmlNil => "xml nil",
-        FerruleValueKind.Bool => "bool",
-        FerruleValueKind.Int64 => "int",
-        FerruleValueKind.Double => "float",
-        FerruleValueKind.String => "string",
-        FerruleValueKind.Decimal => "decimal",
-        _ => "unknown",
-    };
+    private static string ValueTypeName(FerruleValue value) =>
+        value.Kind switch
+        {
+            FerruleValueKind.Null => "null",
+            FerruleValueKind.JsonNull => "json null",
+            FerruleValueKind.XmlNil => "xml nil",
+            FerruleValueKind.Bool => "bool",
+            FerruleValueKind.Int64 => "int",
+            FerruleValueKind.Double => "float",
+            FerruleValueKind.String => "string",
+            FerruleValueKind.Decimal => "decimal",
+            _ => "unknown",
+        };
 
-    private static (int Skip, int Take) WindowRange(
-        int length,
-        FerruleSequenceWindow window)
+    private static (int Skip, int Take) WindowRange(int length, FerruleSequenceWindow window)
     {
         var size = (ulong)length;
         var skip = window.Kind switch
@@ -976,10 +1035,12 @@ public static class FerruleSequences
             FerruleSequenceWindowKind.First => 0UL,
             FerruleSequenceWindowKind.From => Math.Min(
                 window.FirstValue == 0 ? 0UL : window.FirstValue - 1,
-                size),
+                size
+            ),
             FerruleSequenceWindowKind.FromTo => Math.Min(
                 window.FirstValue == 0 ? 0UL : window.FirstValue - 1,
-                size),
+                size
+            ),
             FerruleSequenceWindowKind.Last => size - Math.Min(window.FirstValue, size),
             _ => throw new ArgumentOutOfRangeException(nameof(window)),
         };
@@ -990,7 +1051,8 @@ public static class FerruleSequences
             FerruleSequenceWindowKind.First => Math.Min(window.FirstValue, size),
             FerruleSequenceWindowKind.FromTo => Math.Min(
                 window.LastValue > skip ? window.LastValue - skip : 0UL,
-                available),
+                available
+            ),
             FerruleSequenceWindowKind.Last => Math.Min(window.FirstValue, size),
             _ => throw new ArgumentOutOfRangeException(nameof(window)),
         };

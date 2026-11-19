@@ -3,7 +3,17 @@ namespace Ferrule.Runtime;
 internal static partial class FerruleScalarRegex
 {
     private const int MaximumBoundaryInstructions = 10 * 1024 * 1024 / 64;
-    private enum BoundaryOp { Consume, Split, Jump, Tag, Assert, Match }
+
+    private enum BoundaryOp
+    {
+        Consume,
+        Split,
+        Jump,
+        Tag,
+        Assert,
+        Match,
+    }
+
     private sealed class BoundaryInstruction
     {
         internal readonly BoundaryOp Op;
@@ -12,11 +22,23 @@ internal static partial class FerruleScalarRegex
         internal readonly int Tag;
         internal int Next = -1;
         internal int Other = -1;
-        internal BoundaryInstruction(BoundaryOp op, ScalarSet? set = null,
-            BoundaryAssertion assertion = default, int tag = 0)
-        { Op = op; Set = set; Assertion = assertion; Tag = tag; }
+
+        internal BoundaryInstruction(
+            BoundaryOp op,
+            ScalarSet? set = null,
+            BoundaryAssertion assertion = default,
+            int tag = 0
+        )
+        {
+            Op = op;
+            Set = set;
+            Assertion = assertion;
+            Tag = tag;
+        }
     }
+
     private readonly record struct BoundaryPatch(int Instruction, bool Other = false);
+
     private sealed record BoundaryFragment(int Start, List<BoundaryPatch> Exits);
 
     private sealed class BoundaryCompiler
@@ -36,15 +58,19 @@ internal static partial class FerruleScalarRegex
 
         private static long Estimate(BoundaryNode node)
         {
-            long count = node.Kind switch {
+            long count = node.Kind switch
+            {
                 BoundaryKind.Sequence => node.Children!.Sum(Estimate),
                 BoundaryKind.Alternate => node.Children!.Sum(Estimate) + node.Children!.Length - 1,
                 BoundaryKind.Capture => Estimate(node.Children![0]) + 2,
                 BoundaryKind.Repeat when node.Maximum == 0 => 1,
                 BoundaryKind.Repeat => Estimate(node.Children![0])
                     * (node.Maximum.HasValue ? node.Maximum.Value : Math.Max(1L, node.Minimum))
-                    + (node.Maximum.HasValue ? (long)node.Maximum.Value - node.Minimum
-                        : node.Minimum == 0 && Nullable(node.Children[0]) ? 2 : 1),
+                    + (
+                        node.Maximum.HasValue ? (long)node.Maximum.Value - node.Minimum
+                        : node.Minimum == 0 && Nullable(node.Children[0]) ? 2
+                        : 1
+                    ),
                 _ => 1,
             };
             if (count >= MaximumBoundaryInstructions)
@@ -68,8 +94,14 @@ internal static partial class FerruleScalarRegex
         {
             foreach (var patch in patches)
             {
-                if (patch.Other) { _instructions[patch.Instruction].Other = destination; }
-                else { _instructions[patch.Instruction].Next = destination; }
+                if (patch.Other)
+                {
+                    _instructions[patch.Instruction].Other = destination;
+                }
+                else
+                {
+                    _instructions[patch.Instruction].Next = destination;
+                }
             }
         }
 
@@ -81,7 +113,10 @@ internal static partial class FerruleScalarRegex
 
         private BoundaryFragment Concatenate(BoundaryFragment? left, BoundaryFragment right)
         {
-            if (left is null) { return right; }
+            if (left is null)
+            {
+                return right;
+            }
             Patch(left.Exits, right.Start);
             return new(left.Start, right.Exits);
         }
@@ -99,10 +134,16 @@ internal static partial class FerruleScalarRegex
                 case BoundaryKind.Capture:
                     var before = Single(new(BoundaryOp.Tag, tag: node.Capture * 2));
                     var body = Concatenate(before, Build(node.Children![0]));
-                    return Concatenate(body, Single(new(BoundaryOp.Tag, tag: node.Capture * 2 + 1)));
+                    return Concatenate(
+                        body,
+                        Single(new(BoundaryOp.Tag, tag: node.Capture * 2 + 1))
+                    );
                 case BoundaryKind.Sequence:
                     BoundaryFragment? sequence = null;
-                    foreach (var child in node.Children!) { sequence = Concatenate(sequence, Build(child)); }
+                    foreach (var child in node.Children!)
+                    {
+                        sequence = Concatenate(sequence, Build(child));
+                    }
                     return sequence ?? Single(new(BoundaryOp.Jump));
                 case BoundaryKind.Alternate:
                     var alternatives = node.Children!;
@@ -110,14 +151,17 @@ internal static partial class FerruleScalarRegex
                     for (var index = alternatives.Length - 2; index >= 0; index--)
                     {
                         var left = Build(alternatives[index]);
-                        var split = Emit(new(BoundaryOp.Split) { Next = left.Start, Other = result.Start });
+                        var split = Emit(
+                            new(BoundaryOp.Split) { Next = left.Start, Other = result.Start }
+                        );
                         left.Exits.AddRange(result.Exits);
                         result = new(split, left.Exits);
                     }
                     return result;
                 case BoundaryKind.Repeat:
                     return Repetition(node);
-                default: throw Invalid("invalid boundary regex AST");
+                default:
+                    throw Invalid("invalid boundary regex AST");
             }
         }
 
@@ -135,20 +179,35 @@ internal static partial class FerruleScalarRegex
                 var body = Build(node.Children![0]);
                 var split = Emit(new(BoundaryOp.Split));
                 var exit = new BoundaryPatch(split, !node.Lazy);
-                if (node.Lazy) { _instructions[split].Other = body.Start; }
-                else { _instructions[split].Next = body.Start; }
+                if (node.Lazy)
+                {
+                    _instructions[split].Other = body.Start;
+                }
+                else
+                {
+                    _instructions[split].Next = body.Start;
+                }
                 Patch(body.Exits, split);
                 if (node.Minimum != 0)
                 {
                     return Concatenate(result, new(body.Start, new() { exit }));
                 }
-                if (!Nullable(node.Children[0])) { return new(split, new() { exit }); }
+                if (!Nullable(node.Children[0]))
+                {
+                    return new(split, new() { exit });
+                }
                 // A nullable star needs a distinct initial optional branch.
                 // Otherwise first-visit epsilon dedup can skip its first empty
                 // capture or prefer a lower-ranked consuming alternative.
                 var optional = Emit(new(BoundaryOp.Split));
-                if (node.Lazy) { _instructions[optional].Other = body.Start; }
-                else { _instructions[optional].Next = body.Start; }
+                if (node.Lazy)
+                {
+                    _instructions[optional].Other = body.Start;
+                }
+                else
+                {
+                    _instructions[optional].Next = body.Start;
+                }
                 return new(optional, new() { exit, new(optional, !node.Lazy) });
             }
             for (uint index = 0; index < node.Minimum; index++)
@@ -159,8 +218,14 @@ internal static partial class FerruleScalarRegex
             {
                 var body = Build(node.Children![0]);
                 var split = Emit(new(BoundaryOp.Split));
-                if (node.Lazy) { _instructions[split].Other = body.Start; }
-                else { _instructions[split].Next = body.Start; }
+                if (node.Lazy)
+                {
+                    _instructions[split].Other = body.Start;
+                }
+                else
+                {
+                    _instructions[split].Next = body.Start;
+                }
                 body.Exits.Add(new(split, !node.Lazy));
                 result = Concatenate(result, new(split, body.Exits));
             }

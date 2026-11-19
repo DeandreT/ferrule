@@ -18,13 +18,18 @@ internal static partial class Program
     private static void JsonDuplicateDeclarationMaterialization()
     {
         const string input = """{"Tail":"self authored é🙂","Value":7}""";
-        foreach (var parsed in new[]
-                 {
-                     FerruleJson.Parse(DuplicateDeclarationSchema, input),
-                     FerruleJson.ParseBytes(DuplicateDeclarationSchema, Encoding.UTF8.GetBytes(input)),
-                     FerruleJson.ParseEmbedded(DuplicateDeclarationSchema, input),
-                     FerruleJson.ParseEmbeddedBytes(DuplicateDeclarationSchema, Encoding.UTF8.GetBytes(input)),
-                 })
+        foreach (
+            var parsed in new[]
+            {
+                FerruleJson.Parse(DuplicateDeclarationSchema, input),
+                FerruleJson.ParseBytes(DuplicateDeclarationSchema, Encoding.UTF8.GetBytes(input)),
+                FerruleJson.ParseEmbedded(DuplicateDeclarationSchema, input),
+                FerruleJson.ParseEmbeddedBytes(
+                    DuplicateDeclarationSchema,
+                    Encoding.UTF8.GetBytes(input)
+                ),
+            }
+        )
         {
             var group = (FerruleGroup)parsed;
             Equal(3, group.Fields.Count);
@@ -42,11 +47,15 @@ internal static partial class Program
             Equal(FerruleValueKind.Double, ((FerruleScalar)copy.Fields[1].Value).Value.Kind);
             Equal(
                 FerruleJson.SerializeEmbedded(DuplicateDeclarationSchema, group),
-                FerruleJson.SerializeEmbedded(DuplicateDeclarationSchema, copy));
+                FerruleJson.SerializeEmbedded(DuplicateDeclarationSchema, copy)
+            );
         }
-        Error(FerruleRuntimeError.DuplicateField, () => Group(
-            Field("Value", Scalar(FerruleValue.FromInt64(1))),
-            Field("Value", Scalar(FerruleValue.FromInt64(2)))));
+        Error(FerruleRuntimeError.DuplicateField, () =>
+            Group(
+                Field("Value", Scalar(FerruleValue.FromInt64(1))),
+                Field("Value", Scalar(FerruleValue.FromInt64(2)))
+            )
+        );
     }
 
     private static void JsonDuplicateDeclarationProjection()
@@ -55,8 +64,16 @@ internal static partial class Program
         var parsed = FerruleJson.ParseEmbedded(DuplicateDeclarationSchema, input);
         var text = FerruleJson.SerializeEmbedded(DuplicateDeclarationSchema, parsed);
         Equal(text, FerruleJson.Serialize(DuplicateDeclarationSchema, parsed));
-        Equal(text, Encoding.UTF8.GetString(FerruleJson.SerializeBytes(DuplicateDeclarationSchema, parsed)));
-        Equal(text, Encoding.UTF8.GetString(FerruleJson.SerializeEmbeddedBytes(DuplicateDeclarationSchema, parsed)));
+        Equal(
+            text,
+            Encoding.UTF8.GetString(FerruleJson.SerializeBytes(DuplicateDeclarationSchema, parsed))
+        );
+        Equal(
+            text,
+            Encoding.UTF8.GetString(
+                FerruleJson.SerializeEmbeddedBytes(DuplicateDeclarationSchema, parsed)
+            )
+        );
         using (var document = JsonDocument.Parse(text))
         {
             var properties = document.RootElement.EnumerateObject().ToArray();
@@ -66,9 +83,13 @@ internal static partial class Program
             Equal(7L, properties[0].Value.GetInt64());
             Equal("self authored é🙂", properties[1].Value.GetString());
         }
-        Equal(text, FerruleJson.SerializeEmbedded(
-            DuplicateDeclarationSchema,
-            FerruleJson.ParseEmbedded(DuplicateDeclarationSchema, text)));
+        Equal(
+            text,
+            FerruleJson.SerializeEmbedded(
+                DuplicateDeclarationSchema,
+                FerruleJson.ParseEmbedded(DuplicateDeclarationSchema, text)
+            )
+        );
 
         const string lexical = """
             {"name":"Root","kind":{"kind":"group","children":[
@@ -87,8 +108,11 @@ internal static partial class Program
         var wrongCount = lexical.Replace(
             "\"name\":\"Root\",",
             "\"name\":\"Root\",\"property_count_range\":{\"maximum\":1},",
-            StringComparison.Ordinal);
-        Error(FerruleRuntimeError.JsonBoundary, () => FerruleJson.SerializeEmbedded(wrongCount, value));
+            StringComparison.Ordinal
+        );
+        Error(FerruleRuntimeError.JsonBoundary, () =>
+            FerruleJson.SerializeEmbedded(wrongCount, value)
+        );
         JsonDuplicateDeclarationProjectedPredicates();
     }
 
@@ -120,11 +144,17 @@ internal static partial class Program
             Equal(2, projected.RootElement.EnumerateObject().Count());
         }
         Equal(text, FerruleJson.SerializeEmbedded(schema, FerruleJson.ParseEmbedded(schema, text)));
-        Error(FerruleRuntimeError.JsonBoundary, () => FerruleJson.SerializeEmbedded(
-            schema, Group(Field("Value", Scalar(Text("007"))))));
+        Error(FerruleRuntimeError.JsonBoundary, () =>
+            FerruleJson.SerializeEmbedded(schema, Group(Field("Value", Scalar(Text("007")))))
+        );
         var wrongDependent = schema.Replace(
-            "\"minimum\":7,\"maximum\":7", "\"minimum\":8,\"maximum\":8", StringComparison.Ordinal);
-        var dependentError = Error(FerruleRuntimeError.JsonBoundary, () => FerruleJson.SerializeEmbedded(wrongDependent, value));
+            "\"minimum\":7,\"maximum\":7",
+            "\"minimum\":8,\"maximum\":8",
+            StringComparison.Ordinal
+        );
+        var dependentError = Error(FerruleRuntimeError.JsonBoundary, () =>
+            FerruleJson.SerializeEmbedded(wrongDependent, value)
+        );
         Equal(true, dependentError.Message.Contains("dependent schema", StringComparison.Ordinal));
 
         const string nullable = """
@@ -133,8 +163,12 @@ internal static partial class Program
               {"name":"Maybe","kind":{"kind":"scalar","ty":"string"}}
             ]}}
             """;
-        Error(FerruleRuntimeError.JsonBoundary, () => FerruleJson.SerializeEmbedded(
-            nullable, Group(Field("Maybe", Scalar(FerruleValue.JsonNull)))));
+        Error(FerruleRuntimeError.JsonBoundary, () =>
+            FerruleJson.SerializeEmbedded(
+                nullable,
+                Group(Field("Maybe", Scalar(FerruleValue.JsonNull)))
+            )
+        );
         var missing = FerruleJson.ParseEmbedded(nullable, "{}");
         Equal(2, ((FerruleGroup)missing).Fields.Count);
         Equal("{}\n", FerruleJson.SerializeEmbedded(nullable, missing));
@@ -151,7 +185,9 @@ internal static partial class Program
         foreach (var input in new[] { "{\"Value\":1}", "{\"Value\":6}" })
         {
             Error(FerruleRuntimeError.JsonBoundary, () => FerruleJson.ParseEmbedded(schema, input));
-            Error(FerruleRuntimeError.JsonBoundary, () => FerruleJson.ParseEmbeddedBytes(schema, Encoding.UTF8.GetBytes(input)));
+            Error(FerruleRuntimeError.JsonBoundary, () =>
+                FerruleJson.ParseEmbeddedBytes(schema, Encoding.UTF8.GetBytes(input))
+            );
         }
         var valid = (FerruleGroup)FerruleJson.ParseEmbedded(schema, "{\"Value\":3}");
         Equal(2, valid.Fields.Count);
@@ -160,16 +196,33 @@ internal static partial class Program
             Equal(1, document.RootElement.EnumerateObject().Count());
             Equal(3L, document.RootElement.GetProperty("Value").GetInt64());
         }
-        Error(FerruleRuntimeError.JsonBoundary, () => FerruleJson.SerializeEmbedded(schema, Group(Field("Value", Scalar(FerruleValue.FromInt64(1))))));
-        Error(FerruleRuntimeError.JsonBoundary, () => FerruleJson.SerializeEmbedded(schema, Group(Field("Value", Scalar(FerruleValue.FromInt64(6))))));
+        Error(FerruleRuntimeError.JsonBoundary, () =>
+            FerruleJson.SerializeEmbedded(
+                schema,
+                Group(Field("Value", Scalar(FerruleValue.FromInt64(1))))
+            )
+        );
+        Error(FerruleRuntimeError.JsonBoundary, () =>
+            FerruleJson.SerializeEmbedded(
+                schema,
+                Group(Field("Value", Scalar(FerruleValue.FromInt64(6))))
+            )
+        );
         const string conflicting = """
             {"name":"Root","kind":{"kind":"group","children":[
               {"name":"Value","kind":{"kind":"scalar","ty":"int"}},
               {"name":"Value","kind":{"kind":"group","children":[]}}
             ]}}
             """;
-        Error(FerruleRuntimeError.JsonBoundary, () => FerruleJson.ParseEmbedded(conflicting, "{\"Value\":7}"));
-        Error(FerruleRuntimeError.JsonBoundary, () => FerruleJson.SerializeEmbedded(conflicting, Group(Field("Value", Scalar(FerruleValue.FromInt64(7))))));
+        Error(FerruleRuntimeError.JsonBoundary, () =>
+            FerruleJson.ParseEmbedded(conflicting, "{\"Value\":7}")
+        );
+        Error(FerruleRuntimeError.JsonBoundary, () =>
+            FerruleJson.SerializeEmbedded(
+                conflicting,
+                Group(Field("Value", Scalar(FerruleValue.FromInt64(7))))
+            )
+        );
 
         const string open = """
             {"name":"Root","kind":{"kind":"group","children":[],
@@ -196,19 +249,40 @@ internal static partial class Program
               {"name":"Value","kind":{"kind":"scalar","ty":"float"}}
             ]}}
             """;
-        var schema = "{\"name\":\"Root\",\"kind\":{\"kind\":\"group\",\"children\":[" + row + "," + row + "]}}";
-        var source = (FerruleGroup)FerruleJson.ParseEmbedded(schema, "{\"Rows\":[{\"Value\":1},{\"Value\":2}]}");
+        var schema =
+            "{\"name\":\"Root\",\"kind\":{\"kind\":\"group\",\"children\":["
+            + row
+            + ","
+            + row
+            + "]}}";
+        var source = (FerruleGroup)
+            FerruleJson.ParseEmbedded(schema, "{\"Rows\":[{\"Value\":1},{\"Value\":2}]}");
         Equal(2, source.Fields.Count);
-        var filtered = (FerruleGroup)FerruleRecursiveFilter.Apply(
-            ScopeContext.FromSource(source), "Children", "Rows", 9, _ => Bool(true));
+        var filtered = (FerruleGroup)
+            FerruleRecursiveFilter.Apply(
+                ScopeContext.FromSource(source),
+                "Children",
+                "Rows",
+                9,
+                _ => Bool(true)
+            );
         Equal(2, filtered.Fields.Count);
         var rows = (FerruleRepeated)filtered.Fields[0].Value;
         Equal(2, rows.Items.Count);
         Equal(2, ((FerruleGroup)rows.Items[0]).Fields.Count);
-        Equal(FerruleValueKind.Double, ((FerruleScalar)((FerruleGroup)rows.Items[0]).Fields[1].Value).Value.Kind);
-        Equal(FerruleJson.SerializeEmbedded(schema, source), FerruleJson.SerializeEmbedded(schema, filtered));
-        var flat = (FerruleRepeated)FerruleJson.ParseEmbedded(DuplicateDeclarationSchema,
-            "[{\"Value\":7,\"Tail\":\"one\"},{\"Value\":8,\"Tail\":\"two\"}]");
+        Equal(
+            FerruleValueKind.Double,
+            ((FerruleScalar)((FerruleGroup)rows.Items[0]).Fields[1].Value).Value.Kind
+        );
+        Equal(
+            FerruleJson.SerializeEmbedded(schema, source),
+            FerruleJson.SerializeEmbedded(schema, filtered)
+        );
+        var flat = (FerruleRepeated)
+            FerruleJson.ParseEmbedded(
+                DuplicateDeclarationSchema,
+                "[{\"Value\":7,\"Tail\":\"one\"},{\"Value\":8,\"Tail\":\"two\"}]"
+            );
         Equal(2, flat.Items.Count);
         Equal(3, ((FerruleGroup)flat.Items[1]).Fields.Count);
         var rendered = FerruleJson.SerializeEmbedded(DuplicateDeclarationSchema, flat);
@@ -217,13 +291,20 @@ internal static partial class Program
             Equal(2, document.RootElement.GetArrayLength());
             Equal(2, document.RootElement[1].EnumerateObject().Count());
         }
-        Error(FerruleRuntimeError.JsonBoundary, () => FerruleJson.ParseEmbeddedBytes(schema, [0xff]));
+        Error(FerruleRuntimeError.JsonBoundary, () =>
+            FerruleJson.ParseEmbeddedBytes(schema, [0xff])
+        );
         var tooLarge = new byte[FerruleJson.MaximumDocumentBytes + 1];
-        Error(FerruleRuntimeError.JsonBoundary, () => FerruleJson.ParseEmbeddedBytes(schema, tooLarge));
+        Error(FerruleRuntimeError.JsonBoundary, () =>
+            FerruleJson.ParseEmbeddedBytes(schema, tooLarge)
+        );
         var tooDeep = schema;
         for (var depth = 0; depth < 128; depth++)
         {
-            tooDeep = "{\"name\":\"Nested\",\"kind\":{\"kind\":\"group\",\"children\":[" + tooDeep + "]}}";
+            tooDeep =
+                "{\"name\":\"Nested\",\"kind\":{\"kind\":\"group\",\"children\":["
+                + tooDeep
+                + "]}}";
         }
         Error(FerruleRuntimeError.JsonBoundary, () => FerruleJson.ParseEmbedded(tooDeep, "{}"));
     }

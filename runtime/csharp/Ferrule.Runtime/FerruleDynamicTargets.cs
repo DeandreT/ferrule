@@ -14,26 +14,31 @@ public static class FerruleDynamicTargets
             FerruleRuntimeError.DynamicPropertyName,
             $"Node {node}: dynamic target property name must be a string, got {value.Kind}.",
             node: node,
-            foundKind: value.Kind);
+            foundKind: value.Kind
+        );
     }
 
     public static void Insert(
         List<FerruleField> fields,
         IReadOnlyList<string> fixedFields,
         string name,
-        FerruleInstance value)
+        FerruleInstance value
+    )
     {
         ArgumentNullException.ThrowIfNull(fields);
         ArgumentNullException.ThrowIfNull(fixedFields);
         ArgumentNullException.ThrowIfNull(name);
         ArgumentNullException.ThrowIfNull(value);
-        if (fixedFields.Contains(name, StringComparer.Ordinal) ||
-            fields.Any(field => string.Equals(field.Name, name, StringComparison.Ordinal)))
+        if (
+            fixedFields.Contains(name, StringComparer.Ordinal)
+            || fields.Any(field => string.Equals(field.Name, name, StringComparison.Ordinal))
+        )
         {
             throw new FerruleRuntimeException(
                 FerruleRuntimeError.DuplicateDynamicProperty,
                 $"Dynamic target object contains duplicate or fixed-colliding property '{name}'.",
-                detail: name);
+                detail: name
+            );
         }
 
         fields.Add(new FerruleField(name, value));
@@ -49,7 +54,8 @@ public static class FerruleDynamicTargets
             {
                 throw new FerruleRuntimeException(
                     FerruleRuntimeError.InvalidDynamicPropertyFragment,
-                    "A dynamic object merge can contain only object property fragments.");
+                    "A dynamic object merge can contain only object property fragments."
+                );
             }
 
             foreach (var field in group.Fields)
