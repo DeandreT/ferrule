@@ -114,3 +114,25 @@ There is no timeout or cancellation API. Callers needing process isolation or a
 wall-clock deadline must supply those separately. Every call owns its budgets;
 a failed call retains no reusable parse/output state and a corrected retry is
 independent.
+
+### Generated C# instance bytes
+
+`codegen_csharp::xbrl_documents::emit` accepts a lowered static program and
+explicit source/target `XbrlBoundaryOptions` for each endpoint. Named options
+must match declaration order and spelling. The standalone library exposes
+`ExecuteXbrlBytesSelectedTarget` and `ExecuteXbrlBytesOutputs`; the latter runs
+the mapping once and returns primary and named documents in declaration order.
+
+This profile accepts one repeating row group with an entity identifier
+(`scheme` and `#text`), an instant period, and one namespace-bound string or
+signed 64-bit integer fact per context. A simple `pure` input unit may be
+referenced; as with the native writer without fact bindings, it is not emitted.
+Dimensions, durations, divided units, typed fact defaults, presentation
+linkbases and dynamic endpoints are not admitted. Schema references are inert
+metadata. The reader requires UTF-8, prohibits DTDs and never resolves a URL or
+file. Unsupported structure is refused rather than treated as an empty table.
+
+The limits are 1 MiB per input or output, 16 documents on each side, 1,024
+contexts and units per document, 16 levels, 32,768 reader events and attributes
+(each), and 16,384 UTF-16 code units per value. The writer checks its byte
+budget before each append; no partial bundle is returned on failure.

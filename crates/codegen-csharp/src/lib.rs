@@ -38,6 +38,7 @@ pub use primary_json_document::emit_with_primary_json_documents;
 mod runtime;
 mod static_documents;
 mod x12_output;
+pub mod xbrl_documents;
 mod xlsx_document;
 pub use xlsx_document::emit_with_flat_xlsx_output;
 
