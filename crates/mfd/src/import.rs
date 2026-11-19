@@ -1626,7 +1626,7 @@ fn import_resolved(
             .or_else(|| builder.static_target_document_path(target))
             .or_else(|| default_pass_through_output_path(target))
     };
-    let (failure_rules, item_exception) = if item_ordered_exceptions {
+    let (mut failure_rules, item_exception) = if item_ordered_exceptions {
         let pending = exception::item_ordered::attach(
             exception_recipes,
             &mut builder,
@@ -1642,6 +1642,7 @@ fn import_resolved(
     } else {
         (exception::lower(exception_recipes, &mut builder), None)
     };
+    failure_rules.extend(builder.explicit_lookup_input_checks());
     let (primary_filename, output_filename) = if let Some(endpoints) = &filename_endpoints {
         let (input, output) = endpoints.retain(primary, target, &mut builder)?;
         (Some(input), Some(output))

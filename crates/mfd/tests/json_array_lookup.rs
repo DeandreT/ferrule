@@ -3,6 +3,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use ir::{Instance, Value};
 
+#[path = "json_array_lookup/explicit_item.rs"]
+mod explicit_item;
 #[path = "json_array_lookup/host_commands.rs"]
 mod host_commands;
 #[path = "json_array_lookup/root_scalars.rs"]
@@ -720,7 +722,7 @@ fn emit(root: &Path, profile: &str) {
     let (rust, csharp) = if edi {
         let mut source =
             codegen::X12BoundaryOptions::from_format_options(&project.source_options).unwrap();
-        source.envelope_profile = codegen::X12EnvelopeProfile::MapForceInterchanges;
+        source.envelope_profile = codegen::X12EnvelopeProfile::REPEATING_INTERCHANGES;
         source.lenient_segments = false;
         let policy = codegen::X12BoundaryPolicy {
             source: Some(source),

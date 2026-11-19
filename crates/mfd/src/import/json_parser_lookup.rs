@@ -10,9 +10,12 @@ use mapping::{AggregateOp, Node, NodeId, SequenceExpr};
 use super::super::function::{FnComponent, is_filter};
 use super::super::graph::GraphBuilder;
 use super::super::schema::{parse_u32, schema_node_at};
+#[path = "lookup_receiver.rs"]
+mod receiver;
 
 #[derive(Default)]
 pub(in crate::import) struct RawPins {
+    receiver: Option<receiver::Receiver>,
     functions: BTreeMap<u32, FunctionPins>,
     unique_outputs: BTreeSet<u32>,
 }
@@ -96,6 +99,7 @@ pub(super) fn read_pins(parser: roxmltree::Node<'_, '_>) -> RawPins {
         })
         .collect();
     RawPins {
+        receiver: receiver::Receiver::read(parser),
         functions,
         unique_outputs,
     }
@@ -216,9 +220,52 @@ enum KeyExpr {
     String(String),
     Equal(Box<KeyExpr>, Box<KeyExpr>),
     If(Box<KeyExpr>, Box<KeyExpr>, Box<KeyExpr>),
+    Filter(Box<KeyExpr>, Box<KeyExpr>),
 }
 
 impl KeyExpr {
+    fn filtered(&self) -> bool {
+        matches!(self,Self::If(_,_,otherwise) if matches!(otherwise.as_ref(),Self::Filter(..)))
+    }
+    fn emit(&self, b: &mut GraphBuilder<'_>, frame: &[String]) -> NodeId {
+        match self {
+            Self::Field(path) => b.alloc(Node::SourceField {
+                path: path.clone(),
+                frame: Some(frame.to_vec()),
+            }),
+            Self::String(s) => b.alloc(Node::Const {
+                value: Value::String(s.clone()),
+            }),
+            Self::Equal(l, r) => {
+                let l = l.emit(b, frame);
+                let r = r.emit(b, frame);
+                b.alloc(Node::Call {
+                    function: "equal".into(),
+                    args: vec![l, r],
+                })
+            }
+            Self::If(c, t, e) => {
+                let condition = c.emit(b, frame);
+                let then = t.emit(b, frame);
+                let else_ = e.emit(b, frame);
+                b.alloc(Node::If {
+                    condition,
+                    then,
+                    else_,
+                })
+            }
+            Self::Filter(c, v) => {
+                let condition = c.emit(b, frame);
+                let then = v.emit(b, frame);
+                let else_ = b.const_null();
+                b.alloc(Node::If {
+                    condition,
+                    then,
+                    else_,
+                })
+            }
+        }
+    }
     // Match the complete lowered expression to its typed raw proof. An allowed
     // node kind alone is insufficient: cached/fallback fields and constants
     // must retain their exact owner, suffix, value and authored branch order.
@@ -372,7 +419,51 @@ impl KeyProof<'_, '_> {
             };
             let (condition, condition_type) = self.expression(*condition, depth + 1)?;
             let (then, then_type) = self.expression(*then, depth + 1)?;
-            let (otherwise, otherwise_type) = self.expression(*otherwise, depth + 1)?;
+            let (otherwise, otherwise_type) = if depth == 1
+                && self
+                    .builder
+                    .fn_by_output
+                    .get(otherwise)
+                    .and_then(|i| self.builder.fn_components.get(*i))
+                    .is_some_and(is_filter)
+            {
+                let receiver = self.raw.receiver.as_ref()?;
+                let filter_index = *self.builder.fn_by_output.get(otherwise)?;
+                let filter = &self.builder.fn_components[filter_index];
+                if !self.raw.matches(filter)
+                    || filter.output_pins.as_slice() != [Some(*otherwise), None]
+                    || receiver.uses(*otherwise) != 1
+                {
+                    return None;
+                }
+                let selected = self.builder.input_feed(filter_index, 0)?;
+                let condition_feed = self.builder.input_feed(filter_index, 1)?;
+                if receiver.uses(condition_feed) != 1
+                    || !self.raw.matches(
+                        self.builder
+                            .fn_components
+                            .get(*self.builder.fn_by_output.get(&condition_feed)?)?,
+                    )
+                {
+                    return None;
+                }
+                let (condition, ct) = self.expression(condition_feed, depth + 1)?;
+                let (value, vt) = self.expression(selected, depth + 1)?;
+                if ct != ScalarType::Bool
+                    || vt != ScalarType::String
+                    || !matches!(condition, KeyExpr::Equal(..))
+                    || !matches!(value, KeyExpr::Field(_))
+                    || !matches!(then, KeyExpr::Field(_))
+                {
+                    return None;
+                }
+                (
+                    KeyExpr::Filter(Box::new(condition), Box::new(value)),
+                    ScalarType::String,
+                )
+            } else {
+                self.expression(*otherwise, depth + 1)?
+            };
             (condition_type == ScalarType::Bool
                 && then_type == ScalarType::String
                 && otherwise_type == ScalarType::String)
@@ -528,6 +619,17 @@ impl GraphBuilder<'_> {
             frame: proof.frame?,
             expression,
         };
+        if primary.expression.filtered() {
+            let receiver = parser.lookup_pins.receiver.as_ref()?;
+            if receiver.frame != primary.frame
+                || receiver.uses(output) != 1
+                || receiver.uses(primary_feed) != 2
+            {
+                return None;
+            }
+            receiver.target(primary_feed)?;
+            receiver.target(output)?;
+        }
         Some(Lookup {
             parser: parser_index,
             equal: equal_index,
@@ -543,6 +645,7 @@ impl GraphBuilder<'_> {
         index: usize,
         output: u32,
         active_anchor: &[String],
+        target: Option<&[String]>,
     ) -> Option<NodeId> {
         let lookup = self.json_parser_lookup(index).filter(|lookup| {
             lookup.primary.frame == active_anchor
@@ -557,11 +660,26 @@ impl GraphBuilder<'_> {
             self.warnings.push("JSON string parser array lookup requires an exclusively owned equality filter first output and the actual primary-item frame; unsupported ownership or cardinality was skipped".into());
             return None;
         };
-        let primary = self.scalar_node_at_anchor(lookup.primary.feed, active_anchor)?;
-        if !lookup
-            .primary
-            .expression
-            .matches(&self.graph, primary, active_anchor)
+        let checked = lookup.primary.expression.filtered();
+        let primary = if checked {
+            let recv = self.json_parsers[lookup.parser]
+                .lookup_pins
+                .receiver
+                .as_ref()?;
+            if target.is_none() || target != recv.target(output) {
+                self.warnings
+                    .push("JSON string parser lookup requires its explicit scalar receiver".into());
+                return None;
+            }
+            lookup.primary.expression.emit(self, active_anchor)
+        } else {
+            self.scalar_node_at_anchor(lookup.primary.feed, active_anchor)?
+        };
+        if !checked
+            && !lookup
+                .primary
+                .expression
+                .matches(&self.graph, primary, active_anchor)
         {
             self.warnings.push("JSON string parser array lookup primary key did not retain its proved scalar expression and actual primary-item frame; skipped".into());
             return None;
@@ -580,45 +698,192 @@ impl GraphBuilder<'_> {
             function: "json_parse_array_length".into(),
             args: vec![input, schema, array],
         });
-        let item = self.alloc(Node::SourceField {
-            path: Vec::new(),
-            frame: None,
-        });
-        let mut field = |path: &[String]| {
-            let path = self.alloc(Node::Const {
-                value: Value::String(serde_json::to_string(path).expect("path serializes")),
+        let left_primary = self.input_feed(lookup.equal, 0) == Some(lookup.primary.feed);
+        let scan = |b: &mut Self| {
+            let item = b.alloc(Node::SourceField {
+                path: Vec::new(),
+                frame: None,
             });
-            self.alloc(Node::Call {
-                function: "json_parse_array_field".into(),
-                args: vec![input, schema, array, path, item],
-            })
+            let mut field = |path: &[String]| {
+                let path = b.alloc(Node::Const {
+                    value: Value::String(serde_json::to_string(path).expect("path serializes")),
+                });
+                b.alloc(Node::Call {
+                    function: "json_parse_array_field".into(),
+                    args: vec![input, schema, array, path, item],
+                })
+            };
+            let key = field(&lookup.key);
+            let value = field(&lookup.value);
+            // Preserve the saved equality's operand order and ordinary null rules.
+            let args = if left_primary {
+                vec![primary, key]
+            } else {
+                vec![key, primary]
+            };
+            let predicate = b.alloc(Node::Call {
+                function: "equal".into(),
+                args,
+            });
+            let predicate = if checked {
+                // Null keys produce no sequence. An empty string is present.
+                let mut test = predicate;
+                for field in [key, primary, value] {
+                    let condition = b.alloc(Node::Call {
+                        function: "exists".into(),
+                        args: vec![field],
+                    });
+                    let no = b.alloc(Node::Const {
+                        value: Value::Bool(false),
+                    });
+                    test = b.alloc(Node::If {
+                        condition,
+                        then: test,
+                        else_: no,
+                    });
+                }
+                test
+            } else {
+                predicate
+            };
+            (
+                SequenceExpr::Generate {
+                    from: None,
+                    to: count,
+                    item,
+                },
+                predicate,
+                value,
+            )
         };
-        let key = field(&lookup.key);
-        let value = field(&lookup.value);
-        // Preserve the saved equality's operand order and ordinary null rules.
-        let args = if self.input_feed(lookup.equal, 0) == Some(lookup.primary.feed) {
-            vec![primary, key]
-        } else {
-            vec![key, primary]
-        };
-        let predicate = self.alloc(Node::Call {
-            function: "equal".into(),
-            args,
-        });
         let first = self.alloc(Node::Const {
             value: Value::Int(1),
         });
-        Some(self.alloc(Node::SequenceAggregate {
+        let unique = if checked {
+            let (sequence, predicate, _) = scan(self);
+            let matches = self.alloc(Node::SequenceAggregate {
+                function: AggregateOp::Count,
+                sequence,
+                predicate: Some(predicate),
+                expression: None,
+                arg: None,
+            });
+            let multiple = self.alloc(Node::Call {
+                function: "greater_than".into(),
+                args: vec![matches, first],
+            });
+            let message = self.alloc(Node::Const {
+                value: Value::String("Multiple lookup values for a singular target".into()),
+            });
+            let failure = self.alloc(Node::Raise {
+                message: Some(message),
+            });
+            Some((multiple, failure))
+        } else {
+            None
+        };
+        let (sequence, predicate, value) = scan(self);
+        let selected = self.alloc(Node::SequenceAggregate {
             function: AggregateOp::ItemAt,
-            sequence: SequenceExpr::Generate {
-                from: None,
-                to: count,
-                item,
-            },
+            sequence,
             predicate: Some(predicate),
             expression: Some(value),
             arg: Some(first),
+        });
+        Some(if let Some((condition, then)) = unique {
+            self.alloc(Node::If {
+                condition,
+                then,
+                else_: selected,
+            })
+        } else {
+            selected
+        })
+    }
+
+    pub(in crate::import) fn explicit_lookup_key_binding(
+        &mut self,
+        feed: u32,
+        frame: &[String],
+        target: &[String],
+    ) -> Option<NodeId> {
+        let l = (0..self.fn_components.len()).find_map(|i| {
+            self.json_parser_lookup(i)
+                .filter(|l| l.primary.feed == feed && l.primary.expression.filtered())
+        })?;
+        let recv = self.json_parsers[l.parser].lookup_pins.receiver.as_ref()?;
+        if l.primary.frame != frame || recv.target(feed) != Some(target) {
+            self.warnings.push(
+                "JSON string parser conditional key requires its explicit receiving item".into(),
+            );
+            return Some(self.alloc(Node::Unconnected));
+        }
+        let value = l.primary.expression.emit(self, frame);
+        let present = self.alloc(Node::Call {
+            function: "exists".into(),
+            args: vec![value],
+        });
+        let absent = self.const_null();
+        Some(self.alloc(Node::If {
+            condition: present,
+            then: value,
+            else_: absent,
         }))
+    }
+
+    pub(in crate::import) fn explicit_lookup_input_checks(&mut self) -> Vec<mapping::FailureRule> {
+        let mut seen = BTreeSet::new();
+        let mut checks = Vec::new();
+        if !self
+            .json_parsers
+            .iter()
+            .any(|p| p.lookup_pins.receiver.is_some())
+        {
+            return checks;
+        }
+        for i in 0..self.fn_components.len() {
+            let Some(l) = self
+                .json_parser_lookup(i)
+                .filter(|l| l.primary.expression.filtered())
+            else {
+                continue;
+            };
+            if !seen.insert(l.parser) {
+                continue;
+            }
+            let p = &self.json_parsers[l.parser];
+            let schema = serde_json::to_string(&p.schema).expect("parser schema serializes");
+            let input_key = p.input;
+            let Some(input) = self.parser_input_node(input_key) else {
+                self.warnings.push(
+                    "JSON string parser input is not available for document validation".into(),
+                );
+                continue;
+            };
+            let schema = self.alloc(Node::Const {
+                value: Value::String(schema),
+            });
+            let path = self.alloc(Node::Const {
+                value: Value::String(serde_json::to_string(&l.array).expect("path serializes")),
+            });
+            let length = self.alloc(Node::Call {
+                function: "json_parse_array_length".into(),
+                args: vec![input, schema, path],
+            });
+            let zero = self.alloc(Node::Const {
+                value: Value::Int(0),
+            });
+            let invalid = self.alloc(Node::Call {
+                function: "less_than".into(),
+                args: vec![length, zero],
+            });
+            checks.push(mapping::FailureRule {
+                iteration: mapping::FailureIteration::Source { collection: vec![] },
+                selection: mapping::FailureSelection::WhenTrue { predicate: invalid },
+                message: None,
+            });
+        }
+        checks
     }
 }
 

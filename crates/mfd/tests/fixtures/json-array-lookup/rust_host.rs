@@ -47,6 +47,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ),
                 _ => panic!("unknown parameter control: {case}"),
             }
+        } else if let Some(expected) = case["cardinality_error"].as_str() {
+            assert!(
+                matches!(result, Err(RuntimeError::MappingException { message: Some(ref message), .. }) if message == expected),
+                "{case}: {result:?}"
+            );
         } else if let Some(message) = case["error"].as_str() {
             assert!(
                 matches!(result, Err(RuntimeError::Function(FunctionError::InvalidArgument {
