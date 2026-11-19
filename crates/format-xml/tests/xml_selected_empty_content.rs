@@ -158,7 +158,7 @@ fn selected_empty_type_inside_ordinary_group_has_no_inner_whitespace() {
 }
 
 #[test]
-fn ordinary_and_selected_element_only_empty_groups_keep_existing_formatting() {
+fn ordinary_and_selected_empty_groups_have_no_indentation_text() {
     let schema = Dir::new().import(EMPTY);
     assert_eq!(
         write(&schema, &typed("B"), false),
@@ -166,14 +166,44 @@ fn ordinary_and_selected_element_only_empty_groups_keep_existing_formatting() {
     );
     assert_eq!(
         write(&schema, &typed("B"), true),
-        "<Root xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:type=\"B\">\n</Root>"
+        r#"<Root xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="B"/>"#
     );
     let mut optional = SchemaNode::scalar("Value", ScalarType::String);
     optional.xml_optional = true;
     let ordinary = SchemaNode::group("Root", vec![optional]);
     let absent = Instance::Group((Vec::new()).into());
     assert_eq!(write(&ordinary, &absent, false), "<Root></Root>");
-    assert_eq!(write(&ordinary, &absent, true), "<Root>\n</Root>");
+    assert_eq!(write(&ordinary, &absent, true), "<Root/>");
+}
+
+#[test]
+fn empty_repeated_children_leave_no_text_and_do_not_affect_the_next_row() {
+    let schema = SchemaNode::group(
+        "Results",
+        vec![
+            SchemaNode::group(
+                "Row",
+                vec![SchemaNode::group("Inner", Vec::new()).repeating()],
+            )
+            .repeating(),
+        ],
+    );
+    let row = |items| Instance::Group(vec![("Inner".into(), Instance::Repeated(items))].into());
+    let value = Instance::Group(
+        vec![(
+            "Row".into(),
+            Instance::Repeated(vec![row(vec![]), row(vec![Instance::Group(vec![].into())])]),
+        )]
+        .into(),
+    );
+    assert_eq!(
+        write(&schema, &value, true),
+        "<Results>\n  <Row/>\n  <Row>\n    <Inner/>\n  </Row>\n</Results>"
+    );
+    assert_eq!(
+        write(&schema, &value, false),
+        "<Results><Row></Row><Row><Inner/></Row></Results>"
+    );
 }
 
 #[test]

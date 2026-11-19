@@ -170,7 +170,8 @@ reloading a project starts from that project's saved headers.
   mixed element, including inside its element-only children, so the output
   reads back unchanged. This holds whether a mixed element is written from its
   ordered content or from typed fields alone. Element-only content outside
-  mixed elements stays indented.
+  mixed elements stays indented. An empty element-only group uses an empty tag
+such as `<Row/>` in indented output, with spaces and LF around it.
   MFD export partitions foreign declarations into deterministic local XSD
   siblings and publishes the complete graph atomically. Bounded local-graph
   substitution groups, compatible element-only or mixed `complexContent`
