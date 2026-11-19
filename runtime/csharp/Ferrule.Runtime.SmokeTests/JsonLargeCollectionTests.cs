@@ -33,31 +33,36 @@ internal static partial class Program
 
         static void PublicByteLimits()
         {
-            const string integerSchema =
-                """{"name":"Value","kind":{"kind":"scalar","ty":"int"}}""";
-            var schema = integerSchema + new string(' ', FerruleJson.MaximumSchemaBytes + 1 - integerSchema.Length);
+            const string integerSchema = """{"name":"Value","kind":{"kind":"scalar","ty":"int"}}""";
+            var schema =
+                integerSchema
+                + new string(' ', FerruleJson.MaximumSchemaBytes + 1 - integerSchema.Length);
             Equal(
                 true,
-                Error(
-                    FerruleRuntimeError.JsonBoundary,
-                    () => FerruleJson.Parse(schema, "0"))
-                    .Message.Contains("embedded JSON schema", StringComparison.Ordinal));
+                Error(FerruleRuntimeError.JsonBoundary, () => FerruleJson.Parse(schema, "0"))
+                    .Message.Contains("embedded JSON schema", StringComparison.Ordinal)
+            );
             Equal(
                 true,
-                Error(
-                    FerruleRuntimeError.JsonBoundary,
-                    () => FerruleJson.Serialize(schema, Scalar(FerruleValue.FromInt64(0))))
-                    .Message.Contains("embedded JSON schema", StringComparison.Ordinal));
+                Error(FerruleRuntimeError.JsonBoundary, () =>
+                    FerruleJson.Serialize(schema, Scalar(FerruleValue.FromInt64(0)))
+                )
+                    .Message.Contains("embedded JSON schema", StringComparison.Ordinal)
+            );
 
             var input = new byte[FerruleJson.MaximumDocumentBytes + 1];
             Array.Fill(input, (byte)' ');
             input[0] = (byte)'0';
             Equal(
                 true,
-                Error(
-                    FerruleRuntimeError.JsonBoundary,
-                    () => FerruleJson.ParseBytes(integerSchema, input))
-                    .Message.Contains($"maximum is {FerruleJson.MaximumDocumentBytes}", StringComparison.Ordinal));
+                Error(FerruleRuntimeError.JsonBoundary, () =>
+                    FerruleJson.ParseBytes(integerSchema, input)
+                )
+                    .Message.Contains(
+                        $"maximum is {FerruleJson.MaximumDocumentBytes}",
+                        StringComparison.Ordinal
+                    )
+            );
 
             const string stringSchema =
                 """{"name":"Value","kind":{"kind":"scalar","ty":"string"}}""";
@@ -66,10 +71,11 @@ internal static partial class Program
             var value = Scalar(Text(new string('\\', FerruleJson.MaximumDocumentBytes / 2)));
             Equal(
                 true,
-                Error(
-                    FerruleRuntimeError.JsonBoundary,
-                    () => FerruleJson.Serialize(stringSchema, value))
-                    .Message.Contains("JSON output", StringComparison.Ordinal));
+                Error(FerruleRuntimeError.JsonBoundary, () =>
+                    FerruleJson.Serialize(stringSchema, value)
+                )
+                    .Message.Contains("JSON output", StringComparison.Ordinal)
+            );
         }
 
         static void ContainsDoesNotAddAnArrayItemCap()
@@ -103,9 +109,9 @@ internal static partial class Program
             document.Append(']');
             var text = document.ToString();
             Equal(true, text.Length < FerruleJson.MaximumDocumentBytes);
-            var error = Error(
-                FerruleRuntimeError.JsonBoundary,
-                () => FerruleJson.Parse(uniqueSchema, text));
+            var error = Error(FerruleRuntimeError.JsonBoundary, () =>
+                FerruleJson.Parse(uniqueSchema, text)
+            );
             Equal(true, error.Message.Contains("uniqueItems", StringComparison.Ordinal));
             Equal(true, error.Message.Contains("1000000", StringComparison.Ordinal));
         }

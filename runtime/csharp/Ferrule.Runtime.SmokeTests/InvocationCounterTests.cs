@@ -27,10 +27,18 @@ internal static partial class Program
         c = new FerruleInvocationCounters(2, 5);
         Equal(5L, c.Next("A", 5, 1, "xyz"));
         Equal(4L, c.RetainedTextBytes);
-        CounterFailure(() => c.Next("A", 100, 1, "longer"), FerruleInvocationCounterFailure.TextLimit, 5);
+        CounterFailure(
+            () => c.Next("A", 100, 1, "longer"),
+            FerruleInvocationCounterFailure.TextLimit,
+            5
+        );
         Equal(6L, c.Next("A", 999, 1, "xyz"));
         Equal(10L, c.Next("B", 10, 1, null));
-        CounterFailure(() => c.Next("C", 20, 1, null), FerruleInvocationCounterFailure.CountLimit, 2);
+        CounterFailure(
+            () => c.Next("C", 20, 1, null),
+            FerruleInvocationCounterFailure.CountLimit,
+            2
+        );
         Equal(2, c.Count);
         Equal(5L, c.RetainedTextBytes);
         Equal(true, c.Reset("A"));
@@ -45,19 +53,29 @@ internal static partial class Program
 
         c = new FerruleInvocationCounters(6, 13);
         string[] keys = ["a", "A", "é", "e\u0301", "\0", ""];
-        for (int i = 0; i < keys.Length; i++) Equal((long)i, c.Next(keys[i], i, 1, ""));
+        for (int i = 0; i < keys.Length; i++)
+            Equal((long)i, c.Next(keys[i], i, 1, ""));
         Equal(8L, c.RetainedTextBytes);
         Equal(10L, c.Next("a", 10, 1, "🙂"));
         Equal(12L, c.RetainedTextBytes);
-        CounterFailure(() => c.Next("a", 50, 1, "é🙂"), FerruleInvocationCounterFailure.TextLimit, 13);
+        CounterFailure(
+            () => c.Next("a", 50, 1, "é🙂"),
+            FerruleInvocationCounterFailure.TextLimit,
+            13
+        );
         Equal(11L, c.Next("a", 999, 1, "🙂"));
         Equal(0L, c.Next("A", 999, -1, ""));
 
         c = new FerruleInvocationCounters(1, 4);
-        foreach (long expected in new long[] { 1, 2, 3, 4 }) Equal(expected, c.Next("line", 1, 1, null));
+        foreach (long expected in new long[] { 1, 2, 3, 4 })
+            Equal(expected, c.Next("line", 1, 1, null));
         Equal(1L, new FerruleInvocationCounters(1, 4).Next("line", 1, 1, null));
         Equal(-1L, c.Next("line", 99, -5, null));
-        CounterFailure(() => c.Next("line", 100, 1, "\ud800"), FerruleInvocationCounterFailure.InvalidText, null);
+        CounterFailure(
+            () => c.Next("line", 100, 1, "\ud800"),
+            FerruleInvocationCounterFailure.InvalidText,
+            null
+        );
         Equal(0L, c.Next("line", 99, 1, null));
 
         c = new FerruleInvocationCounters(0, 100);
@@ -71,9 +89,16 @@ internal static partial class Program
         Equal(6L, c.Next("", 99, 1, ""));
     }
 
-    private static void CounterFailure(Action action, FerruleInvocationCounterFailure failure, long? maximum)
+    private static void CounterFailure(
+        Action action,
+        FerruleInvocationCounterFailure failure,
+        long? maximum
+    )
     {
-        try { action(); }
+        try
+        {
+            action();
+        }
         catch (FerruleInvocationCounterException error)
         {
             Equal(failure, error.Failure);

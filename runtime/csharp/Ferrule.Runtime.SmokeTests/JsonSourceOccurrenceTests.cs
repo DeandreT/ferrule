@@ -11,16 +11,28 @@ internal static partial class Program
 
     private static void JsonSourceOccurrenceDocument()
     {
-        using var fixture = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "json-source-occurrences.json")));
+        using var fixture = JsonDocument.Parse(
+            File.ReadAllBytes(
+                Path.Combine(AppContext.BaseDirectory, "json-source-occurrences.json")
+            )
+        );
         var inputs = fixture.RootElement.GetProperty("documents").EnumerateArray().ToArray();
         var calls = new List<string>();
-        var loaded = FerruleJsonSources.Load(inputs.Select(input => input.GetProperty("request").GetString()!), request =>
-        {
-            calls.Add(request);
-            var input = inputs.Single(input => input.GetProperty("request").GetString() == request);
-            return FerruleJsonSourceDocument.Parse(input.GetProperty("identity").GetString()!,
-                Encoding.UTF8.GetBytes(input.GetProperty("input").GetString()!));
-        }, 3);
+        var loaded = FerruleJsonSources.Load(
+            inputs.Select(input => input.GetProperty("request").GetString()!),
+            request =>
+            {
+                calls.Add(request);
+                var input = inputs.Single(input =>
+                    input.GetProperty("request").GetString() == request
+                );
+                return FerruleJsonSourceDocument.Parse(
+                    input.GetProperty("identity").GetString()!,
+                    Encoding.UTF8.GetBytes(input.GetProperty("input").GetString()!)
+                );
+            },
+            3
+        );
         Equal(0, calls.Count);
         var documents = new List<FerruleInstance>();
         var retained = new List<FerruleJsonSourceOccurrence>();
@@ -32,24 +44,43 @@ internal static partial class Program
             foreach (var candidate in row.MembersNamed("value"))
             {
                 var value = candidate.OfKind(FerruleJsonSourceKind.String);
-                if (value is null) continue;
+                if (value is null)
+                    continue;
                 var owner = value.Parent!;
                 Equal(true, owner.SameOccurrence(row));
                 var name = owner.MembersNamed("owner").Single();
-                rows.Add(new FerruleGroup([
-                    new("owner", new FerruleScalar(FerruleValue.FromString(name.Value.StringValue!))),
-                    new("value", new FerruleScalar(FerruleValue.FromString(value.Value.StringValue!))),
-                ]));
+                rows.Add(
+                    new FerruleGroup([
+                        new(
+                            "owner",
+                            new FerruleScalar(FerruleValue.FromString(name.Value.StringValue!))
+                        ),
+                        new(
+                            "value",
+                            new FerruleScalar(FerruleValue.FromString(value.Value.StringValue!))
+                        ),
+                    ])
+                );
                 retained.Add(value);
             }
-            documents.Add(new FerruleGroup([
-                new("identity", new FerruleScalar(FerruleValue.FromString(root.Document.Identity))),
-                new("rows", new FerruleRepeated(rows)),
-            ]));
+            documents.Add(
+                new FerruleGroup([
+                    new(
+                        "identity",
+                        new FerruleScalar(FerruleValue.FromString(root.Document.Identity))
+                    ),
+                    new("rows", new FerruleRepeated(rows)),
+                ])
+            );
         }
         var output = new FerruleGroup([new("documents", new FerruleRepeated(documents))]);
-        Equal(fixture.RootElement.GetProperty("expected").GetString(),
-            FerruleJson.SerializeEmbeddedCompact(fixture.RootElement.GetProperty("schema").GetRawText(), output));
+        Equal(
+            fixture.RootElement.GetProperty("expected").GetString(),
+            FerruleJson.SerializeEmbeddedCompact(
+                fixture.RootElement.GetProperty("schema").GetRawText(),
+                output
+            )
+        );
         Equal("z-first,a-second,last", string.Join(",", calls));
         Equal("a", retained[0].Value.StringValue);
         Equal(false, retained[0].SameOccurrence(retained[4]));
@@ -93,32 +124,53 @@ internal static partial class Program
                     foreach (var request in new[] { "good", failure, "unreached" })
                     {
                         events.Add($"enumerate:{request}");
-                        if (request == "enumeration") throw original;
+                        if (request == "enumeration")
+                            throw original;
                         yield return request;
                     }
                 }
-                finally { events.Add("dispose"); }
+                finally
+                {
+                    events.Add("dispose");
+                }
             }
-            var loaded = FerruleJsonSources.Load(Requests(), request =>
-            {
-                events.Add($"load:{request}");
-                var parsed = SourceDocument(request == "syntax" ? "{" : "null");
-                if (request != "good") throw original;
-                events.Add("ready:good");
-                return parsed;
-            }, 3);
+            var loaded = FerruleJsonSources.Load(
+                Requests(),
+                request =>
+                {
+                    events.Add($"load:{request}");
+                    var parsed = SourceDocument(request == "syntax" ? "{" : "null");
+                    if (request != "good")
+                        throw original;
+                    events.Add("ready:good");
+                    return parsed;
+                },
+                3
+            );
             Equal(0, events.Count);
             using var iterator = loaded.GetEnumerator();
             Equal(0, events.Count);
             Equal(true, iterator.MoveNext());
             Equal("enumerate:good,load:good,ready:good", string.Join(",", events));
             Exception? observed = null;
-            try { iterator.MoveNext(); }
-            catch (Exception error) { observed = error; }
-            if (failure == "syntax") Equal(FerruleJsonSourceErrorKind.Syntax, ((FerruleJsonSourceException)observed!).Kind);
-            else Equal(true, ReferenceEquals(original, observed));
+            try
+            {
+                iterator.MoveNext();
+            }
+            catch (Exception error)
+            {
+                observed = error;
+            }
+            if (failure == "syntax")
+                Equal(
+                    FerruleJsonSourceErrorKind.Syntax,
+                    ((FerruleJsonSourceException)observed!).Kind
+                );
+            else
+                Equal(true, ReferenceEquals(original, observed));
             var expected = $"enumerate:good,load:good,ready:good,enumerate:{failure}";
-            if (failure != "enumeration") expected += $",load:{failure}";
+            if (failure != "enumeration")
+                expected += $",load:{failure}";
             expected += ",dispose";
             Equal(expected, string.Join(",", events));
             Equal(false, iterator.MoveNext());
@@ -130,22 +182,37 @@ internal static partial class Program
     private static void JsonSourceLoadLimits()
     {
         var calls = 0;
-        FerruleJsonSourceDocument Load(string _) { calls++; return SourceDocument("null"); }
+        FerruleJsonSourceDocument Load(string _)
+        {
+            calls++;
+            return SourceDocument("null");
+        }
         using var limited = FerruleJsonSources.Load(["a", "b"], Load, 1).GetEnumerator();
         Equal(true, limited.MoveNext());
         Throws<FerruleJsonSourceLoadException>(() => limited.MoveNext());
         Equal(false, limited.MoveNext());
         Equal(1, calls);
-        Throws<FerruleJsonSourceLoadException>(() => FerruleJsonSources.Load(["a"], Load, 0).ToArray());
+        Throws<FerruleJsonSourceLoadException>(() =>
+            FerruleJsonSources.Load(["a"], Load, 0).ToArray()
+        );
         Equal(0, FerruleJsonSources.Load([], Load, 0).Count());
-        Throws<ArgumentOutOfRangeException>(() => FerruleJsonSources.Load(["a"], Load, FerruleJsonSources.MaxDocuments + 1));
+        Throws<ArgumentOutOfRangeException>(() =>
+            FerruleJsonSources.Load(["a"], Load, FerruleJsonSources.MaxDocuments + 1)
+        );
         Throws<ArgumentOutOfRangeException>(() => FerruleJsonSources.Load(["a"], Load, -1));
         Equal(1, calls);
         var disposed = false;
         IEnumerable<string> Requests()
         {
-            try { yield return "a"; throw new Exception("unreached"); }
-            finally { disposed = true; }
+            try
+            {
+                yield return "a";
+                throw new Exception("unreached");
+            }
+            finally
+            {
+                disposed = true;
+            }
         }
         FerruleJsonSourceOccurrence retained;
         using (var early = FerruleJsonSources.Load(Requests(), Load, 2).GetEnumerator())

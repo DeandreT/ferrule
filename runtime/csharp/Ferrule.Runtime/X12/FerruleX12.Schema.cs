@@ -23,28 +23,61 @@ public static partial class FerruleX12
 
     private readonly record struct Range(ulong Minimum, ulong? Maximum)
     {
-        internal bool Contains(ulong count) => count >= Minimum && (Maximum is null || count <= Maximum);
+        internal bool Contains(ulong count) =>
+            count >= Minimum && (Maximum is null || count <= Maximum);
     }
+
     private sealed record Constraint(uint Minimum, uint Maximum, HashSet<string> Allowed);
-    private sealed record LexicalFormat(string Kind, byte MinimumDigits = 0, byte MaximumDigits = 0, byte MaximumChars = 0);
+
+    private sealed record LexicalFormat(
+        string Kind,
+        byte MinimumDigits = 0,
+        byte MaximumDigits = 0,
+        byte MaximumChars = 0
+    );
+
     private sealed record Autocomplete(bool RequestAcknowledgement, string? TransactionSet);
+
     private sealed record VersionProfile(string Interchange, string Group)
     {
         internal bool Modern => Interchange != "00401";
     }
+
     private sealed record GroupedShape(Node Groups, Node Transactions);
-    // The reference application Envelope.Config ownership: repeating interchanges of optional
+
+    // X12 Envelope.Config ownership: repeating interchanges of optional
     // ISA/IEA around repeating functional groups of optional GS/GE around one
     // repeating message container with singular ST and a singular or optional SE.
     // Source schemas may add a trailing acknowledgment branch to each group and message.
-    private sealed record RepeatingEnvelopeShape(Node Interchanges, Node Isa, Node Groups, Node Gs, Node Messages,
-        Node St, Node Se, Node Ge, Node Iea, Node? GroupAcknowledgment = null, Node? MessageAcknowledgment = null);
-    private sealed record Profile(Node Root, Syntax? Separators, bool LenientSegments = false,
-        char? ConfiguredRepetition = null, Autocomplete? Autocomplete = null, VersionProfile? Version = null,
-        GroupedShape? Grouped = null, RepeatingEnvelopeShape? RepeatingEnvelope = null)
+    private sealed record RepeatingEnvelopeShape(
+        Node Interchanges,
+        Node Isa,
+        Node Groups,
+        Node Gs,
+        Node Messages,
+        Node St,
+        Node Se,
+        Node Ge,
+        Node Iea,
+        Node? GroupAcknowledgment = null,
+        Node? MessageAcknowledgment = null
+    );
+
+    private sealed record Profile(
+        Node Root,
+        Syntax? Separators,
+        bool LenientSegments = false,
+        char? ConfiguredRepetition = null,
+        Autocomplete? Autocomplete = null,
+        VersionProfile? Version = null,
+        GroupedShape? Grouped = null,
+        RepeatingEnvelopeShape? RepeatingEnvelope = null
+    )
     {
         internal VersionProfile SelectedVersion => Version ?? new("00401", "004010");
-        internal Syntax OutputSyntax => Separators ?? new('*', ':', '~', SelectedVersion.Modern ? '^' : null);
+        internal Syntax OutputSyntax =>
+            Separators ?? new('*', ':', '~', SelectedVersion.Modern ? '^' : null);
+
         // Declared envelope owner collections report occurrence-indexed paths.
         internal bool IndexedPaths => Grouped is not null || RepeatingEnvelope is not null;
     }
@@ -61,9 +94,11 @@ public static partial class FerruleX12
 
     private static Profile PreparedProfile(string descriptor, bool input)
     {
-        if (descriptor is null) return ParseProfile(descriptor!, input);
+        if (descriptor is null)
+            return ParseProfile(descriptor!, input);
         var prepared = input ? PreparedInputProfiles : PreparedOutputProfiles;
-        if (prepared.TryGetValue(descriptor, out Profile? profile)) return profile;
+        if (prepared.TryGetValue(descriptor, out Profile? profile))
+            return profile;
         Profile parsed = ParseProfile(descriptor, input);
         return prepared.GetValue(descriptor, _ => parsed);
     }
@@ -74,70 +109,148 @@ public static partial class FerruleX12
         RequireUtf8(descriptor, MaximumSchemaBytes, "X12 descriptor");
         try
         {
-            using JsonDocument parsed = JsonDocument.Parse(descriptor, new JsonDocumentOptions { MaxDepth = 127 });
+            using JsonDocument parsed = JsonDocument.Parse(
+                descriptor,
+                new JsonDocumentOptions { MaxDepth = 127 }
+            );
             JsonElement wrapper = parsed.RootElement;
-            Fields(wrapper, ["version", "schema", "separators", "constraints", "lenient_segments", "implied_decimals", "lexical_formats", "autocomplete", "envelope_profile"]);
-            string envelope = wrapper.TryGetProperty("envelope_profile", out JsonElement envelopeProfile)
+            Fields(
+                wrapper,
+                [
+                    "version",
+                    "schema",
+                    "separators",
+                    "constraints",
+                    "lenient_segments",
+                    "implied_decimals",
+                    "lexical_formats",
+                    "autocomplete",
+                    "envelope_profile",
+                ]
+            );
+            string envelope = wrapper.TryGetProperty(
+                "envelope_profile",
+                out JsonElement envelopeProfile
+            )
                 ? envelopeProfile.GetString() switch
                 {
                     "single_transaction" => "single_transaction",
                     "grouped_transactions" => "grouped_transactions",
                     "mapforce_interchanges" => "mapforce_interchanges",
-                    _ => throw Failure(FerruleX12Error.UnsupportedProfile, "Unsupported X12 envelope profile."),
+                    _ => throw Failure(
+                        FerruleX12Error.UnsupportedProfile,
+                        "Unsupported X12 envelope profile."
+                    ),
                 }
                 : "single_transaction";
-            bool grouped = envelope == "grouped_transactions", repeatingEnvelope = envelope == "mapforce_interchanges";
+            bool grouped = envelope == "grouped_transactions",
+                repeatingEnvelope = envelope == "mapforce_interchanges";
             VersionProfile version = wrapper.GetProperty("version").GetString() switch
             {
                 "004010" => new("00401", "004010"),
                 "005010" => new("00501", "005010"),
                 "006040" => new("00604", "006040"),
-                _ => throw Failure(FerruleX12Error.UnsupportedProfile, "Unsupported X12 descriptor version."),
+                _ => throw Failure(
+                    FerruleX12Error.UnsupportedProfile,
+                    "Unsupported X12 descriptor version."
+                ),
             };
             string schema = wrapper.GetProperty("schema").GetString()
-                ?? throw Failure(FerruleX12Error.Schema, "X12 descriptor requires an embedded schema.");
+                ?? throw Failure(
+                    FerruleX12Error.Schema,
+                    "X12 descriptor requires an embedded schema."
+                );
             var decoded = FerruleEmbeddedSchema.Unwrap(schema, MaximumSchemaBytes);
-            using JsonDocument schemaDocument = JsonDocument.Parse(decoded.Payload, new JsonDocumentOptions { MaxDepth = 128 });
+            using JsonDocument schemaDocument = JsonDocument.Parse(
+                decoded.Payload,
+                new JsonDocumentOptions { MaxDepth = 128 }
+            );
             int nodeCount = 0;
             Node root = ParseNode(schemaDocument.RootElement, 0, ref nodeCount);
             if (root.Repeating || root.Type is not null)
                 throw Failure(FerruleX12Error.Schema, "X12 requires a singular root container.");
             GroupedShape? groupedShape = grouped ? ValidateGroupedShape(root) : null;
-            RepeatingEnvelopeShape? repeatingEnvelopeShape = repeatingEnvelope ? ValidateRepeatingEnvelopeShape(root, input) : null;
-            ValidateShape(root, root: true, element: false, component: false, repeated: false, grouped: grouped || repeatingEnvelope,
-                modern: version.Modern);
+            RepeatingEnvelopeShape? repeatingEnvelopeShape = repeatingEnvelope
+                ? ValidateRepeatingEnvelopeShape(root, input)
+                : null;
+            ValidateShape(
+                root,
+                root: true,
+                element: false,
+                component: false,
+                repeated: false,
+                grouped: grouped || repeatingEnvelope,
+                modern: version.Modern
+            );
             var envelopes = new List<Node>();
             CollectEnvelopes(root, envelopes, true);
             string[] ids = ["ISA", "GS", "ST", "SE", "GE", "IEA"];
             int[] widths = [16, 8, 2, 2, 2, 2];
-            if (envelopes.Count != 6) throw Failure(FerruleX12Error.Schema, "The schema requires exactly one envelope sequence.");
+            if (envelopes.Count != 6)
+                throw Failure(
+                    FerruleX12Error.Schema,
+                    "The schema requires exactly one envelope sequence."
+                );
             if (repeatingEnvelope)
             {
                 for (int index = 0; index < ids.Length; index++)
                 {
                     Node segment = envelopes[index];
-                    bool width = segment.Children.Length == widths[index] || ids[index] == "ST" && segment.Children.Length == 3;
-                    if (SegmentId(segment.Name) != ids[index] || !width || segment.Children.Select((child, position) =>
-                            child.Repeating || child.Type is null
-                            || child.Type != "string" && !RepeatingEnvelopeNumericControl(ids[index], position)).Any(invalid => invalid))
-                        throw Failure(FerruleX12Error.Schema,
-                            "Repeating-interchange schemas require exact positional envelope elements with supported control types.");
+                    bool width =
+                        segment.Children.Length == widths[index]
+                        || ids[index] == "ST" && segment.Children.Length == 3;
+                    if (
+                        SegmentId(segment.Name) != ids[index]
+                        || !width
+                        || segment
+                            .Children.Select(
+                                (child, position) =>
+                                    child.Repeating
+                                    || child.Type is null
+                                    || child.Type != "string"
+                                        && !RepeatingEnvelopeNumericControl(ids[index], position)
+                            )
+                            .Any(invalid => invalid)
+                    )
+                        throw Failure(
+                            FerruleX12Error.Schema,
+                            "Repeating-interchange schemas require exact positional envelope elements with supported control types."
+                        );
                 }
                 // ISA12 and GS08 need not be fixed; the descriptor version selects the profile.
-                if (envelopes[0].Children[11].Fixed is { } interchange && interchange != version.Interchange
-                    || envelopes[1].Children[7].Fixed is { } group && group != version.Group)
-                    throw Failure(FerruleX12Error.UnsupportedProfile, "Envelope schema versions must agree with the selected X12 profile.");
+                if (
+                    envelopes[0].Children[11].Fixed is { } interchange
+                        && interchange != version.Interchange
+                    || envelopes[1].Children[7].Fixed is { } group && group != version.Group
+                )
+                    throw Failure(
+                        FerruleX12Error.UnsupportedProfile,
+                        "Envelope schema versions must agree with the selected X12 profile."
+                    );
             }
             else
             {
                 for (int index = 0; index < ids.Length; index++)
-                    if (SegmentId(envelopes[index].Name) != ids[index] || envelopes[index].Children.Length != widths[index]
-                        || envelopes[index].Children.Any(child => child.Type != "string" || child.Repeating))
-                        throw Failure(FerruleX12Error.Schema, "Envelope schemas require exact positional String elements.");
-                if (envelopes[0].Children[11].Fixed != version.Interchange || envelopes[1].Children[7].Fixed != version.Group)
-                    throw Failure(FerruleX12Error.UnsupportedProfile, version.Modern
-                        ? "Envelope schema versions must agree with the selected X12 profile."
-                        : "Envelope schema versions must be fixed to 00401 and 004010.");
+                    if (
+                        SegmentId(envelopes[index].Name) != ids[index]
+                        || envelopes[index].Children.Length != widths[index]
+                        || envelopes[index]
+                            .Children.Any(child => child.Type != "string" || child.Repeating)
+                    )
+                        throw Failure(
+                            FerruleX12Error.Schema,
+                            "Envelope schemas require exact positional String elements."
+                        );
+                if (
+                    envelopes[0].Children[11].Fixed != version.Interchange
+                    || envelopes[1].Children[7].Fixed != version.Group
+                )
+                    throw Failure(
+                        FerruleX12Error.UnsupportedProfile,
+                        version.Modern
+                            ? "Envelope schema versions must agree with the selected X12 profile."
+                            : "Envelope schema versions must be fixed to 00401 and 004010."
+                    );
             }
             Syntax? separators = null;
             char? inactiveRepetition = null;
@@ -145,79 +258,174 @@ public static partial class FerruleX12
             if (selected.ValueKind != JsonValueKind.Null)
             {
                 Fields(selected, ["element", "component", "segment", "repetition"]);
-                separators = new(Character(selected, "element"), Character(selected, "component"), Character(selected, "segment"));
+                separators = new(
+                    Character(selected, "element"),
+                    Character(selected, "component"),
+                    Character(selected, "segment")
+                );
                 ValidateSyntax(separators.Value);
-                if (selected.TryGetProperty("repetition", out JsonElement repetition) && repetition.ValueKind != JsonValueKind.Null)
+                if (
+                    selected.TryGetProperty("repetition", out JsonElement repetition)
+                    && repetition.ValueKind != JsonValueKind.Null
+                )
                 {
                     string? text = repetition.GetString();
                     if (text is null || text.Length != 1)
-                        throw Failure(FerruleX12Error.Schema, version.Modern
-                            ? "Modern X12 repetition metadata requires one character."
-                            : "Inactive X12 repetition metadata requires one character.");
+                        throw Failure(
+                            FerruleX12Error.Schema,
+                            version.Modern
+                                ? "Modern X12 repetition metadata requires one character."
+                                : "Inactive X12 repetition metadata requires one character."
+                        );
                     char character = text[0];
-                    if (!char.IsAscii(character) || character is < '!' or > '~' || char.IsAsciiLetterOrDigit(character)
-                        || character == separators.Value.Element || character == separators.Value.Component || character == separators.Value.Segment)
-                        throw Failure(FerruleX12Error.Syntax, version.Modern
-                            ? "Modern X12 repetition metadata must be distinct ASCII punctuation."
-                            : "Inactive X12 repetition metadata must be distinct ASCII punctuation.");
+                    if (
+                        !char.IsAscii(character)
+                        || character is < '!' or > '~'
+                        || char.IsAsciiLetterOrDigit(character)
+                        || character == separators.Value.Element
+                        || character == separators.Value.Component
+                        || character == separators.Value.Segment
+                    )
+                        throw Failure(
+                            FerruleX12Error.Syntax,
+                            version.Modern
+                                ? "Modern X12 repetition metadata must be distinct ASCII punctuation."
+                                : "Inactive X12 repetition metadata must be distinct ASCII punctuation."
+                        );
                     inactiveRepetition = character;
                 }
                 if (version.Modern)
                 {
                     separators = separators.Value with { Repetition = inactiveRepetition };
                     if (!input && inactiveRepetition is null)
-                        throw Failure(FerruleX12Error.UnsupportedProfile, "Modern X12 output requires a selected repetition separator.");
+                        throw Failure(
+                            FerruleX12Error.UnsupportedProfile,
+                            "Modern X12 output requires a selected repetition separator."
+                        );
                 }
             }
             JsonElement constraints = wrapper.GetProperty("constraints");
-            if (constraints.ValueKind != JsonValueKind.Array || constraints.GetArrayLength() > 10_000)
+            if (
+                constraints.ValueKind != JsonValueKind.Array
+                || constraints.GetArrayLength() > 10_000
+            )
                 throw Failure(FerruleX12Error.Schema, "X12 constraints require a bounded array.");
             foreach (JsonElement constraint in constraints.EnumerateArray())
             {
                 Fields(constraint, ["path", "min_chars", "max_chars", "allowed_values"]);
                 JsonElement path = constraint.GetProperty("path");
-                if (path.ValueKind != JsonValueKind.Array || path.GetArrayLength() is < 1 or > MaximumDepth)
+                if (
+                    path.ValueKind != JsonValueKind.Array
+                    || path.GetArrayLength() is < 1 or > MaximumDepth
+                )
                     throw Failure(FerruleX12Error.Schema, "Invalid X12 constraint path.");
                 Node leaf = root;
                 foreach (JsonElement part in path.EnumerateArray())
                     leaf = leaf.Children.SingleOrDefault(child => child.Name == part.GetString())
-                        ?? throw Failure(FerruleX12Error.Schema, "X12 constraint path does not resolve.");
+                        ?? throw Failure(
+                            FerruleX12Error.Schema,
+                            "X12 constraint path does not resolve."
+                        );
                 uint minimum = constraint.GetProperty("min_chars").GetUInt32();
                 uint maximum = constraint.GetProperty("max_chars").GetUInt32();
-                if (leaf.Type is null || leaf.Constraint is not null || maximum == 0 || minimum > maximum)
-                    throw Failure(FerruleX12Error.Schema, "Invalid or duplicate X12 leaf constraint.");
+                if (
+                    leaf.Type is null
+                    || leaf.Constraint is not null
+                    || maximum == 0
+                    || minimum > maximum
+                )
+                    throw Failure(
+                        FerruleX12Error.Schema,
+                        "Invalid or duplicate X12 leaf constraint."
+                    );
                 var allowed = new HashSet<string>(StringComparer.Ordinal);
                 if (constraint.TryGetProperty("allowed_values", out JsonElement values))
                 {
                     if (values.ValueKind != JsonValueKind.Array || values.GetArrayLength() > 4_096)
-                        throw Failure(FerruleX12Error.Schema, "X12 code lists require a bounded array.");
+                        throw Failure(
+                            FerruleX12Error.Schema,
+                            "X12 code lists require a bounded array."
+                        );
                     foreach (JsonElement value in values.EnumerateArray())
-                        if (!allowed.Add(value.GetString() ?? throw Failure(FerruleX12Error.Schema, "X12 code values require strings.")))
+                        if (
+                            !allowed.Add(
+                                value.GetString()
+                                    ?? throw Failure(
+                                        FerruleX12Error.Schema,
+                                        "X12 code values require strings."
+                                    )
+                            )
+                        )
                             throw Failure(FerruleX12Error.Schema, "Duplicate X12 code-list value.");
                 }
                 leaf.Constraint = new(minimum, maximum, allowed);
             }
-            bool lenient = wrapper.TryGetProperty("lenient_segments", out JsonElement leniency) && leniency.GetBoolean();
+            bool lenient =
+                wrapper.TryGetProperty("lenient_segments", out JsonElement leniency)
+                && leniency.GetBoolean();
             ReadProfileMetadata(wrapper, root, input);
             Autocomplete? autocomplete = ReadAutocomplete(wrapper, envelopes[2], input);
             if (version.Modern && envelopes[0].Children[10].Fixed is { } fixedRepetition)
             {
-                Syntax? selectedSyntax = separators ?? (!input ? new Syntax('*', ':', '~', '^') : null);
-                if (fixedRepetition.Length != 1 || fixedRepetition[0] is < '!' or > '~' || char.IsAsciiLetterOrDigit(fixedRepetition[0])
-                    || selectedSyntax is { } physical && (fixedRepetition[0] == physical.Element
-                        || fixedRepetition[0] == physical.Component || fixedRepetition[0] == physical.Segment
-                        || physical.Repetition is { } repetition && fixedRepetition[0] != repetition))
-                    throw Failure(FerruleX12Error.UnsupportedProfile, "Fixed ISA11 does not agree with the selected modern repetition syntax.");
+                Syntax? selectedSyntax = separators
+                    ?? (!input ? new Syntax('*', ':', '~', '^') : null);
+                if (
+                    fixedRepetition.Length != 1
+                    || fixedRepetition[0] is < '!' or > '~'
+                    || char.IsAsciiLetterOrDigit(fixedRepetition[0])
+                    || selectedSyntax is { } physical
+                        && (
+                            fixedRepetition[0] == physical.Element
+                            || fixedRepetition[0] == physical.Component
+                            || fixedRepetition[0] == physical.Segment
+                            || physical.Repetition is { } repetition
+                                && fixedRepetition[0] != repetition
+                        )
+                )
+                    throw Failure(
+                        FerruleX12Error.UnsupportedProfile,
+                        "Fixed ISA11 does not agree with the selected modern repetition syntax."
+                    );
             }
-            if (version.Modern && envelopes[0].Children[15].Fixed is { } fixedComponent
-                && (fixedComponent.Length != 1 || fixedComponent[0] is < '!' or > '~' || char.IsAsciiLetterOrDigit(fixedComponent[0])
-                    || separators is { } componentSyntax && fixedComponent != componentSyntax.Component.ToString()
-                    || separators is null && !input && fixedComponent != ":"))
-                throw Failure(FerruleX12Error.UnsupportedProfile, "Fixed ISA16 does not agree with the selected modern component syntax.");
-            return new(root, separators, lenient, inactiveRepetition, autocomplete, version, groupedShape, repeatingEnvelopeShape);
+            if (
+                version.Modern
+                && envelopes[0].Children[15].Fixed is { } fixedComponent
+                && (
+                    fixedComponent.Length != 1
+                    || fixedComponent[0] is < '!' or > '~'
+                    || char.IsAsciiLetterOrDigit(fixedComponent[0])
+                    || separators is { } componentSyntax
+                        && fixedComponent != componentSyntax.Component.ToString()
+                    || separators is null && !input && fixedComponent != ":"
+                )
+            )
+                throw Failure(
+                    FerruleX12Error.UnsupportedProfile,
+                    "Fixed ISA16 does not agree with the selected modern component syntax."
+                );
+            return new(
+                root,
+                separators,
+                lenient,
+                inactiveRepetition,
+                autocomplete,
+                version,
+                groupedShape,
+                repeatingEnvelopeShape
+            );
         }
-        catch (FerruleX12Exception) { throw; }
-        catch (Exception error) when (error is JsonException or InvalidOperationException or KeyNotFoundException or FormatException or OverflowException)
+        catch (FerruleX12Exception)
+        {
+            throw;
+        }
+        catch (Exception error)
+            when (error
+                    is JsonException
+                        or InvalidOperationException
+                        or KeyNotFoundException
+                        or FormatException
+                        or OverflowException
+            )
         {
             throw Failure(FerruleX12Error.Schema, "Invalid embedded X12 descriptor.");
         }
@@ -231,18 +439,27 @@ public static partial class FerruleX12
         foreach (JsonElement part in path.EnumerateArray())
         {
             string? name = part.GetString();
-            if (string.IsNullOrEmpty(name) || name.Any(char.IsControl) || !FerruleUnicode.IsWellFormed(name))
+            if (
+                string.IsNullOrEmpty(name)
+                || name.Any(char.IsControl)
+                || !FerruleUnicode.IsWellFormed(name)
+            )
                 throw Failure(FerruleX12Error.Schema, "Invalid X12 profile option path component.");
             leaf = leaf.Children.SingleOrDefault(child => child.Name == name)
-                ?? throw Failure(FerruleX12Error.Schema, "X12 profile option path does not resolve.");
+                ?? throw Failure(
+                    FerruleX12Error.Schema,
+                    "X12 profile option path does not resolve."
+                );
         }
-        if (leaf.Type is null) throw Failure(FerruleX12Error.Schema, "X12 profile options require scalar leaves.");
+        if (leaf.Type is null)
+            throw Failure(FerruleX12Error.Schema, "X12 profile options require scalar leaves.");
         return leaf;
     }
 
     private static JsonElement? ProfileArray(JsonElement wrapper, string name)
     {
-        if (!wrapper.TryGetProperty(name, out JsonElement selected)) return null;
+        if (!wrapper.TryGetProperty(name, out JsonElement selected))
+            return null;
         if (selected.ValueKind != JsonValueKind.Array || selected.GetArrayLength() > 10_000)
             throw Failure(FerruleX12Error.Schema, "X12 profile options require bounded arrays.");
         return selected;
@@ -256,9 +473,16 @@ public static partial class FerruleX12
                 Fields(selected, ["path", "places"]);
                 Node leaf = ProfileLeaf(root, selected.GetProperty("path"));
                 byte places = selected.GetProperty("places").GetByte();
-                if (leaf.ImpliedPlaces is not null || places is < 1 or > 18
-                    || input && leaf.Type != "float" || !input && leaf.Type is not ("int" or "float"))
-                    throw Failure(FerruleX12Error.Schema, "Invalid or duplicate X12 implied-decimal metadata.");
+                if (
+                    leaf.ImpliedPlaces is not null
+                    || places is < 1 or > 18
+                    || input && leaf.Type != "float"
+                    || !input && leaf.Type is not ("int" or "float")
+                )
+                    throw Failure(
+                        FerruleX12Error.Schema,
+                        "Invalid or duplicate X12 implied-decimal metadata."
+                    );
                 leaf.ImpliedPlaces = places;
             }
         if (ProfileArray(wrapper, "lexical_formats") is { } lexical)
@@ -266,27 +490,38 @@ public static partial class FerruleX12
             {
                 Fields(selected, ["path", "kind"]);
                 Node leaf = ProfileLeaf(root, selected.GetProperty("path"));
-                if (leaf.Lexical is not null) throw Failure(FerruleX12Error.Schema, "Duplicate X12 lexical-format metadata.");
+                if (leaf.Lexical is not null)
+                    throw Failure(FerruleX12Error.Schema, "Duplicate X12 lexical-format metadata.");
                 JsonElement kind = selected.GetProperty("kind");
                 LexicalFormat format;
                 if (kind.ValueKind == JsonValueKind.String)
                 {
                     string? value = kind.GetString();
                     if (value is not ("compact_date6" or "compact_date8"))
-                        throw Failure(FerruleX12Error.Schema, "Unsupported X12 lexical-format kind.");
+                        throw Failure(
+                            FerruleX12Error.Schema,
+                            "Unsupported X12 lexical-format kind."
+                        );
                     format = new(value);
                 }
                 else
                 {
                     Fields(kind, ["compact_time", "decimal"]);
                     if (kind.EnumerateObject().Count() != 1)
-                        throw Failure(FerruleX12Error.Schema, "X12 lexical-format metadata requires one kind.");
+                        throw Failure(
+                            FerruleX12Error.Schema,
+                            "X12 lexical-format metadata requires one kind."
+                        );
                     if (kind.TryGetProperty("compact_time", out JsonElement time))
                     {
                         Fields(time, ["min_digits", "max_digits"]);
-                        byte minimum = time.GetProperty("min_digits").GetByte(), maximum = time.GetProperty("max_digits").GetByte();
+                        byte minimum = time.GetProperty("min_digits").GetByte(),
+                            maximum = time.GetProperty("max_digits").GetByte();
                         if (minimum < 4 || minimum > maximum || maximum > 8)
-                            throw Failure(FerruleX12Error.Schema, "Invalid X12 compact-time widths.");
+                            throw Failure(
+                                FerruleX12Error.Schema,
+                                "Invalid X12 compact-time widths."
+                            );
                         format = new("compact_time", minimum, maximum);
                     }
                     else
@@ -294,34 +529,71 @@ public static partial class FerruleX12
                         JsonElement number = kind.GetProperty("decimal");
                         Fields(number, ["max_chars"]);
                         byte maximum = number.GetProperty("max_chars").GetByte();
-                        if (maximum == 0) throw Failure(FerruleX12Error.Schema, "Invalid X12 decimal maximum length.");
+                        if (maximum == 0)
+                            throw Failure(
+                                FerruleX12Error.Schema,
+                                "Invalid X12 decimal maximum length."
+                            );
                         format = new("decimal", MaximumChars: maximum);
                     }
                 }
                 if (!input && format.Kind != "decimal" && leaf.Type != "string")
-                    throw Failure(FerruleX12Error.Schema, "X12 output date/time formats require String leaves.");
+                    throw Failure(
+                        FerruleX12Error.Schema,
+                        "X12 output date/time formats require String leaves."
+                    );
                 leaf.Lexical = format;
             }
     }
 
     private static Autocomplete? ReadAutocomplete(JsonElement wrapper, Node transaction, bool input)
     {
-        if (!wrapper.TryGetProperty("autocomplete", out JsonElement selected) || selected.ValueKind == JsonValueKind.Null) return null;
+        if (
+            !wrapper.TryGetProperty("autocomplete", out JsonElement selected)
+            || selected.ValueKind == JsonValueKind.Null
+        )
+            return null;
         Fields(selected, ["request_acknowledgement", "transaction_set"]);
-        bool acknowledgement = selected.TryGetProperty("request_acknowledgement", out JsonElement ack) && ack.GetBoolean();
-        string? transactionSet = selected.TryGetProperty("transaction_set", out JsonElement configured) ? configured.GetString() : null;
-        if (transactionSet is not null && (transactionSet.Length != 3 || !transactionSet.All(char.IsAsciiDigit)))
-            throw Failure(FerruleX12Error.Schema, "X12 completion transaction_set requires three ASCII digits.");
-        if (!input && transactionSet is not null && transaction.Children[0].Fixed is { Length: > 0 } fixedSet && fixedSet != transactionSet)
-            throw Failure(FerruleX12Error.Schema, "X12 completion transaction_set conflicts with fixed ST01.");
+        bool acknowledgement =
+            selected.TryGetProperty("request_acknowledgement", out JsonElement ack)
+            && ack.GetBoolean();
+        string? transactionSet = selected.TryGetProperty(
+            "transaction_set",
+            out JsonElement configured
+        )
+            ? configured.GetString()
+            : null;
+        if (
+            transactionSet is not null
+            && (transactionSet.Length != 3 || !transactionSet.All(char.IsAsciiDigit))
+        )
+            throw Failure(
+                FerruleX12Error.Schema,
+                "X12 completion transaction_set requires three ASCII digits."
+            );
+        if (
+            !input
+            && transactionSet is not null
+            && transaction.Children[0].Fixed is { Length: > 0 } fixedSet
+            && fixedSet != transactionSet
+        )
+            throw Failure(
+                FerruleX12Error.Schema,
+                "X12 completion transaction_set conflicts with fixed ST01."
+            );
         return new(acknowledgement, transactionSet);
     }
 
     private static Node ParseNode(JsonElement json, int depth, ref int count)
     {
-        if (depth > MaximumDepth || ++count > 10_000) throw Limit("X12 schema traversal limit exceeded.");
-        Fields(json, ["name", "repeating", "kind", "fixed", "string_length_range", "item_count_range"]);
-        string name = json.GetProperty("name").GetString() ?? throw Failure(FerruleX12Error.Schema, "Schema names require strings.");
+        if (depth > MaximumDepth || ++count > 10_000)
+            throw Limit("X12 schema traversal limit exceeded.");
+        Fields(
+            json,
+            ["name", "repeating", "kind", "fixed", "string_length_range", "item_count_range"]
+        );
+        string name = json.GetProperty("name").GetString()
+            ?? throw Failure(FerruleX12Error.Schema, "Schema names require strings.");
         if (name.Length == 0 || name.Any(char.IsControl) || !FerruleUnicode.IsWellFormed(name))
             throw Failure(FerruleX12Error.Schema, "Invalid X12 schema field name.");
         JsonElement kind = json.GetProperty("kind");
@@ -332,7 +604,10 @@ public static partial class FerruleX12
             Fields(kind, ["kind", "ty"]);
             type = kind.GetProperty("ty").GetString();
             if (type is not ("string" or "int" or "float"))
-                throw Failure(FerruleX12Error.UnsupportedProfile, "X12 scalars support String, Int and finite Float only.");
+                throw Failure(
+                    FerruleX12Error.UnsupportedProfile,
+                    "X12 scalars support String, Int and finite Float only."
+                );
         }
         else if (kind.GetProperty("kind").GetString() == "group")
         {
@@ -344,32 +619,77 @@ public static partial class FerruleX12
             foreach (JsonElement child in members.EnumerateArray())
             {
                 Node parsed = ParseNode(child, depth + 1, ref count);
-                if (!names.Add(parsed.Name)) throw Failure(FerruleX12Error.Schema, "Duplicate X12 sibling name.");
+                if (!names.Add(parsed.Name))
+                    throw Failure(FerruleX12Error.Schema, "Duplicate X12 sibling name.");
                 children.Add(parsed);
             }
         }
-        else throw Failure(FerruleX12Error.UnsupportedProfile, "Unsupported X12 schema kind.");
-        bool repeating = json.TryGetProperty("repeating", out JsonElement repeat) && repeat.GetBoolean();
-        string? fixedValue = json.TryGetProperty("fixed", out JsonElement fixedElement) ? fixedElement.GetString() : null;
-        Range? length = ReadRange(json, "string_length_range"), cardinality = ReadRange(json, "item_count_range");
-        if (fixedValue is not null && type is null || length is not null && type != "string" || cardinality is not null && (!repeating || type is not null))
-            throw Failure(FerruleX12Error.Schema, "X12 metadata is attached to an unsupported node kind.");
-        if (fixedValue is { Length: > 0 }
-            && (type == "int" && !long.TryParse(fixedValue, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out _)
-                || type == "float" && (fixedValue != fixedValue.Trim()
-                    || !double.TryParse(fixedValue, NumberStyles.Float, CultureInfo.InvariantCulture, out double number)
-                    || !double.IsFinite(number))))
-            throw Failure(FerruleX12Error.Schema, "X12 numeric fixed metadata requires a valid finite representation.");
-        return new() { Name = name, Type = type, Children = children.ToArray(), Repeating = repeating,
-            Fixed = fixedValue, Length = length, Count = cardinality };
+        else
+            throw Failure(FerruleX12Error.UnsupportedProfile, "Unsupported X12 schema kind.");
+        bool repeating =
+            json.TryGetProperty("repeating", out JsonElement repeat) && repeat.GetBoolean();
+        string? fixedValue = json.TryGetProperty("fixed", out JsonElement fixedElement)
+            ? fixedElement.GetString()
+            : null;
+        Range? length = ReadRange(json, "string_length_range"),
+            cardinality = ReadRange(json, "item_count_range");
+        if (
+            fixedValue is not null && type is null
+            || length is not null && type != "string"
+            || cardinality is not null && (!repeating || type is not null)
+        )
+            throw Failure(
+                FerruleX12Error.Schema,
+                "X12 metadata is attached to an unsupported node kind."
+            );
+        if (
+            fixedValue is { Length: > 0 }
+            && (
+                type == "int"
+                    && !long.TryParse(
+                        fixedValue,
+                        NumberStyles.AllowLeadingSign,
+                        CultureInfo.InvariantCulture,
+                        out _
+                    )
+                || type == "float"
+                    && (
+                        fixedValue != fixedValue.Trim()
+                        || !double.TryParse(
+                            fixedValue,
+                            NumberStyles.Float,
+                            CultureInfo.InvariantCulture,
+                            out double number
+                        )
+                        || !double.IsFinite(number)
+                    )
+            )
+        )
+            throw Failure(
+                FerruleX12Error.Schema,
+                "X12 numeric fixed metadata requires a valid finite representation."
+            );
+        return new()
+        {
+            Name = name,
+            Type = type,
+            Children = children.ToArray(),
+            Repeating = repeating,
+            Fixed = fixedValue,
+            Length = length,
+            Count = cardinality,
+        };
     }
 
     private static Range? ReadRange(JsonElement parent, string name)
     {
-        if (!parent.TryGetProperty(name, out JsonElement range)) return null;
+        if (!parent.TryGetProperty(name, out JsonElement range))
+            return null;
         Fields(range, ["minimum", "maximum"]);
         ulong minimum = range.TryGetProperty("minimum", out JsonElement min) ? min.GetUInt64() : 0;
-        ulong? maximum = range.TryGetProperty("maximum", out JsonElement max) ? max.GetUInt64() : null;
+        ulong? maximum = range.TryGetProperty("maximum", out JsonElement max)
+            ? max.GetUInt64()
+            : null;
         if (maximum is { } upper && minimum > upper || maximum is null && minimum == 0)
             throw Failure(FerruleX12Error.Schema, "Invalid X12 length/cardinality interval.");
         return new(minimum, maximum);
@@ -377,55 +697,109 @@ public static partial class FerruleX12
 
     private static void Fields(JsonElement json, HashSet<string> allowed)
     {
-        if (json.ValueKind != JsonValueKind.Object) throw Failure(FerruleX12Error.Schema, "X12 descriptor members require objects.");
+        if (json.ValueKind != JsonValueKind.Object)
+            throw Failure(FerruleX12Error.Schema, "X12 descriptor members require objects.");
         var seen = new HashSet<string>(StringComparer.Ordinal);
-        if (json.EnumerateObject().Any(property => !allowed.Contains(property.Name) || !seen.Add(property.Name)))
+        if (
+            json.EnumerateObject()
+                .Any(property => !allowed.Contains(property.Name) || !seen.Add(property.Name))
+        )
             throw Failure(FerruleX12Error.Schema, "Unknown or duplicate X12 descriptor member.");
     }
 
     private static char Character(JsonElement json, string name)
     {
         string? value = json.GetProperty(name).GetString();
-        if (value is null || value.Length != 1) throw Failure(FerruleX12Error.Syntax, "X12 separators require single ASCII characters.");
+        if (value is null || value.Length != 1)
+            throw Failure(
+                FerruleX12Error.Syntax,
+                "X12 separators require single ASCII characters."
+            );
         return value[0];
     }
 
     private static string? SegmentId(string name)
     {
-        if (name.StartsWith("MF_", StringComparison.Ordinal)) name = name[3..];
+        if (name.StartsWith("MF_", StringComparison.Ordinal))
+            name = name[3..];
         int suffix = name.LastIndexOf('_');
-        if (suffix >= 0 && suffix + 1 < name.Length && name[(suffix + 1)..].All(char.IsAsciiDigit)) name = name[..suffix];
-        return name.Length is >= 2 and <= 3 && char.IsAsciiLetterUpper(name[0])
-            && name.All(character => char.IsAsciiLetterUpper(character) || char.IsAsciiDigit(character)) ? name : null;
+        if (suffix >= 0 && suffix + 1 < name.Length && name[(suffix + 1)..].All(char.IsAsciiDigit))
+            name = name[..suffix];
+        return
+            name.Length is >= 2 and <= 3
+            && char.IsAsciiLetterUpper(name[0])
+            && name.All(character =>
+                char.IsAsciiLetterUpper(character) || char.IsAsciiDigit(character)
+            )
+            ? name
+            : null;
     }
 
-    private static void ValidateShape(Node node, bool root, bool element, bool component, bool repeated, bool grouped = false,
-        bool modern = false)
+    private static void ValidateShape(
+        Node node,
+        bool root,
+        bool element,
+        bool component,
+        bool repeated,
+        bool grouped = false,
+        bool modern = false
+    )
     {
         if (element)
         {
             if (node.Repeating && !modern || component && node.Type is null)
-                throw Failure(FerruleX12Error.UnsupportedProfile, "004010 elements cannot repeat or contain nested composites.");
+                throw Failure(
+                    FerruleX12Error.UnsupportedProfile,
+                    "004010 elements cannot repeat or contain nested composites."
+                );
             if (node.Repeating && component)
                 throw Failure(FerruleX12Error.UnsupportedProfile, "X12 components cannot repeat.");
             // Qualifier matching and fixed materialization address one occurrence.
-            if (node.Repeating && (node.Fixed is not null || node.Count is not null || node.Children.Any(child => child.Fixed is not null)))
-                throw Failure(FerruleX12Error.Schema, "Repeating X12 elements cannot carry fixed values or item cardinality.");
-            if (node.Children.Length > MaximumElements) throw Limit("X12 composite schema component limit exceeded.");
+            if (
+                node.Repeating
+                && (
+                    node.Fixed is not null
+                    || node.Count is not null
+                    || node.Children.Any(child => child.Fixed is not null)
+                )
+            )
+                throw Failure(
+                    FerruleX12Error.Schema,
+                    "Repeating X12 elements cannot carry fixed values or item cardinality."
+                );
+            if (node.Children.Length > MaximumElements)
+                throw Limit("X12 composite schema component limit exceeded.");
             if (node.Type is null)
-                foreach (Node child in node.Children) ValidateShape(child, false, true, true, false, grouped, modern);
+                foreach (Node child in node.Children)
+                    ValidateShape(child, false, true, true, false, grouped, modern);
             return;
         }
-        if (node.Type is not null) throw Failure(FerruleX12Error.Schema, "X12 containers require groups.");
+        if (node.Type is not null)
+            throw Failure(FerruleX12Error.Schema, "X12 containers require groups.");
         string? id = root ? null : SegmentId(node.Name);
         if (id is not null)
         {
-            if (node.Children.Length > MaximumElements) throw Limit("X12 schema element limit exceeded.");
+            if (node.Children.Length > MaximumElements)
+                throw Limit("X12 schema element limit exceeded.");
             if (IsEnvelope(id) && (node.Repeating || repeated) && !grouped)
-                throw Failure(FerruleX12Error.UnsupportedProfile, "X12 envelope schemas cannot repeat.");
-            foreach (Node child in node.Children) ValidateShape(child, false, true, false, false, grouped, modern);
+                throw Failure(
+                    FerruleX12Error.UnsupportedProfile,
+                    "X12 envelope schemas cannot repeat."
+                );
+            foreach (Node child in node.Children)
+                ValidateShape(child, false, true, false, false, grouped, modern);
         }
-        else foreach (Node child in node.Children) ValidateShape(child, false, false, false, repeated || node.Repeating, grouped, modern);
+        else
+            foreach (Node child in node.Children)
+                ValidateShape(
+                    child,
+                    false,
+                    false,
+                    false,
+                    repeated || node.Repeating,
+                    grouped,
+                    modern
+                );
     }
 
     // Segment IDs with at least one declared repeating element. Every other
@@ -434,74 +808,118 @@ public static partial class FerruleX12
     {
         if (!root && SegmentId(node.Name) is { } id)
         {
-            if (node.Children.Any(child => child.Repeating)) yield return id;
+            if (node.Children.Any(child => child.Repeating))
+                yield return id;
             yield break;
         }
         foreach (Node child in node.Children)
-            foreach (string childId in RepeatingSegmentIds(child)) yield return childId;
+        foreach (string childId in RepeatingSegmentIds(child))
+            yield return childId;
     }
 
     private static GroupedShape ValidateGroupedShape(Node root)
     {
-        const string message = "Grouped X12 schemas require declared ISA/IEA, GS/GE and ST/SE owners.";
-        static FerruleX12Exception Invalid(string path) => Failure(FerruleX12Error.Schema, message, path: path);
+        const string message =
+            "Grouped X12 schemas require declared ISA/IEA, GS/GE and ST/SE owners.";
+        static FerruleX12Exception Invalid(string path) =>
+            Failure(FerruleX12Error.Schema, message, path: path);
         static Node Envelope(Node owner, int index, string id, string[] path)
         {
-            if (index < 0 || index >= owner.Children.Length
-                || SegmentId(owner.Children[index].Name) != id || owner.Children[index].Repeating)
+            if (
+                index < 0
+                || index >= owner.Children.Length
+                || SegmentId(owner.Children[index].Name) != id
+                || owner.Children[index].Repeating
+            )
                 throw Invalid(string.Join('/', [.. path, id]));
             return owner.Children[index];
         }
         Envelope(root, 0, "ISA", []);
         Envelope(root, root.Children.Length - 1, "IEA", []);
-        if (root.Children.Length != 3) throw Invalid("");
+        if (root.Children.Length != 3)
+            throw Invalid("");
         Node groups = root.Children[1];
         if (groups.Type is not null || !groups.Repeating || SegmentId(groups.Name) is not null)
             throw Invalid(groups.Name);
         Envelope(groups, 0, "GS", [groups.Name]);
         Envelope(groups, groups.Children.Length - 1, "GE", [groups.Name]);
-        if (groups.Children.Length != 3) throw Invalid(groups.Name);
+        if (groups.Children.Length != 3)
+            throw Invalid(groups.Name);
         Node transactions = groups.Children[1];
-        if (transactions.Type is not null || !transactions.Repeating || SegmentId(transactions.Name) is not null)
+        if (
+            transactions.Type is not null
+            || !transactions.Repeating
+            || SegmentId(transactions.Name) is not null
+        )
             throw Invalid(string.Join('/', [groups.Name, transactions.Name]));
         string[] transactionPath = [groups.Name, transactions.Name];
         Envelope(transactions, 0, "ST", transactionPath);
         Envelope(transactions, transactions.Children.Length - 1, "SE", transactionPath);
-        if (transactions.Children.Length < 2) throw Invalid(string.Join('/', transactionPath));
+        if (transactions.Children.Length < 2)
+            throw Invalid(string.Join('/', transactionPath));
         for (int index = 1; index < transactions.Children.Length - 1; index++)
         {
             var envelopes = new List<Node>();
             CollectEnvelopes(transactions.Children[index], envelopes, false);
             if (envelopes.Count != 0)
-                throw Invalid(string.Join('/', [.. transactionPath, transactions.Children[index].Name]));
+                throw Invalid(
+                    string.Join('/', [.. transactionPath, transactions.Children[index].Name])
+                );
         }
         return new(groups, transactions);
     }
 
     private static RepeatingEnvelopeShape ValidateRepeatingEnvelopeShape(Node root, bool input)
     {
-        const string message = "Repeating-interchange X12 schemas require declared interchange, functional-group and message owners.";
-        static FerruleX12Exception Invalid(string[] path) => Failure(FerruleX12Error.Schema, message, path: string.Join('/', path));
-        static bool Acknowledgment(Node node) => node.Name.StartsWith("ParserErrors_", StringComparison.Ordinal);
-        static Node? Trailing(Node? owner) => owner is { Children.Length: > 0 } && Acknowledgment(owner.Children[^1]) ? owner.Children[^1] : null;
+        const string message =
+            "Repeating-interchange X12 schemas require declared interchange, functional-group and message owners.";
+        static FerruleX12Exception Invalid(string[] path) =>
+            Failure(FerruleX12Error.Schema, message, path: string.Join('/', path));
+        static bool Acknowledgment(Node node) =>
+            node.Name.StartsWith("ParserErrors_", StringComparison.Ordinal);
+        static Node? Trailing(Node? owner) =>
+            owner is { Children.Length: > 0 } && Acknowledgment(owner.Children[^1])
+                ? owner.Children[^1]
+                : null;
         // Acknowledgment validation adds exactly two placements: the trailing
         // member of a functional group (after GE) and of a message (after SE).
         // Their parser-generated contents are source-only and read as empty.
-        Node? groupCandidate = root.Children.Length > 0 && root.Children[0].Children.Length > 1 ? root.Children[0].Children[1] : null;
-        Node? messageCandidate = groupCandidate is { Children.Length: > 1 } ? groupCandidate.Children[1] : null;
-        Node? groupAcknowledgment = Trailing(groupCandidate), messageAcknowledgment = Trailing(messageCandidate);
+        Node? groupCandidate =
+            root.Children.Length > 0 && root.Children[0].Children.Length > 1
+                ? root.Children[0].Children[1]
+                : null;
+        Node? messageCandidate = groupCandidate is { Children.Length: > 1 }
+            ? groupCandidate.Children[1]
+            : null;
+        Node? groupAcknowledgment = Trailing(groupCandidate),
+            messageAcknowledgment = Trailing(messageCandidate);
         void Acknowledgements(Node node, string[] path)
         {
             if (Acknowledgment(node))
             {
-                if (!ReferenceEquals(node, groupAcknowledgment) && !ReferenceEquals(node, messageAcknowledgment)) throw Invalid(path);
+                if (
+                    !ReferenceEquals(node, groupAcknowledgment)
+                    && !ReferenceEquals(node, messageAcknowledgment)
+                )
+                    throw Invalid(path);
                 if (!input)
-                    throw Failure(FerruleX12Error.Schema, "Acknowledgment branches in repeating interchanges are source-only.", path: string.Join('/', path));
+                    throw Failure(
+                        FerruleX12Error.Schema,
+                        "Acknowledgment branches in repeating interchanges are source-only.",
+                        path: string.Join('/', path)
+                    );
                 var nested = new List<Node>();
                 CollectEnvelopes(node, nested, false);
-                if (node.Type is not null || !node.Repeating || SegmentId(node.Name) is not null || nested.Count != 0) throw Invalid(path);
+                if (
+                    node.Type is not null
+                    || !node.Repeating
+                    || SegmentId(node.Name) is not null
+                    || nested.Count != 0
+                )
+                    throw Invalid(path);
             }
-            foreach (Node child in node.Children) Acknowledgements(child, [.. path, child.Name]);
+            foreach (Node child in node.Children)
+                Acknowledgements(child, [.. path, child.Name]);
         }
         static Node Owner(Node owner, int index, string[] path)
         {
@@ -513,26 +931,35 @@ public static partial class FerruleX12
         static Node Envelope(Node owner, int index, string id, bool? optional, string[] path)
         {
             Node node = owner.Children[index];
-            if (SegmentId(node.Name) != id || node.Type is not null || optional is { } required && node.Repeating != required)
+            if (
+                SegmentId(node.Name) != id
+                || node.Type is not null
+                || optional is { } required && node.Repeating != required
+            )
                 throw Invalid([.. path, id]);
             return node;
         }
-        foreach (Node child in root.Children) Acknowledgements(child, [child.Name]);
-        if (root.Children.Length != 1) throw Invalid([]);
+        foreach (Node child in root.Children)
+            Acknowledgements(child, [child.Name]);
+        if (root.Children.Length != 1)
+            throw Invalid([]);
         Node interchanges = Owner(root, 0, []);
         string[] interchangePath = [interchanges.Name];
-        if (interchanges.Children.Length != 3) throw Invalid(interchangePath);
+        if (interchanges.Children.Length != 3)
+            throw Invalid(interchangePath);
         Node isa = Envelope(interchanges, 0, "ISA", optional: true, interchangePath);
         Node iea = Envelope(interchanges, 2, "IEA", optional: true, interchangePath);
         Node groups = Owner(interchanges, 1, interchangePath);
         string[] groupPath = [.. interchangePath, groups.Name];
-        if (groups.Children.Length != 3 + (groupAcknowledgment is null ? 0 : 1)) throw Invalid(groupPath);
+        if (groups.Children.Length != 3 + (groupAcknowledgment is null ? 0 : 1))
+            throw Invalid(groupPath);
         Node gs = Envelope(groups, 0, "GS", optional: true, groupPath);
         Node ge = Envelope(groups, 2, "GE", optional: true, groupPath);
         Node messages = Owner(groups, 1, groupPath);
         string[] messagePath = [.. groupPath, messages.Name];
         int seIndex = messages.Children.Length - (messageAcknowledgment is null ? 1 : 2);
-        if (seIndex < 1) throw Invalid(messagePath);
+        if (seIndex < 1)
+            throw Invalid(messagePath);
         Node st = Envelope(messages, 0, "ST", optional: false, messagePath);
         // Message configurations may declare SE optional (repeating) or required.
         Node se = Envelope(messages, seIndex, "SE", optional: null, messagePath);
@@ -540,43 +967,88 @@ public static partial class FerruleX12
         {
             var nested = new List<Node>();
             CollectEnvelopes(messages.Children[index], nested, false);
-            if (nested.Count != 0) throw Invalid([.. messagePath, messages.Children[index].Name]);
+            if (nested.Count != 0)
+                throw Invalid([.. messagePath, messages.Children[index].Name]);
         }
-        return new(interchanges, isa, groups, gs, messages, st, se, ge, iea, groupAcknowledgment, messageAcknowledgment);
+        return new(
+            interchanges,
+            isa,
+            groups,
+            gs,
+            messages,
+            st,
+            se,
+            ge,
+            iea,
+            groupAcknowledgment,
+            messageAcknowledgment
+        );
     }
 
-    // ISA13, GS06, SE01, GE01/GE02 and IEA01/IEA02 are numeric data in the reference application
+    // ISA13, GS06, SE01, GE01/GE02 and IEA01/IEA02 are numeric data in the imported
     // configurations; every other envelope element is String.
-    private static bool RepeatingEnvelopeNumericControl(string id, int position) => (id, position) switch
-    {
-        ("ISA", 12) or ("GS", 5) or ("SE", 0) or ("GE", 0 or 1) or ("IEA", 0 or 1) => true,
-        _ => false,
-    };
+    private static bool RepeatingEnvelopeNumericControl(string id, int position) =>
+        (id, position) switch
+        {
+            ("ISA", 12) or ("GS", 5) or ("SE", 0) or ("GE", 0 or 1) or ("IEA", 0 or 1) => true,
+            _ => false,
+        };
 
-    private static bool IsEnvelope(string id) => id is "ISA" or "GS" or "ST" or "SE" or "GE" or "IEA";
+    private static bool IsEnvelope(string id) =>
+        id is "ISA" or "GS" or "ST" or "SE" or "GE" or "IEA";
+
     private static void CollectEnvelopes(Node node, List<Node> result, bool root)
     {
         string? id = root ? null : SegmentId(node.Name);
-        if (id is not null) { if (IsEnvelope(id)) result.Add(node); return; }
-        foreach (Node child in node.Children) CollectEnvelopes(child, result, false);
+        if (id is not null)
+        {
+            if (IsEnvelope(id))
+                result.Add(node);
+            return;
+        }
+        foreach (Node child in node.Children)
+            CollectEnvelopes(child, result, false);
     }
 
     private static void ValidateText(Node node, string text, string[] path)
     {
         if (node.Fixed is not null && text != node.Fixed)
-            throw Failure(FerruleX12Error.Value, "X12 fixed value does not match.", path: string.Join('/', path));
+            throw Failure(
+                FerruleX12Error.Value,
+                "X12 fixed value does not match.",
+                path: string.Join('/', path)
+            );
         ulong count = (ulong)text.EnumerateRunes().Count();
         if (node.Length is { } length && !length.Contains(count))
-            throw Failure(FerruleX12Error.Value, "X12 string length is outside its declared interval.", path: string.Join('/', path));
-        if (node.Constraint is { } constraint && (count < constraint.Minimum || count > constraint.Maximum
-            || text.Length > 0 && constraint.Allowed.Count > 0 && !constraint.Allowed.Contains(text)))
-            throw Failure(FerruleX12Error.Value, "X12 lexical length or code-list constraint failed.", path: string.Join('/', path));
+            throw Failure(
+                FerruleX12Error.Value,
+                "X12 string length is outside its declared interval.",
+                path: string.Join('/', path)
+            );
+        if (
+            node.Constraint is { } constraint
+            && (
+                count < constraint.Minimum
+                || count > constraint.Maximum
+                || text.Length > 0
+                    && constraint.Allowed.Count > 0
+                    && !constraint.Allowed.Contains(text)
+            )
+        )
+            throw Failure(
+                FerruleX12Error.Value,
+                "X12 lexical length or code-list constraint failed.",
+                path: string.Join('/', path)
+            );
     }
 
     private static void ValidateCount(Node node, int count, string[] path)
     {
         if (node.Count is { } range && !range.Contains((ulong)count))
-            throw Failure(FerruleX12Error.Value, "X12 loop cardinality is outside its declared interval.", path: string.Join('/', path));
+            throw Failure(
+                FerruleX12Error.Value,
+                "X12 loop cardinality is outside its declared interval.",
+                path: string.Join('/', path)
+            );
     }
-
 }

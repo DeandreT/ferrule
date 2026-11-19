@@ -6,9 +6,7 @@ namespace Ferrule.Runtime;
 /// <summary>A typed Ferrule instance tree node.</summary>
 public abstract class FerruleInstance
 {
-    private protected FerruleInstance()
-    {
-    }
+    private protected FerruleInstance() { }
 }
 
 public sealed class FerruleScalar : FerruleInstance
@@ -46,9 +44,7 @@ public sealed class FerruleGroup : FerruleInstance
     private readonly FerruleSourceRowOrigin? _sourceOrigin;
 
     public FerruleGroup(IEnumerable<FerruleField> fields)
-        : this(fields, schemaDeclarations: false)
-    {
-    }
+        : this(fields, schemaDeclarations: false) { }
 
     // Closed native schemas may declare the same field more than once. Their
     // ordered typed slots remain distinct; path lookup resolves the first slot.
@@ -83,8 +79,12 @@ public sealed class FerruleGroup : FerruleInstance
         return new(_fields, _schemaDeclarations, origin, _sourceOrigin);
     }
 
-    private FerruleGroup(IEnumerable<FerruleField> fields, bool schemaDeclarations,
-        FerruleXmlTypeOrigin? origin = null, FerruleSourceRowOrigin? sourceOrigin = null)
+    private FerruleGroup(
+        IEnumerable<FerruleField> fields,
+        bool schemaDeclarations,
+        FerruleXmlTypeOrigin? origin = null,
+        FerruleSourceRowOrigin? sourceOrigin = null
+    )
     {
         ArgumentNullException.ThrowIfNull(fields);
         var ordered = new List<FerruleField>();
@@ -99,7 +99,8 @@ public sealed class FerruleGroup : FerruleInstance
             {
                 throw new FerruleRuntimeException(
                     FerruleRuntimeError.DuplicateField,
-                    $"Ferrule group field '{field.Name}' is duplicated.");
+                    $"Ferrule group field '{field.Name}' is duplicated."
+                );
             }
 
             ordered.Add(field);
@@ -111,7 +112,10 @@ public sealed class FerruleGroup : FerruleInstance
     // The basic source bridge owns and admits every projection slot. This seam
     // makes one exact immutable snapshot without growing legacy collections.
     internal static FerruleGroup FromBasicSourceProjection(
-        ReadOnlySpan<FerruleField> fields, nuint maximumFields, OwnedCounter slots)
+        ReadOnlySpan<FerruleField> fields,
+        nuint maximumFields,
+        OwnedCounter slots
+    )
     {
         ArgumentNullException.ThrowIfNull(slots);
         var count = (nuint)fields.Length;
@@ -124,14 +128,18 @@ public sealed class FerruleGroup : FerruleInstance
             for (var j = 0; j < i; j++)
             {
                 if (StringComparer.Ordinal.Equals(fields[j].Name, fields[i].Name))
-                    throw new FerruleRuntimeException(FerruleRuntimeError.DuplicateField,
-                        "Ferrule basic source projection has a duplicate field.");
+                    throw new FerruleRuntimeException(
+                        FerruleRuntimeError.DuplicateField,
+                        "Ferrule basic source projection has a duplicate field."
+                    );
             }
         }
 
         // Snapshot slots coexist with the caller's admitted field backing.
         // Both wrappers are admitted before the first allocation as well.
-        slots.Charge(OwnedSourceAccounting.Add(count, 2, FerruleOwnedSourceLimitKind.MetadataSlots));
+        slots.Charge(
+            OwnedSourceAccounting.Add(count, 2, FerruleOwnedSourceLimitKind.MetadataSlots)
+        );
         var snapshot = new FerruleField[fields.Length];
         fields.CopyTo(snapshot);
         var view = new ReadOnlyCollection<FerruleField>(snapshot);
@@ -147,8 +155,11 @@ public sealed class FerruleGroup : FerruleInstance
         _sourceOrigin = null;
     }
 
-    internal static FerruleGroup FromBasicGroupWrapper(string name, FerruleRepeated members,
-        BasicGroupPrefixTemplate admission)
+    internal static FerruleGroup FromBasicGroupWrapper(
+        string name,
+        FerruleRepeated members,
+        BasicGroupPrefixTemplate admission
+    )
     {
         admission.ConsumeWrapper();
         var fields = new FerruleField[1];
@@ -158,9 +169,7 @@ public sealed class FerruleGroup : FerruleInstance
 
     public IReadOnlyList<FerruleField> Fields => _fields;
 
-    public bool TryGetField(
-        string name,
-        [NotNullWhen(true)] out FerruleInstance? value)
+    public bool TryGetField(string name, [NotNullWhen(true)] out FerruleInstance? value)
     {
         if (_fieldsByName is not null)
             return _fieldsByName.TryGetValue(name, out value);
@@ -181,13 +190,20 @@ public sealed class FerruleGroup : FerruleInstance
 
 public sealed class FerruleRepeated : FerruleInstance
 {
-    private FerruleRepeated(ReadOnlyCollection<FerruleInstance> admitted) { Items = admitted; }
-    internal static FerruleRepeated FromBasicGroupMembers(FerruleInstance[] admitted,
-        BasicGroupPrefixTemplate admission)
+    private FerruleRepeated(ReadOnlyCollection<FerruleInstance> admitted)
+    {
+        Items = admitted;
+    }
+
+    internal static FerruleRepeated FromBasicGroupMembers(
+        FerruleInstance[] admitted,
+        BasicGroupPrefixTemplate admission
+    )
     {
         admission.ConsumeMembers(admitted.Length);
         return new FerruleRepeated(new ReadOnlyCollection<FerruleInstance>(admitted));
     }
+
     public FerruleRepeated(IEnumerable<FerruleInstance> items)
     {
         Items = InstanceCollection.Copy(items, nameof(items));
@@ -208,24 +224,28 @@ public sealed class FerruleMappedSequence : FerruleInstance
 
 public sealed class FerruleDocument
 {
-    public FerruleDocument(
-        string path,
-        FerruleInstance value,
-        string? resolvedSourcePath = null)
+    public FerruleDocument(string path, FerruleInstance value, string? resolvedSourcePath = null)
     {
-        if (string.IsNullOrEmpty(path) || resolvedSourcePath is not null && resolvedSourcePath.Length == 0)
+        if (
+            string.IsNullOrEmpty(path)
+            || resolvedSourcePath is not null && resolvedSourcePath.Length == 0
+        )
         {
             throw new FerruleRuntimeException(
                 FerruleRuntimeError.InvalidDocumentPath,
-                "Ferrule document paths must not be empty.");
+                "Ferrule document paths must not be empty."
+            );
         }
 
-        if (!FerruleUnicode.IsWellFormed(path) ||
-            resolvedSourcePath is not null && !FerruleUnicode.IsWellFormed(resolvedSourcePath))
+        if (
+            !FerruleUnicode.IsWellFormed(path)
+            || resolvedSourcePath is not null && !FerruleUnicode.IsWellFormed(resolvedSourcePath)
+        )
         {
             throw new FerruleRuntimeException(
                 FerruleRuntimeError.InvalidDocumentPath,
-                "Ferrule document paths must contain valid Unicode scalar values.");
+                "Ferrule document paths must contain valid Unicode scalar values."
+            );
         }
 
         ArgumentNullException.ThrowIfNull(value);
@@ -233,7 +253,8 @@ public sealed class FerruleDocument
         {
             throw new FerruleRuntimeException(
                 FerruleRuntimeError.NestedDocumentSet,
-                "A Ferrule document cannot contain another document set.");
+                "A Ferrule document cannot contain another document set."
+            );
         }
 
         Path = path;
@@ -272,7 +293,8 @@ internal static class InstanceCollection
 {
     public static IReadOnlyList<FerruleInstance> Copy(
         IEnumerable<FerruleInstance> items,
-        string parameterName)
+        string parameterName
+    )
     {
         ArgumentNullException.ThrowIfNull(items, parameterName);
         var copy = new List<FerruleInstance>();

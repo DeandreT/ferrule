@@ -42,11 +42,14 @@ public static partial class FerruleFunctions
         if (value.Kind == FerruleValueKind.String)
         {
             var text = TrimRustWhitespace(value.StringValue);
-            if (long.TryParse(
+            if (
+                long.TryParse(
                     text,
                     NumberStyles.AllowLeadingSign,
                     CultureInfo.InvariantCulture,
-                    out var integer))
+                    out var integer
+                )
+            )
             {
                 return FerruleValue.FromInt64(integer);
             }
@@ -63,19 +66,20 @@ public static partial class FerruleFunctions
     {
         RequireArity("boolean", arguments, 1);
         var value = arguments[0];
-        return FerruleValue.FromBoolean(value.Kind switch
-        {
-            FerruleValueKind.Null or
-                FerruleValueKind.JsonNull or
-                FerruleValueKind.XmlNil => false,
-            FerruleValueKind.Bool => value.BooleanValue,
-            FerruleValueKind.Int64 => value.Int64Value != 0,
-            FerruleValueKind.Double => value.DoubleValue != 0.0 &&
-                !double.IsNaN(value.DoubleValue),
-            FerruleValueKind.String => value.StringValue.Length != 0,
-            FerruleValueKind.Decimal => throw Type("boolean", value),
-            _ => false,
-        });
+        return FerruleValue.FromBoolean(
+            value.Kind switch
+            {
+                FerruleValueKind.Null or FerruleValueKind.JsonNull or FerruleValueKind.XmlNil =>
+                    false,
+                FerruleValueKind.Bool => value.BooleanValue,
+                FerruleValueKind.Int64 => value.Int64Value != 0,
+                FerruleValueKind.Double => value.DoubleValue != 0.0
+                    && !double.IsNaN(value.DoubleValue),
+                FerruleValueKind.String => value.StringValue.Length != 0,
+                FerruleValueKind.Decimal => throw Type("boolean", value),
+                _ => false,
+            }
+        );
     }
 
     private static FerruleValue CoerceFloat(IReadOnlyList<FerruleValue> arguments)
@@ -124,9 +128,7 @@ public static partial class FerruleFunctions
         var duration = NumberArgument(arguments[1], "delay_passthrough");
         if (!double.IsFinite(duration) || duration < 0.0)
         {
-            throw InvalidArgument(
-                "delay_passthrough",
-                "requires a finite nonnegative duration");
+            throw InvalidArgument("delay_passthrough", "requires a finite nonnegative duration");
         }
         return arguments[0];
     }
@@ -136,13 +138,14 @@ public static partial class FerruleFunctions
             TrimRustWhitespace(value),
             NumberStyles.Float,
             CultureInfo.InvariantCulture,
-            out number) &&
-        double.IsFinite(number);
+            out number
+        ) && double.IsFinite(number);
 
     private static FerruleValue Numeric(
         string function,
         IReadOnlyList<FerruleValue> arguments,
-        NumericOperation operation)
+        NumericOperation operation
+    )
     {
         if (arguments.Count < 2)
         {
@@ -165,7 +168,10 @@ public static partial class FerruleFunctions
                 };
             }
 
-            if (operation == NumericOperation.Multiply && TryExactDecimalProduct(arguments, out var exact))
+            if (
+                operation == NumericOperation.Multiply
+                && TryExactDecimalProduct(arguments, out var exact)
+            )
             {
                 result = exact;
             }
@@ -193,7 +199,8 @@ public static partial class FerruleFunctions
                 FerruleRuntimeError.IntegerOverflow,
                 $"`{function}` integer arithmetic overflowed.",
                 exception,
-                function: function);
+                function: function
+            );
         }
 
         return FerruleValue.FromInt64(integer);
@@ -207,8 +214,9 @@ public static partial class FerruleFunctions
         {
             throw Type(function, arguments.First(value => value.Kind == FerruleValueKind.Decimal));
         }
-        if (arguments.Any(value =>
-                value.Kind is FerruleValueKind.Null or FerruleValueKind.JsonNull))
+        if (
+            arguments.Any(value => value.Kind is FerruleValueKind.Null or FerruleValueKind.JsonNull)
+        )
         {
             return FerruleValue.Null;
         }
@@ -238,7 +246,8 @@ public static partial class FerruleFunctions
         {
             throw new FerruleRuntimeException(
                 FerruleRuntimeError.DivideByZero,
-                "Division by zero.");
+                "Division by zero."
+            );
         }
 
         return FerruleValue.FromDouble(left / right);
@@ -247,7 +256,8 @@ public static partial class FerruleFunctions
     private static FerruleValue Comparison(
         string function,
         IReadOnlyList<FerruleValue> arguments,
-        Func<int, bool> matches)
+        Func<int, bool> matches
+    )
     {
         RequireArity(function, arguments, 2);
         var left = arguments[0];
@@ -256,8 +266,16 @@ public static partial class FerruleFunctions
         {
             throw Type(function, left.Kind == FerruleValueKind.Decimal ? left : right);
         }
-        if (left.Kind is FerruleValueKind.Null or FerruleValueKind.JsonNull or FerruleValueKind.XmlNil ||
-            right.Kind is FerruleValueKind.Null or FerruleValueKind.JsonNull or FerruleValueKind.XmlNil)
+        if (
+            left.Kind
+                is FerruleValueKind.Null
+                    or FerruleValueKind.JsonNull
+                    or FerruleValueKind.XmlNil
+            || right.Kind
+                is FerruleValueKind.Null
+                    or FerruleValueKind.JsonNull
+                    or FerruleValueKind.XmlNil
+        )
         {
             return FerruleValue.FromBoolean(false);
         }
@@ -356,9 +374,8 @@ public static partial class FerruleFunctions
     private static bool EqualIgnoringAsciiCase(Rune left, Rune right) =>
         AsciiLower(left.Value) == AsciiLower(right.Value);
 
-    private static int AsciiLower(int value) => value is >= 'A' and <= 'Z'
-        ? value + ('a' - 'A')
-        : value;
+    private static int AsciiLower(int value) =>
+        value is >= 'A' and <= 'Z' ? value + ('a' - 'A') : value;
 
     private const string RoundHalfCeilingName = "round_half_ceiling";
     private const string RoundHalfCeilingNotFinite = "requires a finite numeric value";
@@ -380,17 +397,22 @@ public static partial class FerruleFunctions
             case FerruleValueKind.Double when !double.IsFinite(value.DoubleValue):
                 return value;
             case FerruleValueKind.Double:
-                return FerruleValue.FromDouble(HalfCeilingDigits
-                    .ParseOrThrow(value.DoubleValue.ToString("R", CultureInfo.InvariantCulture))
-                    .Round(precision)
-                    .ToDouble());
+                return FerruleValue.FromDouble(
+                    HalfCeilingDigits
+                        .ParseOrThrow(value.DoubleValue.ToString("R", CultureInfo.InvariantCulture))
+                        .Round(precision)
+                        .ToDouble()
+                );
             case FerruleValueKind.String:
                 var text = TrimRustWhitespace(value.StringValue);
-                if (long.TryParse(
+                if (
+                    long.TryParse(
                         text,
                         NumberStyles.AllowLeadingSign,
                         CultureInfo.InvariantCulture,
-                        out var integer))
+                        out var integer
+                    )
+                )
                 {
                     return FerruleValue.FromInt64(HalfCeilingInteger(integer, precision));
                 }
@@ -399,7 +421,8 @@ public static partial class FerruleFunctions
                     throw InvalidArgument(RoundHalfCeilingName, RoundHalfCeilingNotFinite);
                 }
                 return FerruleValue.FromDouble(
-                    HalfCeilingDigits.ParseOrThrow(text).Round(precision).ToDouble());
+                    HalfCeilingDigits.ParseOrThrow(text).Round(precision).ToDouble()
+                );
             default:
                 throw Type(RoundHalfCeilingName, value);
         }
@@ -415,11 +438,14 @@ public static partial class FerruleFunctions
                 return SaturatingInt32(RustRound(value.DoubleValue));
             case FerruleValueKind.String:
                 var text = TrimRustWhitespace(value.StringValue);
-                if (long.TryParse(
+                if (
+                    long.TryParse(
                         text,
                         NumberStyles.AllowLeadingSign,
                         CultureInfo.InvariantCulture,
-                        out var integer))
+                        out var integer
+                    )
+                )
                 {
                     return (int)Math.Clamp(integer, int.MinValue, int.MaxValue);
                 }
@@ -447,17 +473,19 @@ public static partial class FerruleFunctions
             return 0;
         }
         // A nonzero result has at least `-precision` trailing zeros.
-        var magnitude = rounded.Exponent > 19
-            ? BigInteger.Pow(10, 20)
-            : BigInteger.Parse(rounded.Digits, CultureInfo.InvariantCulture) *
-                BigInteger.Pow(10, (int)rounded.Exponent);
+        var magnitude =
+            rounded.Exponent > 19
+                ? BigInteger.Pow(10, 20)
+                : BigInteger.Parse(rounded.Digits, CultureInfo.InvariantCulture)
+                    * BigInteger.Pow(10, (int)rounded.Exponent);
         var signed = rounded.Negative ? -magnitude : magnitude;
         if (signed < long.MinValue || signed > long.MaxValue)
         {
             throw new FerruleRuntimeException(
                 FerruleRuntimeError.IntegerOverflow,
                 $"`{RoundHalfCeilingName}` integer arithmetic overflowed.",
-                function: RoundHalfCeilingName);
+                function: RoundHalfCeilingName
+            );
         }
         return (long)signed;
     }
@@ -517,9 +545,11 @@ public static partial class FerruleFunctions
             var point = mantissa.IndexOf('.');
             var whole = point < 0 ? mantissa : mantissa[..point];
             var fraction = point < 0 ? string.Empty : mantissa[(point + 1)..];
-            if ((whole.Length == 0 && fraction.Length == 0) ||
-                !whole.All(char.IsAsciiDigit) ||
-                !fraction.All(char.IsAsciiDigit))
+            if (
+                (whole.Length == 0 && fraction.Length == 0)
+                || !whole.All(char.IsAsciiDigit)
+                || !fraction.All(char.IsAsciiDigit)
+            )
             {
                 return null;
             }
@@ -574,14 +604,14 @@ public static partial class FerruleFunctions
                 return 0.0;
             }
             var magnitude = Exponent + Digits.Length;
-            var value = magnitude > FloatMagnitudeLimit
-                ? double.PositiveInfinity
-                : magnitude < -FloatMagnitudeLimit
-                    ? 0.0
-                    : double.Parse(
-                        $"{Digits}e{Exponent.ToString(CultureInfo.InvariantCulture)}",
-                        NumberStyles.Float,
-                        CultureInfo.InvariantCulture);
+            var value =
+                magnitude > FloatMagnitudeLimit ? double.PositiveInfinity
+                : magnitude < -FloatMagnitudeLimit ? 0.0
+                : double.Parse(
+                    $"{Digits}e{Exponent.ToString(CultureInfo.InvariantCulture)}",
+                    NumberStyles.Float,
+                    CultureInfo.InvariantCulture
+                );
             return Negative ? -value : value;
         }
 
@@ -601,12 +631,13 @@ public static partial class FerruleFunctions
         }
     }
 
-    private static double NumberArgument(FerruleValue value, string function) => value.Kind switch
-    {
-        FerruleValueKind.Int64 => value.Int64Value,
-        FerruleValueKind.Double => value.DoubleValue,
-        _ => throw Type(function, value),
-    };
+    private static double NumberArgument(FerruleValue value, string function) =>
+        value.Kind switch
+        {
+            FerruleValueKind.Int64 => value.Int64Value,
+            FerruleValueKind.Double => value.DoubleValue,
+            _ => throw Type(function, value),
+        };
 
     private static double RustRound(double value) =>
         Math.Round(value, MidpointRounding.AwayFromZero);
@@ -678,29 +709,34 @@ public static partial class FerruleFunctions
         return reciprocal ? 1.0 / result : result;
     }
 
-    private static bool IsRustWhitespace(char character) => character is
-        >= '\u0009' and <= '\u000D' or
-        '\u0020' or
-        '\u0085' or
-        '\u00A0' or
-        '\u1680' or
-        >= '\u2000' and <= '\u200A' or
-        '\u2028' or
-        '\u2029' or
-        '\u202F' or
-        '\u205F' or
-        '\u3000';
+    private static bool IsRustWhitespace(char character) =>
+        character
+            is >= '\u0009'
+                and <= '\u000D'
+                or '\u0020'
+                or '\u0085'
+                or '\u00A0'
+                or '\u1680'
+                or >= '\u2000'
+                and <= '\u200A'
+                or '\u2028'
+                or '\u2029'
+                or '\u202F'
+                or '\u205F'
+                or '\u3000';
 
-    internal static string ScalarText(FerruleValue value) => value.Kind switch
-    {
-        FerruleValueKind.Null or FerruleValueKind.JsonNull or FerruleValueKind.XmlNil => string.Empty,
-        FerruleValueKind.Bool => value.BooleanValue ? "true" : "false",
-        FerruleValueKind.Int64 => value.Int64Value.ToString(CultureInfo.InvariantCulture),
-        FerruleValueKind.Double => DoubleText(value.DoubleValue),
-        FerruleValueKind.String => value.StringValue,
-        FerruleValueKind.Decimal => value.DecimalValue.ToString(),
-        _ => string.Empty,
-    };
+    internal static string ScalarText(FerruleValue value) =>
+        value.Kind switch
+        {
+            FerruleValueKind.Null or FerruleValueKind.JsonNull or FerruleValueKind.XmlNil =>
+                string.Empty,
+            FerruleValueKind.Bool => value.BooleanValue ? "true" : "false",
+            FerruleValueKind.Int64 => value.Int64Value.ToString(CultureInfo.InvariantCulture),
+            FerruleValueKind.Double => DoubleText(value.DoubleValue),
+            FerruleValueKind.String => value.StringValue,
+            FerruleValueKind.Decimal => value.DecimalValue.ToString(),
+            _ => string.Empty,
+        };
 
     private static string DoubleText(double value)
     {
@@ -738,7 +774,8 @@ public static partial class FerruleFunctions
         var expanded = targetPoint switch
         {
             <= 0 => "0." + new string('0', -targetPoint) + digits,
-            _ when targetPoint >= digits.Length => digits + new string('0', targetPoint - digits.Length),
+            _ when targetPoint >= digits.Length => digits
+                + new string('0', targetPoint - digits.Length),
             _ => digits.Insert(targetPoint, "."),
         };
         return negative ? "-" + expanded : expanded;
@@ -746,7 +783,8 @@ public static partial class FerruleFunctions
 
     private static bool TryExactDecimalProduct(
         IReadOnlyList<FerruleValue> values,
-        out double result)
+        out double result
+    )
     {
         result = 0.0;
         if (!ExactDecimal.TryFrom(values[0], out var product))
@@ -755,19 +793,21 @@ public static partial class FerruleFunctions
         }
         for (var index = 1; index < values.Count; index++)
         {
-            if (!ExactDecimal.TryFrom(values[index], out var operand) ||
-                !product.TryMultiply(operand, out product))
+            if (
+                !ExactDecimal.TryFrom(values[index], out var operand)
+                || !product.TryMultiply(operand, out product)
+            )
             {
                 return false;
             }
         }
 
         return double.TryParse(
-                   $"{product.Coefficient}e{product.Exponent}",
-                   NumberStyles.Float,
-                   CultureInfo.InvariantCulture,
-                   out result) &&
-               double.IsFinite(result);
+                $"{product.Coefficient}e{product.Exponent}",
+                NumberStyles.Float,
+                CultureInfo.InvariantCulture,
+                out result
+            ) && double.IsFinite(result);
     }
 
     private enum NumericOperation
@@ -814,12 +854,25 @@ public static partial class FerruleFunctions
             if (value.Kind == FerruleValueKind.String)
             {
                 var text = value.StringValue.Trim();
-                if (long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var integer))
+                if (
+                    long.TryParse(
+                        text,
+                        NumberStyles.Integer,
+                        CultureInfo.InvariantCulture,
+                        out var integer
+                    )
+                )
                 {
                     return new NumericOperand(integer);
                 }
-                if (double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var number) &&
-                    double.IsFinite(number))
+                if (
+                    double.TryParse(
+                        text,
+                        NumberStyles.Float,
+                        CultureInfo.InvariantCulture,
+                        out var number
+                    ) && double.IsFinite(number)
+                )
                 {
                     return new NumericOperand(number);
                 }
@@ -849,10 +902,11 @@ public static partial class FerruleFunctions
             string? lexical = value.Kind switch
             {
                 FerruleValueKind.Int64 => value.Int64Value.ToString(CultureInfo.InvariantCulture),
-                FerruleValueKind.Double when value.DoubleValue == 0.0 &&
-                                             double.IsNegative(value.DoubleValue) => null,
-                FerruleValueKind.Double when double.IsFinite(value.DoubleValue) =>
-                    DoubleText(value.DoubleValue),
+                FerruleValueKind.Double
+                    when value.DoubleValue == 0.0 && double.IsNegative(value.DoubleValue) => null,
+                FerruleValueKind.Double when double.IsFinite(value.DoubleValue) => DoubleText(
+                    value.DoubleValue
+                ),
                 FerruleValueKind.String => CanonicalNumericString(value.StringValue),
                 _ => null,
             };
@@ -875,13 +929,26 @@ public static partial class FerruleFunctions
         private static string? CanonicalNumericString(string value)
         {
             var text = value.Trim();
-            if (long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var integer))
+            if (
+                long.TryParse(
+                    text,
+                    NumberStyles.Integer,
+                    CultureInfo.InvariantCulture,
+                    out var integer
+                )
+            )
             {
                 return integer.ToString(CultureInfo.InvariantCulture);
             }
-            return double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var number) &&
-                   double.IsFinite(number) &&
-                   !(number == 0.0 && double.IsNegative(number))
+            return
+                double.TryParse(
+                    text,
+                    NumberStyles.Float,
+                    CultureInfo.InvariantCulture,
+                    out var number
+                )
+                && double.IsFinite(number)
+                && !(number == 0.0 && double.IsNegative(number))
                 ? DoubleText(number)
                 : null;
         }
@@ -896,12 +963,15 @@ public static partial class FerruleFunctions
             var exponentMarker = lexical.IndexOfAny(['e', 'E']);
             var mantissa = exponentMarker < 0 ? lexical : lexical[..exponentMarker];
             var scientificExponent = 0;
-            if (exponentMarker >= 0 &&
-                !int.TryParse(
+            if (
+                exponentMarker >= 0
+                && !int.TryParse(
                     lexical[(exponentMarker + 1)..],
                     NumberStyles.Integer,
                     CultureInfo.InvariantCulture,
-                    out scientificExponent))
+                    out scientificExponent
+                )
+            )
             {
                 return false;
             }
@@ -913,14 +983,17 @@ public static partial class FerruleFunctions
             var parts = mantissa.Split('.', 2);
             var whole = parts[0];
             var fraction = parts.Length == 2 ? parts[1] : string.Empty;
-            if (whole.Length == 0 ||
-                whole.Any(character => character is < '0' or > '9') ||
-                fraction.Any(character => character is < '0' or > '9') ||
-                !BigInteger.TryParse(
+            if (
+                whole.Length == 0
+                || whole.Any(character => character is < '0' or > '9')
+                || fraction.Any(character => character is < '0' or > '9')
+                || !BigInteger.TryParse(
                     whole + fraction,
                     NumberStyles.None,
                     CultureInfo.InvariantCulture,
-                    out var coefficient))
+                    out var coefficient
+                )
+            )
             {
                 return false;
             }

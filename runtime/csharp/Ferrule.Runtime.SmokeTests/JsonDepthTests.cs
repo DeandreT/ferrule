@@ -21,19 +21,22 @@ internal static partial class Program
             _ = FerruleJson.Parse(JsonAnyScalarSchema, accepted);
             using var output = JsonDocument.Parse(
                 FerruleJson.Serialize(JsonAnyScalarSchema, Scalar(Text(accepted))),
-                new JsonDocumentOptions { MaxDepth = 256 });
+                new JsonDocumentOptions { MaxDepth = 256 }
+            );
             Equal(
                 objectShape ? JsonValueKind.Object : JsonValueKind.Array,
-                output.RootElement.ValueKind);
+                output.RootElement.ValueKind
+            );
 
             foreach (var depth in new[] { 128, 129 })
             {
                 var rejected = Nest("0", depth, objectShape);
-                Error(
-                    FerruleRuntimeError.JsonBoundary,
-                    () => FerruleJson.Parse(JsonAnyScalarSchema, rejected));
+                Error(FerruleRuntimeError.JsonBoundary, () =>
+                    FerruleJson.Parse(JsonAnyScalarSchema, rejected)
+                );
                 using var fallback = JsonDocument.Parse(
-                    FerruleJson.Serialize(JsonAnyScalarSchema, Scalar(Text(rejected))));
+                    FerruleJson.Serialize(JsonAnyScalarSchema, Scalar(Text(rejected)))
+                );
                 Equal(JsonValueKind.String, fallback.RootElement.ValueKind);
                 Equal(rejected, fallback.RootElement.GetString());
             }
@@ -44,7 +47,10 @@ internal static partial class Program
             var value = "{\"name\":\"Leaf\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"int\"}}";
             for (var depth = 0; depth < wrappers; depth++)
             {
-                value = "{\"name\":\"Group\",\"kind\":{\"kind\":\"group\",\"children\":[" + value + "]}}";
+                value =
+                    "{\"name\":\"Group\",\"kind\":{\"kind\":\"group\",\"children\":["
+                    + value
+                    + "]}}";
             }
             return value;
         }

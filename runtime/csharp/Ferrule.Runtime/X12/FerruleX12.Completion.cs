@@ -5,26 +5,66 @@ namespace Ferrule.Runtime;
 public static partial class FerruleX12
 {
     private sealed record CompletionSegment(Node Node, FerruleGroup Group, string[] Path);
-    private sealed record CompletionTimestamp(string Date8, string Date6, string Time4, string Time6);
 
-    private static FerruleInstance CompleteOutputView(Profile profile, FerruleInstance document, FerruleExecutionContext? executionContext)
+    private sealed record CompletionTimestamp(
+        string Date8,
+        string Date6,
+        string Time4,
+        string Time6
+    );
+
+    private static FerruleInstance CompleteOutputView(
+        Profile profile,
+        FerruleInstance document,
+        FerruleExecutionContext? executionContext
+    )
     {
-        if (profile.Grouped is not null) return CompleteGroupedOutputView(profile, document, executionContext);
+        if (profile.Grouped is not null)
+            return CompleteGroupedOutputView(profile, document, executionContext);
         CompletionTimestamp timestamp = ReadCompletionTimestamp(executionContext?.CurrentDateTime);
         var segments = new List<CompletionSegment>();
-        FerruleInstance populated = PopulateTrailerGroups(profile.Root, document, [], segments, new Budget(), 0, root: true);
+        FerruleInstance populated = PopulateTrailerGroups(
+            profile.Root,
+            document,
+            [],
+            segments,
+            new Budget(),
+            0,
+            root: true
+        );
         var replacements = new Dictionary<Node, FerruleGroup>();
-        var envelopes = segments.Where(segment => IsEnvelope(SegmentId(segment.Node.Name) ?? ""))
+        var envelopes = segments
+            .Where(segment => IsEnvelope(SegmentId(segment.Node.Name) ?? ""))
             .ToDictionary(segment => SegmentId(segment.Node.Name)!);
-        if (!envelopes.TryGetValue("ISA", out CompletionSegment? isa)
+        if (
+            !envelopes.TryGetValue("ISA", out CompletionSegment? isa)
             || !envelopes.TryGetValue("GS", out CompletionSegment? gs)
-            || !envelopes.TryGetValue("ST", out CompletionSegment? st))
+            || !envelopes.TryGetValue("ST", out CompletionSegment? st)
+        )
             return populated;
 
         FerruleGroup isaGroup = isa.Group;
-        string[] isaDefaults = ["00", "          ", "00", "          ", "ZZ", "", "ZZ", "",
-            timestamp.Date6, timestamp.Time4, "", "", "000000000", profile.Autocomplete!.RequestAcknowledgement ? "1" : "0", "P", ""];
-        for (int index = 0; index < isaDefaults.Length; index++) isaGroup = FillCompletionField(isa.Node, isaGroup, index, isaDefaults[index]);
+        string[] isaDefaults =
+        [
+            "00",
+            "          ",
+            "00",
+            "          ",
+            "ZZ",
+            "",
+            "ZZ",
+            "",
+            timestamp.Date6,
+            timestamp.Time4,
+            "",
+            "",
+            "000000000",
+            profile.Autocomplete!.RequestAcknowledgement ? "1" : "0",
+            "P",
+            "",
+        ];
+        for (int index = 0; index < isaDefaults.Length; index++)
+            isaGroup = FillCompletionField(isa.Node, isaGroup, index, isaDefaults[index]);
         isaGroup = NormalizeCompletionDate(isa.Node, isaGroup, 8, shortDate: true);
         isaGroup = NormalizeCompletionTime(isa.Node, isaGroup, 9, shortTime: true);
         replacements.Add(isa.Node, isaGroup);
@@ -36,64 +76,126 @@ public static partial class FerruleX12
         gsGroup = FillCompletionField(gs.Node, gsGroup, 5, "1");
         replacements.Add(gs.Node, gsGroup);
 
-        FerruleGroup stGroup = FillCompletionField(st.Node, st.Group, 0, profile.Autocomplete.TransactionSet ?? "");
+        FerruleGroup stGroup = FillCompletionField(
+            st.Node,
+            st.Group,
+            0,
+            profile.Autocomplete.TransactionSet ?? ""
+        );
         stGroup = FillCompletionField(st.Node, stGroup, 1, "0001");
         replacements.Add(st.Node, stGroup);
 
         if (envelopes.TryGetValue("SE", out CompletionSegment? se))
         {
             int count = segments.IndexOf(se) - segments.IndexOf(st) + 1;
-            FerruleGroup group = FillCompletionField(se.Node, se.Group, 0, count.ToString(CultureInfo.InvariantCulture));
-            replacements.Add(se.Node, FillCompletionField(se.Node, group, 1, CompletionText(st.Node, stGroup, 1)));
+            FerruleGroup group = FillCompletionField(
+                se.Node,
+                se.Group,
+                0,
+                count.ToString(CultureInfo.InvariantCulture)
+            );
+            replacements.Add(
+                se.Node,
+                FillCompletionField(se.Node, group, 1, CompletionText(st.Node, stGroup, 1))
+            );
         }
         if (envelopes.TryGetValue("GE", out CompletionSegment? ge))
         {
             FerruleGroup group = FillCompletionField(ge.Node, ge.Group, 0, "1");
-            replacements.Add(ge.Node, FillCompletionField(ge.Node, group, 1, CompletionText(gs.Node, gsGroup, 5)));
+            replacements.Add(
+                ge.Node,
+                FillCompletionField(ge.Node, group, 1, CompletionText(gs.Node, gsGroup, 5))
+            );
         }
         if (envelopes.TryGetValue("IEA", out CompletionSegment? iea))
         {
             FerruleGroup group = FillCompletionField(iea.Node, iea.Group, 0, "1");
-            replacements.Add(iea.Node, FillCompletionField(iea.Node, group, 1, CompletionText(isa.Node, isaGroup, 12)));
+            replacements.Add(
+                iea.Node,
+                FillCompletionField(iea.Node, group, 1, CompletionText(isa.Node, isaGroup, 12))
+            );
         }
-        return ReplaceCompletionGroups(profile.Root, populated, replacements, new Budget(), 0, root: true);
+        return ReplaceCompletionGroups(
+            profile.Root,
+            populated,
+            replacements,
+            new Budget(),
+            0,
+            root: true
+        );
     }
 
     // Steps address declared slots and collection occurrences, including absent
     // trailer slots. Neither caller object identity nor wire positions select an owner.
     private readonly record struct CompletionStep(bool RepeatedItem, int Index);
-    private sealed class CompletionOccurrence(CompletionStep[] value) : IEquatable<CompletionOccurrence>
+
+    private sealed class CompletionOccurrence(CompletionStep[] value)
+        : IEquatable<CompletionOccurrence>
     {
         private readonly CompletionStep[] steps = value;
+
         internal CompletionOccurrence Child(int index) => new([.. steps, new(false, index)]);
+
         internal CompletionOccurrence Item(int index) => new([.. steps, new(true, index)]);
+
         internal CompletionOccurrence Parent(int count = 1) => new(steps[..^count]);
-        public bool Equals(CompletionOccurrence? other) => other is not null && steps.AsSpan().SequenceEqual(other.steps);
-        public override bool Equals(object? other) => other is CompletionOccurrence occurrence && Equals(occurrence);
+
+        public bool Equals(CompletionOccurrence? other) =>
+            other is not null && steps.AsSpan().SequenceEqual(other.steps);
+
+        public override bool Equals(object? other) =>
+            other is CompletionOccurrence occurrence && Equals(occurrence);
+
         public override int GetHashCode()
         {
             var hash = new HashCode();
-            foreach (CompletionStep step in steps) hash.Add(step);
+            foreach (CompletionStep step in steps)
+                hash.Add(step);
             return hash.ToHashCode();
         }
     }
-    private sealed record GroupedCompletionSegment(Node Node, FerruleGroup Group, CompletionOccurrence Key, int Position);
 
-    private static FerruleInstance CompleteGroupedOutputView(Profile profile, FerruleInstance document,
-        FerruleExecutionContext? executionContext)
+    private sealed record GroupedCompletionSegment(
+        Node Node,
+        FerruleGroup Group,
+        CompletionOccurrence Key,
+        int Position
+    );
+
+    private static FerruleInstance CompleteGroupedOutputView(
+        Profile profile,
+        FerruleInstance document,
+        FerruleExecutionContext? executionContext
+    )
     {
         CompletionTimestamp timestamp = ReadCompletionTimestamp(executionContext?.CurrentDateTime);
         var segments = new List<GroupedCompletionSegment>();
         var rootKey = new CompletionOccurrence([]);
-        FerruleInstance populated = PopulateGroupedTrailerGroups(profile.Root, document, rootKey, segments,
-            new Budget(), 0, root: true);
+        FerruleInstance populated = PopulateGroupedTrailerGroups(
+            profile.Root,
+            document,
+            rootKey,
+            segments,
+            new Budget(),
+            0,
+            root: true
+        );
         var replacements = new Dictionary<CompletionOccurrence, FerruleGroup>();
-        var groupOwners = new Dictionary<CompletionOccurrence, (GroupedCompletionSegment Header, FerruleGroup Value)>();
-        var transactionOwners = new Dictionary<CompletionOccurrence, (GroupedCompletionSegment Header, FerruleGroup Value)>();
+        var groupOwners =
+            new Dictionary<
+                CompletionOccurrence,
+                (GroupedCompletionSegment Header, FerruleGroup Value)
+            >();
+        var transactionOwners =
+            new Dictionary<
+                CompletionOccurrence,
+                (GroupedCompletionSegment Header, FerruleGroup Value)
+            >();
         var groupTransactionCounts = new Dictionary<CompletionOccurrence, int>();
         FerruleGroup? isaValue = null;
         Node? isaNode = null;
-        int groupOrdinal = 0, transactionOrdinal = 0;
+        int groupOrdinal = 0,
+            transactionOrdinal = 0;
         foreach (GroupedCompletionSegment segment in segments)
         {
             switch (SegmentId(segment.Node.Name))
@@ -101,31 +203,73 @@ public static partial class FerruleX12
                 case "ISA":
                     isaValue = segment.Group;
                     isaNode = segment.Node;
-                    string[] isaDefaults = ["00", "          ", "00", "          ", "ZZ", "", "ZZ", "",
-                        timestamp.Date6, timestamp.Time4, "", "", "000000000",
-                        profile.Autocomplete!.RequestAcknowledgement ? "1" : "0", "P", ""];
+                    string[] isaDefaults =
+                    [
+                        "00",
+                        "          ",
+                        "00",
+                        "          ",
+                        "ZZ",
+                        "",
+                        "ZZ",
+                        "",
+                        timestamp.Date6,
+                        timestamp.Time4,
+                        "",
+                        "",
+                        "000000000",
+                        profile.Autocomplete!.RequestAcknowledgement ? "1" : "0",
+                        "P",
+                        "",
+                    ];
                     for (int index = 0; index < isaDefaults.Length; index++)
-                        isaValue = FillCompletionField(segment.Node, isaValue, index, isaDefaults[index]);
+                        isaValue = FillCompletionField(
+                            segment.Node,
+                            isaValue,
+                            index,
+                            isaDefaults[index]
+                        );
                     isaValue = NormalizeCompletionDate(segment.Node, isaValue, 8, shortDate: true);
                     isaValue = NormalizeCompletionTime(segment.Node, isaValue, 9, shortTime: true);
                     replacements.Add(segment.Key, isaValue);
                     break;
                 case "GS":
-                    FerruleGroup gs = FillCompletionField(segment.Node, segment.Group, 3, timestamp.Date8);
+                    FerruleGroup gs = FillCompletionField(
+                        segment.Node,
+                        segment.Group,
+                        3,
+                        timestamp.Date8
+                    );
                     gs = FillCompletionField(segment.Node, gs, 4, timestamp.Time6);
                     gs = NormalizeCompletionDate(segment.Node, gs, 3, shortDate: false);
                     gs = NormalizeCompletionTime(segment.Node, gs, 4, shortTime: false);
-                    gs = FillCompletionField(segment.Node, gs, 5, (++groupOrdinal).ToString(CultureInfo.InvariantCulture));
+                    gs = FillCompletionField(
+                        segment.Node,
+                        gs,
+                        5,
+                        (++groupOrdinal).ToString(CultureInfo.InvariantCulture)
+                    );
                     groupOwners.Add(segment.Key.Parent(), (segment, gs));
                     replacements.Add(segment.Key, gs);
                     break;
                 case "ST":
-                    FerruleGroup st = FillCompletionField(segment.Node, segment.Group, 0, profile.Autocomplete!.TransactionSet ?? "");
-                    st = FillCompletionField(segment.Node, st, 1, (++transactionOrdinal).ToString("D4", CultureInfo.InvariantCulture));
+                    FerruleGroup st = FillCompletionField(
+                        segment.Node,
+                        segment.Group,
+                        0,
+                        profile.Autocomplete!.TransactionSet ?? ""
+                    );
+                    st = FillCompletionField(
+                        segment.Node,
+                        st,
+                        1,
+                        (++transactionOrdinal).ToString("D4", CultureInfo.InvariantCulture)
+                    );
                     CompletionOccurrence transactionKey = segment.Key.Parent();
                     transactionOwners.Add(transactionKey, (segment, st));
                     CompletionOccurrence groupKey = transactionKey.Parent(2);
-                    groupTransactionCounts[groupKey] = groupTransactionCounts.GetValueOrDefault(groupKey) + 1;
+                    groupTransactionCounts[groupKey] =
+                        groupTransactionCounts.GetValueOrDefault(groupKey) + 1;
                     replacements.Add(segment.Key, st);
                     break;
             }
@@ -134,100 +278,234 @@ public static partial class FerruleX12
         {
             switch (SegmentId(segment.Node.Name))
             {
-                case "SE" when transactionOwners.TryGetValue(segment.Key.Parent(), out var transaction):
+                case "SE"
+                    when transactionOwners.TryGetValue(segment.Key.Parent(), out var transaction):
                     int count = segment.Position - transaction.Header.Position + 1;
-                    FerruleGroup se = FillCompletionField(segment.Node, segment.Group, 0, count.ToString(CultureInfo.InvariantCulture));
-                    se = FillCompletionField(segment.Node, se, 1, CompletionText(transaction.Header.Node, transaction.Value, 1));
+                    FerruleGroup se = FillCompletionField(
+                        segment.Node,
+                        segment.Group,
+                        0,
+                        count.ToString(CultureInfo.InvariantCulture)
+                    );
+                    se = FillCompletionField(
+                        segment.Node,
+                        se,
+                        1,
+                        CompletionText(transaction.Header.Node, transaction.Value, 1)
+                    );
                     replacements.Add(segment.Key, se);
                     break;
                 case "GE" when groupOwners.TryGetValue(segment.Key.Parent(), out var group):
-                    int transactions = groupTransactionCounts.GetValueOrDefault(segment.Key.Parent());
-                    FerruleGroup ge = FillCompletionField(segment.Node, segment.Group, 0, transactions.ToString(CultureInfo.InvariantCulture));
-                    ge = FillCompletionField(segment.Node, ge, 1, CompletionText(group.Header.Node, group.Value, 5));
+                    int transactions = groupTransactionCounts.GetValueOrDefault(
+                        segment.Key.Parent()
+                    );
+                    FerruleGroup ge = FillCompletionField(
+                        segment.Node,
+                        segment.Group,
+                        0,
+                        transactions.ToString(CultureInfo.InvariantCulture)
+                    );
+                    ge = FillCompletionField(
+                        segment.Node,
+                        ge,
+                        1,
+                        CompletionText(group.Header.Node, group.Value, 5)
+                    );
                     replacements.Add(segment.Key, ge);
                     break;
                 case "IEA" when isaNode is not null && isaValue is not null:
-                    FerruleGroup iea = FillCompletionField(segment.Node, segment.Group, 0, groupOwners.Count.ToString(CultureInfo.InvariantCulture));
-                    iea = FillCompletionField(segment.Node, iea, 1, CompletionText(isaNode, isaValue, 12));
+                    FerruleGroup iea = FillCompletionField(
+                        segment.Node,
+                        segment.Group,
+                        0,
+                        groupOwners.Count.ToString(CultureInfo.InvariantCulture)
+                    );
+                    iea = FillCompletionField(
+                        segment.Node,
+                        iea,
+                        1,
+                        CompletionText(isaNode, isaValue, 12)
+                    );
                     replacements.Add(segment.Key, iea);
                     break;
             }
         }
-        return ReplaceGroupedCompletionGroups(profile.Root, populated, rootKey, replacements, new Budget(), 0, root: true);
+        return ReplaceGroupedCompletionGroups(
+            profile.Root,
+            populated,
+            rootKey,
+            replacements,
+            new Budget(),
+            0,
+            root: true
+        );
     }
 
-    private static FerruleInstance PopulateGroupedTrailerGroups(Node node, FerruleInstance instance, CompletionOccurrence key,
-        List<GroupedCompletionSegment> segments, Budget budget, int depth, bool root = false)
+    private static FerruleInstance PopulateGroupedTrailerGroups(
+        Node node,
+        FerruleInstance instance,
+        CompletionOccurrence key,
+        List<GroupedCompletionSegment> segments,
+        Budget budget,
+        int depth,
+        bool root = false
+    )
     {
         budget.Visit(depth);
-        if (node.Type is not null || instance is not FerruleGroup group) return instance;
+        if (node.Type is not null || instance is not FerruleGroup group)
+            return instance;
         string? id = root ? null : SegmentId(node.Name);
         if (id is not null)
         {
-            if (segments.Count == MaximumSegments) throw Limit("X12 output segment limit exceeded.");
+            if (segments.Count == MaximumSegments)
+                throw Limit("X12 output segment limit exceeded.");
             if (IsEnvelope(id))
-                for (int index = 0; index < group.Fields.Count; index++) budget.Visit(depth + 1);
+                for (int index = 0; index < group.Fields.Count; index++)
+                    budget.Visit(depth + 1);
             segments.Add(new(node, group, key, segments.Count));
             return instance;
         }
         var replacements = new Dictionary<string, FerruleInstance>(StringComparer.Ordinal);
         foreach (FerruleField field in group.Fields)
-            if (!node.Children.Any(child => child.Name == field.Name)) budget.Visit(depth + 1);
+            if (!node.Children.Any(child => child.Name == field.Name))
+                budget.Visit(depth + 1);
         for (int childIndex = 0; childIndex < node.Children.Length; childIndex++)
         {
             Node child = node.Children[childIndex];
             group.TryGetField(child.Name, out FerruleInstance? value);
-            if (value is null && CanMaterializeTrailer(child)) value = new FerruleGroup([]);
-            if (value is null) { budget.Visit(depth + 1); continue; }
+            if (value is null && CanMaterializeTrailer(child))
+                value = new FerruleGroup([]);
+            if (value is null)
+            {
+                budget.Visit(depth + 1);
+                continue;
+            }
             CompletionOccurrence childKey = key.Child(childIndex);
             if (child.Repeating && value is FerruleRepeated or FerruleMappedSequence)
             {
-                IReadOnlyList<FerruleInstance> items = value is FerruleRepeated repeated ? repeated.Items : ((FerruleMappedSequence)value).Items;
-                if (items.Count > MaximumLoopInstances) throw Limit("X12 output loop instance limit exceeded.");
+                IReadOnlyList<FerruleInstance> items = value is FerruleRepeated repeated
+                    ? repeated.Items
+                    : ((FerruleMappedSequence)value).Items;
+                if (items.Count > MaximumLoopInstances)
+                    throw Limit("X12 output loop instance limit exceeded.");
                 var completed = new List<FerruleInstance>();
                 for (int itemIndex = 0; itemIndex < items.Count; itemIndex++)
                 {
                     budget.Loop();
-                    completed.Add(PopulateGroupedTrailerGroups(child, items[itemIndex], childKey.Item(itemIndex), segments, budget, depth + 1));
+                    completed.Add(
+                        PopulateGroupedTrailerGroups(
+                            child,
+                            items[itemIndex],
+                            childKey.Item(itemIndex),
+                            segments,
+                            budget,
+                            depth + 1
+                        )
+                    );
                 }
-                replacements.Add(child.Name, value is FerruleRepeated ? new FerruleRepeated(completed) : new FerruleMappedSequence(completed));
+                replacements.Add(
+                    child.Name,
+                    value is FerruleRepeated
+                        ? new FerruleRepeated(completed)
+                        : new FerruleMappedSequence(completed)
+                );
             }
-            else replacements.Add(child.Name, PopulateGroupedTrailerGroups(child, value, childKey, segments, budget, depth + 1));
+            else
+                replacements.Add(
+                    child.Name,
+                    PopulateGroupedTrailerGroups(
+                        child,
+                        value,
+                        childKey,
+                        segments,
+                        budget,
+                        depth + 1
+                    )
+                );
         }
-        var fields = group.Fields.Select(field => new FerruleField(field.Name, replacements.GetValueOrDefault(field.Name, field.Value))).ToList();
+        var fields = group
+            .Fields.Select(field => new FerruleField(
+                field.Name,
+                replacements.GetValueOrDefault(field.Name, field.Value)
+            ))
+            .ToList();
         foreach (Node child in node.Children)
-            if (!group.TryGetField(child.Name, out _) && replacements.TryGetValue(child.Name, out FerruleInstance? value))
+            if (
+                !group.TryGetField(child.Name, out _)
+                && replacements.TryGetValue(child.Name, out FerruleInstance? value)
+            )
                 fields.Add(new FerruleField(child.Name, value));
         return group.CloneFields(fields);
     }
 
-    private static FerruleInstance ReplaceGroupedCompletionGroups(Node node, FerruleInstance instance, CompletionOccurrence key,
-        Dictionary<CompletionOccurrence, FerruleGroup> replacements, Budget budget, int depth, bool root = false)
+    private static FerruleInstance ReplaceGroupedCompletionGroups(
+        Node node,
+        FerruleInstance instance,
+        CompletionOccurrence key,
+        Dictionary<CompletionOccurrence, FerruleGroup> replacements,
+        Budget budget,
+        int depth,
+        bool root = false
+    )
     {
         budget.Visit(depth);
-        if (!root && replacements.TryGetValue(key, out FerruleGroup? replacement)) return replacement;
-        if (node.Type is not null || instance is not FerruleGroup group || !root && SegmentId(node.Name) is not null) return instance;
+        if (!root && replacements.TryGetValue(key, out FerruleGroup? replacement))
+            return replacement;
+        if (
+            node.Type is not null
+            || instance is not FerruleGroup group
+            || !root && SegmentId(node.Name) is not null
+        )
+            return instance;
         var fields = new List<FerruleField>();
         foreach (FerruleField field in group.Fields)
         {
             int childIndex = Array.FindIndex(node.Children, child => child.Name == field.Name);
-            if (childIndex < 0) { budget.Visit(depth + 1); fields.Add(field); continue; }
+            if (childIndex < 0)
+            {
+                budget.Visit(depth + 1);
+                fields.Add(field);
+                continue;
+            }
             Node child = node.Children[childIndex];
             CompletionOccurrence childKey = key.Child(childIndex);
             FerruleInstance value = field.Value;
             if (child.Repeating && value is FerruleRepeated or FerruleMappedSequence)
             {
-                IReadOnlyList<FerruleInstance> items = value is FerruleRepeated repeated ? repeated.Items : ((FerruleMappedSequence)value).Items;
-                if (items.Count > MaximumLoopInstances) throw Limit("X12 output loop instance limit exceeded.");
+                IReadOnlyList<FerruleInstance> items = value is FerruleRepeated repeated
+                    ? repeated.Items
+                    : ((FerruleMappedSequence)value).Items;
+                if (items.Count > MaximumLoopInstances)
+                    throw Limit("X12 output loop instance limit exceeded.");
                 var completed = new List<FerruleInstance>();
                 for (int itemIndex = 0; itemIndex < items.Count; itemIndex++)
                 {
                     budget.Loop();
-                    completed.Add(ReplaceGroupedCompletionGroups(child, items[itemIndex], childKey.Item(itemIndex), replacements, budget, depth + 1));
+                    completed.Add(
+                        ReplaceGroupedCompletionGroups(
+                            child,
+                            items[itemIndex],
+                            childKey.Item(itemIndex),
+                            replacements,
+                            budget,
+                            depth + 1
+                        )
+                    );
                 }
-                value = value is FerruleRepeated ? new FerruleRepeated(completed) : new FerruleMappedSequence(completed);
+                value =
+                    value is FerruleRepeated
+                        ? new FerruleRepeated(completed)
+                        : new FerruleMappedSequence(completed);
             }
-            else value = ReplaceGroupedCompletionGroups(child, value, childKey, replacements, budget, depth + 1);
+            else
+                value = ReplaceGroupedCompletionGroups(
+                    child,
+                    value,
+                    childKey,
+                    replacements,
+                    budget,
+                    depth + 1
+                );
             fields.Add(new FerruleField(field.Name, value));
         }
         return group.CloneFields(fields);
@@ -236,142 +514,287 @@ public static partial class FerruleX12
     private static CompletionTimestamp ReadCompletionTimestamp(string? value)
     {
         if (value is null)
-            throw Failure(FerruleX12Error.Envelope, "X12 completion requires a supplied current dateTime.");
+            throw Failure(
+                FerruleX12Error.Envelope,
+                "X12 completion requires a supplied current dateTime."
+            );
         RequireUtf8(value, MaximumDocumentBytes, "X12 completion context");
-        bool valid = value.Length >= 19 && value[4] == '-' && value[7] == '-' && value[10] == 'T'
-            && value[13] == ':' && value[16] == ':' && Digits(value[..4]) && Digits(value[5..7]) && Digits(value[8..10])
-            && Digits(value[11..13]) && Digits(value[14..16]) && Digits(value[17..19]);
+        bool valid =
+            value.Length >= 19
+            && value[4] == '-'
+            && value[7] == '-'
+            && value[10] == 'T'
+            && value[13] == ':'
+            && value[16] == ':'
+            && Digits(value[..4])
+            && Digits(value[5..7])
+            && Digits(value[8..10])
+            && Digits(value[11..13])
+            && Digits(value[14..16])
+            && Digits(value[17..19]);
         int cursor = 19;
         if (valid && cursor < value.Length && value[cursor] == '.')
         {
             int first = ++cursor;
-            while (cursor < value.Length && char.IsAsciiDigit(value[cursor])) cursor++;
+            while (cursor < value.Length && char.IsAsciiDigit(value[cursor]))
+                cursor++;
             valid = cursor > first;
         }
-        valid = valid && ValidTimezone(value[cursor..])
-            && DateOnly.TryParseExact(value[..10], "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out _)
+        valid =
+            valid
+            && ValidTimezone(value[cursor..])
+            && DateOnly.TryParseExact(
+                value[..10],
+                "yyyy-MM-dd",
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.None,
+                out _
+            )
             && int.Parse(value[11..13], CultureInfo.InvariantCulture) <= 23
             && int.Parse(value[14..16], CultureInfo.InvariantCulture) <= 59
             && int.Parse(value[17..19], CultureInfo.InvariantCulture) <= 59;
         if (!valid)
-            throw Failure(FerruleX12Error.Envelope, "X12 completion requires a valid supplied current dateTime.");
-        return new(value[..4] + value[5..7] + value[8..10], value[2..4] + value[5..7] + value[8..10],
-            value[11..13] + value[14..16], value[11..13] + value[14..16] + value[17..19]);
+            throw Failure(
+                FerruleX12Error.Envelope,
+                "X12 completion requires a valid supplied current dateTime."
+            );
+        return new(
+            value[..4] + value[5..7] + value[8..10],
+            value[2..4] + value[5..7] + value[8..10],
+            value[11..13] + value[14..16],
+            value[11..13] + value[14..16] + value[17..19]
+        );
     }
 
-    private static FerruleInstance PopulateTrailerGroups(Node node, FerruleInstance instance, string[] path,
-        List<CompletionSegment> segments, Budget budget, int depth, bool root = false)
+    private static FerruleInstance PopulateTrailerGroups(
+        Node node,
+        FerruleInstance instance,
+        string[] path,
+        List<CompletionSegment> segments,
+        Budget budget,
+        int depth,
+        bool root = false
+    )
     {
         budget.Visit(depth);
-        if (node.Type is not null || instance is not FerruleGroup group) return instance;
+        if (node.Type is not null || instance is not FerruleGroup group)
+            return instance;
         string? id = root ? null : SegmentId(node.Name);
         if (id is not null)
         {
-            if (segments.Count == MaximumSegments) throw Limit("X12 output segment limit exceeded.");
+            if (segments.Count == MaximumSegments)
+                throw Limit("X12 output segment limit exceeded.");
             if (IsEnvelope(id))
-                for (int index = 0; index < group.Fields.Count; index++) budget.Visit(depth + 1);
+                for (int index = 0; index < group.Fields.Count; index++)
+                    budget.Visit(depth + 1);
             segments.Add(new(node, group, path));
             return instance;
         }
         var replacements = new Dictionary<string, FerruleInstance>(StringComparer.Ordinal);
         foreach (FerruleField field in group.Fields)
-            if (!node.Children.Any(child => child.Name == field.Name)) budget.Visit(depth + 1);
+            if (!node.Children.Any(child => child.Name == field.Name))
+                budget.Visit(depth + 1);
         foreach (Node child in node.Children)
         {
             group.TryGetField(child.Name, out FerruleInstance? value);
-            if (value is null && CanMaterializeTrailer(child)) value = new FerruleGroup([]);
-            if (value is null) continue;
+            if (value is null && CanMaterializeTrailer(child))
+                value = new FerruleGroup([]);
+            if (value is null)
+                continue;
             string[] childPath = [.. path, child.Name];
             if (child.Repeating && value is FerruleRepeated or FerruleMappedSequence)
             {
-                IReadOnlyList<FerruleInstance> items = value is FerruleRepeated repeated ? repeated.Items : ((FerruleMappedSequence)value).Items;
-                if (items.Count > MaximumLoopInstances) throw Limit("X12 output loop instance limit exceeded.");
+                IReadOnlyList<FerruleInstance> items = value is FerruleRepeated repeated
+                    ? repeated.Items
+                    : ((FerruleMappedSequence)value).Items;
+                if (items.Count > MaximumLoopInstances)
+                    throw Limit("X12 output loop instance limit exceeded.");
                 var completed = new List<FerruleInstance>();
                 foreach (FerruleInstance item in items)
                 {
                     budget.Loop();
-                    completed.Add(PopulateTrailerGroups(child, item, childPath, segments, budget, depth + 1));
+                    completed.Add(
+                        PopulateTrailerGroups(child, item, childPath, segments, budget, depth + 1)
+                    );
                 }
-                replacements.Add(child.Name, value is FerruleRepeated ? new FerruleRepeated(completed) : new FerruleMappedSequence(completed));
+                replacements.Add(
+                    child.Name,
+                    value is FerruleRepeated
+                        ? new FerruleRepeated(completed)
+                        : new FerruleMappedSequence(completed)
+                );
             }
-            else replacements.Add(child.Name, PopulateTrailerGroups(child, value, childPath, segments, budget, depth + 1));
+            else
+                replacements.Add(
+                    child.Name,
+                    PopulateTrailerGroups(child, value, childPath, segments, budget, depth + 1)
+                );
         }
-        var fields = group.Fields.Select(field => new FerruleField(field.Name, replacements.GetValueOrDefault(field.Name, field.Value))).ToList();
+        var fields = group
+            .Fields.Select(field => new FerruleField(
+                field.Name,
+                replacements.GetValueOrDefault(field.Name, field.Value)
+            ))
+            .ToList();
         foreach (Node child in node.Children)
-            if (!group.TryGetField(child.Name, out _) && replacements.TryGetValue(child.Name, out FerruleInstance? value))
+            if (
+                !group.TryGetField(child.Name, out _)
+                && replacements.TryGetValue(child.Name, out FerruleInstance? value)
+            )
                 fields.Add(new FerruleField(child.Name, value));
         return group.CloneFields(fields);
     }
 
-    private static bool CanMaterializeTrailer(Node node)
-        => !node.Repeating && node.Type is null && (SegmentId(node.Name) is { } id
-            ? id is "SE" or "GE" or "IEA" : node.Children.All(CanMaterializeTrailer));
+    private static bool CanMaterializeTrailer(Node node) =>
+        !node.Repeating
+        && node.Type is null
+        && (
+            SegmentId(node.Name) is { } id
+                ? id is "SE" or "GE" or "IEA"
+                : node.Children.All(CanMaterializeTrailer)
+        );
 
-    private static FerruleInstance ReplaceCompletionGroups(Node node, FerruleInstance instance,
-        Dictionary<Node, FerruleGroup> replacements, Budget budget, int depth, bool root = false)
+    private static FerruleInstance ReplaceCompletionGroups(
+        Node node,
+        FerruleInstance instance,
+        Dictionary<Node, FerruleGroup> replacements,
+        Budget budget,
+        int depth,
+        bool root = false
+    )
     {
         budget.Visit(depth);
-        if (!root && replacements.TryGetValue(node, out FerruleGroup? replacement)) return replacement;
-        if (node.Type is not null || instance is not FerruleGroup group || !root && SegmentId(node.Name) is not null) return instance;
-        return group.CloneFields(group.Fields.Select(field =>
-        {
-            Node? child = node.Children.FirstOrDefault(candidate => candidate.Name == field.Name);
-            if (child is null) { budget.Visit(depth + 1); return field; }
-            FerruleInstance value = field.Value;
-            if (child.Repeating && value is FerruleRepeated or FerruleMappedSequence)
+        if (!root && replacements.TryGetValue(node, out FerruleGroup? replacement))
+            return replacement;
+        if (
+            node.Type is not null
+            || instance is not FerruleGroup group
+            || !root && SegmentId(node.Name) is not null
+        )
+            return instance;
+        return group.CloneFields(
+            group.Fields.Select(field =>
             {
-                IReadOnlyList<FerruleInstance> items = value is FerruleRepeated repeated ? repeated.Items : ((FerruleMappedSequence)value).Items;
-                if (items.Count > MaximumLoopInstances) throw Limit("X12 output loop instance limit exceeded.");
-                var completed = new List<FerruleInstance>();
-                foreach (FerruleInstance item in items)
+                Node? child = node.Children.FirstOrDefault(candidate =>
+                    candidate.Name == field.Name
+                );
+                if (child is null)
                 {
-                    budget.Loop();
-                    completed.Add(ReplaceCompletionGroups(child, item, replacements, budget, depth + 1));
+                    budget.Visit(depth + 1);
+                    return field;
                 }
-                value = value is FerruleRepeated ? new FerruleRepeated(completed) : new FerruleMappedSequence(completed);
-            }
-            else value = ReplaceCompletionGroups(child, value, replacements, budget, depth + 1);
-            return new FerruleField(field.Name, value);
-        }));
+                FerruleInstance value = field.Value;
+                if (child.Repeating && value is FerruleRepeated or FerruleMappedSequence)
+                {
+                    IReadOnlyList<FerruleInstance> items = value is FerruleRepeated repeated
+                        ? repeated.Items
+                        : ((FerruleMappedSequence)value).Items;
+                    if (items.Count > MaximumLoopInstances)
+                        throw Limit("X12 output loop instance limit exceeded.");
+                    var completed = new List<FerruleInstance>();
+                    foreach (FerruleInstance item in items)
+                    {
+                        budget.Loop();
+                        completed.Add(
+                            ReplaceCompletionGroups(child, item, replacements, budget, depth + 1)
+                        );
+                    }
+                    value =
+                        value is FerruleRepeated
+                            ? new FerruleRepeated(completed)
+                            : new FerruleMappedSequence(completed);
+                }
+                else
+                    value = ReplaceCompletionGroups(child, value, replacements, budget, depth + 1);
+                return new FerruleField(field.Name, value);
+            })
+        );
     }
 
-    private static FerruleGroup FillCompletionField(Node node, FerruleGroup group, int index, string fallback)
+    private static FerruleGroup FillCompletionField(
+        Node node,
+        FerruleGroup group,
+        int index,
+        string fallback
+    )
     {
         string name = node.Children[index].Name;
-        if (group.TryGetField(name, out FerruleInstance? instance)
-            && instance is not FerruleScalar { Value.Kind: FerruleValueKind.Null or FerruleValueKind.JsonNull }
-            && instance is not FerruleScalar { Value.Kind: FerruleValueKind.String, Value.StringValue.Length: 0 }) return group;
+        if (
+            group.TryGetField(name, out FerruleInstance? instance)
+            && instance
+                is not FerruleScalar
+                {
+                    Value.Kind: FerruleValueKind.Null or FerruleValueKind.JsonNull
+                }
+            && instance
+                is not FerruleScalar
+                {
+                    Value.Kind: FerruleValueKind.String,
+                    Value.StringValue.Length: 0
+                }
+        )
+            return group;
         return SetCompletionField(group, name, fallback);
     }
 
     private static string CompletionText(Node node, FerruleGroup group, int index)
     {
         Node child = node.Children[index];
-        if (!group.TryGetField(child.Name, out FerruleInstance? instance)
-            || instance is FerruleScalar { Value.Kind: FerruleValueKind.Null or FerruleValueKind.JsonNull }) return child.Fixed ?? "";
-        return instance is FerruleScalar { Value.Kind: FerruleValueKind.String } scalar ? scalar.Value.StringValue : "";
+        if (
+            !group.TryGetField(child.Name, out FerruleInstance? instance)
+            || instance
+                is FerruleScalar { Value.Kind: FerruleValueKind.Null or FerruleValueKind.JsonNull }
+        )
+            return child.Fixed ?? "";
+        return instance is FerruleScalar { Value.Kind: FerruleValueKind.String } scalar
+            ? scalar.Value.StringValue
+            : "";
     }
 
     private static FerruleGroup SetCompletionField(FerruleGroup group, string name, string value)
     {
         var scalar = new FerruleScalar(FerruleValue.FromString(value));
-        var fields = group.Fields.Select(field => field.Name == name ? new FerruleField(name, scalar) : field).ToList();
-        if (!group.TryGetField(name, out _)) fields.Add(new FerruleField(name, scalar));
+        var fields = group
+            .Fields.Select(field => field.Name == name ? new FerruleField(name, scalar) : field)
+            .ToList();
+        if (!group.TryGetField(name, out _))
+            fields.Add(new FerruleField(name, scalar));
         return group.CloneFields(fields);
     }
 
-    private static FerruleGroup NormalizeCompletionDate(Node node, FerruleGroup group, int index, bool shortDate)
-        => SetCompletionField(group, node.Children[index].Name, CompletionDate(CompletionText(node, group, index), shortDate));
+    private static FerruleGroup NormalizeCompletionDate(
+        Node node,
+        FerruleGroup group,
+        int index,
+        bool shortDate
+    ) =>
+        SetCompletionField(
+            group,
+            node.Children[index].Name,
+            CompletionDate(CompletionText(node, group, index), shortDate)
+        );
 
-    private static FerruleGroup NormalizeCompletionTime(Node node, FerruleGroup group, int index, bool shortTime)
-        => SetCompletionField(group, node.Children[index].Name, CompletionTime(CompletionText(node, group, index), shortTime));
+    private static FerruleGroup NormalizeCompletionTime(
+        Node node,
+        FerruleGroup group,
+        int index,
+        bool shortTime
+    ) =>
+        SetCompletionField(
+            group,
+            node.Children[index].Name,
+            CompletionTime(CompletionText(node, group, index), shortTime)
+        );
 
     private static string CompletionDate(string value, bool shortDate)
     {
         RequireUtf8(value, MaximumDocumentBytes, "X12 field");
-        if (value.Length == 10 && value[4] == '-' && value[7] == '-') value = value[..4] + value[5..7] + value[8..10];
-        if (shortDate && value.Length == 8) value = value[2..];
-        if (value.Length != (shortDate ? 6 : 8) || !Digits(value)) throw CompletionHeaderFailure();
+        if (value.Length == 10 && value[4] == '-' && value[7] == '-')
+            value = value[..4] + value[5..7] + value[8..10];
+        if (shortDate && value.Length == 8)
+            value = value[2..];
+        if (value.Length != (shortDate ? 6 : 8) || !Digits(value))
+            throw CompletionHeaderFailure();
         return value;
     }
 
@@ -381,43 +804,60 @@ public static partial class FerruleX12
         var compact = new System.Text.StringBuilder();
         foreach (char character in value)
         {
-            if (character is '+' or '-' or 'Z') break;
+            if (character is '+' or '-' or 'Z')
+                break;
             if (char.IsAsciiDigit(character))
             {
-                if (compact.Length == (shortTime ? 6 : 8)) throw CompletionHeaderFailure();
+                if (compact.Length == (shortTime ? 6 : 8))
+                    throw CompletionHeaderFailure();
                 compact.Append(character);
             }
-            else if (character is not (':' or '?')) throw CompletionHeaderFailure();
+            else if (character is not (':' or '?'))
+                throw CompletionHeaderFailure();
         }
-        if (shortTime && compact.Length == 6) compact.Length = 4;
+        if (shortTime && compact.Length == 6)
+            compact.Length = 4;
         // GS05 permits HHMM, HHMMSS, HHMMSSD or HHMMSSDD, never partial seconds.
-        if (shortTime ? compact.Length != 4 : compact.Length is not (4 or 6 or 7 or 8)) throw CompletionHeaderFailure();
+        if (shortTime ? compact.Length != 4 : compact.Length is not (4 or 6 or 7 or 8))
+            throw CompletionHeaderFailure();
         return compact.ToString();
     }
 
     // Native completion owns every ISA field, GS04-GS06, ST01-ST02 and both
     // trailer fields; their supplied empty values are deferred to completion.
-    private static bool RepeatingEnvelopeCompletionField(string id, int index) => id switch
-    {
-        "ISA" => true,
-        "GS" => index is 3 or 4 or 5,
-        "ST" or "SE" or "GE" or "IEA" => index is 0 or 1,
-        _ => false,
-    };
+    private static bool RepeatingEnvelopeCompletionField(string id, int index) =>
+        id switch
+        {
+            "ISA" => true,
+            "GS" => index is 3 or 4 or 5,
+            "ST" or "SE" or "GE" or "IEA" => index is 0 or 1,
+            _ => false,
+        };
 
-    // Port of native X12 wire completion over the written the reference application segments:
+    // Port of native X12 wire completion over the written interchange segments:
     // ISA defaults and nine-digit ISA13, document-global GS06/ST02 ordinals,
     // per-owner SE01/GE01/IEA01 counts and creation of absent trailers.
     // Nonempty supplied text is retained for final envelope validation.
-    private static List<Segment> CompleteRepeatingEnvelopeSegments(Profile profile, List<Segment> segments,
-        FerruleExecutionContext? executionContext)
+    private static List<Segment> CompleteRepeatingEnvelopeSegments(
+        Profile profile,
+        List<Segment> segments,
+        FerruleExecutionContext? executionContext
+    )
     {
         CompletionTimestamp timestamp = ReadCompletionTimestamp(executionContext?.CurrentDateTime);
         Autocomplete selected = profile.Autocomplete!;
         var output = new List<Segment>(segments.Count + 8);
-        bool interchangeOpen = false, groupOpen = false, transactionOpen = false;
-        string interchangeReference = "", groupReference = "", transactionReference = "";
-        int interchangeGroups = 0, groupMessages = 0, transactionStart = 0, groupOrdinal = 0, transactionOrdinal = 0;
+        bool interchangeOpen = false,
+            groupOpen = false,
+            transactionOpen = false;
+        string interchangeReference = "",
+            groupReference = "",
+            transactionReference = "";
+        int interchangeGroups = 0,
+            groupMessages = 0,
+            transactionStart = 0,
+            groupOrdinal = 0,
+            transactionOrdinal = 0;
         for (int index = 0; index < segments.Count; index++)
         {
             Segment segment = segments[index];
@@ -427,13 +867,32 @@ public static partial class FerruleX12
                     FinishTransaction(null, index);
                     FinishGroup(null, index);
                     FinishInterchange(null, index);
-                    string[] defaults = ["00", "          ", "00", "          ", "ZZ", "", "ZZ", "",
-                        timestamp.Date6, timestamp.Time4, "", "", "000000000", selected.RequestAcknowledgement ? "1" : "0", "P", ""];
-                    for (int position = 0; position < defaults.Length; position++) Ensure(segment, position, defaults[position]);
+                    string[] defaults =
+                    [
+                        "00",
+                        "          ",
+                        "00",
+                        "          ",
+                        "ZZ",
+                        "",
+                        "ZZ",
+                        "",
+                        timestamp.Date6,
+                        timestamp.Time4,
+                        "",
+                        "",
+                        "000000000",
+                        selected.RequestAcknowledgement ? "1" : "0",
+                        "P",
+                        "",
+                    ];
+                    for (int position = 0; position < defaults.Length; position++)
+                        Ensure(segment, position, defaults[position]);
                     segment.Elements[8] = CompletionDate(segment.Elements[8], shortDate: true);
                     segment.Elements[9] = CompletionTime(segment.Elements[9], shortTime: true);
                     // ISA13 is a fixed nine-digit control; final validation refuses other text.
-                    if (Digits(segment.Elements[12], 1, 9)) segment.Elements[12] = segment.Elements[12].PadLeft(9, '0');
+                    if (Digits(segment.Elements[12], 1, 9))
+                        segment.Elements[12] = segment.Elements[12].PadLeft(9, '0');
                     interchangeReference = segment.Elements[12];
                     interchangeOpen = true;
                     interchangeGroups = 0;
@@ -442,23 +901,33 @@ public static partial class FerruleX12
                 case "GS":
                     FinishTransaction(null, index);
                     FinishGroup(null, index);
-                    if (!interchangeOpen) throw OutsideOwner(index);
+                    if (!interchangeOpen)
+                        throw OutsideOwner(index);
                     groupOrdinal++;
                     Ensure(segment, 3, timestamp.Date8);
                     Ensure(segment, 4, timestamp.Time6);
                     segment.Elements[3] = CompletionDate(segment.Elements[3], shortDate: false);
                     segment.Elements[4] = CompletionTime(segment.Elements[4], shortTime: false);
-                    groupReference = Ensure(segment, 5, groupOrdinal.ToString(CultureInfo.InvariantCulture));
+                    groupReference = Ensure(
+                        segment,
+                        5,
+                        groupOrdinal.ToString(CultureInfo.InvariantCulture)
+                    );
                     groupOpen = true;
                     groupMessages = 0;
                     Push(segment);
                     break;
                 case "ST":
                     FinishTransaction(null, index);
-                    if (!groupOpen) throw OutsideOwner(index);
+                    if (!groupOpen)
+                        throw OutsideOwner(index);
                     transactionOrdinal++;
                     Ensure(segment, 0, selected.TransactionSet ?? "");
-                    transactionReference = Ensure(segment, 1, transactionOrdinal.ToString("D4", CultureInfo.InvariantCulture));
+                    transactionReference = Ensure(
+                        segment,
+                        1,
+                        transactionOrdinal.ToString("D4", CultureInfo.InvariantCulture)
+                    );
                     transactionStart = output.Count;
                     Push(segment);
                     transactionOpen = true;
@@ -487,29 +956,37 @@ public static partial class FerruleX12
 
         void Push(Segment segment)
         {
-            if (output.Count == MaximumSegments) throw Limit("X12 output segment limit exceeded.");
+            if (output.Count == MaximumSegments)
+                throw Limit("X12 output segment limit exceeded.");
             output.Add(segment);
         }
         void FinishTransaction(Segment? trailer, int index)
         {
             if (!transactionOpen)
             {
-                if (trailer is not null) throw OutsideOwner(index);
+                if (trailer is not null)
+                    throw OutsideOwner(index);
                 return;
             }
             transactionOpen = false;
             Segment se = trailer ?? new Segment("SE", ["", ""]);
-            Ensure(se, 0, (output.Count - transactionStart + 1).ToString(CultureInfo.InvariantCulture));
+            Ensure(
+                se,
+                0,
+                (output.Count - transactionStart + 1).ToString(CultureInfo.InvariantCulture)
+            );
             Ensure(se, 1, transactionReference);
             Push(se);
-            if (!groupOpen) throw OutsideOwner(index);
+            if (!groupOpen)
+                throw OutsideOwner(index);
             groupMessages++;
         }
         void FinishGroup(Segment? trailer, int index)
         {
             if (!groupOpen)
             {
-                if (trailer is not null) throw OutsideOwner(index);
+                if (trailer is not null)
+                    throw OutsideOwner(index);
                 return;
             }
             groupOpen = false;
@@ -517,14 +994,16 @@ public static partial class FerruleX12
             Ensure(ge, 0, groupMessages.ToString(CultureInfo.InvariantCulture));
             Ensure(ge, 1, groupReference);
             Push(ge);
-            if (!interchangeOpen) throw OutsideOwner(index);
+            if (!interchangeOpen)
+                throw OutsideOwner(index);
             interchangeGroups++;
         }
         void FinishInterchange(Segment? trailer, int index)
         {
             if (!interchangeOpen)
             {
-                if (trailer is not null) throw OutsideOwner(index);
+                if (trailer is not null)
+                    throw OutsideOwner(index);
                 return;
             }
             interchangeOpen = false;
@@ -535,13 +1014,18 @@ public static partial class FerruleX12
         }
         static string Ensure(Segment segment, int position, string fallback)
         {
-            if (segment.Elements[position].Length == 0) segment.Elements[position] = fallback;
+            if (segment.Elements[position].Length == 0)
+                segment.Elements[position] = fallback;
             return segment.Elements[position];
         }
-        static FerruleX12Exception OutsideOwner(int index)
-            => Failure(FerruleX12Error.Envelope, "X12 completion found an envelope segment outside its owner.", index);
+        static FerruleX12Exception OutsideOwner(int index) =>
+            Failure(
+                FerruleX12Error.Envelope,
+                "X12 completion found an envelope segment outside its owner.",
+                index
+            );
     }
 
-    private static FerruleX12Exception CompletionHeaderFailure()
-        => Failure(FerruleX12Error.Envelope, "X12 completion requires valid header dates and times.");
+    private static FerruleX12Exception CompletionHeaderFailure() =>
+        Failure(FerruleX12Error.Envelope, "X12 completion requires valid header dates and times.");
 }

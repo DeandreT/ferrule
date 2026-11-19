@@ -14,7 +14,8 @@ public static partial class FerruleJson
         JsonElement element,
         JsonScalarDomain scalarDomain,
         bool jsonAny,
-        FerruleValue? fixedValue)
+        FerruleValue? fixedValue
+    )
     {
         JsonElement? declaredConstraints = null;
         foreach (var property in element.EnumerateObject())
@@ -26,12 +27,15 @@ public static partial class FerruleJson
             if (declaredConstraints is not null)
             {
                 throw Boundary(
-                    $"Embedded JSON schema node '{name}' has duplicate JSON multiple-of metadata.");
+                    $"Embedded JSON schema node '{name}' has duplicate JSON multiple-of metadata."
+                );
             }
             declaredConstraints = property.Value;
         }
-        if (declaredConstraints is not { } constraintsElement ||
-            constraintsElement.ValueKind == JsonValueKind.Null)
+        if (
+            declaredConstraints is not { } constraintsElement
+            || constraintsElement.ValueKind == JsonValueKind.Null
+        )
         {
             return null;
         }
@@ -39,29 +43,31 @@ public static partial class FerruleJson
             constraintsElement,
             JsonValueKind.Object,
             $"schema node '{name}' JSON multiple-of constraints",
-            "object");
+            "object"
+        );
 
         var sawAnyOf = false;
         foreach (var property in constraintsElement.EnumerateObject())
         {
-            if (!string.Equals(property.Name, "any_of", StringComparison.Ordinal) ||
-                sawAnyOf)
+            if (!string.Equals(property.Name, "any_of", StringComparison.Ordinal) || sawAnyOf)
             {
                 throw Boundary(
-                    $"Embedded JSON schema node '{name}' JSON multiple-of constraints have an unknown or duplicate field '{property.Name}'.");
+                    $"Embedded JSON schema node '{name}' JSON multiple-of constraints have an unknown or duplicate field '{property.Name}'."
+                );
             }
             sawAnyOf = true;
         }
         if (!sawAnyOf)
         {
             throw Boundary(
-                $"Embedded JSON schema node '{name}' JSON multiple-of constraints are missing field 'any_of'.");
+                $"Embedded JSON schema node '{name}' JSON multiple-of constraints are missing field 'any_of'."
+            );
         }
-        if ((scalarDomain & (JsonScalarDomain.Int64 | JsonScalarDomain.Double)) == 0 ||
-            jsonAny)
+        if ((scalarDomain & (JsonScalarDomain.Int64 | JsonScalarDomain.Double)) == 0 || jsonAny)
         {
             throw Boundary(
-                $"Embedded JSON schema node '{name}' has JSON multiple-of constraints without a declared numeric domain or on json_any.");
+                $"Embedded JSON schema node '{name}' has JSON multiple-of constraints without a declared numeric domain or on json_any."
+            );
         }
 
         var alternativesElement = RequiredProperty(constraintsElement, "any_of");
@@ -69,7 +75,8 @@ public static partial class FerruleJson
             alternativesElement,
             JsonValueKind.Array,
             $"schema node '{name}' JSON multiple-of alternatives",
-            "array");
+            "array"
+        );
         var alternatives = new List<JsonMultipleOfAlternative>();
         var canonicalAlternatives = new List<JsonMultipleOf[]>();
         var termCount = 0;
@@ -78,13 +85,15 @@ public static partial class FerruleJson
             if (alternatives.Count == MaximumJsonMultipleOfAlternatives)
             {
                 throw Boundary(
-                    $"Embedded JSON schema node '{name}' has more than {MaximumJsonMultipleOfAlternatives} JSON multiple-of alternatives.");
+                    $"Embedded JSON schema node '{name}' has more than {MaximumJsonMultipleOfAlternatives} JSON multiple-of alternatives."
+                );
             }
             RequireKind(
                 alternativeElement,
                 JsonValueKind.Array,
                 $"schema node '{name}' JSON multiple-of alternative",
-                "array");
+                "array"
+            );
             var terms = new List<JsonMultipleOf>();
             foreach (var termElement in alternativeElement.EnumerateArray())
             {
@@ -92,63 +101,78 @@ public static partial class FerruleJson
                 if (termCount > MaximumJsonMultipleOfTerms)
                 {
                     throw Boundary(
-                        $"Embedded JSON schema node '{name}' has more than {MaximumJsonMultipleOfTerms} JSON multiple-of terms.");
+                        $"Embedded JSON schema node '{name}' has more than {MaximumJsonMultipleOfTerms} JSON multiple-of terms."
+                    );
                 }
                 RequireKind(
                     termElement,
                     JsonValueKind.Object,
                     $"schema node '{name}' JSON multiple-of term",
-                    "object");
+                    "object"
+                );
                 var fields = new HashSet<string>(StringComparer.Ordinal);
                 foreach (var property in termElement.EnumerateObject())
                 {
-                    if (property.Name is not ("coefficient" or "decimal_exponent") ||
-                        !fields.Add(property.Name))
+                    if (
+                        property.Name is not ("coefficient" or "decimal_exponent")
+                        || !fields.Add(property.Name)
+                    )
                     {
                         throw Boundary(
-                            $"Embedded JSON schema node '{name}' JSON multiple-of term has an unknown or duplicate field '{property.Name}'.");
+                            $"Embedded JSON schema node '{name}' JSON multiple-of term has an unknown or duplicate field '{property.Name}'."
+                        );
                     }
                 }
                 var coefficientElement = RequiredProperty(termElement, "coefficient");
-                if (coefficientElement.ValueKind != JsonValueKind.Number ||
-                    !TryGetSerdeUInt64(coefficientElement, out var coefficient) ||
-                    coefficient == 0 ||
-                    coefficient % 10 == 0)
+                if (
+                    coefficientElement.ValueKind != JsonValueKind.Number
+                    || !TryGetSerdeUInt64(coefficientElement, out var coefficient)
+                    || coefficient == 0
+                    || coefficient % 10 == 0
+                )
                 {
                     throw Boundary(
-                        $"Embedded JSON schema node '{name}' JSON multiple-of coefficient must be a positive canonical unsigned integer.");
+                        $"Embedded JSON schema node '{name}' JSON multiple-of coefficient must be a positive canonical unsigned integer."
+                    );
                 }
                 var exponentElement = RequiredProperty(termElement, "decimal_exponent");
-                if (exponentElement.ValueKind != JsonValueKind.Number ||
-                    !TryGetSerdeInt64(exponentElement, out var exponent) ||
-                    exponent is < short.MinValue or > short.MaxValue)
+                if (
+                    exponentElement.ValueKind != JsonValueKind.Number
+                    || !TryGetSerdeInt64(exponentElement, out var exponent)
+                    || exponent is < short.MinValue or > short.MaxValue
+                )
                 {
                     throw Boundary(
-                        $"Embedded JSON schema node '{name}' JSON multiple-of decimal exponent must be a signed 16-bit integer.");
+                        $"Embedded JSON schema node '{name}' JSON multiple-of decimal exponent must be a signed 16-bit integer."
+                    );
                 }
                 var term = new JsonMultipleOf(coefficient, (short)exponent);
                 if (!term.IsPositiveFinite())
                 {
                     throw Boundary(
-                        $"Embedded JSON schema node '{name}' JSON multiple-of divisor must be a positive finite decimal.");
+                        $"Embedded JSON schema node '{name}' JSON multiple-of divisor must be a positive finite decimal."
+                    );
                 }
                 if (terms.Contains(term))
                 {
                     throw Boundary(
-                        $"Embedded JSON schema node '{name}' has a duplicate JSON multiple-of term.");
+                        $"Embedded JSON schema node '{name}' has a duplicate JSON multiple-of term."
+                    );
                 }
                 terms.Add(term);
             }
             if (terms.Count == 0)
             {
                 throw Boundary(
-                    $"Embedded JSON schema node '{name}' has an empty JSON multiple-of alternative.");
+                    $"Embedded JSON schema node '{name}' has an empty JSON multiple-of alternative."
+                );
             }
             var canonical = terms.ToArray();
             if (canonicalAlternatives.Any(previous => previous.SequenceEqual(canonical)))
             {
                 throw Boundary(
-                    $"Embedded JSON schema node '{name}' has a duplicate JSON multiple-of alternative.");
+                    $"Embedded JSON schema node '{name}' has a duplicate JSON multiple-of alternative."
+                );
             }
             canonicalAlternatives.Add(canonical);
             alternatives.Add(new JsonMultipleOfAlternative(canonical));
@@ -156,40 +180,48 @@ public static partial class FerruleJson
         if (alternatives.Count == 0)
         {
             throw Boundary(
-                $"Embedded JSON schema node '{name}' has empty JSON multiple-of constraints.");
+                $"Embedded JSON schema node '{name}' has empty JSON multiple-of constraints."
+            );
         }
 
         var constraints = new JsonMultipleOfConstraints(alternatives);
-        if (fixedValue is { } fixedScalar &&
-            fixedScalar.Kind is FerruleValueKind.Int64 or FerruleValueKind.Double &&
-            !constraints.Matches(fixedScalar))
+        if (
+            fixedValue is { } fixedScalar
+            && fixedScalar.Kind is FerruleValueKind.Int64 or FerruleValueKind.Double
+            && !constraints.Matches(fixedScalar)
+        )
         {
             throw Boundary(
-                $"Embedded JSON schema node '{name}' has a fixed number outside its JSON multiple-of constraints.");
+                $"Embedded JSON schema node '{name}' has a fixed number outside its JSON multiple-of constraints."
+            );
         }
         return constraints;
     }
 
-    private static void ValidateJsonMultipleOf(
-        JsonSchemaNode schema,
-        FerruleValue value)
+    private static void ValidateJsonMultipleOf(JsonSchemaNode schema, FerruleValue value)
     {
-        if (schema.JsonMultipleOf is { } constraints &&
-            value.Kind is FerruleValueKind.Int64 or FerruleValueKind.Double &&
-            !constraints.Matches(value))
+        if (
+            schema.JsonMultipleOf is { } constraints
+            && value.Kind is FerruleValueKind.Int64 or FerruleValueKind.Double
+            && !constraints.Matches(value)
+        )
         {
             throw Boundary(
-                $"JSON scalar '{schema.Name}' is outside its JSON multiple-of constraints: {value}.");
+                $"JSON scalar '{schema.Name}' is outside its JSON multiple-of constraints: {value}."
+            );
         }
     }
 
     private static void ValidateJsonMultipleOfOutput(
         JsonSchemaNode schema,
         JsonScalarType scalar,
-        FerruleValue value)
+        FerruleValue value
+    )
     {
-        if (schema.JsonMultipleOf is null ||
-            value.Kind == FerruleValueKind.JsonNull && schema.NullLayers.Value)
+        if (
+            schema.JsonMultipleOf is null
+            || value.Kind == FerruleValueKind.JsonNull && schema.NullLayers.Value
+        )
         {
             return;
         }
@@ -203,33 +235,33 @@ public static partial class FerruleJson
         }
     }
 
-    private readonly record struct JsonMultipleOf(
-        ulong Coefficient,
-        short DecimalExponent)
+    private readonly record struct JsonMultipleOf(ulong Coefficient, short DecimalExponent)
     {
         public bool IsPositiveFinite()
         {
             var lexical = string.Concat(
                 Coefficient.ToString(CultureInfo.InvariantCulture),
                 "e",
-                DecimalExponent.ToString(CultureInfo.InvariantCulture));
+                DecimalExponent.ToString(CultureInfo.InvariantCulture)
+            );
             return double.TryParse(
-                       lexical,
-                       NumberStyles.Float,
-                       CultureInfo.InvariantCulture,
-                       out var value) &&
-                   double.IsFinite(value) &&
-                   value > 0.0;
+                    lexical,
+                    NumberStyles.Float,
+                    CultureInfo.InvariantCulture,
+                    out var value
+                )
+                && double.IsFinite(value)
+                && value > 0.0;
         }
 
         public bool Divides(FerruleValue value)
         {
             var (coefficient, decimalExponent) = value.Kind switch
             {
-                FerruleValueKind.Int64 =>
-                    (new BigInteger(value.Int64Value), 0),
-                FerruleValueKind.Double when double.IsFinite(value.DoubleValue) =>
-                    CanonicalDouble(value.DoubleValue),
+                FerruleValueKind.Int64 => (new BigInteger(value.Int64Value), 0),
+                FerruleValueKind.Double when double.IsFinite(value.DoubleValue) => CanonicalDouble(
+                    value.DoubleValue
+                ),
                 _ => (BigInteger.Zero, int.MinValue),
             };
             if (decimalExponent == int.MinValue)
@@ -264,8 +296,8 @@ public static partial class FerruleJson
             var quotientTwos = RemoveFactor(ref quotient, 2);
             var quotientFives = RemoveFactor(ref quotient, 5);
             var exponentDifference = decimalExponent - DecimalExponent;
-            return quotientTwos + exponentDifference >= divisorTwos &&
-                   quotientFives + exponentDifference >= divisorFives;
+            return quotientTwos + exponentDifference >= divisorTwos
+                && quotientFives + exponentDifference >= divisorFives;
         }
 
         private static (BigInteger Coefficient, int DecimalExponent) CanonicalDouble(double value)
@@ -274,16 +306,16 @@ public static partial class FerruleJson
             var decimalIndex = lexical.IndexOf('.', StringComparison.Ordinal);
             if (decimalIndex < 0)
             {
-                return (
-                    BigInteger.Parse(lexical, CultureInfo.InvariantCulture),
-                    0);
+                return (BigInteger.Parse(lexical, CultureInfo.InvariantCulture), 0);
             }
             var coefficient = string.Concat(
                 lexical.AsSpan(0, decimalIndex),
-                lexical.AsSpan(decimalIndex + 1));
+                lexical.AsSpan(decimalIndex + 1)
+            );
             return (
                 BigInteger.Parse(coefficient, CultureInfo.InvariantCulture),
-                -(lexical.Length - decimalIndex - 1));
+                -(lexical.Length - decimalIndex - 1)
+            );
         }
 
         private static int RemoveFactor(ref BigInteger value, int factor)
@@ -298,14 +330,11 @@ public static partial class FerruleJson
         }
     }
 
-    private sealed record JsonMultipleOfAlternative(
-        IReadOnlyList<JsonMultipleOf> Terms);
+    private sealed record JsonMultipleOfAlternative(IReadOnlyList<JsonMultipleOf> Terms);
 
-    private sealed record JsonMultipleOfConstraints(
-        IReadOnlyList<JsonMultipleOfAlternative> AnyOf)
+    private sealed record JsonMultipleOfConstraints(IReadOnlyList<JsonMultipleOfAlternative> AnyOf)
     {
         public bool Matches(FerruleValue value) =>
-            AnyOf.Any(alternative =>
-                alternative.Terms.All(term => term.Divides(value)));
+            AnyOf.Any(alternative => alternative.Terms.All(term => term.Divides(value)));
     }
 }

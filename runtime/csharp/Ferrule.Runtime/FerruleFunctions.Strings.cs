@@ -8,16 +8,37 @@ public static partial class FerruleFunctions
     {
         RequireArity("format_guid_string", arguments, 1);
         var text = RequireString(arguments[0], "format_guid_string");
-        if (text.Length != 32 || text.Any(character =>
-            character is not (>= '0' and <= '9') and not (>= 'A' and <= 'F') and not (>= 'a' and <= 'f')))
+        if (
+            text.Length != 32
+            || text.Any(character =>
+                character
+                    is not (>= '0' and <= '9')
+                        and not (>= 'A' and <= 'F')
+                        and not (>= 'a' and <= 'f')
+            )
+        )
         {
-            throw InvalidArgument("format_guid_string", "requires exactly 32 ASCII hexadecimal characters");
+            throw InvalidArgument(
+                "format_guid_string",
+                "requires exactly 32 ASCII hexadecimal characters"
+            );
         }
-        return FerruleValue.FromString(text[..8] + "-" + text[8..12] + "-" + text[12..16] + "-" + text[16..20] + "-" + text[20..]);
+        return FerruleValue.FromString(
+            text[..8]
+                + "-"
+                + text[8..12]
+                + "-"
+                + text[12..16]
+                + "-"
+                + text[16..20]
+                + "-"
+                + text[20..]
+        );
     }
 
     // Match the bundled SQLite LIKE pattern cap before NUL truncation.
     private const int MaxSqlLikePatternUtf8Bytes = 50_000;
+
     // Shared with Rust: cap value-rune by pattern-rune DP cell updates.
     private const long MaxSqlLikeWorkCells = 100_000_000;
 
@@ -26,7 +47,14 @@ public static partial class FerruleFunctions
         var result = new StringBuilder();
         foreach (var argument in arguments)
         {
-            if (argument.Kind is not (FerruleValueKind.Null or FerruleValueKind.JsonNull or FerruleValueKind.XmlNil))
+            if (
+                argument.Kind
+                is not (
+                    FerruleValueKind.Null
+                    or FerruleValueKind.JsonNull
+                    or FerruleValueKind.XmlNil
+                )
+            )
             {
                 result.Append(ScalarText(argument));
             }
@@ -38,7 +66,8 @@ public static partial class FerruleFunctions
     private static FerruleValue UnaryString(
         string function,
         IReadOnlyList<FerruleValue> arguments,
-        Func<string, string> operation)
+        Func<string, string> operation
+    )
     {
         RequireArity(function, arguments, 1);
         return FerruleValue.FromString(operation(RequireString(arguments[0], function)));
@@ -59,7 +88,8 @@ public static partial class FerruleFunctions
     private static FerruleValue EdgeCharacters(
         string function,
         IReadOnlyList<FerruleValue> arguments,
-        bool left)
+        bool left
+    )
     {
         RequireArity(function, arguments, 2);
         var value = RequireString(arguments[0], function);
@@ -70,7 +100,8 @@ public static partial class FerruleFunctions
                 SaturatingInt64(arguments[1].DoubleValue),
             FerruleValueKind.Double => throw InvalidArgument(
                 function,
-                "requires a finite character count"),
+                "requires a finite character count"
+            ),
             _ => throw Type(function, arguments[1]),
         };
         if (count <= 0)
@@ -105,11 +136,13 @@ public static partial class FerruleFunctions
 
         var value = arguments[0].StringValue;
         var start = SaturatingInt64(RustRound(NumberArgument(arguments[1], "substring")));
-        long? end = arguments.Count == 3
-            ? SaturatingAdd(
-                start,
-                SaturatingInt64(RustRound(NumberArgument(arguments[2], "substring"))))
-            : null;
+        long? end =
+            arguments.Count == 3
+                ? SaturatingAdd(
+                    start,
+                    SaturatingInt64(RustRound(NumberArgument(arguments[2], "substring")))
+                )
+                : null;
         var result = new StringBuilder(value.Length);
         long position = 1;
         foreach (var rune in value.EnumerateRunes())
@@ -177,8 +210,8 @@ public static partial class FerruleFunctions
                 }
                 else
                 {
-                    states[index + 1] = diagonal &&
-                        EqualIgnoringAsciiCase(character, tokens[index]);
+                    states[index + 1] =
+                        diagonal && EqualIgnoringAsciiCase(character, tokens[index]);
                 }
                 diagonal = previous;
             }
@@ -189,7 +222,8 @@ public static partial class FerruleFunctions
     private static FerruleValue PadString(
         string function,
         IReadOnlyList<FerruleValue> arguments,
-        bool left)
+        bool left
+    )
     {
         RequireArity(function, arguments, 3);
         var desiredLength = arguments[1].Kind switch
@@ -199,14 +233,13 @@ public static partial class FerruleFunctions
                 SaturatingInt64(arguments[1].DoubleValue),
             FerruleValueKind.Double => throw InvalidArgument(
                 function,
-                "requires a finite desired length"),
+                "requires a finite desired length"
+            ),
             _ => throw Type(function, arguments[1]),
         };
         if (desiredLength > 1_000_000)
         {
-            throw InvalidArgument(
-                function,
-                "requested output exceeds 1000000 characters");
+            throw InvalidArgument(function, "requested output exceeds 1000000 characters");
         }
 
         var paddingRunes = Runes(ScalarText(arguments[2]));
@@ -217,9 +250,7 @@ public static partial class FerruleFunctions
 
         var value = ScalarText(arguments[0]);
         var valueLength = RuneCount(value);
-        var paddingCount = desiredLength > valueLength
-            ? (int)(desiredLength - valueLength)
-            : 0;
+        var paddingCount = desiredLength > valueLength ? (int)(desiredLength - valueLength) : 0;
         var paddingText = paddingRunes[0].ToString();
         var padding = new StringBuilder(paddingCount * paddingText.Length);
         for (var index = 0; index < paddingCount; index++)
@@ -227,9 +258,7 @@ public static partial class FerruleFunctions
             padding.Append(paddingText);
         }
 
-        return FerruleValue.FromString(left
-            ? padding + value
-            : value + padding.ToString());
+        return FerruleValue.FromString(left ? padding + value : value + padding.ToString());
     }
 
     private static FerruleValue Round(IReadOnlyList<FerruleValue> arguments)
@@ -240,14 +269,12 @@ public static partial class FerruleFunctions
         }
         if (arguments.Count == 1)
         {
-            return FerruleValue.FromDouble(
-                RustRound(NumberArgument(arguments[0], "round")));
+            return FerruleValue.FromDouble(RustRound(NumberArgument(arguments[0], "round")));
         }
         if (arguments.Count == 2)
         {
             var value = NumberArgument(arguments[0], "round");
-            var digits = SaturatingInt32(
-                RustRound(NumberArgument(arguments[1], "round")));
+            var digits = SaturatingInt32(RustRound(NumberArgument(arguments[1], "round")));
             var factor = PowInteger(10.0, digits);
             return FerruleValue.FromDouble(RustRound(value * factor) / factor);
         }
@@ -285,13 +312,16 @@ public static partial class FerruleFunctions
         }
 
         var isbn = normalized.ToString();
-        if (isbn.Length != 10 ||
-            isbn[..9].Any(character => character is < '0' or > '9') ||
-            !(isbn[9] is >= '0' and <= '9' or 'X' or 'x'))
+        if (
+            isbn.Length != 10
+            || isbn[..9].Any(character => character is < '0' or > '9')
+            || !(isbn[9] is >= '0' and <= '9' or 'X' or 'x')
+        )
         {
             throw InvalidArgument(
                 "isbn10_to_isbn13",
-                "expected a 10-character ISBN with an optional final X check digit");
+                "expected a 10-character ISBN with an optional final X check digit"
+            );
         }
 
         var isbn10Sum = 0;
@@ -302,9 +332,7 @@ public static partial class FerruleFunctions
         isbn10Sum += isbn[9] is 'X' or 'x' ? 10 : isbn[9] - '0';
         if (isbn10Sum % 11 != 0)
         {
-            throw InvalidArgument(
-                "isbn10_to_isbn13",
-                "ISBN-10 check digit is invalid");
+            throw InvalidArgument("isbn10_to_isbn13", "ISBN-10 check digit is invalid");
         }
 
         var output = "978" + isbn[..9];
@@ -320,7 +348,8 @@ public static partial class FerruleFunctions
     private static FerruleValue SplitString(
         string function,
         IReadOnlyList<FerruleValue> arguments,
-        bool before)
+        bool before
+    )
     {
         RequireArity(function, arguments, 2);
         var value = RequireString(arguments[0], function);
@@ -331,9 +360,7 @@ public static partial class FerruleFunctions
             return FerruleValue.FromString(string.Empty);
         }
 
-        var result = before
-            ? value[..index]
-            : value[(index + separator.Length)..];
+        var result = before ? value[..index] : value[(index + separator.Length)..];
         return FerruleValue.FromString(result);
     }
 
@@ -384,9 +411,11 @@ public static partial class FerruleFunctions
         var result = new StringBuilder();
         var resultBytes = 0;
         var end = 0;
-        for (var start = value.IndexOf(search, StringComparison.Ordinal);
+        for (
+            var start = value.IndexOf(search, StringComparison.Ordinal);
             start >= 0;
-            start = value.IndexOf(search, end, StringComparison.Ordinal))
+            start = value.IndexOf(search, end, StringComparison.Ordinal)
+        )
         {
             AppendLiteralReplacement(result, value[end..start], ref resultBytes);
             AppendLiteralReplacement(result, replacement, ref resultBytes);
@@ -396,7 +425,11 @@ public static partial class FerruleFunctions
         return FerruleValue.FromString(result.ToString());
     }
 
-    private static void AppendLiteralReplacement(StringBuilder output, string value, ref int outputBytes)
+    private static void AppendLiteralReplacement(
+        StringBuilder output,
+        string value,
+        ref int outputBytes
+    )
     {
         var added = Encoding.UTF8.GetByteCount(value);
         if (added > MaximumRegexResultBytes - outputBytes)
@@ -416,13 +449,16 @@ public static partial class FerruleFunctions
     private static FerruleValue SubstituteMissing(IReadOnlyList<FerruleValue> arguments)
     {
         RequireArity("substitute_missing", arguments, 2);
-        return arguments[0].Kind is FerruleValueKind.Null or FerruleValueKind.JsonNull or FerruleValueKind.XmlNil
+        return
+            arguments[0].Kind
+                is FerruleValueKind.Null
+                    or FerruleValueKind.JsonNull
+                    or FerruleValueKind.XmlNil
             ? arguments[1]
             : arguments[0];
     }
 
-    private static FerruleValue SubstituteMissingWithXmlNil(
-        IReadOnlyList<FerruleValue> arguments)
+    private static FerruleValue SubstituteMissingWithXmlNil(IReadOnlyList<FerruleValue> arguments)
     {
         RequireArity("substitute_missing_with_xml_nil", arguments, 1);
         return arguments[0].Kind is FerruleValueKind.Null or FerruleValueKind.JsonNull
@@ -495,8 +531,7 @@ public static partial class FerruleFunctions
         return count;
     }
 
-    private static bool IsXmlWhitespace(char character) =>
-        character is ' ' or '\t' or '\r' or '\n';
+    private static bool IsXmlWhitespace(char character) => character is ' ' or '\t' or '\r' or '\n';
 
     private static string GetFolder(string path)
     {
@@ -577,8 +612,7 @@ public static partial class FerruleFunctions
         return '\\';
     }
 
-    private static bool IsAbsolute(string path) =>
-        StartsWithSeparator(path) || path.Contains(':');
+    private static bool IsAbsolute(string path) => StartsWithSeparator(path) || path.Contains(':');
 
     private static string StripCurrentDirectories(string path)
     {
@@ -588,8 +622,10 @@ public static partial class FerruleFunctions
             {
                 return string.Empty;
             }
-            if (path.StartsWith("./", StringComparison.Ordinal) ||
-                path.StartsWith(".\\", StringComparison.Ordinal))
+            if (
+                path.StartsWith("./", StringComparison.Ordinal)
+                || path.StartsWith(".\\", StringComparison.Ordinal)
+            )
             {
                 path = path[2..];
                 continue;
@@ -605,8 +641,10 @@ public static partial class FerruleFunctions
             remainder = string.Empty;
             return true;
         }
-        if (path.StartsWith("../", StringComparison.Ordinal) ||
-            path.StartsWith("..\\", StringComparison.Ordinal))
+        if (
+            path.StartsWith("../", StringComparison.Ordinal)
+            || path.StartsWith("..\\", StringComparison.Ordinal)
+        )
         {
             remainder = path[3..];
             return true;
@@ -643,8 +681,7 @@ public static partial class FerruleFunctions
         path.Length > 0 && path[^1] is '/' or '\\';
 
     private static bool IsDrivePrefix(string path) =>
-        path.Length == 2 &&
-        ((path[0] is >= 'a' and <= 'z') || (path[0] is >= 'A' and <= 'Z')) &&
-        path[1] == ':';
-
+        path.Length == 2
+        && ((path[0] is >= 'a' and <= 'z') || (path[0] is >= 'A' and <= 'Z'))
+        && path[1] == ':';
 }

@@ -16,15 +16,18 @@ public static partial class FerruleFunctions
     internal sealed class JsonArrayProjectionState
     {
         private sealed record Document(string Input, string Schema, FerruleInstance Instance);
+
         private readonly Dictionary<uint, Document> _documents = new();
 
         internal FerruleInstance Parse(uint source, string schema, string input)
         {
             lock (_documents)
             {
-                if (_documents.TryGetValue(source, out var previous) &&
-                    string.Equals(previous.Input, input, StringComparison.Ordinal) &&
-                    string.Equals(previous.Schema, schema, StringComparison.Ordinal))
+                if (
+                    _documents.TryGetValue(source, out var previous)
+                    && string.Equals(previous.Input, input, StringComparison.Ordinal)
+                    && string.Equals(previous.Schema, schema, StringComparison.Ordinal)
+                )
                     return previous.Instance;
                 // FerruleJson returns an owned immutable instance, not a
                 // JsonElement borrowing the disposed decoder document. A
@@ -36,8 +39,13 @@ public static partial class FerruleFunctions
         }
     }
 
-    internal static FerruleValue CallJsonArrayProjection(JsonArrayProjectionState state,
-        uint source, string function, IReadOnlyList<FerruleValue> arguments) => function switch
+    internal static FerruleValue CallJsonArrayProjection(
+        JsonArrayProjectionState state,
+        uint source,
+        string function,
+        IReadOnlyList<FerruleValue> arguments
+    ) =>
+        function switch
         {
             "json_parse_array_length" => JsonParseArrayLength(arguments, state, source),
             "json_parse_array_field" => JsonParseArrayField(arguments, state, source),
@@ -53,7 +61,9 @@ public static partial class FerruleFunctions
 
 #if FERRULE_JSON_PROJECTION_INSTRUMENTATION
     public static int JsonProjectionFullParseCount => FerruleJson.DocumentDomDecodeAttemptCount;
-    public static void ResetJsonProjectionFullParseCount() => FerruleJson.ResetDocumentDomDecodeAttemptCount();
+
+    public static void ResetJsonProjectionFullParseCount() =>
+        FerruleJson.ResetDocumentDomDecodeAttemptCount();
 #endif
 
     // Graph-level schema descriptors carry no file capability or descriptor
@@ -62,15 +72,28 @@ public static partial class FerruleFunctions
     private static void RequireFunctionSchema(string schema, string function)
     {
         bool frames;
-        try { frames = FerruleJson.FunctionSchemaContainsJsonTuple(schema); }
+        try
+        {
+            frames = FerruleJson.FunctionSchemaContainsJsonTuple(schema);
+        }
         catch (FerruleRuntimeException error) when (error.Error == FerruleRuntimeError.JsonBoundary)
-        { throw InvalidArgument(function, "schema descriptor is invalid"); }
-        if (frames) throw InvalidArgument(function, "schema descriptor contains a JSON tuple frame");
+        {
+            throw InvalidArgument(function, "schema descriptor is invalid");
+        }
+        if (frames)
+            throw InvalidArgument(function, "schema descriptor contains a JSON tuple frame");
     }
 
-    private static (FerruleRepeated Array, string Schema, IReadOnlyList<string> Path) ParseJsonArray(
-        IReadOnlyList<FerruleValue> arguments, string function,
-        JsonArrayProjectionState? state, uint source)
+    private static (
+        FerruleRepeated Array,
+        string Schema,
+        IReadOnlyList<string> Path
+    ) ParseJsonArray(
+        IReadOnlyList<FerruleValue> arguments,
+        string function,
+        JsonArrayProjectionState? state,
+        uint source
+    )
     {
         var input = RequireString(arguments[0], function);
         var schema = RequireString(arguments[1], function);
@@ -78,10 +101,16 @@ public static partial class FerruleFunctions
         RequireFunctionSchema(schema, function);
         var segments = ParseJsonStringArray(path, function, "array path descriptor is invalid");
         FerruleInstance current;
-        try { current = state is null ? ParseArrayDocument(schema, input)
-            : state.Parse(source, schema, input); }
+        try
+        {
+            current = state is null
+                ? ParseArrayDocument(schema, input)
+                : state.Parse(source, schema, input);
+        }
         catch (FerruleRuntimeException error) when (error.Error == FerruleRuntimeError.JsonBoundary)
-        { throw InvalidArgument(function, "input does not match the JSON schema"); }
+        {
+            throw InvalidArgument(function, "input does not match the JSON schema");
+        }
         if (!FerruleJson.IsFunctionArrayPath(schema, segments))
             throw InvalidArgument(function, "array path does not resolve to an array");
         foreach (var segment in segments)
@@ -96,30 +125,43 @@ public static partial class FerruleFunctions
         }
         if (current is FerruleScalar { Value.Kind: FerruleValueKind.Null })
             return (new FerruleRepeated(Array.Empty<FerruleInstance>()), schema, segments);
-        return current is FerruleRepeated array ? (array, schema, segments)
+        return current is FerruleRepeated array
+            ? (array, schema, segments)
             : throw InvalidArgument(function, "array path does not resolve to an array");
     }
 
-    private static FerruleValue JsonParseArrayLength(IReadOnlyList<FerruleValue> arguments,
-        JsonArrayProjectionState? state = null, uint source = 0)
+    private static FerruleValue JsonParseArrayLength(
+        IReadOnlyList<FerruleValue> arguments,
+        JsonArrayProjectionState? state = null,
+        uint source = 0
+    )
     {
         const string function = "json_parse_array_length";
         RequireArity(function, arguments, 3);
-        return FerruleValue.FromInt64(ParseJsonArray(arguments, function, state, source).Array.Items.Count);
+        return FerruleValue.FromInt64(
+            ParseJsonArray(arguments, function, state, source).Array.Items.Count
+        );
     }
 
-    private static FerruleValue JsonParseArrayField(IReadOnlyList<FerruleValue> arguments,
-        JsonArrayProjectionState? state = null, uint source = 0)
+    private static FerruleValue JsonParseArrayField(
+        IReadOnlyList<FerruleValue> arguments,
+        JsonArrayProjectionState? state = null,
+        uint source = 0
+    )
     {
         const string function = "json_parse_array_field";
         RequireArity(function, arguments, 5);
         var parsed = ParseJsonArray(arguments, function, state, source);
         var array = parsed.Array;
-        var segments = ParseJsonStringArray(RequireString(arguments[3], function), function,
-            "field path descriptor is invalid");
+        var segments = ParseJsonStringArray(
+            RequireString(arguments[3], function),
+            function,
+            "field path descriptor is invalid"
+        );
         if (!FerruleJson.IsFunctionArrayScalarPath(parsed.Schema, parsed.Path, segments))
             throw InvalidArgument(function, "field path does not resolve to a scalar");
-        if (arguments[4].Kind != FerruleValueKind.Int64) throw Type(function, arguments[4]);
+        if (arguments[4].Kind != FerruleValueKind.Int64)
+            throw Type(function, arguments[4]);
         var index = arguments[4].Int64Value;
         if (index < 1 || index > array.Items.Count)
             throw InvalidArgument(function, "array index is out of range");
@@ -130,15 +172,20 @@ public static partial class FerruleFunctions
                 return FerruleValue.Null;
             if (current is not FerruleGroup group)
                 throw InvalidArgument(function, "field path does not resolve to a scalar");
-            if (!group.TryGetField(segment, out var child)) return FerruleValue.Null;
+            if (!group.TryGetField(segment, out var child))
+                return FerruleValue.Null;
             current = child;
         }
-        return current is FerruleScalar scalar ? scalar.Value
+        return current is FerruleScalar scalar
+            ? scalar.Value
             : throw InvalidArgument(function, "field path does not resolve to a scalar");
     }
 
-    private static FerruleValue JsonParseObjectExists(IReadOnlyList<FerruleValue> arguments,
-        JsonArrayProjectionState? state = null, uint source = 0)
+    private static FerruleValue JsonParseObjectExists(
+        IReadOnlyList<FerruleValue> arguments,
+        JsonArrayProjectionState? state = null,
+        uint source = 0
+    )
     {
         const string function = JsonParseObjectExistsName;
         RequireArity(function, arguments, 3);
@@ -162,7 +209,8 @@ public static partial class FerruleFunctions
         FerruleInstance current;
         try
         {
-            current = state is null ? ParseArrayDocument(schema, input.StringValue)
+            current = state is null
+                ? ParseArrayDocument(schema, input.StringValue)
                 : state.Parse(source, schema, input.StringValue);
         }
         catch (FerruleRuntimeException error) when (error.Error == FerruleRuntimeError.JsonBoundary)
@@ -184,14 +232,21 @@ public static partial class FerruleFunctions
         return current switch
         {
             FerruleGroup => FerruleValue.FromBoolean(true),
-            FerruleScalar scalar when scalar.Value.Kind is FerruleValueKind.Null or FerruleValueKind.JsonNull
-                => FerruleValue.FromBoolean(false),
-            _ => throw InvalidArgument(function, "field path does not resolve to an ordinary object"),
+            FerruleScalar scalar
+                when scalar.Value.Kind is FerruleValueKind.Null or FerruleValueKind.JsonNull =>
+                FerruleValue.FromBoolean(false),
+            _ => throw InvalidArgument(
+                function,
+                "field path does not resolve to an ordinary object"
+            ),
         };
     }
 
-    private static FerruleValue JsonParseField(IReadOnlyList<FerruleValue> arguments,
-        JsonArrayProjectionState? state = null, uint source = 0)
+    private static FerruleValue JsonParseField(
+        IReadOnlyList<FerruleValue> arguments,
+        JsonArrayProjectionState? state = null,
+        uint source = 0
+    )
     {
         RequireArity(JsonParseFieldName, arguments, 3);
         var schema = RequireString(arguments[1], JsonParseFieldName);
@@ -211,11 +266,13 @@ public static partial class FerruleFunctions
         var segments = ParseJsonStringArray(
             path,
             JsonParseFieldName,
-            "field path descriptor is invalid");
+            "field path descriptor is invalid"
+        );
         FerruleInstance parsed;
         try
         {
-            parsed = state is null ? ParseArrayDocument(schema, input.StringValue)
+            parsed = state is null
+                ? ParseArrayDocument(schema, input.StringValue)
                 : state.Parse(source, schema, input.StringValue);
         }
         catch (FerruleRuntimeException error) when (error.Error == FerruleRuntimeError.JsonBoundary)
@@ -226,21 +283,19 @@ public static partial class FerruleFunctions
         var current = parsed;
         foreach (var segment in segments)
         {
-            if (current is not FerruleGroup group ||
-                !group.TryGetField(segment, out var child))
+            if (current is not FerruleGroup group || !group.TryGetField(segment, out var child))
             {
                 throw InvalidArgument(
                     JsonParseFieldName,
-                    "field path does not resolve to a scalar");
+                    "field path does not resolve to a scalar"
+                );
             }
             current = child;
         }
 
         return current is FerruleScalar scalar
             ? scalar.Value
-            : throw InvalidArgument(
-                JsonParseFieldName,
-                "field path does not resolve to a scalar");
+            : throw InvalidArgument(JsonParseFieldName, "field path does not resolve to a scalar");
     }
 
     private static FerruleValue JsonSerializeObject(IReadOnlyList<FerruleValue> arguments)
@@ -249,18 +304,22 @@ public static partial class FerruleFunctions
         {
             throw InvalidArgument(
                 JsonSerializeObjectName,
-                "expected path, scalar type, and value triples");
+                "expected path, scalar type, and value triples"
+            );
         }
 
         var root = new ConstructedJsonObject();
         for (var index = 0; index < arguments.Count; index += 3)
         {
-            if (arguments[index].Kind != FerruleValueKind.String ||
-                arguments[index + 1].Kind != FerruleValueKind.String)
+            if (
+                arguments[index].Kind != FerruleValueKind.String
+                || arguments[index + 1].Kind != FerruleValueKind.String
+            )
             {
                 throw InvalidArgument(
                     JsonSerializeObjectName,
-                    "paths and scalar types must be strings");
+                    "paths and scalar types must be strings"
+                );
             }
 
             var value = arguments[index + 2];
@@ -272,39 +331,39 @@ public static partial class FerruleFunctions
             var path = ParseJsonStringArray(
                 arguments[index].StringValue,
                 JsonSerializeObjectName,
-                "path descriptors must be JSON string arrays");
+                "path descriptors must be JSON string arrays"
+            );
             if (path.Count == 0)
             {
-                throw InvalidArgument(
-                    JsonSerializeObjectName,
-                    "property paths cannot be empty");
+                throw InvalidArgument(JsonSerializeObjectName, "property paths cannot be empty");
             }
 
             InsertJsonProperty(
                 root,
                 path,
-                JsonScalarValue(arguments[index + 1].StringValue, value));
+                JsonScalarValue(arguments[index + 1].StringValue, value)
+            );
         }
 
         try
         {
             return FerruleValue.FromString(RenderJsonObject(root));
         }
-        catch (Exception error) when (
-            error is InvalidOperationException or OverflowException)
+        catch (Exception error) when (error is InvalidOperationException or OverflowException)
         {
             throw InvalidArgument(
                 JsonSerializeObjectName,
-                "constructed object could not be serialized");
+                "constructed object could not be serialized"
+            );
         }
     }
 
-    private static ConstructedJsonScalar JsonScalarValue(
-        string scalarType,
-        FerruleValue value)
+    private static ConstructedJsonScalar JsonScalarValue(string scalarType, FerruleValue value)
     {
-        if (value.Kind == FerruleValueKind.JsonNull &&
-            scalarType is "string" or "integer" or "number" or "boolean")
+        if (
+            value.Kind == FerruleValueKind.JsonNull
+            && scalarType is "string" or "integer" or "number" or "boolean"
+        )
         {
             return new ConstructedJsonScalar(FerruleValue.JsonNull);
         }
@@ -314,8 +373,9 @@ public static partial class FerruleFunctions
             "string" => value.Kind switch
             {
                 FerruleValueKind.String => new ConstructedJsonScalar(value),
-                FerruleValueKind.Bool or FerruleValueKind.Int64 =>
-                    new ConstructedJsonScalar(FerruleValue.FromString(ScalarText(value))),
+                FerruleValueKind.Bool or FerruleValueKind.Int64 => new ConstructedJsonScalar(
+                    FerruleValue.FromString(ScalarText(value))
+                ),
                 FerruleValueKind.Double when double.IsFinite(value.DoubleValue) =>
                     new ConstructedJsonScalar(FerruleValue.FromString(ScalarText(value))),
                 _ => throw Type(JsonSerializeObjectName, value),
@@ -324,19 +384,19 @@ public static partial class FerruleFunctions
             {
                 FerruleValueKind.Int64 => new ConstructedJsonScalar(value),
                 FerruleValueKind.Double
-                    when double.IsFinite(value.DoubleValue) &&
-                         Math.Truncate(value.DoubleValue) == value.DoubleValue &&
-                         value.DoubleValue >= long.MinValue &&
-                         value.DoubleValue < 9223372036854775808.0 =>
-                    new ConstructedJsonScalar(
-                        FerruleValue.FromInt64((long)value.DoubleValue)),
+                    when double.IsFinite(value.DoubleValue)
+                        && Math.Truncate(value.DoubleValue) == value.DoubleValue
+                        && value.DoubleValue >= long.MinValue
+                        && value.DoubleValue < 9223372036854775808.0 => new ConstructedJsonScalar(
+                    FerruleValue.FromInt64((long)value.DoubleValue)
+                ),
                 FerruleValueKind.String
                     when long.TryParse(
                         TrimRustWhitespace(value.StringValue),
                         NumberStyles.AllowLeadingSign,
                         CultureInfo.InvariantCulture,
-                        out var integer) =>
-                    new ConstructedJsonScalar(FerruleValue.FromInt64(integer)),
+                        out var integer
+                    ) => new ConstructedJsonScalar(FerruleValue.FromInt64(integer)),
                 _ => throw Type(JsonSerializeObjectName, value),
             },
             "number" => value.Kind switch
@@ -344,8 +404,7 @@ public static partial class FerruleFunctions
                 FerruleValueKind.Int64 => new ConstructedJsonScalar(value),
                 FerruleValueKind.Double when double.IsFinite(value.DoubleValue) =>
                     new ConstructedJsonScalar(value),
-                FerruleValueKind.String
-                    when TryFiniteDouble(value.StringValue, out var number) =>
+                FerruleValueKind.String when TryFiniteDouble(value.StringValue, out var number) =>
                     new ConstructedJsonScalar(FerruleValue.FromDouble(number)),
                 _ => throw Type(JsonSerializeObjectName, value),
             },
@@ -367,7 +426,8 @@ public static partial class FerruleFunctions
     private static void InsertJsonProperty(
         ConstructedJsonObject root,
         IReadOnlyList<string> path,
-        ConstructedJsonScalar value)
+        ConstructedJsonScalar value
+    )
     {
         var current = root;
         for (var index = 0; index < path.Count - 1; index++)
@@ -384,16 +444,15 @@ public static partial class FerruleFunctions
             {
                 throw InvalidArgument(
                     JsonSerializeObjectName,
-                    "property path conflicts with a scalar property");
+                    "property path conflicts with a scalar property"
+                );
             }
             current = existingObject;
         }
 
         if (!current.Properties.TryAdd(path[^1], value))
         {
-            throw InvalidArgument(
-                JsonSerializeObjectName,
-                "property paths must be unique");
+            throw InvalidArgument(JsonSerializeObjectName, "property paths must be unique");
         }
     }
 
@@ -476,7 +535,8 @@ public static partial class FerruleFunctions
     private static IReadOnlyList<string> ParseJsonStringArray(
         string serialized,
         string function,
-        string invalidDetail)
+        string invalidDetail
+    )
     {
         try
         {
@@ -487,12 +547,11 @@ public static partial class FerruleFunctions
                     MaxDepth = FerruleJson.MaximumDepth,
                     CommentHandling = JsonCommentHandling.Disallow,
                     AllowTrailingCommas = false,
-                });
+                }
+            );
             if (document.RootElement.ValueKind != JsonValueKind.Array)
             {
-                throw InvalidArgument(
-                    function,
-                    invalidDetail);
+                throw InvalidArgument(function, invalidDetail);
             }
 
             var segments = new List<string>();
@@ -500,9 +559,7 @@ public static partial class FerruleFunctions
             {
                 if (segment.ValueKind != JsonValueKind.String)
                 {
-                    throw InvalidArgument(
-                        function,
-                        invalidDetail);
+                    throw InvalidArgument(function, invalidDetail);
                 }
                 segments.Add(segment.GetString()!);
             }
@@ -514,15 +571,11 @@ public static partial class FerruleFunctions
         }
         catch (Exception error) when (error is JsonException or InvalidOperationException)
         {
-            throw InvalidArgument(
-                function,
-                invalidDetail);
+            throw InvalidArgument(function, invalidDetail);
         }
     }
 
-    private abstract class ConstructedJsonValue
-    {
-    }
+    private abstract class ConstructedJsonValue { }
 
     private sealed class ConstructedJsonObject : ConstructedJsonValue
     {

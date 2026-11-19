@@ -14,14 +14,22 @@ public sealed class FerruleCsvSourceDocument
         Path = path;
         ResolvedPath = resolvedPath;
         Origin = new FerruleSourceDocumentOrigin(path, resolvedPath);
-        _rows = rows.Items.Select((row, index) => row is FerruleGroup group
-            ? (FerruleInstance)group.WithSourceOrigin(Origin.Row((ulong)index + 1))
-            : throw new InvalidOperationException("CSV parser returned a non-group row.")).ToArray();
+        _rows = rows
+            .Items.Select(
+                (row, index) =>
+                    row is FerruleGroup group
+                        ? (FerruleInstance)group.WithSourceOrigin(Origin.Row((ulong)index + 1))
+                        : throw new InvalidOperationException(
+                            "CSV parser returned a non-group row."
+                        )
+            )
+            .ToArray();
     }
 
     public string Path { get; }
     public string? ResolvedPath { get; }
     public string SourcePath => ResolvedPath ?? Path;
+
     [System.Text.Json.Serialization.JsonIgnore]
     public FerruleSourceDocumentOrigin Origin { get; }
 
@@ -30,21 +38,34 @@ public sealed class FerruleCsvSourceDocument
     /// A fresh parse creates a distinct identity, even for identical input.
     /// </summary>
     public static FerruleCsvSourceDocument ParseBytes(
-        string path, string? resolvedPath, byte[] bytes,
+        string path,
+        string? resolvedPath,
+        byte[] bytes,
         IReadOnlyList<FerruleCsvReadField> fields,
-        FerruleCsvByteDecodingPolicy decoding, FerruleCsvReadOptions? options = null)
+        FerruleCsvByteDecodingPolicy decoding,
+        FerruleCsvReadOptions? options = null
+    )
     {
         ValidatePath(path, nameof(path));
-        if (resolvedPath is not null) ValidatePath(resolvedPath, nameof(resolvedPath));
-        var rows = (FerruleRepeated)FerruleCsvInput.ParseBytesWithDecodingPolicy(bytes, fields, decoding, options);
+        if (resolvedPath is not null)
+            ValidatePath(resolvedPath, nameof(resolvedPath));
+        var rows = (FerruleRepeated)
+            FerruleCsvInput.ParseBytesWithDecodingPolicy(bytes, fields, decoding, options);
         return new FerruleCsvSourceDocument(path, resolvedPath, rows);
     }
 
     internal static void ValidatePath(string path, string parameter)
     {
-        if (string.IsNullOrEmpty(path) || path.Contains('\0') ||
-            !FerruleUnicode.IsWellFormed(path) || Encoding.UTF8.GetByteCount(path) > MaximumPathBytes)
-            throw new ArgumentException("CSV source paths must be nonempty, NUL-free, well-formed Unicode and at most 4096 UTF-8 bytes.", parameter);
+        if (
+            string.IsNullOrEmpty(path)
+            || path.Contains('\0')
+            || !FerruleUnicode.IsWellFormed(path)
+            || Encoding.UTF8.GetByteCount(path) > MaximumPathBytes
+        )
+            throw new ArgumentException(
+                "CSV source paths must be nonempty, NUL-free, well-formed Unicode and at most 4096 UTF-8 bytes.",
+                parameter
+            );
     }
 
     public bool SameDocument(FerruleCsvSourceDocument other) => ReferenceEquals(this, other);
@@ -56,13 +77,18 @@ public sealed class FerruleCsvSourceDocument
     }
 
     internal int Count => _rows.Count;
+
     internal FerruleCsvRowOccurrence RowAt(int index) => new(this, index, _rows[index]);
 }
 
 /// <summary>An exact data row retaining its physical document and local position.</summary>
 public sealed class FerruleCsvRowOccurrence
 {
-    internal FerruleCsvRowOccurrence(FerruleCsvSourceDocument document, int index, FerruleInstance value)
+    internal FerruleCsvRowOccurrence(
+        FerruleCsvSourceDocument document,
+        int index,
+        FerruleInstance value
+    )
     {
         Document = document;
         Position = index + 1;
@@ -71,8 +97,10 @@ public sealed class FerruleCsvRowOccurrence
 
     public FerruleCsvSourceDocument Document { get; }
     public FerruleInstance Value { get; }
+
     /// <summary>One-based data row, excluding a skipped header.</summary>
     public int Position { get; }
+
     public bool SameOccurrence(FerruleCsvRowOccurrence other) =>
         other is not null && Position == other.Position && Document.SameDocument(other.Document);
 }
@@ -104,24 +132,30 @@ public sealed class FerruleCsvSourceRows : IEnumerator<FerruleCsvRowOccurrence>
     private int _row;
     private bool _finished;
 
-    public FerruleCsvSourceRows(IEnumerable<string> requests, Func<string, FerruleCsvSourceDocument> load,
-        int maximum)
+    public FerruleCsvSourceRows(
+        IEnumerable<string> requests,
+        Func<string, FerruleCsvSourceDocument> load,
+        int maximum
+    )
     {
         ArgumentNullException.ThrowIfNull(requests);
         ArgumentNullException.ThrowIfNull(load);
-        if (maximum is < 0 or > MaximumDocuments) throw new ArgumentOutOfRangeException(nameof(maximum));
+        if (maximum is < 0 or > MaximumDocuments)
+            throw new ArgumentOutOfRangeException(nameof(maximum));
         _requests = requests;
         _load = load;
         _maximum = maximum;
     }
 
-    public FerruleCsvRowOccurrence Current => _current ?? throw new InvalidOperationException("No current CSV row.");
+    public FerruleCsvRowOccurrence Current =>
+        _current ?? throw new InvalidOperationException("No current CSV row.");
     object IEnumerator.Current => Current;
 
     public bool MoveNext()
     {
         _current = null;
-        if (_finished) return false;
+        if (_finished)
+            return false;
         // Stay terminal after any exception, including GetEnumerator/MoveNext/load.
         _finished = true;
         while (true)
@@ -135,9 +169,12 @@ public sealed class FerruleCsvSourceRows : IEnumerator<FerruleCsvRowOccurrence>
             _document = null;
             _row = 0;
             _iterator ??= _requests.GetEnumerator();
-            if (!_iterator.MoveNext()) return false;
-            if (_count == _maximum) throw new FerruleCsvSourceLimitException(_maximum);
-            _document = _load(_iterator.Current) ?? throw new InvalidOperationException("CSV source loader returned no document.");
+            if (!_iterator.MoveNext())
+                return false;
+            if (_count == _maximum)
+                throw new FerruleCsvSourceLimitException(_maximum);
+            _document = _load(_iterator.Current)
+                ?? throw new InvalidOperationException("CSV source loader returned no document.");
             _count++;
         }
     }

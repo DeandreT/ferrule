@@ -17,16 +17,30 @@ public static partial class FerruleJson5Syntax
 
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
 
-    public static string Normalize(string source) => NormalizeLimited(
-        source, MaximumOriginalBytes, MaximumNormalizedBytes, MaximumContainerDepth, MaximumSyntaxWork);
+    public static string Normalize(string source) =>
+        NormalizeLimited(
+            source,
+            MaximumOriginalBytes,
+            MaximumNormalizedBytes,
+            MaximumContainerDepth,
+            MaximumSyntaxWork
+        );
 
     private static string NormalizeLimited(
-        string source, long original, long normalized, int depth, long work)
+        string source,
+        long original,
+        long normalized,
+        int depth,
+        long work
+    )
     {
         ArgumentNullException.ThrowIfNull(source);
         if (original < 0 || normalized < 0 || depth < 0 || work < 0)
         {
-            throw new ArgumentOutOfRangeException(nameof(original), "Syntax limits must be nonnegative.");
+            throw new ArgumentOutOfRangeException(
+                nameof(original),
+                "Syntax limits must be nonnegative."
+            );
         }
         // A single allocation-free encoding census precedes grammar work.
         // Invalid text has no complete UTF-8 size, so Encoding is its first
@@ -35,7 +49,11 @@ public static partial class FerruleJson5Syntax
         if (bytes > original)
         {
             throw FerruleJson5SyntaxException.Limit(
-                FerruleJson5SyntaxResource.OriginalDocumentBytes, 0, bytes, original);
+                FerruleJson5SyntaxResource.OriginalDocumentBytes,
+                0,
+                bytes,
+                original
+            );
         }
         // The census is separate from SyntaxWork: Rust's &str already has
         // valid UTF-8 and does not charge initial source.len() validation.
@@ -80,28 +98,50 @@ public static partial class FerruleJson5Syntax
         {
             throw FerruleJson5SyntaxException.Encoding(bytes, index, error);
         }
-        throw new InvalidOperationException("Throwing UTF-8 encoder accepted an unpaired surrogate.");
+        throw new InvalidOperationException(
+            "Throwing UTF-8 encoder accepted an unpaired surrogate."
+        );
     }
 
-    private static int Utf8Width(int scalar) => scalar switch
-    {
-        <= 0x7f => 1,
-        <= 0x7ff => 2,
-        <= 0xffff => 3,
-        _ => 4,
-    };
+    private static int Utf8Width(int scalar) =>
+        scalar switch
+        {
+            <= 0x7f => 1,
+            <= 0x7ff => 2,
+            <= 0xffff => 3,
+            _ => 4,
+        };
 
-    private static bool Whitespace(int scalar) => scalar is
-        >= 0x0009 and <= 0x000d or 0x0020 or 0x00a0 or 0x1680 or
-        >= 0x2000 and <= 0x200a or 0x2028 or 0x2029 or 0x202f or
-        0x205f or 0x3000 or 0xfeff;
+    private static bool Whitespace(int scalar) =>
+        scalar
+            is >= 0x0009
+                and <= 0x000d
+                or 0x0020
+                or 0x00a0
+                or 0x1680
+                or >= 0x2000
+                and <= 0x200a
+                or 0x2028
+                or 0x2029
+                or 0x202f
+                or 0x205f
+                or 0x3000
+                or 0xfeff;
 
     private static bool LineTerminator(int scalar) => scalar is '\n' or '\r' or 0x2028 or 0x2029;
 
     private enum State
     {
-        RootValue, RootDone, ObjectKey, ObjectAfterComma, ObjectColon, ObjectValue,
-        ObjectNext, ArrayValue, ArrayAfterComma, ArrayNext,
+        RootValue,
+        RootDone,
+        ObjectKey,
+        ObjectAfterComma,
+        ObjectColon,
+        ObjectValue,
+        ObjectNext,
+        ArrayValue,
+        ArrayAfterComma,
+        ArrayNext,
     }
 
     private sealed partial class Parser
@@ -134,7 +174,10 @@ public static partial class FerruleJson5Syntax
                 switch (_states[^1])
                 {
                     case State.RootDone:
-                        if (Peek() >= 0) { throw Syntax(FerruleJson5SyntaxKind.TrailingRootValue); }
+                        if (Peek() >= 0)
+                        {
+                            throw Syntax(FerruleJson5SyntaxKind.TrailingRootValue);
+                        }
                         // The final owned-string copy is bounded separately by the
                         // normalized byte cap, outside the shared SyntaxWork ledger.
                         // The ledger is not a CPU, allocation, or RSS guarantee.
@@ -145,31 +188,56 @@ public static partial class FerruleJson5Syntax
                         break;
                     case State.ArrayValue:
                     case State.ArrayAfterComma:
-                        if (Peek() == ']') { Close(']'); }
+                        if (Peek() == ']')
+                        {
+                            Close(']');
+                        }
                         else
                         {
-                            if (_states[^1] == State.ArrayAfterComma) { AppendAscii(","); }
+                            if (_states[^1] == State.ArrayAfterComma)
+                            {
+                                AppendAscii(",");
+                            }
                             Value();
                         }
                         break;
                     case State.ObjectKey:
                     case State.ObjectAfterComma:
                         var next = Peek();
-                        if (next == '}') { Close('}'); }
+                        if (next == '}')
+                        {
+                            Close('}');
+                        }
                         else if (next is '\'' or '"' || IdentifierChar(next, true) || next == '\\')
                         {
-                            if (_states[^1] == State.ObjectAfterComma) { AppendAscii(","); }
-                            if (next is '\'' or '"') { String(); } else { Identifier(); }
+                            if (_states[^1] == State.ObjectAfterComma)
+                            {
+                                AppendAscii(",");
+                            }
+                            if (next is '\'' or '"')
+                            {
+                                String();
+                            }
+                            else
+                            {
+                                Identifier();
+                            }
                             SetState(State.ObjectColon);
                         }
                         else if (next > 0x7f && !Whitespace(next))
                         {
                             throw Syntax(FerruleJson5SyntaxKind.UnsupportedIdentifier);
                         }
-                        else { throw Syntax(FerruleJson5SyntaxKind.UnexpectedToken); }
+                        else
+                        {
+                            throw Syntax(FerruleJson5SyntaxKind.UnexpectedToken);
+                        }
                         break;
                     case State.ObjectColon:
-                        if (Peek() != ':') { throw Syntax(FerruleJson5SyntaxKind.UnexpectedToken); }
+                        if (Peek() != ':')
+                        {
+                            throw Syntax(FerruleJson5SyntaxKind.UnexpectedToken);
+                        }
                         Take();
                         AppendAscii(":");
                         SetState(State.ObjectValue);
@@ -180,7 +248,8 @@ public static partial class FerruleJson5Syntax
                     case State.ArrayNext:
                         Next(']', State.ArrayAfterComma);
                         break;
-                    default: throw Syntax(FerruleJson5SyntaxKind.UnexpectedToken);
+                    default:
+                        throw Syntax(FerruleJson5SyntaxKind.UnexpectedToken);
                 }
             }
         }
@@ -188,9 +257,19 @@ public static partial class FerruleJson5Syntax
         private void Next(int close, State following)
         {
             var next = Peek();
-            if (next == ',') { Take(); SetState(following); }
-            else if (next == close) { Close(close); }
-            else { throw Syntax(FerruleJson5SyntaxKind.UnexpectedToken); }
+            if (next == ',')
+            {
+                Take();
+                SetState(following);
+            }
+            else if (next == close)
+            {
+                Close(close);
+            }
+            else
+            {
+                throw Syntax(FerruleJson5SyntaxKind.UnexpectedToken);
+            }
         }
 
         private void Value()
@@ -203,7 +282,11 @@ public static partial class FerruleJson5Syntax
                     var depth = _states.Count;
                     if (depth > _maximumDepth)
                     {
-                        throw Limit(FerruleJson5SyntaxResource.ContainerDepth, depth, _maximumDepth);
+                        throw Limit(
+                            FerruleJson5SyntaxResource.ContainerDepth,
+                            depth,
+                            _maximumDepth
+                        );
                     }
                     ValueDone();
                     Take();
@@ -212,11 +295,17 @@ public static partial class FerruleJson5Syntax
                     _states.Add(next == '{' ? State.ObjectKey : State.ArrayValue);
                     break;
                 case '\'':
-                case '"': String(); ValueDone(); break;
+                case '"':
+                    String();
+                    ValueDone();
+                    break;
                 case '+':
                 case '-':
                 case '.':
-                case >= '0' and <= '9': Number(); ValueDone(); break;
+                case >= '0' and <= '9':
+                    Number();
+                    ValueDone();
+                    break;
                 case 't':
                 case 'f':
                 case 'n':
@@ -227,30 +316,48 @@ public static partial class FerruleJson5Syntax
                     var end = TokenEnd();
                     var token = _source.AsSpan(start, end - start);
                     Charge((_offset - offset) * 3);
-                    if (token.SequenceEqual("true".AsSpan()) || token.SequenceEqual("false".AsSpan()) || token.SequenceEqual("null".AsSpan()))
+                    if (
+                        token.SequenceEqual("true".AsSpan())
+                        || token.SequenceEqual("false".AsSpan())
+                        || token.SequenceEqual("null".AsSpan())
+                    )
                     {
                         AppendAscii(token);
                     }
-                    else if (token.SequenceEqual("Infinity".AsSpan()) || token.SequenceEqual("NaN".AsSpan()))
+                    else if (
+                        token.SequenceEqual("Infinity".AsSpan())
+                        || token.SequenceEqual("NaN".AsSpan())
+                    )
                     {
                         throw Syntax(FerruleJson5SyntaxKind.NonFiniteNumber, offset);
                     }
-                    else { throw Syntax(FerruleJson5SyntaxKind.UnexpectedToken, offset); }
+                    else
+                    {
+                        throw Syntax(FerruleJson5SyntaxKind.UnexpectedToken, offset);
+                    }
                     ValueDone();
                     break;
-                default: throw Syntax(FerruleJson5SyntaxKind.UnexpectedToken);
+                default:
+                    throw Syntax(FerruleJson5SyntaxKind.UnexpectedToken);
             }
         }
 
-        private void ValueDone() => SetState(_states[^1] switch
-        {
-            State.RootValue => State.RootDone,
-            State.ObjectValue => State.ObjectNext,
-            State.ArrayValue or State.ArrayAfterComma => State.ArrayNext,
-            _ => throw Syntax(FerruleJson5SyntaxKind.UnexpectedToken),
-        });
+        private void ValueDone() =>
+            SetState(
+                _states[^1] switch
+                {
+                    State.RootValue => State.RootDone,
+                    State.ObjectValue => State.ObjectNext,
+                    State.ArrayValue or State.ArrayAfterComma => State.ArrayNext,
+                    _ => throw Syntax(FerruleJson5SyntaxKind.UnexpectedToken),
+                }
+            );
 
-        private void SetState(State state) { Charge(1); _states[^1] = state; }
+        private void SetState(State state)
+        {
+            Charge(1);
+            _states[^1] = state;
+        }
 
         private void Close(int close)
         {
@@ -265,7 +372,10 @@ public static partial class FerruleJson5Syntax
             while (true)
             {
                 var next = Peek();
-                if (Whitespace(next)) { Take(); }
+                if (Whitespace(next))
+                {
+                    Take();
+                }
                 else if (next == '/')
                 {
                     var start = _offset;
@@ -277,7 +387,10 @@ public static partial class FerruleJson5Syntax
                         while (true)
                         {
                             var c = Peek();
-                            if (c < 0 || LineTerminator(c)) { break; }
+                            if (c < 0 || LineTerminator(c))
+                            {
+                                break;
+                            }
                             Take();
                         }
                     }
@@ -288,15 +401,27 @@ public static partial class FerruleJson5Syntax
                         while (true)
                         {
                             var c = Peek();
-                            if (c < 0) { throw Syntax(FerruleJson5SyntaxKind.UnterminatedComment, start); }
+                            if (c < 0)
+                            {
+                                throw Syntax(FerruleJson5SyntaxKind.UnterminatedComment, start);
+                            }
                             Take();
-                            if (star && c == '/') { break; }
+                            if (star && c == '/')
+                            {
+                                break;
+                            }
                             star = c == '*';
                         }
                     }
-                    else { throw Syntax(FerruleJson5SyntaxKind.UnexpectedToken, start); }
+                    else
+                    {
+                        throw Syntax(FerruleJson5SyntaxKind.UnexpectedToken, start);
+                    }
                 }
-                else { return; }
+                else
+                {
+                    return;
+                }
             }
         }
 
@@ -305,16 +430,21 @@ public static partial class FerruleJson5Syntax
             while (true)
             {
                 var next = Peek();
-                if (next < 0 || Whitespace(next) || next is ',' or ']' or '}' or '/') { return _index; }
+                if (next < 0 || Whitespace(next) || next is ',' or ']' or '}' or '/')
+                {
+                    return _index;
+                }
                 Take();
             }
         }
 
         private int Peek()
         {
-            var scalar = _index == _source.Length ? -1 :
-                char.IsHighSurrogate(_source[_index])
-                    ? char.ConvertToUtf32(_source[_index], _source[_index + 1]) : _source[_index];
+            var scalar =
+                _index == _source.Length ? -1
+                : char.IsHighSurrogate(_source[_index])
+                    ? char.ConvertToUtf32(_source[_index], _source[_index + 1])
+                : _source[_index];
             Charge(scalar < 0 ? 1 : Utf8Width(scalar));
             return scalar;
         }
@@ -322,7 +452,10 @@ public static partial class FerruleJson5Syntax
         private int Take()
         {
             var scalar = Peek();
-            if (scalar < 0) { throw Syntax(FerruleJson5SyntaxKind.UnexpectedToken); }
+            if (scalar < 0)
+            {
+                throw Syntax(FerruleJson5SyntaxKind.UnexpectedToken);
+            }
             var bytes = Utf8Width(scalar);
             Charge(bytes);
             _index += scalar > 0xffff ? 2 : 1;
@@ -341,7 +474,11 @@ public static partial class FerruleJson5Syntax
             var requested = checked(_normalized + bytes);
             if (requested > _maximumNormalized)
             {
-                throw Limit(FerruleJson5SyntaxResource.NormalizedDocumentBytes, requested, _maximumNormalized);
+                throw Limit(
+                    FerruleJson5SyntaxResource.NormalizedDocumentBytes,
+                    requested,
+                    _maximumNormalized
+                );
             }
             Charge(bytes);
             _normalized = requested;
@@ -357,10 +494,15 @@ public static partial class FerruleJson5Syntax
             _work = requested;
         }
 
-        private FerruleJson5SyntaxException Syntax(FerruleJson5SyntaxKind kind, long? offset = null) =>
-            FerruleJson5SyntaxException.Syntax(kind, offset ?? _offset);
+        private FerruleJson5SyntaxException Syntax(
+            FerruleJson5SyntaxKind kind,
+            long? offset = null
+        ) => FerruleJson5SyntaxException.Syntax(kind, offset ?? _offset);
 
-        private FerruleJson5SyntaxException Limit(FerruleJson5SyntaxResource resource, long requested, long maximum) =>
-            FerruleJson5SyntaxException.Limit(resource, _offset, requested, maximum);
+        private FerruleJson5SyntaxException Limit(
+            FerruleJson5SyntaxResource resource,
+            long requested,
+            long maximum
+        ) => FerruleJson5SyntaxException.Limit(resource, _offset, requested, maximum);
     }
 }

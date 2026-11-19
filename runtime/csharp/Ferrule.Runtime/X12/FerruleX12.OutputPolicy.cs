@@ -4,8 +4,11 @@ namespace Ferrule.Runtime;
 public static partial class FerruleX12
 {
     private sealed record SegmentOutputProfile(string Descriptor, Profile Profile, bool CrLf);
-    private static readonly global::System.Runtime.CompilerServices.ConditionalWeakTable<string, SegmentOutputProfile>
-        PreparedSegmentOutputProfiles = new();
+
+    private static readonly global::System.Runtime.CompilerServices.ConditionalWeakTable<
+        string,
+        SegmentOutputProfile
+    > PreparedSegmentOutputProfiles = new();
 
     private static SegmentOutputProfile PrepareSegmentOutputProfile(string descriptor)
     {
@@ -13,11 +16,26 @@ public static partial class FerruleX12
         RequireUtf8(descriptor, MaximumSchemaBytes, "X12 descriptor");
         try
         {
-            using var parsed = global::System.Text.Json.JsonDocument.Parse(descriptor,
-                new global::System.Text.Json.JsonDocumentOptions { MaxDepth = 127 });
+            using var parsed = global::System.Text.Json.JsonDocument.Parse(
+                descriptor,
+                new global::System.Text.Json.JsonDocumentOptions { MaxDepth = 127 }
+            );
             var wrapper = parsed.RootElement;
-            Fields(wrapper, ["version", "schema", "separators", "constraints", "lenient_segments",
-                "implied_decimals", "lexical_formats", "autocomplete", "envelope_profile", "segment_line_ending"]);
+            Fields(
+                wrapper,
+                [
+                    "version",
+                    "schema",
+                    "separators",
+                    "constraints",
+                    "lenient_segments",
+                    "implied_decimals",
+                    "lexical_formats",
+                    "autocomplete",
+                    "envelope_profile",
+                    "segment_line_ending",
+                ]
+            );
             // Copy raw values, not dictionary entries: nested duplicate keys,
             // member order and their original validation remain observable.
             var buffer = new global::System.Buffers.ArrayBufferWriter<byte>();
@@ -26,7 +44,8 @@ public static partial class FerruleX12
                 writer.WriteStartObject();
                 foreach (var property in wrapper.EnumerateObject())
                 {
-                    if (property.NameEquals("segment_line_ending")) continue;
+                    if (property.NameEquals("segment_line_ending"))
+                        continue;
                     writer.WritePropertyName(property.Name);
                     writer.WriteRawValue(property.Value.GetRawText(), skipInputValidation: true);
                 }
@@ -40,46 +59,76 @@ public static partial class FerruleX12
                 {
                     "lf" => false,
                     "crlf" => true,
-                    _ => throw Failure(FerruleX12Error.Schema, "Unsupported X12 segment line ending."),
-                } : false;
+                    _ => throw Failure(
+                        FerruleX12Error.Schema,
+                        "Unsupported X12 segment line ending."
+                    ),
+                }
+                : false;
             if (crlf && profile.OutputSyntax.Segment is '\n' or '\r')
-                throw Failure(FerruleX12Error.Schema, "CRLF formatting requires a visible segment terminator.");
+                throw Failure(
+                    FerruleX12Error.Schema,
+                    "CRLF formatting requires a visible segment terminator."
+                );
             return new(legacyDescriptor, profile, crlf);
         }
-        catch (FerruleX12Exception) { throw; }
-        catch (global::System.Exception error) when (error is global::System.Text.Json.JsonException
-            or global::System.InvalidOperationException or global::System.FormatException)
+        catch (FerruleX12Exception)
+        {
+            throw;
+        }
+        catch (global::System.Exception error)
+            when (error
+                    is global::System.Text.Json.JsonException
+                        or global::System.InvalidOperationException
+                        or global::System.FormatException
+            )
         {
             throw Failure(FerruleX12Error.Schema, "Invalid embedded X12 output policy.");
         }
     }
 
-    internal static string SerializeEmbeddedWithLineEnding(string descriptor, FerruleInstance document)
-        => SerializeSegmentOutput(descriptor, document, null).Text.ToString();
+    internal static string SerializeEmbeddedWithLineEnding(
+        string descriptor,
+        FerruleInstance document
+    ) => SerializeSegmentOutput(descriptor, document, null).Text.ToString();
 
-    internal static string SerializeEmbeddedWithLineEnding(string descriptor, FerruleInstance document,
-        FerruleExecutionContext executionContext)
+    internal static string SerializeEmbeddedWithLineEnding(
+        string descriptor,
+        FerruleInstance document,
+        FerruleExecutionContext executionContext
+    )
     {
         global::System.ArgumentNullException.ThrowIfNull(executionContext);
         return SerializeSegmentOutput(descriptor, document, executionContext).Text.ToString();
     }
 
-    internal static byte[] SerializeEmbeddedBytesWithLineEnding(string descriptor, FerruleInstance document)
-        => EncodeOutput(SerializeSegmentOutput(descriptor, document, null));
+    internal static byte[] SerializeEmbeddedBytesWithLineEnding(
+        string descriptor,
+        FerruleInstance document
+    ) => EncodeOutput(SerializeSegmentOutput(descriptor, document, null));
 
-    internal static byte[] SerializeEmbeddedBytesWithLineEnding(string descriptor, FerruleInstance document,
-        FerruleExecutionContext executionContext)
+    internal static byte[] SerializeEmbeddedBytesWithLineEnding(
+        string descriptor,
+        FerruleInstance document,
+        FerruleExecutionContext executionContext
+    )
     {
         global::System.ArgumentNullException.ThrowIfNull(executionContext);
         return EncodeOutput(SerializeSegmentOutput(descriptor, document, executionContext));
     }
 
-    private static CompletedOutput SerializeSegmentOutput(string descriptor, FerruleInstance document,
-        FerruleExecutionContext? executionContext)
+    private static CompletedOutput SerializeSegmentOutput(
+        string descriptor,
+        FerruleInstance document,
+        FerruleExecutionContext? executionContext
+    )
     {
         global::System.ArgumentNullException.ThrowIfNull(document);
         global::System.ArgumentNullException.ThrowIfNull(descriptor);
-        var selected = PreparedSegmentOutputProfiles.GetValue(descriptor, PrepareSegmentOutputProfile);
+        var selected = PreparedSegmentOutputProfiles.GetValue(
+            descriptor,
+            PrepareSegmentOutputProfile
+        );
         CompletedOutput output = SerializeOutput(selected.Descriptor, document, executionContext);
         return selected.CrLf ? ExpandSegmentLineEndings(output, MaximumDocumentBytes) : output;
     }
@@ -91,13 +140,15 @@ public static partial class FerruleX12
     {
         long bytes = output.Bytes;
         foreach (var chunk in output.Text.GetChunks())
-            foreach (char character in chunk.Span)
-                if (character == '\n')
-                {
-                    if (bytes >= maximum) throw Limit("X12 output byte limit exceeded.");
-                    bytes++;
-                }
-        if (bytes > maximum) throw Limit("X12 output byte limit exceeded.");
+        foreach (char character in chunk.Span)
+            if (character == '\n')
+            {
+                if (bytes >= maximum)
+                    throw Limit("X12 output byte limit exceeded.");
+                bytes++;
+            }
+        if (bytes > maximum)
+            throw Limit("X12 output byte limit exceeded.");
         // No expansion/allocation until the exact completed wire length passes.
         output.Text.Replace("\n", "\r\n");
         return new(output.Text, bytes);
