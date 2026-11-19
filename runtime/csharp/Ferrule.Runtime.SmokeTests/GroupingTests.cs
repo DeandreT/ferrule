@@ -6,32 +6,47 @@ internal static partial class Program
 {
     private static void GroupingContexts()
     {
-        var source = Group(Field(
-            "Departments",
-            new FerruleRepeated(new FerruleInstance[]
-            {
-                Group(
-                    Field("Name", Scalar(Text("Engineering"))),
-                    Field("Rows", new FerruleRepeated(new FerruleInstance[]
+        var source = Group(
+            Field(
+                "Departments",
+                new FerruleRepeated(
+                    new FerruleInstance[]
                     {
                         Group(
-                            Field("Key", Scalar(FerruleValue.FromInt64(1))),
-                            Field("Value", Scalar(FerruleValue.FromInt64(10))),
-                            Field("Start", Scalar(Bool(false)))),
-                        Group(
-                            Field("Key", Scalar(Text("1"))),
-                            Field("Value", Scalar(FerruleValue.FromInt64(20))),
-                            Field("Start", Scalar(Bool(true)))),
-                        Group(
-                            Field("Key", Scalar(FerruleValue.FromInt64(1))),
-                            Field("Value", Scalar(FerruleValue.FromInt64(30))),
-                            Field("Start", Scalar(Bool(false)))),
-                        Group(
-                            Field("Key", Scalar(Text("2"))),
-                            Field("Value", Scalar(FerruleValue.FromInt64(40))),
-                            Field("Start", Scalar(Bool(true)))),
-                    })))
-            })));
+                            Field("Name", Scalar(Text("Engineering"))),
+                            Field(
+                                "Rows",
+                                new FerruleRepeated(
+                                    new FerruleInstance[]
+                                    {
+                                        Group(
+                                            Field("Key", Scalar(FerruleValue.FromInt64(1))),
+                                            Field("Value", Scalar(FerruleValue.FromInt64(10))),
+                                            Field("Start", Scalar(Bool(false)))
+                                        ),
+                                        Group(
+                                            Field("Key", Scalar(Text("1"))),
+                                            Field("Value", Scalar(FerruleValue.FromInt64(20))),
+                                            Field("Start", Scalar(Bool(true)))
+                                        ),
+                                        Group(
+                                            Field("Key", Scalar(FerruleValue.FromInt64(1))),
+                                            Field("Value", Scalar(FerruleValue.FromInt64(30))),
+                                            Field("Start", Scalar(Bool(false)))
+                                        ),
+                                        Group(
+                                            Field("Key", Scalar(Text("2"))),
+                                            Field("Value", Scalar(FerruleValue.FromInt64(40))),
+                                            Field("Start", Scalar(Bool(true)))
+                                        ),
+                                    }
+                                )
+                            )
+                        ),
+                    }
+                )
+            )
+        );
         var root = ScopeContext.FromSource(source);
         var path = new[] { "Departments", "Rows" };
         var candidates = root.IterateSource(path);
@@ -39,14 +54,11 @@ internal static partial class Program
         Equal(1L, candidates[0].Position("Departments", "Rows"));
         Equal(3L, candidates[2].Position("Departments", "Rows"));
         var rawPositions = new List<long>();
-        var byKey = root.GroupBy(
-            candidates,
-            path,
-            item =>
-            {
-                rawPositions.Add(item.Position(path));
-                return item.ResolveScalar("Key");
-            });
+        var byKey = root.GroupBy(candidates, path, item =>
+        {
+            rawPositions.Add(item.Position(path));
+            return item.ResolveScalar("Key");
+        });
         Equal("1,2,3,4", string.Join(',', rawPositions));
         Equal(3, byKey.Count);
         Equal(1L, byKey[0].Position(path));
@@ -73,14 +85,11 @@ internal static partial class Program
         Equal("40", MemberValues(adjacent[3]));
 
         var predicateCalls = 0;
-        var starting = root.GroupStartingWith(
-            candidates,
-            path,
-            item =>
-            {
-                predicateCalls++;
-                return item.ResolveScalar("Start").BooleanValue;
-            });
+        var starting = root.GroupStartingWith(candidates, path, item =>
+        {
+            predicateCalls++;
+            return item.ResolveScalar("Start").BooleanValue;
+        });
         Equal(candidates.Count, predicateCalls);
         Equal(3, starting.Count);
         Equal("10", MemberValues(starting[0]));
@@ -88,14 +97,11 @@ internal static partial class Program
         Equal("40", MemberValues(starting[2]));
 
         var endingCalls = 0;
-        var ending = root.GroupEndingWith(
-            candidates,
-            path,
-            item =>
-            {
-                endingCalls++;
-                return item.ResolveScalar("Value").Int64Value == 20;
-            });
+        var ending = root.GroupEndingWith(candidates, path, item =>
+        {
+            endingCalls++;
+            return item.ResolveScalar("Value").Int64Value == 20;
+        });
         Equal(candidates.Count, endingCalls);
         Equal(2, ending.Count);
         Equal("10,20", MemberValues(ending[0]));
@@ -106,18 +112,21 @@ internal static partial class Program
         Equal("10,20,30", MemberValues(blocks[0]));
         Equal("40", MemberValues(blocks[1]));
         Equal(3UL, FerruleSequences.PositiveBlockSize(91, Text("3")));
-        var invalid = Error(
-            FerruleRuntimeError.InvalidBlockSize,
-            () => FerruleSequences.PositiveBlockSize(91, FerruleValue.FromInt64(0)));
+        var invalid = Error(FerruleRuntimeError.InvalidBlockSize, () =>
+            FerruleSequences.PositiveBlockSize(91, FerruleValue.FromInt64(0))
+        );
         Equal(91U, invalid.Node);
-        Error(
-            FerruleRuntimeError.NotAnItemCount,
-            () => FerruleSequences.PositiveBlockSize(92, FerruleValue.Null));
+        Error(FerruleRuntimeError.NotAnItemCount, () =>
+            FerruleSequences.PositiveBlockSize(92, FerruleValue.Null)
+        );
         Throws<ArgumentOutOfRangeException>(() => root.GroupIntoBlocks(candidates, path, 0));
     }
 
-    private static string MemberValues(ScopeContext group) => string.Join(
-        ',',
-        group.AggregateItems("Rows").Select(item =>
-            item.AggregateCurrentScalar("Value").Int64Value));
+    private static string MemberValues(ScopeContext group) =>
+        string.Join(
+            ',',
+            group
+                .AggregateItems("Rows")
+                .Select(item => item.AggregateCurrentScalar("Value").Int64Value)
+        );
 }

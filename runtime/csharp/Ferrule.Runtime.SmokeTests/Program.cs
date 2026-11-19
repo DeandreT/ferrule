@@ -14,12 +14,21 @@ internal static partial class Program
             ("owned Starting R01-R02 authenticated empty", BasicOwnedStartingR01R02),
             ("owned Starting R03 malformed witnesses", BasicOwnedStartingR03),
             ("owned Starting R04-R06 R08 literal phase logs", BasicOwnedStartingR04R05R06R08),
-            ("owned Starting R07 immutable publications and retained storage", BasicOwnedStartingR07),
+            (
+                "owned Starting R07 immutable publications and retained storage",
+                BasicOwnedStartingR07
+            ),
             ("owned Starting R12 independent metadata oracle", BasicOwnedStartingR12),
             ("owned Starting R13-R14 Boolean and callback frontiers", BasicOwnedStartingR13R14),
             ("owned Starting R15 checked limits", BasicOwnedStartingR15),
-            ("owned Starting private markers and one-shot capability", BasicOwnedStartingPrivateMarkersAndOneShot),
-            ("owned Starting R16 original By-Adjacent conservation", BasicOwnedStartingR16OldProfiles),
+            (
+                "owned Starting private markers and one-shot capability",
+                BasicOwnedStartingPrivateMarkersAndOneShot
+            ),
+            (
+                "owned Starting R16 original By-Adjacent conservation",
+                BasicOwnedStartingR16OldProfiles
+            ),
 #endif
             ("JSON source complete literal corpus", JsonSourceCorpus),
             ("JSON source exact selection and bounded admission", JsonSourceSelectionAndLimits),
@@ -37,7 +46,10 @@ internal static partial class Program
             ("primary root never unwraps owner", PrimaryRootNeverUnwrapsOwner),
             ("primary root duplicates and limits", PrimaryRootDuplicatesAndLimits),
             ("primary root owner collisions", PrimaryRootOwnerCollisions),
-            ("primary root ordinary data and Unicode bounds", PrimaryRootOrdinaryDataAndUnicodeBounds),
+            (
+                "primary root ordinary data and Unicode bounds",
+                PrimaryRootOrdinaryDataAndUnicodeBounds
+            ),
             ("group traversal", GroupTraversal),
             ("copy current group", CopyCurrentGroup),
             ("repeated first item", RepeatedFirstItem),
@@ -83,7 +95,10 @@ internal static partial class Program
             ("X12 output byte preflight", X12OutputBytePreflight),
             ("EDI source exact lexical constraints", EdiSourceLexicalConstraints),
             ("EDI source projected family decoding", EdiSourceProjectionAndFamilies),
-            ("EDI source metadata locations and bounded reports", EdiSourceMetadataLocationsAndBounds),
+            (
+                "EDI source metadata locations and bounded reports",
+                EdiSourceMetadataLocationsAndBounds
+            ),
             ("lookup contexts", LookupContexts),
             ("path hierarchy legacy collection", PathHierarchyLegacyBuild),
             ("path hierarchy exact owned endpoints", PathHierarchyOwnedEndpoints),
@@ -104,36 +119,117 @@ internal static partial class Program
             ("owned inner join tuples", OwnedInnerJoinContexts),
             ("owned joined aggregates", OwnedJoinedAggregates),
             ("grouping contexts", GroupingContexts),
-            ("owned By representatives complete members and exact owners", BasicOwnedByRepresentativesAndMembers),
+            (
+                "owned By representatives complete members and exact owners",
+                BasicOwnedByRepresentativesAndMembers
+            ),
             ("owned By sort filter bounds and error order", BasicOwnedByPhasesAndErrorOrder),
-            ("owned By group windows stable ordering and raw gaps", BasicOwnedByGroupWindowsAndRawGaps),
-            ("owned By roots identity aliases and exact key tags", BasicOwnedByRootIdentityAliasesAndTags),
+            (
+                "owned By group windows stable ordering and raw gaps",
+                BasicOwnedByGroupWindowsAndRawGaps
+            ),
+            (
+                "owned By roots identity aliases and exact key tags",
+                BasicOwnedByRootIdentityAliasesAndTags
+            ),
             ("owned By nested owners and first prefix", BasicOwnedByNestedOwnersAndPrefixes),
             ("owned By exact slots bytes and UTF8 frontiers", BasicOwnedByExactBudgetsAndUtf8),
-            ("owned By empty witnesses and native capacities", BasicOwnedByEmptyWitnessesAndCapacity),
-            ("owned By complete canonical selectors before empty traversal", BasicOwnedByCompleteCanonicalSelectors),
-            ("owned By explicit ledger setup and independent numeric oracle", BasicOwnedByLedgerSetupAndNumericOracle),
-            ("owned By cumulative sort and group UTF8 frontier", BasicOwnedByCumulativeSortAndGroupUtf8),
-            ("owned By malformed terminal witness controls", BasicOwnedByMalformedTerminalWitnesses),
-            ("owned By repeated root explicit pins and latest member shadow", BasicOwnedByRepeatedRootExplicitPinAndMemberShadow),
-            ("owned AdjacentBy literal runs and immutable publications", BasicOwnedAdjacentLiteralRunsAndImmutablePublications),
-            ("owned AdjacentBy retention and ordered group windows", BasicOwnedAdjacentRetentionAndGroupWindows),
-            ("owned AdjacentBy exact tagged and Unicode equality", BasicOwnedAdjacentExactTaggedEquality),
-            ("owned AdjacentBy candidate phases and sorted ranks", BasicOwnedAdjacentCandidatePhases),
-            ("owned AdjacentBy typed error frontiers and empty bounds", BasicOwnedAdjacentTypedErrorFrontiers),
-            ("owned AdjacentBy root pins and latest exact-owner Items", BasicOwnedAdjacentRootPinsAndLatestItems),
-            ("owned AdjacentBy first prefix and nested keyed groups", BasicOwnedAdjacentFirstPrefixAndNestedGroups),
-            ("owned AdjacentBy independent exact metadata oracle", BasicOwnedAdjacentIndependentMetadataOracle),
-            ("owned AdjacentBy metadata refusals and witness closure", BasicOwnedAdjacentMetadataRefusalAndWitnessClosure),
-            ("owned AdjacentBy cumulative sort and group UTF8 frontier", BasicOwnedAdjacentCumulativeUtf8Frontier),
-            ("owned EndingWith literal runs for every owner", BasicOwnedEndingLiteralRunsForEveryOwner),
-            ("owned EndingWith phases, retention and windows", BasicOwnedEndingPhasesRetentionAndWindows),
-            ("owned EndingWith empty cohort and callback errors", BasicOwnedEndingEmptyCohortAndCallbackErrors),
-            ("owned IntoBlocks literal blocks for every owner", BasicOwnedBlocksLiteralRunsForEveryOwner),
-            ("owned IntoBlocks phases, retention and windows", BasicOwnedBlocksPhasesRetentionAndWindows),
-            ("owned IntoBlocks empty cohort and callback errors", BasicOwnedBlocksEmptyCohortAndCallbackErrors),
-            ("owned generated items keep exact owned reads", BasicGeneratedItemsKeepExactOwnedReads),
-            ("owned generated items are lazy and missing owners fail when read", BasicGeneratedItemsAreLazyAndMissingOwnersFailWhenRead),
+            (
+                "owned By empty witnesses and native capacities",
+                BasicOwnedByEmptyWitnessesAndCapacity
+            ),
+            (
+                "owned By complete canonical selectors before empty traversal",
+                BasicOwnedByCompleteCanonicalSelectors
+            ),
+            (
+                "owned By explicit ledger setup and independent numeric oracle",
+                BasicOwnedByLedgerSetupAndNumericOracle
+            ),
+            (
+                "owned By cumulative sort and group UTF8 frontier",
+                BasicOwnedByCumulativeSortAndGroupUtf8
+            ),
+            (
+                "owned By malformed terminal witness controls",
+                BasicOwnedByMalformedTerminalWitnesses
+            ),
+            (
+                "owned By repeated root explicit pins and latest member shadow",
+                BasicOwnedByRepeatedRootExplicitPinAndMemberShadow
+            ),
+            (
+                "owned AdjacentBy literal runs and immutable publications",
+                BasicOwnedAdjacentLiteralRunsAndImmutablePublications
+            ),
+            (
+                "owned AdjacentBy retention and ordered group windows",
+                BasicOwnedAdjacentRetentionAndGroupWindows
+            ),
+            (
+                "owned AdjacentBy exact tagged and Unicode equality",
+                BasicOwnedAdjacentExactTaggedEquality
+            ),
+            (
+                "owned AdjacentBy candidate phases and sorted ranks",
+                BasicOwnedAdjacentCandidatePhases
+            ),
+            (
+                "owned AdjacentBy typed error frontiers and empty bounds",
+                BasicOwnedAdjacentTypedErrorFrontiers
+            ),
+            (
+                "owned AdjacentBy root pins and latest exact-owner Items",
+                BasicOwnedAdjacentRootPinsAndLatestItems
+            ),
+            (
+                "owned AdjacentBy first prefix and nested keyed groups",
+                BasicOwnedAdjacentFirstPrefixAndNestedGroups
+            ),
+            (
+                "owned AdjacentBy independent exact metadata oracle",
+                BasicOwnedAdjacentIndependentMetadataOracle
+            ),
+            (
+                "owned AdjacentBy metadata refusals and witness closure",
+                BasicOwnedAdjacentMetadataRefusalAndWitnessClosure
+            ),
+            (
+                "owned AdjacentBy cumulative sort and group UTF8 frontier",
+                BasicOwnedAdjacentCumulativeUtf8Frontier
+            ),
+            (
+                "owned EndingWith literal runs for every owner",
+                BasicOwnedEndingLiteralRunsForEveryOwner
+            ),
+            (
+                "owned EndingWith phases, retention and windows",
+                BasicOwnedEndingPhasesRetentionAndWindows
+            ),
+            (
+                "owned EndingWith empty cohort and callback errors",
+                BasicOwnedEndingEmptyCohortAndCallbackErrors
+            ),
+            (
+                "owned IntoBlocks literal blocks for every owner",
+                BasicOwnedBlocksLiteralRunsForEveryOwner
+            ),
+            (
+                "owned IntoBlocks phases, retention and windows",
+                BasicOwnedBlocksPhasesRetentionAndWindows
+            ),
+            (
+                "owned IntoBlocks empty cohort and callback errors",
+                BasicOwnedBlocksEmptyCohortAndCallbackErrors
+            ),
+            (
+                "owned generated items keep exact owned reads",
+                BasicGeneratedItemsKeepExactOwnedReads
+            ),
+            (
+                "owned generated items are lazy and missing owners fail when read",
+                BasicGeneratedItemsAreLazyAndMissingOwnersFailWhenRead
+            ),
             ("named source contexts", NamedSourceContexts),
             ("mapping failures", MappingFailures),
             ("runtime execution context", RuntimeExecutionContext),
@@ -144,7 +240,10 @@ internal static partial class Program
             ("JSON5 boundary encoding and stage priority", Json5BoundaryEncodingAndPriority),
             ("JSON5 descriptor decoded identities", Json5BoundaryDescriptorIdentity),
             ("JSON5 nested projection and original causes", Json5BoundaryNestedMappingAndOutput),
-            ("JSON5 final newline and ordinary writer equivalence", Json5FinalNewlineAndOrdinaryWriter),
+            (
+                "JSON5 final newline and ordinary writer equivalence",
+                Json5FinalNewlineAndOrdinaryWriter
+            ),
             ("JSON5 syntax corpus", Json5SyntaxCorpus),
             ("JSON5 complete grammar", Json5SyntaxGrammar),
             ("JSON5 numbers and nonfinite", Json5SyntaxNumbers),
@@ -152,16 +251,31 @@ internal static partial class Program
             ("JSON5 UTF16 text policy", Json5SyntaxEncoding),
             ("JSON5 depth and scaled budgets", Json5SyntaxBudgets),
             ("JSON document boundaries", JsonDocumentBoundaries),
-            ("JSON prepared schemas match unprepared calls", JsonPreparedSchemasMatchUnpreparedCalls),
-            ("JSON prepared schemas isolate concurrent accounting", JsonPreparedSchemasIsolateConcurrentAccounting),
+            (
+                "JSON prepared schemas match unprepared calls",
+                JsonPreparedSchemasMatchUnpreparedCalls
+            ),
+            (
+                "JSON prepared schemas isolate concurrent accounting",
+                JsonPreparedSchemasIsolateConcurrentAccounting
+            ),
             ("JSON prepared schema allocation accounting", JsonPreparedSchemaAllocationAccounting),
             ("JSON byte outputs match text outputs", JsonByteOutputsMatchTextOutputs),
             ("JSON output limit on text and byte routes", JsonOutputLimitOnTextAndByteRoutes),
-            ("endpoint prepared codecs match unprepared calls", EndpointPreparedCodecsMatchUnpreparedCalls),
-            ("endpoint prepared codecs isolate concurrent calls", EndpointPreparedCodecsIsolateConcurrentCalls),
+            (
+                "endpoint prepared codecs match unprepared calls",
+                EndpointPreparedCodecsMatchUnpreparedCalls
+            ),
+            (
+                "endpoint prepared codecs isolate concurrent calls",
+                EndpointPreparedCodecsIsolateConcurrentCalls
+            ),
             ("endpoint byte outputs match text outputs", EndpointByteOutputsMatchTextOutputs),
             ("endpoint JSON5 output limit on both routes", EndpointJson5OutputLimitOnBothRoutes),
-            ("endpoint prepared codec allocation accounting", EndpointPreparedCodecAllocationAccounting),
+            (
+                "endpoint prepared codec allocation accounting",
+                EndpointPreparedCodecAllocationAccounting
+            ),
             ("JSON independent object-item nullability", JsonObjectItemNullability),
             ("JSON independent object-item output nullability", JsonObjectItemOutputNullability),
             ("JSON object-item metadata and legacy gates", JsonObjectItemMetadataGates),
@@ -172,12 +286,21 @@ internal static partial class Program
             ("JSON String-or-Int integer ranges", JsonStringIntRangeBoundaries),
             ("JSON duplicate schema declarations", JsonDuplicateDeclarationMaterialization),
             ("JSON duplicate declaration projection", JsonDuplicateDeclarationProjection),
-            ("JSON duplicate declaration constraints", JsonDuplicateDeclarationConstraintsAndDynamicRejection),
-            ("JSON duplicate declaration clones and bounds", JsonDuplicateDeclarationNestedCloneAndBounds),
+            (
+                "JSON duplicate declaration constraints",
+                JsonDuplicateDeclarationConstraintsAndDynamicRejection
+            ),
+            (
+                "JSON duplicate declaration clones and bounds",
+                JsonDuplicateDeclarationNestedCloneAndBounds
+            ),
             ("JSON large collection boundaries", JsonLargeCollectionsMatchPublicBoundaryLimits),
             ("JSON canonical arbitrary numbers", JsonCanonicalNumbers),
             ("JSON embedded compact documents and order", JsonEmbeddedCompactDocuments),
-            ("JSON embedded compact strings and exact numbers", JsonEmbeddedCompactStringsAndNumbers),
+            (
+                "JSON embedded compact strings and exact numbers",
+                JsonEmbeddedCompactStringsAndNumbers
+            ),
             ("JSON embedded compact output validation", JsonEmbeddedCompactValidation),
             ("JSON embedded compact newline byte boundary", JsonEmbeddedCompactDocumentLimit),
             ("JSON embedded UTF8 original decoder causes", JsonEmbeddedBytesErrorCauses),
@@ -199,9 +322,18 @@ internal static partial class Program
             ("XML input/document exclusive owners", XmlInputDocumentOwners),
             ("XML document-set input members and owners", XmlDocumentSetInputMembers),
             ("XML dynamic input/document exclusive owners", XmlDynamicInputDocumentOwners),
-            ("XML dynamic input/mixed-output exclusive owners", XmlDynamicInputDocumentOutputsOwners),
-            ("XML dynamic input/mixed-output adapter channels", XmlDynamicInputDocumentOutputsAdapterChannels),
-            ("XML dynamic input/mixed-output independent ledgers", XmlDynamicInputDocumentOutputsIndependentLedgers),
+            (
+                "XML dynamic input/mixed-output exclusive owners",
+                XmlDynamicInputDocumentOutputsOwners
+            ),
+            (
+                "XML dynamic input/mixed-output adapter channels",
+                XmlDynamicInputDocumentOutputsAdapterChannels
+            ),
+            (
+                "XML dynamic input/mixed-output independent ledgers",
+                XmlDynamicInputDocumentOutputsIndependentLedgers
+            ),
             ("XML input/mixed-output exclusive owners", XmlInputDocumentOutputsOwners),
             ("XML mixed document output owners and budgets", XmlDocumentOutputsOwnersAndBudgets),
             ("XML type alternatives", XmlTypeAlternatives),
@@ -255,18 +387,27 @@ internal static partial class Program
             ("regex scripts bounds and errors", RegexScriptBoundsAndErrors),
             ("regex CRLF dot and literal spans", RegexCrlfDotAndLiteralSpans),
             ("regex CRLF anchors and restoration", RegexCrlfAnchorsAndRestoration),
-            ("regex CRLF detection and conditional grammar", RegexCrlfDetectionAndConditionalGrammar),
+            (
+                "regex CRLF detection and conditional grammar",
+                RegexCrlfDetectionAndConditionalGrammar
+            ),
             ("regex CRLF limits and zero width", RegexCrlfLimitsAndZeroWidth),
             ("regex ungreedy captures and repetitions", RegexUngreedyCapturesAndRepetitions),
             ("regex ungreedy scope and detection", RegexUngreedyScopeAndDetection),
             ("regex ungreedy conditional grammar", RegexUngreedyConditionalGrammar),
             ("regex ungreedy limits and zero width", RegexUngreedyLimitsAndZeroWidth),
             ("regex nullable unbounded captures", RegexNullableUnboundedCaptures),
-            ("regex nullable capture controls and iteration", RegexNullableCaptureControlsAndIteration),
+            (
+                "regex nullable capture controls and iteration",
+                RegexNullableCaptureControlsAndIteration
+            ),
             ("regex nullable capture host fallbacks", RegexNullableCaptureHostFallbacks),
             ("regex nullable capture VM capacity failures", RegexNullableCaptureVmCapacityFailures),
             ("regex consecutive repetitions", RegexConsecutiveRepetitions),
-            ("regex repeated capture order and lazy suffixes", RegexRepeatedCaptureOrderAndLazySuffixes),
+            (
+                "regex repeated capture order and lazy suffixes",
+                RegexRepeatedCaptureOrderAndLazySuffixes
+            ),
             ("regex repeated flags and zero-width rules", RegexRepeatedFlagsAndZeroWidthRules),
             ("regex repetition bounds and operand errors", RegexRepetitionBoundsAndOperandErrors),
             ("regex class set operations", RegexClassSetOperations),
@@ -275,19 +416,31 @@ internal static partial class Program
             ("regex class set ASCII operands", RegexClassSetAsciiOperands),
             ("regex scalar word boundaries", RegexScalarWordBoundaries),
             ("regex boundary alias truth table", RegexBoundaryAliasTruthTable),
-            ("regex boundary alias captures and zero width", RegexBoundaryAliasCapturesAndZeroWidth),
+            (
+                "regex boundary alias captures and zero width",
+                RegexBoundaryAliasCapturesAndZeroWidth
+            ),
             ("regex boundary alias lexical rules", RegexBoundaryAliasLexicalRules),
             ("regex boundary alias bounds", RegexBoundaryAliasBounds),
             ("regex boundary captures and iteration", RegexBoundaryCapturesAndIteration),
-            ("regex boundary bounds and unsupported syntax", RegexBoundaryBoundsAndUnsupportedSyntax),
+            (
+                "regex boundary bounds and unsupported syntax",
+                RegexBoundaryBoundsAndUnsupportedSyntax
+            ),
             ("regex ASCII mode classes and literals", RegexAsciiModeClassesAndLiterals),
             ("regex ASCII mode boundaries and captures", RegexAsciiModeBoundariesAndCaptures),
-            ("regex ASCII mode strict grammar and host controls", RegexAsciiModeStrictGrammarAndHostControls),
+            (
+                "regex ASCII mode strict grammar and host controls",
+                RegexAsciiModeStrictGrammarAndHostControls
+            ),
             ("regex ASCII mode bounds", RegexAsciiModeBounds),
             ("regex property category aliases", RegexPropertyCategoryAliases),
             ("regex property query grammar", RegexPropertyQueryGrammar),
             ("regex property special sets and host blocks", RegexPropertySpecialSetsAndHostBlocks),
-            ("regex property invalid and unsupported queries", RegexPropertyInvalidAndUnsupportedQueries),
+            (
+                "regex property invalid and unsupported queries",
+                RegexPropertyInvalidAndUnsupportedQueries
+            ),
             ("portable scalar function batch A", ScalarFunctionBatchA),
             ("portable scalar function batch B", ScalarFunctionBatchB),
             ("portable scalar function batch C", ScalarFunctionBatchC),
@@ -315,7 +468,10 @@ internal static partial class Program
             ("recursive filter exact owned frames", RecursiveFilterOwnedEndpoints),
             ("recursive filter owned roots and errors", RecursiveFilterOwnedRootsAndErrors),
             ("owned dynamic source fields exact owner and frame", OwnedDynamicFieldEndpoints),
-            ("owned dynamic loading exact drivers and document roots", OwnedDynamicLoadingDocuments),
+            (
+                "owned dynamic loading exact drivers and document roots",
+                OwnedDynamicLoadingDocuments
+            ),
             ("owned dynamic loading typed failures", OwnedDynamicLoadingFailures),
             ("owned runtime exact namespaces", OwnedRuntimeNamed),
             ("owned runtime strict fields and walking", OwnedRuntimeFieldAndWalk),
@@ -323,13 +479,22 @@ internal static partial class Program
             ("owned runtime checked resource admission", OwnedRuntimeLimits),
             ("basic source projection snapshot and ordinal lookup", BasicSourceProjectionSnapshot),
             ("basic source projection input refusals", BasicSourceProjectionInputRefusals),
-            ("basic source projection exact slot admission", BasicSourceProjectionExactSlotAdmission),
-            ("basic source projection legacy constructors and XML", BasicSourceProjectionLegacyRoutes),
+            (
+                "basic source projection exact slot admission",
+                BasicSourceProjectionExactSlotAdmission
+            ),
+            (
+                "basic source projection legacy constructors and XML",
+                BasicSourceProjectionLegacyRoutes
+            ),
             ("paired basic typed error chains", BasicBridgeErrorFactories),
             ("paired basic exact namespaces and fallback", BasicPairedNamespaceAndFallback),
             ("paired basic nested and identity source walks", BasicPairedNestedAndIdentity),
             ("paired basic plain absence and traversal", BasicPairedPlainAbsenceAndMalformed),
-            ("paired basic null identities and distinct roots", BasicPairedNullIdentityAndDistinctRoots),
+            (
+                "paired basic null identities and distinct roots",
+                BasicPairedNullIdentityAndDistinctRoots
+            ),
             ("paired basic flat roots and lazy access", BasicPairedFlatRootAndLazyAccess),
             ("paired full original and current phase capture", BasicFullCohortPhasesAndCapture),
             ("paired full phase typed refusal ordering", BasicFullCohortRefusals),
@@ -340,23 +505,50 @@ internal static partial class Program
             ("primary failure row lazy reached terminals", BasicPrimaryFailureReachedTerminals),
             ("primary failure row complete bounded admission", BasicPrimaryFailureBudgets),
             ("paired checked allocation controls", BasicPairedAllocationControls),
-            ("checked named input primary names and ordinals", NamedAdmissionPrimaryNamesAndOrdinals),
-            ("checked named input optional and required errors", NamedAdmissionOptionalAndRequiredFailures),
+            (
+                "checked named input primary names and ordinals",
+                NamedAdmissionPrimaryNamesAndOrdinals
+            ),
+            (
+                "checked named input optional and required errors",
+                NamedAdmissionOptionalAndRequiredFailures
+            ),
             ("checked named input supplied error ordering", NamedAdmissionSuppliedOrderFailures),
             ("checked named input catalogue refusals", NamedAdmissionCatalogueFailures),
             ("checked named input root and byte budgets", NamedAdmissionRootAndByteLimits),
-            ("checked named input repeated roots and owner keys", NamedAdmissionRepeatedRootsAndSharedInstances),
+            (
+                "checked named input repeated roots and owner keys",
+                NamedAdmissionRepeatedRootsAndSharedInstances
+            ),
             ("checked named input retained complete phases", NamedAdmissionCompletePhaseStorage),
             ("checked named input registry seed snapshots", NamedAdmissionRegistrySeedSnapshots),
             ("checked named input null argument order", NamedAdmissionNullArgumentOrder),
             ("checked named input malformed UTF16", NamedAdmissionMalformedUtf16),
-            ("checked named input once-only caller consumption", NamedAdmissionFrozenCountAndCallerErrors),
+            (
+                "checked named input once-only caller consumption",
+                NamedAdmissionFrozenCountAndCallerErrors
+            ),
             ("checked named input negative Count", NamedAdmissionNegativeCount),
-            ("JSON named admission canonical ordinals and minimal envelope", JsonAdmissionCanonicalOrderAndMinimalPolicy),
-            ("JSON named admission policy names and caller boundaries", JsonAdmissionPolicyNamesAndCallerBoundaries),
-            ("JSON named parsing one-shot reentry and cleanup", JsonAdmissionParseOneShotAndFailureCleanup),
-            ("JSON named admission concurrent parsing and binding", JsonAdmissionConcurrentParseAndBinding),
-            ("JSON named admission envelope and native capacities", JsonAdmissionEnvelopeAndNativeCapacityRefusals),
+            (
+                "JSON named admission canonical ordinals and minimal envelope",
+                JsonAdmissionCanonicalOrderAndMinimalPolicy
+            ),
+            (
+                "JSON named admission policy names and caller boundaries",
+                JsonAdmissionPolicyNamesAndCallerBoundaries
+            ),
+            (
+                "JSON named parsing one-shot reentry and cleanup",
+                JsonAdmissionParseOneShotAndFailureCleanup
+            ),
+            (
+                "JSON named admission concurrent parsing and binding",
+                JsonAdmissionConcurrentParseAndBinding
+            ),
+            (
+                "JSON named admission envelope and native capacities",
+                JsonAdmissionEnvelopeAndNativeCapacityRefusals
+            ),
         };
 
         foreach (var test in tests)
@@ -372,12 +564,17 @@ internal static partial class Program
     private static void GroupTraversal()
     {
         var root = Group(
-            Field("Company", Group(Field("Name", Scalar(FerruleValue.FromString("Ferrule"))))));
+            Field("Company", Group(Field("Name", Scalar(FerruleValue.FromString("Ferrule")))))
+        );
 
         Equal(
             FerruleValue.FromString("Ferrule"),
-            ScalarPathResolver.Resolve(root, "Company", "Name"));
-        Equal(FerruleValue.FromInt64(7), ScalarPathResolver.Resolve(Scalar(FerruleValue.FromInt64(7))));
+            ScalarPathResolver.Resolve(root, "Company", "Name")
+        );
+        Equal(
+            FerruleValue.FromInt64(7),
+            ScalarPathResolver.Resolve(Scalar(FerruleValue.FromInt64(7)))
+        );
     }
 
     private static void CopyCurrentGroup()
@@ -385,28 +582,33 @@ internal static partial class Program
         var source = Group(
             Field("Null", Scalar(FerruleValue.Null)),
             Field("Nil", Scalar(FerruleValue.XmlNil)),
-            Field("Rows", new FerruleRepeated(new[]
-            {
-                Group(Field("Value", Scalar(Text("row")))),
-            })),
-            Field("Mapped", new FerruleMappedSequence(new[]
-            {
-                Scalar(Text("mapped")),
-            })),
-            Field("Documents", new FerruleDocumentSet(new[]
-            {
-                new FerruleDocument(
-                    "logical.xml",
-                    Group(Field("Value", Scalar(Text("document")))),
-                    "/resolved/logical.xml"),
-            })));
+            Field(
+                "Rows",
+                new FerruleRepeated(new[] { Group(Field("Value", Scalar(Text("row")))) })
+            ),
+            Field("Mapped", new FerruleMappedSequence(new[] { Scalar(Text("mapped")) })),
+            Field(
+                "Documents",
+                new FerruleDocumentSet(
+                    new[]
+                    {
+                        new FerruleDocument(
+                            "logical.xml",
+                            Group(Field("Value", Scalar(Text("document")))),
+                            "/resolved/logical.xml"
+                        ),
+                    }
+                )
+            )
+        );
 
         var copy = ScopeContext.FromSource(source).CopyCurrentGroup();
 
         Equal(false, ReferenceEquals(source, copy));
         Equal(
             "Null,Nil,Rows,Mapped,Documents",
-            string.Join(',', copy.Fields.Select(field => field.Name)));
+            string.Join(',', copy.Fields.Select(field => field.Name))
+        );
         Equal(FerruleValue.Null, ScalarPathResolver.Resolve(copy, "Null"));
         Equal(FerruleValue.XmlNil, ScalarPathResolver.Resolve(copy, "Nil"));
         Equal(Text("row"), ScalarPathResolver.Resolve(copy, "Rows", "Value"));
@@ -415,72 +617,83 @@ internal static partial class Program
         Equal("logical.xml", documents.Documents[0].Path);
         Equal("/resolved/logical.xml", documents.Documents[0].ResolvedSourcePath);
 
-        var error = Error(
-            FerruleRuntimeError.CopyCurrentSourceRequiresGroup,
-            () => ScopeContext.FromSource(Scalar(Text("not a group"))).CopyCurrentGroup());
+        var error = Error(FerruleRuntimeError.CopyCurrentSourceRequiresGroup, () =>
+            ScopeContext.FromSource(Scalar(Text("not a group"))).CopyCurrentGroup()
+        );
         Equal("scalar", error.Detail);
     }
 
     private static void RepeatedFirstItem()
     {
-        var root = Group(Field(
-            "Rows",
-            new FerruleRepeated(new FerruleInstance[]
-            {
-                Group(Field("Id", Scalar(FerruleValue.FromInt64(11)))),
-                Group(Field("Id", Scalar(FerruleValue.FromInt64(22)))),
-            })));
+        var root = Group(
+            Field(
+                "Rows",
+                new FerruleRepeated(
+                    new FerruleInstance[]
+                    {
+                        Group(Field("Id", Scalar(FerruleValue.FromInt64(11)))),
+                        Group(Field("Id", Scalar(FerruleValue.FromInt64(22)))),
+                    }
+                )
+            )
+        );
 
         Equal(FerruleValue.FromInt64(11), ScalarPathResolver.Resolve(root, "Rows", "Id"));
         Equal(
             FerruleValue.Null,
-            ScalarPathResolver.Resolve(Group(Field("Rows", new FerruleRepeated([]))), "Rows", "Id"));
+            ScalarPathResolver.Resolve(Group(Field("Rows", new FerruleRepeated([]))), "Rows", "Id")
+        );
     }
 
     private static void DocumentFirstItem()
     {
-        var root = new FerruleDocumentSet(new[]
-        {
-            new FerruleDocument(
-                "first.xml",
-                Group(Field("Code", Scalar(FerruleValue.FromString("first"))))),
-            new FerruleDocument(
-                "second.xml",
-                Group(Field("Code", Scalar(FerruleValue.FromString("second"))))),
-        });
+        var root = new FerruleDocumentSet(
+            new[]
+            {
+                new FerruleDocument(
+                    "first.xml",
+                    Group(Field("Code", Scalar(FerruleValue.FromString("first"))))
+                ),
+                new FerruleDocument(
+                    "second.xml",
+                    Group(Field("Code", Scalar(FerruleValue.FromString("second"))))
+                ),
+            }
+        );
 
         Equal(FerruleValue.FromString("first"), ScalarPathResolver.Resolve(root, "Code"));
     }
 
     private static void MappedSequenceIsNotRepeated()
     {
-        var sequence = new FerruleMappedSequence(new FerruleInstance[]
-        {
-            Scalar(FerruleValue.FromBoolean(true)),
-            Scalar(FerruleValue.FromBoolean(false)),
-        });
+        var sequence = new FerruleMappedSequence(
+            new FerruleInstance[]
+            {
+                Scalar(FerruleValue.FromBoolean(true)),
+                Scalar(FerruleValue.FromBoolean(false)),
+            }
+        );
 
         Error(FerruleRuntimeError.MissingSourceField, () => ScalarPathResolver.Resolve(sequence));
     }
 
     private static void JsonMappedSequenceOutput()
     {
-        const string scalarSchema =
-            """{"name":"Value","kind":{"kind":"scalar","ty":"string"}}""";
+        const string scalarSchema = """{"name":"Value","kind":{"kind":"scalar","ty":"string"}}""";
         Equal(
             "\"mapped\"\n",
+            FerruleJson.Serialize(scalarSchema, new FerruleMappedSequence([Scalar(Text("mapped"))]))
+        );
+        var emptyRoot = Error(FerruleRuntimeError.JsonBoundary, () =>
+            FerruleJson.Serialize(scalarSchema, new FerruleMappedSequence([]))
+        );
+        Equal(true, emptyRoot.Message.Contains("one mapped item", StringComparison.Ordinal));
+        var multipleRoot = Error(FerruleRuntimeError.JsonBoundary, () =>
             FerruleJson.Serialize(
                 scalarSchema,
-                new FerruleMappedSequence([Scalar(Text("mapped"))])));
-        var emptyRoot = Error(
-            FerruleRuntimeError.JsonBoundary,
-            () => FerruleJson.Serialize(scalarSchema, new FerruleMappedSequence([])));
-        Equal(true, emptyRoot.Message.Contains("one mapped item", StringComparison.Ordinal));
-        var multipleRoot = Error(
-            FerruleRuntimeError.JsonBoundary,
-            () => FerruleJson.Serialize(
-                scalarSchema,
-                new FerruleMappedSequence([Scalar(Text("one")), Scalar(Text("two"))])));
+                new FerruleMappedSequence([Scalar(Text("one")), Scalar(Text("two"))])
+            )
+        );
         Equal(true, multipleRoot.Message.Contains("one mapped item", StringComparison.Ordinal));
 
         const string objectSchema =
@@ -492,34 +705,47 @@ internal static partial class Program
                 objectSchema,
                 Group(
                     Field("First", new FerruleMappedSequence([first])),
-                    Field("Names", new FerruleMappedSequence(
-                        [Scalar(Text("one")), Scalar(Text("two"))])))));
+                    Field(
+                        "Names",
+                        new FerruleMappedSequence([Scalar(Text("one")), Scalar(Text("two"))])
+                    )
+                )
+            )
+        );
         Equal(
             "{\n  \"Names\": []\n}\n",
             FerruleJson.Serialize(
                 objectSchema,
                 Group(
                     Field("First", new FerruleMappedSequence([])),
-                    Field("Names", new FerruleMappedSequence([])))));
-        Error(
-            FerruleRuntimeError.JsonBoundary,
-            () => FerruleJson.Serialize(
+                    Field("Names", new FerruleMappedSequence([]))
+                )
+            )
+        );
+        Error(FerruleRuntimeError.JsonBoundary, () =>
+            FerruleJson.Serialize(
                 objectSchema,
-                Group(Field("First", new FerruleMappedSequence([first, first])))));
+                Group(Field("First", new FerruleMappedSequence([first, first])))
+            )
+        );
         const string requiredObjectSchema =
             """{"name":"Root","kind":{"kind":"group","children":[{"name":"First","kind":{"kind":"group","children":[{"name":"Value","kind":{"kind":"scalar","ty":"string"}}]}}],"required":["First"]}}""";
-        Error(
-            FerruleRuntimeError.JsonBoundary,
-            () => FerruleJson.Serialize(
+        Error(FerruleRuntimeError.JsonBoundary, () =>
+            FerruleJson.Serialize(
                 requiredObjectSchema,
-                Group(Field("First", new FerruleMappedSequence([])))));
+                Group(Field("First", new FerruleMappedSequence([])))
+            )
+        );
         Equal(
             "{\n  \"Type\": \"text\",\n  \"Text\": \"value\"\n}\n",
             FerruleJson.Serialize(
                 AlternativeJsonSchema,
                 Group(
                     Field("Type", new FerruleMappedSequence([Scalar(Text("text"))])),
-                    Field("Text", Scalar(Text("value"))))));
+                    Field("Text", Scalar(Text("value")))
+                )
+            )
+        );
 
         const string constrainedArraySchema =
             """{"name":"Values","repeating":true,"item_count_range":{"minimum":1,"maximum":2},"json_unique_items":true,"kind":{"kind":"scalar","ty":"int"}}""";
@@ -530,33 +756,38 @@ internal static partial class Program
                 new FerruleMappedSequence([
                     Scalar(FerruleValue.FromInt64(1)),
                     Scalar(FerruleValue.FromInt64(2)),
-                ])));
+                ])
+            )
+        );
         Equal(
             "[\n  1\n]\n",
             FerruleJson.Serialize(
                 constrainedArraySchema,
                 new FerruleMappedSequence([
                     new FerruleMappedSequence([Scalar(FerruleValue.FromInt64(1))]),
-                ])));
-        Error(
-            FerruleRuntimeError.JsonBoundary,
-            () => FerruleJson.Serialize(
-                constrainedArraySchema,
-                new FerruleMappedSequence([])));
-        Error(
-            FerruleRuntimeError.JsonBoundary,
-            () => FerruleJson.Serialize(
+                ])
+            )
+        );
+        Error(FerruleRuntimeError.JsonBoundary, () =>
+            FerruleJson.Serialize(constrainedArraySchema, new FerruleMappedSequence([]))
+        );
+        Error(FerruleRuntimeError.JsonBoundary, () =>
+            FerruleJson.Serialize(
                 constrainedArraySchema,
                 new FerruleMappedSequence([
                     Scalar(FerruleValue.FromInt64(1)),
                     Scalar(FerruleValue.FromInt64(1)),
-                ])));
+                ])
+            )
+        );
 
         Equal(
             "[\n  \"one\",\n  \"two\"\n]\n",
             FerruleJson.Serialize(
                 scalarSchema,
-                new FerruleRepeated([Scalar(Text("one")), Scalar(Text("two"))])));
+                new FerruleRepeated([Scalar(Text("one")), Scalar(Text("two"))])
+            )
+        );
         var ordinaryInput = FerruleJson.Parse(constrainedArraySchema, "[1,2]");
         Equal(true, ordinaryInput is FerruleRepeated);
     }
@@ -572,44 +803,46 @@ internal static partial class Program
         Equal(1, one.Items.Count);
         Equal(Text("one"), ScalarPathResolver.Resolve(one.Items[0], "Name"));
 
-        var two = (FerruleRepeated)FerruleJson.Parse(
-            rowSchema,
-            "[{\"Name\":\"one\"},{\"Name\":\"two\"}]");
+        var two = (FerruleRepeated)
+            FerruleJson.Parse(rowSchema, "[{\"Name\":\"one\"},{\"Name\":\"two\"}]");
         Equal(2, two.Items.Count);
         Equal(Text("two"), ScalarPathResolver.Resolve(two.Items[1], "Name"));
         Equal(
             "[\n  {\n    \"Name\": \"one\"\n  },\n  {\n    \"Name\": \"two\"\n  }\n]\n",
-            FerruleJson.Serialize(rowSchema, two));
+            FerruleJson.Serialize(rowSchema, two)
+        );
 
         var objectInput = FerruleJson.Parse(rowSchema, "{\"Name\":\"single\"}");
         Equal(true, objectInput is FerruleGroup);
         Equal(Text("single"), ScalarPathResolver.Resolve(objectInput, "Name"));
-        Error(
-            FerruleRuntimeError.JsonBoundary,
-            () => FerruleJson.Parse(rowSchema, "[{\"Name\":\"valid\"},{}]"));
-        Error(
-            FerruleRuntimeError.JsonBoundary,
-            () => FerruleJson.Parse(rowSchema, "[{\"Name\":42}]"));
-        Error(
-            FerruleRuntimeError.JsonBoundary,
-            () => FerruleJson.Parse(rowSchema, "[[]]"));
+        Error(FerruleRuntimeError.JsonBoundary, () =>
+            FerruleJson.Parse(rowSchema, "[{\"Name\":\"valid\"},{}]")
+        );
+        Error(FerruleRuntimeError.JsonBoundary, () =>
+            FerruleJson.Parse(rowSchema, "[{\"Name\":42}]")
+        );
+        Error(FerruleRuntimeError.JsonBoundary, () => FerruleJson.Parse(rowSchema, "[[]]"));
 
         const string constrainedRowSchema =
             """{"name":"Person","kind":{"kind":"group","children":[{"name":"Age","numeric_range":{"kind":"integer","bounds":{"minimum":0,"maximum":120}},"kind":{"kind":"scalar","ty":"int"}},{"name":"Tags","repeating":true,"json_unique_items":true,"kind":{"kind":"scalar","ty":"string"}}],"required":["Age","Tags"]}}""";
-        var validRows = (FerruleRepeated)FerruleJson.Parse(
-            constrainedRowSchema,
-            "[{\"Age\":30,\"Tags\":[\"a\"]},{\"Age\":40,\"Tags\":[\"b\"]}]");
+        var validRows = (FerruleRepeated)
+            FerruleJson.Parse(
+                constrainedRowSchema,
+                "[{\"Age\":30,\"Tags\":[\"a\"]},{\"Age\":40,\"Tags\":[\"b\"]}]"
+            );
         Equal(2, validRows.Items.Count);
-        Error(
-            FerruleRuntimeError.JsonBoundary,
-            () => FerruleJson.Parse(
+        Error(FerruleRuntimeError.JsonBoundary, () =>
+            FerruleJson.Parse(
                 constrainedRowSchema,
-                "[{\"Age\":30,\"Tags\":[\"a\"]},{\"Age\":121,\"Tags\":[\"b\"]}]"));
-        Error(
-            FerruleRuntimeError.JsonBoundary,
-            () => FerruleJson.Parse(
+                "[{\"Age\":30,\"Tags\":[\"a\"]},{\"Age\":121,\"Tags\":[\"b\"]}]"
+            )
+        );
+        Error(FerruleRuntimeError.JsonBoundary, () =>
+            FerruleJson.Parse(
                 constrainedRowSchema,
-                "[{\"Age\":30,\"Tags\":[\"a\"]},{\"Age\":40,\"Tags\":[\"b\",\"b\"]}]"));
+                "[{\"Age\":30,\"Tags\":[\"a\"]},{\"Age\":40,\"Tags\":[\"b\",\"b\"]}]"
+            )
+        );
 
         const string arbitraryJsonSchema =
             """{"name":"Any","json_any":true,"kind":{"kind":"scalar","ty":"string"}}""";
@@ -622,15 +855,15 @@ internal static partial class Program
     {
         var root = Group(Field("Nested", Group(Field("Value", Scalar(FerruleValue.Null)))));
 
-        Error(
-            FerruleRuntimeError.MissingSourceField,
-            () => ScalarPathResolver.Resolve(root, "Missing"));
-        Error(
-            FerruleRuntimeError.MissingSourceField,
-            () => ScalarPathResolver.Resolve(root, "Nested"));
-        Error(
-            FerruleRuntimeError.MissingSourceField,
-            () => ScalarPathResolver.Resolve(root, "Nested", "Value", "Child"));
+        Error(FerruleRuntimeError.MissingSourceField, () =>
+            ScalarPathResolver.Resolve(root, "Missing")
+        );
+        Error(FerruleRuntimeError.MissingSourceField, () =>
+            ScalarPathResolver.Resolve(root, "Nested")
+        );
+        Error(FerruleRuntimeError.MissingSourceField, () =>
+            ScalarPathResolver.Resolve(root, "Nested", "Value", "Child")
+        );
     }
 
     private static void NullAndXmlNil()
@@ -641,7 +874,8 @@ internal static partial class Program
 
         var root = Group(
             Field("Absent", Scalar(FerruleValue.Null)),
-            Field("PresentNil", Scalar(FerruleValue.XmlNil)));
+            Field("PresentNil", Scalar(FerruleValue.XmlNil))
+        );
         Equal(FerruleValue.Null, ScalarPathResolver.Resolve(root, "Absent"));
         Equal(FerruleValue.XmlNil, ScalarPathResolver.Resolve(root, "PresentNil"));
     }
@@ -652,14 +886,17 @@ internal static partial class Program
         Equal(FerruleValue.FromDouble(0.0), FerruleValue.FromDouble(-0.0));
         Equal(
             FerruleValue.FromDouble(0.0).GetHashCode(),
-            FerruleValue.FromDouble(-0.0).GetHashCode());
+            FerruleValue.FromDouble(-0.0).GetHashCode()
+        );
         Equal(true, double.IsNaN(FerruleValue.FromDouble(double.NaN).DoubleValue));
         Equal(
             double.PositiveInfinity,
-            FerruleValue.FromDouble(double.PositiveInfinity).DoubleValue);
+            FerruleValue.FromDouble(double.PositiveInfinity).DoubleValue
+        );
         Equal(
             double.NegativeInfinity,
-            FerruleValue.FromDouble(double.NegativeInfinity).DoubleValue);
+            FerruleValue.FromDouble(double.NegativeInfinity).DoubleValue
+        );
     }
 
     private static void FieldOrder()
@@ -667,7 +904,8 @@ internal static partial class Program
         var group = Group(
             Field("third", Scalar(FerruleValue.FromInt64(3))),
             Field("first", Scalar(FerruleValue.FromInt64(1))),
-            Field("second", Scalar(FerruleValue.FromInt64(2))));
+            Field("second", Scalar(FerruleValue.FromInt64(2)))
+        );
 
         Equal("third,first,second", string.Join(',', group.Fields.Select(field => field.Name)));
     }
@@ -688,24 +926,47 @@ internal static partial class Program
         CallEquals(FerruleValue.FromBoolean(true), "is_empty", Text(string.Empty));
         CallEquals(FerruleValue.FromBoolean(true), "is_empty", FerruleValue.Null);
         CallEquals(FerruleValue.FromBoolean(true), "starts_with", Text("ferrule"), Text("fer"));
-        CallEquals(FerruleValue.FromBoolean(true), "starts_with", Text("120"), FerruleValue.FromDouble(1.0));
+        CallEquals(
+            FerruleValue.FromBoolean(true),
+            "starts_with",
+            Text("120"),
+            FerruleValue.FromDouble(1.0)
+        );
         CallEquals(FerruleValue.FromBoolean(true), "ends_with", Text("ferrule"), Text("rule"));
-        CallEquals(FerruleValue.FromBoolean(true), "ends_with", Text("120"), FerruleValue.FromDouble(20.0));
-        CallEquals(FerruleValue.FromBoolean(true), "matches", Text("Ferrule 2026"), Text(@"^ferrule\s+\d+$"), Text("i"));
-        CallEquals(FerruleValue.FromBoolean(true), "matches", FerruleValue.FromInt64(120), Text(@"2\d"));
+        CallEquals(
+            FerruleValue.FromBoolean(true),
+            "ends_with",
+            Text("120"),
+            FerruleValue.FromDouble(20.0)
+        );
+        CallEquals(
+            FerruleValue.FromBoolean(true),
+            "matches",
+            Text("Ferrule 2026"),
+            Text(@"^ferrule\s+\d+$"),
+            Text("i")
+        );
+        CallEquals(
+            FerruleValue.FromBoolean(true),
+            "matches",
+            FerruleValue.FromInt64(120),
+            Text(@"2\d")
+        );
         CallEquals(
             Text("abbraccaddabbra"),
             "replace",
             Text("abracadabra"),
             Text("a(.)"),
-            Text("a$1$1"));
+            Text("a$1$1")
+        );
         CallEquals(
             Text(@"2026:$1=\Ferrule"),
             "replace",
             Text("Ferrule 2026"),
             Text(@"(ferrule)\s+(\d+)"),
             Text(@"$2:\$1=\\$1"),
-            Text("i"));
+            Text("i")
+        );
         CallEquals(FerruleValue.FromBoolean(true), "contains", Text("ferrule"), Text("rul"));
 
         CallEquals(
@@ -713,118 +974,146 @@ internal static partial class Program
             "add",
             FerruleValue.FromInt64(20),
             FerruleValue.FromInt64(10),
-            Text(" 12 "));
+            Text(" 12 ")
+        );
         CallEquals(
             FerruleValue.FromInt64(42),
             "subtract",
             FerruleValue.FromInt64(50),
             FerruleValue.FromInt64(5),
-            FerruleValue.FromInt64(3));
+            FerruleValue.FromInt64(3)
+        );
         CallEquals(
             FerruleValue.FromDouble(1.35),
             "multiply",
             Text("0.09"),
-            FerruleValue.FromInt64(15));
+            FerruleValue.FromInt64(15)
+        );
         CallEquals(
             FerruleValue.FromDouble(2.5),
             "divide",
             FerruleValue.FromInt64(5),
-            FerruleValue.FromInt64(2));
+            FerruleValue.FromInt64(2)
+        );
 
-        CallEquals(FerruleValue.FromBoolean(true), "equal", FerruleValue.FromInt64(7), FerruleValue.FromDouble(7.0));
-        CallEquals(FerruleValue.FromBoolean(false), "not_equal", FerruleValue.Null, FerruleValue.Null);
-        CallEquals(FerruleValue.FromBoolean(true), "less_than", Text("2007"), FerruleValue.FromInt64(2008));
+        CallEquals(
+            FerruleValue.FromBoolean(true),
+            "equal",
+            FerruleValue.FromInt64(7),
+            FerruleValue.FromDouble(7.0)
+        );
+        CallEquals(
+            FerruleValue.FromBoolean(false),
+            "not_equal",
+            FerruleValue.Null,
+            FerruleValue.Null
+        );
+        CallEquals(
+            FerruleValue.FromBoolean(true),
+            "less_than",
+            Text("2007"),
+            FerruleValue.FromInt64(2008)
+        );
         CallEquals(FerruleValue.FromBoolean(true), "greater_than", Bool(true), Bool(false));
-        CallEquals(FerruleValue.FromBoolean(true), "less_or_equal", FerruleValue.FromInt64(7), FerruleValue.FromInt64(7));
-        CallEquals(FerruleValue.FromBoolean(true), "greater_or_equal", FerruleValue.FromInt64(8), FerruleValue.FromInt64(7));
+        CallEquals(
+            FerruleValue.FromBoolean(true),
+            "less_or_equal",
+            FerruleValue.FromInt64(7),
+            FerruleValue.FromInt64(7)
+        );
+        CallEquals(
+            FerruleValue.FromBoolean(true),
+            "greater_or_equal",
+            FerruleValue.FromInt64(8),
+            FerruleValue.FromInt64(7)
+        );
         CallEquals(FerruleValue.FromBoolean(true), "less_than", Text("\uE000"), Text("\U00010000"));
 
         var infinite = FerruleFunctions.Call(
             "divide",
-            new[] { FerruleValue.FromDouble(double.MaxValue), FerruleValue.FromDouble(double.Epsilon) });
+            new[]
+            {
+                FerruleValue.FromDouble(double.MaxValue),
+                FerruleValue.FromDouble(double.Epsilon),
+            }
+        );
         Equal(FerruleValueKind.Double, infinite.Kind);
         Equal(true, double.IsPositiveInfinity(infinite.DoubleValue));
     }
 
     private static void TypedFunctionErrors()
     {
-        var arity = Error(
-            FerruleRuntimeError.FunctionArity,
-            () => FerruleFunctions.Call("not", Array.Empty<FerruleValue>()));
+        var arity = Error(FerruleRuntimeError.FunctionArity, () =>
+            FerruleFunctions.Call("not", Array.Empty<FerruleValue>())
+        );
         Equal("not", arity.Function);
         Equal(1, arity.ExpectedArity);
         Equal(0, arity.ActualArity);
 
-        var type = Error(
-            FerruleRuntimeError.FunctionType,
-            () => FerruleFunctions.Call("not", new[] { FerruleValue.FromInt64(1) }));
+        var type = Error(FerruleRuntimeError.FunctionType, () =>
+            FerruleFunctions.Call("not", new[] { FerruleValue.FromInt64(1) })
+        );
         Equal("not", type.Function);
         Equal(FerruleValueKind.Int64, type.FoundKind);
-        Error(
-            FerruleRuntimeError.DivideByZero,
-            () => FerruleFunctions.Call(
+        Error(FerruleRuntimeError.DivideByZero, () =>
+            FerruleFunctions.Call(
                 "divide",
-                new[] { FerruleValue.FromInt64(1), FerruleValue.FromInt64(0) }));
-        var overflow = Error(
-            FerruleRuntimeError.IntegerOverflow,
-            () => FerruleFunctions.Call(
+                new[] { FerruleValue.FromInt64(1), FerruleValue.FromInt64(0) }
+            )
+        );
+        var overflow = Error(FerruleRuntimeError.IntegerOverflow, () =>
+            FerruleFunctions.Call(
                 "add",
-                new[] { FerruleValue.FromInt64(long.MaxValue), FerruleValue.FromInt64(1) }));
+                new[] { FerruleValue.FromInt64(long.MaxValue), FerruleValue.FromInt64(1) }
+            )
+        );
         Equal("add", overflow.Function);
 
-        var invalidRegex = Error(
-            FerruleRuntimeError.FunctionInvalidArgument,
-            () => FerruleFunctions.Call("matches", new[] { Text("value"), Text("[") }));
+        var invalidRegex = Error(FerruleRuntimeError.FunctionInvalidArgument, () =>
+            FerruleFunctions.Call("matches", new[] { Text("value"), Text("[") })
+        );
         Equal("matches", invalidRegex.Function);
-        Equal(
-            "pattern is invalid or exceeds the compiled-size limit",
-            invalidRegex.Detail);
-        var invalidRegexFlags = Error(
-            FerruleRuntimeError.FunctionInvalidArgument,
-            () => FerruleFunctions.Call(
-                "matches",
-                new[] { Text("value"), Text("value"), Text("q") }));
+        Equal("pattern is invalid or exceeds the compiled-size limit", invalidRegex.Detail);
+        var invalidRegexFlags = Error(FerruleRuntimeError.FunctionInvalidArgument, () =>
+            FerruleFunctions.Call("matches", new[] { Text("value"), Text("value"), Text("q") })
+        );
         Equal("matches", invalidRegexFlags.Function);
         Equal("flags contain an unsupported value", invalidRegexFlags.Detail);
-        var oversizedRegex = Error(
-            FerruleRuntimeError.FunctionInvalidArgument,
-            () => FerruleFunctions.Call(
+        var oversizedRegex = Error(FerruleRuntimeError.FunctionInvalidArgument, () =>
+            FerruleFunctions.Call(
                 "matches",
-                new[] { Text("value"), Text(new string('a', 64 * 1024 + 1)) }));
+                new[] { Text("value"), Text(new string('a', 64 * 1024 + 1)) }
+            )
+        );
         Equal("matches", oversizedRegex.Function);
         Equal("pattern exceeds 64 KiB", oversizedRegex.Detail);
-        var zeroWidthReplace = Error(
-            FerruleRuntimeError.FunctionInvalidArgument,
-            () => FerruleFunctions.Call(
-                "replace",
-                new[] { Text("abc"), Text("a*"), Text("x") }));
+        var zeroWidthReplace = Error(FerruleRuntimeError.FunctionInvalidArgument, () =>
+            FerruleFunctions.Call("replace", new[] { Text("abc"), Text("a*"), Text("x") })
+        );
         Equal("replace", zeroWidthReplace.Function);
         Equal("pattern matches a zero-length string", zeroWidthReplace.Detail);
-        var invalidReplacement = Error(
-            FerruleRuntimeError.FunctionInvalidArgument,
-            () => FerruleFunctions.Call(
-                "replace",
-                new[] { Text("abc"), Text("a"), Text("$x") }));
+        var invalidReplacement = Error(FerruleRuntimeError.FunctionInvalidArgument, () =>
+            FerruleFunctions.Call("replace", new[] { Text("abc"), Text("a"), Text("$x") })
+        );
         Equal("replace", invalidReplacement.Function);
-        Equal(
-            "replacement has an invalid dollar or backslash escape",
-            invalidReplacement.Detail);
-        var oversizedReplacement = Error(
-            FerruleRuntimeError.FunctionInvalidArgument,
-            () => FerruleFunctions.Call(
+        Equal("replacement has an invalid dollar or backslash escape", invalidReplacement.Detail);
+        var oversizedReplacement = Error(FerruleRuntimeError.FunctionInvalidArgument, () =>
+            FerruleFunctions.Call(
                 "replace",
-                new[] { Text("abc"), Text("a"), Text(new string('x', 64 * 1024 + 1)) }));
+                new[] { Text("abc"), Text("a"), Text(new string('x', 64 * 1024 + 1)) }
+            )
+        );
         Equal("replace", oversizedReplacement.Function);
         Equal("replacement exceeds 64 KiB", oversizedReplacement.Detail);
 
-        var unknown = Error(
-            FerruleRuntimeError.UnknownFunction,
-            () => FerruleFunctions.Call("missing", Array.Empty<FerruleValue>()));
+        var unknown = Error(FerruleRuntimeError.UnknownFunction, () =>
+            FerruleFunctions.Call("missing", Array.Empty<FerruleValue>())
+        );
         Equal("missing", unknown.Function);
 
-        var notBoolean = Error(
-            FerruleRuntimeError.NotABool,
-            () => FerruleFunctions.RequireBoolean(Text("true"), 1));
+        var notBoolean = Error(FerruleRuntimeError.NotABool, () =>
+            FerruleFunctions.RequireBoolean(Text("true"), 1)
+        );
         Equal((uint)1, notBoolean.Node);
         Equal(FerruleValueKind.String, notBoolean.FoundKind);
     }
@@ -832,25 +1121,37 @@ internal static partial class Program
     private static void ScopeSourceIteration()
     {
         var item = (string sku) => Group(Field("Sku", Scalar(Text(sku))));
-        var order = (string customer, string code, FerruleInstance[] items) => Group(
-            Field("Customer", Scalar(Text(customer))),
-            Field("OrderCode", Scalar(Text(code))),
-            Field("Items", new FerruleRepeated(items)));
-        var row = (string name, FerruleInstance[] orders) => Group(
-            Field("RootName", Scalar(Text(name))),
-            Field("Orders", new FerruleRepeated(orders)));
-        var source = new FerruleRepeated(new FerruleInstance[]
-        {
-            row("first-root", new FerruleInstance[]
+        var order = (string customer, string code, FerruleInstance[] items) =>
+            Group(
+                Field("Customer", Scalar(Text(customer))),
+                Field("OrderCode", Scalar(Text(code))),
+                Field("Items", new FerruleRepeated(items))
+            );
+        var row = (string name, FerruleInstance[] orders) =>
+            Group(
+                Field("RootName", Scalar(Text(name))),
+                Field("Orders", new FerruleRepeated(orders))
+            );
+        var source = new FerruleRepeated(
+            new FerruleInstance[]
             {
-                order("Ada", "A", new FerruleInstance[] { item("A-1"), item("A-2") }),
-                order("Lin", "B", new FerruleInstance[] { item("B-1") }),
-            }),
-            row("second-root", new FerruleInstance[]
-            {
-                order("Grace", "C", new FerruleInstance[] { item("C-1") }),
-            }),
-        });
+                row(
+                    "first-root",
+                    new FerruleInstance[]
+                    {
+                        order("Ada", "A", new FerruleInstance[] { item("A-1"), item("A-2") }),
+                        order("Lin", "B", new FerruleInstance[] { item("B-1") }),
+                    }
+                ),
+                row(
+                    "second-root",
+                    new FerruleInstance[]
+                    {
+                        order("Grace", "C", new FerruleInstance[] { item("C-1") }),
+                    }
+                ),
+            }
+        );
 
         var context = ScopeContext.FromSource(source);
         var candidates = context.IterateSource("Orders", "Items");
@@ -865,19 +1166,15 @@ internal static partial class Program
         Equal(1L, candidates[2].Position(new[] { "Missing" }));
         Equal(
             Text("Lin"),
-            candidates[2].ResolveScalarInFrame(
-                new[] { "Source", "Orders" },
-                new[] { "Customer" }));
+            candidates[2].ResolveScalarInFrame(new[] { "Source", "Orders" }, new[] { "Customer" })
+        );
         Equal(
             Text("B-1"),
-            candidates[2].ResolveScalarInFrame(
-                new[] { "Orders", "Items" },
-                new[] { "Sku" }));
-        Error(
-            FerruleRuntimeError.MissingSourceField,
-            () => candidates[2].ResolveScalarInFrame(
-                new[] { "Missing" },
-                new[] { "Customer" }));
+            candidates[2].ResolveScalarInFrame(new[] { "Orders", "Items" }, new[] { "Sku" })
+        );
+        Error(FerruleRuntimeError.MissingSourceField, () =>
+            candidates[2].ResolveScalarInFrame(new[] { "Missing" }, new[] { "Customer" })
+        );
 
         var compacted = candidates[2].WithCompactedPosition(3);
         Equal(1L, candidates[2].Position(new[] { "Items" }));
@@ -890,9 +1187,11 @@ internal static partial class Program
         Equal(1, ScopeContext.FromSource(Group()).IterateSource().Count);
         Equal(
             1,
-            ScopeContext.FromSource(new FerruleMappedSequence(new[] { item("mapped") }))
+            ScopeContext
+                .FromSource(new FerruleMappedSequence(new[] { item("mapped") }))
                 .IterateSource()
-                .Count);
+                .Count
+        );
 
         var terminal = ScopeContext
             .FromSource(Group(Field("Value", Scalar(FerruleValue.FromInt64(7)))))
@@ -907,38 +1206,51 @@ internal static partial class Program
         Equal(0, context.IterateSource("Missing").Count);
         Equal(
             0,
-            ScopeContext.FromSource(Group(Field("Empty", new FerruleRepeated([]))))
+            ScopeContext
+                .FromSource(Group(Field("Empty", new FerruleRepeated([]))))
                 .IterateSource("Empty")
-                .Count);
+                .Count
+        );
 
-        var shadow = ScopeContext.FromSource(Group(
-            Field("Options", new FerruleRepeated(new[]
-            {
-                Group(Field("Name", Scalar(Text("outer")))),
-            })),
-            Field("Rows", new FerruleRepeated(new[]
-            {
-                Group(Field("Options", new FerruleRepeated([]))),
-            }))));
+        var shadow = ScopeContext.FromSource(
+            Group(
+                Field(
+                    "Options",
+                    new FerruleRepeated(new[] { Group(Field("Name", Scalar(Text("outer")))) })
+                ),
+                Field(
+                    "Rows",
+                    new FerruleRepeated(new[] { Group(Field("Options", new FerruleRepeated([]))) })
+                )
+            )
+        );
         var shadowedItem = shadow.IterateSource("Rows")[0];
         Equal(FerruleValue.Null, shadowedItem.ResolveScalar("Options", "Name"));
-        Error(
-            FerruleRuntimeError.MissingSourceField,
-            () => shadowedItem.ResolveScalar("Missing"));
+        Error(FerruleRuntimeError.MissingSourceField, () => shadowedItem.ResolveScalar("Missing"));
 
-        var documents = ScopeContext.FromSource(new FerruleDocumentSet(new[]
-        {
-            new FerruleDocument(
-                "a.xml",
-                Group(
-                    Field("Document", Scalar(Text("a"))),
-                    Field("Rows", new FerruleRepeated(new[] { item("doc-a") })))),
-            new FerruleDocument(
-                "b.xml",
-                Group(
-                    Field("Document", Scalar(Text("b"))),
-                    Field("Rows", new FerruleRepeated(new[] { item("doc-b") })))),
-        })).IterateSource("Rows");
+        var documents = ScopeContext
+            .FromSource(
+                new FerruleDocumentSet(
+                    new[]
+                    {
+                        new FerruleDocument(
+                            "a.xml",
+                            Group(
+                                Field("Document", Scalar(Text("a"))),
+                                Field("Rows", new FerruleRepeated(new[] { item("doc-a") }))
+                            )
+                        ),
+                        new FerruleDocument(
+                            "b.xml",
+                            Group(
+                                Field("Document", Scalar(Text("b"))),
+                                Field("Rows", new FerruleRepeated(new[] { item("doc-b") }))
+                            )
+                        ),
+                    }
+                )
+            )
+            .IterateSource("Rows");
         Equal(2, documents.Count);
         Equal(Text("a"), documents[0].ResolveScalar("Document"));
         Equal(Text("doc-b"), documents[1].ResolveScalar("Rows", "Sku"));
@@ -946,19 +1258,29 @@ internal static partial class Program
 
     private static void AggregateSourceContexts()
     {
-        var contact = (string name) => Group(
-            Field("Name", Scalar(Text(name))),
-            Field("Nested", new FerruleRepeated(new[] { Scalar(Text($"nested-{name}")) })));
-        var office = (string code, params FerruleInstance[] contacts) => Group(
-            Field("Code", Scalar(Text(code))),
-            Field("Contacts", new FerruleRepeated(contacts)));
+        var contact = (string name) =>
+            Group(
+                Field("Name", Scalar(Text(name))),
+                Field("Nested", new FerruleRepeated(new[] { Scalar(Text($"nested-{name}")) }))
+            );
+        var office = (string code, params FerruleInstance[] contacts) =>
+            Group(
+                Field("Code", Scalar(Text(code))),
+                Field("Contacts", new FerruleRepeated(contacts))
+            );
         var source = Group(
             Field("Outside", Scalar(Text("outer"))),
-            Field("Offices", new FerruleRepeated(new FerruleInstance[]
-            {
-                office("A", contact("Ana"), contact("Bo")),
-                office("B", contact("Cy")),
-            })));
+            Field(
+                "Offices",
+                new FerruleRepeated(
+                    new FerruleInstance[]
+                    {
+                        office("A", contact("Ana"), contact("Bo")),
+                        office("B", contact("Cy")),
+                    }
+                )
+            )
+        );
 
         var context = ScopeContext.FromSource(source);
         var contacts = context.AggregateItems("Offices", "Contacts");
@@ -975,11 +1297,13 @@ internal static partial class Program
         Equal(0, context.AggregateItems("Missing").Count);
         Equal(0, context.AggregateItems().Count);
 
-        var rows = new FerruleRepeated(new FerruleInstance[]
-        {
-            Group(Field("Value", Scalar(FerruleValue.FromInt64(11)))),
-            Group(Field("Value", Scalar(FerruleValue.FromInt64(22)))),
-        });
+        var rows = new FerruleRepeated(
+            new FerruleInstance[]
+            {
+                Group(Field("Value", Scalar(FerruleValue.FromInt64(11)))),
+                Group(Field("Value", Scalar(FerruleValue.FromInt64(22)))),
+            }
+        );
         var rowContext = ScopeContext.FromSource(rows);
         var allRows = rowContext.AggregateItems();
         Equal(2, allRows.Count);
@@ -987,11 +1311,7 @@ internal static partial class Program
         Equal(2L, allRows[1].Position(Array.Empty<string>()));
 
         var scalarItems = ScopeContext
-            .FromSource(new FerruleRepeated(new[]
-            {
-                Scalar(Text("one")),
-                Scalar(Text("two")),
-            }))
+            .FromSource(new FerruleRepeated(new[] { Scalar(Text("one")), Scalar(Text("two")) }))
             .AggregateItems();
         Equal(Text("two"), scalarItems[1].AggregateCurrentScalar());
 
@@ -1000,11 +1320,23 @@ internal static partial class Program
         Equal(2, rowsFromCurrentItem.Count);
         Equal(FerruleValue.FromInt64(22), rowsFromCurrentItem[1].AggregateCurrentScalar("Value"));
 
-        var documents = ScopeContext.FromSource(new FerruleDocumentSet(new[]
-        {
-            new FerruleDocument("first.xml", Group(Field("Value", Scalar(Text("first"))))),
-            new FerruleDocument("second.xml", Group(Field("Value", Scalar(Text("second"))))),
-        })).AggregateItems();
+        var documents = ScopeContext
+            .FromSource(
+                new FerruleDocumentSet(
+                    new[]
+                    {
+                        new FerruleDocument(
+                            "first.xml",
+                            Group(Field("Value", Scalar(Text("first"))))
+                        ),
+                        new FerruleDocument(
+                            "second.xml",
+                            Group(Field("Value", Scalar(Text("second"))))
+                        ),
+                    }
+                )
+            )
+            .AggregateItems();
         Equal(2, documents.Count);
         Equal(Text("second"), documents[1].AggregateCurrentScalar("Value"));
     }
@@ -1017,7 +1349,9 @@ internal static partial class Program
                 FerruleAggregateOperation.Count,
                 FerruleValue.Null,
                 FerruleValue.XmlNil,
-                Text("ignored")));
+                Text("ignored")
+            )
+        );
         Equal(
             FerruleValue.FromDouble(2.5),
             Aggregate(
@@ -1027,14 +1361,18 @@ internal static partial class Program
                 Text("not numeric"),
                 FerruleValue.Null,
                 FerruleValue.XmlNil,
-                Bool(true)));
+                Bool(true)
+            )
+        );
         Equal(
             FerruleValue.FromDouble(2.5),
             Aggregate(
                 FerruleAggregateOperation.Avg,
                 FerruleValue.FromInt64(2),
                 Text("3"),
-                Text("ignored")));
+                Text("ignored")
+            )
+        );
         Equal(
             Text("a||true|2|100000000000000000000|b"),
             FerruleAggregates.Apply(
@@ -1049,12 +1387,13 @@ internal static partial class Program
                     FerruleValue.FromDouble(1e20),
                     Text("b"),
                 },
-                Text("|")));
+                Text("|")
+            )
+        );
         Equal(
             Text("ab"),
-            FerruleAggregates.Apply(
-                FerruleAggregateOperation.Join,
-                new[] { Text("a"), Text("b") }));
+            FerruleAggregates.Apply(FerruleAggregateOperation.Join, new[] { Text("a"), Text("b") })
+        );
 
         var items = new[] { Text("first"), Text("second"), Text("third") };
         Equal(
@@ -1062,29 +1401,43 @@ internal static partial class Program
             FerruleAggregates.Apply(
                 FerruleAggregateOperation.ItemAt,
                 items,
-                FerruleValue.FromDouble(1.5)));
+                FerruleValue.FromDouble(1.5)
+            )
+        );
         Equal(
             Text("third"),
             FerruleAggregates.Apply(
                 FerruleAggregateOperation.ItemAt,
                 items,
-                FerruleValue.FromDouble(2.5)));
+                FerruleValue.FromDouble(2.5)
+            )
+        );
         Equal(
             Text("second"),
-            FerruleAggregates.Apply(FerruleAggregateOperation.ItemAt, items, Text(" 2 ")));
+            FerruleAggregates.Apply(FerruleAggregateOperation.ItemAt, items, Text(" 2 "))
+        );
         Equal(
             FerruleValue.Null,
-            FerruleAggregates.Apply(FerruleAggregateOperation.ItemAt, items, Text("2.0")));
+            FerruleAggregates.Apply(FerruleAggregateOperation.ItemAt, items, Text("2.0"))
+        );
         Equal(
             FerruleValue.Null,
             FerruleAggregates.Apply(
                 FerruleAggregateOperation.ItemAt,
                 items,
-                FerruleValue.FromDouble(double.PositiveInfinity)));
+                FerruleValue.FromDouble(double.PositiveInfinity)
+            )
+        );
 
         var empty = Array.Empty<FerruleValue>();
-        Equal(FerruleValue.FromInt64(0), FerruleAggregates.Apply(FerruleAggregateOperation.Count, empty));
-        Equal(FerruleValue.FromInt64(0), FerruleAggregates.Apply(FerruleAggregateOperation.Sum, empty));
+        Equal(
+            FerruleValue.FromInt64(0),
+            FerruleAggregates.Apply(FerruleAggregateOperation.Count, empty)
+        );
+        Equal(
+            FerruleValue.FromInt64(0),
+            FerruleAggregates.Apply(FerruleAggregateOperation.Sum, empty)
+        );
         Equal(FerruleValue.Null, FerruleAggregates.Apply(FerruleAggregateOperation.Avg, empty));
         Equal(FerruleValue.Null, FerruleAggregates.Apply(FerruleAggregateOperation.Min, empty));
         Equal(FerruleValue.Null, FerruleAggregates.Apply(FerruleAggregateOperation.Max, empty));
@@ -1099,25 +1452,30 @@ internal static partial class Program
             Aggregate(
                 FerruleAggregateOperation.Sum,
                 FerruleValue.FromInt64(9_007_199_254_740_992),
-                FerruleValue.FromInt64(1)));
+                FerruleValue.FromInt64(1)
+            )
+        );
         Equal(
             FerruleValue.FromDouble(double.MaxValue),
             Aggregate(
                 FerruleAggregateOperation.Avg,
                 FerruleValue.FromDouble(double.MaxValue),
-                FerruleValue.FromDouble(double.MaxValue)));
+                FerruleValue.FromDouble(double.MaxValue)
+            )
+        );
         Equal(
             FerruleValue.FromDouble(double.MaxValue),
             Aggregate(
                 FerruleAggregateOperation.Sum,
                 FerruleValue.FromDouble(double.MaxValue),
                 FerruleValue.FromDouble(double.MaxValue),
-                FerruleValue.FromDouble(-double.MaxValue)));
+                FerruleValue.FromDouble(-double.MaxValue)
+            )
+        );
         Equal(
             FerruleValue.FromDouble(11.375),
-            Aggregate(
-                FerruleAggregateOperation.Avg,
-                13.6, 15.6, 16.2, 10.0, 7.3, 7.6, 13.6, 7.1));
+            Aggregate(FerruleAggregateOperation.Avg, 13.6, 15.6, 16.2, 10.0, 7.3, 7.6, 13.6, 7.1)
+        );
 
         var mixed = new[]
         {
@@ -1126,18 +1484,24 @@ internal static partial class Program
         };
         Equal(
             FerruleValue.FromDouble(9_007_199_254_740_992.0),
-            FerruleAggregates.Apply(FerruleAggregateOperation.Min, mixed));
+            FerruleAggregates.Apply(FerruleAggregateOperation.Min, mixed)
+        );
         Equal(
             FerruleValue.FromInt64(9_007_199_254_740_993),
-            FerruleAggregates.Apply(FerruleAggregateOperation.Max, mixed));
+            FerruleAggregates.Apply(FerruleAggregateOperation.Max, mixed)
+        );
         Equal(
             FerruleValue.FromDouble(2.5),
-            Aggregate(FerruleAggregateOperation.Min, Text("10"), Text("2.5")));
+            Aggregate(FerruleAggregateOperation.Min, Text("10"), Text("2.5"))
+        );
         Equal(
             FerruleValue.FromInt64(10),
-            Aggregate(FerruleAggregateOperation.Max, Text("10"), Text("2.5")));
+            Aggregate(FerruleAggregateOperation.Max, Text("10"), Text("2.5"))
+        );
 
-        foreach (var operation in new[] { FerruleAggregateOperation.Min, FerruleAggregateOperation.Max })
+        foreach (
+            var operation in new[] { FerruleAggregateOperation.Min, FerruleAggregateOperation.Max }
+        )
         {
             var negativeFirst = FerruleAggregates.Apply(
                 operation,
@@ -1146,10 +1510,12 @@ internal static partial class Program
                     FerruleValue.FromDouble(-0.0),
                     FerruleValue.FromDouble(0.0),
                     FerruleValue.FromInt64(0),
-                });
+                }
+            );
             Equal(
                 BitConverter.DoubleToInt64Bits(-0.0),
-                BitConverter.DoubleToInt64Bits(negativeFirst.DoubleValue));
+                BitConverter.DoubleToInt64Bits(negativeFirst.DoubleValue)
+            );
 
             var positiveFirst = FerruleAggregates.Apply(
                 operation,
@@ -1158,52 +1524,58 @@ internal static partial class Program
                     FerruleValue.FromDouble(0.0),
                     FerruleValue.FromDouble(-0.0),
                     FerruleValue.FromInt64(0),
-                });
+                }
+            );
             Equal(
                 BitConverter.DoubleToInt64Bits(0.0),
-                BitConverter.DoubleToInt64Bits(positiveFirst.DoubleValue));
+                BitConverter.DoubleToInt64Bits(positiveFirst.DoubleValue)
+            );
         }
     }
 
     private static void TypedAggregateErrors()
     {
-        var overflow = Error(
-            FerruleRuntimeError.AggregateIntegerOverflow,
-            () => Aggregate(
+        var overflow = Error(FerruleRuntimeError.AggregateIntegerOverflow, () =>
+            Aggregate(
                 FerruleAggregateOperation.Sum,
                 FerruleValue.FromInt64(long.MaxValue),
-                FerruleValue.FromInt64(1)));
+                FerruleValue.FromInt64(1)
+            )
+        );
         Equal(FerruleAggregateOperation.Sum, overflow.AggregateOperation);
 
-        foreach (var operation in new[]
+        foreach (
+            var operation in new[]
+            {
+                FerruleAggregateOperation.Sum,
+                FerruleAggregateOperation.Avg,
+                FerruleAggregateOperation.Min,
+                FerruleAggregateOperation.Max,
+            }
+        )
         {
-            FerruleAggregateOperation.Sum,
-            FerruleAggregateOperation.Avg,
-            FerruleAggregateOperation.Min,
-            FerruleAggregateOperation.Max,
-        })
-        {
-            var direct = Error(
-                FerruleRuntimeError.AggregateNonFinite,
-                () => Aggregate(operation, FerruleValue.FromDouble(double.PositiveInfinity)));
+            var direct = Error(FerruleRuntimeError.AggregateNonFinite, () =>
+                Aggregate(operation, FerruleValue.FromDouble(double.PositiveInfinity))
+            );
             Equal(operation, direct.AggregateOperation);
-            var lexical = Error(
-                FerruleRuntimeError.AggregateNonFinite,
-                () => Aggregate(operation, Text("inf")));
+            var lexical = Error(FerruleRuntimeError.AggregateNonFinite, () =>
+                Aggregate(operation, Text("inf"))
+            );
             Equal(operation, lexical.AggregateOperation);
         }
 
-        var produced = Error(
-            FerruleRuntimeError.AggregateNonFinite,
-            () => Aggregate(
+        var produced = Error(FerruleRuntimeError.AggregateNonFinite, () =>
+            Aggregate(
                 FerruleAggregateOperation.Sum,
                 FerruleValue.FromDouble(double.MaxValue),
-                FerruleValue.FromDouble(double.MaxValue)));
+                FerruleValue.FromDouble(double.MaxValue)
+            )
+        );
         Equal(FerruleAggregateOperation.Sum, produced.AggregateOperation);
 
-        var nan = Error(
-            FerruleRuntimeError.AggregateNonFinite,
-            () => Aggregate(FerruleAggregateOperation.Avg, Text("NaN")));
+        var nan = Error(FerruleRuntimeError.AggregateNonFinite, () =>
+            Aggregate(FerruleAggregateOperation.Avg, Text("NaN"))
+        );
         Equal(FerruleAggregateOperation.Avg, nan.AggregateOperation);
     }
 
@@ -1212,18 +1584,31 @@ internal static partial class Program
         Equal(-1, FerruleSequences.CompareValues(FerruleValue.Null, Text("value")));
         Equal(1, FerruleSequences.CompareValues(FerruleValue.XmlNil, FerruleValue.Null));
         Equal(null, FerruleSequences.CompareValues(FerruleValue.XmlNil, FerruleValue.XmlNil));
-        Equal(null, FerruleSequences.CompareValues(FerruleValue.FromDouble(double.NaN), FerruleValue.FromDouble(1)));
-        Equal(0, FerruleSequences.CompareValues(FerruleValue.FromDouble(-0.0), FerruleValue.FromInt64(0)));
+        Equal(
+            null,
+            FerruleSequences.CompareValues(
+                FerruleValue.FromDouble(double.NaN),
+                FerruleValue.FromDouble(1)
+            )
+        );
+        Equal(
+            0,
+            FerruleSequences.CompareValues(FerruleValue.FromDouble(-0.0), FerruleValue.FromInt64(0))
+        );
         Equal(
             1,
             FerruleSequences.CompareValues(
                 FerruleValue.FromInt64(9_007_199_254_740_993),
-                FerruleValue.FromDouble(9_007_199_254_740_992.0)));
+                FerruleValue.FromDouble(9_007_199_254_740_992.0)
+            )
+        );
         Equal(
             -1,
             FerruleSequences.CompareValues(
                 FerruleValue.FromInt64(long.MaxValue),
-                FerruleValue.FromDouble((double)long.MaxValue)));
+                FerruleValue.FromDouble((double)long.MaxValue)
+            )
+        );
         Equal(-1, FerruleSequences.CompareValues(Text("\uE000"), Text("\U00010000")));
         Equal(-1, FerruleSequences.CompareValues(Bool(false), Bool(true)));
         Equal(null, FerruleSequences.CompareValues(Text("1"), FerruleValue.FromInt64(1)));
@@ -1245,47 +1630,66 @@ internal static partial class Program
             candidates,
             new FerruleSortKey<SortCandidate>[]
             {
-                new(candidate =>
-                {
-                    evaluations.Add($"{candidate.Name}:score");
-                    return candidate.Score;
-                }, Descending: true),
+                new(
+                    candidate =>
+                    {
+                        evaluations.Add($"{candidate.Name}:score");
+                        return candidate.Score;
+                    },
+                    Descending: true
+                ),
                 new(candidate =>
                 {
                     evaluations.Add($"{candidate.Name}:tie");
                     return candidate.Tie;
                 }),
-            });
+            }
+        );
         Equal("C,E,B,F,D,A", string.Join(',', sorted.Select(candidate => candidate.Name)));
         Equal(
             "A:score,A:tie,B:score,B:tie,C:score,C:tie,D:score,D:tie,E:score,E:tie,F:score,F:tie",
-            string.Join(',', evaluations));
+            string.Join(',', evaluations)
+        );
 
         var incomparable = FerruleSequences.StableSort(
             candidates.Take(3).ToArray(),
-            new[]
-            {
-                new FerruleSortKey<SortCandidate>(
-                    _ => FerruleValue.XmlNil),
-            });
+            new[] { new FerruleSortKey<SortCandidate>(_ => FerruleValue.XmlNil) }
+        );
         Equal("A,B,C", string.Join(',', incomparable.Select(candidate => candidate.Name)));
-        Equal(0, FerruleSequences.StableSort(candidates, Array.Empty<FerruleSortKey<SortCandidate>>()).Count - candidates.Length);
+        Equal(
+            0,
+            FerruleSequences
+                .StableSort(candidates, Array.Empty<FerruleSortKey<SortCandidate>>())
+                .Count - candidates.Length
+        );
 
-        var cyclic = Enumerable.Range(0, 10)
-            .SelectMany(index => new[]
-            {
-                new SortCandidate($"two-{index}", FerruleValue.FromInt64(2), FerruleValue.Null),
-                new SortCandidate($"string-{index}", Text("incomparable"), FerruleValue.Null),
-                new SortCandidate($"one-{index}", FerruleValue.FromInt64(1), FerruleValue.Null),
-                new SortCandidate($"nan-{index}", FerruleValue.FromDouble(double.NaN), FerruleValue.Null),
-            })
+        var cyclic = Enumerable
+            .Range(0, 10)
+            .SelectMany(index =>
+                new[]
+                {
+                    new SortCandidate($"two-{index}", FerruleValue.FromInt64(2), FerruleValue.Null),
+                    new SortCandidate($"string-{index}", Text("incomparable"), FerruleValue.Null),
+                    new SortCandidate($"one-{index}", FerruleValue.FromInt64(1), FerruleValue.Null),
+                    new SortCandidate(
+                        $"nan-{index}",
+                        FerruleValue.FromDouble(double.NaN),
+                        FerruleValue.Null
+                    ),
+                }
+            )
             .ToArray();
         var total = FerruleSequences.StableSort(
             cyclic,
-            new[] { new FerruleSortKey<SortCandidate>(candidate => candidate.Score) });
-        var expected = new[] { "one", "two", "nan", "string" }
-            .SelectMany(prefix => Enumerable.Range(0, 10).Select(index => $"{prefix}-{index}"));
-        Equal(string.Join(',', expected), string.Join(',', total.Select(candidate => candidate.Name)));
+            new[] { new FerruleSortKey<SortCandidate>(candidate => candidate.Score) }
+        );
+        var expected = new[] { "one", "two", "nan", "string" }.SelectMany(prefix =>
+            Enumerable.Range(0, 10).Select(index => $"{prefix}-{index}")
+        );
+        Equal(
+            string.Join(',', expected),
+            string.Join(',', total.Select(candidate => candidate.Name))
+        );
     }
 
     private static void TypedItemCounts()
@@ -1294,27 +1698,32 @@ internal static partial class Program
         Equal(0UL, FerruleSequences.ItemCount(2, FerruleValue.FromInt64(-7)));
         Equal(2UL, FerruleSequences.ItemCount(3, FerruleValue.FromDouble(2.9)));
         Equal(0UL, FerruleSequences.ItemCount(4, FerruleValue.FromDouble(-2.9)));
-        Equal((ulong)long.MaxValue, FerruleSequences.ItemCount(5, FerruleValue.FromDouble(double.MaxValue)));
+        Equal(
+            (ulong)long.MaxValue,
+            FerruleSequences.ItemCount(5, FerruleValue.FromDouble(double.MaxValue))
+        );
         Equal(42UL, FerruleSequences.ItemCount(6, Text("  +42 ")));
 
-        var boolean = Error(
-            FerruleRuntimeError.NotAnItemCount,
-            () => FerruleSequences.ItemCount(91, Bool(true)));
+        var boolean = Error(FerruleRuntimeError.NotAnItemCount, () =>
+            FerruleSequences.ItemCount(91, Bool(true))
+        );
         Equal((uint)91, boolean.Node);
         Equal(FerruleValueKind.Bool, boolean.FoundKind);
-        foreach (var invalid in new[]
+        foreach (
+            var invalid in new[]
+            {
+                FerruleValue.Null,
+                FerruleValue.XmlNil,
+                FerruleValue.FromDouble(double.NaN),
+                FerruleValue.FromDouble(double.PositiveInfinity),
+                Text("2.0"),
+                Text(""),
+            }
+        )
         {
-            FerruleValue.Null,
-            FerruleValue.XmlNil,
-            FerruleValue.FromDouble(double.NaN),
-            FerruleValue.FromDouble(double.PositiveInfinity),
-            Text("2.0"),
-            Text(""),
-        })
-        {
-            var exception = Error(
-                FerruleRuntimeError.NotAnItemCount,
-                () => FerruleSequences.ItemCount(92, invalid));
+            var exception = Error(FerruleRuntimeError.NotAnItemCount, () =>
+                FerruleSequences.ItemCount(92, invalid)
+            );
             Equal((uint)92, exception.Node);
             Equal(invalid.Kind, exception.FoundKind);
         }
@@ -1336,12 +1745,14 @@ internal static partial class Program
             "3,4,5",
             items,
             FerruleSequenceWindow.SkipFirst(2),
-            FerruleSequenceWindow.First(3));
+            FerruleSequenceWindow.First(3)
+        );
         WindowEquals(
             "3",
             items,
             FerruleSequenceWindow.First(3),
-            FerruleSequenceWindow.SkipFirst(2));
+            FerruleSequenceWindow.SkipFirst(2)
+        );
         WindowEquals(string.Empty, Array.Empty<int>(), FerruleSequenceWindow.Last(2));
     }
 
@@ -1349,37 +1760,63 @@ internal static partial class Program
     {
         Equal(
             "a||b|",
-            string.Join('|', FerruleSequences.Tokenize(Text("a,,b,"), Text(",")).Select(ValueText)));
+            string.Join('|', FerruleSequences.Tokenize(Text("a,,b,"), Text(",")).Select(ValueText))
+        );
         Equal(
             string.Empty,
-            string.Join('|', FerruleSequences.TokenizeByLength(Text(string.Empty), FerruleValue.FromInt64(2))));
+            string.Join(
+                '|',
+                FerruleSequences.TokenizeByLength(Text(string.Empty), FerruleValue.FromInt64(2))
+            )
+        );
         Equal(
             "aé|🙂z",
-            string.Join('|', FerruleSequences.TokenizeByLength(Text("aé🙂z"), FerruleValue.FromDouble(2.9)).Select(ValueText)));
+            string.Join(
+                '|',
+                FerruleSequences
+                    .TokenizeByLength(Text("aé🙂z"), FerruleValue.FromDouble(2.9))
+                    .Select(ValueText)
+            )
+        );
         Equal(
             "Alpha|GAMMA",
-            string.Join('|', FerruleSequences.TokenizeRegex(
-                Text("Alpha--beta---GAMMA"),
-                Text("-+ BETA -+"),
-                Text("ix")).Select(ValueText)));
+            string.Join(
+                '|',
+                FerruleSequences
+                    .TokenizeRegex(Text("Alpha--beta---GAMMA"), Text("-+ BETA -+"), Text("ix"))
+                    .Select(ValueText)
+            )
+        );
         Equal(
             "|a|",
-            string.Join('|', FerruleSequences.TokenizeRegex(
-                Text("--a--"),
-                Text("-+"),
-                null).Select(ValueText)));
-        Equal(
-            0,
-            FerruleSequences.TokenizeRegex(Text(string.Empty), Text(","), null).Count);
+            string.Join(
+                '|',
+                FerruleSequences.TokenizeRegex(Text("--a--"), Text("-+"), null).Select(ValueText)
+            )
+        );
+        Equal(0, FerruleSequences.TokenizeRegex(Text(string.Empty), Text(","), null).Count);
         Equal(
             "1,2,3",
-            string.Join(',', FerruleSequences.GenerateRange(null, FerruleValue.FromInt64(3)).Select(ValueText)));
+            string.Join(
+                ',',
+                FerruleSequences.GenerateRange(null, FerruleValue.FromInt64(3)).Select(ValueText)
+            )
+        );
         Equal(
             "-2,-1,0",
-            string.Join(',', FerruleSequences.GenerateRange(Text("-2.0"), FerruleValue.FromDouble(0.0)).Select(ValueText)));
+            string.Join(
+                ',',
+                FerruleSequences
+                    .GenerateRange(Text("-2.0"), FerruleValue.FromDouble(0.0))
+                    .Select(ValueText)
+            )
+        );
         Equal(
             0,
-            FerruleSequences.GenerateRange(FerruleValue.FromInt64(3), FerruleValue.FromInt64(2)).Count);
+            FerruleSequences
+                .GenerateRange(FerruleValue.FromInt64(3), FerruleValue.FromInt64(2))
+                .Count
+        );
     }
 
     private static void GeneratedSequenceContexts()
@@ -1411,45 +1848,43 @@ internal static partial class Program
 
     private static void TypedGeneratedSequenceErrors()
     {
-        var wrongType = Error(
-            FerruleRuntimeError.FunctionType,
-            () => FerruleSequences.Tokenize(FerruleValue.XmlNil, Text(",")));
+        var wrongType = Error(FerruleRuntimeError.FunctionType, () =>
+            FerruleSequences.Tokenize(FerruleValue.XmlNil, Text(","))
+        );
         Equal("tokenize", wrongType.Function);
         Equal(FerruleValueKind.XmlNil, wrongType.FoundKind);
 
-        var delimiter = Error(
-            FerruleRuntimeError.FunctionInvalidArgument,
-            () => FerruleSequences.Tokenize(Text("a"), Text(string.Empty)));
+        var delimiter = Error(FerruleRuntimeError.FunctionInvalidArgument, () =>
+            FerruleSequences.Tokenize(Text("a"), Text(string.Empty))
+        );
         Equal("requires a non-empty delimiter", delimiter.Detail);
-        Error(
-            FerruleRuntimeError.FunctionInvalidArgument,
-            () => FerruleSequences.TokenizeByLength(Text("abc"), Text("2.0")));
+        Error(FerruleRuntimeError.FunctionInvalidArgument, () =>
+            FerruleSequences.TokenizeByLength(Text("abc"), Text("2.0"))
+        );
 
-        var regexType = Error(
-            FerruleRuntimeError.FunctionType,
-            () => FerruleSequences.TokenizeRegex(FerruleValue.XmlNil, Text(","), null));
+        var regexType = Error(FerruleRuntimeError.FunctionType, () =>
+            FerruleSequences.TokenizeRegex(FerruleValue.XmlNil, Text(","), null)
+        );
         Equal("tokenize-regexp", regexType.Function);
-        Error(
-            FerruleRuntimeError.InvalidTokenizeRegexFlags,
-            () => FerruleSequences.TokenizeRegex(Text("abc"), Text("a"), Text("q")));
-        Error(
-            FerruleRuntimeError.InvalidTokenizeRegex,
-            () => FerruleSequences.TokenizeRegex(Text("abc"), Text("("), null));
-        Error(
-            FerruleRuntimeError.ZeroWidthTokenizeRegex,
-            () => FerruleSequences.TokenizeRegex(Text("abc"), Text(@"\b"), null));
-        Error(
-            FerruleRuntimeError.TokenizeRegexPatternTooLarge,
-            () => FerruleSequences.TokenizeRegex(
-                Text("abc"),
-                Text(new string('a', 64 * 1024 + 1)),
-                null));
+        Error(FerruleRuntimeError.InvalidTokenizeRegexFlags, () =>
+            FerruleSequences.TokenizeRegex(Text("abc"), Text("a"), Text("q"))
+        );
+        Error(FerruleRuntimeError.InvalidTokenizeRegex, () =>
+            FerruleSequences.TokenizeRegex(Text("abc"), Text("("), null)
+        );
+        Error(FerruleRuntimeError.ZeroWidthTokenizeRegex, () =>
+            FerruleSequences.TokenizeRegex(Text("abc"), Text(@"\b"), null)
+        );
+        Error(FerruleRuntimeError.TokenizeRegexPatternTooLarge, () =>
+            FerruleSequences.TokenizeRegex(Text("abc"), Text(new string('a', 64 * 1024 + 1)), null)
+        );
 
-        var tooLarge = Error(
-            FerruleRuntimeError.GeneratedSequenceTooLarge,
-            () => FerruleSequences.GenerateRange(
+        var tooLarge = Error(FerruleRuntimeError.GeneratedSequenceTooLarge, () =>
+            FerruleSequences.GenerateRange(
                 FerruleValue.FromInt64(long.MinValue),
-                FerruleValue.FromInt64(long.MaxValue)));
+                FerruleValue.FromInt64(long.MaxValue)
+            )
+        );
         Equal((UInt128)ulong.MaxValue + 1, tooLarge.RequestedItems);
         Equal((UInt128)FerruleSequences.MaximumGeneratedSequenceItems, tooLarge.MaximumItems);
     }
@@ -1459,24 +1894,24 @@ internal static partial class Program
         static FerruleInstance DirectoryNode(
             string name,
             IReadOnlyList<string> files,
-            IReadOnlyList<FerruleInstance> children) => Group(
+            IReadOnlyList<FerruleInstance> children
+        ) =>
+            Group(
                 Field("name", Scalar(Text(name))),
                 Field(
                     "file",
-                    new FerruleRepeated(files.Select(file =>
-                        Group(Field("name", Scalar(Text(file))))))),
-                Field("directory", new FerruleRepeated(children)));
+                    new FerruleRepeated(
+                        files.Select(file => Group(Field("name", Scalar(Text(file)))))
+                    )
+                ),
+                Field("directory", new FerruleRepeated(children))
+            );
 
         var source = DirectoryNode(
             "root",
             new[] { "top.txt", "second.txt" },
-            new[]
-            {
-                DirectoryNode(
-                    "child",
-                    new[] { "nested.txt" },
-                    Array.Empty<FerruleInstance>()),
-            });
+            new[] { DirectoryNode("child", new[] { "nested.txt" }, Array.Empty<FerruleInstance>()) }
+        );
         var values = FerruleSequences.RecursiveCollect(
             ScopeContext.FromSource(source),
             Array.Empty<string>(),
@@ -1485,7 +1920,8 @@ internal static partial class Program
             new[] { "file" },
             new[] { "name" },
             string.Empty,
-            "\\");
+            "\\"
+        );
 
         Equal(3, values.Count);
         Equal(Text("\\root\\top.txt"), values[0]);
@@ -1493,18 +1929,21 @@ internal static partial class Program
         Equal(Text("\\root\\child\\nested.txt"), values[2]);
         Equal(string.Empty, FerruleSequences.RecursiveCollectArgumentText(FerruleValue.Null));
         Equal("false", FerruleSequences.RecursiveCollectArgumentText(Bool(false)));
-        Error(
-            FerruleRuntimeError.FunctionType,
-            () => FerruleSequences.RecursiveCollectArgumentText(FerruleValue.XmlNil));
-        Throws<ArgumentNullException>(() => FerruleSequences.RecursiveCollect(
-            ScopeContext.FromSource(source),
-            new string[] { null! },
-            new[] { "directory" },
-            new[] { "name" },
-            new[] { "file" },
-            new[] { "name" },
-            string.Empty,
-            "\\"));
+        Error(FerruleRuntimeError.FunctionType, () =>
+            FerruleSequences.RecursiveCollectArgumentText(FerruleValue.XmlNil)
+        );
+        Throws<ArgumentNullException>(() =>
+            FerruleSequences.RecursiveCollect(
+                ScopeContext.FromSource(source),
+                new string[] { null! },
+                new[] { "directory" },
+                new[] { "name" },
+                new[] { "file" },
+                new[] { "name" },
+                string.Empty,
+                "\\"
+            )
+        );
     }
 
     private static string ValueText(FerruleValue value) => value.ToString();
@@ -1512,26 +1951,24 @@ internal static partial class Program
     private static void WindowEquals(
         string expected,
         IReadOnlyList<int> items,
-        params FerruleSequenceWindow[] windows) =>
-        Equal(expected, string.Join(',', FerruleSequences.ApplyWindows(items, windows)));
+        params FerruleSequenceWindow[] windows
+    ) => Equal(expected, string.Join(',', FerruleSequences.ApplyWindows(items, windows)));
 
     private static FerruleValue Aggregate(
         FerruleAggregateOperation operation,
-        params FerruleValue[] values) =>
-        FerruleAggregates.Apply(operation, values);
+        params FerruleValue[] values
+    ) => FerruleAggregates.Apply(operation, values);
 
     private static FerruleValue Aggregate(
         FerruleAggregateOperation operation,
-        params double[] values) =>
-        FerruleAggregates.Apply(
-            operation,
-            values.Select(FerruleValue.FromDouble).ToArray());
+        params double[] values
+    ) => FerruleAggregates.Apply(operation, values.Select(FerruleValue.FromDouble).ToArray());
 
     private static void CallEquals(
         FerruleValue expected,
         string function,
-        params FerruleValue[] arguments) =>
-        Equal(expected, FerruleFunctions.Call(function, arguments));
+        params FerruleValue[] arguments
+    ) => Equal(expected, FerruleFunctions.Call(function, arguments));
 
     private static FerruleValue Bool(bool value) => FerruleValue.FromBoolean(value);
 
@@ -1589,20 +2026,18 @@ internal static partial class Program
         }
     }
 
-    private sealed record SortCandidate(
-        string Name,
-        FerruleValue Score,
-        FerruleValue Tie);
+    private sealed record SortCandidate(string Name, FerruleValue Score, FerruleValue Tie);
 
     private sealed class FirstOnlyValues : IReadOnlyList<FerruleValue>
     {
         public int Count => 2;
 
-        public FerruleValue this[int index] => index switch
-        {
-            0 => Text("first"),
-            _ => throw new InvalidOperationException("lazy enumeration read a later value"),
-        };
+        public FerruleValue this[int index] =>
+            index switch
+            {
+                0 => Text("first"),
+                _ => throw new InvalidOperationException("lazy enumeration read a later value"),
+            };
 
         public IEnumerator<FerruleValue> GetEnumerator()
         {

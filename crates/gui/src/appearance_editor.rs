@@ -250,6 +250,24 @@ fn show_wires(
                 }
             });
     });
+    let mut nodes = wire.avoid_nodes();
+    if ui
+        .checkbox(&mut nodes, "Avoid nodes")
+        .on_hover_text("Route connections around intervening node cards.")
+        .changed()
+    {
+        wire.set_avoid_nodes(nodes);
+    }
+    let mut avoid = wire.avoid_other_wires();
+    if ui
+        .checkbox(&mut avoid, "Avoid other wires")
+        .on_hover_text(
+            "Give wires separate paths where space permits. Wires still meet at shared pins.",
+        )
+        .changed()
+    {
+        wire.set_avoid_other_wires(avoid);
+    }
     appearance.set_wire(wire);
 }
 

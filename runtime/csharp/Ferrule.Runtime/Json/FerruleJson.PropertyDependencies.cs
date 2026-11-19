@@ -12,22 +12,27 @@ public static partial class FerruleJson
     private static IReadOnlyList<JsonPropertyDependency> ReadJsonPropertyDependencies(
         string name,
         JsonElement element,
-        bool isGroup)
+        bool isGroup
+    )
     {
         JsonElement? declaredDependencies = null;
         foreach (var property in element.EnumerateObject())
         {
-            if (!string.Equals(
+            if (
+                !string.Equals(
                     property.Name,
                     "json_property_dependencies",
-                    StringComparison.Ordinal))
+                    StringComparison.Ordinal
+                )
+            )
             {
                 continue;
             }
             if (declaredDependencies is not null)
             {
                 throw Boundary(
-                    $"Embedded JSON schema node '{name}' has duplicate JSON property-dependency metadata.");
+                    $"Embedded JSON schema node '{name}' has duplicate JSON property-dependency metadata."
+                );
             }
             declaredDependencies = property.Value;
         }
@@ -38,13 +43,15 @@ public static partial class FerruleJson
         if (!isGroup)
         {
             throw Boundary(
-                $"Embedded JSON schema node '{name}' has JSON property dependencies without an object domain.");
+                $"Embedded JSON schema node '{name}' has JSON property dependencies without an object domain."
+            );
         }
         RequireKind(
             dependenciesElement,
             JsonValueKind.Object,
             $"schema node '{name}' JSON property dependencies",
-            "object");
+            "object"
+        );
 
         var dependencies = new List<JsonPropertyDependency>();
         var triggers = new HashSet<string>(StringComparer.Ordinal);
@@ -56,25 +63,31 @@ public static partial class FerruleJson
             if (!triggers.Add(property.Name))
             {
                 throw Boundary(
-                    $"Embedded JSON schema node '{name}' has a duplicate JSON property-dependency trigger.");
+                    $"Embedded JSON schema node '{name}' has a duplicate JSON property-dependency trigger."
+                );
             }
-            if (previousTrigger is not null &&
-                CompareUtf8Ordinal(previousTrigger, property.Name) >= 0)
+            if (
+                previousTrigger is not null
+                && CompareUtf8Ordinal(previousTrigger, property.Name) >= 0
+            )
             {
                 throw Boundary(
-                    $"Embedded JSON schema node '{name}' has noncanonical JSON property-dependency trigger order.");
+                    $"Embedded JSON schema node '{name}' has noncanonical JSON property-dependency trigger order."
+                );
             }
             if (dependencies.Count == MaximumJsonPropertyDependencyTriggers)
             {
                 throw Boundary(
-                    $"Embedded JSON schema node '{name}' has more than {MaximumJsonPropertyDependencyTriggers} JSON property-dependency triggers.");
+                    $"Embedded JSON schema node '{name}' has more than {MaximumJsonPropertyDependencyTriggers} JSON property-dependency triggers."
+                );
             }
             nameBytes = checked(nameBytes + Encoding.UTF8.GetByteCount(property.Name));
             RequireKind(
                 property.Value,
                 JsonValueKind.Array,
                 $"schema node '{name}' dependency for '{property.Name}'",
-                "array");
+                "array"
+            );
 
             var required = new List<string>();
             string? previous = null;
@@ -83,32 +96,35 @@ public static partial class FerruleJson
                 if (requiredElement.ValueKind != JsonValueKind.String)
                 {
                     throw Boundary(
-                        $"Embedded JSON schema node '{name}' dependency for '{property.Name}' must contain strings.");
+                        $"Embedded JSON schema node '{name}' dependency for '{property.Name}' must contain strings."
+                    );
                 }
                 var requiredName = requiredElement.GetString() ?? string.Empty;
                 if (string.Equals(requiredName, property.Name, StringComparison.Ordinal))
                 {
                     throw Boundary(
-                        $"Embedded JSON schema node '{name}' dependency for '{property.Name}' cannot require itself.");
+                        $"Embedded JSON schema node '{name}' dependency for '{property.Name}' cannot require itself."
+                    );
                 }
-                if (previous is not null &&
-                    CompareUtf8Ordinal(previous, requiredName) >= 0)
+                if (previous is not null && CompareUtf8Ordinal(previous, requiredName) >= 0)
                 {
                     throw Boundary(
-                        $"Embedded JSON schema node '{name}' dependency for '{property.Name}' has duplicate or noncanonical required properties.");
+                        $"Embedded JSON schema node '{name}' dependency for '{property.Name}' has duplicate or noncanonical required properties."
+                    );
                 }
                 edges = checked(edges + 1);
                 if (edges > MaximumJsonPropertyDependencyEdges)
                 {
                     throw Boundary(
-                        $"Embedded JSON schema node '{name}' has more than {MaximumJsonPropertyDependencyEdges} JSON property-dependency edges.");
+                        $"Embedded JSON schema node '{name}' has more than {MaximumJsonPropertyDependencyEdges} JSON property-dependency edges."
+                    );
                 }
-                nameBytes = checked(
-                    nameBytes + Encoding.UTF8.GetByteCount(requiredName));
+                nameBytes = checked(nameBytes + Encoding.UTF8.GetByteCount(requiredName));
                 if (nameBytes > MaximumJsonPropertyDependencyNameBytes)
                 {
                     throw Boundary(
-                        $"Embedded JSON schema node '{name}' JSON property-dependency names exceed {MaximumJsonPropertyDependencyNameBytes} UTF-8 bytes.");
+                        $"Embedded JSON schema node '{name}' JSON property-dependency names exceed {MaximumJsonPropertyDependencyNameBytes} UTF-8 bytes."
+                    );
                 }
                 required.Add(requiredName);
                 previous = requiredName;
@@ -116,7 +132,8 @@ public static partial class FerruleJson
             if (required.Count == 0)
             {
                 throw Boundary(
-                    $"Embedded JSON schema node '{name}' dependency for '{property.Name}' must require at least one property.");
+                    $"Embedded JSON schema node '{name}' dependency for '{property.Name}' must require at least one property."
+                );
             }
             dependencies.Add(new JsonPropertyDependency(property.Name, required));
             previousTrigger = property.Name;
@@ -124,7 +141,8 @@ public static partial class FerruleJson
         if (dependencies.Count == 0)
         {
             throw Boundary(
-                $"Embedded JSON schema node '{name}' has empty JSON property-dependency metadata.");
+                $"Embedded JSON schema node '{name}' has empty JSON property-dependency metadata."
+            );
         }
         return dependencies;
     }
@@ -143,7 +161,8 @@ public static partial class FerruleJson
         JsonSchemaNode? dynamic,
         IReadOnlyList<string> required,
         IReadOnlyList<JsonAlternative> alternatives,
-        JsonPropertyCountRange? propertyCountRange)
+        JsonPropertyCountRange? propertyCountRange
+    )
     {
         if (dependencies.Count == 0)
         {
@@ -151,41 +170,51 @@ public static partial class FerruleJson
         }
 
         var unconditional = DependencyClosure(dependencies, required);
-        if (dynamic is null &&
-            unconditional.Any(requiredName =>
-                !children.Any(child => string.Equals(
-                    child.Name,
-                    requiredName,
-                    StringComparison.Ordinal))))
+        if (
+            dynamic is null
+            && unconditional.Any(requiredName =>
+                !children.Any(child =>
+                    string.Equals(child.Name, requiredName, StringComparison.Ordinal)
+                )
+            )
+        )
         {
             throw Boundary(
-                $"Embedded JSON schema node '{name}' cannot satisfy its JSON property dependencies.");
+                $"Embedded JSON schema node '{name}' cannot satisfy its JSON property dependencies."
+            );
         }
 
-        if (propertyCountRange?.Maximum is { } maximum &&
-            (ulong)unconditional.Count > maximum)
+        if (propertyCountRange?.Maximum is { } maximum && (ulong)unconditional.Count > maximum)
         {
             throw Boundary(
-                $"Embedded JSON schema node '{name}' cannot satisfy its JSON property dependencies within its property-count range.");
+                $"Embedded JSON schema node '{name}' cannot satisfy its JSON property dependencies within its property-count range."
+            );
         }
 
         foreach (var alternative in alternatives)
         {
-            var initial = required.Concat(alternative.Required).Distinct(
-                StringComparer.Ordinal).ToArray();
+            var initial = required
+                .Concat(alternative.Required)
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
             var closure = DependencyClosure(dependencies, initial);
-            if (closure.Any(requiredName =>
-                    !alternative.Members.Contains(requiredName, StringComparer.Ordinal)))
+            if (
+                closure.Any(requiredName =>
+                    !alternative.Members.Contains(requiredName, StringComparer.Ordinal)
+                )
+            )
             {
                 throw Boundary(
-                    $"Embedded JSON schema node '{name}' has an alternative that cannot satisfy its JSON property dependencies.");
+                    $"Embedded JSON schema node '{name}' has an alternative that cannot satisfy its JSON property dependencies."
+                );
             }
         }
     }
 
     private static HashSet<string> DependencyClosure(
         IReadOnlyList<JsonPropertyDependency> dependencies,
-        IReadOnlyList<string> initial)
+        IReadOnlyList<string> initial
+    )
     {
         var closure = new HashSet<string>(initial, StringComparer.Ordinal);
         var changed = true;
@@ -209,7 +238,8 @@ public static partial class FerruleJson
 
     private static void ValidatePropertyDependencies(
         JsonSchemaNode schema,
-        IReadOnlyList<JsonProperty> properties)
+        IReadOnlyList<JsonProperty> properties
+    )
     {
         if (schema.PropertyDependencies.Count == 0)
         {
@@ -217,13 +247,15 @@ public static partial class FerruleJson
         }
         var present = new HashSet<string>(
             properties.Select(property => property.Name),
-            StringComparer.Ordinal);
+            StringComparer.Ordinal
+        );
         ValidatePropertyDependencies(schema, present);
     }
 
     private static void ValidateOutputPropertyDependencies(
         JsonSchemaNode schema,
-        FerruleGroup group)
+        FerruleGroup group
+    )
     {
         if (schema.PropertyDependencies.Count == 0)
         {
@@ -246,8 +278,7 @@ public static partial class FerruleJson
         {
             foreach (var child in schema.Children)
             {
-                if (group.TryGetField(child.Name, out var value) &&
-                    !BoundaryAbsence(child, value))
+                if (group.TryGetField(child.Name, out var value) && !BoundaryAbsence(child, value))
                 {
                     present.Add(child.Name);
                 }
@@ -259,7 +290,8 @@ public static partial class FerruleJson
 
     private static void ValidatePropertyDependencies(
         JsonSchemaNode schema,
-        IReadOnlySet<string> present)
+        IReadOnlySet<string> present
+    )
     {
         foreach (var dependency in schema.PropertyDependencies)
         {
@@ -272,13 +304,12 @@ public static partial class FerruleJson
                 if (!present.Contains(requiredName))
                 {
                     throw Boundary(
-                        $"JSON object '{schema.Name}' property '{dependency.Trigger}' requires property '{requiredName}'.");
+                        $"JSON object '{schema.Name}' property '{dependency.Trigger}' requires property '{requiredName}'."
+                    );
                 }
             }
         }
     }
 
-    private sealed record JsonPropertyDependency(
-        string Trigger,
-        IReadOnlyList<string> Required);
+    private sealed record JsonPropertyDependency(string Trigger, IReadOnlyList<string> Required);
 }

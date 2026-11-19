@@ -32,6 +32,7 @@ matrix.
 | --- | --- |
 | Create a visual mapping, including a flat worksheet table | [Your first mapping](docs/getting-started.md) |
 | Run or validate a saved project | [Quick Start](#quick-start) |
+| Map a warehouse order or shipment confirmation with X12 | [940 and 945 examples](examples/warehouse-x12/) |
 | Connect and edit mapping stages | [Mapping pipelines](docs/mapping-pipelines.md) |
 | Import/export an existing design with explicit limits | [`.mfd` interoperability](docs/mfd-interop.md) |
 | Embed a generated Rust or C# mapping | [Code generation](docs/code-generation.md) |

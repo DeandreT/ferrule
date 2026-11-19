@@ -102,9 +102,7 @@ public static partial class FerruleFunctions
     private static string NumericEdifactZone(string zone)
     {
         const string function = "edifact_to_datetime";
-        if (zone.Length != 5 ||
-            zone[0] is not ('+' or '-') ||
-            !zone[1..].All(IsAsciiDigit))
+        if (zone.Length != 5 || zone[0] is not ('+' or '-') || !zone[1..].All(IsAsciiDigit))
         {
             throw InvalidArgument(function, EdifactDateTimeInvalidDetail);
         }

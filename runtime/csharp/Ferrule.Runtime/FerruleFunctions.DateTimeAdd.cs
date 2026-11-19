@@ -28,9 +28,7 @@ public static partial class FerruleFunctions
         private int _fractionDigits;
         private string? _timezone;
 
-        private DateTimeAddValue()
-        {
-        }
+        private DateTimeAddValue() { }
 
         public static DateTimeAddValue Parse(string value)
         {
@@ -46,7 +44,8 @@ public static partial class FerruleFunctions
                 (time, timezone) = SplitIsoTimezone(
                     value[(separator + 1)..],
                     DateTimeAddFunction,
-                    DateTimeAddInvalidDetail);
+                    DateTimeAddInvalidDetail
+                );
             }
             else
             {
@@ -54,13 +53,15 @@ public static partial class FerruleFunctions
                 (date, timezone) = SplitIsoTimezone(
                     value,
                     DateTimeAddFunction,
-                    DateTimeAddInvalidDetail);
+                    DateTimeAddInvalidDetail
+                );
                 time = "00:00:00";
             }
 
             ValidateIsoDate(date, DateTimeAddFunction, DateTimeAddInvalidDetail);
-            var endOfDay = kind == DateTimeAddTemporalKind.DateTime &&
-                time.StartsWith("24:", StringComparison.Ordinal);
+            var endOfDay =
+                kind == DateTimeAddTemporalKind.DateTime
+                && time.StartsWith("24:", StringComparison.Ordinal);
             if (endOfDay)
             {
                 var normalized = "00" + time[2..];
@@ -68,15 +69,10 @@ public static partial class FerruleFunctions
                 var minute = time[3..5];
                 var secondPart = time[6..];
                 var fractionSeparator = secondPart.IndexOf('.');
-                var second = fractionSeparator >= 0
-                    ? secondPart[..fractionSeparator]
-                    : secondPart;
-                var fraction = fractionSeparator >= 0
-                    ? secondPart[(fractionSeparator + 1)..]
-                    : string.Empty;
-                if (minute != "00" ||
-                    second != "00" ||
-                    ContainsNonzeroDigit(fraction))
+                var second = fractionSeparator >= 0 ? secondPart[..fractionSeparator] : secondPart;
+                var fraction =
+                    fractionSeparator >= 0 ? secondPart[(fractionSeparator + 1)..] : string.Empty;
+                if (minute != "00" || second != "00" || ContainsNonzeroDigit(fraction))
                 {
                     throw DateTimeAddInvalid();
                 }
@@ -87,11 +83,14 @@ public static partial class FerruleFunctions
             }
 
             var yearEnd = date.Length - 6;
-            if (!long.TryParse(
+            if (
+                !long.TryParse(
                     date[..yearEnd],
                     NumberStyles.AllowLeadingSign,
                     CultureInfo.InvariantCulture,
-                    out var year))
+                    out var year
+                )
+            )
             {
                 throw DateTimeAddInvalid();
             }
@@ -129,9 +128,7 @@ public static partial class FerruleFunctions
         {
             try
             {
-                var signedMonths = duration.Negative
-                    ? checked(-duration.Months)
-                    : duration.Months;
+                var signedMonths = duration.Negative ? checked(-duration.Months) : duration.Months;
                 AddMonths(signedMonths);
 
                 var digits = Math.Max(_fractionDigits, duration.FractionDigits);
@@ -140,16 +137,18 @@ public static partial class FerruleFunctions
                 var durationScale = DateTimeAddPowerOfTen(duration.FractionDigits);
                 var ordinal = DateTimeAddDateOrdinal(_year, _month, _day);
                 var seconds = checked(
-                    checked(ordinal * 86_400) +
-                    checked((Int128)_hour * 3_600) +
-                    checked((Int128)_minute * 60) +
-                    _second);
+                    checked(ordinal * 86_400)
+                    + checked((Int128)_hour * 3_600)
+                    + checked((Int128)_minute * 60)
+                    + _second
+                );
                 var baseValue = checked(
-                    checked(seconds * scale) +
-                    checked(_fraction * (scale / currentScale)));
+                    checked(seconds * scale) + checked(_fraction * (scale / currentScale))
+                );
                 var delta = checked(
-                    checked(duration.Seconds * scale) +
-                    checked(duration.Fraction * (scale / durationScale)));
+                    checked(duration.Seconds * scale)
+                    + checked(duration.Fraction * (scale / durationScale))
+                );
                 if (duration.Negative)
                 {
                     delta = checked(-delta);
@@ -174,9 +173,10 @@ public static partial class FerruleFunctions
 
         public string Render()
         {
-            var magnitude = _year < 0
-                ? (-(Int128)_year).ToString(CultureInfo.InvariantCulture)
-                : _year.ToString(CultureInfo.InvariantCulture);
+            var magnitude =
+                _year < 0
+                    ? (-(Int128)_year).ToString(CultureInfo.InvariantCulture)
+                    : _year.ToString(CultureInfo.InvariantCulture);
             var year = (_year < 0 ? "-" : string.Empty) + magnitude.PadLeft(4, '0');
             var output = $"{year}-{_month:00}-{_day:00}";
             if (_kind == DateTimeAddTemporalKind.DateTime)
@@ -200,13 +200,10 @@ public static partial class FerruleFunctions
             {
                 var astronomicalYear = _year < 0 ? (Int128)_year + 1 : _year;
                 var monthIndex = checked(
-                    checked(astronomicalYear * 12) +
-                    ((Int128)_month - 1) +
-                    months);
+                    checked(astronomicalYear * 12) + ((Int128)_month - 1) + months
+                );
                 astronomicalYear = DateTimeAddFloorDivide(monthIndex, 12);
-                var year = astronomicalYear <= 0
-                    ? checked(astronomicalYear - 1)
-                    : astronomicalYear;
+                var year = astronomicalYear <= 0 ? checked(astronomicalYear - 1) : astronomicalYear;
                 _year = checked((long)year);
                 _month = checked((uint)(DateTimeAddEuclideanRemainder(monthIndex, 12) + 1));
                 _day = Math.Min(_day, DateTimeAddDaysInMonth(_year, _month));
@@ -460,14 +457,15 @@ public static partial class FerruleFunctions
         throw DateTimeAddInvalid();
     }
 
-    private static uint DateTimeAddDaysInMonth(long year, uint month) => month switch
-    {
-        1 or 3 or 5 or 7 or 8 or 10 or 12 => 31,
-        4 or 6 or 9 or 11 => 30,
-        2 when year % 400 == 0 || year % 4 == 0 && year % 100 != 0 => 29,
-        2 => 28,
-        _ => 0,
-    };
+    private static uint DateTimeAddDaysInMonth(long year, uint month) =>
+        month switch
+        {
+            1 or 3 or 5 or 7 or 8 or 10 or 12 => 31,
+            4 or 6 or 9 or 11 => 30,
+            2 when year % 400 == 0 || year % 4 == 0 && year % 100 != 0 => 29,
+            2 => 28,
+            _ => 0,
+        };
 
     private static Int128 ParseDateTimeAddDigits(string value)
     {
@@ -475,11 +473,9 @@ public static partial class FerruleFunctions
         {
             return 0;
         }
-        if (!Int128.TryParse(
-                value,
-                NumberStyles.None,
-                CultureInfo.InvariantCulture,
-                out var parsed))
+        if (
+            !Int128.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var parsed)
+        )
         {
             throw DateTimeAddInvalid();
         }

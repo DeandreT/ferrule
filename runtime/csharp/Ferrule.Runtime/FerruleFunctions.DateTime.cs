@@ -10,11 +10,7 @@ public static partial class FerruleFunctions
     private const string SupportedPictureDetail =
         "requires a value matching a supported date/time picture";
 
-    private readonly record struct LocalDate(
-        string Year,
-        uint Month,
-        uint Day,
-        bool EndOfDay)
+    private readonly record struct LocalDate(string Year, uint Month, uint Day, bool EndOfDay)
     {
         public bool RollsYear => EndOfDay && Month == 12 && Day == 31;
 
@@ -48,7 +44,10 @@ public static partial class FerruleFunctions
         var date = ValidatedLocalDate(value, function);
         if (!long.TryParse(date.Year, out var year))
         {
-            throw InvalidArgument(function, "requires a year within the signed 64-bit integer range");
+            throw InvalidArgument(
+                function,
+                "requires a year within the signed 64-bit integer range"
+            );
         }
         if (date.RollsYear)
         {
@@ -58,7 +57,10 @@ public static partial class FerruleFunctions
             }
             else if (year == long.MaxValue)
             {
-                throw InvalidArgument(function, "requires a year within the signed 64-bit integer range");
+                throw InvalidArgument(
+                    function,
+                    "requires a year within the signed 64-bit integer range"
+                );
             }
             else
             {
@@ -116,9 +118,8 @@ public static partial class FerruleFunctions
             year = (year + 399) % 400;
         }
         ReadOnlySpan<uint> monthOffsets = [0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4];
-        var sundayBased = (
-            year + year / 4 - year / 100 + year / 400 + monthOffsets[(int)month - 1] + day
-        ) % 7;
+        var sundayBased =
+            (year + year / 4 - year / 100 + year / 400 + monthOffsets[(int)month - 1] + day) % 7;
         return FerruleValue.FromInt64(sundayBased == 0 ? 7 : sundayBased);
     }
 
@@ -211,9 +212,11 @@ public static partial class FerruleFunctions
         var (timeValue, timeZone) = SplitIsoTimezone(time, function, SupportedPictureDetail);
         ValidateIsoDate(dateValue, function, SupportedPictureDetail);
         ValidateIsoTime(timeValue, function, SupportedPictureDetail);
-        if (dateZone is not null &&
-            timeZone is not null &&
-            DateTimeTimezoneOffset(dateZone) != DateTimeTimezoneOffset(timeZone))
+        if (
+            dateZone is not null
+            && timeZone is not null
+            && DateTimeTimezoneOffset(dateZone) != DateTimeTimezoneOffset(timeZone)
+        )
         {
             throw InvalidArgument(function, SupportedPictureDetail);
         }
@@ -226,7 +229,12 @@ public static partial class FerruleFunctions
     {
         const string function = "coerce_datetime";
         RequireArity(function, arguments, 1);
-        if (arguments[0].Kind is FerruleValueKind.Null or FerruleValueKind.JsonNull or FerruleValueKind.XmlNil)
+        if (
+            arguments[0].Kind
+            is FerruleValueKind.Null
+                or FerruleValueKind.JsonNull
+                or FerruleValueKind.XmlNil
+        )
         {
             return arguments[0];
         }
@@ -255,29 +263,34 @@ public static partial class FerruleFunctions
         var year = DateTimeIntegerPart(arguments[0], function);
         var month = DateTimeIntegerPart(arguments[1], function);
         var day = DateTimeIntegerPart(arguments[2], function);
-        long OptionalInteger(int index) => index >= arguments.Count ||
-            arguments[index].Kind is FerruleValueKind.Null or FerruleValueKind.JsonNull
+        long OptionalInteger(int index) =>
+            index >= arguments.Count
+            || arguments[index].Kind is FerruleValueKind.Null or FerruleValueKind.JsonNull
                 ? 0
                 : DateTimeIntegerPart(arguments[index], function);
         var hour = OptionalInteger(3);
         var minute = OptionalInteger(4);
         var second = OptionalInteger(5);
-        var millisecond = arguments.Count <= 6 ||
-            arguments[6].Kind is FerruleValueKind.Null or FerruleValueKind.JsonNull
-            ? 0.0
-            : DateTimeDecimalPart(arguments[6], function);
-        long? timezone = arguments.Count <= 7 ||
-            arguments[7].Kind is FerruleValueKind.Null or FerruleValueKind.JsonNull
-            ? null
-            : DateTimeIntegerPart(arguments[7], function);
+        var millisecond =
+            arguments.Count <= 6
+            || arguments[6].Kind is FerruleValueKind.Null or FerruleValueKind.JsonNull
+                ? 0.0
+                : DateTimeDecimalPart(arguments[6], function);
+        long? timezone =
+            arguments.Count <= 7
+            || arguments[7].Kind is FerruleValueKind.Null or FerruleValueKind.JsonNull
+                ? null
+                : DateTimeIntegerPart(arguments[7], function);
 
-        if (month is < 0 or > uint.MaxValue ||
-            day is < 0 or > uint.MaxValue ||
-            hour is < 0 or > 23 ||
-            minute is < 0 or > 59 ||
-            second is < 0 or > 59 ||
-            !double.IsFinite(millisecond) ||
-            millisecond is < 0.0 or >= 1000.0)
+        if (
+            month is < 0 or > uint.MaxValue
+            || day is < 0 or > uint.MaxValue
+            || hour is < 0 or > 23
+            || minute is < 0 or > 59
+            || second is < 0 or > 59
+            || !double.IsFinite(millisecond)
+            || millisecond is < 0.0 or >= 1000.0
+        )
         {
             throw InvalidArgument(function, SupportedPictureDetail);
         }
@@ -329,30 +342,35 @@ public static partial class FerruleFunctions
         var year = DateTimeIntegerPart(arguments[0], function);
         var month = DateTimeIntegerPart(arguments[1], function);
         var day = DateTimeIntegerPart(arguments[2], function);
-        long OptionalInteger(int index) => index >= arguments.Count ||
-            arguments[index].Kind is FerruleValueKind.Null or FerruleValueKind.JsonNull
+        long OptionalInteger(int index) =>
+            index >= arguments.Count
+            || arguments[index].Kind is FerruleValueKind.Null or FerruleValueKind.JsonNull
                 ? 0
                 : DateTimeIntegerPart(arguments[index], function);
         var hour = OptionalInteger(3);
         var minute = OptionalInteger(4);
         var second = OptionalInteger(5);
-        var millisecond = arguments.Count <= 6 ||
-            arguments[6].Kind is FerruleValueKind.Null or FerruleValueKind.JsonNull
-            ? 0.0
-            : DateTimeDecimalPart(arguments[6], function);
-        var negative = arguments.Count > 7 &&
-            arguments[7].Kind is not (FerruleValueKind.Null or FerruleValueKind.JsonNull)
+        var millisecond =
+            arguments.Count <= 6
+            || arguments[6].Kind is FerruleValueKind.Null or FerruleValueKind.JsonNull
+                ? 0.0
+                : DateTimeDecimalPart(arguments[6], function);
+        var negative =
+            arguments.Count > 7
+            && arguments[7].Kind is not (FerruleValueKind.Null or FerruleValueKind.JsonNull)
                 ? RequireBooleanArgument(arguments[7], function)
                 : false;
 
-        if (year < 0 ||
-            month < 0 ||
-            day < 0 ||
-            hour < 0 ||
-            minute < 0 ||
-            second < 0 ||
-            !double.IsFinite(millisecond) ||
-            millisecond is < 0.0 or >= 1000.0)
+        if (
+            year < 0
+            || month < 0
+            || day < 0
+            || hour < 0
+            || minute < 0
+            || second < 0
+            || !double.IsFinite(millisecond)
+            || millisecond is < 0.0 or >= 1000.0
+        )
         {
             throw InvalidArgument(function, SupportedPictureDetail);
         }
@@ -405,15 +423,18 @@ public static partial class FerruleFunctions
         var lexical = value.ToString("R", CultureInfo.InvariantCulture);
         var exponentMarker = lexical.IndexOfAny(['e', 'E']);
         var mantissa = exponentMarker < 0 ? lexical : lexical[..exponentMarker];
-        var exponent = exponentMarker < 0
-            ? 0
-            : int.Parse(lexical[(exponentMarker + 1)..], CultureInfo.InvariantCulture);
+        var exponent =
+            exponentMarker < 0
+                ? 0
+                : int.Parse(lexical[(exponentMarker + 1)..], CultureInfo.InvariantCulture);
         var point = mantissa.IndexOf('.');
         var whole = point < 0 ? mantissa : mantissa[..point];
         var fraction = point < 0 ? string.Empty : mantissa[(point + 1)..];
-        if (whole.Length == 0 ||
-            whole.Any(character => !char.IsAsciiDigit(character)) ||
-            fraction.Any(character => !char.IsAsciiDigit(character)))
+        if (
+            whole.Length == 0
+            || whole.Any(character => !char.IsAsciiDigit(character))
+            || fraction.Any(character => !char.IsAsciiDigit(character))
+        )
         {
             throw InvalidArgument(function, SupportedPictureDetail);
         }
@@ -423,8 +444,9 @@ public static partial class FerruleFunctions
         var shifted = decimalPosition switch
         {
             < 0 => "." + new string('0', -decimalPosition) + digits,
-            _ when decimalPosition >= digits.Length =>
-                "." + digits + new string('0', decimalPosition - digits.Length),
+            _ when decimalPosition >= digits.Length => "."
+                + digits
+                + new string('0', decimalPosition - digits.Length),
             _ => "." + digits,
         };
         return shifted.TrimEnd('0');
@@ -439,21 +461,26 @@ public static partial class FerruleFunctions
         if (value.Kind == FerruleValueKind.Double)
         {
             var number = value.DoubleValue;
-            if (double.IsFinite(number) &&
-                Math.Truncate(number) == number &&
-                number >= long.MinValue &&
-                number < -(double)long.MinValue)
+            if (
+                double.IsFinite(number)
+                && Math.Truncate(number) == number
+                && number >= long.MinValue
+                && number < -(double)long.MinValue
+            )
             {
                 return (long)number;
             }
             throw Type(function, value);
         }
-        if (value.Kind == FerruleValueKind.String &&
-            long.TryParse(
+        if (
+            value.Kind == FerruleValueKind.String
+            && long.TryParse(
                 TrimRustWhitespace(value.StringValue),
                 NumberStyles.AllowLeadingSign,
                 CultureInfo.InvariantCulture,
-                out var parsed))
+                out var parsed
+            )
+        )
         {
             return parsed;
         }
@@ -485,11 +512,14 @@ public static partial class FerruleFunctions
             {
                 return double.NaN;
             }
-            if (double.TryParse(
+            if (
+                double.TryParse(
                     text,
                     NumberStyles.Float,
                     CultureInfo.InvariantCulture,
-                    out var parsed))
+                    out var parsed
+                )
+            )
             {
                 return parsed;
             }
@@ -499,7 +529,8 @@ public static partial class FerruleFunctions
 
     private static string FormatDateTimeYear(long year)
     {
-        var magnitude = BigInteger.Abs(new BigInteger(year))
+        var magnitude = BigInteger
+            .Abs(new BigInteger(year))
             .ToString(CultureInfo.InvariantCulture)
             .PadLeft(4, '0');
         return year < 0 ? "-" + magnitude : magnitude;
@@ -517,7 +548,8 @@ public static partial class FerruleFunctions
 
     private static string? NullableStringArgument(
         IReadOnlyList<FerruleValue> arguments,
-        string function)
+        string function
+    )
     {
         RequireArity(function, arguments, 1);
         if (arguments[0].Kind is FerruleValueKind.Null or FerruleValueKind.JsonNull)
@@ -554,7 +586,8 @@ public static partial class FerruleFunctions
             date[..yearEnd],
             ParseUInt(date[(yearEnd + 1)..(date.Length - 3)]),
             ParseUInt(date[^2..]),
-            endOfDay);
+            endOfDay
+        );
     }
 
     private static LocalTime ValidatedLocalDateTimeTime(string value, string function)
@@ -594,9 +627,7 @@ public static partial class FerruleFunctions
             var fractionStart = secondPart.IndexOf('.');
             var seconds = fractionStart >= 0 ? secondPart[..fractionStart] : secondPart;
             var fraction = fractionStart >= 0 ? secondPart[(fractionStart + 1)..] : string.Empty;
-            if (minute != "00" ||
-                seconds != "00" ||
-                fraction.Any(character => character != '0'))
+            if (minute != "00" || seconds != "00" || fraction.Any(character => character != '0'))
             {
                 throw InvalidArgument(function, DateTimeDetail);
             }
@@ -624,10 +655,12 @@ public static partial class FerruleFunctions
 
         var year = value[..yearEnd];
         var digits = year.StartsWith("-", StringComparison.Ordinal) ? year[1..] : year;
-        if (digits.Length < 4 ||
-            !digits.All(IsAsciiDigit) ||
-            digits.All(character => character == '0') ||
-            digits.Length > 4 && digits[0] == '0')
+        if (
+            digits.Length < 4
+            || !digits.All(IsAsciiDigit)
+            || digits.All(character => character == '0')
+            || digits.Length > 4 && digits[0] == '0'
+        )
         {
             throw InvalidArgument(function, detail);
         }
@@ -677,9 +710,11 @@ public static partial class FerruleFunctions
         var hourText = whole[..2];
         var minuteText = whole[3..5];
         var secondText = whole[6..];
-        if (!hourText.All(IsAsciiDigit) ||
-            !minuteText.All(IsAsciiDigit) ||
-            !secondText.All(IsAsciiDigit))
+        if (
+            !hourText.All(IsAsciiDigit)
+            || !minuteText.All(IsAsciiDigit)
+            || !secondText.All(IsAsciiDigit)
+        )
         {
             throw InvalidArgument(function, detail);
         }
@@ -704,7 +739,8 @@ public static partial class FerruleFunctions
     private static (string Value, string? Zone) SplitIsoTimezone(
         string value,
         string function,
-        string detail)
+        string detail
+    )
     {
         if (value.EndsWith('Z'))
         {
@@ -730,11 +766,13 @@ public static partial class FerruleFunctions
         {
             return;
         }
-        if (value.Length != 6 ||
-            value[0] is not ('+' or '-') ||
-            value[3] != ':' ||
-            !value[1..3].All(IsAsciiDigit) ||
-            !value[4..6].All(IsAsciiDigit))
+        if (
+            value.Length != 6
+            || value[0] is not ('+' or '-')
+            || value[3] != ':'
+            || !value[1..3].All(IsAsciiDigit)
+            || !value[4..6].All(IsAsciiDigit)
+        )
         {
             throw InvalidArgument(function, detail);
         }
@@ -750,8 +788,9 @@ public static partial class FerruleFunctions
     private static uint DaysInMonth(string year, uint month)
     {
         var digits = year.StartsWith("-", StringComparison.Ordinal) ? year[1..] : year;
-        var leap = DecimalMod(digits, 400) == 0 ||
-            DecimalMod(digits, 4) == 0 && DecimalMod(digits, 100) != 0;
+        var leap =
+            DecimalMod(digits, 400) == 0
+            || DecimalMod(digits, 4) == 0 && DecimalMod(digits, 100) != 0;
         return month switch
         {
             1 or 3 or 5 or 7 or 8 or 10 or 12 => 31,

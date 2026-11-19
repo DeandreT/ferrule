@@ -10,7 +10,8 @@ public sealed partial class ScopeContext
     /// <summary>Resolves one complete structured value for XML serialization.</summary>
     public FerruleInstance ResolveXmlInstance(
         IReadOnlyList<string>? frame,
-        IReadOnlyList<string> path)
+        IReadOnlyList<string> path
+    )
     {
         ArgumentNullException.ThrowIfNull(path);
         ValidatePath(path);
@@ -42,11 +43,7 @@ public sealed partial class ScopeContext
             }
             // The active item owns this absolute path. Its absent optional
             // group must not borrow another item's group from an outer frame.
-            if (TryResolveXmlInstance(
-                    collection.Item,
-                    path,
-                    collection.Path.Count,
-                    out var active))
+            if (TryResolveXmlInstance(collection.Item, path, collection.Path.Count, out var active))
             {
                 return active;
             }
@@ -66,7 +63,8 @@ public sealed partial class ScopeContext
         FerruleInstance source,
         IReadOnlyList<string> path,
         int pathIndex,
-        out FerruleInstance value)
+        out FerruleInstance value
+    )
     {
         var current = source;
         for (var index = pathIndex; index < path.Count; index++)
@@ -103,7 +101,8 @@ public sealed partial class ScopeContext
     private static FerruleRuntimeException MissingXmlInstance(IEnumerable<string> path) =>
         new(
             FerruleRuntimeError.MissingSourceField,
-            $"Structured source '{string.Join('/', path)}' does not exist in the active scope context.");
+            $"Structured source '{string.Join('/', path)}' does not exist in the active scope context."
+        );
 }
 
 /// <summary>Bounded package-free XML serialization for generated mappings.</summary>
@@ -126,31 +125,58 @@ public static partial class FerruleXml
         FerruleInstance instance,
         bool declaration,
         bool indent,
-        string? defaultNamespace)
+        string? defaultNamespace
+    )
     {
         try
         {
-            if (descriptor is not null && PreparedNodeSchemas.TryGetValue(descriptor, out var prepared))
+            if (
+                descriptor is not null
+                && PreparedNodeSchemas.TryGetValue(descriptor, out var prepared)
+            )
             {
-                return SerializeCore(node, prepared.Payload, instance, declaration, indent,
-                    defaultNamespace, schemaHintsJson: null, documentBoundary: false, prepared.Schema);
+                return SerializeCore(
+                    node,
+                    prepared.Payload,
+                    instance,
+                    declaration,
+                    indent,
+                    defaultNamespace,
+                    schemaHintsJson: null,
+                    documentBoundary: false,
+                    prepared.Schema
+                );
             }
             // A null descriptor keeps Unwrap's original argument failure.
-            var schema = FerruleEmbeddedSchema.Unwrap(
-                descriptor!, MaximumEmbeddedSchemaBytes);
-            return SerializeCore(node, schema.Payload, instance, declaration, indent,
-                defaultNamespace, schemaHintsJson: null, documentBoundary: false,
-                prepare: parsed => PreparedNodeSchemas.GetValue(descriptor!,
-                    _ => new PreparedNodeSchema(schema.Payload, parsed)).Schema);
+            var schema = FerruleEmbeddedSchema.Unwrap(descriptor!, MaximumEmbeddedSchemaBytes);
+            return SerializeCore(
+                node,
+                schema.Payload,
+                instance,
+                declaration,
+                indent,
+                defaultNamespace,
+                schemaHintsJson: null,
+                documentBoundary: false,
+                prepare: parsed =>
+                    PreparedNodeSchemas
+                        .GetValue(descriptor!, _ => new PreparedNodeSchema(schema.Payload, parsed))
+                        .Schema
+            );
         }
         catch (FerruleRuntimeException)
         {
             throw;
         }
-        catch (Exception error) when (
-            error is JsonException or FormatException or InvalidOperationException or
-            OverflowException or
-            ArgumentException or System.Text.EncoderFallbackException)
+        catch (Exception error)
+            when (error
+                    is JsonException
+                        or FormatException
+                        or InvalidOperationException
+                        or OverflowException
+                        or ArgumentException
+                        or System.Text.EncoderFallbackException
+            )
         {
             throw Error(node, error.Message, error);
         }
@@ -162,9 +188,18 @@ public static partial class FerruleXml
         FerruleInstance instance,
         bool declaration,
         bool indent,
-        string? defaultNamespace) =>
-        SerializeCore(node, schemaJson, instance, declaration, indent, defaultNamespace,
-            schemaHintsJson: null, documentBoundary: false);
+        string? defaultNamespace
+    ) =>
+        SerializeCore(
+            node,
+            schemaJson,
+            instance,
+            declaration,
+            indent,
+            defaultNamespace,
+            schemaHintsJson: null,
+            documentBoundary: false
+        );
 
     private static FerruleValue SerializeCore(
         uint node,
@@ -176,10 +211,21 @@ public static partial class FerruleXml
         string? schemaHintsJson,
         bool documentBoundary,
         XmlSchemaNode? prepared = null,
-        Func<XmlSchemaNode, XmlSchemaNode>? prepare = null) =>
-        SerializeCore<FerruleValue>(node, schemaJson, instance, declaration, indent,
-            defaultNamespace, schemaHintsJson, documentBoundary, CompleteSerializedText,
-            prepared, prepare);
+        Func<XmlSchemaNode, XmlSchemaNode>? prepare = null
+    ) =>
+        SerializeCore<FerruleValue>(
+            node,
+            schemaJson,
+            instance,
+            declaration,
+            indent,
+            defaultNamespace,
+            schemaHintsJson,
+            documentBoundary,
+            CompleteSerializedText,
+            prepared,
+            prepare
+        );
 
     /// <summary>
     /// Serializes with <paramref name="prepared"/>, the schema already parsed
@@ -198,7 +244,8 @@ public static partial class FerruleXml
         bool documentBoundary,
         Func<XmlOutput, bool, T> complete,
         XmlSchemaNode? prepared = null,
-        Func<XmlSchemaNode, XmlSchemaNode>? prepare = null)
+        Func<XmlSchemaNode, XmlSchemaNode>? prepare = null
+    )
     {
         ArgumentNullException.ThrowIfNull(schemaJson);
         ArgumentNullException.ThrowIfNull(instance);
@@ -214,11 +261,13 @@ public static partial class FerruleXml
         try
         {
             var schema = prepared ?? ParseSerializerSchema(schemaJson, documentBoundary);
-            if (prepare is not null) schema = prepare(schema);
+            if (prepare is not null)
+                schema = prepare(schema);
             if (schema.Repeating)
             {
                 throw new InvalidOperationException(
-                    "XML serializer schema must describe one document element");
+                    "XML serializer schema must describe one document element"
+                );
             }
             var writer = new XmlOutput(indent, ParseLiteralHints(schemaHintsJson));
             if (declaration)
@@ -236,9 +285,15 @@ public static partial class FerruleXml
         {
             throw;
         }
-        catch (Exception exception) when (
-            exception is JsonException or InvalidOperationException or
-            FormatException or OverflowException or ArgumentException or XmlException)
+        catch (Exception exception)
+            when (exception
+                    is JsonException
+                        or InvalidOperationException
+                        or FormatException
+                        or OverflowException
+                        or ArgumentException
+                        or XmlException
+            )
         {
             throw Error(node, exception.Message, exception);
         }
@@ -255,20 +310,25 @@ public static partial class FerruleXml
                 throw new FerruleXmlBoundaryException(
                     FerruleXmlBoundaryErrorKind.DocumentLimit,
                     $"XML output is {outputBytes} bytes; maximum is {MaximumOutputBytes}",
-                    bytes: outputBytes, limit: MaximumOutputBytes);
+                    bytes: outputBytes,
+                    limit: MaximumOutputBytes
+                );
             }
             throw new InvalidOperationException(
-                $"serialized output exceeds {MaximumOutputBytes} bytes");
+                $"serialized output exceeds {MaximumOutputBytes} bytes"
+            );
         }
         // Document boundaries verify their completed text with their own
         // output category; the node writer reports the native message here.
-        if (!documentBoundary) RequireXmlCharacters(output);
+        if (!documentBoundary)
+            RequireXmlCharacters(output);
         return FerruleValue.FromString(output);
     }
 
     private static FerruleXmlPreparedUtf8Document PrepareSerializedUtf8(
         XmlOutput writer,
-        bool documentBoundary)
+        bool documentBoundary
+    )
     {
         if (writer.HasOnlyAsciiXml())
         {
@@ -280,22 +340,25 @@ public static partial class FerruleXml
                     throw new FerruleXmlBoundaryException(
                         FerruleXmlBoundaryErrorKind.DocumentLimit,
                         $"XML output is {outputBytes} bytes; maximum is {MaximumOutputBytes}",
-                        bytes: outputBytes, limit: MaximumOutputBytes);
+                        bytes: outputBytes,
+                        limit: MaximumOutputBytes
+                    );
                 }
                 throw new InvalidOperationException(
-                    $"serialized output exceeds {MaximumOutputBytes} bytes");
+                    $"serialized output exceeds {MaximumOutputBytes} bytes"
+                );
             }
             return writer.PrepareAsciiUtf8(outputBytes);
         }
         var output = CompleteSerializedText(writer, documentBoundary).StringValue;
-        return new FerruleXmlPreparedUtf8Document(OutputUtf8.GetByteCount(output),
-            () => OutputUtf8.GetBytes(output), output);
+        return new FerruleXmlPreparedUtf8Document(
+            OutputUtf8.GetByteCount(output),
+            () => OutputUtf8.GetBytes(output),
+            output
+        );
     }
 
-    private static FerruleRuntimeException Error(
-        uint node,
-        string detail,
-        Exception? inner = null)
+    private static FerruleRuntimeException Error(uint node, string detail, Exception? inner = null)
     {
         var message = $"node {node}: XML serialization failed: {detail}";
         return inner is null
@@ -303,13 +366,15 @@ public static partial class FerruleXml
                 FerruleRuntimeError.XmlSerialization,
                 message,
                 node: node,
-                detail: detail)
+                detail: detail
+            )
             : new FerruleRuntimeException(
                 FerruleRuntimeError.XmlSerialization,
                 message,
                 inner,
                 node: node,
-                detail: detail);
+                detail: detail
+            );
     }
 
     private static (string? Namespace, string LocalName) SplitExpandedName(string name)
@@ -321,8 +386,7 @@ public static partial class FerruleXml
         var close = name.IndexOf('}');
         if (close <= 1 || close == name.Length - 1)
         {
-            throw new InvalidOperationException(
-                $"invalid expanded XML name '{name}'");
+            throw new InvalidOperationException($"invalid expanded XML name '{name}'");
         }
         return (name[1..close], name[(close + 1)..]);
     }
@@ -338,12 +402,14 @@ public static partial class FerruleXml
     private sealed record XmlAlternative(
         string Name,
         IReadOnlyList<string> Members,
-        IReadOnlyList<string> Required);
+        IReadOnlyList<string> Required
+    );
 
     private sealed record XmlRepeatingChoice(
         bool Required,
         bool Repeating,
-        IReadOnlyList<string> Members);
+        IReadOnlyList<string> Members
+    );
 
     private sealed record XmlSchemaNode(
         string Name,
@@ -359,9 +425,14 @@ public static partial class FerruleXml
         IReadOnlyList<XmlSchemaNode> Children,
         IReadOnlyList<XmlAlternative> Alternatives,
         IReadOnlyList<XmlRepeatingChoice> RepeatingChoices,
-        string? DefaultType)
+        string? DefaultType
+    )
     {
-        internal static XmlSchemaNode Parse(JsonElement element, int depth, bool documentBoundary = false)
+        internal static XmlSchemaNode Parse(
+            JsonElement element,
+            int depth,
+            bool documentBoundary = false
+        )
         {
             if (depth >= MaximumSchemaDepth || element.ValueKind != JsonValueKind.Object)
             {
@@ -369,40 +440,58 @@ public static partial class FerruleXml
             }
             var name = RequiredString(element, "name");
             if (OptionalBoolean(element, "json_array_wrapper"))
-                throw new InvalidOperationException("JSON array-wrapper metadata requires a JSON boundary");
+                throw new InvalidOperationException(
+                    "JSON array-wrapper metadata requires a JSON boundary"
+                );
             if (name.Length == 0)
             {
                 throw new InvalidOperationException("embedded XML schema name cannot be empty");
             }
             var kind = Required(element, "kind");
             var kindName = RequiredString(kind, "kind");
-            if (OptionalBoolean(element, "xml_optional") &&
-                (name.Length == 0 || name is "#text" or "element()" or "attribute()" ||
-                 name.StartsWith('\u001f') || OptionalBoolean(element, "repeating") ||
-                 OptionalBoolean(element, "attribute") || OptionalBoolean(element, "text") ||
-                 kindName is not ("scalar" or "group")))
+            if (
+                OptionalBoolean(element, "xml_optional")
+                && (
+                    name.Length == 0
+                    || name is "#text" or "element()" or "attribute()"
+                    || name.StartsWith('\u001f')
+                    || OptionalBoolean(element, "repeating")
+                    || OptionalBoolean(element, "attribute")
+                    || OptionalBoolean(element, "text")
+                    || kindName is not ("scalar" or "group")
+                )
+            )
             {
                 throw new InvalidOperationException("invalid optional XML occurrence metadata");
             }
-            if (OptionalBoolean(element, "xml_attribute_required") &&
-                (name.Length == 0 || name is "#text" or "element()" or "attribute()" ||
-                 name.StartsWith('\u001f') || OptionalBoolean(element, "repeating") ||
-                 !OptionalBoolean(element, "attribute") || OptionalBoolean(element, "text") ||
-                 kindName != "scalar"))
+            if (
+                OptionalBoolean(element, "xml_attribute_required")
+                && (
+                    name.Length == 0
+                    || name is "#text" or "element()" or "attribute()"
+                    || name.StartsWith('\u001f')
+                    || OptionalBoolean(element, "repeating")
+                    || !OptionalBoolean(element, "attribute")
+                    || OptionalBoolean(element, "text")
+                    || kindName != "scalar"
+                )
+            )
             {
                 throw new InvalidOperationException("invalid required XML attribute-use metadata");
             }
             var virtualText =
-                depth > 0 &&
-                name == "#text" &&
-                kindName == "scalar" &&
-                OptionalBoolean(element, "text") &&
-                !OptionalBoolean(element, "attribute") &&
-                !OptionalBoolean(element, "repeating");
+                depth > 0
+                && name == "#text"
+                && kindName == "scalar"
+                && OptionalBoolean(element, "text")
+                && !OptionalBoolean(element, "attribute")
+                && !OptionalBoolean(element, "repeating");
             if (!virtualText)
             {
-                if (documentBoundary) RequireDocumentLocalName(name);
-                else _ = XmlConvert.VerifyName(name);
+                if (documentBoundary)
+                    RequireDocumentLocalName(name);
+                else
+                    _ = XmlConvert.VerifyName(name);
             }
             var (namespaceIsExplicit, namespaceUri) = ParseNamespace(element);
             XmlScalarType? scalarType = null;
@@ -414,7 +503,8 @@ public static partial class FerruleXml
                 if (element.TryGetProperty("xml_repeating_choices", out _))
                 {
                     throw new InvalidOperationException(
-                        "XML repeating choices require a group schema");
+                        "XML repeating choices require a group schema"
+                    );
                 }
                 scalarType = RequiredString(kind, "ty") switch
                 {
@@ -423,7 +513,8 @@ public static partial class FerruleXml
                     "float" => XmlScalarType.Float,
                     "bool" => XmlScalarType.Bool,
                     var value => throw new InvalidOperationException(
-                        $"unsupported XML scalar type '{value}'"),
+                        $"unsupported XML scalar type '{value}'"
+                    ),
                 };
             }
             else if (kindName == "group")
@@ -441,17 +532,23 @@ public static partial class FerruleXml
                 repeatingChoices = ParseRepeatingChoices(element, children);
                 if (alternatives.Length != 0)
                 {
-                    if (OptionalString(element, "alternative_mode") is { } mode &&
-                        mode != "exclusive")
+                    if (
+                        OptionalString(element, "alternative_mode") is { } mode
+                        && mode != "exclusive"
+                    )
                     {
                         throw new InvalidOperationException(
-                            $"unsupported XML alternative mode '{mode}'");
+                            $"unsupported XML alternative mode '{mode}'"
+                        );
                     }
-                    if (OptionalString(element, "xml_alternative_kind") is { } alternativeKind &&
-                        alternativeKind != "xsi_type")
+                    if (
+                        OptionalString(element, "xml_alternative_kind") is { } alternativeKind
+                        && alternativeKind != "xsi_type"
+                    )
                     {
                         throw new InvalidOperationException(
-                            $"unsupported XML alternative kind '{alternativeKind}'");
+                            $"unsupported XML alternative kind '{alternativeKind}'"
+                        );
                     }
                 }
             }
@@ -478,7 +575,8 @@ public static partial class FerruleXml
                 children,
                 alternatives,
                 repeatingChoices,
-                defaultType);
+                defaultType
+            );
         }
 
         private static void ValidateDefaultType(
@@ -487,33 +585,59 @@ public static partial class FerruleXml
             string kindName,
             IReadOnlyList<XmlSchemaNode> children,
             IReadOnlyList<XmlAlternative> alternatives,
-            string defaultType)
+            string defaultType
+        )
         {
-            if (kindName != "group" ||
-                !OptionalBoolean(element, "xml_type_alternatives") ||
-                OptionalBoolean(element, "attribute") || OptionalBoolean(element, "text") ||
-                OptionalString(element, "recursive_ref") is not null ||
-                alternatives.Count == 0 ||
-                (kind.TryGetProperty("dynamic", out var dynamic) &&
-                 dynamic.ValueKind != JsonValueKind.Null) ||
-                children.Select(child => child.Name).Distinct(StringComparer.Ordinal).Count() != children.Count ||
-                alternatives.Select(alternative => alternative.Name).Distinct(StringComparer.Ordinal).Count() != alternatives.Count ||
-                alternatives.Any(alternative => alternative.Required.Count != 0 ||
-                    alternative.Members.Distinct(StringComparer.Ordinal).Count() != alternative.Members.Count ||
-                    alternative.Members.Any(member => !children.Any(child => child.Name == member))))
+            if (
+                kindName != "group"
+                || !OptionalBoolean(element, "xml_type_alternatives")
+                || OptionalBoolean(element, "attribute")
+                || OptionalBoolean(element, "text")
+                || OptionalString(element, "recursive_ref") is not null
+                || alternatives.Count == 0
+                || (
+                    kind.TryGetProperty("dynamic", out var dynamic)
+                    && dynamic.ValueKind != JsonValueKind.Null
+                )
+                || children.Select(child => child.Name).Distinct(StringComparer.Ordinal).Count()
+                    != children.Count
+                || alternatives
+                    .Select(alternative => alternative.Name)
+                    .Distinct(StringComparer.Ordinal)
+                    .Count() != alternatives.Count
+                || alternatives.Any(alternative =>
+                    alternative.Required.Count != 0
+                    || alternative.Members.Distinct(StringComparer.Ordinal).Count()
+                        != alternative.Members.Count
+                    || alternative.Members.Any(member =>
+                        !children.Any(child => child.Name == member)
+                    )
+                )
+            )
             {
                 throw new InvalidOperationException("invalid declared XML default-type metadata");
             }
             var restricted = OptionalStrings(kind, "xml_restricted_alternatives");
-            var declared = alternatives.FirstOrDefault(alternative => alternative.Name == defaultType);
-            if (declared is null || restricted.Contains(defaultType) ||
-                restricted.Distinct(StringComparer.Ordinal).Count() != restricted.Length ||
-                restricted.Any(name => !alternatives.Any(alternative => alternative.Name == name)) ||
-                alternatives.Any(alternative => restricted.Contains(alternative.Name)
-                    ? alternative.Members.Any(member => !declared.Members.Contains(member))
-                    : declared.Members.Any(member => !alternative.Members.Contains(member))))
+            var declared = alternatives.FirstOrDefault(alternative =>
+                alternative.Name == defaultType
+            );
+            if (
+                declared is null
+                || restricted.Contains(defaultType)
+                || restricted.Distinct(StringComparer.Ordinal).Count() != restricted.Length
+                || restricted.Any(name =>
+                    !alternatives.Any(alternative => alternative.Name == name)
+                )
+                || alternatives.Any(alternative =>
+                    restricted.Contains(alternative.Name)
+                        ? alternative.Members.Any(member => !declared.Members.Contains(member))
+                        : declared.Members.Any(member => !alternative.Members.Contains(member))
+                )
+            )
             {
-                throw new InvalidOperationException("invalid declared XML default-type identity or refinement");
+                throw new InvalidOperationException(
+                    "invalid declared XML default-type identity or refinement"
+                );
             }
         }
 
@@ -530,8 +654,10 @@ public static partial class FerruleXml
             return RequiredString(identity, "kind") switch
             {
                 "unqualified" when !identity.TryGetProperty("uri", out _) => (true, null),
-                "qualified" when OptionalString(identity, "uri") is { Length: > 0 } uri =>
-                    (true, uri),
+                "qualified" when OptionalString(identity, "uri") is { Length: > 0 } uri => (
+                    true,
+                    uri
+                ),
                 _ => throw new InvalidOperationException("invalid XML namespace identity"),
             };
         }
@@ -544,8 +670,7 @@ public static partial class FerruleXml
             }
             if (alternatives.ValueKind != JsonValueKind.Array)
             {
-                throw new InvalidOperationException(
-                    "XML group alternatives must be an array");
+                throw new InvalidOperationException("XML group alternatives must be an array");
             }
             return alternatives
                 .EnumerateArray()
@@ -557,33 +682,42 @@ public static partial class FerruleXml
         {
             if (element.ValueKind != JsonValueKind.Object)
             {
-                throw new InvalidOperationException(
-                    "XML group alternative must be an object");
+                throw new InvalidOperationException("XML group alternative must be an object");
             }
             var name = RequiredString(element, "name");
             var (_, localName) = SplitExpandedName(name);
             if (documentBoundary)
             {
                 if (!FerrulePrimaryRoot.TypeIdentityIsValid(name))
-                    throw new FormatException("XML document schema requires local NCNames and canonical type identities");
+                    throw new FormatException(
+                        "XML document schema requires local NCNames and canonical type identities"
+                    );
             }
-            else _ = XmlConvert.VerifyName(localName);
-            if (element.TryGetProperty("constraints", out var constraints) &&
-                (constraints.ValueKind != JsonValueKind.Array ||
-                 constraints.GetArrayLength() != 0))
+            else
+                _ = XmlConvert.VerifyName(localName);
+            if (
+                element.TryGetProperty("constraints", out var constraints)
+                && (
+                    constraints.ValueKind != JsonValueKind.Array
+                    || constraints.GetArrayLength() != 0
+                )
+            )
             {
                 throw new InvalidOperationException(
-                    "value-constrained XML alternatives are unsupported");
+                    "value-constrained XML alternatives are unsupported"
+                );
             }
             return new XmlAlternative(
                 name,
                 RequiredStrings(element, "members"),
-                OptionalStrings(element, "required"));
+                OptionalStrings(element, "required")
+            );
         }
 
         private static XmlRepeatingChoice[] ParseRepeatingChoices(
             JsonElement element,
-            IReadOnlyList<XmlSchemaNode> children)
+            IReadOnlyList<XmlSchemaNode> children
+        )
         {
             if (!element.TryGetProperty("xml_repeating_choices", out var choices))
             {
@@ -591,8 +725,7 @@ public static partial class FerruleXml
             }
             if (choices.ValueKind != JsonValueKind.Array)
             {
-                throw new InvalidOperationException(
-                    "XML repeating choices must be an array");
+                throw new InvalidOperationException("XML repeating choices must be an array");
             }
             var used = new HashSet<string>(StringComparer.Ordinal);
             var parsed = new List<XmlRepeatingChoice>();
@@ -600,44 +733,51 @@ public static partial class FerruleXml
             {
                 if (choice.ValueKind != JsonValueKind.Object)
                 {
-                    throw new InvalidOperationException(
-                        "XML repeating choice must be an object");
+                    throw new InvalidOperationException("XML repeating choice must be an object");
                 }
                 var members = RequiredStrings(choice, "members");
                 var repeating =
-                    !choice.TryGetProperty("repeating", out var repeatingValue) ||
-                    repeatingValue.GetBoolean();
-                if (members.Length < 2 ||
-                    members.Any(string.IsNullOrEmpty) ||
-                    members.Any(member => !used.Add(member)))
+                    !choice.TryGetProperty("repeating", out var repeatingValue)
+                    || repeatingValue.GetBoolean();
+                if (
+                    members.Length < 2
+                    || members.Any(string.IsNullOrEmpty)
+                    || members.Any(member => !used.Add(member))
+                )
                 {
                     throw new InvalidOperationException(
-                        "XML repeating choice members must be unique non-empty names");
+                        "XML repeating choice members must be unique non-empty names"
+                    );
                 }
                 var positions = members
-                    .Select(member => children
-                        .Select((child, index) => (child, index))
-                        .Where(candidate =>
-                            candidate.child.Name == member &&
-                            candidate.child.Repeating == repeating &&
-                            !candidate.child.Attribute &&
-                            !candidate.child.Text)
-                        .Select(candidate => candidate.index)
-                        .ToArray())
+                    .Select(member =>
+                        children
+                            .Select((child, index) => (child, index))
+                            .Where(candidate =>
+                                candidate.child.Name == member
+                                && candidate.child.Repeating == repeating
+                                && !candidate.child.Attribute
+                                && !candidate.child.Text
+                            )
+                            .Select(candidate => candidate.index)
+                            .ToArray()
+                    )
                     .ToArray();
-                if (positions.Any(matches => matches.Length != 1) ||
-                    positions
+                if (
+                    positions.Any(matches => matches.Length != 1)
+                    || positions
                         .Select(matches => matches[0])
                         .Zip(positions.Select(matches => matches[0]).Skip(1))
-                        .Any(pair => pair.Second != pair.First + 1))
+                        .Any(pair => pair.Second != pair.First + 1)
+                )
                 {
                     throw new InvalidOperationException(
-                        "XML repeating choice members must name consecutive repeating child elements");
+                        "XML repeating choice members must name consecutive repeating child elements"
+                    );
                 }
-                parsed.Add(new XmlRepeatingChoice(
-                    OptionalBoolean(choice, "required"),
-                    repeating,
-                    members));
+                parsed.Add(
+                    new XmlRepeatingChoice(OptionalBoolean(choice, "required"), repeating, members)
+                );
             }
             return parsed.ToArray();
         }
@@ -658,22 +798,25 @@ public static partial class FerruleXml
             if (values.ValueKind != JsonValueKind.Array)
             {
                 throw new InvalidOperationException(
-                    $"embedded XML schema '{name}' must be an array");
+                    $"embedded XML schema '{name}' must be an array"
+                );
             }
             return values
                 .EnumerateArray()
-                .Select(value => value.ValueKind == JsonValueKind.String
-                    ? value.GetString() ?? string.Empty
-                    : throw new InvalidOperationException(
-                        $"embedded XML schema '{name}' values must be strings"))
+                .Select(value =>
+                    value.ValueKind == JsonValueKind.String
+                        ? value.GetString() ?? string.Empty
+                        : throw new InvalidOperationException(
+                            $"embedded XML schema '{name}' values must be strings"
+                        )
+                )
                 .ToArray();
         }
 
         private static JsonElement Required(JsonElement element, string name) =>
             element.TryGetProperty(name, out var value)
                 ? value
-                : throw new InvalidOperationException(
-                    $"embedded XML schema is missing '{name}'");
+                : throw new InvalidOperationException($"embedded XML schema is missing '{name}'");
 
         private static string RequiredString(JsonElement element, string name)
         {
@@ -681,7 +824,8 @@ public static partial class FerruleXml
             return value.ValueKind == JsonValueKind.String
                 ? value.GetString() ?? string.Empty
                 : throw new InvalidOperationException(
-                    $"embedded XML schema '{name}' must be a string");
+                    $"embedded XML schema '{name}' must be a string"
+                );
         }
 
         private static string? OptionalString(JsonElement element, string name) =>
@@ -721,8 +865,10 @@ public static partial class FerruleXml
                 var characters = chunk.Span;
                 foreach (var character in characters)
                 {
-                    if (character is not ('\t' or '\n' or '\r') &&
-                        (character < ' ' || character > '~'))
+                    if (
+                        character is not ('\t' or '\n' or '\r')
+                        && (character < ' ' || character > '~')
+                    )
                         return false;
                 }
             }
@@ -753,7 +899,8 @@ public static partial class FerruleXml
             int recursionDepth,
             int outputDepth,
             string? inheritedNamespace,
-            string? legacyRootNamespace)
+            string? legacyRootNamespace
+        )
         {
             schema = Resolve(schema, rootSchema, recursionDepth);
             if (instance is FerruleMappedSequence mapped)
@@ -775,7 +922,8 @@ public static partial class FerruleXml
                         recursionDepth,
                         outputDepth,
                         inheritedNamespace,
-                        null);
+                        null
+                    );
                 }
                 return;
             }
@@ -798,7 +946,8 @@ public static partial class FerruleXml
                         recursionDepth,
                         outputDepth,
                         inheritedNamespace,
-                        null);
+                        null
+                    );
                 }
                 return;
             }
@@ -813,7 +962,8 @@ public static partial class FerruleXml
                 recursionDepth,
                 outputDepth,
                 inheritedNamespace,
-                isRoot ? legacyRootNamespace : null);
+                isRoot ? legacyRootNamespace : null
+            );
         }
 
         private void WriteSingle(
@@ -823,7 +973,8 @@ public static partial class FerruleXml
             int recursionDepth,
             int outputDepth,
             string? inheritedNamespace,
-            string? legacyNamespace)
+            string? legacyNamespace
+        )
         {
             var elementNamespace = schema.NamespaceIsExplicit
                 ? schema.NamespaceUri
@@ -840,17 +991,20 @@ public static partial class FerruleXml
                     if (!schema.Nillable)
                     {
                         throw new InvalidOperationException(
-                            $"element '{schema.Name}' does not permit XML nil");
+                            $"element '{schema.Name}' does not permit XML nil"
+                        );
                     }
                     Start(schema.Name, elementNamespace, namespaceChanged);
                     Attribute("xmlns:xsi", XsiNamespace);
                     Attribute("xsi:nil", "true");
-                    if (outputDepth == 0) WriteRootHints();
+                    if (outputDepth == 0)
+                        WriteRootHints();
                     _output.Append("/>");
                     return;
                 }
                 Start(schema.Name, elementNamespace, namespaceChanged);
-                if (outputDepth == 0) WriteRootHints();
+                if (outputDepth == 0)
+                    WriteRootHints();
                 _output.Append('>');
                 Text(FormatScalar(schema, scalarType, scalar.Value));
                 End(schema.Name);
@@ -864,12 +1018,15 @@ public static partial class FerruleXml
             ValidateFields(schema, group);
             var alternative = SelectAlternative(schema, group);
             Start(schema.Name, elementNamespace, namespaceChanged);
-            if (alternative is not null &&
-                (alternative.Name != schema.DefaultType || group.TryGetField(XmlTypeField, out _)))
+            if (
+                alternative is not null
+                && (
+                    alternative.Name != schema.DefaultType || group.TryGetField(XmlTypeField, out _)
+                )
+            )
             {
                 Attribute("xmlns:xsi", XsiNamespace);
-                var (alternativeNamespace, alternativeName) =
-                    SplitExpandedName(alternative.Name);
+                var (alternativeNamespace, alternativeName) = SplitExpandedName(alternative.Name);
                 var typeName = alternativeName;
                 if (alternativeNamespace is not null)
                 {
@@ -891,21 +1048,30 @@ public static partial class FerruleXml
                 }
                 if (scalar.Value.Kind is not (FerruleValueKind.Null or FerruleValueKind.JsonNull))
                 {
-                    var type = attribute.ScalarType ?? throw new InvalidOperationException(
-                        $"attribute '{attribute.Name}' must have a scalar schema");
+                    var type = attribute.ScalarType
+                        ?? throw new InvalidOperationException(
+                            $"attribute '{attribute.Name}' must have a scalar schema"
+                        );
                     SchemaAttribute(
                         attribute,
                         FormatScalar(attribute, type, scalar.Value),
-                        attributeNamespaces);
+                        attributeNamespaces
+                    );
                 }
             }
 
-            if (outputDepth == 0) WriteRootHints();
+            if (outputDepth == 0)
+                WriteRootHints();
             var textChildren = schema.Children.Where(child => child.Text).ToArray();
             var selectedChildren = schema.Children.Where(child =>
-                alternative is null || alternative.Members.Contains(child.Name));
-            if ((selectedChildren.Any(child => child.Text) || selectedChildren.All(child => child.Attribute)) &&
-                !HasSerializedContent(schema, rootSchema, group, recursionDepth))
+                alternative is null || alternative.Members.Contains(child.Name)
+            );
+            if (
+                (
+                    selectedChildren.Any(child => child.Text)
+                    || selectedChildren.All(child => child.Attribute)
+                ) && !HasSerializedContent(schema, rootSchema, group, recursionDepth)
+            )
             {
                 _output.Append("/>");
                 return;
@@ -923,16 +1089,20 @@ public static partial class FerruleXml
                 }
                 if (scalar.Value.Kind is not (FerruleValueKind.Null or FerruleValueKind.JsonNull))
                 {
-                    var type = textChild.ScalarType ?? throw new InvalidOperationException(
-                        $"text field '{textChild.Name}' must have a scalar schema");
+                    var type = textChild.ScalarType
+                        ?? throw new InvalidOperationException(
+                            $"text field '{textChild.Name}' must have a scalar schema"
+                        );
                     Text(FormatScalar(textChild, type, scalar.Value));
                 }
             }
 
             var wroteElement = false;
             var wroteOrderedContent = false;
-            if (schema.RepeatingChoices.Count != 0 &&
-                group.TryGetField(XmlMixedContentField, out var orderedContent))
+            if (
+                schema.RepeatingChoices.Count != 0
+                && group.TryGetField(XmlMixedContentField, out var orderedContent)
+            )
             {
                 wroteElement = WriteOrderedChoiceContent(
                     schema,
@@ -940,25 +1110,29 @@ public static partial class FerruleXml
                     orderedContent,
                     recursionDepth,
                     outputDepth,
-                    elementNamespace);
+                    elementNamespace
+                );
                 wroteOrderedContent = wroteElement;
             }
             else
             {
-                foreach (var child in schema.Children.Where(
-                    child => !child.Attribute && !child.Text))
+                foreach (
+                    var child in schema.Children.Where(child => !child.Attribute && !child.Text)
+                )
                 {
-                    if (!group.TryGetField(child.Name, out var field) ||
-                        !WillWrite(
+                    if (
+                        !group.TryGetField(child.Name, out var field)
+                        || !WillWrite(
                             child,
                             rootSchema,
                             field,
-                            recursionDepth + (child.RecursiveReference is null ? 0 : 1)))
+                            recursionDepth + (child.RecursiveReference is null ? 0 : 1)
+                        )
+                    )
                     {
                         continue;
                     }
-                    var childDepth =
-                        recursionDepth + (child.RecursiveReference is null ? 0 : 1);
+                    var childDepth = recursionDepth + (child.RecursiveReference is null ? 0 : 1);
                     if (_indent)
                     {
                         NewLine(outputDepth + 1);
@@ -971,11 +1145,19 @@ public static partial class FerruleXml
                         childDepth,
                         outputDepth + 1,
                         elementNamespace,
-                        null);
+                        null
+                    );
                     wroteElement = true;
                 }
             }
-            if (_indent && !wroteOrderedContent && (wroteElement || (textChildren.Length == 0 && schema.RepeatingChoices.Count == 0)))
+            if (_indent && !wroteElement && textChildren.Length == 0)
+            {
+                // Validate the child shapes before choosing the empty spelling.
+                _output.Length--;
+                _output.Append("/>");
+                return;
+            }
+            if (_indent && !wroteOrderedContent && wroteElement)
             {
                 NewLine(outputDepth);
             }
@@ -988,39 +1170,43 @@ public static partial class FerruleXml
             FerruleInstance orderedContent,
             int recursionDepth,
             int outputDepth,
-            string? inheritedNamespace)
+            string? inheritedNamespace
+        )
         {
             if (orderedContent is not FerruleRepeated repeated)
             {
                 throw new InvalidOperationException(
-                    $"group '{schema.Name}' ordered XML content must be repeated");
+                    $"group '{schema.Name}' ordered XML content must be repeated"
+                );
             }
             for (var index = 0; index < repeated.Items.Count; index++)
             {
-                if (repeated.Items[index] is not FerruleGroup item ||
-                    !item.TryGetField(XmlNodeNameField, out var nodeName) ||
-                    nodeName is not FerruleScalar
-                    {
-                        Value.Kind: FerruleValueKind.String,
-                    } name ||
-                    name.Value.StringValue.Length == 0)
+                if (
+                    repeated.Items[index] is not FerruleGroup item
+                    || !item.TryGetField(XmlNodeNameField, out var nodeName)
+                    || nodeName is not FerruleScalar { Value.Kind: FerruleValueKind.String } name
+                    || name.Value.StringValue.Length == 0
+                )
                 {
                     throw new InvalidOperationException(
-                        $"group '{schema.Name}' ordered XML item {index} has no element name");
+                        $"group '{schema.Name}' ordered XML item {index} has no element name"
+                    );
                 }
                 var child = schema.Children.FirstOrDefault(candidate =>
-                    !candidate.Attribute &&
-                    !candidate.Text &&
-                    candidate.Name == name.Value.StringValue) ??
-                    throw new InvalidOperationException(
-                        $"group '{schema.Name}' ordered XML item {index} names undeclared child '{name.Value.StringValue}'");
+                    !candidate.Attribute
+                    && !candidate.Text
+                    && candidate.Name == name.Value.StringValue
+                )
+                    ?? throw new InvalidOperationException(
+                        $"group '{schema.Name}' ordered XML item {index} names undeclared child '{name.Value.StringValue}'"
+                    );
                 if (!item.TryGetField(XmlMixedContentValueField, out var value))
                 {
                     throw new InvalidOperationException(
-                        $"group '{schema.Name}' ordered XML item {index} has no typed child value");
+                        $"group '{schema.Name}' ordered XML item {index} has no typed child value"
+                    );
                 }
-                var childDepth =
-                    recursionDepth + (child.RecursiveReference is null ? 0 : 1);
+                var childDepth = recursionDepth + (child.RecursiveReference is null ? 0 : 1);
                 var resolved = Resolve(child, rootSchema, childDepth);
                 if (_indent)
                 {
@@ -1033,7 +1219,8 @@ public static partial class FerruleXml
                     childDepth,
                     outputDepth + 1,
                     inheritedNamespace,
-                    null);
+                    null
+                );
             }
             return repeated.Items.Count != 0;
         }
@@ -1041,7 +1228,8 @@ public static partial class FerruleXml
         private static XmlSchemaNode Resolve(
             XmlSchemaNode schema,
             XmlSchemaNode root,
-            int recursionDepth)
+            int recursionDepth
+        )
         {
             if (schema.RecursiveReference is null)
             {
@@ -1050,11 +1238,13 @@ public static partial class FerruleXml
             if (recursionDepth >= MaximumRecursiveDepth)
             {
                 throw new InvalidOperationException(
-                    $"XML recursion exceeds {MaximumRecursiveDepth} groups");
+                    $"XML recursion exceeds {MaximumRecursiveDepth} groups"
+                );
             }
-            var anchor = FindAnchor(root, schema.RecursiveReference) ??
-                throw new InvalidOperationException(
-                    $"XML recursive schema anchor '{schema.RecursiveReference}' does not exist");
+            var anchor = FindAnchor(root, schema.RecursiveReference)
+                ?? throw new InvalidOperationException(
+                    $"XML recursive schema anchor '{schema.RecursiveReference}' does not exist"
+                );
             return anchor with
             {
                 Name = schema.Name,
@@ -1067,9 +1257,11 @@ public static partial class FerruleXml
 
         private static XmlSchemaNode? FindAnchor(XmlSchemaNode schema, string name)
         {
-            if (schema.RecursiveReference is null &&
-                schema.ScalarType is null &&
-                schema.Name == name)
+            if (
+                schema.RecursiveReference is null
+                && schema.ScalarType is null
+                && schema.Name == name
+            )
             {
                 return schema;
             }
@@ -1084,9 +1276,7 @@ public static partial class FerruleXml
             return null;
         }
 
-        private static XmlAlternative? SelectAlternative(
-            XmlSchemaNode schema,
-            FerruleGroup group)
+        private static XmlAlternative? SelectAlternative(XmlSchemaNode schema, FerruleGroup group)
         {
             if (schema.Alternatives.Count == 0)
             {
@@ -1094,44 +1284,47 @@ public static partial class FerruleXml
             }
             if (group.TryGetField(XmlTypeField, out var marker))
             {
-                if (marker is not FerruleScalar
-                    {
-                        Value.Kind: FerruleValueKind.String,
-                    } scalar)
+                if (marker is not FerruleScalar { Value.Kind: FerruleValueKind.String } scalar)
                 {
                     throw new InvalidOperationException(
-                        $"element '{schema.Name}' has a non-string XML type marker");
+                        $"element '{schema.Name}' has a non-string XML type marker"
+                    );
                 }
-                var selected = schema.Alternatives.FirstOrDefault(
-                    alternative => alternative.Name == scalar.Value.StringValue) ??
-                    throw new InvalidOperationException(
-                        $"element '{schema.Name}' has unknown XML type '{scalar.Value.StringValue}'");
+                var selected = schema.Alternatives.FirstOrDefault(alternative =>
+                    alternative.Name == scalar.Value.StringValue
+                )
+                    ?? throw new InvalidOperationException(
+                        $"element '{schema.Name}' has unknown XML type '{scalar.Value.StringValue}'"
+                    );
                 ValidateAlternativeFields(schema, selected, group);
                 return selected;
             }
 
-            var populated = group.Fields
-                .Where(field =>
-                    field.Name != XmlTypeField && InstanceHasValue(field.Value))
+            var populated = group
+                .Fields.Where(field => field.Name != XmlTypeField && InstanceHasValue(field.Value))
                 .Select(field => field.Name)
                 .ToArray();
             if (schema.DefaultType is { } defaultType)
             {
-                var declared = schema.Alternatives.First(alternative => alternative.Name == defaultType);
+                var declared = schema.Alternatives.First(alternative =>
+                    alternative.Name == defaultType
+                );
                 if (populated.All(field => declared.Members.Contains(field)))
                 {
                     ValidateAlternativeFields(schema, declared, group);
                     return declared;
                 }
             }
-            var matches = schema.Alternatives
-                .Where(alternative =>
-                    populated.All(field => alternative.Members.Contains(field)))
+            var matches = schema
+                .Alternatives.Where(alternative =>
+                    populated.All(field => alternative.Members.Contains(field))
+                )
                 .ToArray();
             if (matches.Length == 0)
             {
                 throw new InvalidOperationException(
-                    $"element '{schema.Name}' does not match an XML type alternative");
+                    $"element '{schema.Name}' does not match an XML type alternative"
+                );
             }
             var memberCount = matches.Min(alternative => alternative.Members.Count);
             var narrowest = matches
@@ -1140,7 +1333,8 @@ public static partial class FerruleXml
             if (narrowest.Length != 1)
             {
                 throw new InvalidOperationException(
-                    $"element '{schema.Name}' matches more than one XML type alternative");
+                    $"element '{schema.Name}' matches more than one XML type alternative"
+                );
             }
             return narrowest[0];
         }
@@ -1148,49 +1342,51 @@ public static partial class FerruleXml
         private static void ValidateAlternativeFields(
             XmlSchemaNode schema,
             XmlAlternative alternative,
-            FerruleGroup group)
+            FerruleGroup group
+        )
         {
             var unexpected = group.Fields.Any(field =>
-                field.Name != XmlTypeField &&
-                InstanceHasValue(field.Value) &&
-                !alternative.Members.Contains(field.Name));
+                field.Name != XmlTypeField
+                && InstanceHasValue(field.Value)
+                && !alternative.Members.Contains(field.Name)
+            );
             var missing = alternative.Required.Any(required =>
-                !group.TryGetField(required, out var field) ||
-                !InstanceHasValue(field));
+                !group.TryGetField(required, out var field) || !InstanceHasValue(field)
+            );
             if (unexpected || missing)
             {
                 throw new InvalidOperationException(
-                    $"element '{schema.Name}' does not match XML type '{alternative.Name}'");
+                    $"element '{schema.Name}' does not match XML type '{alternative.Name}'"
+                );
             }
         }
 
-        private static bool InstanceHasValue(FerruleInstance instance) => instance switch
-        {
-            FerruleScalar
+        private static bool InstanceHasValue(FerruleInstance instance) =>
+            instance switch
             {
-                Value.Kind: FerruleValueKind.Null or FerruleValueKind.JsonNull,
-            } => false,
-            FerruleScalar => true,
-            FerruleGroup group => group.Fields.Any(field => InstanceHasValue(field.Value)),
-            FerruleRepeated repeated => repeated.Items.Any(InstanceHasValue),
-            FerruleMappedSequence mapped => mapped.Items.Any(InstanceHasValue),
-            FerruleDocumentSet documents =>
-                documents.Documents.Any(document => InstanceHasValue(document.Value)),
-            _ => false,
-        };
+                FerruleScalar { Value.Kind: FerruleValueKind.Null or FerruleValueKind.JsonNull } =>
+                    false,
+                FerruleScalar => true,
+                FerruleGroup group => group.Fields.Any(field => InstanceHasValue(field.Value)),
+                FerruleRepeated repeated => repeated.Items.Any(InstanceHasValue),
+                FerruleMappedSequence mapped => mapped.Items.Any(InstanceHasValue),
+                FerruleDocumentSet documents => documents.Documents.Any(document =>
+                    InstanceHasValue(document.Value)
+                ),
+                _ => false,
+            };
 
-        private static bool InstanceOccurs(FerruleInstance instance) => instance switch
-        {
-            FerruleScalar
+        private static bool InstanceOccurs(FerruleInstance instance) =>
+            instance switch
             {
-                Value.Kind: FerruleValueKind.Null or FerruleValueKind.JsonNull,
-            } => false,
-            FerruleScalar or FerruleGroup => true,
-            FerruleRepeated repeated => repeated.Items.Count != 0,
-            FerruleMappedSequence mapped => mapped.Items.Count != 0,
-            FerruleDocumentSet documents => documents.Documents.Count != 0,
-            _ => false,
-        };
+                FerruleScalar { Value.Kind: FerruleValueKind.Null or FerruleValueKind.JsonNull } =>
+                    false,
+                FerruleScalar or FerruleGroup => true,
+                FerruleRepeated repeated => repeated.Items.Count != 0,
+                FerruleMappedSequence mapped => mapped.Items.Count != 0,
+                FerruleDocumentSet documents => documents.Documents.Count != 0,
+                _ => false,
+            };
 
         private void Start(string name, string? namespaceUri, bool changed)
         {
@@ -1204,9 +1400,11 @@ public static partial class FerruleXml
 
         private void WriteRootHints()
         {
-            if (_hints is null) return;
+            if (_hints is null)
+                return;
             const int maximumRootHeaderBytes = 1024 * 1024;
-            var start = _rootStart ?? throw new InvalidOperationException("missing XML root header");
+            var start = _rootStart
+                ?? throw new InvalidOperationException("missing XML root header");
             // Match the native BytesStart body: exclude the opening '<' delimiter.
             var bodyLength = _output.Length - start - 1;
             if (bodyLength > maximumRootHeaderBytes)
@@ -1215,10 +1413,15 @@ public static partial class FerruleXml
             if (Encoding.UTF8.GetByteCount(header.AsSpan(1)) > maximumRootHeaderBytes)
                 throw new InvalidOperationException("XML schema-hint root header exceeds 1 MiB");
             using var input = new StringReader(header + "/>");
-            using var reader = XmlReader.Create(input, new XmlReaderSettings {
-                DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null,
-                MaxCharactersInDocument = maximumRootHeaderBytes + 3,
-            });
+            using var reader = XmlReader.Create(
+                input,
+                new XmlReaderSettings
+                {
+                    DtdProcessing = DtdProcessing.Prohibit,
+                    XmlResolver = null,
+                    MaxCharactersInDocument = maximumRootHeaderBytes + 3,
+                }
+            );
             reader.MoveToContent();
             var hasXsi = false;
             while (reader.MoveToNextAttribute())
@@ -1226,25 +1429,39 @@ public static partial class FerruleXml
                 if (reader.Name == "xmlns:xsi")
                 {
                     if (reader.Value != XsiNamespace)
-                        throw new InvalidOperationException("conflicting xsi namespace declaration");
+                        throw new InvalidOperationException(
+                            "conflicting xsi namespace declaration"
+                        );
                     hasXsi = true;
                 }
-                if (reader.NamespaceURI == XsiNamespace &&
-                    ((reader.LocalName == "noNamespaceSchemaLocation" && _hints.NoNamespaceLocation is not null) ||
-                     (reader.LocalName == "schemaLocation" && _hints.Locations.Count != 0)))
-                    throw new InvalidOperationException("mapped root attribute already supplies configured XML schema hint");
+                if (
+                    reader.NamespaceURI == XsiNamespace
+                    && (
+                        (
+                            reader.LocalName == "noNamespaceSchemaLocation"
+                            && _hints.NoNamespaceLocation is not null
+                        ) || (reader.LocalName == "schemaLocation" && _hints.Locations.Count != 0)
+                    )
+                )
+                    throw new InvalidOperationException(
+                        "mapped root attribute already supplies configured XML schema hint"
+                    );
             }
-            if (!hasXsi) Attribute("xmlns:xsi", XsiNamespace);
+            if (!hasXsi)
+                Attribute("xmlns:xsi", XsiNamespace);
             if (_hints.NoNamespaceLocation is { } location)
                 Attribute("xsi:noNamespaceSchemaLocation", location);
             if (_hints.Locations.Count != 0)
-                Attribute("xsi:schemaLocation", string.Join(" ", _hints.Locations.SelectMany(pair => new[] { pair.Namespace, pair.Location })));
+                Attribute(
+                    "xsi:schemaLocation",
+                    string.Join(
+                        " ",
+                        _hints.Locations.SelectMany(pair => new[] { pair.Namespace, pair.Location })
+                    )
+                );
         }
 
-        private void SchemaAttribute(
-            XmlSchemaNode schema,
-            string value,
-            List<string> namespaces)
+        private void SchemaAttribute(XmlSchemaNode schema, string value, List<string> namespaces)
         {
             if (!schema.NamespaceIsExplicit || schema.NamespaceUri is null)
             {
@@ -1275,13 +1492,27 @@ public static partial class FerruleXml
             {
                 switch (character)
                 {
-                    case '&': _output.Append("&amp;"); break;
-                    case '<': _output.Append("&lt;"); break;
-                    case '"': _output.Append("&quot;"); break;
-                    case '\t': _output.Append("&#x9;"); break;
-                    case '\n': _output.Append("&#xA;"); break;
-                    case '\r': _output.Append("&#xD;"); break;
-                    default: _output.Append(character); break;
+                    case '&':
+                        _output.Append("&amp;");
+                        break;
+                    case '<':
+                        _output.Append("&lt;");
+                        break;
+                    case '"':
+                        _output.Append("&quot;");
+                        break;
+                    case '\t':
+                        _output.Append("&#x9;");
+                        break;
+                    case '\n':
+                        _output.Append("&#xA;");
+                        break;
+                    case '\r':
+                        _output.Append("&#xD;");
+                        break;
+                    default:
+                        _output.Append(character);
+                        break;
                 }
             }
             _output.Append('"');
@@ -1293,13 +1524,27 @@ public static partial class FerruleXml
             {
                 switch (character)
                 {
-                    case '&': _output.Append("&amp;"); break;
-                    case '<': _output.Append("&lt;"); break;
-                    case '>': _output.Append("&gt;"); break;
-                    case '\'': _output.Append("&apos;"); break;
-                    case '"': _output.Append("&quot;"); break;
-                    case '\r': _output.Append("&#xD;"); break;
-                    default: _output.Append(character); break;
+                    case '&':
+                        _output.Append("&amp;");
+                        break;
+                    case '<':
+                        _output.Append("&lt;");
+                        break;
+                    case '>':
+                        _output.Append("&gt;");
+                        break;
+                    case '\'':
+                        _output.Append("&apos;");
+                        break;
+                    case '"':
+                        _output.Append("&quot;");
+                        break;
+                    case '\r':
+                        _output.Append("&#xD;");
+                        break;
+                    default:
+                        _output.Append(character);
+                        break;
                 }
             }
         }
@@ -1313,10 +1558,14 @@ public static partial class FerruleXml
             XmlSchemaNode schema,
             XmlSchemaNode rootSchema,
             FerruleInstance instance,
-            int recursionDepth)
+            int recursionDepth
+        )
         {
-            if (instance is FerruleRepeated { Items.Count: 0 } or
-                FerruleMappedSequence { Items.Count: 0 })
+            if (
+                instance
+                is FerruleRepeated { Items.Count: 0 }
+                    or FerruleMappedSequence { Items.Count: 0 }
+            )
             {
                 schema = Resolve(schema, rootSchema, recursionDepth);
                 return instance is FerruleRepeated
@@ -1325,9 +1574,9 @@ public static partial class FerruleXml
             }
             return instance switch
             {
-                FerruleScalar scalar when schema.ScalarType is not null =>
-                    schema.Repeating ||
-                    scalar.Value.Kind is not (FerruleValueKind.Null or FerruleValueKind.JsonNull),
+                FerruleScalar scalar when schema.ScalarType is not null => schema.Repeating
+                    || scalar.Value.Kind
+                        is not (FerruleValueKind.Null or FerruleValueKind.JsonNull),
                 _ => true,
             };
         }
@@ -1336,10 +1585,13 @@ public static partial class FerruleXml
             XmlSchemaNode schema,
             XmlSchemaNode rootSchema,
             FerruleGroup group,
-            int recursionDepth)
+            int recursionDepth
+        )
         {
-            if (schema.RepeatingChoices.Count != 0 &&
-                group.TryGetField(XmlMixedContentField, out _))
+            if (
+                schema.RepeatingChoices.Count != 0
+                && group.TryGetField(XmlMixedContentField, out _)
+            )
             {
                 return true;
             }
@@ -1349,27 +1601,34 @@ public static partial class FerruleXml
                 {
                     continue;
                 }
-                if (field is FerruleScalar scalar &&
-                    scalar.Value.Kind is FerruleValueKind.Null or FerruleValueKind.JsonNull)
+                if (
+                    field is FerruleScalar scalar
+                    && scalar.Value.Kind is FerruleValueKind.Null or FerruleValueKind.JsonNull
+                )
                 {
                     continue;
                 }
                 if (child.Text)
                 {
-                    if (field is FerruleScalar { Value.Kind: FerruleValueKind.String } text &&
-                        text.Value.StringValue.Length == 0 &&
-                        child.ScalarType == XmlScalarType.String &&
-                        (child.Fixed is null || child.Fixed.Length == 0))
+                    if (
+                        field is FerruleScalar { Value.Kind: FerruleValueKind.String } text
+                        && text.Value.StringValue.Length == 0
+                        && child.ScalarType == XmlScalarType.String
+                        && (child.Fixed is null || child.Fixed.Length == 0)
+                    )
                     {
                         continue;
                     }
                     return true;
                 }
-                if (!WillWrite(
-                    child,
-                    rootSchema,
-                    field,
-                    recursionDepth + (child.RecursiveReference is null ? 0 : 1)))
+                if (
+                    !WillWrite(
+                        child,
+                        rootSchema,
+                        field,
+                        recursionDepth + (child.RecursiveReference is null ? 0 : 1)
+                    )
+                )
                 {
                     continue;
                 }
@@ -1382,24 +1641,27 @@ public static partial class FerruleXml
         {
             foreach (var field in group.Fields)
             {
-                if (!(schema.Alternatives.Count != 0 &&
-                      field.Name == XmlTypeField) &&
-                    !(schema.RepeatingChoices.Count != 0 &&
-                      field.Name == XmlMixedContentField) &&
-                    !schema.Children.Any(child => child.Name == field.Name))
+                if (
+                    !(schema.Alternatives.Count != 0 && field.Name == XmlTypeField)
+                    && !(schema.RepeatingChoices.Count != 0 && field.Name == XmlMixedContentField)
+                    && !schema.Children.Any(child => child.Name == field.Name)
+                )
                 {
                     throw new InvalidOperationException(
-                        $"group '{schema.Name}' contains unexpected field '{field.Name}'");
+                        $"group '{schema.Name}' contains unexpected field '{field.Name}'"
+                    );
                 }
             }
             foreach (var choice in schema.RepeatingChoices.Where(choice => !choice.Repeating))
             {
                 var selected = choice.Members.Count(member =>
-                    group.TryGetField(member, out var field) && InstanceOccurs(field));
+                    group.TryGetField(member, out var field) && InstanceOccurs(field)
+                );
                 if (selected > 1)
                 {
                     throw new InvalidOperationException(
-                        $"group '{schema.Name}' has more than one singular XML choice member");
+                        $"group '{schema.Name}' has more than one singular XML choice member"
+                    );
                 }
             }
         }
@@ -1407,14 +1669,17 @@ public static partial class FerruleXml
         private static string FormatScalar(
             XmlSchemaNode schema,
             XmlScalarType type,
-            FerruleValue value)
+            FerruleValue value
+        )
         {
             var text = type switch
             {
                 XmlScalarType.String => value.Kind switch
                 {
                     FerruleValueKind.Bool => value.BooleanValue ? "true" : "false",
-                    FerruleValueKind.Int64 => value.Int64Value.ToString(CultureInfo.InvariantCulture),
+                    FerruleValueKind.Int64 => value.Int64Value.ToString(
+                        CultureInfo.InvariantCulture
+                    ),
                     FerruleValueKind.Double when double.IsFinite(value.DoubleValue) =>
                         FerruleValueMaps.RustFloatText(value.DoubleValue),
                     FerruleValueKind.String => value.StringValue,
@@ -1422,7 +1687,9 @@ public static partial class FerruleXml
                 },
                 XmlScalarType.Int => value.Kind switch
                 {
-                    FerruleValueKind.Int64 => value.Int64Value.ToString(CultureInfo.InvariantCulture),
+                    FerruleValueKind.Int64 => value.Int64Value.ToString(
+                        CultureInfo.InvariantCulture
+                    ),
                     FerruleValueKind.Double when ExactInt64(value.DoubleValue, out var integer) =>
                         integer.ToString(CultureInfo.InvariantCulture),
                     FerruleValueKind.String when LexicalInt64(value.StringValue, out var integer) =>
@@ -1435,22 +1702,22 @@ public static partial class FerruleXml
                         FerruleValueMaps.RustFloatText(value.DoubleValue),
                     FerruleValueKind.Int64 when ExactDouble(value.Int64Value) =>
                         value.Int64Value.ToString(CultureInfo.InvariantCulture),
-                    FerruleValueKind.String when
-                        double.TryParse(
+                    FerruleValueKind.String
+                        when double.TryParse(
                             value.StringValue.AsSpan().Trim(),
                             NumberStyles.Float,
                             CultureInfo.InvariantCulture,
-                            out var number) && double.IsFinite(number) =>
-                        FerruleValueMaps.RustFloatText(number),
+                            out var number
+                        ) && double.IsFinite(number) => FerruleValueMaps.RustFloatText(number),
                     _ => throw ValueType(schema, type, value),
                 },
                 XmlScalarType.Bool => value.Kind switch
                 {
                     FerruleValueKind.Bool => value.BooleanValue ? "true" : "false",
-                    FerruleValueKind.String when value.StringValue.AsSpan().Trim() is "true" or "1" =>
-                        "true",
-                    FerruleValueKind.String when value.StringValue.AsSpan().Trim() is "false" or "0" =>
-                        "false",
+                    FerruleValueKind.String
+                        when value.StringValue.AsSpan().Trim() is "true" or "1" => "true",
+                    FerruleValueKind.String
+                        when value.StringValue.AsSpan().Trim() is "false" or "0" => "false",
                     _ => throw ValueType(schema, type, value),
                 },
                 _ => throw new InvalidOperationException("unsupported XML scalar type"),
@@ -1462,67 +1729,73 @@ public static partial class FerruleXml
             if (ParseLexical(type, text) != ParseLexical(type, schema.Fixed))
             {
                 throw new InvalidOperationException(
-                    $"element or attribute '{schema.Name}' requires fixed value '{schema.Fixed}', got '{text}'");
+                    $"element or attribute '{schema.Name}' requires fixed value '{schema.Fixed}', got '{text}'"
+                );
             }
             return schema.Fixed;
         }
 
-        private static FerruleValue ParseLexical(XmlScalarType type, string text) => type switch
-        {
-            XmlScalarType.String => FerruleValue.FromString(text),
-            XmlScalarType.Int when LexicalInt64(text, out var integer) =>
-                FerruleValue.FromInt64(integer),
-            XmlScalarType.Float when
-                double.TryParse(
-                    text.AsSpan().Trim(),
-                    NumberStyles.Float,
-                    CultureInfo.InvariantCulture,
-                    out var number) && double.IsFinite(number) =>
-                FerruleValue.FromDouble(number),
-            XmlScalarType.Bool when text.AsSpan().Trim() is "true" or "1" =>
-                FerruleValue.FromBoolean(true),
-            XmlScalarType.Bool when text.AsSpan().Trim() is "false" or "0" =>
-                FerruleValue.FromBoolean(false),
-            _ => throw new InvalidOperationException(
-                $"fixed XML value '{text}' is invalid for {type}"),
-        };
+        private static FerruleValue ParseLexical(XmlScalarType type, string text) =>
+            type switch
+            {
+                XmlScalarType.String => FerruleValue.FromString(text),
+                XmlScalarType.Int when LexicalInt64(text, out var integer) =>
+                    FerruleValue.FromInt64(integer),
+                XmlScalarType.Float
+                    when double.TryParse(
+                        text.AsSpan().Trim(),
+                        NumberStyles.Float,
+                        CultureInfo.InvariantCulture,
+                        out var number
+                    ) && double.IsFinite(number) => FerruleValue.FromDouble(number),
+                XmlScalarType.Bool when text.AsSpan().Trim() is "true" or "1" =>
+                    FerruleValue.FromBoolean(true),
+                XmlScalarType.Bool when text.AsSpan().Trim() is "false" or "0" =>
+                    FerruleValue.FromBoolean(false),
+                _ => throw new InvalidOperationException(
+                    $"fixed XML value '{text}' is invalid for {type}"
+                ),
+            };
 
         private static InvalidOperationException ValueType(
             XmlSchemaNode schema,
             XmlScalarType expected,
-            FerruleValue value) =>
-            new($"element or attribute '{schema.Name}' expected {expected}, got {value.Kind}");
+            FerruleValue value
+        ) => new($"element or attribute '{schema.Name}' expected {expected}, got {value.Kind}");
 
         private static InvalidOperationException Shape(
             XmlSchemaNode schema,
             string expected,
-            FerruleInstance instance) =>
-            new($"element '{schema.Name}' expected {expected}, got {InstanceKind(instance)}");
+            FerruleInstance instance
+        ) => new($"element '{schema.Name}' expected {expected}, got {InstanceKind(instance)}");
 
-        private static string InstanceKind(FerruleInstance instance) => instance switch
-        {
-            FerruleScalar => "a scalar",
-            FerruleGroup => "an element group",
-            FerruleRepeated => "repeating elements",
-            FerruleMappedSequence => "a mapped element sequence",
-            FerruleDocumentSet => "a document set",
-            _ => "an unknown instance",
-        };
+        private static string InstanceKind(FerruleInstance instance) =>
+            instance switch
+            {
+                FerruleScalar => "a scalar",
+                FerruleGroup => "an element group",
+                FerruleRepeated => "repeating elements",
+                FerruleMappedSequence => "a mapped element sequence",
+                FerruleDocumentSet => "a document set",
+                _ => "an unknown instance",
+            };
 
         private static bool ExactDouble(long value)
         {
             var number = (double)value;
-            return number >= (double)long.MinValue &&
-                number < -(double)long.MinValue &&
-                (long)number == value;
+            return number >= (double)long.MinValue
+                && number < -(double)long.MinValue
+                && (long)number == value;
         }
 
         private static bool ExactInt64(double value, out long integer)
         {
-            if (double.IsFinite(value) &&
-                Math.Truncate(value) == value &&
-                value >= (double)long.MinValue &&
-                value < -(double)long.MinValue)
+            if (
+                double.IsFinite(value)
+                && Math.Truncate(value) == value
+                && value >= (double)long.MinValue
+                && value < -(double)long.MinValue
+            )
             {
                 integer = (long)value;
                 return true;
@@ -1534,14 +1807,23 @@ public static partial class FerruleXml
         private static bool LexicalInt64(string value, out long integer)
         {
             var text = value.AsSpan().Trim();
-            if (long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out integer))
+            if (
+                long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out integer)
+            )
             {
                 return true;
             }
-            if (decimal.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var number) &&
-                decimal.Truncate(number) == number &&
-                number >= long.MinValue &&
-                number <= long.MaxValue)
+            if (
+                decimal.TryParse(
+                    text,
+                    NumberStyles.Float,
+                    CultureInfo.InvariantCulture,
+                    out var number
+                )
+                && decimal.Truncate(number) == number
+                && number >= long.MinValue
+                && number <= long.MaxValue
+            )
             {
                 integer = (long)number;
                 return true;

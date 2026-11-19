@@ -3,6 +3,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use ir::{Instance, Value};
 
+#[path = "json_array_lookup/explicit_item.rs"]
+mod explicit_item;
 #[path = "json_array_lookup/host_commands.rs"]
 mod host_commands;
 #[path = "json_array_lookup/root_scalars.rs"]

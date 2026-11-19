@@ -3,8 +3,7 @@ using System.Text.Json.Nodes;
 using Ferrule.Generated;
 
 var input = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "input.json"));
-var expectedText = File.ReadAllText(
-    Path.Combine(AppContext.BaseDirectory, "expected-output.json"));
+var expectedText = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "expected-output.json"));
 var output = GeneratedMapping.ExecuteJson(input);
 
 var actual = JsonNode.Parse(output);
@@ -19,8 +18,9 @@ var invoices = document.RootElement.GetProperty("Invoices");
 foreach (var invoice in invoices.EnumerateArray())
 {
     Console.WriteLine(
-        $"{invoice.GetProperty("Sequence").GetInt64()}: " +
-        $"{invoice.GetProperty("Display").GetString()}");
+        $"{invoice.GetProperty("Sequence").GetInt64()}: "
+            + $"{invoice.GetProperty("Display").GetString()}"
+    );
 }
 
 Console.WriteLine("C# generated mapping example passed.");

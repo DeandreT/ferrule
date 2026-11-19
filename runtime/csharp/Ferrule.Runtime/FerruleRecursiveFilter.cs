@@ -15,7 +15,8 @@ public static class FerruleRecursiveFilter
         string children,
         string items,
         uint predicateNode,
-        Func<ScopeContext, FerruleValue> predicate)
+        Func<ScopeContext, FerruleValue> predicate
+    )
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentException.ThrowIfNullOrEmpty(children);
@@ -37,7 +38,8 @@ public static class FerruleRecursiveFilter
         string children,
         string items,
         uint predicateNode,
-        Func<FerruleBasicScopeContext, FerruleValue> predicate)
+        Func<FerruleBasicScopeContext, FerruleValue> predicate
+    )
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(collection);
@@ -50,10 +52,19 @@ public static class FerruleRecursiveFilter
             throw RequiresGroup("missing context");
         }
         var itemPath = new string[collection.Count + 1];
-        for (var index = 0; index < collection.Count; index++) itemPath[index] = collection[index];
+        for (var index = 0; index < collection.Count; index++)
+            itemPath[index] = collection[index];
         itemPath[^1] = items;
-        var walk = new OwnedWalk(context.OwnedFrameCount, key, collection.ToArray(), itemPath,
-            children, items, predicateNode, predicate);
+        var walk = new OwnedWalk(
+            context.OwnedFrameCount,
+            key,
+            collection.ToArray(),
+            itemPath,
+            children,
+            items,
+            predicateNode,
+            predicate
+        );
         return walk.Group(context, current, 0);
     }
 
@@ -65,16 +76,22 @@ public static class FerruleRecursiveFilter
         string Children,
         string Items,
         uint PredicateNode,
-        Func<FerruleBasicScopeContext, FerruleValue> Predicate)
+        Func<FerruleBasicScopeContext, FerruleValue> Predicate
+    )
     {
-        internal FerruleGroup Group(FerruleBasicScopeContext context, FerruleInstance current, int depth)
+        internal FerruleGroup Group(
+            FerruleBasicScopeContext context,
+            FerruleInstance current,
+            int depth
+        )
         {
             if (depth >= MaximumDepth)
             {
                 throw new FerruleRuntimeException(
                     FerruleRuntimeError.RecursiveFilterDepth,
                     $"recursive filter exceeds the {MaximumDepth}-group depth limit",
-                    maximumDepth: MaximumDepth);
+                    maximumDepth: MaximumDepth
+                );
             }
             if (current is not FerruleGroup group)
             {
@@ -109,7 +126,10 @@ public static class FerruleRecursiveFilter
         }
 
         private FerruleRepeated FilterItems(
-            FerruleBasicScopeContext context, FerruleInstance collection, out List<bool> kept)
+            FerruleBasicScopeContext context,
+            FerruleInstance collection,
+            out List<bool> kept
+        )
         {
             if (collection is not FerruleRepeated values)
             {
@@ -121,7 +141,13 @@ public static class FerruleRecursiveFilter
             {
                 var item = values.Items[index];
                 var itemContext = context.WithOwnedRecursiveFrame(
-                    context.OwnedFrameCount, Key, ItemPath, item, Items, index + 1);
+                    context.OwnedFrameCount,
+                    Key,
+                    ItemPath,
+                    item,
+                    Items,
+                    index + 1
+                );
                 var keep = FerruleFunctions.RequireBoolean(Predicate(itemContext), PredicateNode);
                 kept.Add(keep);
                 if (keep)
@@ -133,7 +159,10 @@ public static class FerruleRecursiveFilter
         }
 
         private FerruleRepeated FilterChildren(
-            FerruleBasicScopeContext context, FerruleInstance collection, int depth)
+            FerruleBasicScopeContext context,
+            FerruleInstance collection,
+            int depth
+        )
         {
             if (collection is not FerruleRepeated values)
             {
@@ -144,7 +173,13 @@ public static class FerruleRecursiveFilter
             {
                 var child = values.Items[index];
                 var childContext = context.WithOwnedRecursiveFrame(
-                    Retain, Key, GroupPath, child, Children, index + 1);
+                    Retain,
+                    Key,
+                    GroupPath,
+                    child,
+                    Children,
+                    index + 1
+                );
                 output.Add(Group(childContext, child, depth + 1));
             }
             return new FerruleRepeated(output);
@@ -157,14 +192,16 @@ public static class FerruleRecursiveFilter
         string items,
         uint predicateNode,
         Func<ScopeContext, FerruleValue> predicate,
-        int depth)
+        int depth
+    )
     {
         if (depth >= MaximumDepth)
         {
             throw new FerruleRuntimeException(
                 FerruleRuntimeError.RecursiveFilterDepth,
                 $"recursive filter exceeds the {MaximumDepth}-group depth limit",
-                maximumDepth: MaximumDepth);
+                maximumDepth: MaximumDepth
+            );
         }
         if (context.Frames.Count == 0)
         {
@@ -184,7 +221,13 @@ public static class FerruleRecursiveFilter
             if (string.Equals(field.Name, items, StringComparison.Ordinal))
             {
                 value = FilterItems(
-                    context, field.Value, items, predicateNode, predicate, out keptItems);
+                    context,
+                    field.Value,
+                    items,
+                    predicateNode,
+                    predicate,
+                    out keptItems
+                );
             }
             else if (string.Equals(field.Name, children, StringComparison.Ordinal))
             {
@@ -196,7 +239,8 @@ public static class FerruleRecursiveFilter
                     items,
                     predicateNode,
                     predicate,
-                    depth);
+                    depth
+                );
             }
             else
             {
@@ -218,29 +262,31 @@ public static class FerruleRecursiveFilter
         List<FerruleField> output,
         string items,
         string children,
-        IReadOnlyList<bool> keptItems)
+        IReadOnlyList<bool> keptItems
+    )
     {
-        if (!source.TryGetField(OrderedXmlField, out var ordered) ||
-            ordered is not FerruleRepeated entries)
+        if (
+            !source.TryGetField(OrderedXmlField, out var ordered)
+            || ordered is not FerruleRepeated entries
+        )
         {
             return;
         }
-        var filteredItems = output.FirstOrDefault(field => field.Name == items)?.Value
-            as FerruleRepeated;
-        var filteredChildren = output.FirstOrDefault(field => field.Name == children)?.Value
-            as FerruleRepeated;
+        var filteredItems =
+            output.FirstOrDefault(field => field.Name == items)?.Value as FerruleRepeated;
+        var filteredChildren =
+            output.FirstOrDefault(field => field.Name == children)?.Value as FerruleRepeated;
         var rebuilt = new List<FerruleInstance>(entries.Items.Count);
         var itemIndex = 0;
         var keptIndex = 0;
         var childIndex = 0;
         foreach (var entry in entries.Items)
         {
-            if (entry is not FerruleGroup group ||
-                !group.TryGetField(XmlNodeNameField, out var nodeName) ||
-                nodeName is not FerruleScalar
-                {
-                    Value.Kind: FerruleValueKind.String,
-                } name)
+            if (
+                entry is not FerruleGroup group
+                || !group.TryGetField(XmlNodeNameField, out var nodeName)
+                || nodeName is not FerruleScalar { Value.Kind: FerruleValueKind.String } name
+            )
             {
                 rebuilt.Add(CloneInstance(entry));
                 continue;
@@ -268,8 +314,10 @@ public static class FerruleRecursiveFilter
                 }
                 childIndex++;
             }
-            if ((name.Value.StringValue == items || name.Value.StringValue == children) &&
-                replacement is null)
+            if (
+                (name.Value.StringValue == items || name.Value.StringValue == children)
+                && replacement is null
+            )
             {
                 continue;
             }
@@ -280,18 +328,21 @@ public static class FerruleRecursiveFilter
                 rebuilt.Add(CloneInstance(entry));
                 continue;
             }
-            rebuilt.Add(group.RebuildFields(group.Fields.Select(field =>
-                new FerruleField(
-                    field.Name,
-                    field.Name == OrderedXmlValueField && replacement is not null
-                        ? CloneInstance(replacement)
-                        : CloneInstance(field.Value)))));
+            rebuilt.Add(
+                group.RebuildFields(
+                    group.Fields.Select(field => new FerruleField(
+                        field.Name,
+                        field.Name == OrderedXmlValueField && replacement is not null
+                            ? CloneInstance(replacement)
+                            : CloneInstance(field.Value)
+                    ))
+                )
+            );
         }
         var orderedIndex = output.FindIndex(field => field.Name == OrderedXmlField);
         if (orderedIndex >= 0)
         {
-            output[orderedIndex] = new FerruleField(
-                OrderedXmlField, new FerruleRepeated(rebuilt));
+            output[orderedIndex] = new FerruleField(OrderedXmlField, new FerruleRepeated(rebuilt));
         }
     }
 
@@ -301,7 +352,8 @@ public static class FerruleRecursiveFilter
         string items,
         uint predicateNode,
         Func<ScopeContext, FerruleValue> predicate,
-        out List<bool> kept)
+        out List<bool> kept
+    )
     {
         if (collection is not FerruleRepeated values)
         {
@@ -330,7 +382,8 @@ public static class FerruleRecursiveFilter
         string items,
         uint predicateNode,
         Func<ScopeContext, FerruleValue> predicate,
-        int depth)
+        int depth
+    )
     {
         if (collection is not FerruleRepeated values)
         {
@@ -341,13 +394,9 @@ public static class FerruleRecursiveFilter
         {
             var child = values.Items[index];
             var childContext = context.WithRecursiveFilterItem(child, children, index + 1);
-            output.Add(FilterGroup(
-                childContext,
-                children,
-                items,
-                predicateNode,
-                predicate,
-                depth + 1));
+            output.Add(
+                FilterGroup(childContext, children, items, predicateNode, predicate, depth + 1)
+            );
         }
         return new FerruleRepeated(output);
     }
@@ -356,44 +405,54 @@ public static class FerruleRecursiveFilter
         new(
             FerruleRuntimeError.RecursiveFilterRequiresGroup,
             $"recursive filter requires a group item, got {found}",
-            foundInstance: found);
+            foundInstance: found
+        );
 
-    private static FerruleRuntimeException RequiresCollection(
-        string field,
-        FerruleInstance value)
+    private static FerruleRuntimeException RequiresCollection(string field, FerruleInstance value)
     {
         var found = InstanceKind(value);
         return new FerruleRuntimeException(
             FerruleRuntimeError.RecursiveFilterRequiresCollection,
             $"recursive filter field '{field}' must be a repeated collection, got {found}",
             sourceField: field,
-            foundInstance: found);
+            foundInstance: found
+        );
     }
 
-    private static string InstanceKind(FerruleInstance instance) => instance switch
-    {
-        FerruleScalar => "scalar",
-        FerruleGroup => "group",
-        FerruleRepeated => "repeated collection",
-        FerruleMappedSequence => "mapped sequence",
-        FerruleDocumentSet => "document set",
-        _ => "unknown instance",
-    };
+    private static string InstanceKind(FerruleInstance instance) =>
+        instance switch
+        {
+            FerruleScalar => "scalar",
+            FerruleGroup => "group",
+            FerruleRepeated => "repeated collection",
+            FerruleMappedSequence => "mapped sequence",
+            FerruleDocumentSet => "document set",
+            _ => "unknown instance",
+        };
 
-    private static FerruleInstance CloneInstance(FerruleInstance instance) => instance switch
-    {
-        FerruleScalar scalar => new FerruleScalar(scalar.Value),
-        FerruleGroup group => group.ExactCloneFields(group.Fields.Select(field =>
-            new FerruleField(field.Name, CloneInstance(field.Value)))),
-        FerruleRepeated repeated => new FerruleRepeated(repeated.Items.Select(CloneInstance)),
-        FerruleMappedSequence mapped => new FerruleMappedSequence(mapped.Items.Select(CloneInstance)),
-        FerruleDocumentSet documents => new FerruleDocumentSet(documents.Documents.Select(document =>
-            new FerruleDocument(
-                document.Path,
-                CloneInstance(document.Value),
-                document.ResolvedSourcePath))),
-        _ => throw new InvalidOperationException("unknown Ferrule instance type"),
-    };
+    private static FerruleInstance CloneInstance(FerruleInstance instance) =>
+        instance switch
+        {
+            FerruleScalar scalar => new FerruleScalar(scalar.Value),
+            FerruleGroup group => group.ExactCloneFields(
+                group.Fields.Select(field => new FerruleField(
+                    field.Name,
+                    CloneInstance(field.Value)
+                ))
+            ),
+            FerruleRepeated repeated => new FerruleRepeated(repeated.Items.Select(CloneInstance)),
+            FerruleMappedSequence mapped => new FerruleMappedSequence(
+                mapped.Items.Select(CloneInstance)
+            ),
+            FerruleDocumentSet documents => new FerruleDocumentSet(
+                documents.Documents.Select(document => new FerruleDocument(
+                    document.Path,
+                    CloneInstance(document.Value),
+                    document.ResolvedSourcePath
+                ))
+            ),
+            _ => throw new InvalidOperationException("unknown Ferrule instance type"),
+        };
 }
 
 public sealed partial class ScopeContext
@@ -401,7 +460,8 @@ public sealed partial class ScopeContext
     internal ScopeContext WithRecursiveFilterItem(
         FerruleInstance item,
         string collection,
-        int index)
+        int index
+    )
     {
         ArgumentNullException.ThrowIfNull(item);
         ArgumentException.ThrowIfNullOrEmpty(collection);
@@ -422,7 +482,9 @@ public sealed partial class ScopeContext
             new ReadOnlyCollection<FerruleInstance>(frames),
             new ReadOnlyCollection<CollectionIdentity>(collections),
             _executionContext,
-            _dynamicSourceLoader, invocationCounters: _invocationCounters);
+            _dynamicSourceLoader,
+            invocationCounters: _invocationCounters
+        );
     }
 }
 
@@ -434,23 +496,38 @@ public sealed partial class ScopeContext
         BasicSourceBudget budget,
         FerruleInstance item,
         string collection,
-        int index)
+        int index
+    )
     {
         RequireBasicContext();
-        budget.Charge(BasicSourceAccounting.Add((nuint)_frames.Count + 1, (nuint)_collections.Count + 1));
+        budget.Charge(
+            BasicSourceAccounting.Add((nuint)_frames.Count + 1, (nuint)_collections.Count + 1)
+        );
         budget.Charge(4); // two read-only wrappers, the association and the new legacy view
-        for (var i = 0; i < _collections.Count; i++) budget.Path(_collections[i].Path);
+        for (var i = 0; i < _collections.Count; i++)
+            budget.Path(_collections[i].Path);
         var path = new[] { collection };
         budget.Path(path);
         var frames = new FerruleInstance[_frames.Count + 1];
         var collections = new CollectionIdentity[_collections.Count + 1];
-        for (var i = 0; i < _frames.Count; i++) frames[i] = _frames[i];
-        for (var i = 0; i < _collections.Count; i++) collections[i] = _collections[i];
+        for (var i = 0; i < _frames.Count; i++)
+            frames[i] = _frames[i];
+        for (var i = 0; i < _collections.Count; i++)
+            collections[i] = _collections[i];
         frames[^1] = item;
         collections[^1] = new CollectionIdentity(path, item, index);
-        return new ScopeContext(_jsonProjections, _primarySource, new ReadOnlyCollection<FerruleInstance>(frames),
-            new ReadOnlyCollection<CollectionIdentity>(collections), _executionContext,
-            _dynamicSourceLoader, _filterMapRunState, _filterMapBoundary, _filterMapCallDepth, _invocationCounters);
+        return new ScopeContext(
+            _jsonProjections,
+            _primarySource,
+            new ReadOnlyCollection<FerruleInstance>(frames),
+            new ReadOnlyCollection<CollectionIdentity>(collections),
+            _executionContext,
+            _dynamicSourceLoader,
+            _filterMapRunState,
+            _filterMapBoundary,
+            _filterMapCallDepth,
+            _invocationCounters
+        );
     }
 }
 
@@ -459,29 +536,51 @@ public sealed partial class FerruleOwnedScopeContext
     // The scope's current group: the owner's latest exact occurrence, or its
     // registry root for an endpoint root selected without an occurrence.
     internal (int Key, FerruleInstance? Current) RecursiveFilterRoot(
-        FerruleOwnedSourceOwner owner, IReadOnlyList<string> collection, OwnedQuery query)
+        FerruleOwnedSourceOwner owner,
+        IReadOnlyList<string> collection,
+        OwnedQuery query
+    )
     {
         var key = Roots.Resolve(owner, query);
         var selected = Match(key, collection, true);
-        if (selected >= 0) return (key, _frames[selected].Item);
+        if (selected >= 0)
+            return (key, _frames[selected].Item);
         return (key, collection.Count == 0 ? Roots.Instance(key) : null);
     }
 
     // Keep the first retained frames and add one same-shape occurrence; a newer
     // occurrence with the same owner and collection shadows an older one.
-    internal FerruleOwnedScopeContext WithRecursiveOccurrence(OwnedQuery query, int retain, int key,
-        IReadOnlyList<string> collection, FerruleInstance item, nuint index)
+    internal FerruleOwnedScopeContext WithRecursiveOccurrence(
+        OwnedQuery query,
+        int retain,
+        int key,
+        IReadOnlyList<string> collection,
+        FerruleInstance item,
+        nuint index
+    )
     {
         if ((uint)retain > (uint)_frames.Length)
-            throw new FerruleBasicSourceBridgeException(FerruleBasicSourceBridgeErrorKind.InvalidCohortWitness);
-        OwnedSourceAccounting.Limit(0, (nuint)retain + 1, Roots.Limits.MaxActiveFrames,
-            FerruleOwnedSourceLimitKind.Frames);
+            throw new FerruleBasicSourceBridgeException(
+                FerruleBasicSourceBridgeErrorKind.InvalidCohortWitness
+            );
+        OwnedSourceAccounting.Limit(
+            0,
+            (nuint)retain + 1,
+            Roots.Limits.MaxActiveFrames,
+            FerruleOwnedSourceLimitKind.Frames
+        );
         var copy = CopyFrames(query, new ArraySegment<Occurrence>(_frames, 0, retain));
-        query.Slots.Charge(OwnedSourceAccounting.Add((nuint)collection.Count, 2,
-            FerruleOwnedSourceLimitKind.MetadataSlots));
+        query.Slots.Charge(
+            OwnedSourceAccounting.Add(
+                (nuint)collection.Count,
+                2,
+                FerruleOwnedSourceLimitKind.MetadataSlots
+            )
+        );
         query.Bytes.Charge(OwnedSourceAccounting.PathText(collection));
         var path = new string[collection.Count];
-        for (var i = 0; i < path.Length; i++) path[i] = collection[i];
+        for (var i = 0; i < path.Length; i++)
+            path[i] = collection[i];
         var frames = new Occurrence[retain + 1];
         Array.Copy(copy, frames, retain);
         frames[retain] = new Occurrence(key, path, item, index);
@@ -494,30 +593,60 @@ public sealed partial class FerruleBasicScopeContext
     internal int OwnedFrameCount => _owned.FrameCount;
 
     internal (int Key, FerruleInstance? Current) OwnedRecursiveFilterRoot(
-        FerruleOwnedSourceOwner owner, IReadOnlyList<string> collection)
+        FerruleOwnedSourceOwner owner,
+        IReadOnlyList<string> collection
+    )
     {
         try
         {
             var budget = Begin();
             return _owned.RecursiveFilterRoot(owner, collection, Query(budget, owner, collection));
         }
-        catch (FerruleOwnedSourceException e) { throw FerruleRuntimeException.FromOwnedSource(e); }
-        catch (FerruleBasicSourceBridgeException e) { throw FerruleRuntimeException.FromBasicSourceBridge(e); }
+        catch (FerruleOwnedSourceException e)
+        {
+            throw FerruleRuntimeException.FromOwnedSource(e);
+        }
+        catch (FerruleBasicSourceBridgeException e)
+        {
+            throw FerruleRuntimeException.FromBasicSourceBridge(e);
+        }
     }
 
     // One recursive level: the legacy view stacks the visited item while the
     // owned view keeps the first retained frames plus the owner's occurrence.
-    internal FerruleBasicScopeContext WithOwnedRecursiveFrame(int retain, int key,
-        IReadOnlyList<string> collection, FerruleInstance item, string legacyCollection, int index)
+    internal FerruleBasicScopeContext WithOwnedRecursiveFrame(
+        int retain,
+        int key,
+        IReadOnlyList<string> collection,
+        FerruleInstance item,
+        string legacyCollection,
+        int index
+    )
     {
         try
         {
             var budget = Begin();
-            BasicSourceAccounting.Limit((nuint)LegacyView.Frames.Count, 1,
-                BasicSourceAccounting.LegacyFrames(Roots.Limits), FerruleBasicSourceBridgeComponent.LegacyFrames);
+            BasicSourceAccounting.Limit(
+                (nuint)LegacyView.Frames.Count,
+                1,
+                BasicSourceAccounting.LegacyFrames(Roots.Limits),
+                FerruleBasicSourceBridgeComponent.LegacyFrames
+            );
             var query = Query(budget, FerruleOwnedSourceOwner.Primary, Array.Empty<string>());
-            var owned = _owned.WithRecursiveOccurrence(query, retain, key, collection, item, (nuint)index);
-            var legacy = LegacyView.WithBasicRecursiveFilterItem(budget, item, legacyCollection, index);
+            var owned = _owned.WithRecursiveOccurrence(
+                query,
+                retain,
+                key,
+                collection,
+                item,
+                (nuint)index
+            );
+            var legacy = LegacyView.WithBasicRecursiveFilterItem(
+                budget,
+                item,
+                legacyCollection,
+                index
+            );
             budget.Charge((nuint)_origins.Length + 1);
             var origins = new BasicFrameOrigin[_origins.Length];
             for (var i = 0; i < origins.Length; i++)
@@ -528,7 +657,13 @@ public sealed partial class FerruleBasicScopeContext
             }
             return new FerruleBasicScopeContext(Roots, legacy, owned, origins, 2);
         }
-        catch (FerruleOwnedSourceException e) { throw FerruleRuntimeException.FromOwnedSource(e); }
-        catch (FerruleBasicSourceBridgeException e) { throw FerruleRuntimeException.FromBasicSourceBridge(e); }
+        catch (FerruleOwnedSourceException e)
+        {
+            throw FerruleRuntimeException.FromOwnedSource(e);
+        }
+        catch (FerruleBasicSourceBridgeException e)
+        {
+            throw FerruleRuntimeException.FromBasicSourceBridge(e);
+        }
     }
 }

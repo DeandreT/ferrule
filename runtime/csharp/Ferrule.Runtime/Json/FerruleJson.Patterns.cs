@@ -43,8 +43,9 @@ internal sealed class FerruleJsonPattern
         if (work > remainingWork)
         {
             throw Boundary(
-                $"JSON pattern match requires {work} work units; " +
-                $"only {remainingWork} remain from the {MaximumBoundaryWork}-unit bounded work limit.");
+                $"JSON pattern match requires {work} work units; "
+                    + $"only {remainingWork} remain from the {MaximumBoundaryWork}-unit bounded work limit."
+            );
         }
         remainingWork -= work;
 
@@ -60,10 +61,7 @@ internal sealed class FerruleJsonPattern
         var position = 0;
         while (!remaining.IsEmpty)
         {
-            var status = Rune.DecodeFromUtf16(
-                remaining,
-                out var rune,
-                out var charsConsumed);
+            var status = Rune.DecodeFromUtf16(remaining, out var rune, out var charsConsumed);
             if (status != OperationStatus.Done)
             {
                 throw Boundary("JSON string contains an unpaired UTF-16 surrogate.");
@@ -72,9 +70,11 @@ internal sealed class FerruleJsonPattern
             foreach (var state in active.States)
             {
                 var instruction = _instructions[state];
-                if (instruction.Operation == Operation.Consume &&
-                    instruction.CharacterSet is not null &&
-                    instruction.CharacterSet.Contains(rune))
+                if (
+                    instruction.Operation == Operation.Consume
+                    && instruction.CharacterSet is not null
+                    && instruction.CharacterSet.Contains(rune)
+                )
                 {
                     AddClosure(next, instruction.First, position + 1, input);
                 }
@@ -137,12 +137,10 @@ internal sealed class FerruleJsonPattern
 
     private static bool IsEndPosition(int position, InputInfo input)
     {
-        return position == input.ScalarCount ||
-               input.FinalLineTerminatorStart == position;
+        return position == input.ScalarCount || input.FinalLineTerminatorStart == position;
     }
 
-    private static bool IsLineTerminator(int value) =>
-        value is '\n' or '\r' or 0x2028 or 0x2029;
+    private static bool IsLineTerminator(int value) => value is '\n' or '\r' or 0x2028 or 0x2029;
 
     private static InputInfo ScanInput(string value)
     {
@@ -152,10 +150,7 @@ internal sealed class FerruleJsonPattern
         var remaining = value.AsSpan();
         while (!remaining.IsEmpty)
         {
-            var status = Rune.DecodeFromUtf16(
-                remaining,
-                out var rune,
-                out var charsConsumed);
+            var status = Rune.DecodeFromUtf16(remaining, out var rune, out var charsConsumed);
             if (status != OperationStatus.Done)
             {
                 throw Boundary("JSON string contains an unpaired UTF-16 surrogate.");
@@ -184,10 +179,7 @@ internal sealed class FerruleJsonPattern
         var remaining = value.AsSpan();
         while (!remaining.IsEmpty)
         {
-            var status = Rune.DecodeFromUtf16(
-                remaining,
-                out var rune,
-                out var charsConsumed);
+            var status = Rune.DecodeFromUtf16(remaining, out var rune, out var charsConsumed);
             if (status != OperationStatus.Done)
             {
                 throw Boundary("JSON pattern contains an unpaired UTF-16 surrogate.");
@@ -198,9 +190,7 @@ internal sealed class FerruleJsonPattern
         return result.ToArray();
     }
 
-    private readonly record struct InputInfo(
-        int ScalarCount,
-        int? FinalLineTerminatorStart);
+    private readonly record struct InputInfo(int ScalarCount, int? FinalLineTerminatorStart);
 
     private static FerruleRuntimeException Boundary(string message) =>
         new(FerruleRuntimeError.JsonBoundary, message, detail: message);
@@ -221,10 +211,7 @@ internal sealed class FerruleJsonPattern
 
     private sealed record AlternationExpression(IReadOnlyList<Expression> Branches) : Expression;
 
-    private sealed record RepeatExpression(
-        Expression Item,
-        int Minimum,
-        int? Maximum) : Expression;
+    private sealed record RepeatExpression(Expression Item, int Minimum, int? Maximum) : Expression;
 
     private readonly record struct ScalarRange(int Start, int End);
 
@@ -275,14 +262,12 @@ internal sealed class FerruleJsonPattern
                     new ScalarRange('\r', '\r'),
                     new ScalarRange(0x2028, 0x2029),
                 ],
-                true);
+                true
+            );
 
         private static ScalarRange[] MergeRanges(IEnumerable<ScalarRange> source)
         {
-            var ordered = source
-                .OrderBy(range => range.Start)
-                .ThenBy(range => range.End)
-                .ToArray();
+            var ordered = source.OrderBy(range => range.Start).ThenBy(range => range.End).ToArray();
             if (ordered.Length <= 1)
             {
                 return ordered;
@@ -294,9 +279,7 @@ internal sealed class FerruleJsonPattern
             {
                 if (range.Start <= current.End + 1)
                 {
-                    current = new ScalarRange(
-                        current.Start,
-                        Math.Max(current.End, range.End));
+                    current = new ScalarRange(current.Start, Math.Max(current.End, range.End));
                 }
                 else
                 {
@@ -321,7 +304,8 @@ internal sealed class FerruleJsonPattern
             if (sourceBytes > MaximumSourceBytes)
             {
                 throw Boundary(
-                    $"JSON pattern is {sourceBytes} bytes; maximum is {MaximumSourceBytes}.");
+                    $"JSON pattern is {sourceBytes} bytes; maximum is {MaximumSourceBytes}."
+                );
             }
             _source = DecodePatternScalars(source);
         }
@@ -339,17 +323,12 @@ internal sealed class FerruleJsonPattern
         private Expression ParseAlternation(int depth)
         {
             RequireDepth(depth);
-            var branches = new List<Expression>
-            {
-                ParseSequence(depth),
-            };
+            var branches = new List<Expression> { ParseSequence(depth) };
             while (Take('|'))
             {
                 branches.Add(ParseSequence(depth));
             }
-            return branches.Count == 1
-                ? branches[0]
-                : Count(new AlternationExpression(branches));
+            return branches.Count == 1 ? branches[0] : Count(new AlternationExpression(branches));
         }
 
         private Expression ParseSequence(int depth)
@@ -405,10 +384,8 @@ internal sealed class FerruleJsonPattern
                 '(' => ParseGroup(depth),
                 '[' => ParseClass(),
                 '\\' => Count(new CharacterExpression(CharacterSet.Single(ParseEscape()))),
-                '*' or '+' or '?' or '{' =>
-                    throw Invalid("quantifier has no preceding atom"),
-                ')' or '|' or ']' or '}' =>
-                    throw Invalid($"unexpected '{Display(current)}'"),
+                '*' or '+' or '?' or '{' => throw Invalid("quantifier has no preceding atom"),
+                ')' or '|' or ']' or '}' => throw Invalid($"unexpected '{Display(current)}'"),
                 _ => Count(new CharacterExpression(CharacterSet.Single(current))),
             };
         }
@@ -420,8 +397,7 @@ internal sealed class FerruleJsonPattern
             {
                 if (!Take(':'))
                 {
-                    throw Invalid(
-                        "lookaround, named groups, and inline flags are unsupported");
+                    throw Invalid("lookaround, named groups, and inline flags are unsupported");
                 }
             }
             var expression = ParseAlternation(depth + 1);
@@ -440,16 +416,12 @@ internal sealed class FerruleJsonPattern
             while (!AtEnd && Current.Value != ']')
             {
                 RejectClassSetOperation();
-                if (Current.Value == '-' &&
-                    hasPriorMember &&
-                    PeekValue(1) != ']')
+                if (Current.Value == '-' && hasPriorMember && PeekValue(1) != ']')
                 {
                     throw Invalid("raw '-' is only valid first or last in a character class");
                 }
                 var start = ParseClassScalar();
-                if (!AtEnd &&
-                    Current.Value == '-' &&
-                    PeekValue(1) is not (null or ']'))
+                if (!AtEnd && Current.Value == '-' && PeekValue(1) is not (null or ']'))
                 {
                     RejectClassSetOperation();
                     _index++;
@@ -494,8 +466,7 @@ internal sealed class FerruleJsonPattern
 
         private void RejectClassSetOperation()
         {
-            if (PeekValue(0) is '&' or '-' or '~' or '|' &&
-                PeekValue(1) == PeekValue(0))
+            if (PeekValue(0) is '&' or '-' or '~' or '|' && PeekValue(1) == PeekValue(0))
             {
                 throw Invalid("character class set operations are unsupported");
             }
@@ -559,7 +530,8 @@ internal sealed class FerruleJsonPattern
                 if (value > ((ulong)MaximumInstructions - digit) / 10)
                 {
                     throw Invalid(
-                        $"bounded quantifier exceeds the {MaximumInstructions}-instruction limit");
+                        $"bounded quantifier exceeds the {MaximumInstructions}-instruction limit"
+                    );
                 }
                 value = (value * 10) + digit;
                 _index++;
@@ -577,8 +549,21 @@ internal sealed class FerruleJsonPattern
             _index++;
             return escaped.Value switch
             {
-                '^' or '$' or '\\' or '.' or '*' or '+' or '?' or '(' or ')' or
-                    '[' or ']' or '{' or '}' or '|' or '/' => escaped,
+                '^'
+                or '$'
+                or '\\'
+                or '.'
+                or '*'
+                or '+'
+                or '?'
+                or '('
+                or ')'
+                or '['
+                or ']'
+                or '{'
+                or '}'
+                or '|'
+                or '/' => escaped,
                 'n' => new Rune('\n'),
                 'r' => new Rune('\r'),
                 't' => new Rune('\t'),
@@ -587,16 +572,15 @@ internal sealed class FerruleJsonPattern
                 '0' => ParseNullEscape(),
                 'x' => ParseFixedHexEscape(2, "x"),
                 'u' => ParseUnicodeEscape(),
-                'd' or 'D' or 's' or 'S' or 'w' or 'W' =>
-                    throw Invalid("shorthand character classes are unsupported"),
-                'p' or 'P' =>
-                    throw Invalid("Unicode property escapes are unsupported"),
-                'k' =>
-                    throw Invalid("named backreferences are unsupported"),
-                >= '1' and <= '9' =>
-                    throw Invalid("backreferences and octal escapes are unsupported"),
-                'c' =>
-                    throw Invalid("control-letter escapes are unsupported"),
+                'd' or 'D' or 's' or 'S' or 'w' or 'W' => throw Invalid(
+                    "shorthand character classes are unsupported"
+                ),
+                'p' or 'P' => throw Invalid("Unicode property escapes are unsupported"),
+                'k' => throw Invalid("named backreferences are unsupported"),
+                >= '1' and <= '9' => throw Invalid(
+                    "backreferences and octal escapes are unsupported"
+                ),
+                'c' => throw Invalid("control-letter escapes are unsupported"),
                 _ => throw Invalid($"unsupported escape '\\{Display(escaped)}'"),
             };
         }
@@ -690,8 +674,7 @@ internal sealed class FerruleJsonPattern
             return expression;
         }
 
-        private static bool IsQuantifierStart(int value) =>
-            value is '*' or '+' or '?' or '{';
+        private static bool IsQuantifierStart(int value) => value is '*' or '+' or '?' or '{';
 
         private static bool IsAsciiDigit(int value) => value is >= '0' and <= '9';
 
@@ -735,10 +718,7 @@ internal sealed class FerruleJsonPattern
 
         private Rune Current => _source[_index];
 
-        private static string Display(Rune value) =>
-            value.Value == 0
-                ? "\\0"
-                : value.ToString();
+        private static string Display(Rune value) => value.Value == 0 ? "\\0" : value.ToString();
 
         private static FerruleRuntimeException Invalid(string detail) =>
             Boundary($"Embedded JSON schema pattern is invalid: {detail}.");
@@ -760,7 +740,8 @@ internal sealed class FerruleJsonPattern
             Operation operation,
             CharacterSet? characterSet = null,
             int first = -1,
-            int second = -1)
+            int second = -1
+        )
         {
             Operation = operation;
             CharacterSet = characterSet;
@@ -793,18 +774,19 @@ internal sealed class FerruleJsonPattern
             return new FerruleJsonPattern(_instructions.ToArray(), fragment.Start);
         }
 
-        private Fragment CompileExpression(Expression expression) => expression switch
-        {
-            EmptyExpression => Epsilon(),
-            CharacterExpression character => Consuming(character.CharacterSet),
-            StartExpression => Assertion(Operation.AssertStart),
-            EndExpression => Assertion(Operation.AssertEnd),
-            GroupExpression group => CompileExpression(group.Item),
-            SequenceExpression sequence => CompileSequence(sequence.Items),
-            AlternationExpression alternation => CompileAlternation(alternation.Branches),
-            RepeatExpression repeat => CompileRepeat(repeat),
-            _ => throw new InvalidOperationException("Unknown JSON pattern expression."),
-        };
+        private Fragment CompileExpression(Expression expression) =>
+            expression switch
+            {
+                EmptyExpression => Epsilon(),
+                CharacterExpression character => Consuming(character.CharacterSet),
+                StartExpression => Assertion(Operation.AssertStart),
+                EndExpression => Assertion(Operation.AssertEnd),
+                GroupExpression group => CompileExpression(group.Item),
+                SequenceExpression sequence => CompileSequence(sequence.Items),
+                AlternationExpression alternation => CompileAlternation(alternation.Branches),
+                RepeatExpression repeat => CompileRepeat(repeat),
+                _ => throw new InvalidOperationException("Unknown JSON pattern expression."),
+            };
 
         private Fragment Epsilon()
         {
@@ -849,10 +831,8 @@ internal sealed class FerruleJsonPattern
             {
                 var right = CompileExpression(branches[index]);
                 var split = Emit(
-                    new Instruction(
-                        Operation.Split,
-                        first: result.Start,
-                        second: right.Start));
+                    new Instruction(Operation.Split, first: result.Start, second: right.Start)
+                );
                 var outputs = new List<Patch>(result.Outputs.Count + right.Outputs.Count);
                 outputs.AddRange(result.Outputs);
                 outputs.AddRange(right.Outputs);
@@ -884,20 +864,14 @@ internal sealed class FerruleJsonPattern
 
         private Fragment Star(Fragment item)
         {
-            var split = Emit(
-                new Instruction(
-                    Operation.Split,
-                    first: item.Start));
+            var split = Emit(new Instruction(Operation.Split, first: item.Start));
             PatchOutputs(item.Outputs, split);
             return new Fragment(split, [new Patch(split, true)]);
         }
 
         private Fragment Optional(Fragment item)
         {
-            var split = Emit(
-                new Instruction(
-                    Operation.Split,
-                    first: item.Start));
+            var split = Emit(new Instruction(Operation.Split, first: item.Start));
             var outputs = new List<Patch>(item.Outputs.Count + 1);
             outputs.AddRange(item.Outputs);
             outputs.Add(new Patch(split, true));
@@ -925,7 +899,8 @@ internal sealed class FerruleJsonPattern
             if (_instructions.Count >= MaximumInstructions)
             {
                 throw Boundary(
-                    $"Embedded JSON schema pattern exceeds the {MaximumInstructions}-instruction limit.");
+                    $"Embedded JSON schema pattern exceeds the {MaximumInstructions}-instruction limit."
+                );
             }
             _instructions.Add(instruction);
             return _instructions.Count - 1;

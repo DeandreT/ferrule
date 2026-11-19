@@ -15,8 +15,13 @@ public enum FerruleX12Error
 /// <summary>An X12 boundary failure without including document field values.</summary>
 public sealed class FerruleX12Exception : Exception
 {
-    internal FerruleX12Exception(FerruleX12Error error, string message,
-        int? segmentIndex = null, string? fieldPath = null) : base(message)
+    internal FerruleX12Exception(
+        FerruleX12Error error,
+        string message,
+        int? segmentIndex = null,
+        string? fieldPath = null
+    )
+        : base(message)
     {
         Error = error;
         SegmentIndex = segmentIndex;

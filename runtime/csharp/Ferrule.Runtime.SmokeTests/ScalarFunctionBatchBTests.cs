@@ -24,38 +24,19 @@ internal static partial class Program
 
     private static void EdgeCharacterFunctions()
     {
-        CallEquals(
-            Text("A\U0001F642"),
-            "left",
-            Text("A\U0001F642BC"),
-            FerruleValue.FromInt64(2));
-        CallEquals(
-            Text("BC"),
-            "right",
-            Text("A\U0001F642BC"),
-            FerruleValue.FromDouble(2.9));
-        CallEquals(
-            Text(string.Empty),
-            "left",
-            Text("value"),
-            FerruleValue.FromInt64(0));
-        CallEquals(
-            Text("value"),
-            "right",
-            Text("value"),
-            FerruleValue.FromInt64(long.MaxValue));
+        CallEquals(Text("A\U0001F642"), "left", Text("A\U0001F642BC"), FerruleValue.FromInt64(2));
+        CallEquals(Text("BC"), "right", Text("A\U0001F642BC"), FerruleValue.FromDouble(2.9));
+        CallEquals(Text(string.Empty), "left", Text("value"), FerruleValue.FromInt64(0));
+        CallEquals(Text("value"), "right", Text("value"), FerruleValue.FromInt64(long.MaxValue));
         AssertFunctionArity("left", 2, Text("value"));
         AssertFunctionType("right", FerruleValue.FromInt64(1), FerruleValue.FromInt64(1));
-        AssertFunctionTypeKind(
-            "left",
-            FerruleValueKind.String,
-            Text("value"),
-            Text("2"));
+        AssertFunctionTypeKind("left", FerruleValueKind.String, Text("value"), Text("2"));
         AssertInvalidArgument(
             "right",
             "requires a finite character count",
             Text("value"),
-            FerruleValue.FromDouble(double.PositiveInfinity));
+            FerruleValue.FromDouble(double.PositiveInfinity)
+        );
     }
 
     private static void SubstringFunctions()
@@ -66,31 +47,36 @@ internal static partial class Program
             "substring",
             Text("metadata"),
             FerruleValue.FromInt64(4),
-            FerruleValue.FromInt64(3));
+            FerruleValue.FromInt64(3)
+        );
         CallEquals(
             Text("\U0001F642b"),
             "substring",
             Text("a\U0001F642bc"),
             FerruleValue.FromInt64(2),
-            FerruleValue.FromInt64(2));
+            FerruleValue.FromInt64(2)
+        );
         CallEquals(
             Text("b"),
             "substring",
             Text("abc"),
             FerruleValue.FromDouble(1.5),
-            FerruleValue.FromInt64(1));
+            FerruleValue.FromInt64(1)
+        );
         CallEquals(Text("abc"), "substring", Text("abc"), FerruleValue.FromDouble(double.NaN));
         CallEquals(
             Text(string.Empty),
             "substring",
             Text("abc"),
-            FerruleValue.FromDouble(double.PositiveInfinity));
+            FerruleValue.FromDouble(double.PositiveInfinity)
+        );
         CallEquals(
             Text(string.Empty),
             "substring",
             Text("abc"),
             FerruleValue.FromInt64(long.MaxValue),
-            FerruleValue.FromInt64(long.MaxValue));
+            FerruleValue.FromInt64(long.MaxValue)
+        );
 
         AssertFunctionArity("substring", 2, Text("value"));
         AssertFunctionArity(
@@ -99,36 +85,35 @@ internal static partial class Program
             Text("value"),
             FerruleValue.FromInt64(1),
             FerruleValue.FromInt64(2),
-            FerruleValue.FromInt64(3));
+            FerruleValue.FromInt64(3)
+        );
         AssertFunctionType("substring", FerruleValue.FromInt64(1));
-        AssertFunctionTypeKind(
-            "substring",
-            FerruleValueKind.String,
-            Text("value"),
-            Text("1"));
+        AssertFunctionTypeKind("substring", FerruleValueKind.String, Text("value"), Text("1"));
     }
 
     private static void SqlLikeFunction()
     {
-        foreach (var (value, pattern, expected) in new[]
-        {
-            ("Baker", "B%", true),
-            ("baker", "B%", true),
-            ("Baker", "%ake_", true),
-            ("Baker", "B_k_r", true),
-            ("Baker", "B_k", false),
-            (string.Empty, "%", true),
-            (string.Empty, "_", false),
-            ("\U0001F642", "_", true),
-            ("é", "É", false),
-            ("\\", "\\", true),
-            ("abc\\def", "abc\\%", true),
-            ("ab\0cd", "ab", true),
-            ("a\0b", "a_b", false),
-            ("ab", "ab\0%", true),
-            ("abX", "ab\0%", false),
-            ("ab\0xyz", "ab\0%", true),
-        })
+        foreach (
+            var (value, pattern, expected) in new[]
+            {
+                ("Baker", "B%", true),
+                ("baker", "B%", true),
+                ("Baker", "%ake_", true),
+                ("Baker", "B_k_r", true),
+                ("Baker", "B_k", false),
+                (string.Empty, "%", true),
+                (string.Empty, "_", false),
+                ("\U0001F642", "_", true),
+                ("é", "É", false),
+                ("\\", "\\", true),
+                ("abc\\def", "abc\\%", true),
+                ("ab\0cd", "ab", true),
+                ("a\0b", "a_b", false),
+                ("ab", "ab\0%", true),
+                ("abX", "ab\0%", false),
+                ("ab\0xyz", "ab\0%", true),
+            }
+        )
         {
             CallEquals(Bool(expected), "sql_like", Text(value), Text(pattern));
         }
@@ -138,27 +123,36 @@ internal static partial class Program
         CallEquals(Bool(true), "sql_like", Text("a"), Text("a\0" + new string('x', 49_998)));
         CallEquals(Bool(false), "sql_like", Text(""), Text(new string('é', 25_000)));
         CallEquals(Bool(true), "sql_like", Text(new string('a', 100_000)), Text("a%"));
-        CallEquals(Bool(true), "sql_like", Text(new string('a', 2_001)), Text(new string('%', 50_000)));
+        CallEquals(
+            Bool(true),
+            "sql_like",
+            Text(new string('a', 2_001)),
+            Text(new string('%', 50_000))
+        );
         AssertInvalidArgument(
             "sql_like",
             "pattern exceeds 50000 UTF-8 bytes",
             Text("a"),
-            Text("a\0" + new string('x', 49_999)));
+            Text("a\0" + new string('x', 49_999))
+        );
         AssertInvalidArgument(
             "sql_like",
             "pattern exceeds 50000 UTF-8 bytes",
             Text(""),
-            Text(new string('é', 25_000) + "a"));
+            Text(new string('é', 25_000) + "a")
+        );
         AssertInvalidArgument(
             "sql_like",
             "matching work exceeds 100000000 cell updates",
             Text(new string('a', 25_001)),
-            Text(string.Concat(Enumerable.Repeat("a%", 2_000))));
+            Text(string.Concat(Enumerable.Repeat("a%", 2_000)))
+        );
         AssertFunctionTypeKind(
             "sql_like",
             FerruleValueKind.Null,
             FerruleValue.Null,
-            Text(new string('x', 50_001)));
+            Text(new string('x', 50_001))
+        );
     }
 
     private static void PaddingFunctions()
@@ -168,25 +162,29 @@ internal static partial class Program
             "pad_string_left",
             FerruleValue.FromInt64(7),
             FerruleValue.FromDouble(3.9),
-            FerruleValue.FromInt64(0));
+            FerruleValue.FromInt64(0)
+        );
         CallEquals(
             Text("AP\U0001F642\U0001F642"),
             "pad_string_right",
             Text("AP"),
             FerruleValue.FromInt64(4),
-            Text("\U0001F642"));
+            Text("\U0001F642")
+        );
         CallEquals(
             Text("already-long"),
             "pad_string_left",
             Text("already-long"),
             FerruleValue.FromInt64(3),
-            Text("x"));
+            Text("x")
+        );
         CallEquals(
             Text("AP"),
             "pad_string_right",
             Text("AP"),
             FerruleValue.FromInt64(-3),
-            Text("x"));
+            Text("x")
+        );
 
         AssertFunctionArity("pad_string_left", 3, Text("value"));
         AssertFunctionTypeKind(
@@ -194,38 +192,40 @@ internal static partial class Program
             FerruleValueKind.String,
             Text("value"),
             Text("3"),
-            Text("x"));
+            Text("x")
+        );
         AssertInvalidArgument(
             "pad_string_left",
             "requires one padding character",
             Text("value"),
             FerruleValue.FromInt64(7),
-            Text(string.Empty));
+            Text(string.Empty)
+        );
         AssertInvalidArgument(
             "pad_string_right",
             "requires one padding character",
             Text("value"),
             FerruleValue.FromInt64(7),
-            Text("xy"));
+            Text("xy")
+        );
         AssertInvalidArgument(
             "pad_string_left",
             "requested output exceeds 1000000 characters",
             Text(string.Empty),
             FerruleValue.FromInt64(1_000_001),
-            Text("x"));
-        foreach (var value in new[]
-        {
-            double.NaN,
-            double.PositiveInfinity,
-            double.NegativeInfinity,
-        })
+            Text("x")
+        );
+        foreach (
+            var value in new[] { double.NaN, double.PositiveInfinity, double.NegativeInfinity }
+        )
         {
             AssertInvalidArgument(
                 "pad_string_right",
                 "requires a finite desired length",
                 Text(string.Empty),
                 FerruleValue.FromDouble(value),
-                Text("x"));
+                Text("x")
+            );
         }
     }
 
@@ -237,11 +237,13 @@ internal static partial class Program
         AssertInvalidArgument(
             "isbn10_to_isbn13",
             "ISBN-10 check digit is invalid",
-            Text("0764549643"));
+            Text("0764549643")
+        );
         AssertInvalidArgument(
             "isbn10_to_isbn13",
             "expected a 10-character ISBN with an optional final X check digit",
-            Text("978-0-123"));
+            Text("978-0-123")
+        );
         AssertFunctionArity("isbn10_to_isbn13", 1, Array.Empty<FerruleValue>());
         AssertFunctionType("isbn10_to_isbn13", FerruleValue.FromInt64(764549642));
     }
@@ -255,34 +257,40 @@ internal static partial class Program
             FerruleValue.FromDouble(1.23),
             "round",
             FerruleValue.FromDouble(1.23456),
-            FerruleValue.FromInt64(2));
+            FerruleValue.FromInt64(2)
+        );
         CallEquals(
             FerruleValue.FromDouble(1.23),
             "round",
             FerruleValue.FromDouble(1.23456),
-            FerruleValue.FromDouble(1.6));
+            FerruleValue.FromDouble(1.6)
+        );
         CallEquals(
             FerruleValue.FromDouble(2.0),
             "round",
             FerruleValue.FromDouble(2.4),
-            FerruleValue.FromDouble(double.NaN));
+            FerruleValue.FromDouble(double.NaN)
+        );
 
-        var negativeZero = FerruleFunctions.Call(
-            "round",
-            new[] { FerruleValue.FromDouble(-0.1) });
+        var negativeZero = FerruleFunctions.Call("round", new[] { FerruleValue.FromDouble(-0.1) });
         Equal(
             BitConverter.DoubleToInt64Bits(-0.0),
-            BitConverter.DoubleToInt64Bits(negativeZero.DoubleValue));
+            BitConverter.DoubleToInt64Bits(negativeZero.DoubleValue)
+        );
         Equal(
             true,
-            double.IsNaN(FerruleFunctions.Call(
-                "round",
-                new[] { FerruleValue.FromDouble(double.NaN) }).DoubleValue));
+            double.IsNaN(
+                FerruleFunctions
+                    .Call("round", new[] { FerruleValue.FromDouble(double.NaN) })
+                    .DoubleValue
+            )
+        );
         Equal(
             double.PositiveInfinity,
-            FerruleFunctions.Call(
-                "round",
-                new[] { FerruleValue.FromDouble(double.PositiveInfinity) }).DoubleValue);
+            FerruleFunctions
+                .Call("round", new[] { FerruleValue.FromDouble(double.PositiveInfinity) })
+                .DoubleValue
+        );
 
         AssertFunctionArity("round", 1, Array.Empty<FerruleValue>());
         AssertFunctionArity(
@@ -290,13 +298,15 @@ internal static partial class Program
             1,
             FerruleValue.FromInt64(1),
             FerruleValue.FromInt64(2),
-            FerruleValue.FromInt64(3));
+            FerruleValue.FromInt64(3)
+        );
         AssertFunctionTypeKind("round", FerruleValueKind.String, Text("2.5"));
         AssertFunctionTypeKind(
             "round",
             FerruleValueKind.Bool,
             FerruleValue.FromDouble(2.5),
-            Bool(false));
+            Bool(false)
+        );
     }
 
     private static void RoundHalfCeilingFunction()
@@ -323,23 +333,34 @@ internal static partial class Program
         CallEquals(Number(1e300), function, Number(1e300));
         CallEquals(Number(4_503_599_627_370_496.0), function, Number(4_503_599_627_370_495.5));
         CallEquals(Number(-4_503_599_627_370_495.0), function, Number(-4_503_599_627_370_495.5));
-        CallEquals(Number(1.2345678901234568e29), function, Text("123456789012345678901234567890.5"));
+        CallEquals(
+            Number(1.2345678901234568e29),
+            function,
+            Text("123456789012345678901234567890.5")
+        );
         CallEquals(Number(1.23457e-300), function, Number(1.2345678901234567e-300), Integer(305));
-        CallEquals(Number(double.PositiveInfinity), function, Number(double.MaxValue), Integer(-308));
+        CallEquals(
+            Number(double.PositiveInfinity),
+            function,
+            Number(double.MaxValue),
+            Integer(-308)
+        );
         CallEquals(Integer(long.MaxValue), function, Integer(long.MaxValue));
         CallEquals(Integer(long.MinValue), function, Integer(long.MinValue), Integer(2));
         CallEquals(Integer(0), function, Integer(4_000_000_000_000_000_000), Integer(-19));
         CallEquals(Integer(0), function, Integer(-5_000_000_000_000_000_000), Integer(-19));
-        foreach (var (value, precision) in new[]
+        foreach (
+            var (value, precision) in new[]
+            {
+                (long.MaxValue, -1L),
+                (long.MinValue, -1L),
+                (long.MaxValue, -19L),
+            }
+        )
         {
-            (long.MaxValue, -1L),
-            (long.MinValue, -1L),
-            (long.MaxValue, -19L),
-        })
-        {
-            var overflow = Error(
-                FerruleRuntimeError.IntegerOverflow,
-                () => FerruleFunctions.Call(function, new[] { Integer(value), Integer(precision) }));
+            var overflow = Error(FerruleRuntimeError.IntegerOverflow, () =>
+                FerruleFunctions.Call(function, new[] { Integer(value), Integer(precision) })
+            );
             Equal(function, overflow.Function);
         }
 
@@ -374,29 +395,50 @@ internal static partial class Program
         CallEquals(Number(-0.1), function, Text("-1.5E-1"), Number(0.6));
 
         // Decimal results have no negative zero.
-        foreach (var argument in new[] { Number(-0.4), Number(-0.5), Number(-0.0), Text("-0.0"), Text("1E-400") })
+        foreach (
+            var argument in new[]
+            {
+                Number(-0.4),
+                Number(-0.5),
+                Number(-0.0),
+                Text("-0.0"),
+                Text("1E-400"),
+            }
+        )
         {
             var zero = FerruleFunctions.Call(function, new[] { argument });
             Equal(0L, BitConverter.DoubleToInt64Bits(zero.DoubleValue));
         }
 
         // Non-finite floats pass through as they do for `round`.
-        Equal(true, double.IsNaN(FerruleFunctions.Call(
-            function,
-            new[] { Number(double.NaN), Integer(2) }).DoubleValue));
+        Equal(
+            true,
+            double.IsNaN(
+                FerruleFunctions
+                    .Call(function, new[] { Number(double.NaN), Integer(2) })
+                    .DoubleValue
+            )
+        );
         CallEquals(Number(double.PositiveInfinity), function, Number(double.PositiveInfinity));
-        CallEquals(Number(double.NegativeInfinity), function, Number(double.NegativeInfinity), Integer(-2));
+        CallEquals(
+            Number(double.NegativeInfinity),
+            function,
+            Number(double.NegativeInfinity),
+            Integer(-2)
+        );
 
-        foreach (var arguments in new[]
-        {
-            new[] { Text("abc") },
-            new[] { Text(string.Empty) },
-            new[] { Text("NaN") },
-            new[] { Text("inf") },
-            new[] { Text("1e400") },
-            new[] { Text("1_000") },
-            new[] { Number(1.5), Text("x") },
-        })
+        foreach (
+            var arguments in new[]
+            {
+                new[] { Text("abc") },
+                new[] { Text(string.Empty) },
+                new[] { Text("NaN") },
+                new[] { Text("inf") },
+                new[] { Text("1e400") },
+                new[] { Text("1_000") },
+                new[] { Number(1.5), Text("x") },
+            }
+        )
         {
             AssertInvalidArgument(function, "requires a finite numeric value", arguments);
         }
@@ -405,7 +447,8 @@ internal static partial class Program
         AssertFunctionTypeKind(
             function,
             FerruleValueKind.Decimal,
-            FerruleValue.FromDecimal(FerruleDecimal96.Zero));
+            FerruleValue.FromDecimal(FerruleDecimal96.Zero)
+        );
         AssertFunctionTypeKind(function, FerruleValueKind.Bool, Number(1.5), Bool(false));
         AssertFunctionTypeKind(function, FerruleValueKind.Bool, Text("abc"), Bool(true));
         AssertFunctionArity(function, 1, Array.Empty<FerruleValue>());
@@ -414,15 +457,13 @@ internal static partial class Program
 
     private static void DateFromDateTimeFunction()
     {
-        CallEquals(
-            Text("2024-03-01"),
-            "date_from_datetime",
-            Text("2024-03-01T10:30:00"));
+        CallEquals(Text("2024-03-01"), "date_from_datetime", Text("2024-03-01T10:30:00"));
         CallEquals(Text("2024-03-01"), "date_from_datetime", Text("2024-03-01"));
         CallEquals(
             Text("2024-03-01"),
             "date_from_datetime",
-            Text("\u3000\u00A02024-03-01\u205F T10:30:00"));
+            Text("\u3000\u00A02024-03-01\u205F T10:30:00")
+        );
         CallEquals(Text(string.Empty), "date_from_datetime", Text("T10:30:00"));
         AssertFunctionArity("date_from_datetime", 1, Array.Empty<FerruleValue>());
         AssertFunctionType("date_from_datetime", FerruleValue.Null);
@@ -433,64 +474,54 @@ internal static partial class Program
         CallEquals(
             FerruleValue.FromInt64(1999),
             "year_from_datetime",
-            Text("1999-12-31T19:20:00-05:00"));
-        CallEquals(
-            FerruleValue.FromInt64(2000),
-            "year_from_datetime",
-            Text("1999-12-31T24:00:00"));
+            Text("1999-12-31T19:20:00-05:00")
+        );
+        CallEquals(FerruleValue.FromInt64(2000), "year_from_datetime", Text("1999-12-31T24:00:00"));
         CallEquals(
             FerruleValue.FromInt64(1),
             "year_from_datetime",
-            Text("-0001-12-31T24:00:00.0Z"));
+            Text("-0001-12-31T24:00:00.0Z")
+        );
         CallEquals(
             FerruleValue.FromInt64(long.MinValue),
             "year_from_datetime",
-            Text("-9223372036854775808-01-01"));
-        CallEquals(
-            FerruleValue.FromInt64(3),
-            "month_from_datetime",
-            Text("2000-02-29T24:00:00"));
-        CallEquals(
-            FerruleValue.FromInt64(1),
-            "month_from_datetime",
-            Text("1999-12-31T24:00:00"));
-        CallEquals(
-            FerruleValue.FromInt64(1),
-            "day_from_datetime",
-            Text("2000-02-29T24:00:00"));
-        CallEquals(
-            FerruleValue.FromInt64(8),
-            "day_from_datetime",
-            Text("2019-07-08-05:00"));
+            Text("-9223372036854775808-01-01")
+        );
+        CallEquals(FerruleValue.FromInt64(3), "month_from_datetime", Text("2000-02-29T24:00:00"));
+        CallEquals(FerruleValue.FromInt64(1), "month_from_datetime", Text("1999-12-31T24:00:00"));
+        CallEquals(FerruleValue.FromInt64(1), "day_from_datetime", Text("2000-02-29T24:00:00"));
+        CallEquals(FerruleValue.FromInt64(8), "day_from_datetime", Text("2019-07-08-05:00"));
         CallEquals(FerruleValue.FromInt64(4), "weekday", Text("1970-01-01T00:00:00Z"));
         CallEquals(FerruleValue.FromInt64(1), "weekday", Text("2024-03-04"));
         CallEquals(FerruleValue.FromInt64(6), "weekday", Text("1999-12-31T24:00:00"));
-        CallEquals(
-            FerruleValue.FromInt64(6),
-            "weekday",
-            Text("1000000000000000000002400-01-01"));
+        CallEquals(FerruleValue.FromInt64(6), "weekday", Text("1000000000000000000002400-01-01"));
         CallEquals(
             FerruleValue.FromInt64(0),
             "hours_from_datetime",
-            Text("1999-12-31T24:00:00.000-05:00"));
+            Text("1999-12-31T24:00:00.000-05:00")
+        );
         CallEquals(
             FerruleValue.FromInt64(59),
             "minutes_from_datetime",
-            Text("-0004-02-29T23:59:59.5+14:00"));
+            Text("-0004-02-29T23:59:59.5+14:00")
+        );
         CallEquals(
             Text("09:30:02.5+05:00"),
             "time_from_datetime",
-            Text("2001-12-17T09:30:02.5+05:00"));
+            Text("2001-12-17T09:30:02.5+05:00")
+        );
 
-        foreach (var function in new[]
-        {
-            "year_from_datetime",
-            "month_from_datetime",
-            "day_from_datetime",
-            "weekday",
-            "hours_from_datetime",
-            "minutes_from_datetime",
-        })
+        foreach (
+            var function in new[]
+            {
+                "year_from_datetime",
+                "month_from_datetime",
+                "day_from_datetime",
+                "weekday",
+                "hours_from_datetime",
+                "minutes_from_datetime",
+            }
+        )
         {
             CallEquals(FerruleValue.Null, function, FerruleValue.Null);
             AssertFunctionArity(function, 1, Array.Empty<FerruleValue>());
@@ -501,23 +532,28 @@ internal static partial class Program
         AssertInvalidArgument(
             "year_from_datetime",
             "requires a year within the signed 64-bit integer range",
-            Text("9223372036854775807-12-31T24:00:00"));
+            Text("9223372036854775807-12-31T24:00:00")
+        );
         AssertInvalidArgument(
             "month_from_datetime",
             "requires a valid ISO date or dateTime",
-            Text("2001-02-29T00:00:00"));
+            Text("2001-02-29T00:00:00")
+        );
         AssertInvalidArgument(
             "hours_from_datetime",
             "requires a valid ISO dateTime",
-            Text("2024-01-01"));
+            Text("2024-01-01")
+        );
         AssertInvalidArgument(
             "minutes_from_datetime",
             "requires a valid ISO dateTime",
-            Text("2024-01-01T00:00:00+15:00"));
+            Text("2024-01-01T00:00:00+15:00")
+        );
         AssertInvalidArgument(
             "time_from_datetime",
             "requires a value matching a supported date/time picture",
-            Text("2001-02-29T09:30:02"));
+            Text("2001-02-29T09:30:02")
+        );
     }
 
     private static void DateTimeCompositionFunctions()
@@ -526,39 +562,39 @@ internal static partial class Program
             Text("2024-02-29T09:08:07.125+05:30"),
             "datetime_from_date_and_time",
             Text("2024-02-29+05:30"),
-            Text("09:08:07.125+05:30"));
+            Text("09:08:07.125+05:30")
+        );
         CallEquals(
             Text("2024-02-29T09:08:07-04:00"),
             "datetime_from_date_and_time",
             Text("2024-02-29"),
-            Text("09:08:07-04:00"));
+            Text("09:08:07-04:00")
+        );
         CallEquals(
             Text("2024-01-02T00:00:00Z"),
             "datetime_from_date_and_time",
-            Text("2024-01-02Z"));
+            Text("2024-01-02Z")
+        );
         CallEquals(
             Text("-0001-01-02T00:00:00"),
             "datetime_from_date_and_time",
             Text("-0001-01-02"),
-            FerruleValue.Null);
+            FerruleValue.Null
+        );
         AssertInvalidArgument(
             "datetime_from_date_and_time",
             "requires a value matching a supported date/time picture",
             Text("2024-02-29+05:30"),
-            Text("09:08:07-04:00"));
+            Text("09:08:07-04:00")
+        );
 
-        CallEquals(
-            Text("2031-08-17T00:00:00"),
-            "coerce_datetime",
-            Text("2031-08-17"));
-        CallEquals(
-            Text("2031-08-17T00:00:00+05:45"),
-            "coerce_datetime",
-            Text("2031-08-17+05:45"));
+        CallEquals(Text("2031-08-17T00:00:00"), "coerce_datetime", Text("2031-08-17"));
+        CallEquals(Text("2031-08-17T00:00:00+05:45"), "coerce_datetime", Text("2031-08-17+05:45"));
         CallEquals(
             Text("2031-08-17T06:07:08.9Z"),
             "coerce_datetime",
-            Text("2031-08-17T06:07:08.9Z"));
+            Text("2031-08-17T06:07:08.9Z")
+        );
         CallEquals(FerruleValue.Null, "coerce_datetime", FerruleValue.Null);
         CallEquals(FerruleValue.XmlNil, "coerce_datetime", FerruleValue.XmlNil);
 
@@ -572,13 +608,15 @@ internal static partial class Program
             FerruleValue.FromInt64(8),
             FerruleValue.FromInt64(7),
             FerruleValue.FromDouble(125.5),
-            FerruleValue.FromInt64(330));
+            FerruleValue.FromInt64(330)
+        );
         CallEquals(
             Text("2024-01-02T00:00:00"),
             "datetime_from_parts",
             Text("2024"),
             Text("1"),
-            Text("2"));
+            Text("2")
+        );
         CallEquals(
             Text("-0001-01-02T00:00:00"),
             "datetime_from_parts",
@@ -588,7 +626,8 @@ internal static partial class Program
             FerruleValue.Null,
             FerruleValue.Null,
             FerruleValue.Null,
-            FerruleValue.FromDouble(double.Epsilon));
+            FerruleValue.FromDouble(double.Epsilon)
+        );
         CallEquals(
             Text("2024-01-02T00:00:00"),
             "datetime_from_parts",
@@ -599,23 +638,21 @@ internal static partial class Program
             FerruleValue.Null,
             FerruleValue.Null,
             FerruleValue.Null,
-            FerruleValue.FromInt64(-32_768));
+            FerruleValue.FromInt64(-32_768)
+        );
 
         AssertFunctionArity("datetime_from_date_and_time", 1, Array.Empty<FerruleValue>());
         AssertFunctionType("datetime_from_date_and_time", FerruleValue.FromInt64(2024));
         AssertFunctionArity("coerce_datetime", 1, Array.Empty<FerruleValue>());
         AssertFunctionType("coerce_datetime", FerruleValue.FromInt64(1));
-        AssertFunctionArity(
-            "datetime_from_parts",
-            3,
-            Text("2024"),
-            Text("1"));
+        AssertFunctionArity("datetime_from_parts", 3, Text("2024"), Text("1"));
         AssertInvalidArgument(
             "datetime_from_parts",
             "requires a value matching a supported date/time picture",
             Text("2023"),
             Text("2"),
-            Text("29"));
+            Text("29")
+        );
         AssertInvalidArgument(
             "datetime_from_parts",
             "requires a value matching a supported date/time picture",
@@ -626,74 +663,82 @@ internal static partial class Program
             FerruleValue.Null,
             FerruleValue.Null,
             FerruleValue.Null,
-            FerruleValue.FromInt64(841));
+            FerruleValue.FromInt64(841)
+        );
     }
 
     private static void DateTimePictureFunctions()
     {
-        CallEquals(
-            Text("2014-12-09"),
-            "parse_date",
-            Text("09-12-2014"),
-            Text("[D]-[M]-[Y]"));
+        CallEquals(Text("2014-12-09"), "parse_date", Text("09-12-2014"), Text("[D]-[M]-[Y]"));
         CallEquals(
             Text("2015-04-01"),
             "parse_date",
             Text("01 Apr 2015"),
-            Text("[D01] [MNn,3-3] [Y]"));
+            Text("[D01] [MNn,3-3] [Y]")
+        );
         CallEquals(
             Text("2004-11-10+01:00"),
             "parse_date",
             Text("315 2004 +01:00"),
-            Text("[d] [Y] [Z]"));
+            Text("[d] [Y] [Z]")
+        );
 
         CallEquals(
             Text("2014-09-12T13:56:24"),
             "parse_datetime",
             Text("09-12-2014 13:56:24"),
-            Text("[M]-[D]-[Y] [H]:[m]:[s]"));
+            Text("[M]-[D]-[Y] [H]:[m]:[s]")
+        );
         CallEquals(
             Text("2010-12-01T15:02:39+01:00"),
             "parse_datetime",
             Text("1.December.10 03:2:39 p.m. +01:00"),
-            Text("[D].[MNn].[Y,2-2] [h]:[m]:[s] [P] [Z]"));
+            Text("[D].[MNn].[Y,2-2] [h]:[m]:[s] [P] [Z]")
+        );
         CallEquals(
             Text("2011-06-20T00:00:00"),
             "parse_datetime",
             Text("20110620"),
-            Text("[Y,4-4][M,2-2][D,2-2]"));
+            Text("[Y,4-4][M,2-2][D,2-2]")
+        );
 
         CallEquals(
             Text("15:02:39.25+01:00"),
             "parse_time",
             Text("03:2:39.25 p.m. GMT+01:00"),
-            Text("[h]:[m]:[s].[f] [P] [z]"));
+            Text("[h]:[m]:[s].[f] [P] [z]")
+        );
         CallEquals(
             Text("09:53:00"),
             "parse_time",
             FerruleValue.FromDouble(953.0),
-            Text("[H,1-1][m,2-2]"));
+            Text("[H,1-1][m,2-2]")
+        );
         CallEquals(
             Text("17:03:00"),
             "parse_time",
             FerruleValue.FromInt64(1703),
-            Text("[H,2-2][m,2-2]"));
+            Text("[H,2-2][m,2-2]")
+        );
 
         CallEquals(
             Text("10 Nov 2004 +01:00"),
             "format_date",
             Text("2004-11-10+01:00"),
-            Text("[D01] [MNn,3-3] [Y] [Z]"));
+            Text("[D01] [MNn,3-3] [Y] [Z]")
+        );
         CallEquals(
             Text("Wednesday, DECEMBER 01, 2010 03:02:39 pm GMT+01:00"),
             "format_datetime",
             Text("2010-12-01T15:02:39.25+01:00"),
-            Text("Wednesday, [MN] [D01], [Y] [h01]:[m01]:[s01] [Pn] [z]"));
+            Text("Wednesday, [MN] [D01], [Y] [h01]:[m01]:[s01] [Pn] [z]")
+        );
         CallEquals(
             Text("09:53:00.125Z"),
             "format_time",
             Text("09:53:00.125Z"),
-            Text("[H01]:[m01]:[s01].[f]Z"));
+            Text("[H01]:[m01]:[s01].[f]Z")
+        );
         CallEquals(
             Text("29/02/2024"),
             "format_date",
@@ -701,34 +746,32 @@ internal static partial class Program
             Text("[D01]/[M01]/[Y]"),
             FerruleValue.Null,
             Text(string.Empty),
-            FerruleValue.JsonNull);
+            FerruleValue.JsonNull
+        );
 
         AssertFunctionArity("parse_date", 2, Text("2014-01-02"));
         AssertFunctionArity("format_date", 2, Text("2014-01-02"));
-        AssertFunctionType(
-            "parse_datetime",
-            FerruleValue.FromInt64(2014),
-            Text("[Y]"));
-        AssertFunctionType(
-            "parse_time",
-            Text("09:30"),
-            FerruleValue.FromInt64(1));
+        AssertFunctionType("parse_datetime", FerruleValue.FromInt64(2014), Text("[Y]"));
+        AssertFunctionType("parse_time", Text("09:30"), FerruleValue.FromInt64(1));
         AssertInvalidArgument(
             "parse_date",
             "requires a value matching a supported date/time picture",
             Text("2014-02-29"),
-            Text("[Y]-[M]-[D]"));
+            Text("[Y]-[M]-[D]")
+        );
         AssertInvalidArgument(
             "parse_datetime",
             "requires a value matching a supported date/time picture",
             Text("2014-01-02 24:00:00"),
-            Text("[Y]-[M]-[D] [H]:[m]:[s]"));
+            Text("[Y]-[M]-[D] [H]:[m]:[s]")
+        );
         AssertInvalidArgument(
             "format_time",
             "supports only default language, calendar, and place arguments",
             Text("09:30:00"),
             Text("[H]:[m]"),
-            Text("de"));
+            Text("de")
+        );
     }
 
     private static void DateTimeArithmeticFunctions()
@@ -737,98 +780,106 @@ internal static partial class Program
             Text("2024-03-02T01:00:01Z"),
             "datetime_add",
             Text("2024-01-31T23:30:00.25Z"),
-            Text("P1M1DT1H30M0.75S"));
+            Text("P1M1DT1H30M0.75S")
+        );
         CallEquals(
             Text("2023-01-28T00:00:00"),
             "datetime_add",
             Text("2023-01-31T00:00:00"),
             Text("P1M"),
             FerruleValue.Null,
-            Text("-P1M"));
+            Text("-P1M")
+        );
         CallEquals(
             Text("-0001-12-31T00:00:00"),
             "datetime_add",
             Text("0001-01-01T00:00:00"),
-            Text("-P1D"));
+            Text("-P1D")
+        );
         CallEquals(
             Text("2024-03-01T00:00:00.999999999999999999+05:30"),
             "datetime_add",
             Text("2024-03-01T00:00:00.000000000000000001+05:30"),
             Text("-PT0.000000000000000002S"),
-            Text("PT1S"));
+            Text("PT1S")
+        );
         CallEquals(
             Text("2024-02-01T00:00:00Z"),
             "datetime_add",
             Text("2024-01-31T24:00:00.000Z"),
-            Text("P0D"));
+            Text("P0D")
+        );
 
         AssertFunctionArity("datetime_add", 2, Text("2024-01-01"));
-        AssertFunctionType(
-            "datetime_add",
-            Text("2024-01-01"),
-            FerruleValue.FromInt64(1));
+        AssertFunctionType("datetime_add", Text("2024-01-01"), FerruleValue.FromInt64(1));
         AssertInvalidArgument(
             "datetime_add",
             "requires an xs:date or xs:dateTime followed by one or more xs:duration values",
             Text("2024-01-01"),
-            FerruleValue.Null);
+            FerruleValue.Null
+        );
         AssertInvalidArgument(
             "datetime_add",
             "requires an xs:date or xs:dateTime followed by one or more xs:duration values",
             Text("2024-01-01T24:00:00.1"),
-            Text("P0D"));
+            Text("P0D")
+        );
         AssertInvalidArgument(
             "datetime_add",
             "requires an xs:date or xs:dateTime followed by one or more xs:duration values",
             Text("2024-01-01T00:00:00"),
-            Text("PT0.0000000000000000001S"));
+            Text("PT0.0000000000000000001S")
+        );
     }
 
     private static void EdifactDateTimeFunction()
     {
-        foreach (var (value, code, expected) in new[]
-        {
-            ("20240229", "102", "2024-02-29T00:00:00"),
-            ("202402291305", "203", "2024-02-29T13:05:00"),
-            ("20240229130547", "204", "2024-02-29T13:05:47"),
-            ("202402291305-0000", "205", "2024-02-29T13:05:00Z"),
-            ("202402291305PDT", "303", "2024-02-29T13:05:00-09:00"),
-            ("20240229130547UTC", "304", "2024-02-29T13:05:47Z"),
-        })
+        foreach (
+            var (value, code, expected) in new[]
+            {
+                ("20240229", "102", "2024-02-29T00:00:00"),
+                ("202402291305", "203", "2024-02-29T13:05:00"),
+                ("20240229130547", "204", "2024-02-29T13:05:47"),
+                ("202402291305-0000", "205", "2024-02-29T13:05:00Z"),
+                ("202402291305PDT", "303", "2024-02-29T13:05:00-09:00"),
+                ("20240229130547UTC", "304", "2024-02-29T13:05:47Z"),
+            }
+        )
         {
             CallEquals(Text(expected), "edifact_to_datetime", Text(value), Text(code));
         }
 
         AssertFunctionArity("edifact_to_datetime", 2, Text("20240229"));
-        AssertFunctionType(
-            "edifact_to_datetime",
-            FerruleValue.FromInt64(20240229),
-            Text("102"));
+        AssertFunctionType("edifact_to_datetime", FerruleValue.FromInt64(20240229), Text("102"));
         AssertInvalidArgument(
             "edifact_to_datetime",
             "supports UN/EDIFACT 2379 codes 102, 203, 204, 205, 303, and 304",
             Text("2402291305"),
-            Text("201"));
+            Text("201")
+        );
         AssertInvalidArgument(
             "edifact_to_datetime",
             "requires a value matching its UN/EDIFACT 2379 date/time format code",
             Text("202302291305"),
-            Text("203"));
+            Text("203")
+        );
         AssertInvalidArgument(
             "edifact_to_datetime",
             "supports UTC, GMT, EST, EDT, CST, CDT, MST, MDT, PST, and PDT named zones",
             Text("202402291305XYZ"),
-            Text("303"));
+            Text("303")
+        );
     }
 
     private static void AssertInvalidArgument(
         string function,
         string detail,
-        params FerruleValue[] arguments)
+        params FerruleValue[] arguments
+    )
     {
-        var error = Error(
-            FerruleRuntimeError.FunctionInvalidArgument,
-            () => FerruleFunctions.Call(function, arguments));
+        var error = Error(FerruleRuntimeError.FunctionInvalidArgument, () =>
+            FerruleFunctions.Call(function, arguments)
+        );
         Equal(function, error.Function);
         Equal(detail, error.Detail);
     }
@@ -836,11 +887,12 @@ internal static partial class Program
     private static void AssertFunctionTypeKind(
         string function,
         FerruleValueKind expectedKind,
-        params FerruleValue[] arguments)
+        params FerruleValue[] arguments
+    )
     {
-        var error = Error(
-            FerruleRuntimeError.FunctionType,
-            () => FerruleFunctions.Call(function, arguments));
+        var error = Error(FerruleRuntimeError.FunctionType, () =>
+            FerruleFunctions.Call(function, arguments)
+        );
         Equal(function, error.Function);
         Equal(expectedKind, error.FoundKind);
     }

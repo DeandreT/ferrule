@@ -188,6 +188,8 @@ pub struct WireAppearance {
     frame_size: f32,
     frame_adjustment: WireFrameAdjustment,
     color_mode: WireColorMode,
+    avoid_nodes: bool,
+    avoid_other_wires: bool,
 }
 
 impl WireAppearance {
@@ -211,6 +213,8 @@ impl WireAppearance {
             frame_size,
             frame_adjustment,
             color_mode: WireColorMode::Theme,
+            avoid_nodes: true,
+            avoid_other_wires: false,
         })
     }
 
@@ -232,6 +236,22 @@ impl WireAppearance {
 
     pub const fn color_mode(self) -> WireColorMode {
         self.color_mode
+    }
+
+    pub const fn avoid_other_wires(self) -> bool {
+        self.avoid_other_wires
+    }
+
+    pub const fn avoid_nodes(self) -> bool {
+        self.avoid_nodes
+    }
+
+    pub fn set_avoid_nodes(&mut self, avoid: bool) {
+        self.avoid_nodes = avoid;
+    }
+
+    pub fn set_avoid_other_wires(&mut self, avoid: bool) {
+        self.avoid_other_wires = avoid;
     }
 
     pub fn set_geometry(&mut self, geometry: WireGeometry) -> Result<(), AppearanceError> {
@@ -274,6 +294,8 @@ impl Default for WireAppearance {
             frame_size: 80.0,
             frame_adjustment: WireFrameAdjustment::DownscaleNearby,
             color_mode: WireColorMode::Theme,
+            avoid_nodes: true,
+            avoid_other_wires: false,
         }
     }
 }
@@ -291,6 +313,8 @@ impl<'de> Deserialize<'de> for WireAppearance {
             frame_size: f32,
             frame_adjustment: WireFrameAdjustment,
             color_mode: WireColorMode,
+            avoid_nodes: bool,
+            avoid_other_wires: bool,
         }
 
         impl Default for WireDocument {
@@ -302,6 +326,8 @@ impl<'de> Deserialize<'de> for WireAppearance {
                     frame_size: wire.frame_size,
                     frame_adjustment: wire.frame_adjustment,
                     color_mode: wire.color_mode,
+                    avoid_nodes: wire.avoid_nodes,
+                    avoid_other_wires: wire.avoid_other_wires,
                 }
             }
         }
@@ -315,6 +341,8 @@ impl<'de> Deserialize<'de> for WireAppearance {
         )
         .map_err(serde::de::Error::custom)?;
         wire.set_color_mode(document.color_mode);
+        wire.set_avoid_nodes(document.avoid_nodes);
+        wire.set_avoid_other_wires(document.avoid_other_wires);
         Ok(wire)
     }
 }
@@ -595,6 +623,8 @@ impl EditorAppearance {
                 frame_size: 80.0,
                 frame_adjustment: WireFrameAdjustment::DownscaleNearby,
                 color_mode: WireColorMode::Theme,
+                avoid_nodes: true,
+                avoid_other_wires: false,
             },
             canvas: CanvasAppearance {
                 pattern: CanvasPattern::Grid,
@@ -656,6 +686,8 @@ impl EditorAppearance {
         style.upscale_wire_frame = Some(upscale);
         style.downscale_wire_frame = Some(downscale);
         style.wire_style = Some(self.wire.geometry.to_snarl());
+        style.avoid_other_wires = Some(self.wire.avoid_other_wires);
+        style.avoid_nodes = Some(self.wire.avoid_nodes);
         style.pin_fill = Some(self.colors.wire.to_egui());
         style.pin_stroke = Some(Stroke::new(1.0, self.colors.node_border.to_egui()));
         style.pin_placement = Some(PinPlacement::Edge);
@@ -875,6 +907,27 @@ mod tests {
                 serde_json::from_str::<CanvasDensity>(serialized).unwrap(),
                 density
             );
+        }
+    }
+
+    #[test]
+    fn wire_avoidance_is_opt_in_and_survives_preference_reload() {
+        for (json, nodes, wires) in [
+            (r#"{"wire":{"width":3.5}}"#, true, false),
+            (r#"{"wire":{"avoid_other_wires":true}}"#, true, true),
+            (r#"{"wire":{"avoid_nodes":false}}"#, false, false),
+            (
+                r#"{"wire":{"avoid_nodes":false,"avoid_other_wires":true}}"#,
+                false,
+                true,
+            ),
+        ] {
+            let appearance: EditorAppearance = serde_json::from_str(json).unwrap();
+            let reloaded: EditorAppearance =
+                serde_json::from_str(&serde_json::to_string(&appearance).unwrap()).unwrap();
+            let style = reloaded.to_snarl_style();
+            assert_eq!(style.avoid_nodes, Some(nodes));
+            assert_eq!(style.avoid_other_wires, Some(wires));
         }
     }
 

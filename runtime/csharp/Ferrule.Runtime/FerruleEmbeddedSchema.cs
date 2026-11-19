@@ -25,12 +25,15 @@ internal static class FerruleEmbeddedSchema
         if (bytes > maximumBytes)
         {
             throw new FormatException(
-                $"embedded schema is {bytes} bytes; maximum is {maximumBytes}");
+                $"embedded schema is {bytes} bytes; maximum is {maximumBytes}"
+            );
         }
-        var prefix = descriptor.StartsWith(V2Prefix, StringComparison.Ordinal) ? V2Prefix :
-            descriptor.StartsWith(V3Prefix, StringComparison.Ordinal) ? V3Prefix :
-            descriptor.StartsWith(V4Prefix, StringComparison.Ordinal) ? V4Prefix :
-            descriptor.StartsWith(V5Prefix, StringComparison.Ordinal) ? V5Prefix : null;
+        var prefix =
+            descriptor.StartsWith(V2Prefix, StringComparison.Ordinal) ? V2Prefix
+            : descriptor.StartsWith(V3Prefix, StringComparison.Ordinal) ? V3Prefix
+            : descriptor.StartsWith(V4Prefix, StringComparison.Ordinal) ? V4Prefix
+            : descriptor.StartsWith(V5Prefix, StringComparison.Ordinal) ? V5Prefix
+            : null;
         if (prefix is null)
         {
             if (descriptor.StartsWith(VersionStem, StringComparison.Ordinal))
@@ -41,12 +44,15 @@ internal static class FerruleEmbeddedSchema
         }
 
         var payload = descriptor[prefix.Length..];
-        using var parsed = JsonDocument.Parse(payload, new JsonDocumentOptions
-        {
-            MaxDepth = 127,
-            CommentHandling = JsonCommentHandling.Disallow,
-            AllowTrailingCommas = false,
-        });
+        using var parsed = JsonDocument.Parse(
+            payload,
+            new JsonDocumentOptions
+            {
+                MaxDepth = 127,
+                CommentHandling = JsonCommentHandling.Disallow,
+                AllowTrailingCommas = false,
+            }
+        );
         ValidateNode(parsed.RootElement, 1);
         return new Descriptor(payload, true);
     }
@@ -59,8 +65,11 @@ internal static class FerruleEmbeddedSchema
             return false;
         }
         var marker = element.GetString();
-        if (marker is null || !marker.StartsWith(FloatBitsPrefix, StringComparison.Ordinal) ||
-            marker.Length != FloatBitsPrefix.Length + 16)
+        if (
+            marker is null
+            || !marker.StartsWith(FloatBitsPrefix, StringComparison.Ordinal)
+            || marker.Length != FloatBitsPrefix.Length + 16
+        )
         {
             return false;
         }
@@ -72,8 +81,14 @@ internal static class FerruleEmbeddedSchema
                 return false;
             }
         }
-        if (!ulong.TryParse(digits, NumberStyles.AllowHexSpecifier,
-                CultureInfo.InvariantCulture, out var bits))
+        if (
+            !ulong.TryParse(
+                digits,
+                NumberStyles.AllowHexSpecifier,
+                CultureInfo.InvariantCulture,
+                out var bits
+            )
+        )
         {
             return false;
         }
@@ -91,9 +106,11 @@ internal static class FerruleEmbeddedSchema
 
     private static JsonElement RequireObjectProperty(JsonElement parent, string name)
     {
-        if (parent.ValueKind != JsonValueKind.Object ||
-            !parent.TryGetProperty(name, out var value) ||
-            value.ValueKind != JsonValueKind.Object)
+        if (
+            parent.ValueKind != JsonValueKind.Object
+            || !parent.TryGetProperty(name, out var value)
+            || value.ValueKind != JsonValueKind.Object
+        )
         {
             throw new FormatException($"invalid embedded schema shape at '{name}'");
         }
@@ -102,9 +119,11 @@ internal static class FerruleEmbeddedSchema
 
     private static JsonElement RequireArrayProperty(JsonElement parent, string name)
     {
-        if (parent.ValueKind != JsonValueKind.Object ||
-            !parent.TryGetProperty(name, out var value) ||
-            value.ValueKind != JsonValueKind.Array)
+        if (
+            parent.ValueKind != JsonValueKind.Object
+            || !parent.TryGetProperty(name, out var value)
+            || value.ValueKind != JsonValueKind.Array
+        )
         {
             throw new FormatException($"invalid embedded schema shape at '{name}'");
         }
@@ -112,9 +131,9 @@ internal static class FerruleEmbeddedSchema
     }
 
     private static bool HasTag(JsonElement parent, string tag) =>
-        parent.TryGetProperty("kind", out var kind) &&
-        kind.ValueKind == JsonValueKind.String &&
-        string.Equals(kind.GetString(), tag, StringComparison.Ordinal);
+        parent.TryGetProperty("kind", out var kind)
+        && kind.ValueKind == JsonValueKind.String
+        && string.Equals(kind.GetString(), tag, StringComparison.Ordinal);
 
     private static void ValidateNode(JsonElement node, int depth)
     {
@@ -122,8 +141,10 @@ internal static class FerruleEmbeddedSchema
         {
             throw new FormatException("embedded schema has excessive depth or an invalid node");
         }
-        if (node.TryGetProperty("numeric_range", out var range) &&
-            range.ValueKind != JsonValueKind.Null)
+        if (
+            node.TryGetProperty("numeric_range", out var range)
+            && range.ValueKind != JsonValueKind.Null
+        )
         {
             if (range.ValueKind != JsonValueKind.Object)
             {
@@ -134,8 +155,10 @@ internal static class FerruleEmbeddedSchema
                 var bounds = RequireObjectProperty(range, "bounds");
                 foreach (var side in new[] { "minimum", "maximum" })
                 {
-                    if (bounds.TryGetProperty(side, out var bound) &&
-                        bound.ValueKind != JsonValueKind.Null)
+                    if (
+                        bounds.TryGetProperty(side, out var bound)
+                        && bound.ValueKind != JsonValueKind.Null
+                    )
                     {
                         var value = RequireObjectProperty(bounds, side);
                         if (!value.TryGetProperty("value", out var number))
@@ -147,17 +170,24 @@ internal static class FerruleEmbeddedSchema
                 }
             }
         }
-        if (node.TryGetProperty("json_allowed_values", out var allowed) &&
-            allowed.ValueKind != JsonValueKind.Null)
+        if (
+            node.TryGetProperty("json_allowed_values", out var allowed)
+            && allowed.ValueKind != JsonValueKind.Null
+        )
         {
-            foreach (var entry in RequireArrayProperty(node, "json_allowed_values").EnumerateArray())
+            foreach (
+                var entry in RequireArrayProperty(node, "json_allowed_values").EnumerateArray()
+            )
             {
                 if (entry.ValueKind != JsonValueKind.Object)
                 {
                     throw new FormatException("invalid embedded allowed value");
                 }
-                if (entry.TryGetProperty("type", out var type) &&
-                    type.ValueKind == JsonValueKind.String && type.GetString() == "float")
+                if (
+                    entry.TryGetProperty("type", out var type)
+                    && type.ValueKind == JsonValueKind.String
+                    && type.GetString() == "float"
+                )
                 {
                     if (!entry.TryGetProperty("value", out var value))
                     {
@@ -169,8 +199,10 @@ internal static class FerruleEmbeddedSchema
         }
         foreach (var family in new[] { "json_contains", "json_dependent_schemas" })
         {
-            if (!node.TryGetProperty(family, out var predicates) ||
-                predicates.ValueKind == JsonValueKind.Null)
+            if (
+                !node.TryGetProperty(family, out var predicates)
+                || predicates.ValueKind == JsonValueKind.Null
+            )
             {
                 continue;
             }
@@ -196,28 +228,39 @@ internal static class FerruleEmbeddedSchema
         {
             ValidateNode(child, depth + 1);
         }
-        if (kind.TryGetProperty("dynamic", out var dynamic) &&
-            dynamic.ValueKind != JsonValueKind.Null)
+        if (
+            kind.TryGetProperty("dynamic", out var dynamic)
+            && dynamic.ValueKind != JsonValueKind.Null
+        )
         {
             ValidateNode(dynamic, depth + 1);
         }
-        if (!kind.TryGetProperty("alternatives", out var alternatives) ||
-            alternatives.ValueKind == JsonValueKind.Null)
+        if (
+            !kind.TryGetProperty("alternatives", out var alternatives)
+            || alternatives.ValueKind == JsonValueKind.Null
+        )
         {
             return;
         }
         foreach (var alternative in RequireArrayProperty(kind, "alternatives").EnumerateArray())
         {
-            if (!alternative.TryGetProperty("constraints", out var constraints) ||
-                constraints.ValueKind == JsonValueKind.Null)
+            if (
+                !alternative.TryGetProperty("constraints", out var constraints)
+                || constraints.ValueKind == JsonValueKind.Null
+            )
             {
                 continue;
             }
-            foreach (var constraint in RequireArrayProperty(alternative, "constraints").EnumerateArray())
+            foreach (
+                var constraint in RequireArrayProperty(alternative, "constraints").EnumerateArray()
+            )
             {
                 var value = RequireObjectProperty(constraint, "value");
-                if (value.TryGetProperty("type", out var type) &&
-                    type.ValueKind == JsonValueKind.String && type.GetString() == "float")
+                if (
+                    value.TryGetProperty("type", out var type)
+                    && type.ValueKind == JsonValueKind.String
+                    && type.GetString() == "float"
+                )
                 {
                     if (!value.TryGetProperty("value", out var number))
                     {

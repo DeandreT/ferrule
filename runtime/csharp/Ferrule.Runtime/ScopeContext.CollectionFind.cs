@@ -23,7 +23,8 @@ public sealed partial class ScopeContext
             var display = path.Count == 0 ? "<current>" : string.Join('/', path);
             throw new FerruleRuntimeException(
                 FerruleRuntimeError.MissingSourceField,
-                $"Source collection '{display}' does not exist in the active scope context.");
+                $"Source collection '{display}' does not exist in the active scope context."
+            );
         }
 
         var output = new List<ScopeContext>();
@@ -33,7 +34,8 @@ public sealed partial class ScopeContext
             0,
             new List<FerruleInstance>(),
             new List<CollectionIdentity>(),
-            output);
+            output
+        );
         return new ReadOnlyCollection<ScopeContext>(output);
     }
 
@@ -63,7 +65,8 @@ public sealed partial class ScopeContext
         int consumed,
         List<FerruleInstance> frames,
         List<CollectionIdentity> collections,
-        ICollection<ScopeContext> output)
+        ICollection<ScopeContext> output
+    )
     {
         if (current is FerruleRepeated repeated)
         {

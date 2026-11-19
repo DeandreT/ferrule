@@ -18,6 +18,8 @@ mod edi_runtime;
 mod error;
 #[cfg(test)]
 mod filter_map_guard_tests;
+mod flextext_bytes;
+pub use flextext_bytes::{FlexTextEmitError, emit_with_flextext_bytes};
 mod generator;
 mod identity;
 mod json5_output;

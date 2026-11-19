@@ -6,6 +6,7 @@ public abstract record FerruleXmlDocumentOutputsOwner
     private FerruleXmlDocumentOutputsOwner() { }
 
     public sealed record Primary() : FerruleXmlDocumentOutputsOwner;
+
     public sealed record NamedMember(int DeclarationIndex, string Name, int Index, string Path)
         : FerruleXmlDocumentOutputsOwner;
 }
@@ -15,14 +16,22 @@ public abstract record FerruleXmlDocumentOutputsOwner
 public sealed class FerruleXmlDocumentOutputsExecutionException : Exception
 {
     public FerruleXmlDocumentOutputsExecutionException(
-        FerruleXmlDocumentOutputsOwner? owner, FerruleXmlBoundaryException boundary)
+        FerruleXmlDocumentOutputsOwner? owner,
+        FerruleXmlBoundaryException boundary
+    )
         : base(MessageFor(owner, boundary), boundary)
-    { Owner = owner; Boundary = boundary; }
+    {
+        Owner = owner;
+        Boundary = boundary;
+    }
 
     public FerruleXmlDocumentOutputsOwner? Owner { get; }
     public FerruleXmlBoundaryException Boundary { get; }
 
-    private static string MessageFor(FerruleXmlDocumentOutputsOwner? owner, FerruleXmlBoundaryException boundary)
+    private static string MessageFor(
+        FerruleXmlDocumentOutputsOwner? owner,
+        FerruleXmlBoundaryException boundary
+    )
     {
         ArgumentNullException.ThrowIfNull(boundary);
         return owner switch
@@ -35,28 +44,46 @@ public sealed class FerruleXmlDocumentOutputsExecutionException : Exception
         };
     }
 
-    public static FerruleXmlDocumentOutputsExecutionException FromBoundary(FerruleXmlBoundaryException boundary) => new(null, boundary);
+    public static FerruleXmlDocumentOutputsExecutionException FromBoundary(
+        FerruleXmlBoundaryException boundary
+    ) => new(null, boundary);
 
     /// <summary>Descriptor Schema setup is global; other primary serializer failures own Primary.</summary>
-    public static FerruleXmlDocumentOutputsExecutionException PrimarySerialization(FerruleXmlBoundaryException boundary)
+    public static FerruleXmlDocumentOutputsExecutionException PrimarySerialization(
+        FerruleXmlBoundaryException boundary
+    )
     {
         ArgumentNullException.ThrowIfNull(boundary);
-        FerruleXmlDocumentOutputsOwner? owner = boundary.Kind == FerruleXmlBoundaryErrorKind.Schema ? null :
-            new FerruleXmlDocumentOutputsOwner.Primary();
+        FerruleXmlDocumentOutputsOwner? owner =
+            boundary.Kind == FerruleXmlBoundaryErrorKind.Schema
+                ? null
+                : new FerruleXmlDocumentOutputsOwner.Primary();
         return new(owner, boundary);
     }
 
     /// <summary>Names and opaque paths are preserved. Descriptor Schema setup remains global.</summary>
     public static FerruleXmlDocumentOutputsExecutionException NamedSerialization(
-        int declarationIndex, string name, int index, string path, FerruleXmlBoundaryException boundary)
+        int declarationIndex,
+        string name,
+        int index,
+        string path,
+        FerruleXmlBoundaryException boundary
+    )
     {
         ArgumentOutOfRangeException.ThrowIfNegative(declarationIndex);
         ArgumentOutOfRangeException.ThrowIfNegative(index);
         ArgumentNullException.ThrowIfNull(name);
         ArgumentNullException.ThrowIfNull(path);
         ArgumentNullException.ThrowIfNull(boundary);
-        FerruleXmlDocumentOutputsOwner? owner = boundary.Kind == FerruleXmlBoundaryErrorKind.Schema ? null :
-            new FerruleXmlDocumentOutputsOwner.NamedMember(declarationIndex, name, index, path);
+        FerruleXmlDocumentOutputsOwner? owner =
+            boundary.Kind == FerruleXmlBoundaryErrorKind.Schema
+                ? null
+                : new FerruleXmlDocumentOutputsOwner.NamedMember(
+                    declarationIndex,
+                    name,
+                    index,
+                    path
+                );
         return new(owner, boundary);
     }
 
@@ -76,27 +103,56 @@ public sealed class FerruleXmlDocumentOutputsBudget
     {
         ArgumentOutOfRangeException.ThrowIfNegative(actualArtifactCount);
         if (actualArtifactCount == 0)
-            throw FerruleXmlDocumentOutputsExecutionException.Alignment("mixed XML outputs require the static primary artifact");
-        try { _inner = new FerruleXmlOutputSetBudget(actualArtifactCount); }
+            throw FerruleXmlDocumentOutputsExecutionException.Alignment(
+                "mixed XML outputs require the static primary artifact"
+            );
+        try
+        {
+            _inner = new FerruleXmlOutputSetBudget(actualArtifactCount);
+        }
         catch (FerruleXmlOutputSetException error)
-        { throw FerruleXmlDocumentOutputsExecutionException.FromBoundary(error.Boundary); }
+        {
+            throw FerruleXmlDocumentOutputsExecutionException.FromBoundary(error.Boundary);
+        }
     }
 
     public void ChargePrimary(long utf8Bytes)
     {
-        try { _inner.Charge(FerruleXmlOutputTarget.Primary, utf8Bytes); }
+        try
+        {
+            _inner.Charge(FerruleXmlOutputTarget.Primary, utf8Bytes);
+        }
         catch (FerruleXmlOutputSetException error)
-        { throw FerruleXmlDocumentOutputsExecutionException.PrimarySerialization(error.Boundary); }
+        {
+            throw FerruleXmlDocumentOutputsExecutionException.PrimarySerialization(error.Boundary);
+        }
     }
 
-    public void ChargeNamed(int declarationIndex, string name, int index, string path, long utf8Bytes)
+    public void ChargeNamed(
+        int declarationIndex,
+        string name,
+        int index,
+        string path,
+        long utf8Bytes
+    )
     {
         ArgumentOutOfRangeException.ThrowIfNegative(declarationIndex);
         ArgumentOutOfRangeException.ThrowIfNegative(index);
         ArgumentNullException.ThrowIfNull(name);
         ArgumentNullException.ThrowIfNull(path);
-        try { _inner.Charge(FerruleXmlOutputTarget.Named(declarationIndex, name), utf8Bytes); }
+        try
+        {
+            _inner.Charge(FerruleXmlOutputTarget.Named(declarationIndex, name), utf8Bytes);
+        }
         catch (FerruleXmlOutputSetException error)
-        { throw FerruleXmlDocumentOutputsExecutionException.NamedSerialization(declarationIndex, name, index, path, error.Boundary); }
+        {
+            throw FerruleXmlDocumentOutputsExecutionException.NamedSerialization(
+                declarationIndex,
+                name,
+                index,
+                path,
+                error.Boundary
+            );
+        }
     }
 }

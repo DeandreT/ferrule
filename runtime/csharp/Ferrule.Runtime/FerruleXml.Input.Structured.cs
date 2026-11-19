@@ -12,7 +12,11 @@ public sealed class FerruleXmlStructuredResourceException : Exception
 
     public FerruleXmlStructuredResourceException(string resource, ulong observedCount, ulong limit)
         : base($"structured XML input exceeds {resource} limit: {observedCount} > {limit}")
-    { Resource = resource; ObservedCount = observedCount; Limit = limit; }
+    {
+        Resource = resource;
+        ObservedCount = observedCount;
+        Limit = limit;
+    }
 }
 
 /// <summary>Inclusive per-document limits for the prospective structured projection walk.</summary>
@@ -23,13 +27,18 @@ public sealed class FerruleXmlProjectionLimits
     public long FieldAndStringBytes { get; }
     public long ProjectionWork { get; }
 
-    public FerruleXmlProjectionLimits(int instanceNodes = FerruleXml.MaximumStructuredInstanceNodes,
+    public FerruleXmlProjectionLimits(
+        int instanceNodes = FerruleXml.MaximumStructuredInstanceNodes,
         long fieldAndStringBytes = FerruleXml.MaximumStructuredFieldAndStringBytes,
-        long projectionWork = FerruleXml.MaximumStructuredProjectionWork)
+        long projectionWork = FerruleXml.MaximumStructuredProjectionWork
+    )
     {
-        if (instanceNodes is <= 0 or > FerruleXml.MaximumStructuredInstanceNodes) throw new ArgumentOutOfRangeException(nameof(instanceNodes));
-        if (fieldAndStringBytes is <= 0 or > FerruleXml.MaximumStructuredFieldAndStringBytes) throw new ArgumentOutOfRangeException(nameof(fieldAndStringBytes));
-        if (projectionWork is <= 0 or > FerruleXml.MaximumStructuredProjectionWork) throw new ArgumentOutOfRangeException(nameof(projectionWork));
+        if (instanceNodes is <= 0 or > FerruleXml.MaximumStructuredInstanceNodes)
+            throw new ArgumentOutOfRangeException(nameof(instanceNodes));
+        if (fieldAndStringBytes is <= 0 or > FerruleXml.MaximumStructuredFieldAndStringBytes)
+            throw new ArgumentOutOfRangeException(nameof(fieldAndStringBytes));
+        if (projectionWork is <= 0 or > FerruleXml.MaximumStructuredProjectionWork)
+            throw new ArgumentOutOfRangeException(nameof(projectionWork));
         InstanceNodes = instanceNodes;
         FieldAndStringBytes = fieldAndStringBytes;
         ProjectionWork = projectionWork;
@@ -52,20 +61,30 @@ public static partial class FerruleXml
     private const string StructuredXmlNamespaceUri = "http://www.w3.org/XML/1998/namespace";
 
     /// <summary>Reads a closed ordinary XML document after exact result preflight.</summary>
-    public static FerruleInstance ParseStructuredEmbedded(string descriptor, string xml)
-        => ParseStructuredEmbedded(descriptor, xml, FerruleXmlProjectionLimits.Default);
+    public static FerruleInstance ParseStructuredEmbedded(string descriptor, string xml) =>
+        ParseStructuredEmbedded(descriptor, xml, FerruleXmlProjectionLimits.Default);
 
-    public static FerruleInstance ParseStructuredEmbedded(string descriptor, string xml, FerruleXmlProjectionLimits limits)
+    public static FerruleInstance ParseStructuredEmbedded(
+        string descriptor,
+        string xml,
+        FerruleXmlProjectionLimits limits
+    )
     {
         ArgumentNullException.ThrowIfNull(limits);
         ArgumentNullException.ThrowIfNull(descriptor);
         ArgumentNullException.ThrowIfNull(xml);
         long bytes;
-        try { bytes = InputUtf8.GetByteCount(xml); }
+        try
+        {
+            bytes = InputUtf8.GetByteCount(xml);
+        }
         catch (EncoderFallbackException error)
         {
-            throw new FerruleXmlBoundaryException(FerruleXmlBoundaryErrorKind.Utf8,
-                "XML input is not well-formed Unicode", error);
+            throw new FerruleXmlBoundaryException(
+                FerruleXmlBoundaryErrorKind.Utf8,
+                "XML input is not well-formed Unicode",
+                error
+            );
         }
         catch (Exception error) when (error is ArgumentException or OverflowException)
         {
@@ -87,30 +106,53 @@ public static partial class FerruleXml
             // before the complete successful prospective walk above.
             return MaterializeStructuredNode(schema, root);
         }
-        catch (FerruleXmlBoundaryException) { throw; }
-        catch (Exception error) when (error is FerruleXmlStructuredResourceException or XmlException or ArgumentException or
-            InvalidOperationException or FormatException or OverflowException)
+        catch (FerruleXmlBoundaryException)
         {
-            throw new FerruleXmlBoundaryException(FerruleXmlBoundaryErrorKind.Input,
-                error.Message, error);
+            throw;
+        }
+        catch (Exception error)
+            when (error
+                    is FerruleXmlStructuredResourceException
+                        or XmlException
+                        or ArgumentException
+                        or InvalidOperationException
+                        or FormatException
+                        or OverflowException
+            )
+        {
+            throw new FerruleXmlBoundaryException(
+                FerruleXmlBoundaryErrorKind.Input,
+                error.Message,
+                error
+            );
         }
     }
 
     /// <summary>Checks original bytes before strict UTF-8 decoding.</summary>
-    public static FerruleInstance ParseStructuredEmbeddedBytes(string descriptor, byte[] xml)
-        => ParseStructuredEmbeddedBytes(descriptor, xml, FerruleXmlProjectionLimits.Default);
+    public static FerruleInstance ParseStructuredEmbeddedBytes(string descriptor, byte[] xml) =>
+        ParseStructuredEmbeddedBytes(descriptor, xml, FerruleXmlProjectionLimits.Default);
 
-    public static FerruleInstance ParseStructuredEmbeddedBytes(string descriptor, byte[] xml, FerruleXmlProjectionLimits limits)
+    public static FerruleInstance ParseStructuredEmbeddedBytes(
+        string descriptor,
+        byte[] xml,
+        FerruleXmlProjectionLimits limits
+    )
     {
         ArgumentNullException.ThrowIfNull(limits);
         ArgumentNullException.ThrowIfNull(xml);
         RequireInputSize(xml.LongLength);
         string text;
-        try { text = InputUtf8.GetString(xml); }
+        try
+        {
+            text = InputUtf8.GetString(xml);
+        }
         catch (DecoderFallbackException error)
         {
-            throw new FerruleXmlBoundaryException(FerruleXmlBoundaryErrorKind.Utf8,
-                "XML input is not UTF-8", error);
+            throw new FerruleXmlBoundaryException(
+                FerruleXmlBoundaryErrorKind.Utf8,
+                "XML input is not UTF-8",
+                error
+            );
         }
         return ParseStructuredEmbedded(descriptor, text, limits);
     }
@@ -124,18 +166,30 @@ public static partial class FerruleXml
         long bytes = 0;
         while (!remaining.IsEmpty)
         {
-            if (Rune.DecodeFromUtf16(remaining, out var rune, out var consumed) !=
-                System.Buffers.OperationStatus.Done)
-                throw new FerruleXmlBoundaryException(FerruleXmlBoundaryErrorKind.Utf8,
-                    "XML input is not well-formed Unicode");
+            if (
+                Rune.DecodeFromUtf16(remaining, out var rune, out var consumed)
+                != System.Buffers.OperationStatus.Done
+            )
+                throw new FerruleXmlBoundaryException(
+                    FerruleXmlBoundaryErrorKind.Utf8,
+                    "XML input is not well-formed Unicode"
+                );
             bytes += rune.Utf8SequenceLength;
             remaining = remaining[consumed..];
         }
         return bytes;
     }
 
-    private enum StructuredDomKind { Element, Text, Comment, ProcessingInstruction }
+    private enum StructuredDomKind
+    {
+        Element,
+        Text,
+        Comment,
+        ProcessingInstruction,
+    }
+
     private sealed record StructuredAttribute(string Name, string Namespace, string Value);
+
     private sealed class StructuredDom
     {
         internal readonly StructuredDomKind Kind;
@@ -145,8 +199,13 @@ public static partial class FerruleXml
         internal readonly List<StructuredDom> Children = new();
         internal readonly List<string> TextParts = new();
         internal ulong NamespaceDeclarationEvents;
+
         internal StructuredDom(StructuredDomKind kind, string name = "", string ns = "")
-        { Kind = kind; Name = name; Namespace = ns; }
+        {
+            Kind = kind;
+            Name = name;
+            Namespace = ns;
+        }
     }
 
     private static StructuredDom ReadStructuredDom(string xml)
@@ -162,7 +221,8 @@ public static partial class FerruleXml
             IgnoreWhitespace = false,
         };
         using var input = new StringReader(xml);
-        if (xml.StartsWith('\uFEFF')) _ = input.Read();
+        if (xml.StartsWith('\uFEFF'))
+            _ = input.Read();
         using var reader = XmlReader.Create(input, settings);
         var parserBudget = new StructuredParserBudget();
         var parents = new Stack<StructuredDom>();
@@ -181,11 +241,15 @@ public static partial class FerruleXml
                     if (parents.Count + 1 > MaximumStructuredDepth)
                         throw StructuredInput("XML input exceeds its element depth limit");
                     var ancestorDeclarations = parents.TryPeek(out var headerParent)
-                        ? headerParent.NamespaceDeclarationEvents : 0;
+                        ? headerParent.NamespaceDeclarationEvents
+                        : 0;
                     var declarations = parserBudget.PreflightElement(reader, ancestorDeclarations);
                     ChargeNode();
-                    var element = new StructuredDom(StructuredDomKind.Element,
-                        reader.LocalName, reader.NamespaceURI);
+                    var element = new StructuredDom(
+                        StructuredDomKind.Element,
+                        reader.LocalName,
+                        reader.NamespaceURI
+                    );
                     element.NamespaceDeclarationEvents = declarations;
                     if (reader.MoveToFirstAttribute())
                     {
@@ -193,18 +257,28 @@ public static partial class FerruleXml
                         {
                             // Native attributes() excludes all namespace declarations.
                             if (reader.NamespaceURI != "http://www.w3.org/2000/xmlns/")
-                                element.Attributes.Add(new StructuredAttribute(
-                                    reader.LocalName, reader.NamespaceURI, reader.Value));
+                                element.Attributes.Add(
+                                    new StructuredAttribute(
+                                        reader.LocalName,
+                                        reader.NamespaceURI,
+                                        reader.Value
+                                    )
+                                );
                         } while (reader.MoveToNextAttribute());
                         reader.MoveToElement();
                     }
-                    if (parents.TryPeek(out var parent)) parent.Children.Add(element);
-                    else if (root is null) root = element;
-                    else throw StructuredInput("XML input contains more than one root");
-                    if (!reader.IsEmptyElement) parents.Push(element);
+                    if (parents.TryPeek(out var parent))
+                        parent.Children.Add(element);
+                    else if (root is null)
+                        root = element;
+                    else
+                        throw StructuredInput("XML input contains more than one root");
+                    if (!reader.IsEmptyElement)
+                        parents.Push(element);
                     break;
                 case XmlNodeType.EndElement:
-                    if (parents.Count == 0) throw StructuredInput("invalid XML element nesting");
+                    if (parents.Count == 0)
+                        throw StructuredInput("invalid XML element nesting");
                     parents.Pop();
                     break;
                 case XmlNodeType.Text:
@@ -212,10 +286,13 @@ public static partial class FerruleXml
                 case XmlNodeType.Whitespace:
                 case XmlNodeType.SignificantWhitespace:
                     // Whitespace outside the root is not a native DOM text node.
-                    if (!parents.TryPeek(out var textParent)) break;
+                    if (!parents.TryPeek(out var textParent))
+                        break;
                     StructuredDom text;
-                    if (textParent.Children.Count != 0 &&
-                        textParent.Children[^1].Kind == StructuredDomKind.Text)
+                    if (
+                        textParent.Children.Count != 0
+                        && textParent.Children[^1].Kind == StructuredDomKind.Text
+                    )
                         text = textParent.Children[^1];
                     else
                     {
@@ -226,18 +303,28 @@ public static partial class FerruleXml
                     // Keep separate decoded pieces until the result budget has
                     // passed. No repeated concatenation of adjacent CDATA.
                     var part = reader.Value;
-                    if (part.Length != 0) text.TextParts.Add(part);
+                    if (part.Length != 0)
+                        text.TextParts.Add(part);
                     break;
                 case XmlNodeType.Comment:
                 case XmlNodeType.ProcessingInstruction:
-                    if (reader.NodeType == XmlNodeType.ProcessingInstruction && reader.Name.Any(char.IsSurrogate))
-                        throw StructuredInput("XML input requires names within the Basic Multilingual Plane");
+                    if (
+                        reader.NodeType == XmlNodeType.ProcessingInstruction
+                        && reader.Name.Any(char.IsSurrogate)
+                    )
+                        throw StructuredInput(
+                            "XML input requires names within the Basic Multilingual Plane"
+                        );
                     ChargeNode();
                     if (parents.TryPeek(out var barrierParent))
                     {
-                        var barrier = new StructuredDom(reader.NodeType == XmlNodeType.Comment
-                            ? StructuredDomKind.Comment : StructuredDomKind.ProcessingInstruction);
-                        if (barrier.Kind == StructuredDomKind.Comment) barrier.TextParts.Add(reader.Value);
+                        var barrier = new StructuredDom(
+                            reader.NodeType == XmlNodeType.Comment
+                                ? StructuredDomKind.Comment
+                                : StructuredDomKind.ProcessingInstruction
+                        );
+                        if (barrier.Kind == StructuredDomKind.Comment)
+                            barrier.TextParts.Add(reader.Value);
                         barrierParent.Children.Add(barrier);
                     }
                     break;
@@ -245,7 +332,10 @@ public static partial class FerruleXml
                     throw StructuredInput("DOCTYPE is outside the structured XML input profile");
                 case XmlNodeType.XmlDeclaration:
                     var encoding = reader.GetAttribute("encoding");
-                    if (encoding is not null && !encoding.Equals("UTF-8", StringComparison.OrdinalIgnoreCase))
+                    if (
+                        encoding is not null
+                        && !encoding.Equals("UTF-8", StringComparison.OrdinalIgnoreCase)
+                    )
                         throw StructuredInput("XML input declaration must use UTF-8");
                     break;
                 case XmlNodeType.EndEntity:
@@ -267,13 +357,16 @@ public static partial class FerruleXml
         private ulong _work;
         private ulong _registryBytes;
         private readonly HashSet<(string? Prefix, string Uri)> _namespaces = new()
-        { ("xml", StructuredXmlNamespaceUri) };
+        {
+            ("xml", StructuredXmlNamespaceUri),
+        };
 
         internal static void CheckRawReservation(string xml)
         {
             ulong slots = 0;
             foreach (var character in xml)
-                if (character is '<' or '=') ++slots;
+                if (character is '<' or '=')
+                    ++slots;
             Require("parser_reservation_slots", slots, MaximumStructuredParserReservationSlots);
         }
 
@@ -288,13 +381,25 @@ public static partial class FerruleXml
                 do
                 {
                     ++attributes;
-                    if (reader.LocalName.Any(char.IsSurrogate) || reader.Prefix.Any(char.IsSurrogate))
-                        throw StructuredInput("structured XML physical names must be BMP local names");
-                    if (reader.LocalName == "xmlns" && reader.Prefix.Length != 0 && reader.Prefix != "xmlns")
-                        throw StructuredInput("prefixed local xmlns is outside the structured XML input profile");
+                    if (
+                        reader.LocalName.Any(char.IsSurrogate)
+                        || reader.Prefix.Any(char.IsSurrogate)
+                    )
+                        throw StructuredInput(
+                            "structured XML physical names must be BMP local names"
+                        );
+                    if (
+                        reader.LocalName == "xmlns"
+                        && reader.Prefix.Length != 0
+                        && reader.Prefix != "xmlns"
+                    )
+                        throw StructuredInput(
+                            "prefixed local xmlns is outside the structured XML input profile"
+                        );
                     if (reader.Prefix == "xmlns" && reader.LocalName == "xmlns")
                         throw StructuredInput("the reserved xmlns prefix cannot be declared");
-                    if (IsDeclaration(reader)) ++localDeclarations;
+                    if (IsDeclaration(reader))
+                        ++localDeclarations;
                 } while (reader.MoveToNextAttribute());
                 reader.MoveToElement();
             }
@@ -302,35 +407,59 @@ public static partial class FerruleXml
             // These lower bounds are paid before normalized registry retention or
             // any private DOM element/ordinary attribute copies.
             if (localDeclarations != 0)
-                Charge("namespace_references", ref _references, inheritedAndLocal,
-                    MaximumStructuredNamespaceReferences);
+                Charge(
+                    "namespace_references",
+                    ref _references,
+                    inheritedAndLocal,
+                    MaximumStructuredNamespaceReferences
+                );
             var work = Multiply(attributes, Add(attributes, 1)) / 2;
             if (localDeclarations != 0)
                 work = Add(work, Multiply(ancestorDeclarations, inheritedAndLocal));
             work = Add(work, Multiply(Add(attributes, 1), inheritedAndLocal));
-            Charge("parser_structural_work", ref _work, work, MaximumStructuredParserStructuralWork);
+            Charge(
+                "parser_structural_work",
+                ref _work,
+                work,
+                MaximumStructuredParserStructuralWork
+            );
 
             if (reader.MoveToFirstAttribute())
             {
                 do
                 {
-                    if (!IsDeclaration(reader)) continue;
+                    if (!IsDeclaration(reader))
+                        continue;
                     string? prefix = reader.Prefix.Length == 0 ? null : reader.LocalName;
                     var key = (prefix, reader.Value); // Already XML1.0-normalized by XmlReader.
                     var distinct = (ulong)_namespaces.Count; // Includes implicit xml binding.
                     if (_namespaces.Contains(key))
                     {
-                        Charge("parser_structural_work", ref _work, Add(BitWidth(distinct), 1),
-                            MaximumStructuredParserStructuralWork);
+                        Charge(
+                            "parser_structural_work",
+                            ref _work,
+                            Add(BitWidth(distinct), 1),
+                            MaximumStructuredParserStructuralWork
+                        );
                     }
                     else
                     {
-                        Charge("parser_structural_work", ref _work, Multiply(2, distinct),
-                            MaximumStructuredParserStructuralWork);
-                        var bytes = Add((ulong)InputUtf8.GetByteCount(prefix ?? ""),
-                            (ulong)InputUtf8.GetByteCount(key.Item2));
-                        Charge("namespace_registry_utf8_bytes", ref _registryBytes, bytes,
-                            MaximumStructuredNamespaceRegistryUtf8Bytes);
+                        Charge(
+                            "parser_structural_work",
+                            ref _work,
+                            Multiply(2, distinct),
+                            MaximumStructuredParserStructuralWork
+                        );
+                        var bytes = Add(
+                            (ulong)InputUtf8.GetByteCount(prefix ?? ""),
+                            (ulong)InputUtf8.GetByteCount(key.Item2)
+                        );
+                        Charge(
+                            "namespace_registry_utf8_bytes",
+                            ref _registryBytes,
+                            bytes,
+                            MaximumStructuredNamespaceRegistryUtf8Bytes
+                        );
                         _namespaces.Add(key);
                     }
                 } while (reader.MoveToNextAttribute());
@@ -341,20 +470,30 @@ public static partial class FerruleXml
 
         private static bool IsDeclaration(XmlReader reader) =>
             reader.Prefix == "xmlns" || reader.Prefix.Length == 0 && reader.LocalName == "xmlns";
+
         private static ulong BitWidth(ulong value)
         {
             ulong bits = 0;
-            while (value != 0) { ++bits; value >>= 1; }
+            while (value != 0)
+            {
+                ++bits;
+                value >>= 1;
+            }
             return bits;
         }
+
         private static ulong Add(ulong left, ulong right) =>
             right > ulong.MaxValue - left ? ulong.MaxValue : left + right;
+
         private static ulong Multiply(ulong left, ulong right) =>
             left != 0 && right > ulong.MaxValue / left ? ulong.MaxValue : left * right;
+
         private static void Require(string resource, ulong observed, ulong limit)
         {
-            if (observed > limit) throw new FerruleXmlStructuredResourceException(resource, observed, limit);
+            if (observed > limit)
+                throw new FerruleXmlStructuredResourceException(resource, observed, limit);
         }
+
         private static void Charge(string resource, ref ulong total, ulong count, ulong limit)
         {
             total = Add(total, count);
@@ -367,17 +506,20 @@ public static partial class FerruleXml
         private long _nodes;
         private long _bytes;
         private long _work;
+
         internal void Node()
         {
             if (++_nodes > limits.InstanceNodes)
                 throw StructuredInput("XML input exceeds its materialized instance node limit");
         }
+
         internal void Bytes(long bytes)
         {
             if (bytes > limits.FieldAndStringBytes - _bytes)
                 throw StructuredInput("XML input exceeds its materialized field/string byte limit");
             _bytes += bytes;
         }
+
         internal void Work(long count = 1)
         {
             if (count > limits.ProjectionWork - _work)

@@ -7,10 +7,13 @@ public static partial class FerruleJson
     private static JsonPropertyCountRange? ReadPropertyCountRange(
         string name,
         JsonElement element,
-        bool isGroup)
+        bool isGroup
+    )
     {
-        if (!element.TryGetProperty("property_count_range", out var rangeElement) ||
-            rangeElement.ValueKind == JsonValueKind.Null)
+        if (
+            !element.TryGetProperty("property_count_range", out var rangeElement)
+            || rangeElement.ValueKind == JsonValueKind.Null
+        )
         {
             return null;
         }
@@ -18,25 +21,25 @@ public static partial class FerruleJson
             rangeElement,
             JsonValueKind.Object,
             $"schema node '{name}' property-count range",
-            "object");
+            "object"
+        );
         var fields = new HashSet<string>(StringComparer.Ordinal);
         foreach (var property in rangeElement.EnumerateObject())
         {
-            if (property.Name is not ("minimum" or "maximum") ||
-                !fields.Add(property.Name))
+            if (property.Name is not ("minimum" or "maximum") || !fields.Add(property.Name))
             {
                 throw Boundary(
-                    $"Embedded JSON schema node '{name}' property-count range has an unknown or duplicate field '{property.Name}'.");
+                    $"Embedded JSON schema node '{name}' property-count range has an unknown or duplicate field '{property.Name}'."
+                );
             }
         }
         var minimum = OptionalUInt64(rangeElement, "minimum", false) ?? 0;
         var maximum = OptionalUInt64(rangeElement, "maximum", true);
-        if (!isGroup ||
-            minimum == 0 && maximum is null ||
-            maximum is { } upper && minimum > upper)
+        if (!isGroup || minimum == 0 && maximum is null || maximum is { } upper && minimum > upper)
         {
             throw Boundary(
-                $"Embedded JSON schema node '{name}' has invalid property-count metadata.");
+                $"Embedded JSON schema node '{name}' has invalid property-count metadata."
+            );
         }
         return new JsonPropertyCountRange(minimum, maximum);
     }
@@ -47,29 +50,38 @@ public static partial class FerruleJson
         IReadOnlyList<JsonSchemaNode> children,
         JsonSchemaNode? dynamic,
         IReadOnlyList<string> required,
-        IReadOnlyList<JsonAlternative> alternatives)
+        IReadOnlyList<JsonAlternative> alternatives
+    )
     {
         if (range is not { } propertyCountRange)
         {
             return;
         }
-        if (!PropertyCountFits(
+        if (
+            !PropertyCountFits(
                 propertyCountRange,
                 required.Count,
-                dynamic is null ? children.Count : null))
+                dynamic is null ? children.Count : null
+            )
+        )
         {
             throw Boundary(
-                $"Embedded JSON schema node '{name}' cannot satisfy its property-count range.");
+                $"Embedded JSON schema node '{name}' cannot satisfy its property-count range."
+            );
         }
         foreach (var alternative in alternatives)
         {
-            if (!PropertyCountFits(
+            if (
+                !PropertyCountFits(
                     propertyCountRange,
                     alternative.Required.Count,
-                    alternative.Members.Count))
+                    alternative.Members.Count
+                )
+            )
             {
                 throw Boundary(
-                    $"Embedded JSON schema node '{name}' has an alternative that cannot satisfy its property-count range.");
+                    $"Embedded JSON schema node '{name}' has an alternative that cannot satisfy its property-count range."
+                );
             }
         }
     }
@@ -77,22 +89,22 @@ public static partial class FerruleJson
     private static bool PropertyCountFits(
         JsonPropertyCountRange range,
         int requiredCount,
-        int? capacity) =>
-        (range.Maximum is null || (ulong)requiredCount <= range.Maximum) &&
-        (capacity is null || range.Minimum <= (ulong)capacity);
+        int? capacity
+    ) =>
+        (range.Maximum is null || (ulong)requiredCount <= range.Maximum)
+        && (capacity is null || range.Minimum <= (ulong)capacity);
 
     private static void ValidatePropertyCount(JsonSchemaNode schema, int count)
     {
         if (schema.PropertyCountRange is { } range && !range.Contains(count))
         {
             throw Boundary(
-                $"JSON object '{schema.Name}' has {count} properties outside its declared property-count range.");
+                $"JSON object '{schema.Name}' has {count} properties outside its declared property-count range."
+            );
         }
     }
 
-    private static void ValidateOutputPropertyCount(
-        JsonSchemaNode schema,
-        FerruleGroup group)
+    private static void ValidateOutputPropertyCount(JsonSchemaNode schema, FerruleGroup group)
     {
         if (schema.PropertyCountRange is null)
         {
@@ -115,8 +127,7 @@ public static partial class FerruleJson
         {
             foreach (var child in schema.Children)
             {
-                if (group.TryGetField(child.Name, out var value) &&
-                    !BoundaryAbsence(child, value))
+                if (group.TryGetField(child.Name, out var value) && !BoundaryAbsence(child, value))
                 {
                     count = checked(count + 1);
                 }
