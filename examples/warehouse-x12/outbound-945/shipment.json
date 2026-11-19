@@ -1,0 +1,29 @@
+{
+  "interchange": "000000741",
+  "groupControl": "741",
+  "transaction": "0741",
+  "shipDate": "20261014",
+  "envelopeDate": "261014",
+  "shipTime": "1430",
+  "orderRef": "ORBIT-4831",
+  "shipmentId": "SHP-8407",
+  "purchaseOrder": "PO-6359",
+  "cartons": [
+    {
+      "sequence": 1,
+      "tracking": "QF003183101",
+      "sku": "HOLLOW-FLASK",
+      "ordered": 6,
+      "shipped": 6,
+      "uom": "EA"
+    },
+    {
+      "sequence": 2,
+      "tracking": "QF003183102",
+      "sku": "RIDGE-MUG",
+      "ordered": 2,
+      "shipped": 2,
+      "uom": "CS"
+    }
+  ]
+}
