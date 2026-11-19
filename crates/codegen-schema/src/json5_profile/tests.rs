@@ -175,6 +175,7 @@ fn all_nondefault_descriptor_metadata_families_and_nested_defaults_are_explicit(
     let base = json!({"name":"S","repeating":false,"kind":{"kind":"group","children":[{"name":"n","repeating":false,"kind":{"kind":"scalar","ty":"string"}}]}});
     let rejected = [
         ("xml_namespace", json!("urn:test")),
+        ("xml_closed_source_selection", json!(true)),
         ("xml_name_alternatives", json!(["urn:test"])),
         ("xml_wildcard_namespace", json!({})),
         ("xml_wildcard_process_contents", json!("strict")),
@@ -213,7 +214,7 @@ fn all_nondefault_descriptor_metadata_families_and_nested_defaults_are_explicit(
         ("xml_repeating_choices", json!([{}])),
         ("database_relation", json!({})),
     ];
-    assert_eq!(rejected.len(), 38);
+    assert_eq!(rejected.len(), 39);
     for (field, value) in rejected {
         for nested in [false, true] {
             let mut raw = base.clone();
@@ -242,6 +243,9 @@ fn all_nondefault_descriptor_metadata_families_and_nested_defaults_are_explicit(
     leaf.json_formats = JsonFormatAnnotations::new(["email".into()]).unwrap();
     unsupported(&SchemaNode::group("S", vec![leaf]), "json_formats");
     let mut schema = object();
+    schema.xml_closed_source_selection = true;
+    unsupported(&schema, "xml_closed_source_selection");
+    let mut schema = object();
     schema.alternative_mode = GroupAlternativeMode::Inclusive;
     unsupported(&schema, "alternative_mode");
     let mut schema = object();
@@ -259,6 +263,7 @@ fn all_nondefault_descriptor_metadata_families_and_nested_defaults_are_explicit(
     );
     unsupported(&schema, "xml_wildcard_excluded_names");
     let mut raw = base;
+    raw["xml_closed_source_selection"] = json!(false);
     raw["fixed"] = json!(null);
     raw["json_formats"] = json!([]);
     raw["alternative_mode"] = json!("exclusive");

@@ -72,7 +72,7 @@ use substitution_expansion::attach_substitution_alternatives;
 use wildcards::generic_wildcard_schema;
 use wildcards::{
     generic_attribute_wildcard_schema, generic_attribute_wildcard_schema_with,
-    parse_attribute_wildcard, qualify_wildcard_siblings, unsupported_wildcard,
+    parse_attribute_wildcard, unsupported_wildcard,
 };
 
 pub use export::{XsdExportArtifact, XsdExportSet, export, export_namespace, export_set};
@@ -260,7 +260,7 @@ impl ParseState {
         path
     }
 
-    fn finish(self, mut schema: SchemaNode) -> Result<SchemaNode, XmlFormatError> {
+    fn finish(self, schema: SchemaNode) -> Result<SchemaNode, XmlFormatError> {
         // Checked first: the levels past the limit were not imported, so the
         // other refusals may only describe the truncated schema.
         if self.depth_limit_reached {
@@ -300,7 +300,6 @@ impl ParseState {
                 "##definedSibling was not resolved against a complete complex type",
             ));
         }
-        qualify_wildcard_siblings(&mut schema);
         if let Some(group) = invalid_repeating_sequence_group(&schema) {
             return Err(XmlFormatError::InvalidRepeatingSequenceSchema {
                 group: group.to_string(),
@@ -648,13 +647,17 @@ fn complex_type_base_name(declaration: &Node, schema: &Node) -> Option<String> {
     }
 }
 
+fn is_legacy_name(declaration: &Node<'_, '_>) -> bool {
+    declaration.attribute((LEGACY_NAME_NAMESPACE, "namespace")) == Some("legacy")
+}
+
 fn declaration_namespace(
     declaration: &Node<'_, '_>,
     schema: &Node<'_, '_>,
     inherited_namespace: Option<&str>,
     attribute: bool,
 ) -> Option<XmlNamespace> {
-    if declaration.attribute((LEGACY_NAME_NAMESPACE, "namespace")) == Some("legacy") {
+    if is_legacy_name(declaration) {
         return None;
     }
     let global = declaration.parent() == Some(*schema);

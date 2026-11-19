@@ -7,11 +7,52 @@ use crate::{
 };
 
 impl SchemaNode {
+    /// The complete native-observed source profile: a document containing
+    /// repeated groups, each with a repeated group and an optional integer.
+    /// Compare entire nodes to exclude annotations, recursion, wildcards,
+    /// selected types and other content. Names are not fixture-specific.
+    pub fn closed_source_selection_schema(&self) -> Option<Self> {
+        fn only_child(node: &SchemaNode) -> Option<&SchemaNode> {
+            match &node.kind {
+                SchemaKind::Group { children, .. } if children.len() == 1 => children.first(),
+                _ => None,
+            }
+        }
+        let row = only_child(self)?;
+        let inner = only_child(row)?;
+        let value = only_child(inner)?;
+        let build = |explicit| {
+            let name = |node: Self| {
+                if explicit {
+                    node.xml_unqualified()
+                } else {
+                    node
+                }
+            };
+            let mut scalar = Self::scalar(&value.name, ScalarType::Int);
+            scalar.xml_optional = true;
+            let inner = name(Self::group(&inner.name, vec![name(scalar)]).repeating());
+            let row = name(Self::group(&row.name, vec![inner]).repeating());
+            let mut root = name(Self::group(&self.name, vec![row]));
+            root.xml_closed_source_selection = self.xml_closed_source_selection;
+            root
+        };
+        let explicit = build(true);
+        (*self == explicit || *self == build(false)).then_some(explicit)
+    }
+
     /// Marks this XML name as explicitly unqualified.
     pub fn xml_unqualified(mut self) -> Self {
         self.xml_namespace = Some(XmlNamespace::Unqualified);
         self.xml_name_alternatives.clear();
         self
+    }
+
+    /// Whether this single name can be written without a namespace under an
+    /// unqualified parent. This is a writer property, not a reader match.
+    pub fn xml_name_in_no_namespace(&self) -> bool {
+        self.xml_name_alternatives.is_empty()
+            && matches!(self.xml_namespace, None | Some(XmlNamespace::Unqualified))
     }
 
     /// Marks this XML name as belonging to a non-empty namespace URI.
