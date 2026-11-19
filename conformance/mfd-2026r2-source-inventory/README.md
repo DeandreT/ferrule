@@ -2,7 +2,8 @@
 
 These files review documentation bodies beyond the original topic inventory in
 [`mfd-2026r2.source-contracts.json`](../mfd-2026r2.source-contracts.json).
-They do not change the canonical capability ledger or establish execution support.
+Most are source-only supplements. The [workflow ownership review](workflow-owners.md)
+also identifies eight native-profile ledger additions. None establishes execution support.
 
 | File | Source coverage |
 | --- | --- |

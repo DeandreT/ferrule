@@ -1,0 +1,65 @@
+page_index	original_disposition	canonical_id	reason
+79	match	authoring.blank-project	Inserting a named result in the main design is part of creating and wiring endpoints. The UDF result port has a different scope.
+405	match	functions.builtins	Pattern matching and tokenization constrain built-in scalar/sequence function behavior; bracket syntax is not a separate callable.
+769	match	connectors.http-services	The request/response component owns header, route and optional body structures.
+794	match	connectors.http-services	Selecting fields from an HTTP response is the existing call workflow, independent of the example endpoint.
+795	match	connectors.http-services	The distinctive step is declaring the feed response on a network call; RSS does not require a new connector here.
+796	match	connectors.http-services	Supplying a constant argument to a SOAP operation is an instance of the existing live-service family.
+797	missing	connectors.oauth-credential	The calendar call consumes a grant and token obtained through a credential; simple request/response wiring cannot assess authorization.
+799	external		Installing a trusted issuer into a Linux trust store changes the host, not the mapping.
+800	external		Importing a root into a Windows store belongs to Windows trust administration.
+801	external		Choosing a user or computer certificate store in MMC is host administration.
+802	external		Exporting a Windows certificate for another OS transfers deployment material outside the design.
+803	match	deployment.host-api	Standalone run uses --certificatespath for the directory containing the client PEM. PEM preparation and access to the key are external prerequisites.
+804	external		Availability of a certificate to the Windows execution account is a store prerequisite. Selection on the service component is covered separately at 781.
+805	missing	authoring.assisted-connections	Submitting a design to the assistant and receiving suggested wires is a distinct editor operation. Blank-project wiring does not describe that exchange.
+808	missing	mapping.dynamic-node-names	Reading actual child names as values requires name-bearing ports. Static XML field iteration and dynamic filenames do not expose those names.
+809	missing	mapping.dynamic-node-type-selection	Selecting allowed child content by type requires a schema-dependent projection. Merely exposing the child's name cannot provide typed fields.
+810	missing	mapping.dynamic-node-names	The element-name-to-attribute workflow consumes the same name-bearing port as 808. Ordinary iteration determines row count, not the name value.
+820	missing	interop.named-credential-resolution	Imported versus local definitions and same-name precedence determine which credential a mapping uses. Connection setup alone has no such scope rule.
+821	missing	connectors.oauth-credential	Configuring an authorization grant and using its token can be tested separately from name lookup and from ordinary HTTP body wiring.
+822	match	deployment.host-api	The runtime supplies values for a credential name to the standalone invocation; deployment.host-api owns invocation parameters, not secret storage.
+823	missing	deployment.credential-transfer	The designer controls inclusion of populated sensitive fields when deploying a mapping or a standalone credential. FlowForce storage, job overrides and access permissions are separate server operations.
+824	missing	deployment.credential-transfer	The Credentials Manager command deploys one selected credential to a server path independently of its mapping. Job reuse and permission to use the object belong to the server.
+825	match	connectors.http-services	Authentication inputs are runtime parameters on the service request. This case does not create an OAuth grant or resolve a stored credential by name.
+826	match	connectors.http-services	The stored username/password option is a legacy authentication mode on the service call, distinct from a reusable named credential.
+828	missing	authoring.stylesheet-documentation	Selecting a stylesheet changes report content (e.g., call graph versus impact). The existing generate-documentation command ID identifies the menu action, not the generated report.
+829	external		The custom documentation layout is authored in StyleVision against the documentation schema; that editor is outside the native mapping profile.
+852	missing	interop.configured-resource-alias	Choosing a resource configuration binds a logical name to a physical resource. A relocatable file path or release catalog is not a selectable configuration.
+853	missing	interop.configured-resource-alias	Each configuration can hold a different file or database binding for the same alias. This is setup for the resolver, not a new driver.
+854	missing	interop.configured-resource-alias	Switching the XML input by configuration keeps the design reference stable, unlike changing the component filename.
+855	missing	interop.configured-resource-alias	The alias can select an output directory. The independent temporary/permanent output setting still applies.
+856	missing	interop.configured-resource-alias	Switching a database through its configured alias is separable from connecting through that database's driver.
+857	missing	interop.configured-resource-alias	The designer can register a transformation result and bind a selected output per configuration. Launching the mapping and displaying its result in XMLSpy are external consumer actions.
+859	match	deployment.vendor-backends	The operation under assessment here is substitution into generated output, including the RaptorXML batch wrapper; resource definition is covered by 852.
+860	match	deployment.host-api	The standalone server needs definitions to resolve preserved references in an execution file. This is host provisioning for the headless run.
+861	external		A FlowForce resource is a permissioned server object. Server authorization is outside the mapping's resource-alias binding.
+867	external		Selecting matching IDE and add-in bitness is a Visual Studio installation prerequisite.
+869	external		Installing the mapping plug-in in a supported Eclipse platform is IDE setup. The canonical Java/Eclipse ActiveX prerequisite describes a different integration.
+870	external		Selecting an Eclipse perspective changes the workbench where the design is edited.
+871	external		Showing commands according to the active Eclipse editor is workbench routing, not a new mapping operation.
+873	external		The Eclipse project type configures workspace integration; it is distinct from a mapping project file.
+874	match	authoring.blank-project	Creating the mapping design is the same authoring outcome from an Eclipse entry point. Other project-file choices do not add another kind of mapping.
+875	external		Importing dependent files into an Eclipse project concerns workspace membership, distinct from resolving those files inside the mapping.
+876	external		The builder and nature configure Eclipse project builds. Selecting a target code language in the design does not configure the workbench.
+877	external		Installing plug-in development tools and extending an Eclipse plug-in are IDE development workflows.
+1089	match	deployment.vendor-backends	The XSLT 1 serializer controls HTML character representation; the observed spelling belongs to the target processor's profile.
+1090	match	deployment.vendor-backends	XSLT 2 backwards-compatibility behavior constrains that backend and does not define a second source mapping primitive.
+1091	match	deployment.vendor-backends	XQuery engine namespace bindings and accepted encodings are backend-specific environment rules.
+1108	match	functions.external-code	The Java namespace identifies the extension class referenced from an expression; this is external-function resolution.
+1109	match	functions.external-code	A JAR location further qualifies the external implementation, rather than introducing a different expression result type.
+1110	match	functions.external-code	The Java constructor convention is part of external invocation and can yield a wrapped receiver.
+1111	match	functions.external-code	Class-qualified static calls do not consume an instance. The external-call family owns this dispatch distinction.
+1112	match	functions.external-code	Instance dispatch consumes a receiver; this qualifies how the external method is called.
+1113	match	functions.external-code	The selected Java signature determines conversion from the expression argument at the external boundary.
+1114	match	functions.external-code	Conversion of a Java result back to XPath is the return direction of the external-call boundary.
+1116	match	functions.external-code	The .NET constructor convention specifies object creation for an extension call.
+1117	match	functions.external-code	Exact public static name matching constrains .NET extension resolution.
+1118	match	functions.external-code	A .NET instance method uses the supplied object even when it takes no ordinary arguments.
+1119	match	functions.external-code	Conversion to a .NET parameter depends on the selected signature; this is host argument marshalling.
+1120	match	functions.external-code	Converting the .NET return type back to an expression value belongs to the external-call boundary.
+1121	match	functions.external-code	Inline script placement describes where an XSLT extension implementation is declared; it does not imply arbitrary script execution support.
+1123	external		Memory sizing for an in-memory desktop editor is a platform requirement, not a mapped data operation.
+1124	match	formats.xml	Well-formedness and schema validation are XML parsing contracts. The page also describes the vendor engine, but it does not establish Ferrule validator coverage.
+1125	external		Rendering a glyph depends on installed fonts. It is distinct from a mapping's Unicode encoding and preservation behavior.
+1126	external		Requesting an evaluation key initiates application licensing traffic, outside mapping network operations.

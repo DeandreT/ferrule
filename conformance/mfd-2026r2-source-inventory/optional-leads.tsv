@@ -1,0 +1,4 @@
+topic_pages	parameters	direction	disposition	locator	condition_and_limit
+730:1067,731:1068,733:1070	calendar,place	input	inherited	calendar xs:string Same as above. place xs:string Same as above.	The two rows inherit the preceding description pointing to F&O 3.1 §9.8.4.8. In the two-argument language function, formatting depends on the default calendar and place. The table does not explicitly mark either port optional or say how an unwired port is emitted.
+632:1014	default-encoding	input	conditional	If no charset was specified	Supply an encoding when Content-Type lacks charset. With neither a header charset nor a connected fallback, the page gives no decoding or error rule.
+625:1009	data	output	output-only	The data output parameter receives data	The output forwards input data after the delay. The separately listed data input has the same name. Only that input belongs in the unmarked-input denominator.

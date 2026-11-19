@@ -21341,6 +21341,750 @@
           "built_in": {"status":"unassessed","evidence":[],"detail":"Source inventory only for enterprise2026r2.appendix.fxaltova_xpxqmisc.signature-line-73080 on vendor_backends.built_in. Applicability unknown for pinned Enterprise 2026r2 exact operation/backend and profile; implementation and independent behavioral/vendor execution proof are unknown. No execution receipts are attached. See conformance/mfd-2026r2.source-contracts.json for the source contract, not runtime evidence."}
         }
       }
+    },
+    {
+      "id": "authoring.assisted-connections",
+      "title": "Request connection suggestions for a mapping design",
+      "category": "authoring",
+      "profiles": [
+        "mfd-2026r2-enterprise"
+      ],
+      "depends_on": [],
+      "support": {
+        "import": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "interpreter": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "native_export": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "ferrule_roundtrip": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "gui": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "debug": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "rust": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "csharp": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "vendor_backends": {
+          "xslt3": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "built_in": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "xslt1": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "xslt2": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "xquery1": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "cpp": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "java": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "csharp": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          }
+        }
+      }
+    },
+    {
+      "id": "mapping.dynamic-node-names",
+      "title": "Read source child node names as mapping data",
+      "category": "mapping",
+      "profiles": [
+        "mfd-2026r2-enterprise"
+      ],
+      "depends_on": [],
+      "support": {
+        "import": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "interpreter": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "native_export": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "ferrule_roundtrip": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "gui": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "debug": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "rust": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "csharp": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "vendor_backends": {
+          "xslt3": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "built_in": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "xslt1": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "xslt2": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "xquery1": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "cpp": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "java": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "csharp": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          }
+        }
+      }
+    },
+    {
+      "id": "mapping.dynamic-node-type-selection",
+      "title": "Project dynamic child content through an allowed schema type",
+      "category": "mapping",
+      "profiles": [
+        "mfd-2026r2-enterprise"
+      ],
+      "depends_on": [],
+      "support": {
+        "import": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "interpreter": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "native_export": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "ferrule_roundtrip": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "gui": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "debug": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "rust": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "csharp": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "vendor_backends": {
+          "xslt3": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "built_in": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "xslt1": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "xslt2": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "xquery1": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "cpp": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "java": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "csharp": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          }
+        }
+      }
+    },
+    {
+      "id": "interop.named-credential-resolution",
+      "title": "Resolve local and imported credential definitions by name",
+      "category": "interoperability",
+      "profiles": [
+        "mfd-2026r2-enterprise"
+      ],
+      "depends_on": [],
+      "support": {
+        "import": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "interpreter": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "native_export": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "ferrule_roundtrip": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "gui": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "debug": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "rust": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "csharp": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "vendor_backends": {
+          "xslt3": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "built_in": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "xslt1": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "xslt2": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "xquery1": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "cpp": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "java": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "csharp": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          }
+        }
+      }
+    },
+    {
+      "id": "connectors.oauth-credential",
+      "title": "Configure and use an OAuth 2.0 mapping credential",
+      "category": "connectors",
+      "profiles": [
+        "mfd-2026r2-enterprise"
+      ],
+      "depends_on": [],
+      "support": {
+        "import": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "interpreter": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "native_export": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "ferrule_roundtrip": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "gui": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "debug": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "rust": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "csharp": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "vendor_backends": {
+          "xslt3": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "built_in": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "xslt1": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "xslt2": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "xquery1": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "cpp": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "java": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "csharp": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          }
+        }
+      }
+    },
+    {
+      "id": "interop.configured-resource-alias",
+      "title": "Bind a mapping resource alias through a selected configuration",
+      "category": "interoperability",
+      "profiles": [
+        "mfd-2026r2-enterprise"
+      ],
+      "depends_on": [],
+      "support": {
+        "import": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "interpreter": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "native_export": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "ferrule_roundtrip": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "gui": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "debug": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "rust": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "csharp": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "vendor_backends": {
+          "xslt3": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "built_in": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "xslt1": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "xslt2": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "xquery1": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "cpp": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "java": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "csharp": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          }
+        }
+      }
+    },
+    {
+      "id": "authoring.stylesheet-documentation",
+      "title": "Generate mapping documentation with a selected report stylesheet",
+      "category": "authoring",
+      "profiles": [
+        "mfd-2026r2-enterprise"
+      ],
+      "depends_on": [],
+      "support": {
+        "import": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "interpreter": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "native_export": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "ferrule_roundtrip": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "gui": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "debug": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "rust": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "csharp": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "vendor_backends": {
+          "xslt3": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "built_in": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "xslt1": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "xslt2": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "xquery1": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "cpp": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "java": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "csharp": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          }
+        }
+      }
+    },
+    {
+      "id": "deployment.credential-transfer",
+      "title": "Deploy credential records from the designer with explicit sensitive-field inclusion",
+      "category": "deployment",
+      "profiles": [
+        "mfd-2026r2-enterprise"
+      ],
+      "depends_on": [],
+      "support": {
+        "import": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "interpreter": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "native_export": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "ferrule_roundtrip": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "gui": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "debug": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "rust": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "csharp": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "vendor_backends": {
+          "xslt3": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "built_in": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "xslt1": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "xslt2": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "xquery1": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "cpp": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "java": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "csharp": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          }
+        }
+      }
     }
   ]
 }
