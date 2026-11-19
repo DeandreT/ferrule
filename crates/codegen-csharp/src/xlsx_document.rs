@@ -2,7 +2,7 @@ use codegen::ArtifactSet;
 use ir::{ScalarType, SchemaKind, SchemaNode};
 use mapping::{FormatOptions, Project, TabularBoundaryKind};
 
-/// Generate a single JSON row -> new flat workbook byte entry point. Never infer
+/// Generate a JSON row or portable row set -> new flat workbook byte entry point. Never infer
 /// worksheet settings from paths, or silently discard unrelated boundary options.
 pub fn emit_with_flat_xlsx_output(project: &Project) -> Result<ArtifactSet, String> {
     let target = &project.target_options;
@@ -51,7 +51,8 @@ pub fn emit_with_flat_xlsx_output(project: &Project) -> Result<ArtifactSet, Stri
         || project.root.output_path().is_some()
     {
         return Err(
-            "XLSX output requires one JSON row and a new flat worksheet with headers".into(),
+            "Expected a JSON row or a root worksheet iteration and a new worksheet with headers"
+                .into(),
         );
     }
     let mut source_names = Vec::new();
