@@ -38,6 +38,7 @@ pub use primary_json_document::emit_with_primary_json_documents;
 mod runtime;
 mod static_documents;
 mod x12_output;
+pub mod xbrl_documents;
 
 #[cfg(test)]
 mod composition_tests;
