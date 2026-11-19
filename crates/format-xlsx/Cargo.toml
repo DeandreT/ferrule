@@ -7,6 +7,7 @@ repository.workspace = true
 description = "XLSX worksheet instance I/O for flat, transposed, composite, grid, and hierarchical mappings"
 
 [dependencies]
+crc32fast = "1.5"
 ir = { workspace = true }
 mapping = { workspace = true }
 calamine = { workspace = true }

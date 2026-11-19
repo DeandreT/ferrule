@@ -221,6 +221,12 @@ impl<'a> PayloadRunOptions<'a> {
         self.profile = PayloadProfile::BoundedDocuments;
         self
     }
+
+    /// Read and write only canonical flat worksheet packages; no general XLSX fallback.
+    pub fn with_portable_workbook(mut self) -> Self {
+        self.profile = PayloadProfile::PortableWorkbook;
+        self
+    }
 }
 
 /// One serialized target document returned to the host.
@@ -325,7 +331,17 @@ fn preflight_payload_run<'p>(
             }
         }
     }
-    if matches!(options.profile, PayloadProfile::BoundedDocuments) {
+    if matches!(options.profile, PayloadProfile::PortableWorkbook)
+        && (!project.extra_sources.is_empty()
+            || !project.extra_targets.is_empty()
+            || project.root.produces_documents())
+    {
+        anyhow::bail!("portable workbook requires only static primary boundaries");
+    }
+    if matches!(
+        options.profile,
+        PayloadProfile::BoundedDocuments | PayloadProfile::PortableWorkbook
+    ) {
         profile::validate_static_route(project, options.target, required.as_ref())?;
     }
     Ok(required)
@@ -1105,6 +1121,15 @@ fn read_payload_with_profile(
         )
         .map(Instance::Repeated)
         .context("parsing CSV input payload"),
+        SelectedFormat::Xlsx if matches!(profile, BoundaryProfile::PortableWorkbook) => {
+            format_xlsx::from_flat_package(
+                document.bytes,
+                schema,
+                options.xlsx_sheet.as_deref().unwrap_or("Sheet1"),
+            )
+            .map(Instance::Repeated)
+            .context("reading portable workbook")
+        }
         SelectedFormat::Xlsx if profile.documents() => format_xlsx::from_bytes_bounded(
             document.bytes,
             schema,

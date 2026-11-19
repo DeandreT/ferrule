@@ -345,6 +345,20 @@ fn render_payload_with_limit(
             .context("rendering CSV output payload")?;
             Ok(PayloadBytes::Ready(text.into_bytes(), rows.len()))
         }
+        SelectedFormat::Xlsx if matches!(profile, BoundaryProfile::PortableWorkbook) => {
+            let rows = instance
+                .as_repeated()
+                .context("expected mapped worksheet rows")?;
+            bounded_codec_result(
+                format_xlsx::to_flat_package(
+                    schema,
+                    rows,
+                    options.xlsx_sheet.as_deref().unwrap_or("Sheet1"),
+                ),
+                rows.len(),
+                "rendering portable workbook",
+            )
+        }
         SelectedFormat::Xlsx if profile.documents() => {
             let rows = instance
                 .as_repeated()
