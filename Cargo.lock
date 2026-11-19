@@ -996,6 +996,7 @@ dependencies = [
  "engine",
  "format-edi",
  "format-json",
+ "format-protobuf",
  "format-xbrl",
  "ir",
  "mapping",
