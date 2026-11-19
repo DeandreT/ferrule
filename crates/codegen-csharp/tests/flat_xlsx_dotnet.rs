@@ -62,7 +62,11 @@ Console.OpenStandardOutput().Write(first);"#).unwrap();
             &Default::default()
         )
         .unwrap(),
-        [expected]
+        std::slice::from_ref(&expected)
+    );
+    assert_eq!(
+        bytes,
+        format_xlsx::to_flat_package(&p.target, &[expected], "Order").unwrap()
     );
 }
 #[test]
