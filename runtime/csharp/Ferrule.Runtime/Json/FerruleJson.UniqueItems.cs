@@ -8,38 +8,35 @@ namespace Ferrule.Runtime;
 
 public static partial class FerruleJson
 {
-    private static bool ReadJsonUniqueItems(
-        string name,
-        JsonElement element,
-        bool repeating)
+    private static bool ReadJsonUniqueItems(string name, JsonElement element, bool repeating)
     {
         bool? uniqueItems = null;
         foreach (var property in element.EnumerateObject())
         {
-            if (!string.Equals(
-                    property.Name,
-                    "json_unique_items",
-                    StringComparison.Ordinal))
+            if (!string.Equals(property.Name, "json_unique_items", StringComparison.Ordinal))
             {
                 continue;
             }
             if (uniqueItems is not null)
             {
                 throw Boundary(
-                    $"Embedded JSON schema node '{name}' has duplicate JSON unique-items metadata.");
+                    $"Embedded JSON schema node '{name}' has duplicate JSON unique-items metadata."
+                );
             }
             uniqueItems = property.Value.ValueKind switch
             {
                 JsonValueKind.True => true,
                 JsonValueKind.False => false,
                 _ => throw Boundary(
-                    $"Embedded JSON schema node '{name}' JSON unique-items metadata must be a boolean."),
+                    $"Embedded JSON schema node '{name}' JSON unique-items metadata must be a boolean."
+                ),
             };
         }
         if (uniqueItems == true && !repeating)
         {
             throw Boundary(
-                $"Embedded JSON schema node '{name}' has JSON unique-items metadata without an array.");
+                $"Embedded JSON schema node '{name}' has JSON unique-items metadata without an array."
+            );
         }
         return uniqueItems ?? false;
     }
@@ -47,7 +44,8 @@ public static partial class FerruleJson
     private static void ValidateUniqueInputItems(
         JsonSchemaNode schema,
         JsonElement array,
-        NodeBudget nodeBudget)
+        NodeBudget nodeBudget
+    )
     {
         if (!schema.JsonUniqueItems)
         {
@@ -62,7 +60,8 @@ public static partial class FerruleJson
             {
                 nodeBudget.MarkFatalTraversalLimit();
                 throw Boundary(
-                    $"JSON uniqueItems array '{schema.Name}' exceeds the {MaximumNodes}-item limit.");
+                    $"JSON uniqueItems array '{schema.Name}' exceeds the {MaximumNodes}-item limit."
+                );
             }
             byte[] key;
             try
@@ -77,7 +76,8 @@ public static partial class FerruleJson
             if (!keys.Add(key))
             {
                 throw Boundary(
-                    $"JSON array '{schema.Name}' violates uniqueItems at item {index + 1}.");
+                    $"JSON array '{schema.Name}' violates uniqueItems at item {index + 1}."
+                );
             }
             index = checked(index + 1);
         }
@@ -87,19 +87,24 @@ public static partial class FerruleJson
         JsonSchemaNode schema,
         FerruleInstance item,
         NodeBudget nodeBudget,
-        int depth)
+        int depth
+    )
     {
         var buffer = new BoundedJsonBufferWriter(
             MaximumEscapedDocumentBytes,
-            $"Normalized JSON item in array '{schema.Name}'");
-        using (var itemWriter = new Utf8JsonWriter(
-                   buffer,
-                   new JsonWriterOptions
-                   {
-                       Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
-                       MaxDepth = MaximumDepth,
-                       SkipValidation = false,
-                   }))
+            $"Normalized JSON item in array '{schema.Name}'"
+        );
+        using (
+            var itemWriter = new Utf8JsonWriter(
+                buffer,
+                new JsonWriterOptions
+                {
+                    Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+                    MaxDepth = MaximumDepth,
+                    SkipValidation = false,
+                }
+            )
+        )
         {
             WriteSingleNode(itemWriter, schema, item, nodeBudget, depth);
         }
@@ -107,7 +112,8 @@ public static partial class FerruleJson
         if (canonicalBytes > MaximumDocumentBytes)
         {
             throw Boundary(
-                $"Normalized JSON item in array '{schema.Name}' exceeds the {MaximumDocumentBytes}-byte limit.");
+                $"Normalized JSON item in array '{schema.Name}' exceeds the {MaximumDocumentBytes}-byte limit."
+            );
         }
         var document = JsonDocument.Parse(
             buffer.WrittenMemory,
@@ -116,23 +122,25 @@ public static partial class FerruleJson
                 MaxDepth = MaximumDepth,
                 CommentHandling = JsonCommentHandling.Disallow,
                 AllowTrailingCommas = false,
-            });
+            }
+        );
         return (document, canonicalBytes);
     }
 
-    private static byte[] CreateUniqueItemKey(
-        JsonElement value,
-        UniqueItemBudget budget)
+    private static byte[] CreateUniqueItemKey(JsonElement value, UniqueItemBudget budget)
     {
         var buffer = new ArrayBufferWriter<byte>();
-        using (var writer = new Utf8JsonWriter(
-                   buffer,
-                   new JsonWriterOptions
-                   {
-                       Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
-                       MaxDepth = MaximumDepth,
-                       SkipValidation = false,
-                   }))
+        using (
+            var writer = new Utf8JsonWriter(
+                buffer,
+                new JsonWriterOptions
+                {
+                    Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+                    MaxDepth = MaximumDepth,
+                    SkipValidation = false,
+                }
+            )
+        )
         {
             WriteCanonicalUniqueValue(writer, value, budget);
         }
@@ -143,7 +151,8 @@ public static partial class FerruleJson
     private static void WriteCanonicalUniqueValue(
         Utf8JsonWriter writer,
         JsonElement value,
-        UniqueItemBudget budget)
+        UniqueItemBudget budget
+    )
     {
         budget.Visit();
         switch (value.ValueKind)
@@ -164,7 +173,8 @@ public static partial class FerruleJson
             case JsonValueKind.Number:
                 writer.WriteRawValue(
                     CanonicalUniqueNumber(value.GetRawText(), budget),
-                    skipInputValidation: true);
+                    skipInputValidation: true
+                );
                 return;
             case JsonValueKind.Array:
                 writer.WriteStartArray();
@@ -176,8 +186,10 @@ public static partial class FerruleJson
                 return;
             case JsonValueKind.Object:
                 writer.WriteStartObject();
-                foreach (var property in LastObjectProperties(value)
-                             .OrderBy(property => property.Key, StringComparer.Ordinal))
+                foreach (
+                    var property in LastObjectProperties(value)
+                        .OrderBy(property => property.Key, StringComparer.Ordinal)
+                )
                 {
                     writer.WritePropertyName(property.Key);
                     WriteCanonicalUniqueValue(writer, property.Value, budget);
@@ -186,7 +198,8 @@ public static partial class FerruleJson
                 return;
             default:
                 throw Boundary(
-                    $"JSON uniqueItems encountered unsupported value kind '{value.ValueKind}'.");
+                    $"JSON uniqueItems encountered unsupported value kind '{value.ValueKind}'."
+                );
         }
     }
 
@@ -200,9 +213,7 @@ public static partial class FerruleJson
         return properties;
     }
 
-    private static string CanonicalUniqueNumber(
-        string source,
-        UniqueItemBudget budget)
+    private static string CanonicalUniqueNumber(string source, UniqueItemBudget budget)
     {
         var offset = source[0] == '-' ? 1 : 0;
         var exponentOffset = source.IndexOfAny('e', 'E');
@@ -235,20 +246,22 @@ public static partial class FerruleJson
         }
         var trailingZeros = digits.Length - end;
         var explicitExponent = 0L;
-        if (exponentOffset >= 0 &&
-            !long.TryParse(
+        if (
+            exponentOffset >= 0
+            && !long.TryParse(
                 source.AsSpan(exponentOffset + 1),
                 NumberStyles.AllowLeadingSign,
                 CultureInfo.InvariantCulture,
-                out explicitExponent))
+                out explicitExponent
+            )
+        )
         {
             throw Boundary("JSON uniqueItems number exponent exceeds the supported range.");
         }
         long exponent;
         try
         {
-            exponent = checked(
-                explicitExponent - (long)fractionalDigits + trailingZeros);
+            exponent = checked(explicitExponent - (long)fractionalDigits + trailingZeros);
         }
         catch (OverflowException error)
         {
@@ -262,10 +275,7 @@ public static partial class FerruleJson
         }
         return exponent == 0
             ? coefficient
-            : string.Concat(
-                coefficient,
-                "e",
-                exponent.ToString(CultureInfo.InvariantCulture));
+            : string.Concat(coefficient, "e", exponent.ToString(CultureInfo.InvariantCulture));
     }
 
     private sealed class UniqueItemBudget
@@ -279,7 +289,8 @@ public static partial class FerruleJson
             if (_nodes > MaximumNodes)
             {
                 throw Boundary(
-                    $"JSON uniqueItems comparison exceeds the {MaximumNodes}-node limit.");
+                    $"JSON uniqueItems comparison exceeds the {MaximumNodes}-node limit."
+                );
             }
         }
 
@@ -289,7 +300,8 @@ public static partial class FerruleJson
             if (_bytes > MaximumDocumentBytes)
             {
                 throw Boundary(
-                    $"JSON uniqueItems comparison exceeds the {MaximumDocumentBytes}-byte key limit.");
+                    $"JSON uniqueItems comparison exceeds the {MaximumDocumentBytes}-byte key limit."
+                );
             }
         }
     }
@@ -299,10 +311,8 @@ public static partial class FerruleJson
         public static readonly UniqueItemKeyComparer Instance = new();
 
         public bool Equals(byte[]? left, byte[]? right) =>
-            ReferenceEquals(left, right) ||
-            left is not null &&
-            right is not null &&
-            left.AsSpan().SequenceEqual(right);
+            ReferenceEquals(left, right)
+            || left is not null && right is not null && left.AsSpan().SequenceEqual(right);
 
         public int GetHashCode(byte[] value)
         {

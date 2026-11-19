@@ -4,7 +4,8 @@ public static partial class FerruleJson
 {
     private static void ValidateDeclaredProperties(
         JsonSchemaNode schema,
-        IReadOnlyList<JsonProperty> properties)
+        IReadOnlyList<JsonProperty> properties
+    )
     {
         if (schema.Dynamic is not null)
         {
@@ -16,7 +17,8 @@ public static partial class FerruleJson
             if (schema.Child(property.Name) is null)
             {
                 throw Boundary(
-                    $"JSON object '{schema.Name}' does not allow property '{property.Name}'.");
+                    $"JSON object '{schema.Name}' does not allow property '{property.Name}'."
+                );
             }
         }
     }

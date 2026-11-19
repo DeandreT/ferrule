@@ -8,18 +8,21 @@ internal static partial class Program
     {
         var first = new FerruleDocument("first.xml", Group(Field("Name", Scalar(Text("first")))));
         var last = new FerruleDocument("last.xml", Group(Field("Name", Scalar(Text("last")))));
-        var result = FerruleDynamicDocuments.Collect(new FerruleInstance[]
-        {
-            new FerruleDocumentSet(new[] { first }),
-            new FerruleDocumentSet(Array.Empty<FerruleDocument>()),
-            new FerruleDocumentSet(new[] { last }),
-        });
+        var result = FerruleDynamicDocuments.Collect(
+            new FerruleInstance[]
+            {
+                new FerruleDocumentSet(new[] { first }),
+                new FerruleDocumentSet(Array.Empty<FerruleDocument>()),
+                new FerruleDocumentSet(new[] { last }),
+            }
+        );
         Equal(2, result.Documents.Count);
         Equal(true, ReferenceEquals(first, result.Documents[0]));
         Equal(true, ReferenceEquals(last, result.Documents[1]));
         Equal(0, FerruleDynamicDocuments.Collect(Array.Empty<FerruleInstance>()).Documents.Count);
-        var wrong = Error(FerruleRuntimeError.InvalidDocumentCollectionItem,
-            () => FerruleDynamicDocuments.Collect(new[] { Scalar(Text("wrong")) }));
+        var wrong = Error(FerruleRuntimeError.InvalidDocumentCollectionItem, () =>
+            FerruleDynamicDocuments.Collect(new[] { Scalar(Text("wrong")) })
+        );
         Equal("a scalar", wrong.FoundInstance);
         var late = new InvalidOperationException("late collection failure");
         IEnumerable<FerruleInstance> Failed()

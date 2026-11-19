@@ -12,7 +12,8 @@ public static class FerrulePathHierarchy
         string separator,
         string directoriesField,
         string filesField,
-        string nameField)
+        string nameField
+    )
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(collection);
@@ -26,12 +27,14 @@ public static class FerrulePathHierarchy
             separator,
             directoriesField,
             filesField,
-            nameField);
+            nameField
+        );
     }
 
     private static IEnumerable<FerruleInstance> LegacyItems(
         ScopeContext context,
-        IReadOnlyList<string> collection)
+        IReadOnlyList<string> collection
+    )
     {
         foreach (var candidate in context.IterateSource(collection))
         {
@@ -54,7 +57,8 @@ public static class FerrulePathHierarchy
         string separator,
         string directoriesField,
         string filesField,
-        string nameField)
+        string nameField
+    )
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(collection);
@@ -82,7 +86,8 @@ public static class FerrulePathHierarchy
         string separator,
         string directoriesField,
         string filesField,
-        string nameField)
+        string nameField
+    )
     {
         var roots = new List<Directory>();
         var materialized = 0;
@@ -111,7 +116,8 @@ public static class FerrulePathHierarchy
             var rootName = value[..separatorIndex];
             var remainder = value[(separatorIndex + separator.Length)..];
             var root = roots.Find(candidate =>
-                string.Equals(candidate.Name, rootName, StringComparison.Ordinal));
+                string.Equals(candidate.Name, rootName, StringComparison.Ordinal)
+            );
             if (root is null)
             {
                 ReserveItem(ref materialized);
@@ -126,7 +132,8 @@ public static class FerrulePathHierarchy
             throw new FerruleRuntimeException(
                 FerruleRuntimeError.PathHierarchyRootCount,
                 $"path hierarchy requires exactly one root directory, found {roots.Count}",
-                detail: roots.Count.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                detail: roots.Count.ToString(System.Globalization.CultureInfo.InvariantCulture)
+            );
         }
         return roots[0].IntoInstance(directoriesField, filesField, nameField);
     }
@@ -138,7 +145,8 @@ public static class FerrulePathHierarchy
             throw new FerruleRuntimeException(
                 FerruleRuntimeError.PathHierarchyTooLarge,
                 $"path hierarchy materializes more than {MaximumItems} directory and file items",
-                maximumItems: (UInt128)MaximumItems);
+                maximumItems: (UInt128)MaximumItems
+            );
         }
         materialized++;
     }
@@ -147,17 +155,19 @@ public static class FerrulePathHierarchy
         new(
             FerruleRuntimeError.PathHierarchyValueType,
             $"path-hierarchy input values must be strings, got {found}",
-            foundInstance: found);
+            foundInstance: found
+        );
 
-    private static string InstanceKind(FerruleInstance instance) => instance switch
-    {
-        FerruleScalar => "scalar",
-        FerruleGroup => "group",
-        FerruleRepeated => "repeated collection",
-        FerruleMappedSequence => "mapped sequence",
-        FerruleDocumentSet => "document set",
-        _ => "unknown instance",
-    };
+    private static string InstanceKind(FerruleInstance instance) =>
+        instance switch
+        {
+            FerruleScalar => "scalar",
+            FerruleGroup => "group",
+            FerruleRepeated => "repeated collection",
+            FerruleMappedSequence => "mapped sequence",
+            FerruleDocumentSet => "document set",
+            _ => "unknown instance",
+        };
 
     private sealed class Directory
     {
@@ -171,18 +181,15 @@ public static class FerrulePathHierarchy
 
         internal string Name { get; }
 
-        internal void Insert(
-            string path,
-            string separator,
-            int depth,
-            ref int materialized)
+        internal void Insert(string path, string separator, int depth, ref int materialized)
         {
             if (depth >= MaximumDepth)
             {
                 throw new FerruleRuntimeException(
                     FerruleRuntimeError.PathHierarchyDepth,
                     $"path hierarchy exceeds the {MaximumDepth}-directory depth limit",
-                    maximumDepth: MaximumDepth);
+                    maximumDepth: MaximumDepth
+                );
             }
             var separatorIndex = path.IndexOf(separator, StringComparison.Ordinal);
             if (separatorIndex < 0)
@@ -195,7 +202,8 @@ public static class FerrulePathHierarchy
             var directoryName = path[..separatorIndex];
             var remainder = path[(separatorIndex + separator.Length)..];
             var child = _directories.Find(candidate =>
-                string.Equals(candidate.Name, directoryName, StringComparison.Ordinal));
+                string.Equals(candidate.Name, directoryName, StringComparison.Ordinal)
+            );
             if (child is null)
             {
                 ReserveItem(ref materialized);
@@ -208,26 +216,32 @@ public static class FerrulePathHierarchy
         internal FerruleGroup IntoInstance(
             string directoriesField,
             string filesField,
-            string nameField)
+            string nameField
+        )
         {
             var files = _files.Select(file =>
-                (FerruleInstance)new FerruleGroup(new[]
-                {
-                    new FerruleField(
-                        nameField,
-                        new FerruleScalar(FerruleValue.FromString(file))),
-                }));
+                (FerruleInstance)
+                    new FerruleGroup(
+                        new[]
+                        {
+                            new FerruleField(
+                                nameField,
+                                new FerruleScalar(FerruleValue.FromString(file))
+                            ),
+                        }
+                    )
+            );
             var directories = _directories.Select(directory =>
-                (FerruleInstance)directory.IntoInstance(
-                    directoriesField,
-                    filesField,
-                    nameField));
-            return new FerruleGroup(new FerruleField[]
-            {
-                new(filesField, new FerruleRepeated(files)),
-                new(directoriesField, new FerruleRepeated(directories)),
-                new(nameField, new FerruleScalar(FerruleValue.FromString(Name))),
-            });
+                (FerruleInstance)directory.IntoInstance(directoriesField, filesField, nameField)
+            );
+            return new FerruleGroup(
+                new FerruleField[]
+                {
+                    new(filesField, new FerruleRepeated(files)),
+                    new(directoriesField, new FerruleRepeated(directories)),
+                    new(nameField, new FerruleScalar(FerruleValue.FromString(Name))),
+                }
+            );
         }
     }
 }

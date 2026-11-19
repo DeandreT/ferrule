@@ -33,12 +33,14 @@ public static class ScalarPathResolver
                 {
                     throw new FerruleRuntimeException(
                         FerruleRuntimeError.MissingSourceField,
-                        $"Cannot traverse field '{segment}' through a scalar at '{DisplayPrefix(path, index)}'.");
+                        $"Cannot traverse field '{segment}' through a scalar at '{DisplayPrefix(path, index)}'."
+                    );
                 }
 
                 throw new FerruleRuntimeException(
                     FerruleRuntimeError.MissingSourceField,
-                    $"Field '{segment}' does not exist at '{DisplayPrefix(path, index)}'.");
+                    $"Field '{segment}' does not exist at '{DisplayPrefix(path, index)}'."
+                );
             }
 
             current = next;
@@ -61,13 +63,15 @@ public static class ScalarPathResolver
 
         throw new FerruleRuntimeException(
             FerruleRuntimeError.MissingSourceField,
-            $"Scalar path '{DisplayPrefix(path, path.Count)}' ends at {KindName(current)}.");
+            $"Scalar path '{DisplayPrefix(path, path.Count)}' ends at {KindName(current)}."
+        );
     }
 
     private static bool TryGetField(
         FerruleInstance current,
         string name,
-        [NotNullWhen(true)] out FerruleInstance? value)
+        [NotNullWhen(true)] out FerruleInstance? value
+    )
     {
         switch (current)
         {
@@ -85,13 +89,14 @@ public static class ScalarPathResolver
     private static string DisplayPrefix(IReadOnlyList<string> path, int count) =>
         count == 0 ? "<root>" : string.Join('/', path.Take(count));
 
-    private static string KindName(FerruleInstance instance) => instance switch
-    {
-        FerruleScalar => "a scalar",
-        FerruleGroup => "a group",
-        FerruleRepeated => "a repeated value",
-        FerruleMappedSequence => "a mapped sequence",
-        FerruleDocumentSet => "a document set",
-        _ => "an unknown instance",
-    };
+    private static string KindName(FerruleInstance instance) =>
+        instance switch
+        {
+            FerruleScalar => "a scalar",
+            FerruleGroup => "a group",
+            FerruleRepeated => "a repeated value",
+            FerruleMappedSequence => "a mapped sequence",
+            FerruleDocumentSet => "a document set",
+            _ => "an unknown instance",
+        };
 }

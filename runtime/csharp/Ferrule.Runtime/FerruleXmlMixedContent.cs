@@ -9,7 +9,8 @@ public sealed class FerruleXmlMixedContentReplacement
     public FerruleXmlMixedContentReplacement(
         string element,
         IEnumerable<string> collection,
-        Func<ScopeContext, FerruleValue> expression)
+        Func<ScopeContext, FerruleValue> expression
+    )
     {
         if (string.IsNullOrEmpty(element))
         {
@@ -63,7 +64,8 @@ public static class FerruleXmlMixedContent
         ScopeContext context,
         IReadOnlyList<string>? frame,
         IReadOnlyList<string> path,
-        IReadOnlyList<FerruleXmlMixedContentReplacement> replacements)
+        IReadOnlyList<FerruleXmlMixedContentReplacement> replacements
+    )
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(path);
@@ -73,13 +75,14 @@ public static class FerruleXmlMixedContent
         {
             return FerruleValue.Null;
         }
-        if (!group.TryGetField(MixedContentField, out var retained) ||
-            retained is not FerruleRepeated items)
+        if (
+            !group.TryGetField(MixedContentField, out var retained)
+            || retained is not FerruleRepeated items
+        )
         {
-            return group.TryGetField(TextField, out var text) &&
-                text is FerruleScalar scalar
-                    ? scalar.Value
-                    : FerruleValue.Null;
+            return group.TryGetField(TextField, out var text) && text is FerruleScalar scalar
+                ? scalar.Value
+                : FerruleValue.Null;
         }
 
         var output = new StringBuilder();
@@ -89,7 +92,8 @@ public static class FerruleXmlMixedContent
             var name = StringField(item, NodeNameField);
             var text = StringField(item, TextField);
             var replacement = replacements.FirstOrDefault(rule =>
-                string.Equals(rule.Element, name, StringComparison.Ordinal));
+                string.Equals(rule.Element, name, StringComparison.Ordinal)
+            );
             if (replacement is null)
             {
                 output.Append(text);
@@ -97,9 +101,11 @@ public static class FerruleXmlMixedContent
             }
 
             var expressionContext = context;
-            if (replacement.Collection.Count != 0 &&
-                item is FerruleGroup itemGroup &&
-                itemGroup.TryGetField(MixedValueField, out var value))
+            if (
+                replacement.Collection.Count != 0
+                && item is FerruleGroup itemGroup
+                && itemGroup.TryGetField(MixedValueField, out var value)
+            )
             {
                 occurrences.TryGetValue(name, out var occurrence);
                 occurrence++;
@@ -107,7 +113,8 @@ public static class FerruleXmlMixedContent
                 expressionContext = context.WithXmlMixedContentValue(
                     value,
                     replacement.Collection,
-                    occurrence);
+                    occurrence
+                );
             }
             Append(output, replacement.Expression(expressionContext));
         }
@@ -119,23 +126,31 @@ public static class FerruleXmlMixedContent
     public static FerruleGroup Preserve(
         ScopeContext context,
         FerruleGroup output,
-        IReadOnlyList<FerruleXmlMixedContentElement> elements)
+        IReadOnlyList<FerruleXmlMixedContentElement> elements
+    )
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(output);
         ArgumentNullException.ThrowIfNull(elements);
-        return PreserveFrom(context.Frames.Count == 0 ? null : context.Frames[^1], output, elements);
+        return PreserveFrom(
+            context.Frames.Count == 0 ? null : context.Frames[^1],
+            output,
+            elements
+        );
     }
 
     // Shared by the legacy current-frame and the owned exact-occurrence constructions.
     internal static FerruleGroup PreserveFrom(
         FerruleInstance? source,
         FerruleGroup output,
-        IReadOnlyList<FerruleXmlMixedContentElement> elements)
+        IReadOnlyList<FerruleXmlMixedContentElement> elements
+    )
     {
-        if (source is null ||
-            !TrySourceField(source, MixedContentField, out var retained) ||
-            retained is not FerruleRepeated sourceItems)
+        if (
+            source is null
+            || !TrySourceField(source, MixedContentField, out var retained)
+            || retained is not FerruleRepeated sourceItems
+        )
         {
             return output;
         }
@@ -155,10 +170,13 @@ public static class FerruleXmlMixedContent
                 continue;
             }
             var element = elements.FirstOrDefault(candidate =>
-                string.Equals(candidate.Source, name, StringComparison.Ordinal));
-            if (element is null ||
-                !output.TryGetField(element.Target, out var field) ||
-                field is not FerruleRepeated values)
+                string.Equals(candidate.Source, name, StringComparison.Ordinal)
+            );
+            if (
+                element is null
+                || !output.TryGetField(element.Target, out var field)
+                || field is not FerruleRepeated values
+            )
             {
                 continue;
             }
@@ -172,11 +190,13 @@ public static class FerruleXmlMixedContent
             var text = value is FerruleScalar scalar
                 ? FerruleFunctions.ScalarText(scalar.Value)
                 : string.Empty;
-            items.Add(new FerruleGroup([
-                new(NodeNameField, new FerruleScalar(FerruleValue.FromString(element.Target))),
-                new(TextField, new FerruleScalar(FerruleValue.FromString(text))),
-                new(MixedValueField, value),
-            ]));
+            items.Add(
+                new FerruleGroup([
+                    new(NodeNameField, new FerruleScalar(FerruleValue.FromString(element.Target))),
+                    new(TextField, new FerruleScalar(FerruleValue.FromString(text))),
+                    new(MixedValueField, value),
+                ])
+            );
         }
         if (items.Count == 0)
         {
@@ -193,7 +213,8 @@ public static class FerruleXmlMixedContent
     private static bool TrySourceField(
         FerruleInstance source,
         string name,
-        out FerruleInstance? value)
+        out FerruleInstance? value
+    )
     {
         if (source is FerruleGroup group)
         {
@@ -211,9 +232,9 @@ public static class FerruleXmlMixedContent
         OptionalStringField(item, name) ?? string.Empty;
 
     private static string? OptionalStringField(FerruleInstance item, string name) =>
-        item is FerruleGroup group &&
-        group.TryGetField(name, out var field) &&
-        field is FerruleScalar { Value.Kind: FerruleValueKind.String } scalar
+        item is FerruleGroup group
+        && group.TryGetField(name, out var field)
+        && field is FerruleScalar { Value.Kind: FerruleValueKind.String } scalar
             ? scalar.Value.StringValue
             : null;
 
@@ -245,7 +266,8 @@ public sealed partial class ScopeContext
     internal ScopeContext WithXmlMixedContentValue(
         FerruleInstance value,
         IReadOnlyList<string> collection,
-        int index)
+        int index
+    )
     {
         ArgumentNullException.ThrowIfNull(value);
         ArgumentNullException.ThrowIfNull(collection);
@@ -265,6 +287,8 @@ public sealed partial class ScopeContext
             new ReadOnlyCollection<FerruleInstance>(frames),
             new ReadOnlyCollection<CollectionIdentity>(collections),
             _executionContext,
-            _dynamicSourceLoader, invocationCounters: _invocationCounters);
+            _dynamicSourceLoader,
+            invocationCounters: _invocationCounters
+        );
     }
 }

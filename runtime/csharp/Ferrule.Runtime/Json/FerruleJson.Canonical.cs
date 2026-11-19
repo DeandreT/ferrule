@@ -53,7 +53,8 @@ public static partial class FerruleJson
         SerdeNumberKind Kind,
         ulong UnsignedValue,
         long SignedValue,
-        double FloatValue)
+        double FloatValue
+    )
     {
         public static SerdeParsedNumber Unsigned(ulong value) =>
             new(SerdeNumberKind.Unsigned, value, 0, 0);
@@ -64,12 +65,13 @@ public static partial class FerruleJson
         public static SerdeParsedNumber Float(double value) =>
             new(SerdeNumberKind.Float, 0, 0, value);
 
-        public double AsDouble() => Kind switch
-        {
-            SerdeNumberKind.Unsigned => (double)UnsignedValue,
-            SerdeNumberKind.Signed => (double)SignedValue,
-            _ => FloatValue,
-        };
+        public double AsDouble() =>
+            Kind switch
+            {
+                SerdeNumberKind.Unsigned => (double)UnsignedValue,
+                SerdeNumberKind.Signed => (double)SignedValue,
+                _ => FloatValue,
+            };
     }
 
     private static bool TryParseSerdeNumber(string token, out SerdeParsedNumber parsed)
@@ -88,16 +90,17 @@ public static partial class FerruleJson
 
     private static bool TryGetSerdeInt64(JsonElement element, out long value)
     {
-        if (element.ValueKind == JsonValueKind.Number &&
-            TryParseSerdeNumber(element.GetRawText(), out var parsed))
+        if (
+            element.ValueKind == JsonValueKind.Number
+            && TryParseSerdeNumber(element.GetRawText(), out var parsed)
+        )
         {
             if (parsed.Kind == SerdeNumberKind.Signed)
             {
                 value = parsed.SignedValue;
                 return true;
             }
-            if (parsed.Kind == SerdeNumberKind.Unsigned &&
-                parsed.UnsignedValue <= long.MaxValue)
+            if (parsed.Kind == SerdeNumberKind.Unsigned && parsed.UnsignedValue <= long.MaxValue)
             {
                 value = (long)parsed.UnsignedValue;
                 return true;
@@ -109,16 +112,17 @@ public static partial class FerruleJson
 
     private static bool TryGetSerdeUInt64(JsonElement element, out ulong value)
     {
-        if (element.ValueKind == JsonValueKind.Number &&
-            TryParseSerdeNumber(element.GetRawText(), out var parsed))
+        if (
+            element.ValueKind == JsonValueKind.Number
+            && TryParseSerdeNumber(element.GetRawText(), out var parsed)
+        )
         {
             if (parsed.Kind == SerdeNumberKind.Unsigned)
             {
                 value = parsed.UnsignedValue;
                 return true;
             }
-            if (parsed.Kind == SerdeNumberKind.Signed &&
-                parsed.SignedValue >= 0)
+            if (parsed.Kind == SerdeNumberKind.Signed && parsed.SignedValue >= 0)
             {
                 value = (ulong)parsed.SignedValue;
                 return true;
@@ -178,7 +182,8 @@ public static partial class FerruleJson
     private static void AppendCanonicalAnyJson(
         StringBuilder text,
         JsonElement element,
-        bool preserveNumbers)
+        bool preserveNumbers
+    )
     {
         switch (element.ValueKind)
         {
@@ -195,9 +200,11 @@ public static partial class FerruleJson
                 AppendSerdeString(text, element.GetString() ?? string.Empty);
                 return;
             case JsonValueKind.Number:
-                text.Append(preserveNumbers
-                    ? element.GetRawText()
-                    : CanonicalSerdeNumber(element.GetRawText()));
+                text.Append(
+                    preserveNumbers
+                        ? element.GetRawText()
+                        : CanonicalSerdeNumber(element.GetRawText())
+                );
                 return;
             case JsonValueKind.Array:
                 text.Append('[');
@@ -296,7 +303,8 @@ public static partial class FerruleJson
         long bytes = 0;
         try
         {
-            foreach (var chunk in text.GetChunks()) bytes += encoder.GetByteCount(chunk.Span, flush: false);
+            foreach (var chunk in text.GetChunks())
+                bytes += encoder.GetByteCount(chunk.Span, flush: false);
             return bytes + encoder.GetByteCount(ReadOnlySpan<char>.Empty, flush: true);
         }
         catch (EncoderFallbackException)
@@ -328,11 +336,12 @@ public static partial class FerruleJson
     // tokens. Preserve each numeric token byte for byte; never reparse a float
     // or remove raw whitespace that might belong to a string. Callers finish
     // the text in the builder and count it before materializing it once.
-    private static StringBuilder CanonicalizeOutputText(ReadOnlySpan<byte> encoded, bool compact = false)
+    private static StringBuilder CanonicalizeOutputText(
+        ReadOnlySpan<byte> encoded,
+        bool compact = false
+    )
     {
-        var reader = new Utf8JsonReader(
-            encoded,
-            new JsonReaderOptions { MaxDepth = MaximumDepth });
+        var reader = new Utf8JsonReader(encoded, new JsonReaderOptions { MaxDepth = MaximumDepth });
         var text = new StringBuilder(Math.Min(encoded.Length, MaximumDocumentBytes));
         var frames = new List<PrettyFrame>();
         var rootWritten = false;
@@ -353,11 +362,13 @@ public static partial class FerruleJson
                         throw Boundary("JSON output has an unmatched container end.");
                     }
                     var finished = frames[^1];
-                    if (finished.AwaitingValue ||
-                        reader.TokenType == JsonTokenType.EndObject &&
-                        finished.Kind != JsonTokenType.StartObject ||
-                        reader.TokenType == JsonTokenType.EndArray &&
-                        finished.Kind != JsonTokenType.StartArray)
+                    if (
+                        finished.AwaitingValue
+                        || reader.TokenType == JsonTokenType.EndObject
+                            && finished.Kind != JsonTokenType.StartObject
+                        || reader.TokenType == JsonTokenType.EndArray
+                            && finished.Kind != JsonTokenType.StartArray
+                    )
                     {
                         throw Boundary("JSON output has an invalid container end.");
                     }
@@ -370,9 +381,11 @@ public static partial class FerruleJson
                     text.Append(reader.TokenType == JsonTokenType.EndObject ? '}' : ']');
                     break;
                 case JsonTokenType.PropertyName:
-                    if (frames.Count == 0 ||
-                        frames[^1].Kind != JsonTokenType.StartObject ||
-                        frames[^1].AwaitingValue)
+                    if (
+                        frames.Count == 0
+                        || frames[^1].Kind != JsonTokenType.StartObject
+                        || frames[^1].AwaitingValue
+                    )
                     {
                         throw Boundary("JSON output has a property outside an object.");
                     }
@@ -396,12 +409,14 @@ public static partial class FerruleJson
                 case JsonTokenType.False:
                 case JsonTokenType.Null:
                     BeginPrettyValue(text, frames, ref rootWritten, compact);
-                    text.Append(reader.TokenType switch
-                    {
-                        JsonTokenType.True => "true",
-                        JsonTokenType.False => "false",
-                        _ => "null",
-                    });
+                    text.Append(
+                        reader.TokenType switch
+                        {
+                            JsonTokenType.True => "true",
+                            JsonTokenType.False => "false",
+                            _ => "null",
+                        }
+                    );
                     break;
                 default:
                     throw Boundary("JSON output contains an unsupported token.");
@@ -418,7 +433,8 @@ public static partial class FerruleJson
         StringBuilder text,
         List<PrettyFrame> frames,
         ref bool rootWritten,
-        bool compact)
+        bool compact
+    )
     {
         if (frames.Count == 0)
         {
@@ -450,9 +466,17 @@ public static partial class FerruleJson
     private static void AppendPrettyIndent(StringBuilder text, int depth) =>
         text.Append(' ', checked(depth * 2));
 
-    private static void AppendOutputSeparator(StringBuilder text, int depth, bool hasItems, bool compact)
+    private static void AppendOutputSeparator(
+        StringBuilder text,
+        int depth,
+        bool hasItems,
+        bool compact
+    )
     {
-        if (hasItems) { text.Append(','); }
+        if (hasItems)
+        {
+            text.Append(',');
+        }
         if (!compact)
         {
             text.Append('\n');
@@ -473,9 +497,7 @@ public static partial class FerruleJson
     // predicate and uniqueness limits without allocating another document.
     private static int CanonicalOutputUtf8ByteCount(ReadOnlySpan<byte> encoded)
     {
-        var reader = new Utf8JsonReader(
-            encoded,
-            new JsonReaderOptions { MaxDepth = MaximumDepth });
+        var reader = new Utf8JsonReader(encoded, new JsonReaderOptions { MaxDepth = MaximumDepth });
         var count = 0;
         var cursor = 0;
         while (reader.Read())
@@ -515,9 +537,11 @@ public static partial class FerruleJson
             {
                 count = checked(count + 2);
             }
-            else if (char.IsHighSurrogate(character) &&
-                     index + 1 < value.Length &&
-                     char.IsLowSurrogate(value[index + 1]))
+            else if (
+                char.IsHighSurrogate(character)
+                && index + 1 < value.Length
+                && char.IsLowSurrogate(value[index + 1])
+            )
             {
                 count = checked(count + 4);
                 index++;
@@ -567,10 +591,8 @@ public static partial class FerruleJson
         var parsed = ParseSerdeNumber(token);
         return parsed.Kind switch
         {
-            SerdeNumberKind.Unsigned =>
-                parsed.UnsignedValue.ToString(CultureInfo.InvariantCulture),
-            SerdeNumberKind.Signed =>
-                parsed.SignedValue.ToString(CultureInfo.InvariantCulture),
+            SerdeNumberKind.Unsigned => parsed.UnsignedValue.ToString(CultureInfo.InvariantCulture),
+            SerdeNumberKind.Signed => parsed.SignedValue.ToString(CultureInfo.InvariantCulture),
             _ => FormatSerdeFloat(parsed.FloatValue),
         };
     }
@@ -582,13 +604,27 @@ public static partial class FerruleJson
         var negative = token[0] == '-';
         if (token.IndexOfAny(['.', 'e', 'E']) < 0)
         {
-            if (!negative && ulong.TryParse(
-                    token, NumberStyles.None, CultureInfo.InvariantCulture, out var unsigned))
+            if (
+                !negative
+                && ulong.TryParse(
+                    token,
+                    NumberStyles.None,
+                    CultureInfo.InvariantCulture,
+                    out var unsigned
+                )
+            )
             {
                 return SerdeParsedNumber.Unsigned(unsigned);
             }
-            if (negative && long.TryParse(
-                    token, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var signed))
+            if (
+                negative
+                && long.TryParse(
+                    token,
+                    NumberStyles.AllowLeadingSign,
+                    CultureInfo.InvariantCulture,
+                    out var signed
+                )
+            )
             {
                 return signed == 0
                     ? SerdeParsedNumber.Float(-0.0)
@@ -616,9 +652,14 @@ public static partial class FerruleJson
         // .NET's full-token conversion rounds once, including midpoint tails,
         // subnormals and saturated exponents. Reject overflow explicitly because
         // TryParse can successfully return infinity for an out-of-range token.
-        if (!double.TryParse(
-                token, NumberStyles.Float, CultureInfo.InvariantCulture, out var number) ||
-            !double.IsFinite(number))
+        if (
+            !double.TryParse(
+                token,
+                NumberStyles.Float,
+                CultureInfo.InvariantCulture,
+                out var number
+            ) || !double.IsFinite(number)
+        )
         {
             throw new CanonicalNumberOutOfRangeException();
         }
@@ -639,9 +680,10 @@ public static partial class FerruleJson
         var negative = number < 0;
         var lexical = Math.Abs(number).ToString("R", CultureInfo.InvariantCulture);
         var exponentMarker = lexical.IndexOfAny(['E', 'e']);
-        var decimalPower = exponentMarker < 0
-            ? 0
-            : int.Parse(lexical.AsSpan(exponentMarker + 1), CultureInfo.InvariantCulture);
+        var decimalPower =
+            exponentMarker < 0
+                ? 0
+                : int.Parse(lexical.AsSpan(exponentMarker + 1), CultureInfo.InvariantCulture);
         var mantissaEnd = exponentMarker < 0 ? lexical.Length : exponentMarker;
         var digits = new StringBuilder(mantissaEnd);
         var beforePoint = 0;
@@ -678,17 +720,17 @@ public static partial class FerruleJson
         if (adjustedExponent is >= -5 and <= 15)
         {
             var point = digits.Length + decimalPower;
-            result = point <= 0
-                ? "0." + new string('0', -point) + digits
-                : point >= digits.Length
-                    ? digits + new string('0', point - digits.Length) + ".0"
-                    : digits.ToString(0, point) + "." + digits.ToString(point, digits.Length - point);
+            result =
+                point <= 0 ? "0." + new string('0', -point) + digits
+                : point >= digits.Length ? digits + new string('0', point - digits.Length) + ".0"
+                : digits.ToString(0, point) + "." + digits.ToString(point, digits.Length - point);
         }
         else
         {
-            result = digits.Length == 1
-                ? digits.ToString()
-                : digits[0] + "." + digits.ToString(1, digits.Length - 1);
+            result =
+                digits.Length == 1
+                    ? digits.ToString()
+                    : digits[0] + "." + digits.ToString(1, digits.Length - 1);
             result += adjustedExponent >= 0 ? "e+" : "e-";
             result += Math.Abs(adjustedExponent).ToString(CultureInfo.InvariantCulture);
         }

@@ -18,7 +18,8 @@ internal static class FerruleDelimitedText
         string quote,
         string escape,
         IReadOnlyList<FerruleScalarType> fields,
-        uint selected)
+        uint selected
+    )
     {
         ArgumentNullException.ThrowIfNull(fieldSeparator);
         ArgumentNullException.ThrowIfNull(recordSeparator);
@@ -33,11 +34,13 @@ internal static class FerruleDelimitedText
         {
             throw Type(input);
         }
-        if (fieldSeparator.Length == 0 ||
-            recordSeparator.Length == 0 ||
-            !IsOneScalar(quote) ||
-            !IsOneScalar(escape) ||
-            selected >= fields.Count)
+        if (
+            fieldSeparator.Length == 0
+            || recordSeparator.Length == 0
+            || !IsOneScalar(quote)
+            || !IsOneScalar(escape)
+            || selected >= fields.Count
+        )
         {
             throw InvalidInput();
         }
@@ -178,7 +181,8 @@ internal static class FerruleDelimitedText
         bool treatEmptyAsAbsent,
         IReadOnlyList<uint> widths,
         IReadOnlyList<FerruleScalarType> fields,
-        uint selected)
+        uint selected
+    )
     {
         ArgumentNullException.ThrowIfNull(fill);
         ArgumentNullException.ThrowIfNull(widths);
@@ -191,10 +195,12 @@ internal static class FerruleDelimitedText
         {
             throw Type(input);
         }
-        if (!IsOneScalar(fill) ||
-            widths.Count == 0 ||
-            widths.Count != fields.Count ||
-            selected >= fields.Count)
+        if (
+            !IsOneScalar(fill)
+            || widths.Count == 0
+            || widths.Count != fields.Count
+            || selected >= fields.Count
+        )
         {
             throw InvalidInput();
         }
@@ -252,9 +258,10 @@ internal static class FerruleDelimitedText
                 for (var fieldIndex = 0; fieldIndex < fields.Count; fieldIndex++)
                 {
                     var raw = TakeScalars(record, ref offset, checked((int)widths[fieldIndex]));
-                    raw = fields[fieldIndex] == FerruleScalarType.String
-                        ? TrimFillEnd(raw, fill)
-                        : TrimFill(raw, fill);
+                    raw =
+                        fields[fieldIndex] == FerruleScalarType.String
+                            ? TrimFillEnd(raw, fill)
+                            : TrimFill(raw, fill);
                     var value = ParseValue(raw, fields[fieldIndex], treatEmptyAsAbsent);
                     if (!hasFirst && fieldIndex == selected)
                     {
@@ -286,8 +293,7 @@ internal static class FerruleDelimitedText
             else
             {
                 var scalarCount = ScalarCount(text);
-                if (scalarCount % recordWidth != 0 ||
-                    scalarCount / recordWidth > MaximumRecords)
+                if (scalarCount % recordWidth != 0 || scalarCount / recordWidth > MaximumRecords)
                 {
                     throw InvalidInput();
                 }
@@ -308,7 +314,8 @@ internal static class FerruleDelimitedText
     private static FerruleValue ParseValue(
         string text,
         FerruleScalarType type,
-        bool emptyIsNull = true)
+        bool emptyIsNull = true
+    )
     {
         if (Encoding.UTF8.GetByteCount(text) > MaximumValueBytes)
         {
@@ -326,21 +333,19 @@ internal static class FerruleDelimitedText
                     text,
                     NumberStyles.AllowLeadingSign,
                     CultureInfo.InvariantCulture,
-                    out var integer) =>
-                FerruleValue.FromInt64(integer),
+                    out var integer
+                ) => FerruleValue.FromInt64(integer),
             FerruleScalarType.Double
-                when text == text.Trim() &&
-                     double.TryParse(
-                         text,
-                         NumberStyles.Float,
-                         CultureInfo.InvariantCulture,
-                         out var number) &&
-                     double.IsFinite(number) =>
-                FerruleValue.FromDouble(number),
-            FerruleScalarType.Bool when text == "true" =>
-                FerruleValue.FromBoolean(true),
-            FerruleScalarType.Bool when text == "false" =>
-                FerruleValue.FromBoolean(false),
+                when text == text.Trim()
+                    && double.TryParse(
+                        text,
+                        NumberStyles.Float,
+                        CultureInfo.InvariantCulture,
+                        out var number
+                    )
+                    && double.IsFinite(number) => FerruleValue.FromDouble(number),
+            FerruleScalarType.Bool when text == "true" => FerruleValue.FromBoolean(true),
+            FerruleScalarType.Bool when text == "false" => FerruleValue.FromBoolean(false),
             _ => throw InvalidInput(),
         };
     }
@@ -399,18 +404,20 @@ internal static class FerruleDelimitedText
     }
 
     private static bool StartsAt(string text, int index, string value) =>
-        index <= text.Length - value.Length &&
-        text.AsSpan(index, value.Length).SequenceEqual(value);
+        index <= text.Length - value.Length
+        && text.AsSpan(index, value.Length).SequenceEqual(value);
 
     private static bool IsOneScalar(string value) =>
-        value.Length == 1 && !char.IsSurrogate(value[0]) ||
-        value.Length == 2 && char.IsSurrogatePair(value, 0);
+        value.Length == 1 && !char.IsSurrogate(value[0])
+        || value.Length == 2 && char.IsSurrogatePair(value, 0);
 
     private static int ScalarLength(string text, int index)
     {
-        if (char.IsHighSurrogate(text[index]) &&
-            index + 1 < text.Length &&
-            char.IsLowSurrogate(text[index + 1]))
+        if (
+            char.IsHighSurrogate(text[index])
+            && index + 1 < text.Length
+            && char.IsLowSurrogate(text[index + 1])
+        )
         {
             return 2;
         }
@@ -426,25 +433,28 @@ internal static class FerruleDelimitedText
             FerruleRuntimeError.FunctionType,
             $"`{Function}` cannot accept a {TypeName(value)} argument.",
             function: Function,
-            foundKind: value.Kind);
+            foundKind: value.Kind
+        );
 
     private static FerruleRuntimeException InvalidInput() =>
         new(
             FerruleRuntimeError.FunctionInvalidArgument,
             $"`{Function}` input does not match the FlexText layout.",
             function: Function,
-            detail: "input does not match the FlexText layout");
+            detail: "input does not match the FlexText layout"
+        );
 
-    private static string TypeName(FerruleValue value) => value.Kind switch
-    {
-        FerruleValueKind.Null => "null",
-        FerruleValueKind.JsonNull => "json null",
-        FerruleValueKind.XmlNil => "xml nil",
-        FerruleValueKind.Bool => "bool",
-        FerruleValueKind.Int64 => "int",
-        FerruleValueKind.Double => "float",
-        FerruleValueKind.String => "string",
-        FerruleValueKind.Decimal => "decimal",
-        _ => "unknown",
-    };
+    private static string TypeName(FerruleValue value) =>
+        value.Kind switch
+        {
+            FerruleValueKind.Null => "null",
+            FerruleValueKind.JsonNull => "json null",
+            FerruleValueKind.XmlNil => "xml nil",
+            FerruleValueKind.Bool => "bool",
+            FerruleValueKind.Int64 => "int",
+            FerruleValueKind.Double => "float",
+            FerruleValueKind.String => "string",
+            FerruleValueKind.Decimal => "decimal",
+            _ => "unknown",
+        };
 }

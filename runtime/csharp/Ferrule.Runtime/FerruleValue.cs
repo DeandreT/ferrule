@@ -43,8 +43,7 @@ public readonly struct FerruleValue : IEquatable<FerruleValue>
     public static FerruleValue FromInt64(long value) => new(FerruleValueKind.Int64, value);
 
     /// <summary>Preserves the full IEEE-754 domain used by Rust <c>ir::Value</c>.</summary>
-    public static FerruleValue FromDouble(double value) =>
-        new(FerruleValueKind.Double, value);
+    public static FerruleValue FromDouble(double value) => new(FerruleValueKind.Double, value);
 
     public static FerruleValue FromDecimal(FerruleDecimal96 value) =>
         new(FerruleValueKind.Decimal, value);
@@ -67,13 +66,18 @@ public readonly struct FerruleValue : IEquatable<FerruleValue>
     public FerruleDecimal96 DecimalValue => Payload<FerruleDecimal96>(FerruleValueKind.Decimal);
 
     public bool Equals(FerruleValue other) =>
-        Kind == other.Kind && Kind switch
+        Kind == other.Kind
+        && Kind switch
         {
             FerruleValueKind.Null or FerruleValueKind.JsonNull or FerruleValueKind.XmlNil => true,
             FerruleValueKind.Bool => BooleanValue == other.BooleanValue,
             FerruleValueKind.Int64 => Int64Value == other.Int64Value,
             FerruleValueKind.Double => DoubleValue == other.DoubleValue,
-            FerruleValueKind.String => string.Equals(StringValue, other.StringValue, StringComparison.Ordinal),
+            FerruleValueKind.String => string.Equals(
+                StringValue,
+                other.StringValue,
+                StringComparison.Ordinal
+            ),
             FerruleValueKind.Decimal => DecimalValue.Equals(other.DecimalValue),
             _ => false,
         };
@@ -100,18 +104,19 @@ public readonly struct FerruleValue : IEquatable<FerruleValue>
         }
     }
 
-    public override string ToString() => Kind switch
-    {
-        FerruleValueKind.Null => "null",
-        FerruleValueKind.JsonNull => "null",
-        FerruleValueKind.XmlNil => "xml:nil",
-        FerruleValueKind.Bool => BooleanValue ? "true" : "false",
-        FerruleValueKind.Int64 => Int64Value.ToString(CultureInfo.InvariantCulture),
-        FerruleValueKind.Double => DoubleValue.ToString("R", CultureInfo.InvariantCulture),
-        FerruleValueKind.String => StringValue,
-        FerruleValueKind.Decimal => DecimalValue.ToString(),
-        _ => string.Empty,
-    };
+    public override string ToString() =>
+        Kind switch
+        {
+            FerruleValueKind.Null => "null",
+            FerruleValueKind.JsonNull => "null",
+            FerruleValueKind.XmlNil => "xml:nil",
+            FerruleValueKind.Bool => BooleanValue ? "true" : "false",
+            FerruleValueKind.Int64 => Int64Value.ToString(CultureInfo.InvariantCulture),
+            FerruleValueKind.Double => DoubleValue.ToString("R", CultureInfo.InvariantCulture),
+            FerruleValueKind.String => StringValue,
+            FerruleValueKind.Decimal => DecimalValue.ToString(),
+            _ => string.Empty,
+        };
 
     public static bool operator ==(FerruleValue left, FerruleValue right) => left.Equals(right);
 
@@ -123,7 +128,8 @@ public readonly struct FerruleValue : IEquatable<FerruleValue>
         {
             throw new FerruleRuntimeException(
                 FerruleRuntimeError.ValueKindMismatch,
-                $"Expected a {expected} value, found {Kind}.");
+                $"Expected a {expected} value, found {Kind}."
+            );
         }
 
         return payload;
@@ -176,7 +182,8 @@ internal static class FerruleUnicode
         {
             throw new ArgumentException(
                 "Text must contain valid Unicode scalar values.",
-                parameterName);
+                parameterName
+            );
         }
     }
 
@@ -193,9 +200,11 @@ internal static class FerruleUnicode
         for (var index = 0; index < value.Length; index++)
         {
             var character = value[index];
-            if (char.IsHighSurrogate(character) &&
-                index + 1 < value.Length &&
-                char.IsLowSurrogate(value[index + 1]))
+            if (
+                char.IsHighSurrogate(character)
+                && index + 1 < value.Length
+                && char.IsLowSurrogate(value[index + 1])
+            )
             {
                 result.Append(character);
                 result.Append(value[++index]);

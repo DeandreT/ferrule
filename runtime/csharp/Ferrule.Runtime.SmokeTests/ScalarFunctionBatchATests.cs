@@ -16,12 +16,14 @@ internal static partial class Program
             Bool(true),
             FerruleValue.FromInt64(-7),
             FerruleValue.FromDouble(double.PositiveInfinity),
-            Text("-suffix"));
+            Text("-suffix")
+        );
 
         CallEquals(
             Text("alpha beta\u00A0gamma"),
             "normalize_space",
-            Text(" \talpha\r\n beta\u00A0gamma \n"));
+            Text(" \talpha\r\n beta\u00A0gamma \n")
+        );
         CallEquals(Text("value \t"), "left_trim", Text(" \t\r\nvalue \t"));
         CallEquals(Text("\v value"), "left_trim", Text("\v value"));
         CallEquals(Text(" \tvalue"), "right_trim", Text(" \tvalue\r\n"));
@@ -38,14 +40,21 @@ internal static partial class Program
             Text("middle\U0001F642right"),
             "substring_after",
             Text(SplitInput),
-            Text("\U0001F642"));
+            Text("\U0001F642")
+        );
         CallEquals(Text(string.Empty), "substring_before", Text("value"), Text("missing"));
         CallEquals(Text(string.Empty), "substring_after", Text("value"), Text("missing"));
         CallEquals(Text(string.Empty), "substring_before", Text("value"), Text(string.Empty));
         CallEquals(Text("value"), "substring_after", Text("value"), Text(string.Empty));
 
         CallEquals(Text("(12.3)"), "translate", Text("[12,3]"), Text("[,]"), Text("(.)"));
-        CallEquals(Text("abaaxkh"), "translate", Text("38ab8a7a65xkh3"), Text("0123456789"), Text(string.Empty));
+        CallEquals(
+            Text("abaaxkh"),
+            "translate",
+            Text("38ab8a7a65xkh3"),
+            Text("0123456789"),
+            Text(string.Empty)
+        );
         CallEquals(Text("xycxyc"), "translate", Text("abcabc"), Text("aba"), Text("xyz"));
         CallEquals(Text("xx"), "translate", Text("aa"), Text("aa"), Text("x"));
         CallEquals(Text("xy"), "translate", Text("ab"), Text("abb"), Text("xy"));
@@ -54,31 +63,74 @@ internal static partial class Program
             "translate",
             Text("a\U0001F642b\U00010348"),
             Text("\U0001F642b"),
-            Text("é"));
+            Text("é")
+        );
         CallEquals(Text("x\U0001F600y"), "translate", Text("xéy"), Text("é"), Text("\U0001F600"));
         CallEquals(Text("e"), "translate", Text("é"), Text("́"), Text(string.Empty));
         CallEquals(Text(string.Empty), "translate", Text(string.Empty), Text("abc"), Text("x"));
         CallEquals(Text("abc"), "translate", Text("abc"), Text(string.Empty), Text("xyz"));
         CallEquals(Text("xbc"), "translate", Text("abc"), Text("a"), Text("xyz"));
         CallEquals(Text(string.Empty), "translate", FerruleValue.Null, Text("a"), Text("b"));
-        CallEquals(Text("123"), "translate", FerruleValue.FromInt64(1203), Text("0"), Text(string.Empty));
+        CallEquals(
+            Text("123"),
+            "translate",
+            FerruleValue.FromInt64(1203),
+            Text("0"),
+            Text(string.Empty)
+        );
         CallEquals(Text("True"), "translate", Bool(true), Text("t"), Text("T"));
         CallEquals(Text("abc"), "translate", Text("abc"), FerruleValue.Null, FerruleValue.Null);
         CallEquals(Text("91"), "translate", Text("a1"), Text("a"), FerruleValue.FromInt64(9));
 
         CallEquals(Text("a-c abc"), "replace_literal", Text("a.c abc"), Text("."), Text("-"));
-        CallEquals(Text("1x2(3)$4\\5"), "replace_literal", Text("1*2(3)$4\\5"), Text("*"), Text("x"));
-        CallEquals(Text("1*2[3)$4\\5"), "replace_literal", Text("1*2(3)$4\\5"), Text("("), Text("["));
-        CallEquals(Text("1*2(3)D4\\5"), "replace_literal", Text("1*2(3)$4\\5"), Text("$"), Text("D"));
-        CallEquals(Text("1*2(3)$4/5"), "replace_literal", Text("1*2(3)$4\\5"), Text("\\"), Text("/"));
+        CallEquals(
+            Text("1x2(3)$4\\5"),
+            "replace_literal",
+            Text("1*2(3)$4\\5"),
+            Text("*"),
+            Text("x")
+        );
+        CallEquals(
+            Text("1*2[3)$4\\5"),
+            "replace_literal",
+            Text("1*2(3)$4\\5"),
+            Text("("),
+            Text("[")
+        );
+        CallEquals(
+            Text("1*2(3)D4\\5"),
+            "replace_literal",
+            Text("1*2(3)$4\\5"),
+            Text("$"),
+            Text("D")
+        );
+        CallEquals(
+            Text("1*2(3)$4/5"),
+            "replace_literal",
+            Text("1*2(3)$4\\5"),
+            Text("\\"),
+            Text("/")
+        );
         CallEquals(Text("a$0$1\\c"), "replace_literal", Text("abc"), Text("b"), Text("$0$1\\"));
         CallEquals(Text("ba"), "replace_literal", Text("aaa"), Text("aa"), Text("b"));
         CallEquals(Text("ab"), "replace_literal", Text("a.b"), Text("."), Text(string.Empty));
         CallEquals(Text("ABC"), "replace_literal", Text("ABC"), Text("b"), Text("x"));
         CallEquals(Text("a..b..c"), "replace_literal", Text("a.b.c"), Text("."), Text(".."));
-        CallEquals(Text("aébé"), "replace_literal", Text("a\U0001F642b\U0001F642"), Text("\U0001F642"), Text("é"));
+        CallEquals(
+            Text("aébé"),
+            "replace_literal",
+            Text("a\U0001F642b\U0001F642"),
+            Text("\U0001F642"),
+            Text("é")
+        );
         CallEquals(Text(string.Empty), "replace_literal", FerruleValue.Null, Text("a"), Text("b"));
-        CallEquals(Text("123"), "replace_literal", FerruleValue.FromInt64(1203), Text("0"), Text(string.Empty));
+        CallEquals(
+            Text("123"),
+            "replace_literal",
+            FerruleValue.FromInt64(1203),
+            Text("0"),
+            Text(string.Empty)
+        );
         CallEquals(Text("ac"), "replace_literal", Text("abc"), Text("b"), FerruleValue.Null);
         CallEquals(Text("91"), "replace_literal", Text("a1"), Text("a"), FerruleValue.FromInt64(9));
 
@@ -87,8 +139,18 @@ internal static partial class Program
         CallEquals(Text("false"), "string", Bool(false));
         CallEquals(Text("-0"), "string", FerruleValue.FromDouble(-0.0));
 
-        CallEquals(Text("replacement"), "substitute_missing", FerruleValue.Null, Text("replacement"));
-        CallEquals(Text("replacement"), "substitute_missing", FerruleValue.XmlNil, Text("replacement"));
+        CallEquals(
+            Text("replacement"),
+            "substitute_missing",
+            FerruleValue.Null,
+            Text("replacement")
+        );
+        CallEquals(
+            Text("replacement"),
+            "substitute_missing",
+            FerruleValue.XmlNil,
+            Text("replacement")
+        );
         CallEquals(Text("present"), "substitute_missing", Text("present"), Text("replacement"));
         CallEquals(FerruleValue.XmlNil, "substitute_missing_with_xml_nil", FerruleValue.Null);
         CallEquals(Text("present"), "substitute_missing_with_xml_nil", Text("present"));
@@ -104,47 +166,57 @@ internal static partial class Program
         Equal(true, "89ab".Contains(firstGuid.StringValue[16], StringComparison.Ordinal));
         Equal(false, firstGuid.StringValue == secondGuid.StringValue);
 
-        foreach (var (path, folder, filename) in new[]
-        {
-            ("/var/data/file.xml", "/var/data/", "file.xml"),
-            (@"C:\data\file.xml", "C:\\data\\", "file.xml"),
-            (@"one/two\file.xml", "one/two\\", "file.xml"),
-            ("file.xml", string.Empty, "file.xml"),
-            ("/var/data/", "/var/data/", string.Empty),
-        })
+        foreach (
+            var (path, folder, filename) in new[]
+            {
+                ("/var/data/file.xml", "/var/data/", "file.xml"),
+                (@"C:\data\file.xml", "C:\\data\\", "file.xml"),
+                (@"one/two\file.xml", "one/two\\", "file.xml"),
+                ("file.xml", string.Empty, "file.xml"),
+                ("/var/data/", "/var/data/", string.Empty),
+            }
+        )
         {
             CallEquals(Text(folder), "get_folder", Text(path));
             CallEquals(Text(filename), "remove_folder", Text(path));
         }
-        foreach (var (path, extension) in new[]
-        {
-            ("/var/data/file.xml", ".xml"),
-            (@"C:\data\archive.tar.gz", ".gz"),
-            ("folder.name/file", string.Empty),
-            (".profile", ".profile"),
-            ("file.", "."),
-        })
+        foreach (
+            var (path, extension) in new[]
+            {
+                ("/var/data/file.xml", ".xml"),
+                (@"C:\data\archive.tar.gz", ".gz"),
+                ("folder.name/file", string.Empty),
+                (".profile", ".profile"),
+                ("file.", "."),
+            }
+        )
         {
             CallEquals(Text(extension), "get_fileext", Text(path));
         }
 
-        foreach (var (basePath, path, expected) in new[]
-        {
-            ("/var/data", "reports/out.xml", "/var/data/reports/out.xml"),
-            (@"C:\work\data", @"reports\out.xml", @"C:\work\data\reports\out.xml"),
-            ("/var/data/current/", "../out.xml", "/var/data/out.xml"),
-            (@"C:\work\data\", @"..\out.xml", @"C:\work\out.xml"),
-            ("/", "../out.xml", "/out.xml"),
-            (@"C:\", @"..\out.xml", @"C:\out.xml"),
-            ("/var/data", "././out.xml", "/var/data/out.xml"),
-            ("/ignored/base", "/etc/config.xml", "/etc/config.xml"),
-            (@"C:\ignored", @"D:\data\config.xml", @"D:\data\config.xml"),
-            (@"C:\ignored", @"\\server\share\config.xml", @"\\server\share\config.xml"),
-            ("/ignored/base", "https://example.test/config.xml", "https://example.test/config.xml"),
-            (@"C:/work\data", "reports/out.xml", @"C:/work\data/reports/out.xml"),
-            ("/var/data", @"reports\out.xml", @"/var/data\reports\out.xml"),
-            (@"C:\work", "reports/out.xml", @"C:\work\reports/out.xml"),
-        })
+        foreach (
+            var (basePath, path, expected) in new[]
+            {
+                ("/var/data", "reports/out.xml", "/var/data/reports/out.xml"),
+                (@"C:\work\data", @"reports\out.xml", @"C:\work\data\reports\out.xml"),
+                ("/var/data/current/", "../out.xml", "/var/data/out.xml"),
+                (@"C:\work\data\", @"..\out.xml", @"C:\work\out.xml"),
+                ("/", "../out.xml", "/out.xml"),
+                (@"C:\", @"..\out.xml", @"C:\out.xml"),
+                ("/var/data", "././out.xml", "/var/data/out.xml"),
+                ("/ignored/base", "/etc/config.xml", "/etc/config.xml"),
+                (@"C:\ignored", @"D:\data\config.xml", @"D:\data\config.xml"),
+                (@"C:\ignored", @"\\server\share\config.xml", @"\\server\share\config.xml"),
+                (
+                    "/ignored/base",
+                    "https://example.test/config.xml",
+                    "https://example.test/config.xml"
+                ),
+                (@"C:/work\data", "reports/out.xml", @"C:/work\data/reports/out.xml"),
+                ("/var/data", @"reports\out.xml", @"/var/data\reports\out.xml"),
+                (@"C:\work", "reports/out.xml", @"C:\work\reports/out.xml"),
+            }
+        )
         {
             CallEquals(Text(expected), "resolve_filepath", Text(basePath), Text(path));
         }
@@ -154,8 +226,20 @@ internal static partial class Program
         AssertFunctionType("substring_after", Text("value"), FerruleValue.FromInt64(1));
         AssertFunctionArity("translate", 3, Text("a"), Text("b"));
         AssertFunctionArity("replace_literal", 3, Text("a"), Text("b"));
-        AssertInvalidArgument("replace_literal", "search text is empty", Text("abc"), Text(string.Empty), Text("-"));
-        AssertInvalidArgument("replace_literal", "search text is empty", Text(string.Empty), FerruleValue.Null, Text("-"));
+        AssertInvalidArgument(
+            "replace_literal",
+            "search text is empty",
+            Text("abc"),
+            Text(string.Empty),
+            Text("-")
+        );
+        AssertInvalidArgument(
+            "replace_literal",
+            "search text is empty",
+            Text(string.Empty),
+            FerruleValue.Null,
+            Text("-")
+        );
         AssertFunctionArity("string", 1, Text("one"), Text("two"));
         AssertFunctionArity("substitute_missing", 2, FerruleValue.Null);
         AssertFunctionArity("substitute_missing_with_xml_nil", 1, Array.Empty<FerruleValue>());
@@ -170,23 +254,22 @@ internal static partial class Program
     private static void AssertFunctionArity(
         string function,
         int expected,
-        params FerruleValue[] arguments)
+        params FerruleValue[] arguments
+    )
     {
-        var error = Error(
-            FerruleRuntimeError.FunctionArity,
-            () => FerruleFunctions.Call(function, arguments));
+        var error = Error(FerruleRuntimeError.FunctionArity, () =>
+            FerruleFunctions.Call(function, arguments)
+        );
         Equal(function, error.Function);
         Equal(expected, error.ExpectedArity);
         Equal(arguments.Length, error.ActualArity);
     }
 
-    private static void AssertFunctionType(
-        string function,
-        params FerruleValue[] arguments)
+    private static void AssertFunctionType(string function, params FerruleValue[] arguments)
     {
-        var error = Error(
-            FerruleRuntimeError.FunctionType,
-            () => FerruleFunctions.Call(function, arguments));
+        var error = Error(FerruleRuntimeError.FunctionType, () =>
+            FerruleFunctions.Call(function, arguments)
+        );
         Equal(function, error.Function);
         var invalid = arguments.First(value => value.Kind != FerruleValueKind.String);
         Equal(invalid.Kind, error.FoundKind);

@@ -38,7 +38,8 @@ public static partial class FerruleJson
             bool inclusiveAlternatives,
             bool xmlTypeAlternatives,
             string? recursiveReference,
-            JsonTupleLayout? jsonTuple)
+            JsonTupleLayout? jsonTuple
+        )
         {
             JsonTuple = jsonTuple;
             Name = name;
@@ -69,7 +70,9 @@ public static partial class FerruleJson
             var open = jsonTuple is { Open: true } && children.Count != 0;
             TupleMembers = open ? children.Take(children.Count - 1).ToArray() : children;
             TupleRest = open ? children[^1] : null;
-            DuplicateChildren = children.Select(child => child.Name).Distinct(StringComparer.Ordinal).Count() != children.Count;
+            DuplicateChildren =
+                children.Select(child => child.Name).Distinct(StringComparer.Ordinal).Count()
+                != children.Count;
             Dynamic = dynamic;
             Required = required;
             Alternatives = alternatives;
@@ -88,14 +91,16 @@ public static partial class FerruleJson
         public bool? JsonObjectItemNullable { get; private set; }
 
         /// <summary>Where this node admits explicit JSON null.</summary>
-        public JsonNullLayers NullLayers => JsonNullLayers.Derive(
-            IsScalar,
-            Repeating,
-            Nullable,
-            ContainerNullable,
-            JsonObjectItemNullable,
-            JsonArrayWrapper,
-            JsonAny);
+        public JsonNullLayers NullLayers =>
+            JsonNullLayers.Derive(
+                IsScalar,
+                Repeating,
+                Nullable,
+                ContainerNullable,
+                JsonObjectItemNullable,
+                JsonArrayWrapper,
+                JsonAny
+            );
         public bool JsonArrayWrapper { get; }
 
         public bool JsonAny { get; }
@@ -183,7 +188,8 @@ public static partial class FerruleJson
 
         public JsonSchemaNode? Child(string name) =>
             Children.FirstOrDefault(child =>
-                string.Equals(child.Name, name, StringComparison.Ordinal));
+                string.Equals(child.Name, name, StringComparison.Ordinal)
+            );
 
         public void BindRecursiveAnchor(JsonSchemaNode anchor)
         {
@@ -214,9 +220,15 @@ public static partial class FerruleJson
     internal readonly record struct JsonNullLayers(bool Whole, bool Single, bool Value)
     {
         /// <summary>The saved role metadata with no effective interpretation, if any.</summary>
-        internal static string? Contradiction(bool scalar, bool repeating, bool nullable, bool containerNullable) =>
+        internal static string? Contradiction(
+            bool scalar,
+            bool repeating,
+            bool nullable,
+            bool containerNullable
+        ) =>
             nullable && !scalar ? "scalar nullability is declared on a group"
-            : containerNullable && scalar && !repeating ? "container nullability is declared on a singular scalar"
+            : containerNullable && scalar && !repeating
+                ? "container nullability is declared on a singular scalar"
             : null;
 
         internal static JsonNullLayers Derive(
@@ -226,7 +238,8 @@ public static partial class FerruleJson
             bool containerNullable,
             bool? objectItemNullable,
             bool arrayWrapper,
-            bool jsonAny)
+            bool jsonAny
+        )
         {
             if (!repeating)
             {
@@ -242,7 +255,11 @@ public static partial class FerruleJson
             // A scalar item's null belongs to its declared value domain; an object
             // item's to its explicit override or else the array container.
             var itemNull = scalar ? nullable : objectItemNullable ?? containerNullable;
-            return new JsonNullLayers(containerNullable, !scalar && !jsonAny && itemNull, scalar && itemNull);
+            return new JsonNullLayers(
+                containerNullable,
+                !scalar && !jsonAny && itemNull,
+                scalar && itemNull
+            );
         }
     }
 
@@ -256,8 +273,10 @@ public static partial class FerruleJson
 
     private static JsonTupleLayout? ReadJsonTupleLayout(string name, JsonElement element)
     {
-        if (!element.TryGetProperty("json_tuple", out var layout) ||
-            layout.ValueKind == JsonValueKind.Null)
+        if (
+            !element.TryGetProperty("json_tuple", out var layout)
+            || layout.ValueKind == JsonValueKind.Null
+        )
         {
             return null;
         }
@@ -318,7 +337,8 @@ public static partial class FerruleJson
     private static void ValidateJsonTupleFrame(
         JsonSchemaNode node,
         JsonElement element,
-        JsonElement kindElement)
+        JsonElement kindElement
+    )
     {
         var reason = node.JsonTuple is { } layout
             ? JsonTupleFrameError(node, layout, element, kindElement)
@@ -327,17 +347,20 @@ public static partial class FerruleJson
         {
             reason = "a dynamic property value schema is a tuple frame";
         }
-        if (reason is null &&
-            node.JsonContains.Select(constraint => constraint.Predicate.Schema)
+        if (
+            reason is null
+            && node.JsonContains.Select(constraint => constraint.Predicate.Schema)
                 .Concat(node.DependentSchemas.Select(constraint => constraint.Predicate.Schema))
-                .Any(schema => schema is not null && ContainsJsonTuple(schema)))
+                .Any(schema => schema is not null && ContainsJsonTuple(schema))
+        )
         {
             reason = "a predicate schema contains a tuple frame";
         }
         if (reason is not null)
         {
             throw Boundary(
-                $"Embedded JSON schema node '{node.Name}' has invalid JSON tuple frame metadata: {reason}.");
+                $"Embedded JSON schema node '{node.Name}' has invalid JSON tuple frame metadata: {reason}."
+            );
         }
     }
 
@@ -345,19 +368,23 @@ public static partial class FerruleJson
         JsonSchemaNode frame,
         JsonTupleLayout layout,
         JsonElement element,
-        JsonElement kindElement)
+        JsonElement kindElement
+    )
     {
         static bool Some(JsonElement parent, string key) =>
             parent.TryGetProperty(key, out var value) && value.ValueKind != JsonValueKind.Null;
         static bool True(JsonElement parent, string key) =>
             parent.TryGetProperty(key, out var value) && value.ValueKind == JsonValueKind.True;
         static bool NonEmpty(JsonElement parent, string key) =>
-            parent.TryGetProperty(key, out var value) && value.ValueKind != JsonValueKind.Null &&
-            (value.ValueKind != JsonValueKind.Array || value.GetArrayLength() != 0);
+            parent.TryGetProperty(key, out var value)
+            && value.ValueKind != JsonValueKind.Null
+            && (value.ValueKind != JsonValueKind.Array || value.GetArrayLength() != 0);
         static bool Differs(JsonElement parent, string key, string fallback) =>
-            Some(parent, key) &&
-            !(parent.GetProperty(key).ValueKind == JsonValueKind.String &&
-              parent.GetProperty(key).GetString() == fallback);
+            Some(parent, key)
+            && !(
+                parent.GetProperty(key).ValueKind == JsonValueKind.String
+                && parent.GetProperty(key).GetString() == fallback
+            );
 
         if (frame.IsScalar)
         {
@@ -371,11 +398,17 @@ public static partial class FerruleJson
         {
             return "the frame declares a recursive reference";
         }
-        if (NonEmpty(kindElement, "alternatives") || NonEmpty(kindElement, "required") ||
-            Some(kindElement, "dynamic") || Differs(element, "alternative_mode", "exclusive") ||
-            Some(element, "json_dependent_schemas") || Some(element, "property_count_range") ||
-            Some(element, "json_property_dependencies") ||
-            Some(element, "json_pattern_property_names") || Some(element, "json_property_names"))
+        if (
+            NonEmpty(kindElement, "alternatives")
+            || NonEmpty(kindElement, "required")
+            || Some(kindElement, "dynamic")
+            || Differs(element, "alternative_mode", "exclusive")
+            || Some(element, "json_dependent_schemas")
+            || Some(element, "property_count_range")
+            || Some(element, "json_property_dependencies")
+            || Some(element, "json_pattern_property_names")
+            || Some(element, "json_property_names")
+        )
         {
             return "the frame declares object metadata";
         }
@@ -383,26 +416,46 @@ public static partial class FerruleJson
         {
             return "the frame declares `contains` or `uniqueItems` assertions";
         }
-        if (True(element, "nullable") || True(element, "json_any") ||
-            new[]
+        if (
+            True(element, "nullable")
+            || True(element, "json_any")
+            || new[]
             {
-                "fixed", "json_allowed_values", "numeric_range", "json_multiple_of",
-                "string_length_range", "json_patterns", "default", "value_generation",
-            }.Any(key => Some(element, key)) ||
-            NonEmpty(element, "json_formats"))
+                "fixed",
+                "json_allowed_values",
+                "numeric_range",
+                "json_multiple_of",
+                "string_length_range",
+                "json_patterns",
+                "default",
+                "value_generation",
+            }.Any(key => Some(element, key))
+            || NonEmpty(element, "json_formats")
+        )
         {
             return "the frame declares scalar value metadata";
         }
-        if (NonEmpty(kindElement, "xml_restricted_alternatives") ||
-            Some(element, "xml_namespace") || NonEmpty(element, "xml_name_alternatives") ||
-            Some(element, "xml_wildcard_namespace") ||
-            Differs(element, "xml_wildcard_process_contents", "skip") ||
-            Some(element, "xml_wildcard_excluded_names") ||
-            new[] { "attribute", "text", "nillable", "xml_optional", "xml_attribute_required", "xml_type_alternatives" }
-                .Any(key => True(element, key)) ||
-            Differs(element, "xml_alternative_kind", "xsi_type") ||
-            Some(element, "xml_default_type") ||
-            NonEmpty(element, "xml_repeating_sequences") || NonEmpty(element, "xml_repeating_choices"))
+        if (
+            NonEmpty(kindElement, "xml_restricted_alternatives")
+            || Some(element, "xml_namespace")
+            || NonEmpty(element, "xml_name_alternatives")
+            || Some(element, "xml_wildcard_namespace")
+            || Differs(element, "xml_wildcard_process_contents", "skip")
+            || Some(element, "xml_wildcard_excluded_names")
+            || new[]
+            {
+                "attribute",
+                "text",
+                "nillable",
+                "xml_optional",
+                "xml_attribute_required",
+                "xml_type_alternatives",
+            }.Any(key => True(element, key))
+            || Differs(element, "xml_alternative_kind", "xsi_type")
+            || Some(element, "xml_default_type")
+            || NonEmpty(element, "xml_repeating_sequences")
+            || NonEmpty(element, "xml_repeating_choices")
+        )
         {
             return "the frame declares XML metadata";
         }
@@ -415,7 +468,10 @@ public static partial class FerruleJson
         {
             return "the repeating frame does not declare whether each tuple may be null";
         }
-        if (layout.Open && (frame.Children.Count == 0 || frame.Children[^1].Name != JsonTupleRestField))
+        if (
+            layout.Open
+            && (frame.Children.Count == 0 || frame.Children[^1].Name != JsonTupleRestField)
+        )
         {
             return $"the open frame's last child is not `{JsonTupleRestField}`";
         }
@@ -447,8 +503,12 @@ public static partial class FerruleJson
             {
                 return $"the `{JsonTupleRestField}` tail items are JSON arrays";
             }
-            if (rest.ItemCountRange is not null || rest.JsonContains.Count != 0 ||
-                rest.JsonUniqueItems || rest.ContainerNullable)
+            if (
+                rest.ItemCountRange is not null
+                || rest.JsonContains.Count != 0
+                || rest.JsonUniqueItems
+                || rest.ContainerNullable
+            )
             {
                 return $"the `{JsonTupleRestField}` tail declares its own array metadata";
             }
@@ -462,8 +522,13 @@ public static partial class FerruleJson
         // Positions are compared as JSON boundaries see them: without their
         // own names or XML metadata, which the parsed schema never retains.
         var first = members[0];
-        if (members.Skip(1).All(member => SchemaNodesEqualIgnoringRootName(first, member)) &&
-            (frame.TupleRest is not { } tail || SchemaNodesEqualIgnoringRootName(first, tail.AsTupleItem())))
+        if (
+            members.Skip(1).All(member => SchemaNodesEqualIgnoringRootName(first, member))
+            && (
+                frame.TupleRest is not { } tail
+                || SchemaNodesEqualIgnoringRootName(first, tail.AsTupleItem())
+            )
+        )
         {
             return "the frame describes a homogeneous array";
         }
@@ -490,8 +555,11 @@ public static partial class FerruleJson
             {
                 pending.Push(dynamic);
             }
-            foreach (var schema in node.JsonContains.Select(constraint => constraint.Predicate.Schema)
-                         .Concat(node.DependentSchemas.Select(constraint => constraint.Predicate.Schema)))
+            foreach (
+                var schema in node
+                    .JsonContains.Select(constraint => constraint.Predicate.Schema)
+                    .Concat(node.DependentSchemas.Select(constraint => constraint.Predicate.Schema))
+            )
             {
                 if (schema is not null)
                 {
@@ -511,9 +579,12 @@ public static partial class FerruleJson
         while (pending.Count != 0)
         {
             var node = pending.Pop();
-            if (node.JsonUniqueItems) return true;
-            foreach (var child in node.Children) pending.Push(child);
-            if (node.Dynamic is { } dynamic) pending.Push(dynamic);
+            if (node.JsonUniqueItems)
+                return true;
+            foreach (var child in node.Children)
+                pending.Push(child);
+            if (node.Dynamic is { } dynamic)
+                pending.Push(dynamic);
         }
         return false;
     }
@@ -525,7 +596,8 @@ public static partial class FerruleJson
     /// </summary>
     private static void RefuseRecursiveTupleFrames(
         IReadOnlyList<JsonSchemaNode> nodes,
-        IReadOnlyDictionary<JsonSchemaNode, JsonSchemaNode> anchors)
+        IReadOnlyDictionary<JsonSchemaNode, JsonSchemaNode> anchors
+    )
     {
         foreach (var node in nodes)
         {
@@ -539,7 +611,8 @@ public static partial class FerruleJson
             // Each pending node carries the last reference on its path.
             var visited = new HashSet<JsonSchemaNode>(ReferenceEqualityComparer.Instance);
             var pending = new Stack<(JsonSchemaNode Node, string? Reference)>(
-                SchemaChildren(frame).Select(child => (child, (string?)null)));
+                SchemaChildren(frame).Select(child => (child, (string?)null))
+            );
             while (pending.Count != 0)
             {
                 var (node, reference) = pending.Pop();
@@ -568,7 +641,8 @@ public static partial class FerruleJson
 
     private static FerruleRuntimeException RecursiveTupleFrame(string node, string frame) =>
         Boundary(
-            $"Embedded JSON recursive reference '{node}' expands tuple frame '{frame}' through one of its own positions; recursive tuple frames are not supported.");
+            $"Embedded JSON recursive reference '{node}' expands tuple frame '{frame}' through one of its own positions; recursive tuple frames are not supported."
+        );
 
     /// <summary>
     /// Root rows and JSON Lines records against a non-repeating frame root
@@ -576,28 +650,35 @@ public static partial class FerruleJson
     /// </summary>
     private static FerruleRuntimeException TupleRootRows(JsonSchemaNode schema) =>
         Boundary(
-            $"Non-repeating JSON tuple frame root '{schema.Name}' cannot hold root rows or JSON Lines records.");
+            $"Non-repeating JSON tuple frame root '{schema.Name}' cannot hold root rows or JSON Lines records."
+        );
 
     private static bool IsSingleTupleFrame(JsonSchemaNode schema) =>
         schema.JsonTuple is not null && !schema.Repeating;
 
     /// <summary>Checks the complete array length; a closed frame's maximum is its member count.</summary>
-    private static void ValidateTupleLength(JsonSchemaNode frame, JsonTupleLayout layout, int length)
+    private static void ValidateTupleLength(
+        JsonSchemaNode frame,
+        JsonTupleLayout layout,
+        int length
+    )
     {
         if (layout.Length is { } range && !range.Contains(length))
         {
             throw Boundary(
-                $"JSON tuple '{frame.Name}' requires {DescribeItemCount(range)} items, got {length}.");
+                $"JSON tuple '{frame.Name}' requires {DescribeItemCount(range)} items, got {length}."
+            );
         }
     }
 
-    private static string DescribeItemCount(JsonItemCountRange range) => range switch
-    {
-        { Maximum: { } maximum } when range.Minimum == maximum => $"exactly {maximum}",
-        { Minimum: 0, Maximum: { } maximum } => $"at most {maximum}",
-        { Maximum: null } => $"at least {range.Minimum}",
-        _ => $"between {range.Minimum} and {range.Maximum}",
-    };
+    private static string DescribeItemCount(JsonItemCountRange range) =>
+        range switch
+        {
+            { Maximum: { } maximum } when range.Minimum == maximum => $"exactly {maximum}",
+            { Minimum: 0, Maximum: { } maximum } => $"at most {maximum}",
+            { Maximum: null } => $"at least {range.Minimum}",
+            _ => $"between {range.Minimum} and {range.Maximum}",
+        };
 
     /// <summary>Attributes an error inside one position to its one-based array position.</summary>
     private static T AtTuplePosition<T>(JsonSchemaNode frame, int position, Func<T> body)
@@ -610,7 +691,11 @@ public static partial class FerruleJson
         {
             var message = $"JSON tuple '{frame.Name}' position {position}: {error.Message}";
             throw new FerruleRuntimeException(
-                FerruleRuntimeError.JsonBoundary, message, error, detail: message);
+                FerruleRuntimeError.JsonBoundary,
+                message,
+                error,
+                detail: message
+            );
         }
     }
 
@@ -624,7 +709,8 @@ public static partial class FerruleJson
         JsonTupleLayout layout,
         JsonElement element,
         NodeBudget budget,
-        int depth)
+        int depth
+    )
     {
         RequireKind(element, JsonValueKind.Array, frame.Name, "array");
         var length = element.GetArrayLength();
@@ -634,7 +720,8 @@ public static partial class FerruleJson
         if (rest is null && length > members.Count)
         {
             throw Boundary(
-                $"JSON tuple '{frame.Name}' requires at most {members.Count} items, got {length}.");
+                $"JSON tuple '{frame.Name}' requires at most {members.Count} items, got {length}."
+            );
         }
         var fields = new List<FerruleField>(members.Count + 1);
         var tail = new List<FerruleInstance>();
@@ -679,7 +766,8 @@ public static partial class FerruleJson
         JsonTupleLayout layout,
         FerruleInstance instance,
         NodeBudget budget,
-        int depth)
+        int depth
+    )
     {
         if (instance is not FerruleGroup group)
         {
@@ -699,25 +787,36 @@ public static partial class FerruleJson
         {
             tail = restValue switch
             {
-                FerruleScalar { Value.Kind: FerruleValueKind.Null } => Array.Empty<FerruleInstance>(),
+                FerruleScalar { Value.Kind: FerruleValueKind.Null } =>
+                    Array.Empty<FerruleInstance>(),
                 FerruleRepeated repeated => repeated.Items,
                 FerruleMappedSequence mapped => mapped.Items,
                 _ => throw Shape(rest.Name, "array", InstanceKind(restValue)),
             };
         }
         var present = members
-            .Select(member => group.TryGetField(member.Name, out var value) &&
-                              value is not (FerruleScalar { Value.Kind: FerruleValueKind.Null } or FerruleMappedSequence { Items.Count: 0 })
-                ? value
-                : null)
+            .Select(member =>
+                group.TryGetField(member.Name, out var value)
+                && value
+                    is not (
+                        FerruleScalar { Value.Kind: FerruleValueKind.Null }
+                        or FerruleMappedSequence { Items.Count: 0 }
+                    )
+                    ? value
+                    : null
+            )
             .ToArray();
         // A non-empty tail requires every position before it.
-        var last = tail.Count != 0 ? members.Count : Array.FindLastIndex(present, value => value is not null) + 1;
+        var last =
+            tail.Count != 0
+                ? members.Count
+                : Array.FindLastIndex(present, value => value is not null) + 1;
         var gap = Array.FindIndex(present, 0, last, value => value is null);
         if (gap >= 0)
         {
             throw Boundary(
-                $"JSON tuple '{frame.Name}' cannot write position {gap + 1} as absent before a later present item.");
+                $"JSON tuple '{frame.Name}' cannot write position {gap + 1} as absent before a later present item."
+            );
         }
         ValidateTupleLength(frame, layout, last + tail.Count);
         writer.WriteStartArray();

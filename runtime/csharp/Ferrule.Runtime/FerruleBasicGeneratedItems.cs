@@ -14,13 +14,19 @@ public sealed partial class FerruleBasicScopeContext
     /// caller's policy only when reached, so an existential consumer can stop
     /// before later items allocate any view metadata.
     /// </summary>
-    public IEnumerable<FerruleBasicScopeContext> EnumerateGenerated(IReadOnlyList<FerruleValue> values, uint? owner = null)
+    public IEnumerable<FerruleBasicScopeContext> EnumerateGenerated(
+        IReadOnlyList<FerruleValue> values,
+        uint? owner = null
+    )
     {
         ArgumentNullException.ThrowIfNull(values);
         return EnumerateGeneratedCore(values, owner);
     }
 
-    private IEnumerable<FerruleBasicScopeContext> EnumerateGeneratedCore(IReadOnlyList<FerruleValue> values, uint? owner)
+    private IEnumerable<FerruleBasicScopeContext> EnumerateGeneratedCore(
+        IReadOnlyList<FerruleValue> values,
+        uint? owner
+    )
     {
         for (var index = 0; index < values.Count; index++)
         {
@@ -28,20 +34,36 @@ public sealed partial class FerruleBasicScopeContext
         }
     }
 
-    public FerruleValue GeneratedPosition(uint node, uint item) => LegacyView.GeneratedPosition(node, item);
+    public FerruleValue GeneratedPosition(uint node, uint item) =>
+        LegacyView.GeneratedPosition(node, item);
 
-    private FerruleBasicScopeContext GeneratedItemContext(FerruleValue value, int position, uint? owner)
+    private FerruleBasicScopeContext GeneratedItemContext(
+        FerruleValue value,
+        int position,
+        uint? owner
+    )
     {
         try
         {
             var budget = Begin();
             var copy = CloneBudgeted(budget);
             budget.Charge(2); // the appended generated frame and its collection identity
-            return new FerruleBasicScopeContext(copy.Roots, copy.LegacyView.BasicGeneratedItem(value, position, owner),
-                copy._owned, copy._origins, copy._legacyContainers);
+            return new FerruleBasicScopeContext(
+                copy.Roots,
+                copy.LegacyView.BasicGeneratedItem(value, position, owner),
+                copy._owned,
+                copy._origins,
+                copy._legacyContainers
+            );
         }
-        catch (FerruleOwnedSourceException e) { throw FerruleRuntimeException.FromOwnedSource(e); }
-        catch (FerruleBasicSourceBridgeException e) { throw FerruleRuntimeException.FromBasicSourceBridge(e); }
+        catch (FerruleOwnedSourceException e)
+        {
+            throw FerruleRuntimeException.FromOwnedSource(e);
+        }
+        catch (FerruleBasicSourceBridgeException e)
+        {
+            throw FerruleRuntimeException.FromBasicSourceBridge(e);
+        }
     }
 }
 
