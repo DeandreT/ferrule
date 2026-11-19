@@ -1,0 +1,41 @@
+using System.Text;
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+var input = File.ReadAllBytes("first");
+var peer = File.ReadAllBytes("second");
+var extras = new Dictionary<string, byte[]> { { "Peer", peer } };
+
+void Check()
+{
+    var all = GeneratedMapping.ExecuteXbrlBytesOutputs(input, extras);
+    if (all.Extras.Length != 1 || all.Extras[0].Name != "Other")
+        throw new Exception("Incorrect named target alignment.");
+    foreach (var (label, bytes, selection) in new[] {
+        ("first", all.Primary, FerruleTargetSelection.Primary()),
+        ("second", all.Extras[0].Bytes, FerruleTargetSelection.Named("Other")) })
+    {
+        if (!bytes.SequenceEqual(File.ReadAllBytes(label + ".expected")) ||
+            !bytes.SequenceEqual(GeneratedMapping.ExecuteXbrlBytesSelectedTarget(input, extras, selection)))
+            throw new Exception(label + " native/generated output mismatch.");
+    }
+}
+
+Check();
+var text = Encoding.UTF8.GetString(peer);
+foreach (var bad in new[] {
+    Encoding.UTF8.GetBytes("<!DOCTYPE z SYSTEM 'file:///invalid'><z/>"),
+    new byte[1048577], new byte[]{255},
+    Encoding.UTF8.GetBytes(text.Replace("contextRef=\"k\"", "contextRef=\"missing\"")),
+    Encoding.UTF8.GetBytes(text.Replace("unitRef=\"u\"", "unitRef=\"unknown\"")),
+    Encoding.UTF8.GetBytes(text.Replace("-923", "<nested/>")),
+    Encoding.UTF8.GetBytes(text.Replace("-923", new string('9', 16385))),
+    Encoding.UTF8.GetBytes(new string(' ', 10) + string.Concat(Enumerable.Repeat("<x>", 17)) + string.Concat(Enumerable.Repeat("</x>", 17))) })
+{
+    extras["Peer"] = bad;
+    try { GeneratedMapping.ExecuteXbrlBytesSelectedTarget(input, extras, FerruleTargetSelection.Primary()); }
+    catch (Exception e) when (e is FormatException or System.Xml.XmlException or DecoderFallbackException) { continue; }
+    throw new Exception("Invalid named source admitted.");
+}
+extras["Peer"] = peer;
+Check();
