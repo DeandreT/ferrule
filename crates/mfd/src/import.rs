@@ -81,6 +81,7 @@ mod target_node_default;
 mod target_node_function;
 mod target_scope;
 mod target_type_cast;
+mod transposed_source;
 mod transposed_target;
 mod udf;
 mod unused_xml_source;
@@ -360,7 +361,7 @@ fn import_resolved(
 
     let count_headers =
         aggregate::filtered_count::routing::Headers::read(structure).map_err(MfdError::Resource)?;
-    let (edges, count_routing) =
+    let (mut edges, count_routing) =
         graph::read_edge_inputs_with_probe(&structure, Some(&wrapper), |claims| {
             aggregate::filtered_count::routing::Routing::prepare(count_headers, structure, claims)
         });
@@ -1082,6 +1083,14 @@ fn import_resolved(
         component.is_source = false;
     }
 
+    let absorbed_alignment = transposed_source::absorb_alignment_filters(
+        structure,
+        &schema_components,
+        &fn_components,
+        &mut edges.feeds,
+        &mut warnings,
+    );
+
     // Only inputs with one distinct physical feed enter the lowering map.
     let edge_from = &edges.feeds;
     let connected_outputs = edge_from.values().copied().collect::<BTreeSet<_>>();
@@ -1424,6 +1433,9 @@ fn import_resolved(
         warnings: Vec::new(),
     };
     for (i, fc) in fn_components.iter().enumerate() {
+        if absorbed_alignment.contains(&i) {
+            continue;
+        }
         for &out in &fc.outputs {
             builder.fn_by_output.insert(out, i);
         }
@@ -1485,7 +1497,7 @@ fn import_resolved(
 
     // Other pipeline stages have different source boundaries. Eagerly lower only
     // functions demanded by this stage's targets and owned failure rules.
-    let eager_functions = (!matches!(selection, StageSelection::Ordinary)).then(|| {
+    let mut eager_functions = (!matches!(selection, StageSelection::Ordinary)).then(|| {
         materialize::stage_functions(
             &builder,
             connected_targets
@@ -1498,6 +1510,13 @@ fn import_resolved(
                 ),
         )
     });
+    // Keep the physical function slots stable for Count and UDF origin
+    // witnesses. Absorbed helpers are not independently executable functions.
+    if !absorbed_alignment.is_empty() {
+        eager_functions
+            .get_or_insert_with(|| (0..fn_components.len()).collect())
+            .retain(|index| !absorbed_alignment.contains(index));
+    }
     let csv_documents = (connected_targets.len() == 1)
         .then(|| csv_document_output::build(target, structure, &copy_all_targets, &mut builder))
         .flatten();

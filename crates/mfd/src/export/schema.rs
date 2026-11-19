@@ -709,14 +709,17 @@ pub(super) fn render_schema_component(
                     siblings: Vec::new(),
                 });
             }
-            if let Some(xml) = super::xlsx::render(super::xlsx::RenderArgs {
-                schema,
-                ports,
-                instance_path,
-                options,
-                component_name,
-                component_uid,
-            })? {
+            if let Some(xml) = super::xlsx::render(
+                super::xlsx::RenderArgs {
+                    schema,
+                    ports,
+                    instance_path,
+                    options,
+                    component_name,
+                    component_uid,
+                },
+                used_ports,
+            )? {
                 return Ok(RenderedSchemaComponent {
                     xml,
                     siblings: Vec::new(),
@@ -1233,6 +1236,9 @@ pub(super) struct PortTree {
     /// port, for one field that the reference component reads in several
     /// places.
     fanout: BTreeMap<u32, Vec<u32>>,
+    /// One `Cell/@n` output per selected row of a transposed XLSX source, in
+    /// row order.
+    transposed_row_index: Vec<u32>,
 }
 
 // Recursive schemas are represented in the IR by finite references. Entry
@@ -1376,7 +1382,16 @@ impl PortTree {
             by_abs,
             by_alternative,
             fanout: BTreeMap::new(),
+            transposed_row_index: Vec::new(),
         }
+    }
+
+    pub(super) fn set_transposed_row_index(&mut self, keys: Vec<u32>) {
+        self.transposed_row_index = keys;
+    }
+
+    pub(super) fn transposed_row_index(&self) -> &[u32] {
+        &self.transposed_row_index
     }
 
     /// Allocates `count` extra input ports that mirror the port at `abs`.
