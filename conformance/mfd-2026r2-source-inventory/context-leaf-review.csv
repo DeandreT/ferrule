@@ -1,8 +1,8 @@
 page_index,section,first_pdf_page,last_pdf_page,body_facet,review_depth,source_observation
-19,2.1.1,41,44,operation,triage,Insert a component from the toolbar
-20,2.1.2,44,47,operation,triage,Edit settings from the component header
-22,2.1.3.1,48,49,reference,triage,Resolve component dependencies relative to the design
-23,2.1.3.2,50,51,reference,triage,Path resolution depends on the execution environment
+19,2.1.1,41,44,operation,workflow-contract,Insert a component from the toolbar
+20,2.1.2,44,47,operation,workflow-contract,Edit settings from the component header
+22,2.1.3.1,48,49,reference,workflow-contract,Resolve component dependencies relative to the design
+23,2.1.3.2,50,51,reference,workflow-contract,Path resolution depends on the execution environment
 26,2.2.1.1,56,58,reference,mapping-contract,Preserve interleaving of text and child elements
 27,2.2.1.2,58,60,operation,mapping-contract,Wire matching children automatically
 28,2.2.1.3,60,62,operation,mapping-contract,Copy the whole structure with one connection
@@ -11,40 +11,40 @@ page_index,section,first_pdf_page,last_pdf_page,body_facet,review_depth,source_o
 31,2.2.4,65,67,operation,mapping-contract,Repair connections after a schema root changes
 32,2.2.5,67,68,reference,mapping-contract,Preserve connections when removing a processing component
 34,2.3.1,69,70,operation,mapping-contract,Validate on preview or request validation separately
-35,2.3.2,71,73,operation,triage,Generate code from a mapping design
-36,2.3.3,73,77,reference,triage,Use margins and highlighting in text output
-37,2.3.4,77,79,operation,triage,Search generated text in output panes
+35,2.3.2,71,73,operation,workflow-contract,Generate code from a mapping design
+36,2.3.3,73,77,reference,workflow-contract,Use margins and highlighting in text output
+37,2.3.4,77,79,operation,workflow-contract,Search generated text in output panes
 38,2.3.5,80,81,reference,mapping-contract,Configure settings for this mapping document
 40,2.4.1,83,84,reference,mapping-contract,Repeated source nodes drive repeated target creation
 41,2.4.2,84,87,reference,mapping-contract,Establish a target context and trace its sources
 42,2.4.3,87,91,reference,mapping-contract,Parent context scopes the values a function sees
 44,2.4.4.1,93,96,operation,mapping-contract,Change a filter's driving context
 45,2.4.5,96,99,reference,mapping-contract,Select one target at a time for preview
-47,2.5.1,100,102,operation,triage,Organize mappings in a project
-48,2.5.2,102,103,operation,triage,Edit project-wide settings from the project window
-49,2.5.3,103,104,operation,triage,Organize project mappings into folders
-52,3.1.1,107,108,operation,triage,Save a mapping with a selected transformation language
-53,3.1.2,108,109,operation,triage,Supply a schema and instance to a source
-54,3.1.3,109,110,operation,triage,Add a target schema without sample data
-55,3.1.4,111,113,operation,triage,Join source and target using their connectors
-56,3.1.5,113,114,operation,triage,Preview output with the built-in engine
-58,3.2.1,116,116,operation,triage,Start from a separately saved copy of a design
-59,3.2.2,116,117,operation,triage,Add a second source whose instance references its schema
-60,3.2.3,117,117,operation,triage,Change the output component's settings
-61,3.2.4,118,119,operation,triage,Choose whether to replace or duplicate an existing input
-63,3.3.1,120,120,operation,triage,Save a previous tutorial result under a new name
-64,3.3.2,121,122,operation,triage,Add a second target without supplying an instance
-65,3.3.3,123,123,operation,triage,Connect two targets for chained processing
-66,3.3.4,123,125,operation,triage,Filter records before sending them to the next target
-67,3.3.5,126,127,operation,triage,Preview and save each target separately
-69,3.4.1,130,130,operation,triage,Use a filename pattern for multiple input documents
-70,3.4.2,131,133,operation,triage,Construct each output name from concatenated parts
-71,3.4.3,133,135,operation,triage,Connect a computed name to an output file
+47,2.5.1,100,102,operation,workflow-contract,Organize mappings in a project
+48,2.5.2,102,103,operation,workflow-contract,Edit project-wide settings from the project window
+49,2.5.3,103,104,operation,workflow-contract,Organize project mappings into folders
+52,3.1.1,107,108,operation,workflow-contract,Save a mapping with a selected transformation language
+53,3.1.2,108,109,operation,workflow-contract,Supply a schema and instance to a source
+54,3.1.3,109,110,operation,workflow-contract,Add a target schema without sample data
+55,3.1.4,111,113,operation,workflow-contract,Join source and target using their connectors
+56,3.1.5,113,114,operation,workflow-contract,Preview output with the built-in engine
+58,3.2.1,116,116,operation,workflow-contract,Start from a separately saved copy of a design
+59,3.2.2,116,117,operation,workflow-contract,Add a second source whose instance references its schema
+60,3.2.3,117,117,operation,workflow-contract,Change the output component's settings
+61,3.2.4,118,119,operation,workflow-contract,Choose whether to replace or duplicate an existing input
+63,3.3.1,120,120,operation,workflow-contract,Save a previous tutorial result under a new name
+64,3.3.2,121,122,operation,workflow-contract,Add a second target without supplying an instance
+65,3.3.3,123,123,operation,workflow-contract,Connect two targets for chained processing
+66,3.3.4,123,125,operation,workflow-contract,Filter records before sending them to the next target
+67,3.3.5,126,127,operation,workflow-contract,Preview and save each target separately
+69,3.4.1,130,130,operation,workflow-contract,Use a filename pattern for multiple input documents
+70,3.4.2,131,133,operation,workflow-contract,Construct each output name from concatenated parts
+71,3.4.3,133,135,operation,workflow-contract,Connect a computed name to an output file
 74,4.1.1,138,139,operation,mapping-contract,Add a simple input to the main mapping
 75,4.1.2,139,140,operation,mapping-contract,Configure a simple input through component properties
 76,4.1.3,140,141,operation,mapping-contract,Connect a value to the input's default port
 77,4.1.4,141,146,operation,mapping-contract,Pass a filename as a runtime input parameter
-79,4.2.1,148,149,operation,triage,Add a simple output component
+79,4.2.1,148,149,operation,workflow-contract,Add a simple output component
 80,4.2.2,149,150,operation,mapping-contract,Expose a function result through a simple output
 82,4.3.1,152,156,reference,mapping-contract,Set an XML component's name and file options
 83,4.3.2,156,158,reference,mapping-contract,Select derived XML types with xsi:type
@@ -53,8 +53,8 @@ page_index,section,first_pdf_page,last_pdf_page,body_facet,review_depth,source_o
 86,4.3.5,162,163,reference,mapping-contract,Distinguish XML character data from markup
 87,4.3.6,164,166,reference,mapping-contract,Map wildcard elements and attributes
 88,4.3.7,166,168,reference,mapping-contract,Derive output namespaces from target declarations
-90,4.3.8.1,169,172,reference,triage,Choose a signing certificate with a private key
-91,4.3.8.2,172,174,reference,triage,Distinguish a detached signature from an enveloped one
+90,4.3.8.1,169,172,reference,workflow-contract,Choose a signing certificate with a private key
+91,4.3.8.2,172,174,reference,workflow-contract,Distinguish a detached signature from an enveloped one
 93,4.3.9.1,177,179,operation,manager-contract,Open the manager and stage changes before Apply
 94,4.3.9.2,179,181,reference,manager-contract,Distinguish installed versions from pending selection changes
 95,4.3.9.3,181,182,operation,manager-contract,Queue available patches and apply them together
@@ -68,46 +68,46 @@ page_index,section,first_pdf_page,last_pdf_page,body_facet,review_depth,source_o
 104,4.3.9.5.7,187,187,operation,manager-contract,Remove a schema while optionally keeping its references
 105,4.3.9.5.8,188,188,operation,manager-contract,Refresh the local schema catalog
 106,4.3.9.5.9,188,188,operation,manager-contract,Patch installed schemas or remove obsolete ones
-109,4.4.1.1,194,195,operation,triage,Start the database connection wizard
-110,4.4.1.2,196,200,reference,triage,Driver availability can depend on client installation
-112,4.4.1.3.1,203,203,operation,triage,Choose an Access connection method based on password protection
-113,4.4.1.3.2,203,203,operation,triage,Configure SQL Server provider properties for ADO
-114,4.4.1.3.3,204,205,operation,triage,Supply an Access workgroup information file when required
-116,4.4.1.4.1,206,208,operation,triage,Obtain a database connection string using Visual Studio
-117,4.4.1.4.2,209,210,operation,triage,Pair a connection string with its ADO.NET provider
-118,4.4.1.4.3,210,211,reference,triage,Distinguish limited-support and unsupported ADO.NET drivers
-120,4.4.1.5.1,213,214,operation,triage,Include the JDBC driver on the Java classpath
-122,4.4.1.6.1,216,217,operation,triage,Inspect installed ODBC drivers
-124,4.4.1.7.1,218,218,operation,triage,Select an existing SQLite database file
-125,4.4.1.8,218,219,reference,triage,Use a native database connection without a separate driver
-126,4.4.1.9,219,220,operation,triage,Select MongoDB collections after connecting
-127,4.4.1.10,220,220,operation,triage,Supply CouchDB connection details in the wizard
-128,4.4.1.11,220,221,operation,triage,Choose CosmosDB and supply connection details
-129,4.4.1.12,221,222,operation,triage,Connect using a global resource
-131,4.4.1.13.1,222,223,reference,triage,Configure the Java environment for Firebird JDBC
-132,4.4.1.13.2,223,225,reference,triage,Install the Firebird ODBC driver before connecting
-133,4.4.1.13.3,225,227,reference,triage,Prepare the Java environment for DB2 JDBC
-134,4.4.1.13.4,227,229,reference,triage,Configure the DB2 client for ODBC
-135,4.4.1.13.5,230,230,reference,triage,Prepare Java access for DB2 for i
-136,4.4.1.13.6,231,233,reference,triage,Use the configured System i client for ODBC
-137,4.4.1.13.7,233,234,reference,triage,Prepare Java access for Informix JDBC
-138,4.4.1.13.8,234,235,reference,triage,Use the MariaDB ODBC connector
-139,4.4.1.13.9,235,237,operation,triage,Browse to an Access database through the wizard
-140,4.4.1.13.10,237,237,reference,triage,Use a suitable SQL Server Native Client for Azure SQL
-141,4.4.1.13.11,237,238,reference,triage,Account for ADO provider limits on query parameter binding
-142,4.4.1.13.12,238,243,operation,triage,Install the Microsoft ODBC driver for SQL Server
-143,4.4.1.13.13,243,244,reference,triage,Use the MySQL ODBC driver from Windows
-144,4.4.1.13.14,245,245,reference,triage,Configure an Oracle JDBC connection
-145,4.4.1.13.15,246,248,operation,triage,Reuse or configure an Oracle ODBC data source
-146,4.4.1.13.16,248,249,reference,triage,Use the PostgreSQL ODBC driver
-147,4.4.1.13.17,249,250,reference,triage,Prepare a Java connection to Progress OpenEdge
-148,4.4.1.13.18,250,252,reference,triage,Use the Progress OpenEdge ODBC connector
-149,4.4.1.13.19,252,253,reference,triage,Prepare a Java connection to Sybase
-150,4.4.1.13.20,253,254,reference,triage,Prepare a Java connection to Teradata
-151,4.4.1.13.21,254,256,reference,triage,Install the Teradata ODBC driver
+109,4.4.1.1,194,195,operation,workflow-contract,Start the database connection wizard
+110,4.4.1.2,196,200,reference,workflow-contract,Driver availability can depend on client installation
+112,4.4.1.3.1,203,203,operation,workflow-contract,Choose an Access connection method based on password protection
+113,4.4.1.3.2,203,203,operation,workflow-contract,Configure SQL Server provider properties for ADO
+114,4.4.1.3.3,204,205,operation,workflow-contract,Supply an Access workgroup information file when required
+116,4.4.1.4.1,206,208,operation,workflow-contract,Obtain a database connection string using Visual Studio
+117,4.4.1.4.2,209,210,operation,workflow-contract,Pair a connection string with its ADO.NET provider
+118,4.4.1.4.3,210,211,reference,workflow-contract,Distinguish limited-support and unsupported ADO.NET drivers
+120,4.4.1.5.1,213,214,operation,workflow-contract,Include the JDBC driver on the Java classpath
+122,4.4.1.6.1,216,217,operation,workflow-contract,Inspect installed ODBC drivers
+124,4.4.1.7.1,218,218,operation,workflow-contract,Select an existing SQLite database file
+125,4.4.1.8,218,219,reference,workflow-contract,Use a native database connection without a separate driver
+126,4.4.1.9,219,220,operation,workflow-contract,Select MongoDB collections after connecting
+127,4.4.1.10,220,220,operation,workflow-contract,Supply CouchDB connection details in the wizard
+128,4.4.1.11,220,221,operation,workflow-contract,Choose CosmosDB and supply connection details
+129,4.4.1.12,221,222,operation,workflow-contract,Connect using a global resource
+131,4.4.1.13.1,222,223,reference,workflow-contract,Configure the Java environment for Firebird JDBC
+132,4.4.1.13.2,223,225,reference,workflow-contract,Install the Firebird ODBC driver before connecting
+133,4.4.1.13.3,225,227,reference,workflow-contract,Prepare the Java environment for DB2 JDBC
+134,4.4.1.13.4,227,229,reference,workflow-contract,Configure the DB2 client for ODBC
+135,4.4.1.13.5,230,230,reference,workflow-contract,Prepare Java access for DB2 for i
+136,4.4.1.13.6,231,233,reference,workflow-contract,Use the configured System i client for ODBC
+137,4.4.1.13.7,233,234,reference,workflow-contract,Prepare Java access for Informix JDBC
+138,4.4.1.13.8,234,235,reference,workflow-contract,Use the MariaDB ODBC connector
+139,4.4.1.13.9,235,237,operation,workflow-contract,Browse to an Access database through the wizard
+140,4.4.1.13.10,237,237,reference,workflow-contract,Use a suitable SQL Server Native Client for Azure SQL
+141,4.4.1.13.11,237,238,reference,workflow-contract,Account for ADO provider limits on query parameter binding
+142,4.4.1.13.12,238,243,operation,workflow-contract,Install the Microsoft ODBC driver for SQL Server
+143,4.4.1.13.13,243,244,reference,workflow-contract,Use the MySQL ODBC driver from Windows
+144,4.4.1.13.14,245,245,reference,workflow-contract,Configure an Oracle JDBC connection
+145,4.4.1.13.15,246,248,operation,workflow-contract,Reuse or configure an Oracle ODBC data source
+146,4.4.1.13.16,248,249,reference,workflow-contract,Use the PostgreSQL ODBC driver
+147,4.4.1.13.17,249,250,reference,workflow-contract,Prepare a Java connection to Progress OpenEdge
+148,4.4.1.13.18,250,252,reference,workflow-contract,Use the Progress OpenEdge ODBC connector
+149,4.4.1.13.19,252,253,reference,workflow-contract,Prepare a Java connection to Sybase
+150,4.4.1.13.20,253,254,reference,workflow-contract,Prepare a Java connection to Teradata
+151,4.4.1.13.21,254,256,reference,workflow-contract,Install the Teradata ODBC driver
 153,4.4.2.1,261,268,operation,mapping-contract,Configure the database component through its title bar
 154,4.4.2.2,269,272,operation,mapping-contract,Use custom selects with or without input parameters
-155,4.4.2.3,272,279,operation,triage,Expand a table to expose related tables
+155,4.4.2.3,272,279,operation,workflow-contract,Expand a table to expose related tables
 156,4.4.2.4,279,282,reference,mapping-contract,Define relationships involving procedure outputs and table columns
 157,4.4.2.5,283,283,operation,mapping-contract,Test or substitute database null values
 158,4.4.2.6,284,284,reference,mapping-contract,Control repeated access to database resources
@@ -115,65 +115,65 @@ page_index,section,first_pdf_page,last_pdf_page,body_facet,review_depth,source_o
 161,4.4.3.2,292,297,reference,mapping-contract,Leave auto-increment key columns unconnected
 162,4.4.3.3,297,302,reference,mapping-contract,Configure rollback behavior on mapping errors
 163,4.4.3.4,303,303,reference,mapping-contract,Generate MERGE statements for eligible database targets
-165,4.4.4.1,305,307,operation,triage,Filter and search database objects
-166,4.4.4.2,307,310,operation,triage,Execute SQL statements in the query editor
-167,4.4.4.3,310,311,operation,triage,Navigate through returned query results
-168,4.4.4.4,311,312,reference,triage,Read errors and warnings from the last SQL execution
-170,4.4.5.1,313,316,operation,triage,Attach an XML schema to a database field
-171,4.4.5.2,316,320,operation,triage,Store one XML input per SQLite record
-172,4.4.5.3,320,323,operation,triage,Extract XML from an IBM DB2 column
+165,4.4.4.1,305,307,operation,workflow-contract,Filter and search database objects
+166,4.4.4.2,307,310,operation,workflow-contract,Execute SQL statements in the query editor
+167,4.4.4.3,310,311,operation,workflow-contract,Navigate through returned query results
+168,4.4.4.4,311,312,reference,workflow-contract,Read errors and warnings from the last SQL execution
+170,4.4.5.1,313,316,operation,workflow-contract,Attach an XML schema to a database field
+171,4.4.5.2,316,320,operation,workflow-contract,Store one XML input per SQLite record
+172,4.4.5.3,320,323,operation,workflow-contract,Extract XML from an IBM DB2 column
 174,4.4.6.1,326,328,reference,mapping-contract,Add a stored procedure under its database component
-175,4.4.6.2,328,331,operation,triage,Use a stored procedure as a data source
+175,4.4.6.2,328,331,operation,workflow-contract,Use a stored procedure as a data source
 176,4.4.6.3,331,335,operation,mapping-contract,Retrieve output while passing procedure inputs
 177,4.4.6.4,335,338,reference,mapping-contract,Include a target procedure call in transaction handling
 178,4.4.6.5,338,339,reference,mapping-contract,Control procedure call order using local relations
-179,4.4.6.6,339,343,operation,triage,Relate procedure output to source records
+179,4.4.6.6,339,343,operation,workflow-contract,Relate procedure output to source records
 180,4.4.6.7,343,348,operation,mapping-contract,Generate keys through a procedure call
 182,4.4.7.1,348,350,reference,mapping-contract,NoSQL connections impose relationship and query restrictions
 183,4.4.7.2,351,355,operation,mapping-contract,Choose built-in execution for a NoSQL mapping
-185,4.5.1,356,359,operation,triage,Select a transformation language for converting CSV to XML
-186,4.5.2,359,362,reference,triage,Change iteration to produce the intended row count
-187,4.5.3,362,365,operation,triage,Build a hierarchy from flat text records
-188,4.5.4,365,369,operation,triage,Configure the CSV component through its properties
-189,4.5.5,369,372,operation,triage,Map fixed-width text fields into database columns
-190,4.5.6,373,378,operation,triage,Configure fixed-length field options
-192,4.5.7.1,378,381,reference,triage,Start a text template with a whole-file root
-194,4.5.7.2.1,381,384,operation,triage,Create a template for a text file
-195,4.5.7.2.2,384,386,operation,triage,Split text fragments according to conditions
-196,4.5.7.2.3,387,391,operation,triage,Use a switch to test several conditions on a fragment
-197,4.5.7.2.4,391,391,operation,triage,Add a target component for the text template
-198,4.5.7.2.5,392,393,operation,triage,Load an existing text template into a mapping
-199,4.5.7.3,393,395,operation,triage,Configure a FlexText component from its properties
-200,4.5.7.4,395,396,reference,triage,Use a template as a structured text target
-203,4.5.7.5.1.1,397,398,reference,triage,Choose horizontal or vertical fixed splitting
-204,4.5.7.5.1.2,398,399,operation,triage,Repeat a split at a floating delimiter
-205,4.5.7.5.1.3,400,401,operation,triage,Choose a separator for line-based repeated splits
-206,4.5.7.5.1.4,402,404,operation,triage,Test a line prefix in repeated splits
-208,4.5.7.5.2.1,405,406,operation,triage,Set the orientation of a fixed-length split
-209,4.5.7.5.2.2,406,407,operation,triage,Split once at a floating delimiter
-210,4.5.7.5.2.3,407,408,operation,triage,Split once with a line-based separator
-211,4.5.7.5.2.4,408,409,reference,triage,Divide a fragment at a matching line prefix
-212,4.5.7.5.3,410,413,reference,triage,Define several conditional branches over the text
-213,4.5.7.5.4,414,415,reference,triage,Introduce a new hierarchy level into a text template
-214,4.5.7.5.5,415,416,reference,triage,Suppress the output of a selected fragment
-215,4.5.7.5.6,416,424,reference,triage,Expose delimited fragment columns separately
-216,4.5.7.5.7,424,426,reference,triage,Expose fixed-length fragment columns separately
-217,4.5.7.5.8,426,427,reference,triage,Expose a fragment as one mappable value
-219,4.5.7.6.1,428,430,operation,triage,Choose between regex and literal separators
-220,4.5.7.6.2,430,434,operation,triage,Use a regular expression in a switch condition
-222,4.6.1,437,438,operation,triage,Insert an OOXML worksheet component
-223,4.6.2,438,440,reference,triage,Construct a workbook component without a sample instance
-224,4.6.3,440,442,operation,triage,Change worksheet membership in a component
-225,4.6.4,442,443,reference,triage,Set the start and extent of a row range
-226,4.6.5,443,447,operation,triage,Select physical cells to read or write
-227,4.6.6,447,449,operation,triage,Insert a mapped cell before another cell
-228,4.6.7,449,452,operation,triage,Configure an OOXML component's properties
-229,4.6.8,452,454,operation,triage,Project selected workbook data into XML
-230,4.6.9,454,458,operation,triage,Create separate XML files from workbook rows
-231,4.6.10,458,459,operation,triage,Write a selected database result to a worksheet
-232,4.6.11,460,463,reference,triage,Update a workbook rather than generating a fresh file
-234,4.7.1,469,471,operation,triage,Insert an EDI component from the available collections
-235,4.7.2,471,475,operation,triage,Configure the EDI component's settings
+185,4.5.1,356,359,operation,workflow-contract,Select a transformation language for converting CSV to XML
+186,4.5.2,359,362,reference,workflow-contract,Change iteration to produce the intended row count
+187,4.5.3,362,365,operation,workflow-contract,Build a hierarchy from flat text records
+188,4.5.4,365,369,operation,workflow-contract,Configure the CSV component through its properties
+189,4.5.5,369,372,operation,workflow-contract,Map fixed-width text fields into database columns
+190,4.5.6,373,378,operation,workflow-contract,Configure fixed-length field options
+192,4.5.7.1,378,381,reference,workflow-contract,Start a text template with a whole-file root
+194,4.5.7.2.1,381,384,operation,workflow-contract,Create a template for a text file
+195,4.5.7.2.2,384,386,operation,workflow-contract,Split text fragments according to conditions
+196,4.5.7.2.3,387,391,operation,workflow-contract,Use a switch to test several conditions on a fragment
+197,4.5.7.2.4,391,391,operation,workflow-contract,Add a target component for the text template
+198,4.5.7.2.5,392,393,operation,workflow-contract,Load an existing text template into a mapping
+199,4.5.7.3,393,395,operation,workflow-contract,Configure a FlexText component from its properties
+200,4.5.7.4,395,396,reference,workflow-contract,Use a template as a structured text target
+203,4.5.7.5.1.1,397,398,reference,workflow-contract,Choose horizontal or vertical fixed splitting
+204,4.5.7.5.1.2,398,399,operation,workflow-contract,Repeat a split at a floating delimiter
+205,4.5.7.5.1.3,400,401,operation,workflow-contract,Choose a separator for line-based repeated splits
+206,4.5.7.5.1.4,402,404,operation,workflow-contract,Test a line prefix in repeated splits
+208,4.5.7.5.2.1,405,406,operation,workflow-contract,Set the orientation of a fixed-length split
+209,4.5.7.5.2.2,406,407,operation,workflow-contract,Split once at a floating delimiter
+210,4.5.7.5.2.3,407,408,operation,workflow-contract,Split once with a line-based separator
+211,4.5.7.5.2.4,408,409,reference,workflow-contract,Divide a fragment at a matching line prefix
+212,4.5.7.5.3,410,413,reference,workflow-contract,Define several conditional branches over the text
+213,4.5.7.5.4,414,415,reference,workflow-contract,Introduce a new hierarchy level into a text template
+214,4.5.7.5.5,415,416,reference,workflow-contract,Suppress the output of a selected fragment
+215,4.5.7.5.6,416,424,reference,workflow-contract,Expose delimited fragment columns separately
+216,4.5.7.5.7,424,426,reference,workflow-contract,Expose fixed-length fragment columns separately
+217,4.5.7.5.8,426,427,reference,workflow-contract,Expose a fragment as one mappable value
+219,4.5.7.6.1,428,430,operation,workflow-contract,Choose between regex and literal separators
+220,4.5.7.6.2,430,434,operation,workflow-contract,Use a regular expression in a switch condition
+222,4.6.1,437,438,operation,workflow-contract,Insert an OOXML worksheet component
+223,4.6.2,438,440,reference,workflow-contract,Construct a workbook component without a sample instance
+224,4.6.3,440,442,operation,workflow-contract,Change worksheet membership in a component
+225,4.6.4,442,443,reference,workflow-contract,Set the start and extent of a row range
+226,4.6.5,443,447,operation,workflow-contract,Select physical cells to read or write
+227,4.6.6,447,449,operation,workflow-contract,Insert a mapped cell before another cell
+228,4.6.7,449,452,operation,workflow-contract,Configure an OOXML component's properties
+229,4.6.8,452,454,operation,workflow-contract,Project selected workbook data into XML
+230,4.6.9,454,458,operation,workflow-contract,Create separate XML files from workbook rows
+231,4.6.10,458,459,operation,workflow-contract,Write a selected database result to a worksheet
+232,4.6.11,460,463,reference,workflow-contract,Update a workbook rather than generating a fresh file
+234,4.7.1,469,471,operation,workflow-contract,Insert an EDI component from the available collections
+235,4.7.2,471,475,operation,workflow-contract,Configure the EDI component's settings
 237,4.7.3.1,477,478,operation,mapping-contract,Use X12 validation information for acknowledgment mappings
 238,4.7.3.2,479,480,operation,mapping-contract,Use a CONTRL message to acknowledge EDIFACT input
 239,4.7.3.3,480,481,reference,mapping-contract,External code values limit built-in field validation
@@ -188,10 +188,10 @@ page_index,section,first_pdf_page,last_pdf_page,body_facet,review_depth,source_o
 249,4.7.4.4,502,504,reference,mapping-contract,Combine or separate consecutive data elements
 250,4.7.4.5,504,505,reference,mapping-contract,Keep condition values consistent when customizing HIPAA configuration
 251,4.7.5,505,507,operation,mapping-contract,Convert EDI to XML without designing an ordinary mapping
-253,4.8.1,509,509,operation,triage,Add an XBRL document as a component
-254,4.8.2,510,511,reference,triage,Choose how the XBRL hierarchy is displayed
-255,4.8.3,511,514,reference,triage,View-specific component items depend on the linkbase
-256,4.8.4,514,515,operation,triage,Read inline XBRL facts as input data
+253,4.8.1,509,509,operation,workflow-contract,Add an XBRL document as a component
+254,4.8.2,510,511,reference,workflow-contract,Choose how the XBRL hierarchy is displayed
+255,4.8.3,511,514,reference,workflow-contract,View-specific component items depend on the linkbase
+256,4.8.4,514,515,operation,workflow-contract,Read inline XBRL facts as input data
 258,4.8.5.1,518,520,reference,manager-contract,Create a package store independently of the pre-release store
 259,4.8.5.2,520,523,operation,manager-contract,Stage package selection before applying changes
 260,4.8.5.3,523,524,reference,manager-contract,Distinguish installed and pending package selections
@@ -209,59 +209,59 @@ page_index,section,first_pdf_page,last_pdf_page,body_facet,review_depth,source_o
 273,4.8.5.7.9,536,537,operation,manager-contract,Remove selected packages with optional dependency retention
 274,4.8.5.7.10,537,537,operation,manager-contract,Refresh the taxonomy catalog cache
 275,4.8.5.7.11,537,538,operation,manager-contract,Upgrade installed packages to available patches
-277,4.8.6.1,538,539,operation,triage,Show annotations and tips on XBRL items
-278,4.8.6.2,539,542,operation,triage,Configure component-wide XBRL settings
-279,4.8.7,542,546,reference,triage,Supply a default unit identifier for facts
-281,4.8.8.1,548,549,operation,triage,Expose dimension members for separate mappings
-282,4.8.8.2,550,551,reference,triage,Change the nesting order of dimensions
-283,4.8.8.3,552,554,operation,triage,Generate a value map for an explicit dimension
-285,4.8.9.1,556,556,operation,triage,Show or hide table breakdowns
-286,4.8.9.2,556,557,operation,triage,Reorder breakdowns using their context menu
-287,4.8.9.3,558,560,reference,triage,Work with parameters at different scopes
-289,4.8.10.1,561,562,operation,triage,Create XBRL contexts and facts from database data
-290,4.8.10.2,562,564,operation,triage,Populate an XBRL taxonomy from spreadsheet values
-292,4.9.1,567,567,operation,triage,Generate or supply a schema when adding JSON
-293,4.9.2,568,570,operation,triage,Change the JSON component's properties
-294,4.9.3,570,571,reference,triage,Account for JSON5 settings when deploying a mapping
-295,4.9.4,571,574,reference,triage,Interpret each input line as a JSON value
-296,4.9.5,574,578,operation,triage,Convert JSON source data to delimited text
-297,4.9.6,578,582,operation,triage,Map workbook values into a JSON target
-299,4.10.1,584,586,reference,triage,Describe binary input with a Protocol Buffers schema
-300,4.10.2,587,588,operation,triage,Configure the Protocol Buffers component
-301,4.10.3,588,593,operation,triage,Decode repeated messages from a binary input
-302,4.10.4,593,598,operation,triage,Populate a Protocol Buffers target from a database
-305,4.11.1.1,599,602,operation,triage,Launch PDF extraction separately or from a mapping
-307,4.11.1.2.1,602,605,operation,triage,Create an extraction template for a PDF document
-308,4.11.1.2.2,605,610,operation,triage,Define extraction regions and structured data
-309,4.11.1.2.3,610,613,operation,triage,Import an existing PDF template and sample document
-310,4.11.1.3,614,614,operation,triage,Configure the PDF component's properties
-312,4.11.1.4.1,617,617,reference,triage,Represent the document at the template root
-314,4.11.1.4.2.1,620,623,reference,triage,Build independent groups for selected pages
-316,4.11.1.4.3.1,625,626,reference,triage,Find visual edges for region splitting
-317,4.11.1.4.3.2,627,630,reference,triage,Detect objects as region boundaries
-318,4.11.1.4.3.3,630,630,operation,triage,Split a region using a fixed distance
-319,4.11.1.4.3.4,631,633,operation,triage,Locate text within a PDF document
-320,4.11.1.4.3.5,633,634,reference,triage,Apply post-processing to extraction results
-321,4.11.1.4.4,634,636,reference,triage,Capture text from a PDF page
-322,4.11.1.4.5,636,641,reference,triage,Cut and combine portions of a PDF page
-323,4.11.1.4.6,642,644,reference,triage,Combine extracted row fragments in a collage
-324,4.11.1.4.7,644,645,reference,triage,Name positions for reuse elsewhere in the template
-325,4.11.1.4.8,645,645,reference,triage,Execute the first true condition in tree order
-327,4.11.1.5.1,650,651,operation,triage,Run OCR from the editor
-328,4.11.1.5.2,651,656,operation,triage,Apply OCR to a scanned document
-329,4.11.1.6,656,659,reference,triage,Parse property expressions into tokens
-330,4.11.1.7,660,661,reference,triage,Choose between selection modes
-331,4.11.1.8,662,665,operation,triage,Search at design time or during extraction
-333,4.11.1.9.1,665,666,operation,triage,Save an open template under another name
-334,4.11.1.9.2,666,667,operation,triage,Redo a previously undone edit
-335,4.11.1.9.3,667,668,operation,triage,Toggle the status bar
-337,4.11.1.9.4.1,669,670,operation,triage,Customize the available editor commands
-338,4.11.1.9.4.2,670,672,operation,triage,Change the editor toolbars
-339,4.11.1.9.4.3,672,672,operation,triage,Assign keyboard shortcuts to commands
-340,4.11.1.9.4.4,673,674,operation,triage,Customize the editor's menus
-341,4.11.1.9.4.5,674,675,reference,triage,Set customization options in the editor
-342,4.11.1.9.5,675,675,operation,triage,Select an editor window theme
-343,4.11.1.9.6,675,679,operation,triage,Open locally stored PDF help
+277,4.8.6.1,538,539,operation,workflow-contract,Show annotations and tips on XBRL items
+278,4.8.6.2,539,542,operation,workflow-contract,Configure component-wide XBRL settings
+279,4.8.7,542,546,reference,workflow-contract,Supply a default unit identifier for facts
+281,4.8.8.1,548,549,operation,workflow-contract,Expose dimension members for separate mappings
+282,4.8.8.2,550,551,reference,workflow-contract,Change the nesting order of dimensions
+283,4.8.8.3,552,554,operation,workflow-contract,Generate a value map for an explicit dimension
+285,4.8.9.1,556,556,operation,workflow-contract,Show or hide table breakdowns
+286,4.8.9.2,556,557,operation,workflow-contract,Reorder breakdowns using their context menu
+287,4.8.9.3,558,560,reference,workflow-contract,Work with parameters at different scopes
+289,4.8.10.1,561,562,operation,workflow-contract,Create XBRL contexts and facts from database data
+290,4.8.10.2,562,564,operation,workflow-contract,Populate an XBRL taxonomy from spreadsheet values
+292,4.9.1,567,567,operation,workflow-contract,Generate or supply a schema when adding JSON
+293,4.9.2,568,570,operation,workflow-contract,Change the JSON component's properties
+294,4.9.3,570,571,reference,workflow-contract,Account for JSON5 settings when deploying a mapping
+295,4.9.4,571,574,reference,workflow-contract,Interpret each input line as a JSON value
+296,4.9.5,574,578,operation,workflow-contract,Convert JSON source data to delimited text
+297,4.9.6,578,582,operation,workflow-contract,Map workbook values into a JSON target
+299,4.10.1,584,586,reference,workflow-contract,Describe binary input with a Protocol Buffers schema
+300,4.10.2,587,588,operation,workflow-contract,Configure the Protocol Buffers component
+301,4.10.3,588,593,operation,workflow-contract,Decode repeated messages from a binary input
+302,4.10.4,593,598,operation,workflow-contract,Populate a Protocol Buffers target from a database
+305,4.11.1.1,599,602,operation,workflow-contract,Launch PDF extraction separately or from a mapping
+307,4.11.1.2.1,602,605,operation,workflow-contract,Create an extraction template for a PDF document
+308,4.11.1.2.2,605,610,operation,workflow-contract,Define extraction regions and structured data
+309,4.11.1.2.3,610,613,operation,workflow-contract,Import an existing PDF template and sample document
+310,4.11.1.3,614,614,operation,workflow-contract,Configure the PDF component's properties
+312,4.11.1.4.1,617,617,reference,workflow-contract,Represent the document at the template root
+314,4.11.1.4.2.1,620,623,reference,workflow-contract,Build independent groups for selected pages
+316,4.11.1.4.3.1,625,626,reference,workflow-contract,Find visual edges for region splitting
+317,4.11.1.4.3.2,627,630,reference,workflow-contract,Detect objects as region boundaries
+318,4.11.1.4.3.3,630,630,operation,workflow-contract,Split a region using a fixed distance
+319,4.11.1.4.3.4,631,633,operation,workflow-contract,Locate text within a PDF document
+320,4.11.1.4.3.5,633,634,reference,workflow-contract,Apply post-processing to extraction results
+321,4.11.1.4.4,634,636,reference,workflow-contract,Capture text from a PDF page
+322,4.11.1.4.5,636,641,reference,workflow-contract,Cut and combine portions of a PDF page
+323,4.11.1.4.6,642,644,reference,workflow-contract,Combine extracted row fragments in a collage
+324,4.11.1.4.7,644,645,reference,workflow-contract,Name positions for reuse elsewhere in the template
+325,4.11.1.4.8,645,645,reference,workflow-contract,Execute the first true condition in tree order
+327,4.11.1.5.1,650,651,operation,workflow-contract,Run OCR from the editor
+328,4.11.1.5.2,651,656,operation,workflow-contract,Apply OCR to a scanned document
+329,4.11.1.6,656,659,reference,workflow-contract,Parse property expressions into tokens
+330,4.11.1.7,660,661,reference,workflow-contract,Choose between selection modes
+331,4.11.1.8,662,665,operation,workflow-contract,Search at design time or during extraction
+333,4.11.1.9.1,665,666,operation,workflow-contract,Save an open template under another name
+334,4.11.1.9.2,666,667,operation,workflow-contract,Redo a previously undone edit
+335,4.11.1.9.3,667,668,operation,workflow-contract,Toggle the status bar
+337,4.11.1.9.4.1,669,670,operation,workflow-contract,Customize the available editor commands
+338,4.11.1.9.4.2,670,672,operation,workflow-contract,Change the editor toolbars
+339,4.11.1.9.4.3,672,672,operation,workflow-contract,Assign keyboard shortcuts to commands
+340,4.11.1.9.4.4,673,674,operation,workflow-contract,Customize the editor's menus
+341,4.11.1.9.4.5,674,675,reference,workflow-contract,Set customization options in the editor
+342,4.11.1.9.5,675,675,operation,workflow-contract,Select an editor window theme
+343,4.11.1.9.6,675,679,operation,workflow-contract,Open locally stored PDF help
 346,5.1.1,683,687,operation,mapping-contract,Insert a variable through a context menu
 347,5.1.2,687,689,reference,mapping-contract,Use compute-when to control variable evaluation
 348,5.1.3,689,690,operation,mapping-contract,Count rows for each parent record
@@ -294,170 +294,170 @@ page_index,section,first_pdf_page,last_pdf_page,body_facet,review_depth,source_o
 386,5.8.4.3,794,796,operation,mapping-contract,Traverse a hierarchy using a recursive user function
 387,5.8.4.4,796,799,reference,mapping-contract,Control the context of a user-defined function
 388,5.8.4.5,799,802,operation,mapping-contract,Open the implementation of a lookup function
-391,5.8.5.1.1,804,806,operation,triage,Register an external XSLT function library
-392,5.8.5.1.2,806,809,operation,triage,Compute a total from selected node values
-394,5.8.5.2.1,811,814,reference,triage,Import atomic-return functions from an XQuery module
-396,5.8.5.3.1,818,819,operation,triage,Import functions from a Java class
-397,5.8.5.3.2,819,821,operation,triage,Load a .NET assembly as a function library
-399,5.8.5.4.1,822,827,operation,triage,Describe an external function in a library file
-400,5.8.5.4.2,827,827,operation,triage,Add a function file to the available libraries
-401,5.8.5.4.3,827,829,reference,triage,Map supported parameter and return types
-402,5.8.5.4.4,830,831,operation,triage,Reference a C# implementation for built-in preview
-403,5.8.5.4.5,831,833,reference,triage,Export a C++ class for a function library
-404,5.8.5.4.6,833,835,operation,triage,Reference methods of a Java class in a library
-405,5.8.6,835,838,reference,triage,Regex behavior depends on the execution language
-769,6.1,1087,1088,operation,triage,Construct a request and map its response
-771,6.2.1,1091,1093,reference,triage,Identify supported WSDL constructs and their limits
-772,6.2.2,1093,1099,operation,triage,Choose Java or C# for a SOAP service project
-773,6.2.3,1099,1101,reference,triage,Generate project code and scripts for a Java service
-774,6.2.4,1101,1105,operation,triage,Generate a SOAP service from its project
-775,6.2.5,1105,1107,reference,triage,Require a declared WSDL fault before inserting its component
-776,6.2.6,1107,1114,operation,triage,Insert a WSDL-based service call
-779,6.3.1.1,1120,1122,operation,triage,Select the request and response structures
-780,6.3.1.2,1122,1126,reference,triage,Define parameters used in a request URL
-781,6.3.1.3,1126,1128,operation,triage,Configure the security settings for a service call
-782,6.3.2,1128,1129,operation,triage,Import the description of a service from WADL
-783,6.3.3,1129,1130,reference,triage,Parse an HTTP or HTTPS URL for request settings
-784,6.3.4,1130,1135,reference,triage,Populate call settings from an OpenAPI description
-785,6.3.5,1135,1137,reference,triage,Determine invocation count from mapping context
-786,6.3.6,1138,1141,operation,triage,Map errors returned by an HTTP endpoint
-787,6.3.7,1141,1141,operation,triage,Construct request and response mappings for an AI API
-789,6.4.1,1142,1144,operation,triage,Insert a Shopify or GraphQL connection
-790,6.4.2,1144,1147,operation,triage,Set the URL for a GraphQL connection
-791,6.4.3,1147,1150,operation,triage,Edit a GraphQL query or mutation interactively
-792,6.4.4,1150,1156,operation,triage,Construct sample GraphQL queries and mutations
-794,6.5.1,1157,1161,operation,triage,Read an HTTP API response into a mapping
-795,6.5.2,1161,1165,operation,triage,Map a feed using a declared response structure
-796,6.5.3,1165,1169,operation,triage,Call a SOAP service from a mapping
-797,6.5.4,1169,1181,operation,triage,Authorize access to calendar data using OAuth
-799,6.6.1,1184,1185,operation,triage,Install a trusted server certificate on Linux
-800,6.6.2,1185,1185,operation,triage,Import a trusted root into a Windows certificate store
-801,6.6.3,1185,1185,operation,triage,Select a Windows certificate store in the management console
-802,6.6.4,1186,1190,operation,triage,Export a Windows certificate for use on another platform
-803,6.6.5,1191,1192,operation,triage,Configure a client certificate for Linux execution
-804,6.6.6,1192,1193,reference,triage,Use a client certificate from a Windows mapping
-805,7,1194,1198,operation,triage,Submit mapping context to obtain authoring suggestions
-808,8.1.1,1201,1208,operation,triage,Expose node names for dynamic mapping
-809,8.1.2,1209,1212,operation,triage,Limit dynamic access by node type
-810,8.1.3,1212,1216,operation,triage,Write element names as attribute values
+391,5.8.5.1.1,804,806,operation,workflow-contract,Register an external XSLT function library
+392,5.8.5.1.2,806,809,operation,workflow-contract,Compute a total from selected node values
+394,5.8.5.2.1,811,814,reference,workflow-contract,Import atomic-return functions from an XQuery module
+396,5.8.5.3.1,818,819,operation,workflow-contract,Import functions from a Java class
+397,5.8.5.3.2,819,821,operation,workflow-contract,Load a .NET assembly as a function library
+399,5.8.5.4.1,822,827,operation,workflow-contract,Describe an external function in a library file
+400,5.8.5.4.2,827,827,operation,workflow-contract,Add a function file to the available libraries
+401,5.8.5.4.3,827,829,reference,workflow-contract,Map supported parameter and return types
+402,5.8.5.4.4,830,831,operation,workflow-contract,Reference a C# implementation for built-in preview
+403,5.8.5.4.5,831,833,reference,workflow-contract,Export a C++ class for a function library
+404,5.8.5.4.6,833,835,operation,workflow-contract,Reference methods of a Java class in a library
+405,5.8.6,835,838,reference,workflow-contract,Regex behavior depends on the execution language
+769,6.1,1087,1088,operation,workflow-contract,Construct a request and map its response
+771,6.2.1,1091,1093,reference,workflow-contract,Identify supported WSDL constructs and their limits
+772,6.2.2,1093,1099,operation,workflow-contract,Choose Java or C# for a SOAP service project
+773,6.2.3,1099,1101,reference,workflow-contract,Generate project code and scripts for a Java service
+774,6.2.4,1101,1105,operation,workflow-contract,Generate a SOAP service from its project
+775,6.2.5,1105,1107,reference,workflow-contract,Require a declared WSDL fault before inserting its component
+776,6.2.6,1107,1114,operation,workflow-contract,Insert a WSDL-based service call
+779,6.3.1.1,1120,1122,operation,workflow-contract,Select the request and response structures
+780,6.3.1.2,1122,1126,reference,workflow-contract,Define parameters used in a request URL
+781,6.3.1.3,1126,1128,operation,workflow-contract,Configure the security settings for a service call
+782,6.3.2,1128,1129,operation,workflow-contract,Import the description of a service from WADL
+783,6.3.3,1129,1130,reference,workflow-contract,Parse an HTTP or HTTPS URL for request settings
+784,6.3.4,1130,1135,reference,workflow-contract,Populate call settings from an OpenAPI description
+785,6.3.5,1135,1137,reference,workflow-contract,Determine invocation count from mapping context
+786,6.3.6,1138,1141,operation,workflow-contract,Map errors returned by an HTTP endpoint
+787,6.3.7,1141,1141,operation,workflow-contract,Construct request and response mappings for an AI API
+789,6.4.1,1142,1144,operation,workflow-contract,Insert a Shopify or GraphQL connection
+790,6.4.2,1144,1147,operation,workflow-contract,Set the URL for a GraphQL connection
+791,6.4.3,1147,1150,operation,workflow-contract,Edit a GraphQL query or mutation interactively
+792,6.4.4,1150,1156,operation,workflow-contract,Construct sample GraphQL queries and mutations
+794,6.5.1,1157,1161,operation,workflow-contract,Read an HTTP API response into a mapping
+795,6.5.2,1161,1165,operation,workflow-contract,Map a feed using a declared response structure
+796,6.5.3,1165,1169,operation,workflow-contract,Call a SOAP service from a mapping
+797,6.5.4,1169,1181,operation,workflow-contract,Authorize access to calendar data using OAuth
+799,6.6.1,1184,1185,operation,workflow-contract,Install a trusted server certificate on Linux
+800,6.6.2,1185,1185,operation,workflow-contract,Import a trusted root into a Windows certificate store
+801,6.6.3,1185,1185,operation,workflow-contract,Select a Windows certificate store in the management console
+802,6.6.4,1186,1190,operation,workflow-contract,Export a Windows certificate for use on another platform
+803,6.6.5,1191,1192,operation,workflow-contract,Configure a client certificate for Linux execution
+804,6.6.6,1192,1193,reference,workflow-contract,Use a client certificate from a Windows mapping
+805,7,1194,1198,operation,workflow-contract,Submit mapping context to obtain authoring suggestions
+808,8.1.1,1201,1208,operation,workflow-contract,Expose node names for dynamic mapping
+809,8.1.2,1209,1212,operation,workflow-contract,Limit dynamic access by node type
+810,8.1.3,1212,1216,operation,workflow-contract,Write element names as attribute values
 812,8.2.1,1219,1221,operation,mapping-contract,Generate several XML files from one source
 813,8.2.2,1221,1223,operation,mapping-contract,Distribute database rows among output files
 815,8.3.1,1224,1226,reference,mapping-contract,Place a string parser or serializer in a mapping
 816,8.3.2,1226,1231,operation,mapping-contract,Parse fixed-width records stored in a string
 817,8.3.3,1231,1235,operation,mapping-contract,Serialize an XML structure for a database field
-820,8.4.1.1,1239,1240,operation,triage,Inspect stored credential objects and their types
-821,8.4.1.2,1240,1245,operation,triage,Configure an OAuth credential object
-822,8.4.1.3,1245,1247,reference,triage,Resolve a named credential for server execution
-823,8.4.1.4,1247,1248,reference,triage,Handle sensitive credential fields on deployment
-824,8.4.1.5,1248,1250,operation,triage,Reuse a deployed credential object
-825,8.4.2,1250,1252,operation,triage,Supply authentication dynamically to a service call
-826,8.4.3,1252,1253,reference,triage,Retain credentials for reuse by a mapping
-828,9.1,1257,1261,reference,triage,Generate impact or call-graph documentation with a stylesheet
-829,9.2,1262,1263,operation,triage,Use the documentation schema to design a custom stylesheet
-831,10.1,1267,1267,operation,triage,Prepare a large mapping for debugging
-832,10.2,1268,1270,reference,triage,Treat the mapping as read-only during debugging
-833,10.3,1271,1272,reference,triage,Exclude certain components from breakpoint placement
-834,10.4,1273,1274,operation,triage,Inspect processed values in the values window
-835,10.5,1275,1276,reference,triage,Inspect connector relationships for the current context
-836,10.6,1277,1278,operation,triage,Manage breakpoints across the mapping
-837,10.7,1279,1279,operation,triage,Preview output generated up to the current stop
-838,10.8,1280,1280,reference,triage,Read the connector value about to be written
-839,10.9,1281,1281,operation,triage,Inspect previous values through a connector overlay
-840,10.10,1282,1282,operation,triage,Open a connector's recorded value history
-841,10.11,1283,1283,reference,triage,Select a prior context when full trace history is available
-843,11.1,1285,1285,reference,triage,Distinguish XML processing from the XBRL-enabled server edition
-844,11.2,1286,1286,reference,triage,Execute a mapping in a server environment
-845,11.3,1287,1292,reference,triage,Account for path conventions in server deployment
-846,11.4,1293,1295,operation,triage,Compile a mapping for execution by the server
-847,11.5,1296,1300,operation,triage,Create a server job from a deployed mapping
-848,11.6,1301,1306,reference,triage,Combine AS2 message handling with mapping and server processing
-849,11.7,1307,1310,reference,triage,Preview a styled XML or XBRL target
-850,11.8,1311,1314,reference,triage,Supply command-line arguments for mapping operations
-852,12.1,1316,1317,operation,triage,Define a global resource in the management dialog
-853,12.2,1318,1321,operation,triage,Set file-specific properties of a global resource
-854,12.3,1322,1323,operation,triage,Use a global resource for changing XML inputs
-855,12.4,1324,1324,operation,triage,Select output directories using a folder resource
-856,12.5,1326,1327,operation,triage,Switch databases without editing the mapping
-857,12.6,1328,1331,operation,triage,Register a mapping result as a global resource
-859,12.7.1,1332,1332,reference,triage,Resolve global resources in generated code
-860,12.7.2,1333,1333,reference,triage,Supply resource references in the server environment
-861,12.7.3,1333,1335,operation,triage,Select global resources when deploying a mapping
-863,13.1,1337,1338,reference,triage,Redirect DTDs and schemas through a catalog
-864,13.2,1339,1340,reference,triage,Load a root catalog at startup
-865,13.3,1341,1342,operation,triage,Use xml:base when defining catalog entries
-866,13.4,1343,1343,reference,triage,Resolve catalog locations using environment variables
-867,14,1344,1346,operation,triage,Install and use the Visual Studio integration
-869,15.1,1348,1349,reference,triage,Check platform prerequisites for Eclipse integration
-870,15.2,1350,1352,operation,triage,Switch to the mapping perspective in Eclipse
-871,15.3,1353,1356,operation,triage,Access mapping commands inside the Eclipse workbench
-873,15.4.1,1357,1359,operation,triage,Create and locate a mapping project in Eclipse
-874,15.4.2,1359,1361,operation,triage,Add a mapping or service project file from Eclipse
-875,15.4.3,1361,1364,operation,triage,Import an existing design together with dependencies
-876,15.4.4,1364,1366,reference,triage,Configure automatic code generation on project builds
-877,15.5,1367,1367,reference,triage,Use the mapping plug-in extension point
-879,16.1,1370,1375,operation,triage,Generate code and build or run its project
-881,16.2.1,1376,1379,reference,triage,Pass sources and targets to generated code
-887,16.2.3.4,1395,1398,operation,triage,Reference schema wrapper libraries in a project
-889,16.2.3.5.1,1401,1406,operation,triage,Read and write XML through generated C++ wrappers
-890,16.2.3.5.2,1406,1414,operation,triage,Read and write XML through generated C# wrappers
-891,16.2.3.5.3,1414,1422,operation,triage,Read and write XML through generated Java wrappers
-893,16.2.3.6.1,1425,1426,operation,triage,Work with prefixes using generated C++ wrappers
-894,16.2.3.6.2,1426,1428,operation,triage,Work with prefixes using generated C# wrappers
-895,16.2.3.6.3,1428,1429,operation,triage,Work with prefixes using generated Java wrappers
-933,16.2.7.1,1474,1475,reference,triage,Combine literal output with generator instructions
-934,16.2.7.2,1475,1477,reference,triage,Place declarations inside a delimited instruction block
-935,16.2.7.3,1477,1478,reference,triage,Concatenate string variables in templates
-936,16.2.7.4,1478,1479,reference,triage,Distinguish DTD and XSD via a predefined variable
-937,16.2.7.5,1479,1481,operation,triage,Create files from a generator template
-938,16.2.7.6,1481,1482,reference,triage,Apply operators to template expressions
-939,16.2.7.7,1482,1482,operation,triage,Branch on an SPL condition
-940,16.2.7.8,1483,1484,reference,triage,Iterate over a collection of objects
-942,16.2.7.9.1,1484,1485,operation,triage,Declare a template subroutine and its parameters
-943,16.2.7.9.2,1485,1486,operation,triage,Call a procedure with value or reference parameters
-944,16.2.7.9.3,1486,1486,operation,triage,Invoke a template subroutine to produce output
-946,16.2.7.10.1,1487,1487,reference,triage,Expose the library generated from a schema or DTD
-947,16.2.7.10.2,1487,1487,reference,triage,Group generated schema components by namespace
-948,16.2.7.10.3,1487,1489,reference,triage,Represent simple and complex types as objects
-949,16.2.7.10.4,1489,1490,reference,triage,Represent element and attribute declarations as members
-950,16.2.7.10.5,1490,1490,reference,triage,Resolve a simple type's native-language binding
-951,16.2.7.10.6,1490,1491,reference,triage,Expose the facets of a schema simple type
-1061,19.1,1556,1557,operation,triage,Save an open mapping under a different name
-1062,19.2,1558,1558,reference,triage,Availability of edit commands depends on the active view
-1063,19.3,1559,1561,operation,triage,Insert components from a gallery
-1064,19.4,1562,1563,operation,triage,Group mapping files into projects
-1065,19.5,1564,1565,operation,triage,Change the root element of an XML component
-1066,19.6,1566,1566,operation,triage,Connect matching children in one action
-1067,19.7,1567,1567,operation,triage,Change settings for a user-defined function
-1068,19.8,1568,1569,operation,triage,Choose an output or generation command
-1069,19.9,1570,1570,reference,triage,Step through dependent computations in the debugger
-1070,19.10,1571,1572,operation,triage,Toggle display of component annotations
-1072,19.11.1,1574,1575,operation,triage,Reset customized menus to their default state
-1073,19.11.2,1575,1577,operation,triage,Assign shortcuts through the keyboard settings
-1075,19.11.3.1,1580,1582,operation,triage,Set code-generation options
-1076,19.11.3.2,1582,1583,reference,triage,Detect or configure the Java VM path
-1077,19.11.3.3,1583,1586,operation,triage,Configure XBRL options at application level
-1078,19.11.3.4,1586,1590,operation,triage,Change SQL editor settings
-1079,19.11.3.5,1591,1592,operation,triage,Set network connection and transfer options
-1080,19.11.3.6,1592,1593,operation,triage,Configure proxies for network requests
-1081,19.12,1594,1595,operation,triage,Choose a light or dark window theme
-1082,19.13,1596,1600,operation,triage,Choose between online help and locally available help
-1089,20.2.1.1,1608,1608,reference,triage,Account for XSLT 1 output-method behavior
-1090,20.2.1.2,1608,1610,reference,triage,Account for processor differences in XSLT output
-1091,20.2.1.3,1610,1613,reference,triage,Account for schema awareness and encoding in XQuery
-1108,20.2.2.2.1.1,1705,1708,reference,triage,Identify a Java extension class by URI
-1109,20.2.2.2.1.2,1708,1709,reference,triage,Identify the JAR containing an extension class
-1110,20.2.2.2.1.3,1709,1709,operation,triage,Call a Java constructor as an extension function
-1111,20.2.2.2.1.4,1709,1710,operation,triage,Access static Java members from an expression
-1112,20.2.2.2.1.5,1710,1711,operation,triage,Access a member on an existing Java object
-1113,20.2.2.2.1.6,1711,1712,reference,triage,Convert an XPath argument to a Java parameter type
-1114,20.2.2.2.1.7,1712,1712,reference,triage,Interpret a value returned from Java in XPath
-1116,20.2.2.2.2.1,1714,1715,operation,triage,Call a .NET constructor as an extension function
-1117,20.2.2.2.2.2,1715,1716,reference,triage,Match a public static .NET method name exactly
-1118,20.2.2.2.2.3,1716,1717,operation,triage,Access an instance member on a .NET object
-1119,20.2.2.2.2.4,1717,1718,reference,triage,Convert XPath arguments for a .NET call
-1120,20.2.2.2.2.5,1718,1718,reference,triage,Convert values returned by .NET to XPath values
-1121,20.2.2.2.3,1718,1720,reference,triage,Place an embedded script at the stylesheet's top level
-1123,20.3.1,1721,1721,reference,triage,Relate document size to in-memory editing requirements
-1124,20.3.2,1721,1722,reference,triage,Build a document tree and optionally validate on opening
-1125,20.3.3,1722,1722,reference,triage,Display Unicode text with appropriate font glyphs
-1126,20.3.4,1722,1722,reference,triage,Distinguish actions that initiate network connections
+820,8.4.1.1,1239,1240,operation,workflow-contract,Inspect stored credential objects and their types
+821,8.4.1.2,1240,1245,operation,workflow-contract,Configure an OAuth credential object
+822,8.4.1.3,1245,1247,reference,workflow-contract,Resolve a named credential for server execution
+823,8.4.1.4,1247,1248,reference,workflow-contract,Handle sensitive credential fields on deployment
+824,8.4.1.5,1248,1250,operation,workflow-contract,Reuse a deployed credential object
+825,8.4.2,1250,1252,operation,workflow-contract,Supply authentication dynamically to a service call
+826,8.4.3,1252,1253,reference,workflow-contract,Retain credentials for reuse by a mapping
+828,9.1,1257,1261,reference,workflow-contract,Generate impact or call-graph documentation with a stylesheet
+829,9.2,1262,1263,operation,workflow-contract,Use the documentation schema to design a custom stylesheet
+831,10.1,1267,1267,operation,workflow-contract,Prepare a large mapping for debugging
+832,10.2,1268,1270,reference,workflow-contract,Treat the mapping as read-only during debugging
+833,10.3,1271,1272,reference,workflow-contract,Exclude certain components from breakpoint placement
+834,10.4,1273,1274,operation,workflow-contract,Inspect processed values in the values window
+835,10.5,1275,1276,reference,workflow-contract,Inspect connector relationships for the current context
+836,10.6,1277,1278,operation,workflow-contract,Manage breakpoints across the mapping
+837,10.7,1279,1279,operation,workflow-contract,Preview output generated up to the current stop
+838,10.8,1280,1280,reference,workflow-contract,Read the connector value about to be written
+839,10.9,1281,1281,operation,workflow-contract,Inspect previous values through a connector overlay
+840,10.10,1282,1282,operation,workflow-contract,Open a connector's recorded value history
+841,10.11,1283,1283,reference,workflow-contract,Select a prior context when full trace history is available
+843,11.1,1285,1285,reference,workflow-contract,Distinguish XML processing from the XBRL-enabled server edition
+844,11.2,1286,1286,reference,workflow-contract,Execute a mapping in a server environment
+845,11.3,1287,1292,reference,workflow-contract,Account for path conventions in server deployment
+846,11.4,1293,1295,operation,workflow-contract,Compile a mapping for execution by the server
+847,11.5,1296,1300,operation,workflow-contract,Create a server job from a deployed mapping
+848,11.6,1301,1306,reference,workflow-contract,Combine AS2 message handling with mapping and server processing
+849,11.7,1307,1310,reference,workflow-contract,Preview a styled XML or XBRL target
+850,11.8,1311,1314,reference,workflow-contract,Supply command-line arguments for mapping operations
+852,12.1,1316,1317,operation,workflow-contract,Define a global resource in the management dialog
+853,12.2,1318,1321,operation,workflow-contract,Set file-specific properties of a global resource
+854,12.3,1322,1323,operation,workflow-contract,Use a global resource for changing XML inputs
+855,12.4,1324,1324,operation,workflow-contract,Select output directories using a folder resource
+856,12.5,1326,1327,operation,workflow-contract,Switch databases without editing the mapping
+857,12.6,1328,1331,operation,workflow-contract,Register a mapping result as a global resource
+859,12.7.1,1332,1332,reference,workflow-contract,Resolve global resources in generated code
+860,12.7.2,1333,1333,reference,workflow-contract,Supply resource references in the server environment
+861,12.7.3,1333,1335,operation,workflow-contract,Select global resources when deploying a mapping
+863,13.1,1337,1338,reference,workflow-contract,Redirect DTDs and schemas through a catalog
+864,13.2,1339,1340,reference,workflow-contract,Load a root catalog at startup
+865,13.3,1341,1342,operation,workflow-contract,Use xml:base when defining catalog entries
+866,13.4,1343,1343,reference,workflow-contract,Resolve catalog locations using environment variables
+867,14,1344,1346,operation,workflow-contract,Install and use the Visual Studio integration
+869,15.1,1348,1349,reference,workflow-contract,Check platform prerequisites for Eclipse integration
+870,15.2,1350,1352,operation,workflow-contract,Switch to the mapping perspective in Eclipse
+871,15.3,1353,1356,operation,workflow-contract,Access mapping commands inside the Eclipse workbench
+873,15.4.1,1357,1359,operation,workflow-contract,Create and locate a mapping project in Eclipse
+874,15.4.2,1359,1361,operation,workflow-contract,Add a mapping or service project file from Eclipse
+875,15.4.3,1361,1364,operation,workflow-contract,Import an existing design together with dependencies
+876,15.4.4,1364,1366,reference,workflow-contract,Configure automatic code generation on project builds
+877,15.5,1367,1367,reference,workflow-contract,Use the mapping plug-in extension point
+879,16.1,1370,1375,operation,workflow-contract,Generate code and build or run its project
+881,16.2.1,1376,1379,reference,workflow-contract,Pass sources and targets to generated code
+887,16.2.3.4,1395,1398,operation,workflow-contract,Reference schema wrapper libraries in a project
+889,16.2.3.5.1,1401,1406,operation,workflow-contract,Read and write XML through generated C++ wrappers
+890,16.2.3.5.2,1406,1414,operation,workflow-contract,Read and write XML through generated C# wrappers
+891,16.2.3.5.3,1414,1422,operation,workflow-contract,Read and write XML through generated Java wrappers
+893,16.2.3.6.1,1425,1426,operation,workflow-contract,Work with prefixes using generated C++ wrappers
+894,16.2.3.6.2,1426,1428,operation,workflow-contract,Work with prefixes using generated C# wrappers
+895,16.2.3.6.3,1428,1429,operation,workflow-contract,Work with prefixes using generated Java wrappers
+933,16.2.7.1,1474,1475,reference,workflow-contract,Combine literal output with generator instructions
+934,16.2.7.2,1475,1477,reference,workflow-contract,Place declarations inside a delimited instruction block
+935,16.2.7.3,1477,1478,reference,workflow-contract,Concatenate string variables in templates
+936,16.2.7.4,1478,1479,reference,workflow-contract,Distinguish DTD and XSD via a predefined variable
+937,16.2.7.5,1479,1481,operation,workflow-contract,Create files from a generator template
+938,16.2.7.6,1481,1482,reference,workflow-contract,Apply operators to template expressions
+939,16.2.7.7,1482,1482,operation,workflow-contract,Branch on an SPL condition
+940,16.2.7.8,1483,1484,reference,workflow-contract,Iterate over a collection of objects
+942,16.2.7.9.1,1484,1485,operation,workflow-contract,Declare a template subroutine and its parameters
+943,16.2.7.9.2,1485,1486,operation,workflow-contract,Call a procedure with value or reference parameters
+944,16.2.7.9.3,1486,1486,operation,workflow-contract,Invoke a template subroutine to produce output
+946,16.2.7.10.1,1487,1487,reference,workflow-contract,Expose the library generated from a schema or DTD
+947,16.2.7.10.2,1487,1487,reference,workflow-contract,Group generated schema components by namespace
+948,16.2.7.10.3,1487,1489,reference,workflow-contract,Represent simple and complex types as objects
+949,16.2.7.10.4,1489,1490,reference,workflow-contract,Represent element and attribute declarations as members
+950,16.2.7.10.5,1490,1490,reference,workflow-contract,Resolve a simple type's native-language binding
+951,16.2.7.10.6,1490,1491,reference,workflow-contract,Expose the facets of a schema simple type
+1061,19.1,1556,1557,operation,workflow-contract,Save an open mapping under a different name
+1062,19.2,1558,1558,reference,workflow-contract,Availability of edit commands depends on the active view
+1063,19.3,1559,1561,operation,workflow-contract,Insert components from a gallery
+1064,19.4,1562,1563,operation,workflow-contract,Group mapping files into projects
+1065,19.5,1564,1565,operation,workflow-contract,Change the root element of an XML component
+1066,19.6,1566,1566,operation,workflow-contract,Connect matching children in one action
+1067,19.7,1567,1567,operation,workflow-contract,Change settings for a user-defined function
+1068,19.8,1568,1569,operation,workflow-contract,Choose an output or generation command
+1069,19.9,1570,1570,reference,workflow-contract,Step through dependent computations in the debugger
+1070,19.10,1571,1572,operation,workflow-contract,Toggle display of component annotations
+1072,19.11.1,1574,1575,operation,workflow-contract,Reset customized menus to their default state
+1073,19.11.2,1575,1577,operation,workflow-contract,Assign shortcuts through the keyboard settings
+1075,19.11.3.1,1580,1582,operation,workflow-contract,Set code-generation options
+1076,19.11.3.2,1582,1583,reference,workflow-contract,Detect or configure the Java VM path
+1077,19.11.3.3,1583,1586,operation,workflow-contract,Configure XBRL options at application level
+1078,19.11.3.4,1586,1590,operation,workflow-contract,Change SQL editor settings
+1079,19.11.3.5,1591,1592,operation,workflow-contract,Set network connection and transfer options
+1080,19.11.3.6,1592,1593,operation,workflow-contract,Configure proxies for network requests
+1081,19.12,1594,1595,operation,workflow-contract,Choose a light or dark window theme
+1082,19.13,1596,1600,operation,workflow-contract,Choose between online help and locally available help
+1089,20.2.1.1,1608,1608,reference,workflow-contract,Account for XSLT 1 output-method behavior
+1090,20.2.1.2,1608,1610,reference,workflow-contract,Account for processor differences in XSLT output
+1091,20.2.1.3,1610,1613,reference,workflow-contract,Account for schema awareness and encoding in XQuery
+1108,20.2.2.2.1.1,1705,1708,reference,workflow-contract,Identify a Java extension class by URI
+1109,20.2.2.2.1.2,1708,1709,reference,workflow-contract,Identify the JAR containing an extension class
+1110,20.2.2.2.1.3,1709,1709,operation,workflow-contract,Call a Java constructor as an extension function
+1111,20.2.2.2.1.4,1709,1710,operation,workflow-contract,Access static Java members from an expression
+1112,20.2.2.2.1.5,1710,1711,operation,workflow-contract,Access a member on an existing Java object
+1113,20.2.2.2.1.6,1711,1712,reference,workflow-contract,Convert an XPath argument to a Java parameter type
+1114,20.2.2.2.1.7,1712,1712,reference,workflow-contract,Interpret a value returned from Java in XPath
+1116,20.2.2.2.2.1,1714,1715,operation,workflow-contract,Call a .NET constructor as an extension function
+1117,20.2.2.2.2.2,1715,1716,reference,workflow-contract,Match a public static .NET method name exactly
+1118,20.2.2.2.2.3,1716,1717,operation,workflow-contract,Access an instance member on a .NET object
+1119,20.2.2.2.2.4,1717,1718,reference,workflow-contract,Convert XPath arguments for a .NET call
+1120,20.2.2.2.2.5,1718,1718,reference,workflow-contract,Convert values returned by .NET to XPath values
+1121,20.2.2.2.3,1718,1720,reference,workflow-contract,Place an embedded script at the stylesheet's top level
+1123,20.3.1,1721,1721,reference,workflow-contract,Relate document size to in-memory editing requirements
+1124,20.3.2,1721,1722,reference,workflow-contract,Build a document tree and optionally validate on opening
+1125,20.3.3,1722,1722,reference,workflow-contract,Display Unicode text with appropriate font glyphs
+1126,20.3.4,1722,1722,reference,workflow-contract,Distinguish actions that initiate network connections
