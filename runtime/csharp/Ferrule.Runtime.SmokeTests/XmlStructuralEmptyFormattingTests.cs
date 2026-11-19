@@ -18,7 +18,7 @@ internal static partial class Program
         foreach (var declaration in new[] { false, true })
         foreach (var indent in new[] { false, true })
         {
-            var expected = indent ? "<Output>\n</Output>" : "<Output></Output>";
+            var expected = indent ? "<Output/>" : "<Output></Output>";
             if (declaration)
                 expected = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" + (indent ? "\n" : "") + expected;
             StructuralEmptyDocumentBytes("absent-or-empty-rows", StructuralEmptyRowsSchema,
@@ -27,16 +27,16 @@ internal static partial class Program
 
         const string scalar = """{"name":"Output","kind":{"kind":"group","children":[{"name":"Value","xml_optional":true,"kind":{"kind":"scalar","ty":"string"}}]}}""";
         StructuralEmptyDocumentBytes("null-scalar", scalar,
-            Group(Field("Value", Scalar(FerruleValue.Null))), "<Output>\n</Output>", false, true);
+            Group(Field("Value", Scalar(FerruleValue.Null))), "<Output/>", false, true);
         const string mapped = """{"name":"Output","kind":{"kind":"group","children":[{"name":"Row","kind":{"kind":"group","children":[{"name":"Result","kind":{"kind":"scalar","ty":"int"}}]}}]}}""";
         StructuralEmptyDocumentBytes("empty-mapped", mapped,
-            Group(Field("Row", new FerruleMappedSequence([]))), "<Output>\n</Output>", false, true);
+            Group(Field("Row", new FerruleMappedSequence([]))), "<Output/>", false, true);
         const string nested = """{"name":"Outer","kind":{"kind":"group","children":[{"name":"Output","kind":{"kind":"group","children":[{"name":"Row","repeating":true,"kind":{"kind":"group","children":[{"name":"Result","kind":{"kind":"scalar","ty":"int"}}]}}]}}]}}""";
         StructuralEmptyDocumentBytes("nested-empty-rows", nested,
             Group(Field("Output", Group(Field("Row", new FerruleRepeated([]))))),
-            "<Outer>\n  <Output>\n  </Output>\n</Outer>", false, true);
+            "<Outer>\n  <Output/>\n</Outer>", false, true);
         StructuralEmptyDocumentBytes("default-namespace", StructuralEmptyRowsSchema,
-            Group(Field("Row", new FerruleRepeated([]))), "<Output xmlns=\"urn:empty\">\n</Output>",
+            Group(Field("Row", new FerruleRepeated([]))), "<Output xmlns=\"urn:empty\"/>",
             false, true, "urn:empty");
 
         // Null is not a legal repeating container and must retain its original typed refusal.
@@ -81,7 +81,7 @@ internal static partial class Program
             StructuralEmptyDocumentBytes("ordered-empty", ordered,
                 emptyOrdered, "<Root></Root>", false, indent);
             StructuralEmptyDocumentBytes("ordered-empty-without-text", orderedWithoutText,
-                Group(Field("\u001fferrule-xml-mixed-content", new FerruleRepeated([]))), "<Root></Root>", false, indent);
+                Group(Field("\u001fferrule-xml-mixed-content", new FerruleRepeated([]))), indent ? "<Root/>" : "<Root></Root>", false, indent);
             var oneOrdered = Group(Field("#text", Scalar(Text(""))),
                 Field("\u001fferrule-xml-mixed-content", new FerruleRepeated([
                     Group(Field("NodeName", Scalar(Text("Code"))),

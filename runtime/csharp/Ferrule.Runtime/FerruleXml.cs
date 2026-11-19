@@ -975,7 +975,14 @@ public static partial class FerruleXml
                     wroteElement = true;
                 }
             }
-            if (_indent && !wroteOrderedContent && (wroteElement || (textChildren.Length == 0 && schema.RepeatingChoices.Count == 0)))
+            if (_indent && !wroteElement && textChildren.Length == 0)
+            {
+                // Validate the child shapes before choosing the empty spelling.
+                _output.Length--;
+                _output.Append("/>");
+                return;
+            }
+            if (_indent && !wroteOrderedContent && wroteElement)
             {
                 NewLine(outputDepth);
             }
