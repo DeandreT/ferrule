@@ -22,3 +22,4 @@ engine = { workspace = true }
 format-edi = { workspace = true }
 format-json = { workspace = true }
 format-xbrl = { workspace = true }
+format-xlsx = { workspace = true }

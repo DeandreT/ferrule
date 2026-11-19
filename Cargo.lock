@@ -998,6 +998,7 @@ dependencies = [
  "format-json",
  "format-protobuf",
  "format-xbrl",
+ "format-xlsx",
  "ir",
  "mapping",
  "serde_json",
