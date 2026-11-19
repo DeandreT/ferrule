@@ -996,6 +996,7 @@ dependencies = [
  "engine",
  "format-edi",
  "format-json",
+ "format-xlsx",
  "ir",
  "mapping",
  "serde_json",
