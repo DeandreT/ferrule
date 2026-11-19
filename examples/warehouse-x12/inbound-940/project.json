@@ -1,0 +1,105 @@
+{
+  "source_path": "input.x12",
+  "target_path": "order.json",
+  "source": {
+    "name": "WarehouseShippingOrder",
+    "kind": { "kind": "group", "children": [
+      { "name": "ISA", "kind": { "kind": "group", "children": [
+        { "name": "AuthorizationQualifier", "kind": { "kind": "scalar", "ty": "string" } },
+        { "name": "Authorization", "kind": { "kind": "scalar", "ty": "string" } },
+        { "name": "SecurityQualifier", "kind": { "kind": "scalar", "ty": "string" } },
+        { "name": "Security", "kind": { "kind": "scalar", "ty": "string" } },
+        { "name": "SenderQualifier", "kind": { "kind": "scalar", "ty": "string" } },
+        { "name": "Sender", "kind": { "kind": "scalar", "ty": "string" } },
+        { "name": "ReceiverQualifier", "kind": { "kind": "scalar", "ty": "string" } },
+        { "name": "Receiver", "kind": { "kind": "scalar", "ty": "string" } },
+        { "name": "Date", "kind": { "kind": "scalar", "ty": "string" } },
+        { "name": "Time", "kind": { "kind": "scalar", "ty": "string" } },
+        { "name": "StandardsIdentifier", "kind": { "kind": "scalar", "ty": "string" } },
+        { "name": "Version", "kind": { "kind": "scalar", "ty": "string" } },
+        { "name": "ControlNumber", "kind": { "kind": "scalar", "ty": "string" } },
+        { "name": "Acknowledgment", "kind": { "kind": "scalar", "ty": "string" } },
+        { "name": "Usage", "kind": { "kind": "scalar", "ty": "string" } },
+        { "name": "ComponentSeparator", "kind": { "kind": "scalar", "ty": "string" } }
+      ] } },
+      { "name": "GS", "kind": { "kind": "group", "children": [
+        { "name": "GroupCode", "kind": { "kind": "scalar", "ty": "string" } },
+        { "name": "ApplicationSender", "kind": { "kind": "scalar", "ty": "string" } },
+        { "name": "ApplicationReceiver", "kind": { "kind": "scalar", "ty": "string" } },
+        { "name": "Date", "kind": { "kind": "scalar", "ty": "string" } },
+        { "name": "Time", "kind": { "kind": "scalar", "ty": "string" } },
+        { "name": "GroupControl", "kind": { "kind": "scalar", "ty": "string" } },
+        { "name": "Agency", "kind": { "kind": "scalar", "ty": "string" } },
+        { "name": "Release", "kind": { "kind": "scalar", "ty": "string" } }
+      ] } },
+      { "name": "ST", "kind": { "kind": "group", "children": [
+        { "name": "TransactionType", "kind": { "kind": "scalar", "ty": "string" } },
+        { "name": "TransactionControl", "kind": { "kind": "scalar", "ty": "string" } }
+      ] } },
+      { "name": "W05", "kind": { "kind": "group", "children": [
+        { "name": "OrderStatus", "kind": { "kind": "scalar", "ty": "string" } },
+        { "name": "DepositorOrder", "kind": { "kind": "scalar", "ty": "string" } },
+        { "name": "PurchaseOrder", "kind": { "kind": "scalar", "ty": "string" } }
+      ] } },
+      { "name": "OrderDetail", "repeating": true, "kind": { "kind": "group", "children": [
+        { "name": "LX", "kind": { "kind": "group", "children": [
+          { "name": "AssignedLine", "kind": { "kind": "scalar", "ty": "int" } }
+        ] } },
+        { "name": "W01", "kind": { "kind": "group", "children": [
+          { "name": "OrderedQuantity", "kind": { "kind": "scalar", "ty": "int" } },
+          { "name": "Unit", "kind": { "kind": "scalar", "ty": "string" } },
+          { "name": "Upc", "kind": { "kind": "scalar", "ty": "string" } },
+          { "name": "ItemQualifier", "kind": { "kind": "scalar", "ty": "string" } },
+          { "name": "BuyerItem", "kind": { "kind": "scalar", "ty": "string" } }
+        ] } }
+      ] } },
+      { "name": "SE", "kind": { "kind": "group", "children": [
+        { "name": "SegmentCount", "kind": { "kind": "scalar", "ty": "int" } },
+        { "name": "TransactionControl", "kind": { "kind": "scalar", "ty": "string" } }
+      ] } },
+      { "name": "GE", "kind": { "kind": "group", "children": [
+        { "name": "TransactionCount", "kind": { "kind": "scalar", "ty": "int" } },
+        { "name": "GroupControl", "kind": { "kind": "scalar", "ty": "string" } }
+      ] } },
+      { "name": "IEA", "kind": { "kind": "group", "children": [
+        { "name": "GroupCount", "kind": { "kind": "scalar", "ty": "int" } },
+        { "name": "ControlNumber", "kind": { "kind": "scalar", "ty": "string" } }
+      ] } }
+    ] }
+  },
+  "target": {
+    "name": "PickOrder",
+    "kind": { "kind": "group", "children": [
+      { "name": "orderNumber", "kind": { "kind": "scalar", "ty": "string" } },
+      { "name": "purchaseOrder", "kind": { "kind": "scalar", "ty": "string" } },
+      { "name": "lines", "repeating": true, "kind": { "kind": "group", "children": [
+        { "name": "line", "kind": { "kind": "scalar", "ty": "int" } },
+        { "name": "item", "kind": { "kind": "scalar", "ty": "string" } },
+        { "name": "quantity", "kind": { "kind": "scalar", "ty": "int" } },
+        { "name": "uom", "kind": { "kind": "scalar", "ty": "string" } }
+      ] } }
+    ] }
+  },
+  "graph": { "nodes": {
+    "1": { "kind": "source_field", "path": ["W05", "DepositorOrder"] },
+    "2": { "kind": "source_field", "path": ["W05", "PurchaseOrder"] },
+    "3": { "kind": "source_field", "frame": ["OrderDetail"], "path": ["LX", "AssignedLine"] },
+    "4": { "kind": "source_field", "frame": ["OrderDetail"], "path": ["W01", "BuyerItem"] },
+    "5": { "kind": "source_field", "frame": ["OrderDetail"], "path": ["W01", "OrderedQuantity"] },
+    "6": { "kind": "source_field", "frame": ["OrderDetail"], "path": ["W01", "Unit"] }
+  } },
+  "root": {
+    "bindings": [
+      { "target_field": "orderNumber", "node": 1 },
+      { "target_field": "purchaseOrder", "node": 2 }
+    ],
+    "children": [
+      { "target_field": "lines", "source": ["OrderDetail"], "bindings": [
+        { "target_field": "line", "node": 3 },
+        { "target_field": "item", "node": 4 },
+        { "target_field": "quantity", "node": 5 },
+        { "target_field": "uom", "node": 6 }
+      ] }
+    ]
+  }
+}

@@ -1,0 +1,1071 @@
+{
+  "source": {
+    "name": "Shipment",
+    "kind": {
+      "kind": "group",
+      "children": [
+        {
+          "name": "interchange",
+          "kind": {
+            "kind": "scalar",
+            "ty": "string"
+          }
+        },
+        {
+          "name": "groupControl",
+          "kind": {
+            "kind": "scalar",
+            "ty": "string"
+          }
+        },
+        {
+          "name": "transaction",
+          "kind": {
+            "kind": "scalar",
+            "ty": "string"
+          }
+        },
+        {
+          "name": "shipDate",
+          "kind": {
+            "kind": "scalar",
+            "ty": "string"
+          }
+        },
+        {
+          "name": "envelopeDate",
+          "kind": {
+            "kind": "scalar",
+            "ty": "string"
+          }
+        },
+        {
+          "name": "shipTime",
+          "kind": {
+            "kind": "scalar",
+            "ty": "string"
+          }
+        },
+        {
+          "name": "orderRef",
+          "kind": {
+            "kind": "scalar",
+            "ty": "string"
+          }
+        },
+        {
+          "name": "shipmentId",
+          "kind": {
+            "kind": "scalar",
+            "ty": "string"
+          }
+        },
+        {
+          "name": "purchaseOrder",
+          "kind": {
+            "kind": "scalar",
+            "ty": "string"
+          }
+        },
+        {
+          "name": "cartons",
+          "repeating": true,
+          "kind": {
+            "kind": "group",
+            "children": [
+              {
+                "name": "sequence",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "int"
+                }
+              },
+              {
+                "name": "tracking",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "sku",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "ordered",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "int"
+                }
+              },
+              {
+                "name": "shipped",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "int"
+                }
+              },
+              {
+                "name": "uom",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "target": {
+    "name": "Envelope",
+    "kind": {
+      "kind": "group",
+      "children": [
+        {
+          "name": "ISA",
+          "kind": {
+            "kind": "group",
+            "children": [
+              {
+                "name": "ISA01",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "ISA02",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "ISA03",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "ISA04",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "ISA05",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "ISA06",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "ISA07",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "ISA08",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "ISA09",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "ISA10",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "ISA11",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "ISA12",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "ISA13",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "ISA14",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "ISA15",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "ISA16",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "GS",
+          "kind": {
+            "kind": "group",
+            "children": [
+              {
+                "name": "GS01",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "GS02",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "GS03",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "GS04",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "GS05",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "GS06",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "GS07",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "GS08",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "ST",
+          "kind": {
+            "kind": "group",
+            "children": [
+              {
+                "name": "ST01",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "ST02",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "W06",
+          "kind": {
+            "kind": "group",
+            "children": [
+              {
+                "name": "W0601",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "W0602",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "W0603",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "W0604",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "W0605",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "CartonDetail",
+          "repeating": true,
+          "kind": {
+            "kind": "group",
+            "children": [
+              {
+                "name": "LX",
+                "kind": {
+                  "kind": "group",
+                  "children": [
+                    {
+                      "name": "LX01",
+                      "kind": {
+                        "kind": "scalar",
+                        "ty": "string"
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "MAN",
+                "kind": {
+                  "kind": "group",
+                  "children": [
+                    {
+                      "name": "MAN01",
+                      "kind": {
+                        "kind": "scalar",
+                        "ty": "string"
+                      }
+                    },
+                    {
+                      "name": "MAN02",
+                      "kind": {
+                        "kind": "scalar",
+                        "ty": "string"
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "W12",
+                "kind": {
+                  "kind": "group",
+                  "children": [
+                    {
+                      "name": "W1201",
+                      "kind": {
+                        "kind": "scalar",
+                        "ty": "string"
+                      }
+                    },
+                    {
+                      "name": "W1202",
+                      "kind": {
+                        "kind": "scalar",
+                        "ty": "string"
+                      }
+                    },
+                    {
+                      "name": "W1203",
+                      "kind": {
+                        "kind": "scalar",
+                        "ty": "string"
+                      }
+                    },
+                    {
+                      "name": "W1204",
+                      "kind": {
+                        "kind": "scalar",
+                        "ty": "string"
+                      }
+                    },
+                    {
+                      "name": "W1205",
+                      "kind": {
+                        "kind": "scalar",
+                        "ty": "string"
+                      }
+                    },
+                    {
+                      "name": "W1206",
+                      "kind": {
+                        "kind": "scalar",
+                        "ty": "string"
+                      }
+                    },
+                    {
+                      "name": "W1207",
+                      "kind": {
+                        "kind": "scalar",
+                        "ty": "string"
+                      }
+                    },
+                    {
+                      "name": "W1208",
+                      "kind": {
+                        "kind": "scalar",
+                        "ty": "string"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "SE",
+          "kind": {
+            "kind": "group",
+            "children": [
+              {
+                "name": "SE01",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "SE02",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "GE",
+          "kind": {
+            "kind": "group",
+            "children": [
+              {
+                "name": "GE01",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "GE02",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "IEA",
+          "kind": {
+            "kind": "group",
+            "children": [
+              {
+                "name": "IEA01",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              },
+              {
+                "name": "IEA02",
+                "kind": {
+                  "kind": "scalar",
+                  "ty": "string"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "source_path": "shipment.json",
+  "target_path": "actual.945.x12",
+  "source_options": {
+    "json_document": true
+  },
+  "target_options": {
+    "edi_kind": "x12"
+  },
+  "graph": {
+    "nodes": {
+      "1": {
+        "kind": "aggregate",
+        "function": "count",
+        "collection": [
+          "cartons"
+        ],
+        "value": []
+      },
+      "2": {
+        "kind": "const",
+        "value": "00"
+      },
+      "3": {
+        "kind": "const",
+        "value": "          "
+      },
+      "4": {
+        "kind": "const",
+        "value": "ZZ"
+      },
+      "5": {
+        "kind": "const",
+        "value": "MORROWDEPOT    "
+      },
+      "6": {
+        "kind": "const",
+        "value": "SKYVALE        "
+      },
+      "7": {
+        "kind": "source_field",
+        "path": [
+          "envelopeDate"
+        ]
+      },
+      "8": {
+        "kind": "source_field",
+        "path": [
+          "shipTime"
+        ]
+      },
+      "9": {
+        "kind": "const",
+        "value": "U"
+      },
+      "10": {
+        "kind": "const",
+        "value": "00401"
+      },
+      "11": {
+        "kind": "source_field",
+        "path": [
+          "interchange"
+        ]
+      },
+      "12": {
+        "kind": "const",
+        "value": "0"
+      },
+      "13": {
+        "kind": "const",
+        "value": "T"
+      },
+      "14": {
+        "kind": "const",
+        "value": ":"
+      },
+      "15": {
+        "kind": "const",
+        "value": "SW"
+      },
+      "16": {
+        "kind": "const",
+        "value": "MORROWDEPOT"
+      },
+      "17": {
+        "kind": "const",
+        "value": "SKYVALE"
+      },
+      "18": {
+        "kind": "source_field",
+        "path": [
+          "shipDate"
+        ]
+      },
+      "19": {
+        "kind": "source_field",
+        "path": [
+          "groupControl"
+        ]
+      },
+      "20": {
+        "kind": "const",
+        "value": "X"
+      },
+      "21": {
+        "kind": "const",
+        "value": "004010"
+      },
+      "22": {
+        "kind": "const",
+        "value": "945"
+      },
+      "23": {
+        "kind": "source_field",
+        "path": [
+          "transaction"
+        ]
+      },
+      "24": {
+        "kind": "const",
+        "value": "F"
+      },
+      "25": {
+        "kind": "source_field",
+        "path": [
+          "orderRef"
+        ]
+      },
+      "26": {
+        "kind": "source_field",
+        "path": [
+          "shipmentId"
+        ]
+      },
+      "27": {
+        "kind": "source_field",
+        "path": [
+          "purchaseOrder"
+        ]
+      },
+      "28": {
+        "kind": "source_field",
+        "path": [
+          "sequence"
+        ],
+        "frame": [
+          "cartons"
+        ]
+      },
+      "29": {
+        "kind": "const",
+        "value": "CP"
+      },
+      "30": {
+        "kind": "source_field",
+        "path": [
+          "tracking"
+        ],
+        "frame": [
+          "cartons"
+        ]
+      },
+      "31": {
+        "kind": "const",
+        "value": "CC"
+      },
+      "32": {
+        "kind": "source_field",
+        "path": [
+          "ordered"
+        ],
+        "frame": [
+          "cartons"
+        ]
+      },
+      "33": {
+        "kind": "source_field",
+        "path": [
+          "shipped"
+        ],
+        "frame": [
+          "cartons"
+        ]
+      },
+      "34": {
+        "kind": "source_field",
+        "path": [
+          "uom"
+        ],
+        "frame": [
+          "cartons"
+        ]
+      },
+      "35": {
+        "kind": "const",
+        "value": "SK"
+      },
+      "36": {
+        "kind": "source_field",
+        "path": [
+          "sku"
+        ],
+        "frame": [
+          "cartons"
+        ]
+      },
+      "37": {
+        "kind": "const",
+        "value": 3
+      },
+      "38": {
+        "kind": "call",
+        "function": "multiply",
+        "args": [
+          1,
+          37
+        ]
+      },
+      "39": {
+        "kind": "call",
+        "function": "add",
+        "args": [
+          37,
+          38
+        ]
+      },
+      "40": {
+        "kind": "const",
+        "value": "1"
+      }
+    }
+  },
+  "root": {
+    "target_field": "",
+    "source": null,
+    "filter": null,
+    "bindings": [],
+    "children": [
+      {
+        "target_field": "ISA",
+        "source": null,
+        "filter": null,
+        "bindings": [
+          {
+            "target_field": "ISA01",
+            "node": 2
+          },
+          {
+            "target_field": "ISA02",
+            "node": 3
+          },
+          {
+            "target_field": "ISA03",
+            "node": 2
+          },
+          {
+            "target_field": "ISA04",
+            "node": 3
+          },
+          {
+            "target_field": "ISA05",
+            "node": 4
+          },
+          {
+            "target_field": "ISA06",
+            "node": 5
+          },
+          {
+            "target_field": "ISA07",
+            "node": 4
+          },
+          {
+            "target_field": "ISA08",
+            "node": 6
+          },
+          {
+            "target_field": "ISA09",
+            "node": 7
+          },
+          {
+            "target_field": "ISA10",
+            "node": 8
+          },
+          {
+            "target_field": "ISA11",
+            "node": 9
+          },
+          {
+            "target_field": "ISA12",
+            "node": 10
+          },
+          {
+            "target_field": "ISA13",
+            "node": 11
+          },
+          {
+            "target_field": "ISA14",
+            "node": 12
+          },
+          {
+            "target_field": "ISA15",
+            "node": 13
+          },
+          {
+            "target_field": "ISA16",
+            "node": 14
+          }
+        ],
+        "children": []
+      },
+      {
+        "target_field": "GS",
+        "source": null,
+        "filter": null,
+        "bindings": [
+          {
+            "target_field": "GS01",
+            "node": 15
+          },
+          {
+            "target_field": "GS02",
+            "node": 16
+          },
+          {
+            "target_field": "GS03",
+            "node": 17
+          },
+          {
+            "target_field": "GS04",
+            "node": 18
+          },
+          {
+            "target_field": "GS05",
+            "node": 8
+          },
+          {
+            "target_field": "GS06",
+            "node": 19
+          },
+          {
+            "target_field": "GS07",
+            "node": 20
+          },
+          {
+            "target_field": "GS08",
+            "node": 21
+          }
+        ],
+        "children": []
+      },
+      {
+        "target_field": "ST",
+        "source": null,
+        "filter": null,
+        "bindings": [
+          {
+            "target_field": "ST01",
+            "node": 22
+          },
+          {
+            "target_field": "ST02",
+            "node": 23
+          }
+        ],
+        "children": []
+      },
+      {
+        "target_field": "W06",
+        "source": null,
+        "filter": null,
+        "bindings": [
+          {
+            "target_field": "W0601",
+            "node": 24
+          },
+          {
+            "target_field": "W0602",
+            "node": 25
+          },
+          {
+            "target_field": "W0603",
+            "node": 18
+          },
+          {
+            "target_field": "W0604",
+            "node": 26
+          },
+          {
+            "target_field": "W0605",
+            "node": 27
+          }
+        ],
+        "children": []
+      },
+      {
+        "target_field": "CartonDetail",
+        "source": [
+          "cartons"
+        ],
+        "filter": null,
+        "bindings": [],
+        "children": [
+          {
+            "target_field": "LX",
+            "source": null,
+            "filter": null,
+            "bindings": [
+              {
+                "target_field": "LX01",
+                "node": 28
+              }
+            ],
+            "children": []
+          },
+          {
+            "target_field": "MAN",
+            "source": null,
+            "filter": null,
+            "bindings": [
+              {
+                "target_field": "MAN01",
+                "node": 29
+              },
+              {
+                "target_field": "MAN02",
+                "node": 30
+              }
+            ],
+            "children": []
+          },
+          {
+            "target_field": "W12",
+            "source": null,
+            "filter": null,
+            "bindings": [
+              {
+                "target_field": "W1201",
+                "node": 31
+              },
+              {
+                "target_field": "W1202",
+                "node": 32
+              },
+              {
+                "target_field": "W1203",
+                "node": 33
+              },
+              {
+                "target_field": "W1205",
+                "node": 34
+              },
+              {
+                "target_field": "W1207",
+                "node": 35
+              },
+              {
+                "target_field": "W1208",
+                "node": 36
+              }
+            ],
+            "children": []
+          }
+        ]
+      },
+      {
+        "target_field": "SE",
+        "source": null,
+        "filter": null,
+        "bindings": [
+          {
+            "target_field": "SE01",
+            "node": 39
+          },
+          {
+            "target_field": "SE02",
+            "node": 23
+          }
+        ],
+        "children": []
+      },
+      {
+        "target_field": "GE",
+        "source": null,
+        "filter": null,
+        "bindings": [
+          {
+            "target_field": "GE01",
+            "node": 40
+          },
+          {
+            "target_field": "GE02",
+            "node": 19
+          }
+        ],
+        "children": []
+      },
+      {
+        "target_field": "IEA",
+        "source": null,
+        "filter": null,
+        "bindings": [
+          {
+            "target_field": "IEA01",
+            "node": 40
+          },
+          {
+            "target_field": "IEA02",
+            "node": 11
+          }
+        ],
+        "children": []
+      }
+    ]
+  }
+}
