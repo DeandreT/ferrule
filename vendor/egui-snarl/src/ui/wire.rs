@@ -1,7 +1,9 @@
 use ahash::HashMap;
 use egui::{Context, Id, Pos2, Rect, Shape, Stroke, Ui, cache::CacheTrait, pos2};
 
-use crate::{InPinId, OutPinId};
+use crate::{InPinId, NodeId, OutPinId};
+
+mod routing;
 
 const MAX_CURVE_SAMPLES: usize = 100;
 
@@ -228,6 +230,88 @@ fn wire_bezier_3(frame_size: f32, from: Pos2, to: Pos2) -> [Pos2; 4] {
 }
 
 #[allow(clippy::too_many_arguments)]
+pub(super) fn connected_detour(
+    ctx: &Context,
+    wire: WireId,
+    frame_size: f32,
+    upscale: bool,
+    downscale: bool,
+    from: Pos2,
+    to: Pos2,
+    threshold: f32,
+    style: WireStyle,
+    cards: &[(NodeId, Rect)],
+    clearance: f32,
+    lanes: Option<&mut Vec<routing::Lane>>,
+) -> Option<Vec<Pos2>> {
+    let WireId::Connected {
+        out_pin, in_pin, ..
+    } = wire
+    else {
+        return None;
+    };
+    let args = WireArgs {
+        frame_size: adjust_frame_size(frame_size, upscale, downscale, from, to),
+        from,
+        to,
+        radius: if let WireStyle::AxisAligned { corner_radius } = style {
+            corner_radius
+        } else {
+            0.0
+        },
+    };
+    let relevant = |bounds: Rect| {
+        lanes.is_some()
+            || cards.iter().any(|&(id, rect)| {
+                id != out_pin.node && id != in_pin.node && bounds.expand(clearance).intersects(rect)
+            })
+    };
+    // Test the configured curve as actually painted, not the chord between pins.
+    let line = match style {
+        WireStyle::Line if relevant(Rect::from_two_pos(from, to)) => vec![from, to],
+        WireStyle::Line => return None,
+        _ => ctx.memory_mut(|m| {
+            let cache = m.caches.cache::<WiresCache>();
+            match style {
+                WireStyle::Bezier3 => {
+                    let curve = cache.get_3(wire, args);
+                    relevant(curve.aabb).then(|| curve.line(threshold))
+                }
+                WireStyle::Bezier5 => {
+                    let curve = cache.get_5(wire, args);
+                    relevant(curve.aabb).then(|| curve.line(threshold))
+                }
+                WireStyle::AxisAligned { .. } => {
+                    let curve = cache.get_aa(wire, args);
+                    relevant(curve.aawire.aabb).then(|| curve.line(threshold))
+                }
+                WireStyle::Line => unreachable!(),
+            }
+        })?,
+    };
+    let node_route = routing::detour(&line, cards, out_pin.node, in_pin.node, clearance, &[]);
+    let Some(lanes) = lanes else {
+        return node_route;
+    };
+    let preferred = node_route.unwrap_or(line);
+    let route = if lanes.is_empty() {
+        preferred
+    } else {
+        routing::detour(
+            &preferred,
+            cards,
+            out_pin.node,
+            in_pin.node,
+            clearance,
+            lanes,
+        )
+        .unwrap_or(preferred)
+    };
+    lanes.push(routing::Lane::new(&route));
+    Some(route)
+}
+
+#[allow(clippy::too_many_arguments)]
 pub fn draw_wire(
     ui: &Ui,
     wire: WireId,
@@ -240,6 +324,7 @@ pub fn draw_wire(
     mut stroke: Stroke,
     threshold: f32,
     style: WireStyle,
+    detour: Option<Vec<Pos2>>,
 ) {
     if !ui.is_visible() {
         return;
@@ -250,6 +335,12 @@ pub fn draw_wire(
         stroke.width = 1.0;
     }
 
+    if let Some(points) = detour {
+        if ui.is_rect_visible(Rect::from_points(&points).expand(stroke.width)) {
+            shapes.push(Shape::line(points, stroke));
+        }
+        return;
+    }
     let frame_size = adjust_frame_size(frame_size, upscale, downscale, from, to);
 
     let args = WireArgs {
@@ -296,7 +387,11 @@ pub fn hit_wire(
     pos: Pos2,
     hit_threshold: f32,
     style: WireStyle,
+    detour: Option<&[Pos2]>,
 ) -> bool {
+    if let Some(points) = detour {
+        return routing::hit(points, pos, hit_threshold);
+    }
     let frame_size = adjust_frame_size(frame_size, upscale, downscale, from, to);
 
     let args = WireArgs {

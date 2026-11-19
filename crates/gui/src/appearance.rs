@@ -188,6 +188,7 @@ pub struct WireAppearance {
     frame_size: f32,
     frame_adjustment: WireFrameAdjustment,
     color_mode: WireColorMode,
+    avoid_other_wires: bool,
 }
 
 impl WireAppearance {
@@ -211,6 +212,7 @@ impl WireAppearance {
             frame_size,
             frame_adjustment,
             color_mode: WireColorMode::Theme,
+            avoid_other_wires: false,
         })
     }
 
@@ -232,6 +234,14 @@ impl WireAppearance {
 
     pub const fn color_mode(self) -> WireColorMode {
         self.color_mode
+    }
+
+    pub const fn avoid_other_wires(self) -> bool {
+        self.avoid_other_wires
+    }
+
+    pub fn set_avoid_other_wires(&mut self, avoid: bool) {
+        self.avoid_other_wires = avoid;
     }
 
     pub fn set_geometry(&mut self, geometry: WireGeometry) -> Result<(), AppearanceError> {
@@ -274,6 +284,7 @@ impl Default for WireAppearance {
             frame_size: 80.0,
             frame_adjustment: WireFrameAdjustment::DownscaleNearby,
             color_mode: WireColorMode::Theme,
+            avoid_other_wires: false,
         }
     }
 }
@@ -291,6 +302,7 @@ impl<'de> Deserialize<'de> for WireAppearance {
             frame_size: f32,
             frame_adjustment: WireFrameAdjustment,
             color_mode: WireColorMode,
+            avoid_other_wires: bool,
         }
 
         impl Default for WireDocument {
@@ -302,6 +314,7 @@ impl<'de> Deserialize<'de> for WireAppearance {
                     frame_size: wire.frame_size,
                     frame_adjustment: wire.frame_adjustment,
                     color_mode: wire.color_mode,
+                    avoid_other_wires: wire.avoid_other_wires,
                 }
             }
         }
@@ -315,6 +328,7 @@ impl<'de> Deserialize<'de> for WireAppearance {
         )
         .map_err(serde::de::Error::custom)?;
         wire.set_color_mode(document.color_mode);
+        wire.set_avoid_other_wires(document.avoid_other_wires);
         Ok(wire)
     }
 }
@@ -595,6 +609,7 @@ impl EditorAppearance {
                 frame_size: 80.0,
                 frame_adjustment: WireFrameAdjustment::DownscaleNearby,
                 color_mode: WireColorMode::Theme,
+                avoid_other_wires: false,
             },
             canvas: CanvasAppearance {
                 pattern: CanvasPattern::Grid,
@@ -656,6 +671,7 @@ impl EditorAppearance {
         style.upscale_wire_frame = Some(upscale);
         style.downscale_wire_frame = Some(downscale);
         style.wire_style = Some(self.wire.geometry.to_snarl());
+        style.avoid_other_wires = Some(self.wire.avoid_other_wires);
         style.pin_fill = Some(self.colors.wire.to_egui());
         style.pin_stroke = Some(Stroke::new(1.0, self.colors.node_border.to_egui()));
         style.pin_placement = Some(PinPlacement::Edge);
@@ -875,6 +891,19 @@ mod tests {
                 serde_json::from_str::<CanvasDensity>(serialized).unwrap(),
                 density
             );
+        }
+    }
+
+    #[test]
+    fn wire_avoidance_is_opt_in_and_survives_preference_reload() {
+        for (json, enabled) in [
+            (r#"{"wire":{"width":3.5}}"#, false),
+            (r#"{"wire":{"avoid_other_wires":true}}"#, true),
+        ] {
+            let appearance: EditorAppearance = serde_json::from_str(json).unwrap();
+            let reloaded: EditorAppearance =
+                serde_json::from_str(&serde_json::to_string(&appearance).unwrap()).unwrap();
+            assert_eq!(reloaded.to_snarl_style().avoid_other_wires, Some(enabled));
         }
     }
 
