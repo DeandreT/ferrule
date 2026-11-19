@@ -250,6 +250,14 @@ fn show_wires(
                 }
             });
     });
+    let mut nodes = wire.avoid_nodes();
+    if ui
+        .checkbox(&mut nodes, "Avoid nodes")
+        .on_hover_text("Route connections around intervening node cards.")
+        .changed()
+    {
+        wire.set_avoid_nodes(nodes);
+    }
     let mut avoid = wire.avoid_other_wires();
     if ui
         .checkbox(&mut avoid, "Avoid other wires")
