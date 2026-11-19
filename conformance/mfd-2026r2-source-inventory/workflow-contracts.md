@@ -81,19 +81,22 @@ debugging, generated Rust/C#, or a vendor execution backend.
   defaults and failures, generated-wrapper completeness and the release
   binding of the separate online COM catalog retain their
   [existing dispositions](README.md). Page coverage does not close those gaps.
-- **One unresolved boundary inside this cohort:** the floating Split once
+- **Two unresolved FlexText boundaries:** the floating Split once
   description (209, p. 406) defines the second fragment as the text *after*
   the separator, but also says the first container remains empty if the
   separator is first **or last**. For `AB:` those descriptions disagree about
-  the leading fragment. The catalog tests the interior `A:B:C` case only.
-  Keep trailing-separator behavior open pending clarification or a qualified run.
-- **Independent editorial and ledger review is pending** under
-  [#820](https://github.com/DeandreT/ferrule/issues/820), coordinated through
-  [#89](https://github.com/DeandreT/ferrule/issues/89). Recheck the
-  family examples against the **whole** section, particularly defaults,
-  cardinality, failures and backend exceptions. Record omitted operations,
-  overbroad conclusions, or a better existing owner by `(page_index, locator)`.
-  No independent sign-off or execution receipt accompanies these cases.
+  leading fragment. The line-based split (210, pp. 407–408) likewise describes
+  both keeping preceding lines and leaving the first container empty when the
+  matching line is last. For two lines, `pre` followed by `x#1`, those rules
+  disagree about `pre`. The interior examples avoid both ambiguities.
+- **Independent review:** 55 of 358 cases (47 topics, 11 families) were
+  compared with their source sections. That review narrowed the XML input
+  duplication, generated Java path, FlexText split and PDF preview examples.
+  All 576 workflow context references resolved in both directions. Across
+  789 canonical records, 6,228 of 6,312 vendor-backend assessments remain
+  unassessed; the other 84 are marked not applicable. The sample does not
+  establish editorial coverage of the other 303 cases. Track remaining
+  review in [#820](https://github.com/DeandreT/ferrule/issues/820);
   `inventory_complete` remains false.
 
 Run `python verify_context_leaf_review.py` here to check membership, depth,
