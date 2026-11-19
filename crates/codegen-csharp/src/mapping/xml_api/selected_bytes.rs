@@ -32,7 +32,14 @@ pub(super) fn render(
     public static SelectedXmlBytesTargetOutput ExecuteXmlBytesSelectedTargetWithHost(byte[] source,
         global::Ferrule.Runtime.FerruleTargetSelection selection,
         global::System.Collections.Generic.IReadOnlyList<NamedXmlBytesInput> extraSources,
-        global::Ferrule.Runtime.FerruleExecutionContext? executionContext = null)
+        global::Ferrule.Runtime.FerruleExecutionContext? executionContext = null) =>
+        ExecuteXmlBytesSelectedTargetWithHost(source, selection, extraSources, executionContext, global::Ferrule.Runtime.FerruleXmlProjectionLimits.Default);
+
+    public static SelectedXmlBytesTargetOutput ExecuteXmlBytesSelectedTargetWithHost(byte[] source,
+        global::Ferrule.Runtime.FerruleTargetSelection selection,
+        global::System.Collections.Generic.IReadOnlyList<NamedXmlBytesInput> extraSources,
+        global::Ferrule.Runtime.FerruleExecutionContext? executionContext,
+        global::Ferrule.Runtime.FerruleXmlProjectionLimits projectionLimits)
     {
         global::System.ArgumentNullException.ThrowIfNull(source);
         global::System.ArgumentNullException.ThrowIfNull(selection);
@@ -96,14 +103,14 @@ pub(super) fn render(
         for (var i = 0; i < expected.Length; i++)
             budget.Charge(SelectedXmlInputOwner(expected[i]), extraSources[indices[i]].Document.LongLength);
         global::Ferrule.Runtime.FerruleInstance primary;
-        try { primary = global::Ferrule.Runtime.FerruleXml.ParseStructuredEmbeddedBytes(SourceXmlSchema, source); }
+        try { primary = global::Ferrule.Runtime.FerruleXml.ParseStructuredEmbeddedBytes(SourceXmlSchema, source, projectionLimits); }
         catch (global::Ferrule.Runtime.FerruleXmlBoundaryException error)
         { throw global::Ferrule.Runtime.FerruleXmlExecutionException.ForInput(primaryOwner, error); }
         var fields = new global::Ferrule.Runtime.FerruleField[expected.Length];
         for (var i = 0; i < expected.Length; i++)
         {
             var name = expected[i];
-            try { fields[i] = new(name, global::Ferrule.Runtime.FerruleXml.ParseStructuredEmbeddedBytes(SelectedXmlInputSchema(name), extraSources[indices[i]].Document)); }
+            try { fields[i] = new(name, global::Ferrule.Runtime.FerruleXml.ParseStructuredEmbeddedBytes(SelectedXmlInputSchema(name), extraSources[indices[i]].Document, projectionLimits)); }
             catch (global::Ferrule.Runtime.FerruleXmlBoundaryException error)
             { throw global::Ferrule.Runtime.FerruleXmlExecutionException.ForInput(SelectedXmlInputOwner(name), error); }
         }
