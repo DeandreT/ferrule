@@ -14,6 +14,8 @@ use rust_xlsxwriter::{Workbook, Worksheet};
 use thiserror::Error;
 
 mod bounded;
+mod flat_package;
+pub use flat_package::{from_flat_package, to_flat_package};
 mod composite;
 mod grid;
 mod hierarchical;
