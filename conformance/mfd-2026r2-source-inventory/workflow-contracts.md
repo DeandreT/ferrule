@@ -66,9 +66,8 @@ debugging, generated Rust/C#, or a vendor execution backend.
 - **Source access:** all 339 topic bodies were available in the pinned
   installer manual. The catalog cites a bounded expectation even for settings
   and reference topics. The number of further independently testable
-  operations *within* these bodies is unknown. The 64 topics without broad
-  owners still need an ownership decision; see `joins` rather than inferring
-  an owner from adjacent topics.
+  operations *within* these bodies is unknown. The [ownership decisions](workflow-owners.md)
+  account for all 64 topics that lacked a broad owner in the frozen contexts.
 - **Limits of the cited evidence:** driver versions in the connection examples
   (131–151) are not version-support intervals. The remote service tutorials
   (794–797) do not establish current endpoint or authorization behavior.
@@ -94,8 +93,8 @@ debugging, generated Rust/C#, or a vendor execution backend.
   clarified settings and outcomes for chained previews, SQL result sets,
   FlexText assembly, EDI separators and debugger output, among others.
   All 576 workflow context references resolved in both directions. Across
-  789 canonical records, 6,228 of 6,312 vendor-backend assessments remain
-  unassessed; the other 84 are marked not applicable. Additional operations
+  the 789 canonical records at that review, 6,228 of 6,312 vendor-backend assessments were
+  unassessed; the other 84 were marked not applicable. Additional operations
   within these topics and their applicability are tracked in
   [#820](https://github.com/DeandreT/ferrule/issues/820);
   `inventory_complete` remains false.

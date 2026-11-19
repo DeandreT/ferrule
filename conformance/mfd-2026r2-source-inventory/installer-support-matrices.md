@@ -53,7 +53,7 @@ on all five table pages. The PDF is not needed for ordinary catalog checks.
 
 ## Open inventory work
 
-The canonical ledger has 789 records. All 752 records added after the original
+At the matrix review the canonical ledger had 789 records. All 752 records added after the original
 37 have a corresponding canonical ID in `source_units` in the
 [source companion](../mfd-2026r2.source-contracts.json): 576 API records,
 67 existing-ID enrichments and 109 appendix records. Their empty execution
