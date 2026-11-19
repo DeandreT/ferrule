@@ -136,6 +136,9 @@ fn output_values(instance: &Instance) -> Vec<i64> {
 }
 
 fn expected_xml(values: &[i64], empty_group: bool) -> Vec<u8> {
+    if values.is_empty() && !empty_group {
+        return b"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Target/>".to_vec();
+    }
     let mut xml = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Target>");
     for value in values {
         xml.push_str(&format!(
@@ -143,7 +146,7 @@ fn expected_xml(values: &[i64], empty_group: bool) -> Vec<u8> {
         ));
     }
     if empty_group {
-        xml.push_str("\n  <Entry>\n  </Entry>");
+        xml.push_str("\n  <Entry/>");
     }
     xml.push('\n');
     xml.push_str("</Target>");

@@ -620,8 +620,8 @@ fn mixed_content_items(
         .collect()
 }
 
-pub(super) fn write_generic_element<W: std::io::Write>(
-    writer: &mut Writer<W>,
+pub(super) fn write_generic_element(
+    writer: &mut Writer<&mut Vec<u8>>,
     schema: &SchemaNode,
     root_schema: &SchemaNode,
     instance: &Instance,
