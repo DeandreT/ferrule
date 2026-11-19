@@ -79,7 +79,13 @@ pub(super) fn render(
         } else {
             parser
         };
-        let primary_arguments = if observed_primary { ", true, true" } else { "" };
+        let bounded = bytes && !observed_primary && !has_dynamic;
+        let limits_arg = if bounded { ", projectionLimits" } else { "" };
+        let primary_arguments = if observed_primary {
+            ", true, true"
+        } else {
+            limits_arg
+        };
         let parse_helper = if bytes {
             "ParseXmlBytesInputs"
         } else {
@@ -115,11 +121,25 @@ pub(super) fn render(
             } else {
                 "extraSources".into()
             };
+            let limits_overload = if bounded && context {
+                format!(
+                    " =>\n        {stem}OutputsWithSources(source, extraSources, executionContext, global::Ferrule.Runtime.FerruleXmlProjectionLimits.Default);\n\n    public static {result} {stem}OutputsWithSources({ty} source, global::System.Collections.Generic.IReadOnlyList<{input}> extraSources{context_arg}, global::Ferrule.Runtime.FerruleXmlProjectionLimits projectionLimits)"
+                )
+            } else {
+                String::new()
+            };
+            let parse_limits = if bounded && context {
+                ", projectionLimits"
+            } else if bounded {
+                ", global::Ferrule.Runtime.FerruleXmlProjectionLimits.Default"
+            } else {
+                ""
+            };
             output.push_str(&format!(r#"
     public static {result} {stem}OutputsWithSources({ty} source,
-        global::System.Collections.Generic.IReadOnlyList<{input}> extraSources{context_arg})
+        global::System.Collections.Generic.IReadOnlyList<{input}> extraSources{context_arg}){limits_overload}
     {{
-{require_context}{guard}        var parsed = {parse_helper}(source, {parse_sources});
+{require_context}{guard}        var parsed = {parse_helper}(source, {parse_sources}{parse_limits});
         ExecutionOutputs mapped;
         try {{ mapped = ExecuteOutputsWithSources(parsed.Primary, parsed.Inputs{context_call}); }}
         catch (global::Ferrule.Runtime.FerruleRuntimeException error)
@@ -150,10 +170,15 @@ pub(super) fn render(
     }}
 "#));
         }
+        let limits_param = if bounded {
+            ", global::Ferrule.Runtime.FerruleXmlProjectionLimits projectionLimits"
+        } else {
+            ""
+        };
         output.push_str(&format!(r#"
     private static (global::Ferrule.Runtime.FerruleInstance Primary,
         global::System.Collections.Generic.IReadOnlyList<NamedInput> Inputs{budget_return_type}) {parse_helper}(
-        {ty} source, global::System.Collections.Generic.IReadOnlyList<{input}> extraSources)
+        {ty} source, global::System.Collections.Generic.IReadOnlyList<{input}> extraSources{limits_param})
     {{
         global::System.ArgumentNullException.ThrowIfNull(source);
         global::System.ArgumentNullException.ThrowIfNull(extraSources);
@@ -199,7 +224,7 @@ pub(super) fn render(
         }
         output.push_str(&format!("        global::Ferrule.Runtime.FerruleInstance primary;\n        try {{ primary = global::Ferrule.Runtime.FerruleXml.{primary_parser}(SourceXmlSchema, source{primary_arguments}); }}\n        catch (global::Ferrule.Runtime.FerruleXmlBoundaryException error)\n        {{ throw global::Ferrule.Runtime.FerruleXmlExecutionException.ForInput(primaryOwner, error); }}\n        var parsedInputs = new global::System.Collections.Generic.List<NamedInput>({});\n", static_sources.len()));
         for (index, source) in &static_sources {
-            output.push_str(&format!("        try {{ parsedInputs.Add(new NamedInput({}, global::Ferrule.Runtime.FerruleXml.{parser}(ExtraXmlInputSchema_{index}, input_{index}))); }}\n        catch (global::Ferrule.Runtime.FerruleXmlBoundaryException error)\n        {{ throw global::Ferrule.Runtime.FerruleXmlExecutionException.ForInput(owner_{index}, error); }}\n", literal::string(&source.name)));
+            output.push_str(&format!("        try {{ parsedInputs.Add(new NamedInput({}, global::Ferrule.Runtime.FerruleXml.{parser}(ExtraXmlInputSchema_{index}, input_{index}{limits_arg}))); }}\n        catch (global::Ferrule.Runtime.FerruleXmlBoundaryException error)\n        {{ throw global::Ferrule.Runtime.FerruleXmlExecutionException.ForInput(owner_{index}, error); }}\n", literal::string(&source.name)));
         }
         output.push_str(&format!(
             "        return (primary, parsedInputs{budget_return_value});\n    }}\n"

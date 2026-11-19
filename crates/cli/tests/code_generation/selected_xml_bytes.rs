@@ -729,3 +729,49 @@ fn selected_xml_bytes_rust_native_parity() -> TestResult<()> {
 fn selected_xml_bytes_csharp_native_parity() -> TestResult<()> {
     exercise("csharp")
 }
+
+#[test]
+fn csharp_static_xml_projection_limits() -> TestResult<()> {
+    let dir = TempDir::new("xml-projection-limits")?;
+    let schema = SchemaNode::group("Rows", vec![string("Value"), string("Item").repeating()]);
+    let mut p = project("good");
+    p.source = schema.clone();
+    p.extra_sources.truncate(1);
+    p.extra_sources[0].schema = schema;
+    p.target = SchemaNode::group("Result", vec![string("Value")]);
+    p.graph.nodes = BTreeMap::from([(1, field(&["Value"])), (2, field(&["rates", "Value"]))]);
+    p.root = Scope {
+        target_field: "Result".into(),
+        bindings: vec![bind("Value", 1)],
+        ..Default::default()
+    };
+    p.extra_targets.truncate(1);
+    p.extra_targets[0].root.bindings = vec![bind("Value", 2)];
+    let generated = dir.0.join("generated");
+    write_artifacts(&generated, codegen_csharp::emit(&codegen::lower(&p)?)?)?;
+    let host = dir.0.join("host");
+    std::fs::create_dir(&host)?;
+    std::fs::write(
+        host.join("Program.cs"),
+        include_str!("selected_xml_bytes/projection-limits.cs.txt"),
+    )?;
+    std::fs::write(
+        host.join("Host.csproj"),
+        "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><TreatWarningsAsErrors>true</TreatWarningsAsErrors></PropertyGroup><ItemGroup><ProjectReference Include=\"../generated/Ferrule.Generated.csproj\" /></ItemGroup></Project>",
+    )?;
+    std::fs::write(
+        dir.0.join("NuGet.Config"),
+        "<configuration><packageSources><clear /></packageSources></configuration>",
+    )?;
+    let mut cmd = dotnet_command(&dir.0);
+    cmd.args([
+        "run",
+        "--project",
+        "host/Host.csproj",
+        "-p:UseSharedCompilation=false",
+        "-p:DisableTransitiveFrameworkReferenceDownloads=true",
+    ])
+    .current_dir(&dir.0);
+    recorded(&mut cmd, &dir.0, "projection-limits")?;
+    Ok(())
+}

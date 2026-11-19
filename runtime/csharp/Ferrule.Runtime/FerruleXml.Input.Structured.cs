@@ -15,6 +15,27 @@ public sealed class FerruleXmlStructuredResourceException : Exception
     { Resource = resource; ObservedCount = observedCount; Limit = limit; }
 }
 
+/// <summary>Inclusive per-document limits for the prospective structured projection walk.</summary>
+public sealed class FerruleXmlProjectionLimits
+{
+    public static FerruleXmlProjectionLimits Default { get; } = new();
+    public int InstanceNodes { get; }
+    public long FieldAndStringBytes { get; }
+    public long ProjectionWork { get; }
+
+    public FerruleXmlProjectionLimits(int instanceNodes = FerruleXml.MaximumStructuredInstanceNodes,
+        long fieldAndStringBytes = FerruleXml.MaximumStructuredFieldAndStringBytes,
+        long projectionWork = FerruleXml.MaximumStructuredProjectionWork)
+    {
+        if (instanceNodes is <= 0 or > FerruleXml.MaximumStructuredInstanceNodes) throw new ArgumentOutOfRangeException(nameof(instanceNodes));
+        if (fieldAndStringBytes is <= 0 or > FerruleXml.MaximumStructuredFieldAndStringBytes) throw new ArgumentOutOfRangeException(nameof(fieldAndStringBytes));
+        if (projectionWork is <= 0 or > FerruleXml.MaximumStructuredProjectionWork) throw new ArgumentOutOfRangeException(nameof(projectionWork));
+        InstanceNodes = instanceNodes;
+        FieldAndStringBytes = fieldAndStringBytes;
+        ProjectionWork = projectionWork;
+    }
+}
+
 public static partial class FerruleXml
 {
     // Acceptance/work limits for the structured profile; these are not RSS limits.
@@ -32,7 +53,11 @@ public static partial class FerruleXml
 
     /// <summary>Reads a closed ordinary XML document after exact result preflight.</summary>
     public static FerruleInstance ParseStructuredEmbedded(string descriptor, string xml)
+        => ParseStructuredEmbedded(descriptor, xml, FerruleXmlProjectionLimits.Default);
+
+    public static FerruleInstance ParseStructuredEmbedded(string descriptor, string xml, FerruleXmlProjectionLimits limits)
     {
+        ArgumentNullException.ThrowIfNull(limits);
         ArgumentNullException.ThrowIfNull(descriptor);
         ArgumentNullException.ThrowIfNull(xml);
         long bytes;
@@ -56,7 +81,7 @@ public static partial class FerruleXml
             var root = ReadStructuredDom(xml);
             if (!StructuredElementMatches(schema, root))
                 throw StructuredInput("XML input root does not match the source schema");
-            var budget = new StructuredBudget();
+            var budget = new StructuredBudget(limits);
             PreflightStructuredNode(schema, root, budget);
             // No FerruleInstance, field list or decoded String result exists
             // before the complete successful prospective walk above.
@@ -73,7 +98,11 @@ public static partial class FerruleXml
 
     /// <summary>Checks original bytes before strict UTF-8 decoding.</summary>
     public static FerruleInstance ParseStructuredEmbeddedBytes(string descriptor, byte[] xml)
+        => ParseStructuredEmbeddedBytes(descriptor, xml, FerruleXmlProjectionLimits.Default);
+
+    public static FerruleInstance ParseStructuredEmbeddedBytes(string descriptor, byte[] xml, FerruleXmlProjectionLimits limits)
     {
+        ArgumentNullException.ThrowIfNull(limits);
         ArgumentNullException.ThrowIfNull(xml);
         RequireInputSize(xml.LongLength);
         string text;
@@ -83,7 +112,7 @@ public static partial class FerruleXml
             throw new FerruleXmlBoundaryException(FerruleXmlBoundaryErrorKind.Utf8,
                 "XML input is not UTF-8", error);
         }
-        return ParseStructuredEmbedded(descriptor, text);
+        return ParseStructuredEmbedded(descriptor, text, limits);
     }
 
     private static FerruleXmlBoundaryException StructuredInput(string detail) =>
@@ -333,25 +362,25 @@ public static partial class FerruleXml
         }
     }
 
-    private sealed class StructuredBudget
+    private sealed class StructuredBudget(FerruleXmlProjectionLimits limits)
     {
         private long _nodes;
         private long _bytes;
         private long _work;
         internal void Node()
         {
-            if (++_nodes > MaximumStructuredInstanceNodes)
+            if (++_nodes > limits.InstanceNodes)
                 throw StructuredInput("XML input exceeds its materialized instance node limit");
         }
         internal void Bytes(long bytes)
         {
-            if (bytes > MaximumStructuredFieldAndStringBytes - _bytes)
+            if (bytes > limits.FieldAndStringBytes - _bytes)
                 throw StructuredInput("XML input exceeds its materialized field/string byte limit");
             _bytes += bytes;
         }
         internal void Work(long count = 1)
         {
-            if (count > MaximumStructuredProjectionWork - _work)
+            if (count > limits.ProjectionWork - _work)
                 throw StructuredInput("XML input exceeds its projection work limit");
             _work += count;
         }
