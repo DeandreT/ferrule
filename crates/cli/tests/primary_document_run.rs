@@ -386,7 +386,7 @@ fn unsupported_endpoints_and_conflicting_options_refuse_before_any_host_call() -
         } else {
             assert_eq!(
                 control?.bytes,
-                b"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Summary>\n</Summary>"
+                b"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Summary/>"
             );
         }
         let mut variants = Vec::new();
