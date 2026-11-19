@@ -8,6 +8,7 @@ They do not change the canonical capability ledger or establish execution suppor
 | --- | --- |
 | `nonleaf.json` | 191 parent-topic bodies, including additional operations and existing-context refinements |
 | `documentation-pages.json` | Complete frozen TOC page accounting, compared-registry pointers, review-level questions and 24 scoped dispositions; page units are metadata, not capabilities |
+| [Installer support matrices](installer-support-matrices.md) | Graphical cells for 30 format/connector and 28 mapping/deployment rows across eight vendor environments; includes row qualifications and distinct installer PDF anchors |
 | `functions.json` | 319 named function leaves, parameter tables, language declarations and unresolved contract facets |
 | `constructors.json` | 43 `xs:` constructor leaves and their shared lexical/type statements |
 | `com-api.json` | Separate public COM API catalog; release binding remains unestablished |
