@@ -11,7 +11,7 @@ pub mod xsd;
 pub use file_set::{LocalFileSetError, LocalFileSetLimits, LocalXmlFileSet, read_local_file_set};
 pub use instance::{
     XmlFormatError, XmlReadOptions, XmlWriteFinalizationError, XmlWriteOptions, XmlWritePreflight,
-    from_str, from_str_structured, from_str_with_options, from_wsdl_message_str, read,
-    read_with_options, read_wsdl_message, to_string, to_string_with_options,
-    to_string_with_options_and_finalizer, write, write_with_options,
+    from_str, from_str_structured, from_str_with_options, from_str_with_warnings,
+    from_wsdl_message_str, read, read_with_options, read_wsdl_message, to_string,
+    to_string_with_options, to_string_with_options_and_finalizer, write, write_with_options,
 };

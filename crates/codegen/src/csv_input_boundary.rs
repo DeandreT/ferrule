@@ -174,6 +174,7 @@ fn canonical_metadata(node: &SchemaNode) -> bool {
         kind: _,
         repeating: _,
         xml_namespace,
+        xml_closed_source_selection,
         xml_name_alternatives,
         xml_wildcard_namespace,
         xml_wildcard_process_contents,
@@ -217,6 +218,7 @@ fn canonical_metadata(node: &SchemaNode) -> bool {
         database_relation,
     } = node;
     xml_namespace.is_none()
+        && !xml_closed_source_selection
         && xml_name_alternatives.is_empty()
         && xml_wildcard_namespace.is_none()
         && *xml_wildcard_process_contents == XmlWildcardProcessContents::Skip

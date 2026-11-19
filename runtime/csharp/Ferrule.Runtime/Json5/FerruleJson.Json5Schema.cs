@@ -317,6 +317,7 @@ public static partial class FerruleJson
             or "text"
             or "nillable"
             or "xml_optional"
+            or "xml_closed_source_selection"
             or "xml_attribute_required"
             or "container_nullable"
             or "json_array_wrapper"

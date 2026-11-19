@@ -69,6 +69,19 @@ pub fn from_str_with_options(
     schema: &SchemaNode,
     options: &XmlReadOptions,
 ) -> Result<Instance, XmlFormatError> {
+    from_str_with_warnings(text, schema, options, |warning| {
+        eprintln!("warning: {warning}")
+    })
+}
+
+/// Reads a document while delivering nonfatal source selection diagnostics
+/// to the caller. XML parse errors still precede document-root selection.
+pub fn from_str_with_warnings(
+    text: &str,
+    schema: &SchemaNode,
+    options: &XmlReadOptions,
+    mut warn: impl FnMut(String),
+) -> Result<Instance, XmlFormatError> {
     if options.root_view_policy
         && (!options.allow_inactive_root_type_members
             || !ir::xml_root_view_read_policy_is_supported(schema))
@@ -102,6 +115,29 @@ pub fn from_str_with_options(
         },
     )?;
     let root = doc.root_element();
+    let explicit;
+    let schema = if schema.xml_closed_source_selection {
+        explicit = schema
+            .closed_source_selection_schema()
+            .ok_or_else(|| XmlFormatError::UnsupportedClosedSourceSelection(schema.name.clone()))?;
+        if root.tag_name().name() == schema.name
+            && let Some(namespace) = root.tag_name().namespace().filter(|ns| !ns.is_empty())
+        {
+            warn(format!(
+                "The selected XML root is '{{}}{0}'. But the input file contains the root element '{{{namespace}}}{0}'. No data will be selected.",
+                schema.name
+            ));
+            let SchemaKind::Group { children, .. } = &explicit.kind else {
+                unreachable!("closed source selection requires a document group")
+            };
+            return Ok(Instance::Group(
+                vec![(children[0].name.clone(), Instance::Repeated(Vec::new()))].into(),
+            ));
+        }
+        &explicit
+    } else {
+        schema
+    };
     if !element_matches_schema(&root, schema) {
         return Err(XmlFormatError::UnexpectedRoot {
             expected: schema_xml_name(schema),

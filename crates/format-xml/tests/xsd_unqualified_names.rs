@@ -1,6 +1,5 @@
-//! Beside a `lax` or `strict` element wildcard, the element declarations of a
-//! schema without a target namespace match only unqualified elements. Closed
-//! content and names without namespace identity keep the local-name match.
+//! XSD declarations have an expanded name even in no namespace. DTD and
+//! entry-tree names retain their local-name match.
 
 use std::error::Error;
 use std::path::PathBuf;
@@ -73,24 +72,19 @@ fn namespace<'a>(schema: &'a SchemaNode, path: &[&str]) -> Option<&'a XmlNamespa
 #[test]
 fn wildcard_siblings_without_a_target_namespace_are_unqualified() -> Result<(), Box<dyn Error>> {
     let schema = import(OPEN, "Root")?;
-    for path in [&["Head"][..], &["Body"]] {
+    for path in [&[][..], &["Head"], &["Body"], &["Body", "Inner"]] {
         assert_eq!(
             namespace(&schema, path),
             Some(&XmlNamespace::Unqualified),
             "{path:?}"
         );
     }
-    // Closed content, the root, and attributes keep the legacy identity.
-    for path in [&[][..], &["Body", "Inner"], &["kind"]] {
-        assert_eq!(namespace(&schema, path), None, "{path:?}");
-    }
-    let closed = import(CLOSED, "Root")?;
-    assert_eq!(namespace(&closed, &["Head"]), None);
+    assert_eq!(namespace(&schema, &["kind"]), None);
 
-    // A qualified look-alike is a generic item, while closed content inside
-    // the open group still matches by local name.
+    // The wildcard captures the qualified Head; the nested closed group
+    // has no wildcard and selects only its declared Inner.
     let instance = from_str(
-        r#"<Root xmlns:x="urn:x"><x:Head>q</x:Head><Body><x:Inner>i</x:Inner></Body></Root>"#,
+        r#"<Root xmlns:x="urn:x"><x:Head>q</x:Head><Body><x:Inner>wrong</x:Inner><Inner>i</Inner></Body></Root>"#,
         &schema,
     )?;
     assert_eq!(instance.field("Head"), Some(&Instance::Scalar(Value::Null)));
@@ -132,10 +126,10 @@ fn instances_without_qualified_look_alikes_read_as_before() -> Result<(), Box<dy
 }
 
 #[test]
-fn closed_content_keeps_matching_by_local_name() -> Result<(), Box<dyn Error>> {
+fn closed_declarations_select_only_unqualified_elements() -> Result<(), Box<dyn Error>> {
     let schema = import(CLOSED, "Root")?;
     let instance = from_str(
-        r#"<Root xmlns="urn:x"><Head>h</Head><Line>1</Line></Root>"#,
+        r#"<Root xmlns:x="urn:x"><x:Head>wrong</x:Head><Head>h</Head><x:Line>x</x:Line><Line>1</Line></Root>"#,
         &schema,
     )?;
     assert_eq!(instance.field("Head"), Some(&text("h")));
@@ -143,6 +137,17 @@ fn closed_content_keeps_matching_by_local_name() -> Result<(), Box<dyn Error>> {
         instance.field("Line"),
         Some(&Instance::Repeated(vec![text("1")]))
     );
+    Ok(())
+}
+
+#[test]
+fn qualified_root_reports_both_names() -> Result<(), Box<dyn Error>> {
+    let schema = import(CLOSED, "Root")?;
+    assert!(matches!(
+        from_str(r#"<Root xmlns="urn:x"/>"#, &schema),
+        Err(format_xml::XmlFormatError::UnexpectedRoot { expected, found })
+            if expected == "Root" && found == "{urn:x}Root"
+    ));
     Ok(())
 }
 

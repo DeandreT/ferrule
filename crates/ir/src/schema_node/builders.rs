@@ -13,6 +13,7 @@ impl SchemaNode {
         Self {
             name: name.into(),
             xml_namespace: None,
+            xml_closed_source_selection: false,
             xml_name_alternatives: Vec::new(),
             xml_wildcard_namespace: None,
             xml_wildcard_process_contents: XmlWildcardProcessContents::Skip,
@@ -69,6 +70,7 @@ impl SchemaNode {
         Self {
             name: name.into(),
             xml_namespace: None,
+            xml_closed_source_selection: false,
             xml_name_alternatives: Vec::new(),
             xml_wildcard_namespace: None,
             xml_wildcard_process_contents: XmlWildcardProcessContents::Skip,
@@ -119,6 +121,7 @@ impl SchemaNode {
         Self {
             name: name.into(),
             xml_namespace: None,
+            xml_closed_source_selection: false,
             xml_name_alternatives: Vec::new(),
             xml_wildcard_namespace: None,
             xml_wildcard_process_contents: XmlWildcardProcessContents::Skip,

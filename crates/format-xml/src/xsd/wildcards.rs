@@ -1,9 +1,9 @@
 use std::path::Path;
 
 use ir::{
-    ScalarType, SchemaKind, SchemaNode, XML_ATTRIBUTES_FIELD, XML_ELEMENTS_FIELD,
-    XML_LOCAL_NAME_FIELD, XML_NAMESPACE_URI_FIELD, XML_TEXT_FIELD, XmlNamespace, XmlNamespaceUri,
-    XmlRepeatingChoice, XmlWildcardNamespaceConstraint, XmlWildcardProcessContents,
+    ScalarType, SchemaNode, XML_ATTRIBUTES_FIELD, XML_ELEMENTS_FIELD, XML_LOCAL_NAME_FIELD,
+    XML_NAMESPACE_URI_FIELD, XML_TEXT_FIELD, XmlNamespace, XmlNamespaceUri, XmlRepeatingChoice,
+    XmlWildcardNamespaceConstraint, XmlWildcardProcessContents,
 };
 use roxmltree::Node;
 
@@ -14,46 +14,6 @@ use super::{
     ParseState, ParsedComplexType, is_disabled_particle, non_negative_integer_is_zero,
     parse_attribute, parse_element_declaration, top_level, wildcard_ports,
 };
-
-/// Beside a `lax` or `strict` element wildcard, a qualified element with a
-/// declared local name is a valid wildcard item rather than that declaration.
-/// Element declarations without namespace identity, which only a schema
-/// without a target namespace yields there, therefore take their explicit
-/// unqualified identity. Closed content keeps the legacy local-name match,
-/// since no valid instance has such a look-alike.
-pub(super) fn qualify_wildcard_siblings(node: &mut SchemaNode) {
-    if is_virtual_wildcard(node) {
-        return;
-    }
-    let SchemaKind::Group {
-        children, dynamic, ..
-    } = &mut node.kind
-    else {
-        return;
-    };
-    let open = children.iter().any(|child| {
-        child.name == XML_ELEMENTS_FIELD
-            && child.xml_wildcard_process_contents != XmlWildcardProcessContents::Skip
-    });
-    for child in children.iter_mut() {
-        if open
-            && !child.attribute
-            && !child.text
-            && !is_virtual_wildcard(child)
-            && child.xml_namespace.is_none()
-        {
-            child.xml_namespace = Some(XmlNamespace::Unqualified);
-        }
-        qualify_wildcard_siblings(child);
-    }
-    if let Some(dynamic) = dynamic {
-        qualify_wildcard_siblings(dynamic);
-    }
-}
-
-fn is_virtual_wildcard(node: &SchemaNode) -> bool {
-    node.name == XML_ELEMENTS_FIELD || node.name == XML_ATTRIBUTES_FIELD
-}
 
 /// Pushes marked projected ports and returns the declared elements that
 /// took the place of equal ones.

@@ -1884,10 +1884,13 @@ impl PortTree {
 
 fn xml_entry_schema_is_exact(node: &SchemaNode) -> bool {
     // Entry metadata has no form for exclusions, so a fallback tree would
-    // widen the wildcard.
+    // widen the wildcard. Physical root selection also requires the real
+    // XSD, never a typed fallback. Ordinary entry names have no namespace
+    // URI to encode for an unqualified declaration.
     if node.json_array_wrapper
+        || node.xml_closed_source_selection
         || node.has_xml_wildcard_exclusions()
-        || node.xml_namespace.is_some()
+        || !node.xml_name_in_no_namespace()
         || node.recursive_ref.is_some()
         || node.nullable
         || node.container_nullable
