@@ -651,8 +651,8 @@ their refusals.
 - [x] Decide the tested [same-scope singular-target shapes](docs/conformance/singular-target-feeds.md#disposition-by-target-shape)
   in [#241](https://github.com/DeandreT/ferrule/issues/241): competing physical
   wires refuse; separate cloned entries retain both bindings and refuse singular
-  validation. [#1464](https://github.com/DeandreT/ferrule/issues/1464) isolates
-  the remaining reference conversion-error question.
+  validation. [#1464](https://github.com/DeandreT/ferrule/issues/1464) confirms
+  that reversing the cloned entries reverses the first conversion error in the tested shape.
 - [x] Qualify #203's 24 independently authored public interpreter observations
   and 51 separate typed export refusals. All 237 interchange library tests,
   workspace strict warnings and formatting pass on the focused fixture candidate.
@@ -664,8 +664,9 @@ their refusals.
 - [x] Record the [saved-design decision for each frozen recipe](docs/design/scalar-sequence-saved-design.md#disposition-by-frozen-recipe)
   in [#203](https://github.com/DeandreT/ferrule/issues/203). None of the tested
   transform candidates qualifies. A future implementation needs a faithful saved
-  descriptor and execution comparison. The disconnected legacy lower-bound
-  reference control is tracked in [#1463](https://github.com/DeandreT/ferrule/issues/1463).
+  descriptor and execution comparison. With upper bound 3, the disconnected legacy
+  lower bound produced the same `1,2,3` as an explicit decimal 1 in
+  [#1463](https://github.com/DeandreT/ferrule/issues/1463).
 - [x] Qualify #263's 13 simulated controller-policy groups / 41 subcases with
   independent expectations and complete failure retention. This is simulation,
   separate from its external owner's normal closure and any native application.

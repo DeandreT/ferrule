@@ -1,9 +1,11 @@
-# Reference checks still open
+# Saved range and singular-feed controls
 
 `python controls.py NEW_DIRECTORY` writes seven self-authored MFDs with
 case-local XSDs, input XML and expected output or diagnostic text. The
-expectations were fixed before any preview. These are probes, not saved
-application output. **No result from these seven designs is qualified.**
+expectations were fixed before any preview. All seven designs were subsequently
+executed, saved, reopened, executed again and resaved. For each design the two
+saves were byte-identical and reopening reproduced the original output bytes,
+including partial XML on conversion failure.
 
 | Cases | Only distinction under test | Frozen comparison |
 | --- | --- | --- |
@@ -21,5 +23,20 @@ Record unexpected success, failure or partial output without changing the
 predictions. Match source-specific native causes; do not equate diagnostic
 wording across products or versions.
 
-The legacy pair is tracked in [#1463](https://github.com/DeandreT/ferrule/issues/1463);
-the singular-entry comparisons are tracked in [#1464](https://github.com/DeandreT/ferrule/issues/1464).
+## Observed results
+
+- **`explicit`, `omitted`:** Both produced `1, 2, 3` and satisfied the target
+  XSD. Both retained the upper decimal `3`. The explicit design retained its
+  lower decimal `1`; the omitted design retained an unconnected lower input.
+- **`two-values`:** Both `Reading` elements were emitted, in order (`7`, `31`).
+  Preview succeeded, but the second occurrence violated the singular target XSD.
+- **`east-bad`, `west-bad`:** The first diagnostic was `Conversion to double
+  failed for 'ochre'` and `Conversion to double failed for 'indigo'`,
+  respectively. In `west-bad` the partial XML already contained `Reading` `7`.
+- **`both-bad`, `both-bad-reversed`:** With the same authored edges, reversing
+  the cloned entries changed the first failing token from `ochre` to `indigo`.
+  All four conversion failures left incomplete XML. These observations do not
+  establish an independent ordering rule for graph vertices.
+
+See [#1463](https://github.com/DeandreT/ferrule/issues/1463) and
+[#1464](https://github.com/DeandreT/ferrule/issues/1464).

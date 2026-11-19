@@ -125,7 +125,7 @@ do not establish other nil lexical forms, nested nil, coercion or error ordering
 | Two distinct sources on one physical connector | Refuse competing wires | Reference validation fails in either tested vertex order. No preview value or competing-expression error is defined by those runs. |
 | Two declared entries for the same singular field in one scope | Preserve both bindings; refuse executable admission | For two present values the reference emits two occurrences and violates the XSD. Equal values, a shared expression, or a particular input with at most one present value do not make this a singular mapping. |
 | Same singular topology with missing or nil source elements | Same refusal for every input | For the tested direct XML feeds, missing contributes zero and explicit nil contributes one occurrence. Two nils violate the singular XSD. |
-| Same singular topology with two fallible expressions | Same refusal before execution or lowering | Ferrule's observable failure is duplicate binding, before either expression runs. Which expression would fail in a reference preview is a separate question. |
+| Same singular topology with two fallible expressions | Same refusal before execution or lowering | Ferrule reports duplicate binding. In the reference control with two invalid string-to-double conversions, reversing the cloned entries changed the first failing token from `ochre` to `indigo`. |
 | Two declared repeating entries | Existing repeated binding path | Emit each present occurrence in entry-tree order, including explicit XML nil. [Enabled target casting](xml-target-casting.md#enabled-casting-and-failure-selection) selects the first declared failure for the tested conversion/division pair. |
 | Separate declared ancestor branches | Existing [#239](https://github.com/DeandreT/ferrule/issues/239) ownership rules | Resolve the declared owner first, then check cardinality within that scope. Equal field names across owners are not evidence of competition. |
 | Untyped null, JSON null, other expression failures or ambiguous owners | No additional admission | XML nil controls give no JSON or general error-order rule. An ambiguous owner cannot be repaired by choosing a value. |
@@ -140,8 +140,8 @@ validation. The compiled full-value comparisons above apply to repeating
 targets only.
 
 The [singular two-conversion probes](../design/fixtures/native-feed-controls/README.md)
-isolate the remaining reference error-order question. Even if declaration order
-selects the first failure in both directions, that cannot repair the two-value
+reproduced the first failing conversion in declared order before and after
+reopening. All four failing controls left partial XML. This cannot repair the two-value
 cardinality counterexample. Revisit executable admission only for a distinct
 saved shape that guarantees at most one result across its input domain, with
 independent full-value and exact-error controls for that shape.
