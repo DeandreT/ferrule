@@ -7,6 +7,7 @@ repository.workspace = true
 description = "Deterministic standalone C# emitter for ferrule mappings"
 
 [dependencies]
+format-protobuf = { workspace = true }
 codegen = { workspace = true }
 ir = { workspace = true }
 mapping = { workspace = true }
