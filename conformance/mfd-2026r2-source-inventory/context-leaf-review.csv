@@ -3,23 +3,23 @@ page_index,section,first_pdf_page,last_pdf_page,body_facet,review_depth,source_o
 20,2.1.2,44,47,operation,triage,Edit settings from the component header
 22,2.1.3.1,48,49,reference,triage,Resolve component dependencies relative to the design
 23,2.1.3.2,50,51,reference,triage,Path resolution depends on the execution environment
-26,2.2.1.1,56,58,reference,triage,Preserve interleaving of text and child elements
-27,2.2.1.2,58,60,operation,triage,Wire matching children automatically
-28,2.2.1.3,60,62,operation,triage,Copy the whole structure with one connection
-29,2.2.2,62,64,operation,triage,Edit an individual connection's settings
-30,2.2.3,64,65,operation,triage,Choose actions on a selected connection
-31,2.2.4,65,67,operation,triage,Repair connections after a schema root changes
-32,2.2.5,67,68,reference,triage,Preserve connections when removing a processing component
-34,2.3.1,69,70,operation,triage,Validate on preview or request validation separately
+26,2.2.1.1,56,58,reference,mapping-contract,Preserve interleaving of text and child elements
+27,2.2.1.2,58,60,operation,mapping-contract,Wire matching children automatically
+28,2.2.1.3,60,62,operation,mapping-contract,Copy the whole structure with one connection
+29,2.2.2,62,64,operation,mapping-contract,Edit an individual connection's settings
+30,2.2.3,64,65,operation,mapping-contract,Choose actions on a selected connection
+31,2.2.4,65,67,operation,mapping-contract,Repair connections after a schema root changes
+32,2.2.5,67,68,reference,mapping-contract,Preserve connections when removing a processing component
+34,2.3.1,69,70,operation,mapping-contract,Validate on preview or request validation separately
 35,2.3.2,71,73,operation,triage,Generate code from a mapping design
 36,2.3.3,73,77,reference,triage,Use margins and highlighting in text output
 37,2.3.4,77,79,operation,triage,Search generated text in output panes
-38,2.3.5,80,81,reference,triage,Configure settings for this mapping document
-40,2.4.1,83,84,reference,triage,Repeated source nodes drive repeated target creation
-41,2.4.2,84,87,reference,triage,Establish a target context and trace its sources
-42,2.4.3,87,91,reference,triage,Parent context scopes the values a function sees
-44,2.4.4.1,93,96,operation,triage,Change a filter's driving context
-45,2.4.5,96,99,reference,triage,Select one target at a time for preview
+38,2.3.5,80,81,reference,mapping-contract,Configure settings for this mapping document
+40,2.4.1,83,84,reference,mapping-contract,Repeated source nodes drive repeated target creation
+41,2.4.2,84,87,reference,mapping-contract,Establish a target context and trace its sources
+42,2.4.3,87,91,reference,mapping-contract,Parent context scopes the values a function sees
+44,2.4.4.1,93,96,operation,mapping-contract,Change a filter's driving context
+45,2.4.5,96,99,reference,mapping-contract,Select one target at a time for preview
 47,2.5.1,100,102,operation,triage,Organize mappings in a project
 48,2.5.2,102,103,operation,triage,Edit project-wide settings from the project window
 49,2.5.3,103,104,operation,triage,Organize project mappings into folders
@@ -40,19 +40,19 @@ page_index,section,first_pdf_page,last_pdf_page,body_facet,review_depth,source_o
 69,3.4.1,130,130,operation,triage,Use a filename pattern for multiple input documents
 70,3.4.2,131,133,operation,triage,Construct each output name from concatenated parts
 71,3.4.3,133,135,operation,triage,Connect a computed name to an output file
-74,4.1.1,138,139,operation,triage,Add a simple input to the main mapping
-75,4.1.2,139,140,operation,triage,Configure a simple input through component properties
-76,4.1.3,140,141,operation,triage,Connect a value to the input's default port
-77,4.1.4,141,146,operation,triage,Pass a filename as a runtime input parameter
+74,4.1.1,138,139,operation,mapping-contract,Add a simple input to the main mapping
+75,4.1.2,139,140,operation,mapping-contract,Configure a simple input through component properties
+76,4.1.3,140,141,operation,mapping-contract,Connect a value to the input's default port
+77,4.1.4,141,146,operation,mapping-contract,Pass a filename as a runtime input parameter
 79,4.2.1,148,149,operation,triage,Add a simple output component
-80,4.2.2,149,150,operation,triage,Expose a function result through a simple output
-82,4.3.1,152,156,reference,triage,Set an XML component's name and file options
-83,4.3.2,156,158,reference,triage,Select derived XML types with xsi:type
-84,4.3.3,158,162,reference,triage,Use a nillable declaration for explicit XML nil
-85,4.3.4,162,162,reference,triage,Restrict processing-instruction and comment mappings on copy-all nodes
-86,4.3.5,162,163,reference,triage,Distinguish XML character data from markup
-87,4.3.6,164,166,reference,triage,Map wildcard elements and attributes
-88,4.3.7,166,168,reference,triage,Derive output namespaces from target declarations
+80,4.2.2,149,150,operation,mapping-contract,Expose a function result through a simple output
+82,4.3.1,152,156,reference,mapping-contract,Set an XML component's name and file options
+83,4.3.2,156,158,reference,mapping-contract,Select derived XML types with xsi:type
+84,4.3.3,158,162,reference,mapping-contract,Use a nillable declaration for explicit XML nil
+85,4.3.4,162,162,reference,mapping-contract,Restrict processing-instruction and comment mappings on copy-all nodes
+86,4.3.5,162,163,reference,mapping-contract,Distinguish XML character data from markup
+87,4.3.6,164,166,reference,mapping-contract,Map wildcard elements and attributes
+88,4.3.7,166,168,reference,mapping-contract,Derive output namespaces from target declarations
 90,4.3.8.1,169,172,reference,triage,Choose a signing certificate with a private key
 91,4.3.8.2,172,174,reference,triage,Distinguish a detached signature from an enveloped one
 93,4.3.9.1,177,179,operation,manager-contract,Open the manager and stage changes before Apply
@@ -105,16 +105,16 @@ page_index,section,first_pdf_page,last_pdf_page,body_facet,review_depth,source_o
 149,4.4.1.13.19,252,253,reference,triage,Prepare a Java connection to Sybase
 150,4.4.1.13.20,253,254,reference,triage,Prepare a Java connection to Teradata
 151,4.4.1.13.21,254,256,reference,triage,Install the Teradata ODBC driver
-153,4.4.2.1,261,268,operation,triage,Configure the database component through its title bar
-154,4.4.2.2,269,272,operation,triage,Use custom selects with or without input parameters
+153,4.4.2.1,261,268,operation,mapping-contract,Configure the database component through its title bar
+154,4.4.2.2,269,272,operation,mapping-contract,Use custom selects with or without input parameters
 155,4.4.2.3,272,279,operation,triage,Expand a table to expose related tables
-156,4.4.2.4,279,282,reference,triage,Define relationships involving procedure outputs and table columns
-157,4.4.2.5,283,283,operation,triage,Test or substitute database null values
-158,4.4.2.6,284,284,reference,triage,Control repeated access to database resources
-160,4.4.3.1,285,292,operation,triage,Specify SQL to execute before record actions
-161,4.4.3.2,292,297,reference,triage,Leave auto-increment key columns unconnected
-162,4.4.3.3,297,302,reference,triage,Configure rollback behavior on mapping errors
-163,4.4.3.4,303,303,reference,triage,Generate MERGE statements for eligible database targets
+156,4.4.2.4,279,282,reference,mapping-contract,Define relationships involving procedure outputs and table columns
+157,4.4.2.5,283,283,operation,mapping-contract,Test or substitute database null values
+158,4.4.2.6,284,284,reference,mapping-contract,Control repeated access to database resources
+160,4.4.3.1,285,292,operation,mapping-contract,Specify SQL to execute before record actions
+161,4.4.3.2,292,297,reference,mapping-contract,Leave auto-increment key columns unconnected
+162,4.4.3.3,297,302,reference,mapping-contract,Configure rollback behavior on mapping errors
+163,4.4.3.4,303,303,reference,mapping-contract,Generate MERGE statements for eligible database targets
 165,4.4.4.1,305,307,operation,triage,Filter and search database objects
 166,4.4.4.2,307,310,operation,triage,Execute SQL statements in the query editor
 167,4.4.4.3,310,311,operation,triage,Navigate through returned query results
@@ -122,15 +122,15 @@ page_index,section,first_pdf_page,last_pdf_page,body_facet,review_depth,source_o
 170,4.4.5.1,313,316,operation,triage,Attach an XML schema to a database field
 171,4.4.5.2,316,320,operation,triage,Store one XML input per SQLite record
 172,4.4.5.3,320,323,operation,triage,Extract XML from an IBM DB2 column
-174,4.4.6.1,326,328,reference,triage,Add a stored procedure under its database component
+174,4.4.6.1,326,328,reference,mapping-contract,Add a stored procedure under its database component
 175,4.4.6.2,328,331,operation,triage,Use a stored procedure as a data source
-176,4.4.6.3,331,335,operation,triage,Retrieve output while passing procedure inputs
-177,4.4.6.4,335,338,reference,triage,Include a target procedure call in transaction handling
-178,4.4.6.5,338,339,reference,triage,Control procedure call order using local relations
+176,4.4.6.3,331,335,operation,mapping-contract,Retrieve output while passing procedure inputs
+177,4.4.6.4,335,338,reference,mapping-contract,Include a target procedure call in transaction handling
+178,4.4.6.5,338,339,reference,mapping-contract,Control procedure call order using local relations
 179,4.4.6.6,339,343,operation,triage,Relate procedure output to source records
-180,4.4.6.7,343,348,operation,triage,Generate keys through a procedure call
-182,4.4.7.1,348,350,reference,triage,NoSQL connections impose relationship and query restrictions
-183,4.4.7.2,351,355,operation,triage,Choose built-in execution for a NoSQL mapping
+180,4.4.6.7,343,348,operation,mapping-contract,Generate keys through a procedure call
+182,4.4.7.1,348,350,reference,mapping-contract,NoSQL connections impose relationship and query restrictions
+183,4.4.7.2,351,355,operation,mapping-contract,Choose built-in execution for a NoSQL mapping
 185,4.5.1,356,359,operation,triage,Select a transformation language for converting CSV to XML
 186,4.5.2,359,362,reference,triage,Change iteration to produce the intended row count
 187,4.5.3,362,365,operation,triage,Build a hierarchy from flat text records
@@ -174,20 +174,20 @@ page_index,section,first_pdf_page,last_pdf_page,body_facet,review_depth,source_o
 232,4.6.11,460,463,reference,triage,Update a workbook rather than generating a fresh file
 234,4.7.1,469,471,operation,triage,Insert an EDI component from the available collections
 235,4.7.2,471,475,operation,triage,Configure the EDI component's settings
-237,4.7.3.1,477,478,operation,triage,Use X12 validation information for acknowledgment mappings
-238,4.7.3.2,479,480,operation,triage,Use a CONTRL message to acknowledge EDIFACT input
-239,4.7.3.3,480,481,reference,triage,External code values limit built-in field validation
-240,4.7.3.4,481,483,reference,triage,Enable field validation across messages
-241,4.7.3.5,483,483,reference,triage,Scope validation to one message subject to field restrictions
-242,4.7.3.6,483,485,reference,triage,Configure character-level validation rules for fields
-243,4.7.3.7,485,488,reference,triage,Apply checks specific to the selected EDI standard
-244,4.7.3.8,488,494,reference,triage,Complete certain EDI values during output
-246,4.7.4.1,495,497,reference,triage,Require a message configuration in an EDI collection
-247,4.7.4.2,498,499,operation,triage,Configure the message types in a collection
-248,4.7.4.3,499,502,operation,triage,Change the segments and elements of a message
-249,4.7.4.4,502,504,reference,triage,Combine or separate consecutive data elements
-250,4.7.4.5,504,505,reference,triage,Keep condition values consistent when customizing HIPAA configuration
-251,4.7.5,505,507,operation,triage,Convert EDI to XML without designing an ordinary mapping
+237,4.7.3.1,477,478,operation,mapping-contract,Use X12 validation information for acknowledgment mappings
+238,4.7.3.2,479,480,operation,mapping-contract,Use a CONTRL message to acknowledge EDIFACT input
+239,4.7.3.3,480,481,reference,mapping-contract,External code values limit built-in field validation
+240,4.7.3.4,481,483,reference,mapping-contract,Enable field validation across messages
+241,4.7.3.5,483,483,reference,mapping-contract,Scope validation to one message subject to field restrictions
+242,4.7.3.6,483,485,reference,mapping-contract,Configure character-level validation rules for fields
+243,4.7.3.7,485,488,reference,mapping-contract,Apply checks specific to the selected EDI standard
+244,4.7.3.8,488,494,reference,mapping-contract,Complete certain EDI values during output
+246,4.7.4.1,495,497,reference,mapping-contract,Require a message configuration in an EDI collection
+247,4.7.4.2,498,499,operation,mapping-contract,Configure the message types in a collection
+248,4.7.4.3,499,502,operation,mapping-contract,Change the segments and elements of a message
+249,4.7.4.4,502,504,reference,mapping-contract,Combine or separate consecutive data elements
+250,4.7.4.5,504,505,reference,mapping-contract,Keep condition values consistent when customizing HIPAA configuration
+251,4.7.5,505,507,operation,mapping-contract,Convert EDI to XML without designing an ordinary mapping
 253,4.8.1,509,509,operation,triage,Add an XBRL document as a component
 254,4.8.2,510,511,reference,triage,Choose how the XBRL hierarchy is displayed
 255,4.8.3,511,514,reference,triage,View-specific component items depend on the linkbase
@@ -262,38 +262,38 @@ page_index,section,first_pdf_page,last_pdf_page,body_facet,review_depth,source_o
 341,4.11.1.9.4.5,674,675,reference,triage,Set customization options in the editor
 342,4.11.1.9.5,675,675,operation,triage,Select an editor window theme
 343,4.11.1.9.6,675,679,operation,triage,Open locally stored PDF help
-346,5.1.1,683,687,operation,triage,Insert a variable through a context menu
-347,5.1.2,687,689,reference,triage,Use compute-when to control variable evaluation
-348,5.1.3,689,690,operation,triage,Count rows for each parent record
-349,5.1.4,690,691,operation,triage,Filter nodes and assign numbers to the results
-350,5.1.5,692,693,operation,triage,Form bounded subgroups within departments
-352,5.2.1,696,699,operation,triage,Add a condition to a join
-353,5.2.2,699,700,operation,triage,Extend a join beyond two inputs
-354,5.2.3,700,705,operation,triage,Join matching records across XML structures
-356,5.2.4.1,707,710,reference,triage,Push an eligible join into a database query
-357,5.2.4.2,710,717,operation,triage,Join database tables in SQL mode
-358,5.2.4.3,718,722,operation,triage,Project data from several tables into one report
-360,5.3.1,725,726,operation,triage,Add more sort keys beyond the initial key
-361,5.3.2,726,728,operation,triage,Use intermediate variables for a hierarchical sort
-363,5.4.1,731,733,operation,triage,Select a subset of nodes using a condition
-364,5.4.2,733,734,operation,triage,Return a simple value conditionally
-366,5.4.3.1,738,741,operation,triage,Enter query filtering and ordering conditions
-368,5.5.1,746,748,operation,triage,Translate numeric weekday values with a value map
-369,5.5.2,749,752,operation,triage,Replace job-title values using a lookup table
-370,5.6,753,758,reference,triage,Evaluate input conditions against decision-table rules
-372,5.7.1,760,760,operation,triage,Raise an exception on a numeric comparison
-373,5.7.2,760,762,operation,triage,Raise an exception when a required node is absent
-375,5.8.1,763,765,operation,triage,Find functions by typing in the mapping area
-377,5.8.2.1,768,768,operation,triage,Add or remove a function library
-378,5.8.2.2,768,769,operation,triage,Choose a relative location for a function library
-380,5.8.3.1,772,774,operation,triage,Attach a default or function rule to a node
-381,5.8.3.2,774,781,operation,triage,Override inherited defaults for selected nodes
-382,5.8.3.3,781,784,reference,triage,Check a metadata reference against its node function
-384,5.8.4.1,785,790,reference,triage,Connect a result to a user-function output
-385,5.8.4.2,790,794,reference,triage,Declare a user function's parameters
-386,5.8.4.3,794,796,operation,triage,Traverse a hierarchy using a recursive user function
-387,5.8.4.4,796,799,reference,triage,Control the context of a user-defined function
-388,5.8.4.5,799,802,operation,triage,Open the implementation of a lookup function
+346,5.1.1,683,687,operation,mapping-contract,Insert a variable through a context menu
+347,5.1.2,687,689,reference,mapping-contract,Use compute-when to control variable evaluation
+348,5.1.3,689,690,operation,mapping-contract,Count rows for each parent record
+349,5.1.4,690,691,operation,mapping-contract,Filter nodes and assign numbers to the results
+350,5.1.5,692,693,operation,mapping-contract,Form bounded subgroups within departments
+352,5.2.1,696,699,operation,mapping-contract,Add a condition to a join
+353,5.2.2,699,700,operation,mapping-contract,Extend a join beyond two inputs
+354,5.2.3,700,705,operation,mapping-contract,Join matching records across XML structures
+356,5.2.4.1,707,710,reference,mapping-contract,Push an eligible join into a database query
+357,5.2.4.2,710,717,operation,mapping-contract,Join database tables in SQL mode
+358,5.2.4.3,718,722,operation,mapping-contract,Project data from several tables into one report
+360,5.3.1,725,726,operation,mapping-contract,Add more sort keys beyond the initial key
+361,5.3.2,726,728,operation,mapping-contract,Use intermediate variables for a hierarchical sort
+363,5.4.1,731,733,operation,mapping-contract,Select a subset of nodes using a condition
+364,5.4.2,733,734,operation,mapping-contract,Return a simple value conditionally
+366,5.4.3.1,738,741,operation,mapping-contract,Enter query filtering and ordering conditions
+368,5.5.1,746,748,operation,mapping-contract,Translate numeric weekday values with a value map
+369,5.5.2,749,752,operation,mapping-contract,Replace job-title values using a lookup table
+370,5.6,753,758,reference,mapping-contract,Evaluate input conditions against decision-table rules
+372,5.7.1,760,760,operation,mapping-contract,Raise an exception on a numeric comparison
+373,5.7.2,760,762,operation,mapping-contract,Raise an exception when a required node is absent
+375,5.8.1,763,765,operation,mapping-contract,Find functions by typing in the mapping area
+377,5.8.2.1,768,768,operation,mapping-contract,Add or remove a function library
+378,5.8.2.2,768,769,operation,mapping-contract,Choose a relative location for a function library
+380,5.8.3.1,772,774,operation,mapping-contract,Attach a default or function rule to a node
+381,5.8.3.2,774,781,operation,mapping-contract,Override inherited defaults for selected nodes
+382,5.8.3.3,781,784,reference,mapping-contract,Check a metadata reference against its node function
+384,5.8.4.1,785,790,reference,mapping-contract,Connect a result to a user-function output
+385,5.8.4.2,790,794,reference,mapping-contract,Declare a user function's parameters
+386,5.8.4.3,794,796,operation,mapping-contract,Traverse a hierarchy using a recursive user function
+387,5.8.4.4,796,799,reference,mapping-contract,Control the context of a user-defined function
+388,5.8.4.5,799,802,operation,mapping-contract,Open the implementation of a lookup function
 391,5.8.5.1.1,804,806,operation,triage,Register an external XSLT function library
 392,5.8.5.1.2,806,809,operation,triage,Compute a total from selected node values
 394,5.8.5.2.1,811,814,reference,triage,Import atomic-return functions from an XQuery module
@@ -340,11 +340,11 @@ page_index,section,first_pdf_page,last_pdf_page,body_facet,review_depth,source_o
 808,8.1.1,1201,1208,operation,triage,Expose node names for dynamic mapping
 809,8.1.2,1209,1212,operation,triage,Limit dynamic access by node type
 810,8.1.3,1212,1216,operation,triage,Write element names as attribute values
-812,8.2.1,1219,1221,operation,triage,Generate several XML files from one source
-813,8.2.2,1221,1223,operation,triage,Distribute database rows among output files
-815,8.3.1,1224,1226,reference,triage,Place a string parser or serializer in a mapping
-816,8.3.2,1226,1231,operation,triage,Parse fixed-width records stored in a string
-817,8.3.3,1231,1235,operation,triage,Serialize an XML structure for a database field
+812,8.2.1,1219,1221,operation,mapping-contract,Generate several XML files from one source
+813,8.2.2,1221,1223,operation,mapping-contract,Distribute database rows among output files
+815,8.3.1,1224,1226,reference,mapping-contract,Place a string parser or serializer in a mapping
+816,8.3.2,1226,1231,operation,mapping-contract,Parse fixed-width records stored in a string
+817,8.3.3,1231,1235,operation,mapping-contract,Serialize an XML structure for a database field
 820,8.4.1.1,1239,1240,operation,triage,Inspect stored credential objects and their types
 821,8.4.1.2,1240,1245,operation,triage,Configure an OAuth credential object
 822,8.4.1.3,1245,1247,reference,triage,Resolve a named credential for server execution
