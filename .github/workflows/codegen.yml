@@ -80,7 +80,7 @@ jobs:
         run: bash scripts/ci/prepare-ovh-build.sh
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.98.1
+          toolchain: nightly-2026-11-16
           components: clippy
       - uses: taiki-e/install-action@v2
         with:
@@ -328,7 +328,7 @@ jobs:
         run: bash scripts/ci/prepare-ovh-build.sh
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.98.1
+          toolchain: nightly-2026-11-16
       - uses: taiki-e/install-action@v2
         with:
           tool: nextest@0.9.150

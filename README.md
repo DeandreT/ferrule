@@ -46,8 +46,11 @@ not a parity percentage.
 
 ## Quick Start
 
-ferrule pins Rust 1.98.1 in `rust-toolchain.toml`; rustup installs it on the
-first `cargo` command in the checkout. See [Toolchain baselines](docs/toolchains.md).
+ferrule pins Rust `nightly-2026-11-16` in `rust-toolchain.toml`; rustup installs
+it on the first `cargo` command in the checkout without changing your global
+default. Builds use Rust's parallel frontend, automatically sized to the logical
+CPU threads available to each compiler process. Cargo build jobs and test
+concurrency remain separate controls. See [Toolchain baselines](docs/toolchains.md).
 
 Run the checked-in XML-to-CSV example:
 
