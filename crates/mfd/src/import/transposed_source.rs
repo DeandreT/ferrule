@@ -24,18 +24,19 @@ pub(super) fn absorb_alignment_filters(
     structure: roxmltree::Node<'_, '_>,
     schema_components: &[SchemaComponent],
     fn_components: &[FnComponent],
-    feeds: &mut BTreeMap<u32, u32>,
+    original_feeds: &BTreeMap<u32, u32>,
     warnings: &mut Vec<String>,
-) -> BTreeSet<usize> {
+) -> Option<(BTreeMap<u32, u32>, BTreeSet<usize>)> {
     if !schema_components.iter().any(|component| {
         component.is_source
             && component.format == ComponentFormat::Xlsx
             && !component.options.xlsx_rows.is_empty()
     }) {
-        return BTreeSet::new();
+        return None;
     }
     let raw_dependencies = RawDependencies::read(structure);
-    let original_feeds = feeds.clone();
+    let mut repaired = original_feeds.clone();
+    let feeds = &mut repaired;
     let mut absorbed = BTreeSet::new();
     for source in schema_components.iter().filter(|component| {
         component.is_source
@@ -47,18 +48,17 @@ pub(super) fn absorb_alignment_filters(
             if !is_filter(filter) || absorbed.contains(&index) {
                 continue;
             }
-            if !rows.alignment_candidate(filter, schema_components, fn_components, &original_feeds)
-            {
+            if !rows.alignment_candidate(filter, schema_components, fn_components, original_feeds) {
                 continue;
             }
-            if let Some(alignment) = rows.alignment(filter, fn_components, &original_feeds) {
+            if let Some(alignment) = rows.alignment(filter, fn_components, original_feeds) {
                 let consumers = feeds
                     .iter()
                     .filter_map(|(&input, &output)| (output == alignment.aligned).then_some(input))
                     .collect::<Vec<_>>();
                 let mut unsupported = false;
                 for input in consumers {
-                    if rows.scalar_target_read(input, schema_components, &original_feeds) {
+                    if rows.scalar_target_read(input, schema_components, original_feeds) {
                         feeds.insert(input, alignment.cell);
                     } else {
                         unsupported = true;
@@ -120,7 +120,7 @@ pub(super) fn absorb_alignment_filters(
             ));
         }
     }
-    absorbed
+    Some((repaired, absorbed))
 }
 
 /// Removing only an aggregate's input would let its default/empty behavior

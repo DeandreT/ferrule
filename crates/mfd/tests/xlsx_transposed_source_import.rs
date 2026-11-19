@@ -443,6 +443,35 @@ fn dependent_functions_cannot_restore_a_skipped_sequence_result() {
 }
 
 #[test]
+fn discarding_a_transposed_count_cannot_hide_conflicting_saved_feeds() {
+    let mut text = exported(true);
+    let (aligned, _) = alignment(&text, "Amount");
+    let amount = target(&text, "Amount");
+    let col = target(&text, "Col");
+    append_components(
+        &mut text,
+        r#"<component name="count" library="core" kind="5" uid="9000">
+        <sources><datapoint/><datapoint pos="1" key="9001"/></sources>
+        <targets><datapoint pos="0" key="9000"/></targets></component>"#,
+    );
+    rewire(&mut text, &[(9001, aligned), (amount, 9000)]);
+    // The saved column-index edge to Col still exists. Add a second writer,
+    // rather than using rewire(), which intentionally replaces an edge.
+    text = text.replacen(
+        r#"<vertex vertexkey="9000"><edges>"#,
+        &format!(r#"<vertex vertexkey="9000"><edges><edge vertexkey="{col}"/>"#),
+        1,
+    );
+    let dir = Scratch::new();
+    let path = dir.0.join("conflict.mfd");
+    std::fs::write(&path, text).unwrap();
+    assert!(matches!(
+        mfd::import(&path),
+        Err(mfd::MfdError::UnsupportedImport(reason)) if reason.contains("physical filtered count")
+    ));
+}
+
+#[test]
 fn direct_scalar_read_without_driver_context_is_not_absorbed() {
     let mut text = exported(true);
     let category_target = target(&text, "Category");

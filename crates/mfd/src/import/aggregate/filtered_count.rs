@@ -125,6 +125,7 @@ impl CountProofTable {
         capture: Option<&CountConstruction>,
         demand: routing::CompleteDemand,
         ordinary_reader: bool,
+        transposed: (&BTreeSet<usize>, &BTreeSet<u32>),
     ) -> Self {
         let mut table = Self::EMPTY;
         if let Err(reason) = discovery::discover(&mut table, demand) {
@@ -302,9 +303,45 @@ impl CountProofTable {
                 table.source = Some(seal::fingerprint(&primary.schema, budget)?);
                 table.source_options = Some(seal::fingerprint(&primary.options, budget)?);
             }
+            // A refused XLSX sequence consumer may remain as a diagnostic
+            // registration even though none of its outputs can reach lowering.
+            // Exempt only that exact Count, after reconciling every saved edge.
+            let (removed, still_connected) = transposed;
+            if ordinary_reader && !removed.is_empty() {
+                for (id, candidate) in table.candidates.iter_mut().enumerate() {
+                    let Some(slot) = candidate.registration.filter(|slot| removed.contains(slot))
+                    else {
+                        continue;
+                    };
+                    let f = &n.functions[slot];
+                    let [out] = candidate.outputs.as_slice() else {
+                        continue;
+                    };
+                    if !f.raw_filtered_count_signature_valid
+                        || f.outputs.as_slice() != [*out]
+                        || still_connected.contains(out)
+                        || table.candidate_outputs.get(out).map(Vec::as_slice) != Some(&[id][..])
+                    {
+                        continue;
+                    }
+                    let pin = raw.pin(*out, true, budget)?;
+                    let owner = RawOwner::of(pin.owner);
+                    if candidate.raw_owner == Some(owner)
+                        && n.functions.count_origin_at(slot) == Origin::ActiveMain(owner)
+                        && matches!(view.get(*out, owner, budget)?, CountProducer::Function(found) if std::ptr::eq(found, f))
+                    {
+                        raw.function(f, Origin::ActiveMain(owner), budget)?;
+                        candidate.connected = false;
+                    }
+                }
+            }
             Ok::<_, String>(())
         })();
         if let Err(reason) = reconcile {
+            // A partial reconciliation cannot certify disconnection.
+            for candidate in &mut table.candidates {
+                candidate.connected = true;
+            }
             table.failure = Some(reason);
         }
         table
