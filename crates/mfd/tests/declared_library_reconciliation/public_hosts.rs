@@ -13,6 +13,7 @@ use dotnet_temp::DotnetTemp;
 mod xml_tree;
 
 const GUARD: ExecutionContract = ExecutionContract::ClosedPrimarySourceV1;
+const RUST_TOOLCHAIN: &str = include_str!("../../../../rust-toolchain.toml");
 
 fn save(directory: &Path, name: &str, value: &Json) {
     std::fs::write(
@@ -429,9 +430,12 @@ fn rust_command(cargo: &Path, directory: &Path) -> Command {
     let temp = directory.join(".tmp");
     std::fs::create_dir_all(&temp).unwrap();
     command.env("TMPDIR", &temp).env("RUSTFLAGS", "-D warnings");
-    command
-        .env("RUSTUP_TOOLCHAIN", "1.98.1")
-        .env_remove("RUSTC");
+    let channel = RUST_TOOLCHAIN
+        .lines()
+        .find_map(|line| line.trim().strip_prefix("channel = "))
+        .expect("repository Rust toolchain must declare a channel")
+        .trim_matches('"');
+    command.env("RUSTUP_TOOLCHAIN", channel).env_remove("RUSTC");
     command
 }
 
@@ -524,6 +528,12 @@ fn imported_guarded_projects_run_ordinary_release_public_hosts() {
         .canonicalize()
         .unwrap();
     let cargo = executable(std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into()));
+    let cargo_version = checked(
+        &root,
+        "pinned-cargo-version",
+        rust_command(Path::new(env!("CARGO")), &root).arg("--version"),
+    );
+    assert!(cargo_version.trim().starts_with("cargo "));
     let dotnet = executable(
         std::env::var_os("FERRULE_DOTNET_EXE")
             .or_else(|| std::env::var_os("DOTNET_HOST_PATH"))
@@ -586,11 +596,7 @@ fn imported_guarded_projects_run_ordinary_release_public_hosts() {
         assert_eq!(manifest.matches("[dependencies]").count(), 1);
         assert!(!manifest.contains("serde_json =") && !manifest.contains("roxmltree ="));
         std::fs::write(manifest_path, manifest.replace("[dependencies]", "[dependencies]\nserde_json = { version = \"=1.0.150\", features = [\"preserve_order\"] }\nroxmltree = \"=0.21.2\"" )).unwrap();
-        std::fs::write(
-            rust.join("rust-toolchain.toml"),
-            "[toolchain]\nchannel = \"1.98.1\"\nprofile = \"minimal\"\n",
-        )
-        .unwrap();
+        std::fs::write(rust.join("rust-toolchain.toml"), RUST_TOOLCHAIN).unwrap();
         std::fs::write(
             rust.join("src/main.rs"),
             include_str!("public_hosts/rust_host.rs.txt"),
@@ -606,10 +612,7 @@ fn imported_guarded_projects_run_ordinary_release_public_hosts() {
             "cargo-version",
             rust_command(&cargo, &rust).arg("--version"),
         );
-        assert!(
-            version.trim().starts_with("cargo 1.98.1 "),
-            "wrong installed Cargo: {version}"
-        );
+        assert_eq!(version.trim(), cargo_version.trim(), "wrong installed Cargo");
         checked(
             &directory,
             "rust-lock",

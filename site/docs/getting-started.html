@@ -32,9 +32,15 @@
         </p>
 
         <h2>Install the toolchain</h2>
-        <p>ferrule pins Rust 1.98.1 in <code>rust-toolchain.toml</code>. Install
+        <p>ferrule pins Rust <code>nightly-2026-11-16</code> in <code>rust-toolchain.toml</code>. Install
           <a href="https://rustup.rs">rustup</a>; it installs the pinned toolchain on
-          the first <code>cargo</code> command in the checkout.</p>
+          the first <code>cargo</code> command in the checkout without changing your
+          global default. The pin includes rustfmt, clippy and the wasm32 target.</p>
+        <p>Builds use Rust's parallel frontend, automatically sized to the logical
+          CPU threads available to each compiler process. Cargo build jobs and
+          test concurrency remain separate controls. See
+          <a href="https://github.com/DeandreT/ferrule/blob/main/docs/toolchains.md">Toolchain baselines</a>
+          for setup, CPU constraints and flag overrides.</p>
 
         <h2>Run an existing mapping</h2>
         <p>
