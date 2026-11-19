@@ -361,7 +361,7 @@ fn import_resolved(
 
     let count_headers =
         aggregate::filtered_count::routing::Headers::read(structure).map_err(MfdError::Resource)?;
-    let (mut edges, count_routing) =
+    let (edges, count_routing) =
         graph::read_edge_inputs_with_probe(&structure, Some(&wrapper), |claims| {
             aggregate::filtered_count::routing::Routing::prepare(count_headers, structure, claims)
         });
@@ -1083,16 +1083,20 @@ fn import_resolved(
         component.is_source = false;
     }
 
-    let absorbed_alignment = transposed_source::absorb_alignment_filters(
+    let alignment = transposed_source::absorb_alignment_filters(
         structure,
         &schema_components,
         &fn_components,
-        &mut edges.feeds,
+        &edges.feeds,
         &mut warnings,
     );
 
     // Only inputs with one distinct physical feed enter the lowering map.
-    let edge_from = &edges.feeds;
+    // Lower using repaired XLSX scalar feeds, but certify against the selected
+    // saved feeds: the raw graph still contains every disconnected sequence.
+    let (repaired, absorbed_alignment) = alignment.unzip();
+    let absorbed_alignment = absorbed_alignment.unwrap_or_default();
+    let edge_from = repaired.as_ref().unwrap_or(&edges.feeds);
     let connected_outputs = edge_from.values().copied().collect::<BTreeSet<_>>();
     for component in &schema_components {
         if matches!(selection, StageSelection::Ordinary)
@@ -1343,6 +1347,7 @@ fn import_resolved(
         count_construction.as_ref(),
         count_demand,
         matches!(selection, StageSelection::Ordinary) && filename_import == FilenameImport::None,
+        (&absorbed_alignment, &connected_outputs),
     );
     let certificate = udf::certificate::certify(&udf_registry, &udf_calls, normalized, structure);
     udf_registry
