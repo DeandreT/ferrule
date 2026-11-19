@@ -1,0 +1,33 @@
+    private static (global::Ferrule.Runtime.FerruleInstance Primary, NamedInput[] Extras) ParseXbrl(
+        byte[] bytes, global::System.Collections.Generic.IReadOnlyDictionary<string,byte[]> extras)
+    {
+        if (extras.Count != XbrlNames.Length) throw new global::System.ArgumentException("XBRL source count mismatch");
+        var inputs = new NamedInput[XbrlNames.Length];
+        var primary = XbrlSources[0].Read(bytes);
+        for (int i=0; i<inputs.Length; i++) {
+            var name = XbrlNames[i];
+            // The caller may supply a case-insensitive dictionary. Match ordinal names ourselves.
+            byte[]? document = null;
+            foreach (var pair in extras) if (pair.Key == name) document = pair.Value;
+            inputs[i] = new(name, XbrlSources[i+1].Read(document ?? throw new global::System.ArgumentException("Missing XBRL source: " + name)));
+        }
+        return (primary, inputs);
+    }
+    public static byte[] ExecuteXbrlBytesSelectedTarget(byte[] bytes, global::System.Collections.Generic.IReadOnlyDictionary<string,byte[]> extras,
+        global::Ferrule.Runtime.FerruleTargetSelection selection, global::Ferrule.Runtime.FerruleExecutionContext? host = null)
+    {
+        int i = ResolveTarget(selection);
+        var p = ParseXbrl(bytes, extras);
+        var mapped = ExecuteSelectedTargetWithHost(p.Primary, selection, p.Extras, host);
+        return XbrlTargets[i].Write(mapped is SelectedTargetOutput.Primary primary ? primary.Instance : ((SelectedTargetOutput.Named)mapped).Output.Instance);
+    }
+    public static (byte[] Primary, (string Name, byte[] Bytes)[] Extras) ExecuteXbrlBytesOutputs(byte[] bytes,
+        global::System.Collections.Generic.IReadOnlyDictionary<string,byte[]> extras, global::Ferrule.Runtime.FerruleExecutionContext? host = null)
+    {
+        var p = ParseXbrl(bytes, extras);
+        var mapped = ExecuteOutputs(CreateContext(p.Primary,p.Extras,host));
+        var primary = XbrlTargets[0].Write(mapped.Primary);
+        var outputs = new (string,byte[])[mapped.Extras.Count];
+        for (int i=0; i<outputs.Length; i++) outputs[i]=(mapped.Extras[i].Name,XbrlTargets[i+1].Write(mapped.Extras[i].Instance));
+        return (primary,outputs);
+    }
