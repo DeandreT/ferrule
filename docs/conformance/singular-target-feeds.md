@@ -117,12 +117,31 @@ export/re-import behavior. Their fixture JSON is only notation for constructing
 typed values, not evidence about JSON null or JSON mapping APIs. These controls
 do not establish other nil lexical forms, nested nil, coercion or error ordering.
 
-## Remaining design gate
+## Disposition by target shape
 
-[#241](https://github.com/DeandreT/ferrule/issues/241) remains open. These finite
-non-null constants, optional-element and explicit-nil controls do not establish general null
-handling or a new singular multiple-feed representation. The separate
-[XML target-casting controls](xml-target-casting.md) qualify one conversion-versus-arithmetic
-failure selection; other fallible-expression precedence remains unqualified. No such singular shape is
-admitted by this observation. Distinct declared branch ownership belongs to
-[#239](https://github.com/DeandreT/ferrule/issues/239), not an inferred winner.
+| Target, in one invocation | Executable decision | Cardinality and failure boundary |
+| --- | --- | --- |
+| One wire to a singular entry | Existing single-binding path | The constant control emits exactly one Amount. An explicit conditional feeding one pin is still one binding. |
+| Two distinct sources on one physical connector | Refuse competing wires | Reference validation fails in either tested vertex order. No preview value or competing-expression error is defined by those runs. |
+| Two declared entries for the same singular field in one scope | Preserve both bindings; refuse executable admission | For two present values the reference emits two occurrences and violates the XSD. Equal values, a shared expression, or a particular input with at most one present value do not make this a singular mapping. |
+| Same singular topology with missing or nil source elements | Same refusal for every input | For the tested direct XML feeds, missing contributes zero and explicit nil contributes one occurrence. Two nils violate the singular XSD. |
+| Same singular topology with two fallible expressions | Same refusal before execution or lowering | Ferrule's observable failure is duplicate binding, before either expression runs. Which expression would fail in a reference preview is a separate question. |
+| Two declared repeating entries | Existing repeated binding path | Emit each present occurrence in entry-tree order, including explicit XML nil. [Enabled target casting](xml-target-casting.md#enabled-casting-and-failure-selection) selects the first declared failure for the tested conversion/division pair. |
+| Separate declared ancestor branches | Existing [#239](https://github.com/DeandreT/ferrule/issues/239) ownership rules | Resolve the declared owner first, then check cardinality within that scope. Equal field names across owners are not evidence of competition. |
+| Untyped null, JSON null, other expression failures or ambiguous owners | No additional admission | XML nil controls give no JSON or general error-order rule. An ambiguous owner cannot be repaired by choosing a value. |
+
+**Decision for [#241](https://github.com/DeandreT/ferrule/issues/241): no
+same-scope singular multiple-feed shape qualifies.** The
+[distinct-constant fixture](../../crates/mfd/tests/fixtures/input_guard/competing-singular.mfd)
+remains a refusal control. The public-route test checks the exact validation
+location and message before input acquisition or generated artifact publication.
+There is no compiled singular success case: both generation paths stop at
+validation. The compiled full-value comparisons above apply to repeating
+targets only.
+
+The [singular two-conversion probes](../design/fixtures/native-feed-controls/README.md)
+isolate the remaining reference error-order question. Even if declaration order
+selects the first failure in both directions, that cannot repair the two-value
+cardinality counterexample. Revisit executable admission only for a distinct
+saved shape that guarantees at most one result across its input domain, with
+independent full-value and exact-error controls for that shape.
