@@ -244,6 +244,9 @@ pub(super) fn connected_detour(
     clearance: f32,
     lanes: Option<&mut Vec<routing::Lane>>,
 ) -> Option<Vec<Pos2>> {
+    if cards.is_empty() && lanes.is_none() {
+        return None;
+    }
     let WireId::Connected {
         out_pin, in_pin, ..
     } = wire

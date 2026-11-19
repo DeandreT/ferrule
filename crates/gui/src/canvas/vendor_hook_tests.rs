@@ -15,6 +15,7 @@ struct Probe {
     disconnected: usize,
     blocker_rect: Option<egui::Rect>,
     blocker_width: f32,
+    avoid_nodes: Option<bool>,
     /// The widget `first_widget_id` names in each header row.
     header_first_widgets: Vec<Option<(egui::Sense, egui::Vec2)>>,
 }
@@ -134,6 +135,7 @@ fn frame(
     context.run_test_ui(input, |ui| {
         let mut style = SnarlStyle::new();
         style.wire_style = Some(WireStyle::Line);
+        style.avoid_nodes = probe.avoid_nodes;
         SnarlWidget::new()
             .id(egui::Id::unique("hook-fixture"))
             .style(style)
@@ -271,6 +273,10 @@ fn moved_and_resized_cards_reroute_drawn_and_clickable_wire_after_arrange() {
     snarl.get_node_info_mut(c).unwrap().pos.y = 100.0;
     let detour = painted(&mut snarl, &mut probe);
     assert!(detour.len() > 2);
+    probe.avoid_nodes = Some(false);
+    assert_eq!(painted(&mut snarl, &mut probe).len(), 2);
+    probe.avoid_nodes = Some(true);
+    assert_eq!(painted(&mut snarl, &mut probe), detour);
     let raw_pins = (probe.from, probe.to);
     let click = detour
         .windows(2)
