@@ -25,7 +25,11 @@ foreach (var item in cases)
     try
     {
         var actual = GeneratedMapping.Execute(primary, context);
-        if (test["error"] is not null || failure is not null)
+        if (
+            test["error"] is not null
+            || test["cardinality_error"] is not null
+            || failure is not null
+        )
             throw new InvalidOperationException("Expected typed failure: " + test);
         LookupOracle.Equal(
             actual,
@@ -36,6 +40,14 @@ foreach (var item in cases)
             throw new InvalidOperationException(
                 "Output mismatch: " + json + " expected " + test["expected"]
             );
+    }
+    catch (FerruleRuntimeException error) when (test["cardinality_error"] is not null)
+    {
+        if (
+            error.Error != FerruleRuntimeError.MappingException
+            || error.MappingExceptionMessage != test["cardinality_error"]!.GetValue<string>()
+        )
+            throw;
     }
     catch (FerruleRuntimeException error) when (test["error"] is not null)
     {
