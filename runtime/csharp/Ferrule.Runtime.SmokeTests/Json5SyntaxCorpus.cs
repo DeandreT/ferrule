@@ -5,7 +5,11 @@ namespace Ferrule.Runtime.SmokeTests;
 internal static partial class Program
 {
     private sealed record Json5SyntaxCase(
-        string Id, string Input, string? Normalized, FerruleJson5SyntaxKind? Error);
+        string Id,
+        string Input,
+        string? Normalized,
+        FerruleJson5SyntaxKind? Error
+    );
 
     // Pure syntax projection:46 normalize,29 Syntax; six later Input refusals normalize here.
     private static readonly Json5SyntaxCase[] Json5SyntaxCases =
@@ -28,7 +32,12 @@ internal static partial class Program
         new("i64-min-hex", "{n:-0x8000000000000000}", "{\"n\":-9223372036854775808}", null),
         new("i64-max", "{n:9223372036854775807}", "{\"n\":9223372036854775807}", null),
         new("integer-two53-plus1", "{n:9007199254740993}", "{\"n\":9007199254740993}", null),
-        new("decimal-two53-plus1-rounds-once", "{n:9007199254740993.0}", "{\"n\":9007199254740993.0}", null),
+        new(
+            "decimal-two53-plus1-rounds-once",
+            "{n:9007199254740993.0}",
+            "{\"n\":9007199254740993.0}",
+            null
+        ),
         new("escaped-ascii-identifier", "{\\u006e:7}", "{\"n\":7}", null),
         new("duplicate-last-wins", "{n:1,n:7}", "{\"n\":1,\"n\":7}", null),
         new("escaped-duplicate-name", "{n:1,'\\u006e':7}", "{\"n\":1,\"n\":7}", null),
@@ -47,16 +56,46 @@ internal static partial class Program
         new("vertical-tab-escape", "{n:'\\v'}", "{\"n\":\"\\u000b\"}", null),
         new("raw-tab-string", "{n:'a\tb'}", "{\"n\":\"a\\tb\"}", null),
         new("raw-u2028-string", "{n:'a\u2028b'}", "{\"n\":\"a\u2028b\"}", null),
-        new("markers-in-string-not-comments", "{n:'/*not comment*/ [] {} //'}", "{\"n\":\"/*not comment*/ [] {} //\"}", null),
+        new(
+            "markers-in-string-not-comments",
+            "{n:'/*not comment*/ [] {} //'}",
+            "{\"n\":\"/*not comment*/ [] {} //\"}",
+            null
+        ),
         new("unquoted-unicode-boundary", "{雪:7}", "{\"雪\":7}", null),
         new("escaped-unicode-identifier-boundary", "{\\u96ea:7}", "{\"雪\":7}", null),
         new("consecutive-comma", "{n:7,,}", null, FerruleJson5SyntaxKind.UnexpectedToken),
         new("missing-colon", "{n 7}", null, FerruleJson5SyntaxKind.UnexpectedToken),
-        new("second-root-json-lines", "{n:7}\n{n:8}", null, FerruleJson5SyntaxKind.TrailingRootValue),
-        new("unterminated-block-comment", "{n:7}/*", null, FerruleJson5SyntaxKind.UnterminatedComment),
-        new("unescaped-lf-string", "{n:'a\nb'}", null, FerruleJson5SyntaxKind.LineTerminatorInString),
-        new("unpaired-surrogate-string", "{n:'\\uD800'}", null, FerruleJson5SyntaxKind.InvalidEscape),
-        new("reversed-surrogate-string", "{n:'\\uDC00\\uD800'}", null, FerruleJson5SyntaxKind.InvalidEscape),
+        new(
+            "second-root-json-lines",
+            "{n:7}\n{n:8}",
+            null,
+            FerruleJson5SyntaxKind.TrailingRootValue
+        ),
+        new(
+            "unterminated-block-comment",
+            "{n:7}/*",
+            null,
+            FerruleJson5SyntaxKind.UnterminatedComment
+        ),
+        new(
+            "unescaped-lf-string",
+            "{n:'a\nb'}",
+            null,
+            FerruleJson5SyntaxKind.LineTerminatorInString
+        ),
+        new(
+            "unpaired-surrogate-string",
+            "{n:'\\uD800'}",
+            null,
+            FerruleJson5SyntaxKind.InvalidEscape
+        ),
+        new(
+            "reversed-surrogate-string",
+            "{n:'\\uDC00\\uD800'}",
+            null,
+            FerruleJson5SyntaxKind.InvalidEscape
+        ),
         new("legacy-octal-string-escape", "{n:'\\1'}", null, FerruleJson5SyntaxKind.InvalidEscape),
         new("nul-followed-digit", "{n:'\\01'}", null, FerruleJson5SyntaxKind.InvalidEscape),
         new("invalid-hex-string-escape", "{n:'\\x0G'}", null, FerruleJson5SyntaxKind.InvalidEscape),
@@ -64,26 +103,71 @@ internal static partial class Program
         new("number-separator", "{n:1_0}", null, FerruleJson5SyntaxKind.InvalidNumber),
         new("empty-hexadecimal", "{n:0x}", null, FerruleJson5SyntaxKind.InvalidNumber),
         new("empty-exponent", "{n:1e+}", null, FerruleJson5SyntaxKind.InvalidNumber),
-        new("unsigned64-plus1", "{n:18446744073709551616}", null, FerruleJson5SyntaxKind.IntegerOutOfRange),
-        new("signed64-minus1", "{n:-9223372036854775809}", null, FerruleJson5SyntaxKind.IntegerOutOfRange),
+        new(
+            "unsigned64-plus1",
+            "{n:18446744073709551616}",
+            null,
+            FerruleJson5SyntaxKind.IntegerOutOfRange
+        ),
+        new(
+            "signed64-minus1",
+            "{n:-9223372036854775809}",
+            null,
+            FerruleJson5SyntaxKind.IntegerOutOfRange
+        ),
         new("float-overflow", "{n:1e400}", null, FerruleJson5SyntaxKind.NonFiniteNumber),
         new("nonfinite-Infinity", "{n:Infinity}", null, FerruleJson5SyntaxKind.NonFiniteNumber),
-        new("nonfinite-minusInfinity", "{n:-Infinity}", null, FerruleJson5SyntaxKind.NonFiniteNumber),
-        new("nonfinite-plusInfinity", "{n:+Infinity}", null, FerruleJson5SyntaxKind.NonFiniteNumber),
+        new(
+            "nonfinite-minusInfinity",
+            "{n:-Infinity}",
+            null,
+            FerruleJson5SyntaxKind.NonFiniteNumber
+        ),
+        new(
+            "nonfinite-plusInfinity",
+            "{n:+Infinity}",
+            null,
+            FerruleJson5SyntaxKind.NonFiniteNumber
+        ),
         new("nonfinite-NaN", "{n:NaN}", null, FerruleJson5SyntaxKind.NonFiniteNumber),
         new("nonfinite-minusNaN", "{n:-NaN}", null, FerruleJson5SyntaxKind.NonFiniteNumber),
         new("nonfinite-plusNaN", "{n:+NaN}", null, FerruleJson5SyntaxKind.NonFiniteNumber),
-        new("nonfinite-overwritten", "{n:NaN,n:null}", null, FerruleJson5SyntaxKind.NonFiniteNumber),
-        new("earlier-invalid-escape-overwritten", "{n:'\\1',n:'valid'}", null, FerruleJson5SyntaxKind.InvalidEscape),
+        new(
+            "nonfinite-overwritten",
+            "{n:NaN,n:null}",
+            null,
+            FerruleJson5SyntaxKind.NonFiniteNumber
+        ),
+        new(
+            "earlier-invalid-escape-overwritten",
+            "{n:'\\1',n:'valid'}",
+            null,
+            FerruleJson5SyntaxKind.InvalidEscape
+        ),
         new("nul-unquoted-value", "{n:\u0000}", null, FerruleJson5SyntaxKind.UnexpectedToken),
-        new("NEL-not-json5-whitespace", "\u0085{n:7}", null, FerruleJson5SyntaxKind.UnexpectedToken),
+        new(
+            "NEL-not-json5-whitespace",
+            "\u0085{n:7}",
+            null,
+            FerruleJson5SyntaxKind.UnexpectedToken
+        ),
         new("root-array-not-flat-rows", "[{n:7}]", "[{\"n\":7}]", null),
         new("nonnullable-null", "{n:null}", "{\"n\":null}", null),
         new("decimal-not-integer-tag", "{n:1.0}", "{\"n\":1.0}", null),
-        new("u64-outside-signed-int", "{n:9223372036854775808}", "{\"n\":9223372036854775808}", null),
+        new(
+            "u64-outside-signed-int",
+            "{n:9223372036854775808}",
+            "{\"n\":9223372036854775808}",
+            null
+        ),
         new("integer-not-exact-float", "{n:9007199254740993}", "{\"n\":9007199254740993}", null),
         new("undeclared-property", "{n:7,x:8}", "{\"n\":7,\"x\":8}", null),
         new("absent-remains-null", "{}", "{}", null),
-        new("duplicate-first-key-slot-schema-order", "{m:3,n:1,n:7}", "{\"m\":3,\"n\":1,\"n\":7}", null),
+        new(
+            "duplicate-first-key-slot-schema-order",
+            "{m:3,n:1,n:7}",
+            "{\"m\":3,\"n\":1,\"n\":7}",
+            null
+        ),
     ];
 }

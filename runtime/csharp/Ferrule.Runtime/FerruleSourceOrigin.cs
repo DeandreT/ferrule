@@ -10,24 +10,37 @@ public sealed class FerruleSourceDocumentOrigin
     public FerruleSourceDocumentOrigin(string path, string? resolvedPath = null)
     {
         Validate(path, nameof(path));
-        if (resolvedPath is not null) Validate(resolvedPath, nameof(resolvedPath));
+        if (resolvedPath is not null)
+            Validate(resolvedPath, nameof(resolvedPath));
         Path = path;
         ResolvedPath = resolvedPath;
     }
+
     public string Path { get; }
     public string? ResolvedPath { get; }
     public string SourcePath => ResolvedPath ?? Path;
+
     public bool SameDocument(FerruleSourceDocumentOrigin? other) => ReferenceEquals(this, other);
+
     public FerruleSourceRowOrigin Row(ulong position)
     {
-        if (position == 0) throw new ArgumentOutOfRangeException(nameof(position));
+        if (position == 0)
+            throw new ArgumentOutOfRangeException(nameof(position));
         return new(this, position);
     }
+
     private static void Validate(string path, string argument)
     {
-        if (string.IsNullOrEmpty(path) || path.Contains('\0') || !FerruleUnicode.IsWellFormed(path)
-            || Encoding.UTF8.GetByteCount(path) > MaximumPathBytes)
-            throw new ArgumentException("Source paths must be nonempty, NUL-free, valid Unicode and at most 4096 UTF-8 bytes.", argument);
+        if (
+            string.IsNullOrEmpty(path)
+            || path.Contains('\0')
+            || !FerruleUnicode.IsWellFormed(path)
+            || Encoding.UTF8.GetByteCount(path) > MaximumPathBytes
+        )
+            throw new ArgumentException(
+                "Source paths must be nonempty, NUL-free, valid Unicode and at most 4096 UTF-8 bytes.",
+                argument
+            );
     }
 }
 
@@ -39,11 +52,21 @@ public sealed class FerruleSourceRowOrigin : IEquatable<FerruleSourceRowOrigin>
         Document = document;
         Position = position;
     }
+
     public FerruleSourceDocumentOrigin Document { get; }
     public ulong Position { get; }
-    public bool SameOccurrence(FerruleSourceRowOrigin? other) => other is not null
-        && Position == other.Position && Document.SameDocument(other.Document);
+
+    public bool SameOccurrence(FerruleSourceRowOrigin? other) =>
+        other is not null && Position == other.Position && Document.SameDocument(other.Document);
+
     public bool Equals(FerruleSourceRowOrigin? other) => SameOccurrence(other);
-    public override bool Equals(object? value) => value is FerruleSourceRowOrigin other && SameOccurrence(other);
-    public override int GetHashCode() => HashCode.Combine(System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(Document), Position);
+
+    public override bool Equals(object? value) =>
+        value is FerruleSourceRowOrigin other && SameOccurrence(other);
+
+    public override int GetHashCode() =>
+        HashCode.Combine(
+            System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(Document),
+            Position
+        );
 }

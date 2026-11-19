@@ -23,7 +23,9 @@ internal static partial class Program
         Equal(first.Row(1).GetHashCode(), first.Row(1).GetHashCode());
         Throws<ArgumentOutOfRangeException>(() => first.Row(0));
         Equal(ulong.MaxValue, first.Row(ulong.MaxValue).Position);
-        foreach (var path in new[] { "", "a\0b", "\ud800", new string('x', 4097), new string('é', 2049) })
+        foreach (
+            var path in new[] { "", "a\0b", "\ud800", new string('x', 4097), new string('é', 2049) }
+        )
         {
             Throws<ArgumentException>(() => new FerruleSourceDocumentOrigin(path));
             Throws<ArgumentException>(() => new FerruleSourceDocumentOrigin("valid", path));
@@ -45,19 +47,43 @@ internal static partial class Program
         var nested = Group(Field("Child", marked)).WithSourceOrigin(document.Row(2));
         var nestedCopy = ScopeContext.FromSource(nested).CopyCurrentGroup();
         Equal(true, nestedCopy.SourceOrigin!.SameOccurrence(document.Row(2)));
-        Equal(true, ((FerruleGroup)nestedCopy.Fields[0].Value).SourceOrigin!.SameOccurrence(document.Row(1)));
+        Equal(
+            true,
+            ((FerruleGroup)nestedCopy.Fields[0].Value).SourceOrigin!.SameOccurrence(document.Row(1))
+        );
         var rebuilt = new FerruleGroup(marked.Fields);
         Equal(true, rebuilt.SourceOrigin is null);
-        var filtered = (FerruleGroup)FerruleRecursiveFilter.Apply(ScopeContext.FromSource(marked),
-            "Children", "Items", 1, _ => FerruleValue.FromBoolean(true));
+        var filtered = (FerruleGroup)
+            FerruleRecursiveFilter.Apply(
+                ScopeContext.FromSource(marked),
+                "Children",
+                "Items",
+                1,
+                _ => FerruleValue.FromBoolean(true)
+            );
         Equal(true, filtered.SourceOrigin is null);
-        var filteredParent = (FerruleGroup)FerruleRecursiveFilter.Apply(ScopeContext.FromSource(nested),
-            "Children", "Items", 1, _ => FerruleValue.FromBoolean(true));
+        var filteredParent = (FerruleGroup)
+            FerruleRecursiveFilter.Apply(
+                ScopeContext.FromSource(nested),
+                "Children",
+                "Items",
+                1,
+                _ => FerruleValue.FromBoolean(true)
+            );
         Equal(true, filteredParent.SourceOrigin is null);
-        Equal(true, ((FerruleGroup)filteredParent.Fields[0].Value).SourceOrigin!.SameOccurrence(document.Row(1)));
+        Equal(
+            true,
+            ((FerruleGroup)filteredParent.Fields[0].Value).SourceOrigin!.SameOccurrence(
+                document.Row(1)
+            )
+        );
         var xml = marked.WithXmlTypeOrigin(FerruleXmlTypeOrigin.Absent);
         Equal(true, xml.SourceOrigin!.SameOccurrence(document.Row(1)));
         Equal(FerruleXmlTypeOriginKind.Absent, xml.XmlTypeOrigin.Kind);
-        Equal(true, xml.WithXmlTypeOrigin(FerruleXmlTypeOrigin.Unknown).SourceOrigin!.SameOccurrence(document.Row(1)));
+        Equal(
+            true,
+            xml.WithXmlTypeOrigin(FerruleXmlTypeOrigin.Unknown)
+                .SourceOrigin!.SameOccurrence(document.Row(1))
+        );
     }
 }

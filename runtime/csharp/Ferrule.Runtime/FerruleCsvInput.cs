@@ -58,7 +58,8 @@ public sealed class FerruleCsvInputException : Exception
         long? maximum = null,
         long? observed = null,
         int? expectedColumns = null,
-        int? actualColumns = null)
+        int? actualColumns = null
+    )
         : base(message)
     {
         Error = error;
@@ -108,7 +109,8 @@ public static class FerruleCsvInput
     public static FerruleInstance Parse(
         string source,
         IReadOnlyList<FerruleCsvReadField> fields,
-        FerruleCsvReadOptions? options = null)
+        FerruleCsvReadOptions? options = null
+    )
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(fields);
@@ -126,7 +128,8 @@ public static class FerruleCsvInput
     public static FerruleInstance ParseBytes(
         byte[] source,
         IReadOnlyList<FerruleCsvReadField> fields,
-        FerruleCsvReadOptions? options = null)
+        FerruleCsvReadOptions? options = null
+    )
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(fields);
@@ -143,7 +146,8 @@ public static class FerruleCsvInput
         {
             throw new FerruleCsvInputException(
                 FerruleCsvInputError.Encoding,
-                "CSV input bytes must be valid UTF-8.");
+                "CSV input bytes must be valid UTF-8."
+            );
         }
         return new Reader(text, ordered, options, delimiter, quote).Read();
     }
@@ -156,7 +160,8 @@ public static class FerruleCsvInput
         byte[] source,
         IReadOnlyList<FerruleCsvReadField> fields,
         FerruleCsvByteDecodingPolicy policy,
-        FerruleCsvReadOptions? options = null)
+        FerruleCsvReadOptions? options = null
+    )
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(fields);
@@ -177,14 +182,18 @@ public static class FerruleCsvInput
         var (encoding, skip) = decoding;
         var count = source.Length - skip;
         var characters = new char[encoding.GetMaxCharCount(count)];
-        var written = encoding.GetDecoder().GetChars(source, skip, count, characters, 0, flush: false);
+        var written = encoding
+            .GetDecoder()
+            .GetChars(source, skip, count, characters, 0, flush: false);
         var text = new string(characters, 0, written);
         var decodedBytes = CountUnicodeBytes(text);
         if (decodedBytes > MaximumInputBytes)
             throw new FerruleCsvInputException(
                 FerruleCsvInputError.DecodedInputTooLarge,
                 $"Decoded CSV text exceeds {MaximumInputBytes} UTF-8 bytes.",
-                maximum: MaximumInputBytes, observed: decodedBytes);
+                maximum: MaximumInputBytes,
+                observed: decodedBytes
+            );
         return Parse(text, fields, options);
     }
 
@@ -195,7 +204,9 @@ public static class FerruleCsvInput
             throw new FerruleCsvInputException(
                 FerruleCsvInputError.UnsupportedSchema,
                 $"CSV input schema exceeds {MaximumColumns} fields.",
-                maximum: MaximumColumns, observed: fields.Count);
+                maximum: MaximumColumns,
+                observed: fields.Count
+            );
         }
         var ordered = new FerruleCsvReadField[fields.Count];
         var names = new HashSet<string>(StringComparer.Ordinal);
@@ -206,29 +217,44 @@ public static class FerruleCsvInput
             {
                 throw new FerruleCsvInputException(
                     FerruleCsvInputError.UnsupportedSchema,
-                    $"CSV read field at index {column} cannot be null.", column: column);
+                    $"CSV read field at index {column} cannot be null.",
+                    column: column
+                );
             }
             if (string.IsNullOrEmpty(field.Name) || !FerruleUnicode.IsWellFormed(field.Name))
             {
                 throw new FerruleCsvInputException(
                     FerruleCsvInputError.UnsupportedSchema,
                     $"CSV read field at index {column} must have a nonempty well-formed Unicode name.",
-                    column: column);
+                    column: column
+                );
             }
             if (!names.Add(field.Name))
             {
                 throw new FerruleCsvInputException(
                     FerruleCsvInputError.UnsupportedSchema,
                     $"CSV read field name '{field.Name}' is duplicated.",
-                    column: column, field: field.Name);
+                    column: column,
+                    field: field.Name
+                );
             }
-            if (field.Type is not (FerruleScalarType.String or FerruleScalarType.Int64 or
-                FerruleScalarType.Double or FerruleScalarType.Bool))
+            if (
+                field.Type
+                is not (
+                    FerruleScalarType.String
+                    or FerruleScalarType.Int64
+                    or FerruleScalarType.Double
+                    or FerruleScalarType.Bool
+                )
+            )
             {
                 throw new FerruleCsvInputException(
                     FerruleCsvInputError.UnsupportedSchema,
                     $"CSV read field '{field.Name}' has an unsupported scalar type.",
-                    column: column, field: field.Name, expectedType: field.Type);
+                    column: column,
+                    field: field.Name,
+                    expectedType: field.Type
+                );
             }
             ordered[column] = field;
         }
@@ -243,7 +269,8 @@ public static class FerruleCsvInput
             throw new FerruleCsvInputException(
                 FerruleCsvInputError.BadDelimiter,
                 $"`{delimiter}` is not a valid CSV delimiter (must be a single-byte character)",
-                character: delimiter);
+                character: delimiter
+            );
         }
         if (options.QuoteDisabled)
         {
@@ -251,7 +278,8 @@ public static class FerruleCsvInput
             {
                 throw new FerruleCsvInputException(
                     FerruleCsvInputError.ConflictingQuoteSettings,
-                    "CSV quote character cannot be set while quoting is disabled");
+                    "CSV quote character cannot be set while quoting is disabled"
+                );
             }
             return (delimiter, null);
         }
@@ -261,13 +289,15 @@ public static class FerruleCsvInput
             throw new FerruleCsvInputException(
                 FerruleCsvInputError.BadQuote,
                 $"`{quote}` is not a valid CSV quote (must be a printable ASCII character)",
-                character: quote);
+                character: quote
+            );
         }
         if (delimiter == quote)
         {
             throw new FerruleCsvInputException(
                 FerruleCsvInputError.DelimiterQuoteConflict,
-                "CSV delimiter and quote must be different characters");
+                "CSV delimiter and quote must be different characters"
+            );
         }
         return (delimiter, quote);
     }
@@ -293,14 +323,17 @@ public static class FerruleCsvInput
             }
             else
             {
-                bytes += character < '\x80' ? 1 : character < '\x800' ? 2 : 3;
+                bytes +=
+                    character < '\x80' ? 1
+                    : character < '\x800' ? 2
+                    : 3;
             }
         }
         return bytes;
     }
 
-    private static FerruleCsvInputException InvalidUnicode() => new(
-        FerruleCsvInputError.Encoding, "CSV input must contain valid Unicode.");
+    private static FerruleCsvInputException InvalidUnicode() =>
+        new(FerruleCsvInputError.Encoding, "CSV input must contain valid Unicode.");
 
     private static void RequireInputSize(long observed)
     {
@@ -309,11 +342,19 @@ public static class FerruleCsvInput
             throw new FerruleCsvInputException(
                 FerruleCsvInputError.InputTooLarge,
                 $"CSV input exceeds {MaximumInputBytes} UTF-8 bytes (observed {observed}).",
-                maximum: MaximumInputBytes, observed: observed);
+                maximum: MaximumInputBytes,
+                observed: observed
+            );
         }
     }
 
-    private enum FieldState { Start, Unquoted, Quoted, AfterQuote }
+    private enum FieldState
+    {
+        Start,
+        Unquoted,
+        Quoted,
+        AfterQuote,
+    }
 
     private sealed class Reader
     {
@@ -331,8 +372,13 @@ public static class FerruleCsvInput
         private int _record;
         private long _nodes = 1;
 
-        internal Reader(string source, FerruleCsvReadField[] fields,
-            FerruleCsvReadOptions options, char delimiter, char? quote)
+        internal Reader(
+            string source,
+            FerruleCsvReadField[] fields,
+            FerruleCsvReadOptions options,
+            char delimiter,
+            char? quote
+        )
         {
             _source = source;
             _fields = fields;
@@ -341,8 +387,8 @@ public static class FerruleCsvInput
             _quote = quote;
         }
 
-        private int? Row => _options.HasHeaders && _record == 0 ? null :
-            _record - (_options.HasHeaders ? 1 : 0);
+        private int? Row =>
+            _options.HasHeaders && _record == 0 ? null : _record - (_options.HasHeaders ? 1 : 0);
 
         internal FerruleInstance Read()
         {
@@ -381,8 +427,12 @@ public static class FerruleCsvInput
                         throw new FerruleCsvInputException(
                             FerruleCsvInputError.TooManyColumns,
                             $"record {_record}: CSV column count exceeds {MaximumColumns} (observed {MaximumColumns + 1}).",
-                            row: Row, record: _record, column: MaximumColumns,
-                            maximum: MaximumColumns, observed: MaximumColumns + 1);
+                            row: Row,
+                            record: _record,
+                            column: MaximumColumns,
+                            maximum: MaximumColumns,
+                            observed: MaximumColumns + 1
+                        );
                     }
                     continue;
                 }
@@ -392,7 +442,11 @@ public static class FerruleCsvInput
                     {
                         FinishRecord();
                     }
-                    if (character == '\r' && index + 1 < _source.Length && _source[index + 1] == '\n')
+                    if (
+                        character == '\r'
+                        && index + 1 < _source.Length
+                        && _source[index + 1] == '\n'
+                    )
                     {
                         index++;
                     }
@@ -423,15 +477,23 @@ public static class FerruleCsvInput
         {
             var character = _source[index];
             var units = char.IsHighSurrogate(character) ? 2 : 1;
-            var bytes = units == 2 ? 4 : character < '\x80' ? 1 : character < '\x800' ? 2 : 3;
+            var bytes =
+                units == 2 ? 4
+                : character < '\x80' ? 1
+                : character < '\x800' ? 2
+                : 3;
             var observed = _cellBytes + bytes;
             if (observed > MaximumCellBytes)
             {
                 throw new FerruleCsvInputException(
                     FerruleCsvInputError.ValueTooLarge,
                     $"record {_record}, column {_cells.Count}: decoded CSV cell exceeds {MaximumCellBytes} UTF-8 bytes (observed {observed}).",
-                    row: Row, record: _record, column: _cells.Count,
-                    maximum: MaximumCellBytes, observed: observed);
+                    row: Row,
+                    record: _record,
+                    column: _cells.Count,
+                    maximum: MaximumCellBytes,
+                    observed: observed
+                );
             }
             _cellBytes = observed;
             _cell.Append(character);
@@ -458,7 +520,11 @@ public static class FerruleCsvInput
                 throw new FerruleCsvInputException(
                     FerruleCsvInputError.TooManyRecords,
                     $"CSV logical record count exceeds {MaximumRecords} (observed {observedRecords}).",
-                    row: Row, record: _record, maximum: MaximumRecords, observed: observedRecords);
+                    row: Row,
+                    record: _record,
+                    maximum: MaximumRecords,
+                    observed: observedRecords
+                );
             }
             if (!_options.HasHeaders || _record != 0)
             {
@@ -477,8 +543,11 @@ public static class FerruleCsvInput
                 throw new FerruleCsvInputException(
                     FerruleCsvInputError.ColumnCount,
                     $"row {row}: expected {_fields.Length} column(s), got {_cells.Count}",
-                    row: row, record: _record,
-                    expectedColumns: _fields.Length, actualColumns: _cells.Count);
+                    row: row,
+                    record: _record,
+                    expectedColumns: _fields.Length,
+                    actualColumns: _cells.Count
+                );
             }
             var observedNodes = _nodes + 1 + _fields.Length;
             if (observedNodes > MaximumNodes)
@@ -486,7 +555,11 @@ public static class FerruleCsvInput
                 throw new FerruleCsvInputException(
                     FerruleCsvInputError.NodeLimit,
                     $"CSV instance node count exceeds {MaximumNodes} (observed {observedNodes}).",
-                    row: row, record: _record, maximum: MaximumNodes, observed: observedNodes);
+                    row: row,
+                    record: _record,
+                    maximum: MaximumNodes,
+                    observed: observedNodes
+                );
             }
             _nodes = observedNodes;
             var values = new FerruleField[_fields.Length];
@@ -500,8 +573,10 @@ public static class FerruleCsvInput
                 }
                 else if (_cells[column].Length == 0)
                 {
-                    value = field.Type == FerruleScalarType.String && _options.PreserveEmptyStrings
-                        ? FerruleValue.FromString(string.Empty) : FerruleValue.Null;
+                    value =
+                        field.Type == FerruleScalarType.String && _options.PreserveEmptyStrings
+                            ? FerruleValue.FromString(string.Empty)
+                            : FerruleValue.Null;
                 }
                 else
                 {
@@ -514,23 +589,46 @@ public static class FerruleCsvInput
     }
 
     internal static FerruleValue ParseCell(
-        FerruleCsvReadField field, string cell, int row, int record, int column)
+        FerruleCsvReadField field,
+        string cell,
+        int row,
+        int record,
+        int column
+    )
     {
         switch (field.Type)
         {
             case FerruleScalarType.String:
                 return FerruleValue.FromString(cell);
             case FerruleScalarType.Int64:
-                if (cell.Length > 0 && IsIntegerLexical(cell) && long.TryParse(cell,
-                    NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var integer))
+                if (
+                    cell.Length > 0
+                    && IsIntegerLexical(cell)
+                    && long.TryParse(
+                        cell,
+                        NumberStyles.AllowLeadingSign,
+                        CultureInfo.InvariantCulture,
+                        out var integer
+                    )
+                )
                 {
                     return FerruleValue.FromInt64(integer);
                 }
                 break;
             case FerruleScalarType.Double:
-                if (cell.Length > 0 && IsFloatLexical(cell) && double.TryParse(cell,
-                    NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint | NumberStyles.AllowExponent,
-                    CultureInfo.InvariantCulture, out var number) && double.IsFinite(number))
+                if (
+                    cell.Length > 0
+                    && IsFloatLexical(cell)
+                    && double.TryParse(
+                        cell,
+                        NumberStyles.AllowLeadingSign
+                            | NumberStyles.AllowDecimalPoint
+                            | NumberStyles.AllowExponent,
+                        CultureInfo.InvariantCulture,
+                        out var number
+                    )
+                    && double.IsFinite(number)
+                )
                 {
                     if (number == 0 && cell[0] == '-')
                     {
@@ -561,8 +659,13 @@ public static class FerruleCsvInput
         throw new FerruleCsvInputException(
             FerruleCsvInputError.Parse,
             $"row {row}: column `{field.Name}` expected {typeName}, got `{cell}`",
-            row: row, record: record, column: column, field: field.Name,
-            expectedType: field.Type, cell: cell);
+            row: row,
+            record: record,
+            column: column,
+            field: field.Name,
+            expectedType: field.Type,
+            cell: cell
+        );
     }
 
     private static bool IsIntegerLexical(string value)
@@ -636,8 +739,19 @@ public static class FerruleCsvInput
         return value.AsSpan(start, end - start);
     }
 
-    private static bool IsBooleanWhitespace(char character) => character is
-        >= '\u0009' and <= '\u000D' or '\u0020' or '\u0085' or '\u00A0' or
-        '\u1680' or >= '\u2000' and <= '\u200A' or '\u2028' or '\u2029' or
-        '\u202F' or '\u205F' or '\u3000';
+    private static bool IsBooleanWhitespace(char character) =>
+        character
+            is >= '\u0009'
+                and <= '\u000D'
+                or '\u0020'
+                or '\u0085'
+                or '\u00A0'
+                or '\u1680'
+                or >= '\u2000'
+                and <= '\u200A'
+                or '\u2028'
+                or '\u2029'
+                or '\u202F'
+                or '\u205F'
+                or '\u3000';
 }

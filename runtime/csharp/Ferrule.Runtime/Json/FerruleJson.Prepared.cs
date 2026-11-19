@@ -15,8 +15,10 @@ public static partial class FerruleJson
     // are accounted per document. Only successful preparations are retained; a
     // rejected schema is parsed again by every call and throws its original
     // error at its original point.
-    private static readonly ConditionalWeakTable<string, JsonSchemaNode> PreparedPlainSchemas = new();
-    private static readonly ConditionalWeakTable<string, JsonSchemaNode> PreparedEmbeddedSchemas = new();
+    private static readonly ConditionalWeakTable<string, JsonSchemaNode> PreparedPlainSchemas =
+        new();
+    private static readonly ConditionalWeakTable<string, JsonSchemaNode> PreparedEmbeddedSchemas =
+        new();
 
     private static JsonSchemaNode PreparedSchema(string schemaJson, bool embedded)
     {

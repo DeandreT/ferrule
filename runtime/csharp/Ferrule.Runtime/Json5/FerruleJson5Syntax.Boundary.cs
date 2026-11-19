@@ -12,7 +12,11 @@ public static partial class FerruleJson5Syntax
         if (bytes > MaximumOriginalBytes)
         {
             throw FerruleJson5SyntaxException.Limit(
-                FerruleJson5SyntaxResource.OriginalDocumentBytes, 0, bytes, MaximumOriginalBytes);
+                FerruleJson5SyntaxResource.OriginalDocumentBytes,
+                0,
+                bytes,
+                MaximumOriginalBytes
+            );
         }
     }
 

@@ -18,13 +18,37 @@ internal static partial class Program
         CallEquals(Bool(true), "matches", Text("🙂"), Text(@"^[\uD83D\uDE42]$"));
         CallEquals(Bool(true), "matches", Text("🙂"), Text("(?x) ^ # scalar\n . $"));
         CallEquals(Bool(true), "matches", Text("🙂#"), Text("(?x) ^ . \\# $"));
-        CallEquals(Bool(true), "matches", Text("🙂"), Text(" ^ ( . ) $ # scalar capture"), Text("x"));
+        CallEquals(
+            Bool(true),
+            "matches",
+            Text("🙂"),
+            Text(" ^ ( . ) $ # scalar capture"),
+            Text("x")
+        );
         foreach (var whitespace in new[] { "\v", "\u0085", "\u00A0", "\u2000", "\u2028", "\u3000" })
         {
-            CallEquals(Bool(true), "matches", Text("ab"), Text("^a" + whitespace + "b$"), Text("x"));
-            CallEquals(Bool(false), "matches", Text(whitespace), Text("^[a" + whitespace + "]$"), Text("x"));
+            CallEquals(
+                Bool(true),
+                "matches",
+                Text("ab"),
+                Text("^a" + whitespace + "b$"),
+                Text("x")
+            );
+            CallEquals(
+                Bool(false),
+                "matches",
+                Text(whitespace),
+                Text("^[a" + whitespace + "]$"),
+                Text("x")
+            );
         }
-        CallEquals(Bool(true), "matches", Text("m"), Text("^[a # range comment\n - z]$"), Text("x"));
+        CallEquals(
+            Bool(true),
+            "matches",
+            Text("m"),
+            Text("^[a # range comment\n - z]$"),
+            Text("x")
+        );
         CallEquals(Bool(false), "matches", Text("#"), Text("^[a # range comment\n b]$"), Text("x"));
         CallEquals(Bool(true), "matches", Text(" "), Text(@"^[a\ \#]$"), Text("x"));
         CallEquals(Bool(false), "matches", Text("y "), Text("x[a ]|(?x:y[a ])"));
@@ -57,7 +81,12 @@ internal static partial class Program
         CallEquals(Bool(false), "matches", Text("\U0001D7CE"), Text(@"^\D$"));
         CallEquals(Bool(true), "matches", Text("\u00A0"), Text(@"^\s$"));
         CallEquals(Bool(true), "matches", Text("Ω"), Text(@"^\p{IsGreek}$"));
-        AssertInvalidArgument("matches", "pattern is invalid or exceeds the compiled-size limit", Text("🙂"), Text(@"^\p{Cs}$"));
+        AssertInvalidArgument(
+            "matches",
+            "pattern is invalid or exceeds the compiled-size limit",
+            Text("🙂"),
+            Text(@"^\p{Cs}$")
+        );
         foreach (var pattern in new[] { @"^\P{L}+$", @"^[\P{L}]+$", @"^\W+$" })
         {
             CallEquals(Bool(true), "matches", Text("🙂\n"), Text(pattern));
@@ -74,7 +103,16 @@ internal static partial class Program
         {
             CallEquals(Bool(true), "matches", Text("𐐨"), Text(pattern), Text("i"));
         }
-        foreach (var (left, right) in new[] { ("s", "ſ"), ("K", "K"), ("ΐ", "ΐ"), ("ΰ", "ΰ"), ("ﬅ", "ﬆ") })
+        foreach (
+            var (left, right) in new[]
+            {
+                ("s", "ſ"),
+                ("K", "K"),
+                ("ΐ", "ΐ"),
+                ("ΰ", "ΰ"),
+                ("ﬅ", "ﬆ"),
+            }
+        )
         {
             CallEquals(Bool(true), "matches", Text(right), Text("^" + left + "$"), Text("i"));
             CallEquals(Bool(true), "matches", Text(left), Text("(?i)^" + right + "$"));
@@ -88,9 +126,27 @@ internal static partial class Program
             CallEquals(Bool(true), "matches", Text(isolated), Text("(?i)^[^i]$"));
         }
         // Almost 64 KiB of irregular ranges exercises batched class parsing.
-        var largeClass = "^[" + string.Concat(Enumerable.Range(0, 10_500).Select(index =>
-            @"\u" + ((index * 7919) % 0xD700).ToString("X4", System.Globalization.CultureInfo.InvariantCulture))) + "]$";
-        CallEquals(Bool(true), "matches", Text(char.ConvertFromUtf32(7919)), Text(largeClass), Text("i"));
+        var largeClass =
+            "^["
+            + string.Concat(
+                Enumerable
+                    .Range(0, 10_500)
+                    .Select(index =>
+                        @"\u"
+                        + ((index * 7919) % 0xD700).ToString(
+                            "X4",
+                            System.Globalization.CultureInfo.InvariantCulture
+                        )
+                    )
+            )
+            + "]$";
+        CallEquals(
+            Bool(true),
+            "matches",
+            Text(char.ConvertFromUtf32(7919)),
+            Text(largeClass),
+            Text("i")
+        );
         CallEquals(Bool(true), "matches", Text("I"), Text("^i$"), Text("i"));
         CallEquals(Bool(true), "matches", Text("ſ"), Text("(?i)^[a-z𐐀-𐐧]+$"));
         CallEquals(Bool(true), "matches", Text("𐐨"), Text("(?i:𐐀)"));
@@ -121,14 +177,31 @@ internal static partial class Program
         CallEquals(Text("[🙂🙃]"), "replace", Text("🙂🙃"), Text("(.+)"), Text("[$1]"));
         CallEquals(Text("[𐐨]"), "replace", Text("𐐨"), Text("(?i:(𐐀))"), Text("[$1]"));
         CallEquals(Text("[𐐨]"), "replace", Text("𐐨"), Text(@"(\p{L})"), Text("[$1]"));
-        AssertInvalidArgument("replace", "pattern is invalid or exceeds the compiled-size limit", Text("🙂"), Text(@"\p{Cs}"), Text("x"));
+        AssertInvalidArgument(
+            "replace",
+            "pattern is invalid or exceeds the compiled-size limit",
+            Text("🙂"),
+            Text(@"\p{Cs}"),
+            Text("x")
+        );
     }
 
     private static void RegexUnicodeTokenizationAndErrors()
     {
-        void Tokens(string expected, string input, string pattern, string? flags = null) => Equal(
-            expected, string.Join('|', FerruleSequences.TokenizeRegex(
-                Text(input), Text(pattern), flags is null ? null : Text(flags)).Select(ValueText)));
+        void Tokens(string expected, string input, string pattern, string? flags = null) =>
+            Equal(
+                expected,
+                string.Join(
+                    '|',
+                    FerruleSequences
+                        .TokenizeRegex(
+                            Text(input),
+                            Text(pattern),
+                            flags is null ? null : Text(flags)
+                        )
+                        .Select(ValueText)
+                )
+            );
         Tokens("a|b", "a🙂b", "[🙂]");
         Tokens("||", "🙂\n", @"\P{L}");
         Tokens("||", "🙂\n", @"\W");
@@ -143,19 +216,39 @@ internal static partial class Program
         Tokens("|🙂|", "𐐨🙂𐐀", @"\w");
         foreach (var pattern in new[] { "$", "(?m:$)", "a*", @"\b" })
         {
-            Error(FerruleRuntimeError.ZeroWidthTokenizeRegex,
-                () => FerruleSequences.TokenizeRegex(Text("🙂a"), Text(pattern), null));
+            Error(FerruleRuntimeError.ZeroWidthTokenizeRegex, () =>
+                FerruleSequences.TokenizeRegex(Text("🙂a"), Text(pattern), null)
+            );
         }
-        AssertInvalidArgument("replace", "pattern matches a zero-length string", Text("🙂"), Text(".*?"), Text("x"));
-        var nestedSubtraction = "[a" + string.Concat(Enumerable.Repeat("-[a", 258)) + new string(']', 259);
-        AssertInvalidArgument("matches", "pattern is invalid or exceeds the compiled-size limit", Text("a"), Text(nestedSubtraction));
-        Error(FerruleRuntimeError.InvalidTokenizeRegex,
-            () => FerruleSequences.TokenizeRegex(Text("a"), Text(nestedSubtraction), null));
+        AssertInvalidArgument(
+            "replace",
+            "pattern matches a zero-length string",
+            Text("🙂"),
+            Text(".*?"),
+            Text("x")
+        );
+        var nestedSubtraction =
+            "[a" + string.Concat(Enumerable.Repeat("-[a", 258)) + new string(']', 259);
+        AssertInvalidArgument(
+            "matches",
+            "pattern is invalid or exceeds the compiled-size limit",
+            Text("a"),
+            Text(nestedSubtraction)
+        );
+        Error(FerruleRuntimeError.InvalidTokenizeRegex, () =>
+            FerruleSequences.TokenizeRegex(Text("a"), Text(nestedSubtraction), null)
+        );
         foreach (var pattern in new[] { @"\uD800", @"[\uDC00]", "[🙃-🙂]", "[", "(?=🙂)" })
         {
-            AssertInvalidArgument("matches", "pattern is invalid or exceeds the compiled-size limit", Text("🙂"), Text(pattern));
-            Error(FerruleRuntimeError.InvalidTokenizeRegex,
-                () => FerruleSequences.TokenizeRegex(Text("🙂"), Text(pattern), null));
+            AssertInvalidArgument(
+                "matches",
+                "pattern is invalid or exceeds the compiled-size limit",
+                Text("🙂"),
+                Text(pattern)
+            );
+            Error(FerruleRuntimeError.InvalidTokenizeRegex, () =>
+                FerruleSequences.TokenizeRegex(Text("🙂"), Text(pattern), null)
+            );
         }
     }
 }

@@ -12,7 +12,8 @@ public sealed class FerruleJoinSource
 {
     public FerruleJoinSource(
         IEnumerable<string> collection,
-        FerruleJoinSourceCardinality cardinality = FerruleJoinSourceCardinality.Repeating)
+        FerruleJoinSourceCardinality cardinality = FerruleJoinSourceCardinality.Repeating
+    )
     {
         ArgumentNullException.ThrowIfNull(collection);
         Collection = new ReadOnlyCollection<string>(collection.ToArray());
@@ -54,7 +55,8 @@ public sealed class FerruleJoinKey
     public FerruleJoinKey(
         IEnumerable<string> leftCollection,
         IEnumerable<string> leftPath,
-        IEnumerable<string> rightPath)
+        IEnumerable<string> rightPath
+    )
     {
         ArgumentNullException.ThrowIfNull(leftCollection);
         ArgumentNullException.ThrowIfNull(leftPath);
@@ -105,7 +107,8 @@ public sealed class FerruleJoinStage
         {
             throw new ArgumentException(
                 "A join stage requires at least one equality condition.",
-                nameof(conditions));
+                nameof(conditions)
+            );
         }
         if (retained.Any(condition => condition is null))
         {
@@ -130,7 +133,8 @@ public sealed class FerruleJoinPlan
         {
             throw new ArgumentException(
                 "An inner join requires at least two sources.",
-                nameof(stages));
+                nameof(stages)
+            );
         }
         if (retained.Any(stage => stage is null))
         {
@@ -151,7 +155,10 @@ public sealed partial class ScopeContext
         ArgumentNullException.ThrowIfNull(plan);
         if (ComputedSources(plan) != 0)
         {
-            throw new ArgumentException("A plan with a computed source requires its key value.", nameof(plan));
+            throw new ArgumentException(
+                "A plan with a computed source requires its key value.",
+                nameof(plan)
+            );
         }
         return ExecuteInnerJoin(join, plan, null);
     }
@@ -167,7 +174,10 @@ public sealed partial class ScopeContext
         ArgumentNullException.ThrowIfNull(plan);
         if (ComputedSources(plan) != 1)
         {
-            throw new ArgumentException("A computed key requires exactly one computed source.", nameof(plan));
+            throw new ArgumentException(
+                "A computed key requires exactly one computed source.",
+                nameof(plan)
+            );
         }
         return ExecuteInnerJoin(join, plan, key);
     }
@@ -175,7 +185,11 @@ public sealed partial class ScopeContext
     private static int ComputedSources(FerruleJoinPlan plan) =>
         (plan.First.IsComputed ? 1 : 0) + plan.Stages.Count(stage => stage.Source.IsComputed);
 
-    private ReadOnlyCollection<ScopeContext> ExecuteInnerJoin(ulong join, FerruleJoinPlan plan, FerruleValue? key)
+    private ReadOnlyCollection<ScopeContext> ExecuteInnerJoin(
+        ulong join,
+        FerruleJoinPlan plan,
+        FerruleValue? key
+    )
     {
         FerruleValue? computed = key is { } value && !IsNullLike(value) ? value : null;
         var rows = JoinMemberRows(join, plan.First, computed);
@@ -187,7 +201,15 @@ public sealed partial class ScopeContext
             {
                 foreach (var right in rightRows)
                 {
-                    if (JoinConditionsMatch(left, right, stage.Source.IsComputed, computed, stage.Conditions))
+                    if (
+                        JoinConditionsMatch(
+                            left,
+                            right,
+                            stage.Source.IsComputed,
+                            computed,
+                            stage.Conditions
+                        )
+                    )
                     {
                         joined.Add(left.Append(right));
                     }
@@ -203,7 +225,9 @@ public sealed partial class ScopeContext
             var frames = new List<FerruleInstance>(_frames.Count + row.Frames.Count);
             frames.AddRange(_frames);
             frames.AddRange(row.Frames);
-            var collections = new List<CollectionIdentity>(_collections.Count + row.Collections.Count);
+            var collections = new List<CollectionIdentity>(
+                _collections.Count + row.Collections.Count
+            );
             collections.AddRange(_collections);
             collections.AddRange(row.Collections);
             contexts[index] = new ScopeContext(
@@ -212,7 +236,9 @@ public sealed partial class ScopeContext
                 new ReadOnlyCollection<FerruleInstance>(frames),
                 new ReadOnlyCollection<CollectionIdentity>(collections),
                 _executionContext,
-                _dynamicSourceLoader, invocationCounters: _invocationCounters);
+                _dynamicSourceLoader,
+                invocationCounters: _invocationCounters
+            );
         }
         return new ReadOnlyCollection<ScopeContext>(contexts);
     }
@@ -220,7 +246,8 @@ public sealed partial class ScopeContext
     public FerruleValue ResolveJoinScalar(
         ulong join,
         IReadOnlyList<string> collection,
-        IReadOnlyList<string> path)
+        IReadOnlyList<string> path
+    )
     {
         ArgumentNullException.ThrowIfNull(collection);
         ArgumentNullException.ThrowIfNull(path);
@@ -243,7 +270,8 @@ public sealed partial class ScopeContext
         throw new FerruleRuntimeException(
             FerruleRuntimeError.MissingSourceField,
             $"Join {join} source scalar '{display}/{string.Join('/', path)}' does not exist.",
-            join: join);
+            join: join
+        );
     }
 
     public long JoinPosition(ulong join)
@@ -260,18 +288,26 @@ public sealed partial class ScopeContext
             FerruleRuntimeError.MissingJoinContext,
             $"Join {join} is not active in this scope context.",
             detail: join.ToString(System.Globalization.CultureInfo.InvariantCulture),
-            join: join);
+            join: join
+        );
     }
 
     /// <summary>The computed member is one row without frames when its value is present.</summary>
-    private List<JoinRow> JoinMemberRows(ulong join, FerruleJoinSource source, FerruleValue? computed)
+    private List<JoinRow> JoinMemberRows(
+        ulong join,
+        FerruleJoinSource source,
+        FerruleValue? computed
+    )
     {
         if (!source.IsComputed)
         {
             return JoinSourceRows(join, source);
         }
         return computed.HasValue
-            ? new List<JoinRow> { new(Array.Empty<FerruleInstance>(), Array.Empty<CollectionIdentity>()) }
+            ? new List<JoinRow>
+            {
+                new(Array.Empty<FerruleInstance>(), Array.Empty<CollectionIdentity>()),
+            }
             : new List<JoinRow>();
     }
 
@@ -282,8 +318,8 @@ public sealed partial class ScopeContext
         foreach (var candidate in candidates)
         {
             var addedFrames = candidate._frames.Skip(_frames.Count).ToArray();
-            var addedCollections = candidate._collections
-                .Skip(_collections.Count)
+            var addedCollections = candidate
+                ._collections.Skip(_collections.Count)
                 .Select(collection => collection with { Join = join, JoinPosition = null })
                 .ToArray();
             if (addedCollections.Length == 0 && addedFrames.Length != 0)
@@ -307,7 +343,8 @@ public sealed partial class ScopeContext
         JoinRow right,
         bool rightComputed,
         FerruleValue? computed,
-        IReadOnlyList<FerruleJoinKey> conditions)
+        IReadOnlyList<FerruleJoinKey> conditions
+    )
     {
         foreach (var condition in conditions)
         {
@@ -315,7 +352,8 @@ public sealed partial class ScopeContext
             FerruleValue rightValue;
             if (condition.LeftComputed)
             {
-                if (computed is not { } leftKey) return false;
+                if (computed is not { } leftKey)
+                    return false;
                 leftValue = leftKey;
             }
             else if (!left.TryScalar(condition.LeftCollection, condition.LeftPath, out leftValue))
@@ -324,7 +362,8 @@ public sealed partial class ScopeContext
             }
             if (rightComputed)
             {
-                if (computed is not { } rightKey) return false;
+                if (computed is not { } rightKey)
+                    return false;
                 rightValue = rightKey;
             }
             else if (!right.TryTerminalScalar(condition.RightPath, out rightValue))
@@ -349,10 +388,14 @@ public sealed partial class ScopeContext
 
     private sealed record JoinRow(
         IReadOnlyList<FerruleInstance> Frames,
-        IReadOnlyList<CollectionIdentity> Collections)
+        IReadOnlyList<CollectionIdentity> Collections
+    )
     {
         internal JoinRow Append(JoinRow right) =>
-            new(Frames.Concat(right.Frames).ToArray(), Collections.Concat(right.Collections).ToArray());
+            new(
+                Frames.Concat(right.Frames).ToArray(),
+                Collections.Concat(right.Collections).ToArray()
+            );
 
         internal JoinRow WithJoinPosition(int position)
         {
@@ -367,7 +410,8 @@ public sealed partial class ScopeContext
         internal bool TryScalar(
             IReadOnlyList<string> collection,
             IReadOnlyList<string> path,
-            out FerruleValue value)
+            out FerruleValue value
+        )
         {
             for (var index = Collections.Count - 1; index >= 0; index--)
             {
@@ -395,13 +439,20 @@ public sealed partial class ScopeContext
 /// <summary>One source of an owned join plan, in plan order.</summary>
 public sealed class FerruleOwnedJoinSource
 {
-    public FerruleOwnedJoinSource(FerruleOwnedSourceOwner owner, IEnumerable<string> collection, bool singleton = false)
+    public FerruleOwnedJoinSource(
+        FerruleOwnedSourceOwner owner,
+        IEnumerable<string> collection,
+        bool singleton = false
+    )
     {
         ArgumentNullException.ThrowIfNull(collection);
         Owner = owner;
         Collection = new ReadOnlyCollection<string>(collection.ToArray());
         if (Collection.Any(segment => segment is null))
-            throw new ArgumentException("Owned join collection segments cannot be null.", nameof(collection));
+            throw new ArgumentException(
+                "Owned join collection segments cannot be null.",
+                nameof(collection)
+            );
         Singleton = singleton;
     }
 
@@ -415,7 +466,11 @@ public sealed class FerruleOwnedJoinSource
 /// <summary>An equality between an earlier member, by plan index, and a stage's new member.</summary>
 public sealed class FerruleOwnedJoinKey
 {
-    public FerruleOwnedJoinKey(int left, IEnumerable<string> leftPath, IEnumerable<string> rightPath)
+    public FerruleOwnedJoinKey(
+        int left,
+        IEnumerable<string> leftPath,
+        IEnumerable<string> rightPath
+    )
     {
         ArgumentOutOfRangeException.ThrowIfNegative(left);
         ArgumentNullException.ThrowIfNull(leftPath);
@@ -435,13 +490,19 @@ public sealed class FerruleOwnedJoinKey
 /// <summary>One source after the first in a left-deep owned join.</summary>
 public sealed class FerruleOwnedJoinStage
 {
-    public FerruleOwnedJoinStage(FerruleOwnedJoinSource source, IEnumerable<FerruleOwnedJoinKey> keys)
+    public FerruleOwnedJoinStage(
+        FerruleOwnedJoinSource source,
+        IEnumerable<FerruleOwnedJoinKey> keys
+    )
     {
         Source = source ?? throw new ArgumentNullException(nameof(source));
         ArgumentNullException.ThrowIfNull(keys);
         var retained = keys.ToArray();
         if (retained.Length == 0 || retained.Any(key => key is null))
-            throw new ArgumentException("An owned join stage requires non-null equality keys.", nameof(keys));
+            throw new ArgumentException(
+                "An owned join stage requires non-null equality keys.",
+                nameof(keys)
+            );
         Keys = new ReadOnlyCollection<FerruleOwnedJoinKey>(retained);
     }
 
@@ -459,22 +520,30 @@ public sealed class FerruleOwnedJoinStage
 /// </summary>
 public sealed partial class FerruleBasicScopeContext
 {
-    private sealed class OwnedJoinMember(FerruleOwnedJoinSource source, FerruleBasicScopeContext? item,
-        FerruleValue value, nuint raw)
+    private sealed class OwnedJoinMember(
+        FerruleOwnedJoinSource source,
+        FerruleBasicScopeContext? item,
+        FerruleValue value,
+        nuint raw
+    )
     {
         internal FerruleOwnedJoinSource Source { get; } = source;
         internal nuint Raw { get; } = raw;
 
         internal bool Is(FerruleOwnedSourceOwner owner, IReadOnlyList<string> collection) =>
-            Source.Owner.Name == owner.Name && Source.Collection.SequenceEqual(collection, StringComparer.Ordinal);
+            Source.Owner.Name == owner.Name
+            && Source.Collection.SequenceEqual(collection, StringComparer.Ordinal);
 
         /// <summary>A singleton member is read with an empty path.</summary>
         internal FerruleValue Value(IReadOnlyList<string> relative)
         {
-            if (item is null) return relative.Count == 0 ? value : FerruleValue.Null;
+            if (item is null)
+                return relative.Count == 0 ? value : FerruleValue.Null;
             var path = new string[Source.Collection.Count + relative.Count];
-            for (var i = 0; i < Source.Collection.Count; i++) path[i] = Source.Collection[i];
-            for (var i = 0; i < relative.Count; i++) path[Source.Collection.Count + i] = relative[i];
+            for (var i = 0; i < Source.Collection.Count; i++)
+                path[i] = Source.Collection[i];
+            for (var i = 0; i < relative.Count; i++)
+                path[Source.Collection.Count + i] = relative[i];
             return item.ResolveOwnedField(Source.Owner, path, null);
         }
     }
@@ -510,25 +579,37 @@ public sealed partial class FerruleBasicScopeContext
 
     private nuint IdentityPosition(FerruleOwnedJoinSource source)
     {
-        try { return OwnedPosition(source.Owner, source.Collection); }
-        catch (FerruleRuntimeException) { return 1; }
+        try
+        {
+            return OwnedPosition(source.Owner, source.Collection);
+        }
+        catch (FerruleRuntimeException)
+        {
+            return 1;
+        }
     }
 
-    private static bool NullLike(FerruleValue value) => value.Kind is FerruleValueKind.Null
-        or FerruleValueKind.JsonNull or FerruleValueKind.XmlNil;
+    private static bool NullLike(FerruleValue value) =>
+        value.Kind is FerruleValueKind.Null or FerruleValueKind.JsonNull or FerruleValueKind.XmlNil;
 
-    private static bool KeysMatch(IReadOnlyList<OwnedJoinMember> left, OwnedJoinMember right,
-        IReadOnlyList<FerruleOwnedJoinKey> keys)
+    private static bool KeysMatch(
+        IReadOnlyList<OwnedJoinMember> left,
+        OwnedJoinMember right,
+        IReadOnlyList<FerruleOwnedJoinKey> keys
+    )
     {
         foreach (var key in keys)
         {
             // Emitters index earlier members in plan order.
-            if (key.Left >= left.Count) return false;
+            if (key.Left >= left.Count)
+                return false;
             var leftValue = left[key.Left].Value(key.LeftPath);
             var rightValue = right.Value(key.RightPath);
-            if (NullLike(leftValue) || NullLike(rightValue)) return false;
+            if (NullLike(leftValue) || NullLike(rightValue))
+                return false;
             var equal = FerruleFunctions.Call("equal", new[] { leftValue, rightValue });
-            if (equal.Kind != FerruleValueKind.Bool || !equal.BooleanValue) return false;
+            if (equal.Kind != FerruleValueKind.Bool || !equal.BooleanValue)
+                return false;
         }
         return true;
     }
@@ -537,12 +618,17 @@ public sealed partial class FerruleBasicScopeContext
     /// Executes one owned join in this receiving context. Every source of a stage
     /// is walked before its first comparison; the tuple count shares the walk-context limit.
     /// </summary>
-    public IReadOnlyList<FerruleBasicScopeContext> OwnedInnerJoin(ulong join, FerruleOwnedJoinSource first,
-        IReadOnlyList<FerruleOwnedJoinStage> stages)
+    public IReadOnlyList<FerruleBasicScopeContext> OwnedInnerJoin(
+        ulong join,
+        FerruleOwnedJoinSource first,
+        IReadOnlyList<FerruleOwnedJoinStage> stages
+    )
     {
         ArgumentNullException.ThrowIfNull(first);
         ArgumentNullException.ThrowIfNull(stages);
-        var rows = OwnedJoinMembers(first).Select(member => new List<OwnedJoinMember> { member }).ToList();
+        var rows = OwnedJoinMembers(first)
+            .Select(member => new List<OwnedJoinMember> { member })
+            .ToList();
         nuint produced = 0;
         foreach (var stage in stages)
         {
@@ -552,13 +638,21 @@ public sealed partial class FerruleBasicScopeContext
             {
                 foreach (var member in right)
                 {
-                    if (!KeysMatch(left, member, stage.Keys)) continue;
+                    if (!KeysMatch(left, member, stage.Keys))
+                        continue;
                     try
                     {
-                        OwnedSourceAccounting.Limit(produced, 1, Roots.Limits.MaxWalkContexts,
-                            FerruleOwnedSourceLimitKind.WalkContexts);
+                        OwnedSourceAccounting.Limit(
+                            produced,
+                            1,
+                            Roots.Limits.MaxWalkContexts,
+                            FerruleOwnedSourceLimitKind.WalkContexts
+                        );
                     }
-                    catch (FerruleOwnedSourceException e) { throw FerruleRuntimeException.FromOwnedSource(e); }
+                    catch (FerruleOwnedSourceException e)
+                    {
+                        throw FerruleRuntimeException.FromOwnedSource(e);
+                    }
                     produced++;
                     joined.Add(new List<OwnedJoinMember>(left) { member });
                 }
@@ -575,43 +669,57 @@ public sealed partial class FerruleBasicScopeContext
         return new ReadOnlyCollection<FerruleBasicScopeContext>(contexts);
     }
 
-    private OwnedJoinMember FindOwnedJoinMember(ulong join, FerruleOwnedSourceOwner owner,
-        IReadOnlyList<string> collection)
+    private OwnedJoinMember FindOwnedJoinMember(
+        ulong join,
+        FerruleOwnedSourceOwner owner,
+        IReadOnlyList<string> collection
+    )
     {
         ArgumentNullException.ThrowIfNull(collection);
         if (_ownedJoin is { } tuple && tuple.Join == join)
         {
             foreach (var member in tuple.Members)
-                if (member.Is(owner, collection)) return member;
+                if (member.Is(owner, collection))
+                    return member;
         }
         var display = collection.Count == 0 ? "<current>" : string.Join('/', collection);
         throw new FerruleRuntimeException(
             FerruleRuntimeError.MissingSourceField,
             $"Owned join {join} member '{display}' is not active in this scope context.",
-            join: join);
+            join: join
+        );
     }
 
     /// <summary>Reads one exact tuple member, bound by its owner and collection.</summary>
-    public FerruleValue OwnedJoinField(ulong join, FerruleOwnedSourceOwner owner,
-        IReadOnlyList<string> collection, IReadOnlyList<string> path)
+    public FerruleValue OwnedJoinField(
+        ulong join,
+        FerruleOwnedSourceOwner owner,
+        IReadOnlyList<string> collection,
+        IReadOnlyList<string> path
+    )
     {
         ArgumentNullException.ThrowIfNull(path);
         return FindOwnedJoinMember(join, owner, collection).Value(path);
     }
 
     /// <summary>The raw one-based source position of one exact tuple member.</summary>
-    public nuint OwnedJoinSourcePosition(ulong join, FerruleOwnedSourceOwner owner,
-        IReadOnlyList<string> collection) => FindOwnedJoinMember(join, owner, collection).Raw;
+    public nuint OwnedJoinSourcePosition(
+        ulong join,
+        FerruleOwnedSourceOwner owner,
+        IReadOnlyList<string> collection
+    ) => FindOwnedJoinMember(join, owner, collection).Raw;
 
     /// <summary>The flattened one-based tuple position of the active owned join.</summary>
     public long OwnedJoinPosition(ulong join)
     {
-        if (_ownedJoin is { } tuple && tuple.Join == join) return tuple.Position;
+        if (_ownedJoin is { } tuple && tuple.Join == join)
+            return tuple.Position;
         throw new FerruleRuntimeException(
             FerruleRuntimeError.MissingJoinContext,
             $"Join {join} is not active in this scope context.",
             detail: join.ToString(System.Globalization.CultureInfo.InvariantCulture),
-            join: join);
+            join: join
+        );
     }
 
     /// <summary>A view whose flattened tuple position is replaced; members are shared.</summary>

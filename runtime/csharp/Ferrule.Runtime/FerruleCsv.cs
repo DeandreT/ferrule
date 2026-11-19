@@ -15,6 +15,7 @@ public sealed record FerruleCsvWriteOptions
     public bool QuoteDisabled { get; init; }
     public bool HasHeaders { get; init; } = true;
     public bool Utf8Bom { get; init; }
+
     /// <summary>Preserve field text verbatim and append CRLF; requires disabled quoting.</summary>
     public bool RawDelimitedCrLf { get; init; }
 }
@@ -51,7 +52,8 @@ public sealed class FerruleCsvException : Exception
         FerruleScalarType? expected = null,
         string? got = null,
         char? character = null,
-        int? maximum = null)
+        int? maximum = null
+    )
         : base(message)
     {
         Error = error;
@@ -88,7 +90,8 @@ public static class FerruleCsv
     public static byte[] SerializeBytes(
         FerruleInstance primary,
         IReadOnlyList<FerruleCsvField> fields,
-        FerruleCsvWriteOptions? options = null)
+        FerruleCsvWriteOptions? options = null
+    )
     {
         using var sink = EncodeValidatedDocument(primary, fields, options);
         return sink.ToArray();
@@ -98,9 +101,15 @@ public static class FerruleCsv
         FerruleInstance primary,
         IReadOnlyList<FerruleCsvField> fields,
         FerruleCsvWriteOptions? options,
-        int maximum)
+        int maximum
+    )
     {
-        using var sink = EncodeValidatedDocument(primary, fields, options, Math.Min(maximum, MaximumOutputBytes));
+        using var sink = EncodeValidatedDocument(
+            primary,
+            fields,
+            options,
+            Math.Min(maximum, MaximumOutputBytes)
+        );
         return sink.ToArray();
     }
 
@@ -108,7 +117,8 @@ public static class FerruleCsv
     public static string Serialize(
         FerruleInstance primary,
         IReadOnlyList<FerruleCsvField> fields,
-        FerruleCsvWriteOptions? options = null)
+        FerruleCsvWriteOptions? options = null
+    )
     {
         using var sink = EncodeValidatedDocument(primary, fields, options);
         return sink.ToText();
@@ -118,7 +128,8 @@ public static class FerruleCsv
         FerruleInstance primary,
         IReadOnlyList<FerruleCsvField> fields,
         FerruleCsvWriteOptions? options,
-        int maximum = MaximumOutputBytes)
+        int maximum = MaximumOutputBytes
+    )
     {
         ArgumentNullException.ThrowIfNull(primary);
         ArgumentNullException.ThrowIfNull(fields);
@@ -127,7 +138,8 @@ public static class FerruleCsv
             throw new FerruleCsvException(
                 FerruleCsvError.RootShape,
                 "CSV primary output must be a repeated collection.",
-                got: InstanceTypeName(primary));
+                got: InstanceTypeName(primary)
+            );
         }
         var orderedFields = ValidateFields(fields);
         options ??= new FerruleCsvWriteOptions();
@@ -147,7 +159,8 @@ public static class FerruleCsv
                     unquotedFailure = new FerruleCsvException(
                         FerruleCsvError.UnquotedHeaderBoundary,
                         $"Header '{field.Name}' cannot be written without quoting.",
-                        field: field.Name);
+                        field: field.Name
+                    );
                     break;
                 }
             }
@@ -162,7 +175,8 @@ public static class FerruleCsv
                     unquotedFailure = new FerruleCsvException(
                         FerruleCsvError.UnquotedSingleEmptyRow,
                         $"Row {row}: a single empty field requires quoting.",
-                        row: row);
+                        row: row
+                    );
                     continue;
                 }
                 for (var column = 0; column < record.Length; column++)
@@ -173,7 +187,8 @@ public static class FerruleCsv
                             FerruleCsvError.UnquotedFieldBoundary,
                             $"Row {row}: column '{orderedFields[column].Name}' requires quoting.",
                             row: row,
-                            field: orderedFields[column].Name);
+                            field: orderedFields[column].Name
+                        );
                         break;
                     }
                 }
@@ -192,13 +207,26 @@ public static class FerruleCsv
             }
             if (options.HasHeaders)
             {
-                WriteRecord(sink, orderedFields.Select(field => field.Name).ToArray(),
-                    delimiter, quote, options.QuoteDisabled, options.RawDelimitedCrLf);
+                WriteRecord(
+                    sink,
+                    orderedFields.Select(field => field.Name).ToArray(),
+                    delimiter,
+                    quote,
+                    options.QuoteDisabled,
+                    options.RawDelimitedCrLf
+                );
             }
             for (var row = 0; row < rows.Items.Count; row++)
             {
                 var record = FormatRow(row, rows.Items[row], orderedFields);
-                WriteRecord(sink, record, delimiter, quote, options.QuoteDisabled, options.RawDelimitedCrLf);
+                WriteRecord(
+                    sink,
+                    record,
+                    delimiter,
+                    quote,
+                    options.QuoteDisabled,
+                    options.RawDelimitedCrLf
+                );
             }
             return sink;
         }
@@ -216,14 +244,19 @@ public static class FerruleCsv
         for (var column = 0; column < fields.Count; column++)
         {
             var field = fields[column];
-            if (field is null || field.Name is null ||
-                !FerruleUnicode.IsWellFormed(field.Name) ||
-                !Enum.IsDefined(field.Type) || !names.Add(field.Name))
+            if (
+                field is null
+                || field.Name is null
+                || !FerruleUnicode.IsWellFormed(field.Name)
+                || !Enum.IsDefined(field.Type)
+                || !names.Add(field.Name)
+            )
             {
                 throw new FerruleCsvException(
                     FerruleCsvError.UnsupportedSchema,
                     "CSV requires ordered unique scalar field descriptors.",
-                    field: field?.Name);
+                    field: field?.Name
+                );
             }
             ordered[column] = field;
         }
@@ -238,7 +271,8 @@ public static class FerruleCsv
             throw new FerruleCsvException(
                 FerruleCsvError.BadDelimiter,
                 "CSV delimiter must be an ASCII character other than NUL, CR or LF.",
-                character: delimiter);
+                character: delimiter
+            );
         }
         if (options.QuoteDisabled)
         {
@@ -246,7 +280,8 @@ public static class FerruleCsv
             {
                 throw new FerruleCsvException(
                     FerruleCsvError.ConflictingQuoteSettings,
-                    "CSV quote cannot be set while quoting is disabled.");
+                    "CSV quote cannot be set while quoting is disabled."
+                );
             }
             return ((byte)delimiter, (byte)'"');
         }
@@ -256,19 +291,22 @@ public static class FerruleCsv
             throw new FerruleCsvException(
                 FerruleCsvError.BadQuote,
                 "CSV quote must be a printable ASCII character.",
-                character: quote);
+                character: quote
+            );
         }
         if (delimiter == quote)
         {
             throw new FerruleCsvException(
                 FerruleCsvError.DelimiterQuoteConflict,
-                "CSV delimiter and quote must be different characters.");
+                "CSV delimiter and quote must be different characters."
+            );
         }
         if (options.RawDelimitedCrLf)
         {
             throw new FerruleCsvException(
                 FerruleCsvError.RawDelimitedRequiresDisabledQuotes,
-                "Raw-delimited CRLF output requires disabled quoting.");
+                "Raw-delimited CRLF output requires disabled quoting."
+            );
         }
         return ((byte)delimiter, (byte)quote);
     }
@@ -276,7 +314,8 @@ public static class FerruleCsv
     internal static string[] FormatRow(
         int row,
         FerruleInstance instance,
-        IReadOnlyList<FerruleCsvField> fields)
+        IReadOnlyList<FerruleCsvField> fields
+    )
     {
         if (instance is not FerruleGroup group)
         {
@@ -284,18 +323,24 @@ public static class FerruleCsv
                 FerruleCsvError.RowShape,
                 $"Row {row}: expected a group.",
                 row: row,
-                got: InstanceTypeName(instance));
+                got: InstanceTypeName(instance)
+            );
         }
         var names = new HashSet<string>(StringComparer.Ordinal);
         foreach (var field in group.Fields)
         {
-            if (!fields.Any(expected => string.Equals(expected.Name, field.Name, StringComparison.Ordinal)))
+            if (
+                !fields.Any(expected =>
+                    string.Equals(expected.Name, field.Name, StringComparison.Ordinal)
+                )
+            )
             {
                 throw new FerruleCsvException(
                     FerruleCsvError.UnexpectedField,
                     $"Row {row}: unexpected column '{field.Name}'.",
                     row: row,
-                    field: field.Name);
+                    field: field.Name
+                );
             }
             if (!names.Add(field.Name))
             {
@@ -303,7 +348,8 @@ public static class FerruleCsv
                     FerruleCsvError.DuplicateField,
                     $"Row {row}: duplicate column '{field.Name}'.",
                     row: row,
-                    field: field.Name);
+                    field: field.Name
+                );
             }
         }
         var record = new string[fields.Count];
@@ -316,7 +362,8 @@ public static class FerruleCsv
                     FerruleCsvError.MissingField,
                     $"Row {row}: missing column '{field.Name}'.",
                     row: row,
-                    field: field.Name);
+                    field: field.Name
+                );
             }
             if (value is not FerruleScalar scalar)
             {
@@ -333,8 +380,11 @@ public static class FerruleCsv
         {
             return string.Empty;
         }
-        if (value.Kind == FerruleValueKind.Double && !double.IsFinite(value.DoubleValue) &&
-            field.Type is FerruleScalarType.String or FerruleScalarType.Double)
+        if (
+            value.Kind == FerruleValueKind.Double
+            && !double.IsFinite(value.DoubleValue)
+            && field.Type is FerruleScalarType.String or FerruleScalarType.Double
+        )
         {
             throw ValueType(row, field, "non-finite float");
         }
@@ -342,8 +392,12 @@ public static class FerruleCsv
         {
             var integer = value.Int64Value;
             var magnitude = integer < 0 ? unchecked(0UL - (ulong)integer) : (ulong)integer;
-            var significantBits = magnitude == 0 ? 0 :
-                64 - BitOperations.LeadingZeroCount(magnitude) - BitOperations.TrailingZeroCount(magnitude);
+            var significantBits =
+                magnitude == 0
+                    ? 0
+                    : 64
+                        - BitOperations.LeadingZeroCount(magnitude)
+                        - BitOperations.TrailingZeroCount(magnitude);
             if (significantBits > 53)
             {
                 throw ValueType(row, field, "int outside the exact f64 range");
@@ -358,8 +412,12 @@ public static class FerruleCsv
         if (value.Kind == FerruleValueKind.String)
         {
             var lexical = value.StringValue.AsSpan().Trim();
-            if (field.Type == FerruleScalarType.Int64 && !IsNumericLexical(lexical, integerOnly: true) ||
-                field.Type == FerruleScalarType.Double && !IsNumericLexical(lexical, integerOnly: false))
+            if (
+                field.Type == FerruleScalarType.Int64
+                    && !IsNumericLexical(lexical, integerOnly: true)
+                || field.Type == FerruleScalarType.Double
+                    && !IsNumericLexical(lexical, integerOnly: false)
+            )
             {
                 throw ValueType(row, field, "string");
             }
@@ -429,32 +487,39 @@ public static class FerruleCsv
     }
 
     private static FerruleCsvException ValueType(int row, FerruleCsvField field, string got) =>
-        new(FerruleCsvError.ValueType,
+        new(
+            FerruleCsvError.ValueType,
             $"Row {row}: column '{field.Name}' expected {field.Type}, got {got}.",
-            row: row, field: field.Name, expected: field.Type, got: got);
+            row: row,
+            field: field.Name,
+            expected: field.Type,
+            got: got
+        );
 
-    private static string ValueTypeName(FerruleValueKind kind) => kind switch
-    {
-        FerruleValueKind.Null => "null",
-        FerruleValueKind.JsonNull => "json null",
-        FerruleValueKind.XmlNil => "xml nil",
-        FerruleValueKind.Bool => "bool",
-        FerruleValueKind.Int64 => "int",
-        FerruleValueKind.Double => "float",
-        FerruleValueKind.String => "string",
-        FerruleValueKind.Decimal => "decimal",
-        _ => throw new ArgumentOutOfRangeException(nameof(kind)),
-    };
+    private static string ValueTypeName(FerruleValueKind kind) =>
+        kind switch
+        {
+            FerruleValueKind.Null => "null",
+            FerruleValueKind.JsonNull => "json null",
+            FerruleValueKind.XmlNil => "xml nil",
+            FerruleValueKind.Bool => "bool",
+            FerruleValueKind.Int64 => "int",
+            FerruleValueKind.Double => "float",
+            FerruleValueKind.String => "string",
+            FerruleValueKind.Decimal => "decimal",
+            _ => throw new ArgumentOutOfRangeException(nameof(kind)),
+        };
 
-    private static string InstanceTypeName(FerruleInstance instance) => instance switch
-    {
-        FerruleScalar scalar => ValueTypeName(scalar.Value.Kind),
-        FerruleGroup => "group",
-        FerruleRepeated => "repeated",
-        FerruleMappedSequence => "mapped sequence",
-        FerruleDocumentSet => "document set",
-        _ => throw new ArgumentOutOfRangeException(nameof(instance)),
-    };
+    private static string InstanceTypeName(FerruleInstance instance) =>
+        instance switch
+        {
+            FerruleScalar scalar => ValueTypeName(scalar.Value.Kind),
+            FerruleGroup => "group",
+            FerruleRepeated => "repeated",
+            FerruleMappedSequence => "mapped sequence",
+            FerruleDocumentSet => "document set",
+            _ => throw new ArgumentOutOfRangeException(nameof(instance)),
+        };
 
     private static bool RequiresBoundaryQuoting(string value, byte delimiter) =>
         value.Contains((char)delimiter) || value.IndexOfAny(['\r', '\n']) >= 0;
@@ -465,13 +530,15 @@ public static class FerruleCsv
         byte delimiter,
         byte quote,
         bool quoteDisabled,
-        bool rawDelimitedCrLf)
+        bool rawDelimitedCrLf
+    )
     {
         if (rawDelimitedCrLf)
         {
             for (var column = 0; column < record.Count; column++)
             {
-                if (column > 0) sink.WriteByte(delimiter);
+                if (column > 0)
+                    sink.WriteByte(delimiter);
                 sink.WriteText(record[column]);
             }
             sink.WriteByte((byte)'\r');
@@ -494,8 +561,9 @@ public static class FerruleCsv
                     sink.WriteByte(delimiter);
                 }
                 var value = record[column];
-                var quoted = !quoteDisabled &&
-                    (RequiresBoundaryQuoting(value, delimiter) || value.Contains((char)quote));
+                var quoted =
+                    !quoteDisabled
+                    && (RequiresBoundaryQuoting(value, delimiter) || value.Contains((char)quote));
                 if (quoted)
                 {
                     sink.WriteByte(quote);
@@ -517,7 +585,10 @@ public static class FerruleCsv
         private readonly MemoryStream _bytes = new();
         private readonly int _maximum;
 
-        internal BoundedUtf8Sink(int maximum) { _maximum = maximum; }
+        internal BoundedUtf8Sink(int maximum)
+        {
+            _maximum = maximum;
+        }
 
         internal void Write(ReadOnlySpan<byte> bytes)
         {
@@ -525,9 +596,11 @@ public static class FerruleCsv
             {
                 throw new FerruleCsvException(
                     FerruleCsvError.OutputTooLarge,
-                    _maximum == MaximumOutputBytes ? "CSV output exceeds the 64 MiB UTF-8 byte limit."
+                    _maximum == MaximumOutputBytes
+                        ? "CSV output exceeds the 64 MiB UTF-8 byte limit."
                         : $"CSV output exceeds the {_maximum}-byte UTF-8 limit.",
-                    maximum: _maximum);
+                    maximum: _maximum
+                );
             }
             _bytes.Write(bytes);
         }
@@ -547,8 +620,14 @@ public static class FerruleCsv
             Span<byte> escaped = stackalloc byte[8192];
             while (!remaining.IsEmpty)
             {
-                encoder.Convert(remaining, encoded, flush: true,
-                    out var charactersUsed, out var bytesUsed, out _);
+                encoder.Convert(
+                    remaining,
+                    encoded,
+                    flush: true,
+                    out var charactersUsed,
+                    out var bytesUsed,
+                    out _
+                );
                 if (!escapedQuote.HasValue)
                 {
                     Write(encoded[..bytesUsed]);
@@ -572,8 +651,8 @@ public static class FerruleCsv
 
         internal byte[] ToArray() => _bytes.ToArray();
 
-        internal string ToText() => Encoding.UTF8.GetString(
-            _bytes.GetBuffer().AsSpan(0, checked((int)_bytes.Length)));
+        internal string ToText() =>
+            Encoding.UTF8.GetString(_bytes.GetBuffer().AsSpan(0, checked((int)_bytes.Length)));
 
         public void Dispose() => _bytes.Dispose();
     }

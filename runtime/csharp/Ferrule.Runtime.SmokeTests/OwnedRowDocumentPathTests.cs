@@ -9,28 +9,58 @@ internal static partial class Program
 
     private static FerruleOwnedSourceException RowPathError(Action read)
     {
-        try { read(); }
-        catch (FerruleOwnedSourceException error) { return error; }
+        try
+        {
+            read();
+        }
+        catch (FerruleOwnedSourceException error)
+        {
+            return error;
+        }
         throw new Exception("Expected owned row metadata failure.");
     }
 
     private static void OwnedRowDocumentPaths()
     {
-        var primary = RowPathGroup("p.root.csv",
+        var primary = RowPathGroup(
+            "p.root.csv",
             Field("Ref", RowPathGroup("collision.csv")),
-            Field("Rows", new FerruleRepeated([RowPathGroup("p.row.csv",
-                Field("Children", new FerruleRepeated([Group(), RowPathGroup("p.child.csv")])))])));
-        var named = RowPathGroup("n.root.csv", Field("Rows", new FerruleRepeated([RowPathGroup("n.row.csv")])));
+            Field(
+                "Rows",
+                new FerruleRepeated([
+                    RowPathGroup(
+                        "p.row.csv",
+                        Field(
+                            "Children",
+                            new FerruleRepeated([Group(), RowPathGroup("p.child.csv")])
+                        )
+                    ),
+                ])
+            )
+        );
+        var named = RowPathGroup(
+            "n.root.csv",
+            Field("Rows", new FerruleRepeated([RowPathGroup("n.row.csv")]))
+        );
         var limits = new FerruleOwnedSourceLimits(8, 16, 16, 1048576, 64);
-        var roots = FerruleOwnedSourceRoots.Create(primary,
-            [new("Ref", named), new("Absent", null)], limits);
+        var roots = FerruleOwnedSourceRoots.Create(
+            primary,
+            [new("Ref", named), new("Absent", null)],
+            limits
+        );
         var root = roots.RootContext();
         var p = FerruleOwnedSourceOwner.Primary;
         var n = FerruleOwnedSourceOwner.Named("Ref");
         Equal(Text("p.root.csv"), root.RowDocumentPath(p));
         Equal(Text("n.root.csv"), root.RowDocumentPath(n));
-        Equal(FerruleOwnedSourceErrorKind.InactiveSourceFrame, RowPathError(() => root.RowDocumentPath(p, ["Rows"])).Error);
-        Equal(FerruleOwnedSourceErrorKind.SourceUnavailable, RowPathError(() => root.RowDocumentPath(FerruleOwnedSourceOwner.Named("Absent"))).Error);
+        Equal(
+            FerruleOwnedSourceErrorKind.InactiveSourceFrame,
+            RowPathError(() => root.RowDocumentPath(p, ["Rows"])).Error
+        );
+        Equal(
+            FerruleOwnedSourceErrorKind.SourceUnavailable,
+            RowPathError(() => root.RowDocumentPath(FerruleOwnedSourceOwner.Named("Absent"))).Error
+        );
         var primaryRow = root.IterateSource(p, ["Rows"])[0];
         var both = primaryRow.IterateSource(n, ["Rows"])[0];
         Equal(Text("p.row.csv"), both.RowDocumentPath(p));
@@ -47,7 +77,9 @@ internal static partial class Program
         Equal(Text("p.row.csv"), children[0].RowDocumentPath(p, ["Rows"]));
         Equal(Text("n.row.csv"), children[0].RowDocumentPath(n));
         Equal(Text("p.child.csv"), children[1].RowDocumentPath(p));
-        var basic = FerruleBasicSourceRoots.Create(primary, [new("Ref", named)], limits).RootContext();
+        var basic = FerruleBasicSourceRoots
+            .Create(primary, [new("Ref", named)], limits)
+            .RootContext();
         var basicPrimaryRow = basic.IterateOwnedSource(p, ["Rows"])[0].Context;
         var basicBoth = basicPrimaryRow.IterateOwnedSource(n, ["Rows"])[0].Context;
         Equal(Text("p.row.csv"), basicBoth.OwnedRowDocumentPath(p));
@@ -68,38 +100,74 @@ internal static partial class Program
             Equal(true, cause.Collection is null);
         }
         Equal(Text("p.child.csv"), basicChildren[1].Context.OwnedRowDocumentPath(p));
-        var repeatedRoot = FerruleOwnedSourceRoots.Create(new FerruleRepeated([RowPathGroup("row.csv")]), [], limits).RootContext();
+        var repeatedRoot = FerruleOwnedSourceRoots
+            .Create(new FerruleRepeated([RowPathGroup("row.csv")]), [], limits)
+            .RootContext();
         var row = repeatedRoot.IterateSource(p, [])[0];
         Equal(Text("row.csv"), row.RowDocumentPath(p));
-        Equal(FerruleOwnedSourceErrorKind.MissingRowDocumentPath, RowPathError(() => row.RowDocumentPath(p, [])).Error);
+        Equal(
+            FerruleOwnedSourceErrorKind.MissingRowDocumentPath,
+            RowPathError(() => row.RowDocumentPath(p, [])).Error
+        );
     }
 
     private sealed class RowPathOneGroup : IFerruleBasicGroupByControls
     {
-        public FerruleBasicGroupByMetadata Metadata() => new(Array.Empty<bool>(), false, 0, false, false, false);
-        public bool Filter(FerruleBasicScopeContext context) => throw new Exception("Unexpected filter");
-        public FerruleValue SortKey(int key, FerruleBasicScopeContext context) => throw new Exception("Unexpected sort");
-        public FerruleSequenceWindow Window(int bound, FerruleBasicScopeContext parent) => throw new Exception("Unexpected window");
+        public FerruleBasicGroupByMetadata Metadata() =>
+            new(Array.Empty<bool>(), false, 0, false, false, false);
+
+        public bool Filter(FerruleBasicScopeContext context) =>
+            throw new Exception("Unexpected filter");
+
+        public FerruleValue SortKey(int key, FerruleBasicScopeContext context) =>
+            throw new Exception("Unexpected sort");
+
+        public FerruleSequenceWindow Window(int bound, FerruleBasicScopeContext parent) =>
+            throw new Exception("Unexpected window");
+
         public FerruleValue GroupKey(FerruleBasicScopeContext context) => FerruleValue.FromInt64(0);
-        public bool RetainMember(FerruleBasicScopeContext context) => throw new Exception("Unexpected retention");
+
+        public bool RetainMember(FerruleBasicScopeContext context) =>
+            throw new Exception("Unexpected retention");
     }
 
     private static void GroupedRowDocumentPaths()
     {
-        var primary = RowPathGroup("root.csv", Field("Rows", new FerruleRepeated([
-            RowPathGroup("first.csv"), RowPathGroup("second.csv")])));
+        var primary = RowPathGroup(
+            "root.csv",
+            Field(
+                "Rows",
+                new FerruleRepeated([RowPathGroup("first.csv"), RowPathGroup("second.csv")])
+            )
+        );
         var owner = FerruleOwnedSourceOwner.Primary;
-        var root = FerruleBasicSourceRoots.Create(primary, [], new(8, 16, 16, 1048576, 64)).RootContext();
+        var root = FerruleBasicSourceRoots
+            .Create(primary, [], new(8, 16, 16, 1048576, 64))
+            .RootContext();
         var cohort = root.WalkOwnedSourceCohort(owner, ["Rows"]);
-        var groups = root.MapGroupBySourceCohort(cohort, new RowPathOneGroup(), group => {
-            try { group.OwnedRowDocumentPath(owner); throw new Exception("Group must not borrow its first member path"); }
-            catch (FerruleRuntimeException error) {
+        var groups = root.MapGroupBySourceCohort(cohort, new RowPathOneGroup(), group =>
+        {
+            try
+            {
+                group.OwnedRowDocumentPath(owner);
+                throw new Exception("Group must not borrow its first member path");
+            }
+            catch (FerruleRuntimeException error)
+            {
                 Equal(FerruleRuntimeError.OwnedSource, error.Error);
-                Equal(FerruleOwnedSourceErrorKind.MissingRowDocumentPath, ((FerruleOwnedSourceException)error.InnerException!).Error);
+                Equal(
+                    FerruleOwnedSourceErrorKind.MissingRowDocumentPath,
+                    ((FerruleOwnedSourceException)error.InnerException!).Error
+                );
             }
             Equal(Text("root.csv"), group.OwnedRowDocumentPath(owner, []));
-            return new FerruleRepeated(group.IterateOwnedSource(owner, ["Rows"]).Select(row =>
-                (FerruleInstance)new FerruleScalar(row.Context.OwnedRowDocumentPath(owner))));
+            return new FerruleRepeated(
+                group
+                    .IterateOwnedSource(owner, ["Rows"])
+                    .Select(row =>
+                        (FerruleInstance)new FerruleScalar(row.Context.OwnedRowDocumentPath(owner))
+                    )
+            );
         });
         Equal(1, groups.Count);
         var rows = ((FerruleRepeated)groups[0]).Items;

@@ -87,6 +87,7 @@ public enum FerruleRuntimeError
 public sealed class FerruleRuntimeException : Exception
 {
     public FerruleSourceContractViolation? SourceContractViolation { get; }
+
     public FerruleRuntimeException(
         FerruleRuntimeError error,
         string message,
@@ -113,7 +114,8 @@ public sealed class FerruleRuntimeException : Exception
         FerrulePrimaryRootFailure? primaryRoot = null,
         string? mappingExceptionMessage = null,
         uint? generatedItem = null,
-        FerruleSourceContractViolation? sourceContractViolation = null)
+        FerruleSourceContractViolation? sourceContractViolation = null
+    )
         : base(message)
     {
         Error = error;
@@ -168,7 +170,8 @@ public sealed class FerruleRuntimeException : Exception
         string? sourceField = null,
         string? foundInstance = null,
         FerrulePrimaryRootFailure? primaryRoot = null,
-        string? mappingExceptionMessage = null)
+        string? mappingExceptionMessage = null
+    )
         : base(message, innerException)
     {
         Error = error;
@@ -216,7 +219,9 @@ public sealed class FerruleRuntimeException : Exception
         return new FerruleRuntimeException(owned);
     }
 
-    public static FerruleRuntimeException FromBasicSourceBridge(FerruleBasicSourceBridgeException bridge)
+    public static FerruleRuntimeException FromBasicSourceBridge(
+        FerruleBasicSourceBridgeException bridge
+    )
     {
         ArgumentNullException.ThrowIfNull(bridge);
         return new FerruleRuntimeException(bridge);
@@ -225,11 +230,21 @@ public sealed class FerruleRuntimeException : Exception
     /// <summary>Adds the first public Basic owned-leaf node without replacing the error or its causes.</summary>
     public FerruleRuntimeException WithOwnedSourceNode(uint node)
     {
-        if (!Node.HasValue &&
-            ((Error == FerruleRuntimeError.OwnedSource && OwnedSourceFailure is not null &&
-                ReferenceEquals(OwnedSourceFailure, InnerException)) ||
-             (Error == FerruleRuntimeError.BasicSourceBridge && BasicSourceBridgeFailure is not null &&
-                ReferenceEquals(BasicSourceBridgeFailure, InnerException))))
+        if (
+            !Node.HasValue
+            && (
+                (
+                    Error == FerruleRuntimeError.OwnedSource
+                    && OwnedSourceFailure is not null
+                    && ReferenceEquals(OwnedSourceFailure, InnerException)
+                )
+                || (
+                    Error == FerruleRuntimeError.BasicSourceBridge
+                    && BasicSourceBridgeFailure is not null
+                    && ReferenceEquals(BasicSourceBridgeFailure, InnerException)
+                )
+            )
+        )
         {
             Node = node;
         }

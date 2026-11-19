@@ -1,4 +1,5 @@
 using Ferrule.Runtime;
+
 namespace Ferrule.Runtime.SmokeTests;
 
 internal static partial class Program
@@ -6,45 +7,97 @@ internal static partial class Program
     private static void XmlInputDocumentOwners()
     {
         var decoder = new System.Text.DecoderFallbackException("original decoder");
-        var inputBoundary = new FerruleXmlBoundaryException(FerruleXmlBoundaryErrorKind.Utf8, decoder.Message, decoder);
+        var inputBoundary = new FerruleXmlBoundaryException(
+            FerruleXmlBoundaryErrorKind.Utf8,
+            decoder.Message,
+            decoder
+        );
         var inputSource = FerruleXmlInputSource.Named(1, "beta");
-        var input = FerruleXmlInputDocumentExecutionException.FromInputBoundary(inputSource, inputBoundary);
-        Equal<FerruleXmlInputDocumentOwner?>(new FerruleXmlInputDocumentOwner.Input(inputSource), input.Owner);
+        var input = FerruleXmlInputDocumentExecutionException.FromInputBoundary(
+            inputSource,
+            inputBoundary
+        );
+        Equal<FerruleXmlInputDocumentOwner?>(
+            new FerruleXmlInputDocumentOwner.Input(inputSource),
+            input.Owner
+        );
         Equal(true, ReferenceEquals(inputBoundary, input.Boundary));
         Equal(true, ReferenceEquals(inputBoundary, input.InnerException));
         Equal(true, ReferenceEquals(decoder, input.Boundary.InnerException));
 
-        var schemaBoundary = new FerruleXmlBoundaryException(FerruleXmlBoundaryErrorKind.Schema, "descriptor setup", decoder);
-        var inputSchema = FerruleXmlInputDocumentExecutionException.FromInputBoundary(FerruleXmlInputSource.Primary, schemaBoundary);
-        Equal<FerruleXmlInputDocumentOwner?>(new FerruleXmlInputDocumentOwner.Input(FerruleXmlInputSource.Primary), inputSchema.Owner);
+        var schemaBoundary = new FerruleXmlBoundaryException(
+            FerruleXmlBoundaryErrorKind.Schema,
+            "descriptor setup",
+            decoder
+        );
+        var inputSchema = FerruleXmlInputDocumentExecutionException.FromInputBoundary(
+            FerruleXmlInputSource.Primary,
+            schemaBoundary
+        );
+        Equal<FerruleXmlInputDocumentOwner?>(
+            new FerruleXmlInputDocumentOwner.Input(FerruleXmlInputSource.Primary),
+            inputSchema.Owner
+        );
         var outputSchema = FerruleXmlInputDocumentExecutionException.FromDocuments(
-            FerruleXmlDocumentExecutionException.Serialization(3, "same.xml", schemaBoundary));
+            FerruleXmlDocumentExecutionException.Serialization(3, "same.xml", schemaBoundary)
+        );
         Equal<FerruleXmlInputDocumentOwner?>(null, outputSchema.Owner);
         Equal(true, ReferenceEquals(schemaBoundary, outputSchema.Boundary));
 
         var writer = new InvalidOperationException("original writer");
-        var outputBoundary = new FerruleXmlBoundaryException(FerruleXmlBoundaryErrorKind.Output, writer.Message, writer);
-        var originalMember = FerruleXmlDocumentExecutionException.Serialization(1, "../雪😀.xml", outputBoundary);
+        var outputBoundary = new FerruleXmlBoundaryException(
+            FerruleXmlBoundaryErrorKind.Output,
+            writer.Message,
+            writer
+        );
+        var originalMember = FerruleXmlDocumentExecutionException.Serialization(
+            1,
+            "../雪😀.xml",
+            outputBoundary
+        );
         var member = FerruleXmlInputDocumentExecutionException.FromDocuments(originalMember);
-        Equal<FerruleXmlInputDocumentOwner?>(new FerruleXmlInputDocumentOwner.Member(originalMember.Member!), member.Owner);
-        Equal(true, ReferenceEquals(originalMember.Member, ((FerruleXmlInputDocumentOwner.Member)member.Owner!).Output));
+        Equal<FerruleXmlInputDocumentOwner?>(
+            new FerruleXmlInputDocumentOwner.Member(originalMember.Member!),
+            member.Owner
+        );
+        Equal(
+            true,
+            ReferenceEquals(
+                originalMember.Member,
+                ((FerruleXmlInputDocumentOwner.Member)member.Owner!).Output
+            )
+        );
         Equal(true, ReferenceEquals(outputBoundary, member.InnerException));
         Equal(true, ReferenceEquals(writer, member.Boundary.InnerException));
 
-        var inputCountOriginal = CaptureStaticInputDocumentAdmission(() => _ = new FerruleXmlInputSetBudget(4097));
-        var inputCount = FerruleXmlInputDocumentExecutionException.FromInputBoundary(inputCountOriginal.Input, inputCountOriginal.Boundary);
+        var inputCountOriginal = CaptureStaticInputDocumentAdmission(() =>
+            _ = new FerruleXmlInputSetBudget(4097)
+        );
+        var inputCount = FerruleXmlInputDocumentExecutionException.FromInputBoundary(
+            inputCountOriginal.Input,
+            inputCountOriginal.Boundary
+        );
         Equal<FerruleXmlInputDocumentOwner?>(null, inputCount.Owner);
         Equal(FerruleXmlBoundaryErrorKind.Input, inputCount.Boundary.Kind);
-        var inputCountCause = (FerruleXmlInputSetResourceException)inputCount.Boundary.InnerException!;
+        var inputCountCause = (FerruleXmlInputSetResourceException)
+            inputCount.Boundary.InnerException!;
         Equal("xml_input_artifact_count", inputCountCause.Resource);
         Equal(4097UL, inputCountCause.ObservedCount);
         Equal(4096UL, inputCountCause.Limit);
 
-        var namedOriginal = CaptureStaticInputDocumentAdmission(() => FerruleXmlInputSetBudget.Indices(new[] { "A", "B" }, new[] { "B" }));
-        var named = FerruleXmlInputDocumentExecutionException.FromInputBoundary(namedOriginal.Input, namedOriginal.Boundary);
+        var namedOriginal = CaptureStaticInputDocumentAdmission(() =>
+            FerruleXmlInputSetBudget.Indices(new[] { "A", "B" }, new[] { "B" })
+        );
+        var named = FerruleXmlInputDocumentExecutionException.FromInputBoundary(
+            namedOriginal.Input,
+            namedOriginal.Boundary
+        );
         Equal<FerruleXmlInputDocumentOwner?>(null, named.Owner);
         Equal(FerruleXmlBoundaryErrorKind.Mapping, named.Boundary.Kind);
-        Equal(true, ReferenceEquals(namedOriginal.Boundary.InnerException, named.Boundary.InnerException));
+        Equal(
+            true,
+            ReferenceEquals(namedOriginal.Boundary.InnerException, named.Boundary.InnerException)
+        );
 
         _ = new FerruleXmlDocumentSetBudget(0);
         _ = new FerruleXmlDocumentSetBudget(4096);
@@ -58,7 +111,8 @@ internal static partial class Program
 
         // Counter-only transition; no actual 256 MiB XML is materialized.
         var budget = new FerruleXmlDocumentSetBudget(5);
-        for (var index = 0; index < 4; index++) budget.Charge(index, "same.xml", 64 * 1024 * 1024);
+        for (var index = 0; index < 4; index++)
+            budget.Charge(index, "same.xml", 64 * 1024 * 1024);
         var crossingOriginal = CaptureDocumentError(() => budget.Charge(4, "/opaque.xml", 1));
         var crossing = FerruleXmlInputDocumentExecutionException.FromDocuments(crossingOriginal);
         var crossingOwner = ((FerruleXmlInputDocumentOwner.Member)crossing.Owner!).Output;
@@ -70,30 +124,51 @@ internal static partial class Program
         Equal("xml_output_set_utf8_bytes", crossingCause.Resource);
         Equal(256UL * 1024 * 1024 + 1, crossingCause.ObservedCount);
 
-        var mappingCause = new FerruleRuntimeException(FerruleRuntimeError.EmptyDynamicTargetPath, "path", node: 5);
-        var mappingBoundary = new FerruleXmlBoundaryException(FerruleXmlBoundaryErrorKind.Mapping, mappingCause.Message, mappingCause);
+        var mappingCause = new FerruleRuntimeException(
+            FerruleRuntimeError.EmptyDynamicTargetPath,
+            "path",
+            node: 5
+        );
+        var mappingBoundary = new FerruleXmlBoundaryException(
+            FerruleXmlBoundaryErrorKind.Mapping,
+            mappingCause.Message,
+            mappingCause
+        );
         var mapping = FerruleXmlInputDocumentExecutionException.FromBoundary(mappingBoundary);
         Equal<FerruleXmlInputDocumentOwner?>(null, mapping.Owner);
         Equal(true, ReferenceEquals(mappingCause, mapping.Boundary.InnerException));
-        var alignment = FerruleXmlInputDocumentExecutionException.FromDocuments(FerruleXmlDocumentExecutionException.Alignment("not a document set"));
+        var alignment = FerruleXmlInputDocumentExecutionException.FromDocuments(
+            FerruleXmlDocumentExecutionException.Alignment("not a document set")
+        );
         Equal<FerruleXmlInputDocumentOwner?>(null, alignment.Owner);
         Equal(FerruleXmlBoundaryErrorKind.Output, alignment.Boundary.Kind);
     }
 
     private static FerruleXmlExecutionException CaptureStaticInputDocumentAdmission(Action action)
     {
-        try { action(); }
-        catch (FerruleXmlExecutionException error) { return error; }
+        try
+        {
+            action();
+        }
+        catch (FerruleXmlExecutionException error)
+        {
+            return error;
+        }
         throw new InvalidOperationException("Expected static input admission failure.");
     }
 
     private static void XmlDocumentSetInputMembers()
     {
-        const string descriptor = "{\"name\":\"Input\",\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"Title\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}]}}";
+        const string descriptor =
+            "{\"name\":\"Input\",\"kind\":{\"kind\":\"group\",\"children\":[{\"name\":\"Title\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}]}}";
         var named = FerruleXmlInputSource.Named(0, "Ref");
         var members = new[]
         {
-            new FerruleXmlDocumentSetMember("deep/one.xml", "/in/deep/one.xml", "<Input><Title>One</Title></Input>"),
+            new FerruleXmlDocumentSetMember(
+                "deep/one.xml",
+                "/in/deep/one.xml",
+                "<Input><Title>One</Title></Input>"
+            ),
             new FerruleXmlDocumentSetMember("two.xml", null, "<Input><Title>Two</Title></Input>"),
         };
         var parsed = (FerruleDocumentSet)FerruleXmlDocumentSets.Parse(descriptor, named, members);
@@ -101,37 +176,93 @@ internal static partial class Program
         Equal("deep/one.xml", parsed.Documents[0].Path);
         Equal<string?>("/in/deep/one.xml", parsed.Documents[0].ResolvedSourcePath);
         Equal<string?>(null, parsed.Documents[1].ResolvedSourcePath);
-        var bytes = members.Select(member => new FerruleXmlBytesDocumentSetMember(
-            member.Path, member.ResolvedSourcePath, System.Text.Encoding.UTF8.GetBytes(member.Document))).ToArray();
-        Equal(2, ((FerruleDocumentSet)FerruleXmlDocumentSets.Parse(descriptor, named, bytes)).Documents.Count);
-        Equal(0, ((FerruleDocumentSet)FerruleXmlDocumentSets.Parse(descriptor, named, Array.Empty<FerruleXmlDocumentSetMember>())).Documents.Count);
+        var bytes = members
+            .Select(member => new FerruleXmlBytesDocumentSetMember(
+                member.Path,
+                member.ResolvedSourcePath,
+                System.Text.Encoding.UTF8.GetBytes(member.Document)
+            ))
+            .ToArray();
+        Equal(
+            2,
+            ((FerruleDocumentSet)FerruleXmlDocumentSets.Parse(descriptor, named, bytes))
+                .Documents
+                .Count
+        );
+        Equal(
+            0,
+            (
+                (FerruleDocumentSet)
+                    FerruleXmlDocumentSets.Parse(
+                        descriptor,
+                        named,
+                        Array.Empty<FerruleXmlDocumentSetMember>()
+                    )
+            )
+                .Documents
+                .Count
+        );
 
-        var broken = DocumentSetFailure(() => FerruleXmlDocumentSets.Parse(descriptor, named,
-            new[] { members[0], new FerruleXmlDocumentSetMember("bad.xml", null, "<Input>") }));
-        Equal<FerruleXmlDocumentSetMemberOwner?>(new FerruleXmlDocumentSetMemberOwner(named, 1, "bad.xml"), broken.Member);
+        var broken = DocumentSetFailure(() =>
+            FerruleXmlDocumentSets.Parse(
+                descriptor,
+                named,
+                new[] { members[0], new FerruleXmlDocumentSetMember("bad.xml", null, "<Input>") }
+            )
+        );
+        Equal<FerruleXmlDocumentSetMemberOwner?>(
+            new FerruleXmlDocumentSetMemberOwner(named, 1, "bad.xml"),
+            broken.Member
+        );
         Equal(FerruleXmlBoundaryErrorKind.Input, broken.Boundary.Kind);
         Equal(true, ReferenceEquals(broken.Boundary, broken.InnerException));
-        var utf8 = DocumentSetFailure(() => FerruleXmlDocumentSets.Parse(descriptor, named,
-            new[] { new FerruleXmlBytesDocumentSetMember("b.xml", null, new byte[] { 0xff }) }));
+        var utf8 = DocumentSetFailure(() =>
+            FerruleXmlDocumentSets.Parse(
+                descriptor,
+                named,
+                new[] { new FerruleXmlBytesDocumentSetMember("b.xml", null, new byte[] { 0xff }) }
+            )
+        );
         Equal(FerruleXmlBoundaryErrorKind.Utf8, utf8.Boundary.Kind);
         Equal("b.xml", utf8.Member!.Path);
 
         // Every member's shape is admitted before any member is parsed.
-        var shape = DocumentSetFailure(() => FerruleXmlDocumentSets.Preflight(
-            new (FerruleXmlInputSource, IReadOnlyList<FerruleXmlDocumentSetMember>)[]
-            {
-                (FerruleXmlInputSource.Primary, new[] { new FerruleXmlDocumentSetMember("p.xml", null, "<") }),
-                (named, new[] { new FerruleXmlDocumentSetMember("ok.xml", "", "<") }),
-            }));
-        Equal<FerruleXmlDocumentSetMemberOwner?>(new FerruleXmlDocumentSetMemberOwner(named, 0, "ok.xml"), shape.Member);
+        var shape = DocumentSetFailure(() =>
+            FerruleXmlDocumentSets.Preflight(
+                new (FerruleXmlInputSource, IReadOnlyList<FerruleXmlDocumentSetMember>)[]
+                {
+                    (
+                        FerruleXmlInputSource.Primary,
+                        new[] { new FerruleXmlDocumentSetMember("p.xml", null, "<") }
+                    ),
+                    (named, new[] { new FerruleXmlDocumentSetMember("ok.xml", "", "<") }),
+                }
+            )
+        );
+        Equal<FerruleXmlDocumentSetMemberOwner?>(
+            new FerruleXmlDocumentSetMemberOwner(named, 0, "ok.xml"),
+            shape.Member
+        );
         Equal(FerruleXmlBoundaryErrorKind.Input, shape.Boundary.Kind);
-        var many = Enumerable.Repeat(new FerruleXmlDocumentSetMember("m.xml", null, ""), 4097).ToArray();
-        var count = DocumentSetFailure(() => FerruleXmlDocumentSets.Preflight(
-            new (FerruleXmlInputSource, IReadOnlyList<FerruleXmlDocumentSetMember>)[] { (FerruleXmlInputSource.Primary, many) }));
+        var many = Enumerable
+            .Repeat(new FerruleXmlDocumentSetMember("m.xml", null, ""), 4097)
+            .ToArray();
+        var count = DocumentSetFailure(() =>
+            FerruleXmlDocumentSets.Preflight(
+                new (FerruleXmlInputSource, IReadOnlyList<FerruleXmlDocumentSetMember>)[]
+                {
+                    (FerruleXmlInputSource.Primary, many),
+                }
+            )
+        );
         Equal<FerruleXmlDocumentSetMemberOwner?>(null, count.Member);
         Equal(true, count.Boundary.InnerException is FerruleXmlInputSetResourceException);
 
-        var runtime = new FerruleRuntimeException(FerruleRuntimeError.UnexpectedNamedSource, "unexpected", detail: "Other");
+        var runtime = new FerruleRuntimeException(
+            FerruleRuntimeError.UnexpectedNamedSource,
+            "unexpected",
+            detail: "Other"
+        );
         var mapping = FerruleXmlDocumentSetInputException.FromMapping(runtime);
         Equal<FerruleXmlDocumentSetMemberOwner?>(null, mapping.Member);
         Equal(FerruleXmlBoundaryErrorKind.Mapping, mapping.Boundary.Kind);
@@ -140,8 +271,14 @@ internal static partial class Program
 
     private static FerruleXmlDocumentSetInputException DocumentSetFailure(Action action)
     {
-        try { action(); }
-        catch (FerruleXmlDocumentSetInputException error) { return error; }
+        try
+        {
+            action();
+        }
+        catch (FerruleXmlDocumentSetInputException error)
+        {
+            return error;
+        }
         throw new InvalidOperationException("Expected XML document-set input failure.");
     }
 }

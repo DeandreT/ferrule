@@ -11,13 +11,13 @@ internal static partial class Program
         "{\"name\":\"Value\",\"repeating\":true,\"json_patterns\":{\"any_of\":[[\"^(b{1000}|a*)$\"]]},\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}";
 
     private const string PreparedOrderSchema =
-        "{\"name\":\"Order\",\"kind\":{\"kind\":\"group\",\"children\":[" +
-        "{\"name\":\"Id\",\"json_patterns\":{\"any_of\":[[\"^ORD-[0-9]{6}$\"]]},\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}," +
-        "{\"name\":\"Line\",\"repeating\":true,\"kind\":{\"kind\":\"group\",\"children\":[" +
-        "{\"name\":\"Sku\",\"json_patterns\":{\"any_of\":[[\"^[A-Z]{2}-[0-9]{4}$\"]]},\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}," +
-        "{\"name\":\"Quantity\",\"numeric_range\":{\"kind\":\"integer\",\"bounds\":{\"minimum\":1,\"maximum\":1000}},\"kind\":{\"kind\":\"scalar\",\"ty\":\"int\"}}," +
-        "{\"name\":\"Price\",\"json_multiple_of\":{\"any_of\":[[{\"coefficient\":25,\"decimal_exponent\":-2}]]},\"kind\":{\"kind\":\"scalar\",\"ty\":\"float\"}}]}}," +
-        "{\"name\":\"Tag\",\"repeating\":true,\"json_unique_items\":true,\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}]}}";
+        "{\"name\":\"Order\",\"kind\":{\"kind\":\"group\",\"children\":["
+        + "{\"name\":\"Id\",\"json_patterns\":{\"any_of\":[[\"^ORD-[0-9]{6}$\"]]},\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}},"
+        + "{\"name\":\"Line\",\"repeating\":true,\"kind\":{\"kind\":\"group\",\"children\":["
+        + "{\"name\":\"Sku\",\"json_patterns\":{\"any_of\":[[\"^[A-Z]{2}-[0-9]{4}$\"]]},\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}},"
+        + "{\"name\":\"Quantity\",\"numeric_range\":{\"kind\":\"integer\",\"bounds\":{\"minimum\":1,\"maximum\":1000}},\"kind\":{\"kind\":\"scalar\",\"ty\":\"int\"}},"
+        + "{\"name\":\"Price\",\"json_multiple_of\":{\"any_of\":[[{\"coefficient\":25,\"decimal_exponent\":-2}]]},\"kind\":{\"kind\":\"scalar\",\"ty\":\"float\"}}]}},"
+        + "{\"name\":\"Tag\",\"repeating\":true,\"json_unique_items\":true,\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}]}}";
 
     private const string PreparedOrderDocument =
         "{\"Id\":\"ORD-000001\",\"Line\":[{\"Sku\":\"AB-0001\",\"Quantity\":2,\"Price\":1.25}],\"Tag\":[\"a\",\"b\"]}";
@@ -25,7 +25,8 @@ internal static partial class Program
     /// <summary>`count` values that each use three fifths of one document's pattern work budget.</summary>
     private static string PreparedBudgetValues(int count)
     {
-        var instructions = (ulong)FerruleJsonPattern.Compile(PreparedBudgetPattern).InstructionCount;
+        var instructions = (ulong)
+            FerruleJsonPattern.Compile(PreparedBudgetPattern).InstructionCount;
         var length = (int)(FerruleJsonPattern.MaximumBoundaryWork / instructions * 3 / 5);
         var value = "\"" + new string('a', length) + "\"";
         return "[" + string.Join(",", Enumerable.Repeat(value, count)) + "]";
@@ -69,41 +70,93 @@ internal static partial class Program
         };
         foreach (var (schema, document) in cases)
         {
-            var expected = PreparedOutcome(() => Render(schema, FerruleJson.Parse(UnpreparedCopy(schema), document)));
-            Equal(expected, PreparedOutcome(() => Render(schema, FerruleJson.Parse(schema, document))));
-            Equal(expected, PreparedOutcome(() => Render(schema, FerruleJson.Parse(schema, document))));
+            var expected = PreparedOutcome(() =>
+                Render(schema, FerruleJson.Parse(UnpreparedCopy(schema), document))
+            );
+            Equal(
+                expected,
+                PreparedOutcome(() => Render(schema, FerruleJson.Parse(schema, document)))
+            );
+            Equal(
+                expected,
+                PreparedOutcome(() => Render(schema, FerruleJson.Parse(schema, document)))
+            );
             var bytes = System.Text.Encoding.UTF8.GetBytes(document);
             Equal(
-                PreparedOutcome(() => Render(schema, FerruleJson.ParseBytes(UnpreparedCopy(schema), bytes))),
-                PreparedOutcome(() => Render(schema, FerruleJson.ParseBytes(schema, bytes))));
+                PreparedOutcome(() =>
+                    Render(schema, FerruleJson.ParseBytes(UnpreparedCopy(schema), bytes))
+                ),
+                PreparedOutcome(() => Render(schema, FerruleJson.ParseBytes(schema, bytes)))
+            );
             // The document byte limit precedes every schema failure.
             Equal(
-                PreparedOutcome(() => Render(schema, FerruleJson.ParseBytes(UnpreparedCopy(schema), oversized))),
-                PreparedOutcome(() => Render(schema, FerruleJson.ParseBytes(schema, oversized))));
+                PreparedOutcome(() =>
+                    Render(schema, FerruleJson.ParseBytes(UnpreparedCopy(schema), oversized))
+                ),
+                PreparedOutcome(() => Render(schema, FerruleJson.ParseBytes(schema, oversized)))
+            );
         }
-        Equal(true, PreparedOutcome(() => Render(PreparedBudgetSchema, FerruleJson.Parse(PreparedBudgetSchema, PreparedBudgetValues(1)))).StartsWith("ok:", StringComparison.Ordinal));
-        Equal(true, PreparedOutcome(() => Render(PreparedBudgetSchema, FerruleJson.Parse(PreparedBudgetSchema, PreparedBudgetValues(2)))).Contains("work limit", StringComparison.Ordinal));
+        Equal(
+            true,
+            PreparedOutcome(() =>
+                    Render(
+                        PreparedBudgetSchema,
+                        FerruleJson.Parse(PreparedBudgetSchema, PreparedBudgetValues(1))
+                    )
+                )
+                .StartsWith("ok:", StringComparison.Ordinal)
+        );
+        Equal(
+            true,
+            PreparedOutcome(() =>
+                    Render(
+                        PreparedBudgetSchema,
+                        FerruleJson.Parse(PreparedBudgetSchema, PreparedBudgetValues(2))
+                    )
+                )
+                .Contains("work limit", StringComparison.Ordinal)
+        );
 
         var instances = new FerruleInstance[]
         {
             FerruleJson.Parse(PreparedOrderSchema, PreparedOrderDocument),
             Group(Field("Id", Scalar(Text("ORD-1")))),
-            Group(Field("Id", Scalar(Text("ORD-000001"))), Field("Tag", new FerruleRepeated(new FerruleInstance[] { Scalar(Text("a")), Scalar(Text("a")) }))),
+            Group(
+                Field("Id", Scalar(Text("ORD-000001"))),
+                Field(
+                    "Tag",
+                    new FerruleRepeated(
+                        new FerruleInstance[] { Scalar(Text("a")), Scalar(Text("a")) }
+                    )
+                )
+            ),
             Scalar(FerruleValue.FromInt64(7)),
         };
         foreach (var instance in instances)
         {
             Equal(
-                PreparedOutcome(() => FerruleJson.Serialize(UnpreparedCopy(PreparedOrderSchema), instance)),
-                PreparedOutcome(() => FerruleJson.Serialize(PreparedOrderSchema, instance)));
+                PreparedOutcome(() =>
+                    FerruleJson.Serialize(UnpreparedCopy(PreparedOrderSchema), instance)
+                ),
+                PreparedOutcome(() => FerruleJson.Serialize(PreparedOrderSchema, instance))
+            );
         }
 
         // Exactly M pretty bytes, then M + 1.
-        const string stringSchema = "{\"name\":\"Value\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}";
-        foreach (var (length, accepted) in new[] { (FerruleJson.MaximumDocumentBytes - 3, true), (FerruleJson.MaximumDocumentBytes - 2, false) })
+        const string stringSchema =
+            "{\"name\":\"Value\",\"kind\":{\"kind\":\"scalar\",\"ty\":\"string\"}}";
+        foreach (
+            var (length, accepted) in new[]
+            {
+                (FerruleJson.MaximumDocumentBytes - 3, true),
+                (FerruleJson.MaximumDocumentBytes - 2, false),
+            }
+        )
         {
             var instance = Scalar(Text(new string('a', length)));
-            var expected = PreparedOutcome(() => FerruleJson.Serialize(UnpreparedCopy(stringSchema), instance));
+            var expected = PreparedOutcome(() =>
+                FerruleJson.Serialize(UnpreparedCopy(stringSchema), instance)
+            );
             Equal(accepted, expected.StartsWith("ok:", StringComparison.Ordinal));
             Equal(expected, PreparedOutcome(() => FerruleJson.Serialize(stringSchema, instance)));
         }
@@ -123,12 +176,34 @@ internal static partial class Program
         var within = PreparedBudgetValues(1);
         var exhausted = PreparedBudgetValues(2);
         var oversized = new byte[FerruleJson.MaximumDocumentBytes + 1];
-        var expectedWithin = PreparedOutcome(() => Render(PreparedBudgetSchema, FerruleJson.Parse(UnpreparedCopy(PreparedBudgetSchema), within)));
-        var expectedExhausted = PreparedOutcome(() => Render(PreparedBudgetSchema, FerruleJson.Parse(UnpreparedCopy(PreparedBudgetSchema), exhausted)));
-        var expectedOversized = PreparedOutcome(() => Render(PreparedBudgetSchema, FerruleJson.ParseBytes(UnpreparedCopy(PreparedBudgetSchema), oversized)));
-        var expectedOrder = PreparedOutcome(() => Render(PreparedOrderSchema, FerruleJson.Parse(UnpreparedCopy(PreparedOrderSchema), PreparedOrderDocument)));
+        var expectedWithin = PreparedOutcome(() =>
+            Render(
+                PreparedBudgetSchema,
+                FerruleJson.Parse(UnpreparedCopy(PreparedBudgetSchema), within)
+            )
+        );
+        var expectedExhausted = PreparedOutcome(() =>
+            Render(
+                PreparedBudgetSchema,
+                FerruleJson.Parse(UnpreparedCopy(PreparedBudgetSchema), exhausted)
+            )
+        );
+        var expectedOversized = PreparedOutcome(() =>
+            Render(
+                PreparedBudgetSchema,
+                FerruleJson.ParseBytes(UnpreparedCopy(PreparedBudgetSchema), oversized)
+            )
+        );
+        var expectedOrder = PreparedOutcome(() =>
+            Render(
+                PreparedOrderSchema,
+                FerruleJson.Parse(UnpreparedCopy(PreparedOrderSchema), PreparedOrderDocument)
+            )
+        );
         var invalidOutput = Group(Field("Id", Scalar(Text("ORD-1"))));
-        var expectedInvalidOutput = PreparedOutcome(() => FerruleJson.Serialize(UnpreparedCopy(PreparedOrderSchema), invalidOutput));
+        var expectedInvalidOutput = PreparedOutcome(() =>
+            FerruleJson.Serialize(UnpreparedCopy(PreparedOrderSchema), invalidOutput)
+        );
         Equal(true, expectedWithin.StartsWith("ok:", StringComparison.Ordinal));
         Equal(true, expectedExhausted.Contains("work limit", StringComparison.Ordinal));
         Equal(true, expectedOversized.Contains("maximum", StringComparison.Ordinal));
@@ -136,13 +211,33 @@ internal static partial class Program
 
         var calls = new Func<bool>[]
         {
-            () => PreparedOutcome(() => Render(PreparedBudgetSchema, FerruleJson.Parse(PreparedBudgetSchema, within))) == expectedWithin,
-            () => PreparedOutcome(() => Render(PreparedBudgetSchema, FerruleJson.Parse(PreparedBudgetSchema, exhausted))) == expectedExhausted,
-            () => PreparedOutcome(() => Render(PreparedBudgetSchema, FerruleJson.ParseBytes(PreparedBudgetSchema, oversized))) == expectedOversized &&
-                PreparedOutcome(() => Render(PreparedOrderSchema, FerruleJson.Parse(PreparedOrderSchema, PreparedOrderDocument))) == expectedOrder,
-            () => PreparedOutcome(() => FerruleJson.Serialize(PreparedOrderSchema, invalidOutput)) == expectedInvalidOutput,
+            () =>
+                PreparedOutcome(() =>
+                    Render(PreparedBudgetSchema, FerruleJson.Parse(PreparedBudgetSchema, within))
+                ) == expectedWithin,
+            () =>
+                PreparedOutcome(() =>
+                    Render(PreparedBudgetSchema, FerruleJson.Parse(PreparedBudgetSchema, exhausted))
+                ) == expectedExhausted,
+            () =>
+                PreparedOutcome(() =>
+                    Render(
+                        PreparedBudgetSchema,
+                        FerruleJson.ParseBytes(PreparedBudgetSchema, oversized)
+                    )
+                ) == expectedOversized
+                && PreparedOutcome(() =>
+                    Render(
+                        PreparedOrderSchema,
+                        FerruleJson.Parse(PreparedOrderSchema, PreparedOrderDocument)
+                    )
+                ) == expectedOrder,
+            () =>
+                PreparedOutcome(() => FerruleJson.Serialize(PreparedOrderSchema, invalidOutput))
+                == expectedInvalidOutput,
         };
-        var threads = calls.Concat(calls)
+        var threads = calls
+            .Concat(calls)
             .Select(call =>
             {
                 var result = new bool[1];
@@ -173,26 +268,41 @@ internal static partial class Program
             Plain("Customer", "string"),
             Patterned("Currency", "^[A-Z]{3}$"),
             Plain("Total", "float"),
-            "{\"name\":\"Line\",\"repeating\":true,\"kind\":{\"kind\":\"group\",\"children\":[" +
-            Patterned("Sku", "^[A-Z]{2}-[0-9]{4}$") + "," +
-            "{\"name\":\"Quantity\",\"numeric_range\":{\"kind\":\"integer\",\"bounds\":{\"minimum\":1,\"maximum\":1000}},\"kind\":{\"kind\":\"scalar\",\"ty\":\"int\"}}," +
-            Plain("Price", "float") + "," + Plain("Note", "string") + "]}}",
+            "{\"name\":\"Line\",\"repeating\":true,\"kind\":{\"kind\":\"group\",\"children\":["
+                + Patterned("Sku", "^[A-Z]{2}-[0-9]{4}$")
+                + ","
+                + "{\"name\":\"Quantity\",\"numeric_range\":{\"kind\":\"integer\",\"bounds\":{\"minimum\":1,\"maximum\":1000}},\"kind\":{\"kind\":\"scalar\",\"ty\":\"int\"}},"
+                + Plain("Price", "float")
+                + ","
+                + Plain("Note", "string")
+                + "]}}",
         };
         for (var index = 0; index < 48; index++)
         {
             var name = $"Attribute{index:00}";
-            children.Add(index % 4 == 0 ? Patterned(name, $"^[a-z]{{1,{index + 8}}}$") : Plain(name, "string"));
+            children.Add(
+                index % 4 == 0
+                    ? Patterned(name, $"^[a-z]{{1,{index + 8}}}$")
+                    : Plain(name, "string")
+            );
         }
-        return "{\"name\":\"Order\",\"kind\":{\"kind\":\"group\",\"children\":[" + string.Join(",", children) + "]}}";
+        return "{\"name\":\"Order\",\"kind\":{\"kind\":\"group\",\"children\":["
+            + string.Join(",", children)
+            + "]}}";
     }
 
     private static string PreparedReportDocument(int lines)
     {
-        var text = new System.Text.StringBuilder("{\"Id\":\"ORD-000042\",\"Customer\":\"Example Customer\",\"Currency\":\"EUR\",\"Total\":1234.5,\"Line\":[");
+        var text = new System.Text.StringBuilder(
+            "{\"Id\":\"ORD-000042\",\"Customer\":\"Example Customer\",\"Currency\":\"EUR\",\"Total\":1234.5,\"Line\":["
+        );
         for (var index = 0; index < lines; index++)
         {
             text.Append(index == 0 ? "" : ",")
-                .Append(System.Globalization.CultureInfo.InvariantCulture, $"{{\"Sku\":\"AB-{index % 10_000:0000}\",\"Quantity\":{index % 999 + 1},\"Price\":{1.25 + index % 100},\"Note\":\"line {index} of the order\"}}");
+                .Append(
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    $"{{\"Sku\":\"AB-{index % 10_000:0000}\",\"Quantity\":{index % 999 + 1},\"Price\":{1.25 + index % 100},\"Note\":\"line {index} of the order\"}}"
+                );
         }
         return text.Append("],\"Attribute00\":\"alpha\",\"Attribute01\":\"beta\"}").ToString();
     }
@@ -226,19 +336,30 @@ internal static partial class Program
         var small = PreparedReportDocument(3);
         var smallBytes = System.Text.Encoding.UTF8.GetBytes(small);
         var instance = FerruleJson.Parse(PreparedReportSchema, small);
-        var parseUnprepared = Allocated(200, () => FerruleJson.Parse(UnpreparedCopy(PreparedReportSchema), small));
+        var parseUnprepared = Allocated(200, () =>
+            FerruleJson.Parse(UnpreparedCopy(PreparedReportSchema), small)
+        );
         var parsePrepared = Allocated(200, () => FerruleJson.Parse(PreparedReportSchema, small));
-        var serializeUnprepared = Allocated(200, () => FerruleJson.Serialize(UnpreparedCopy(PreparedReportSchema), instance));
-        var serializePrepared = Allocated(200, () => FerruleJson.Serialize(PreparedReportSchema, instance));
+        var serializeUnprepared = Allocated(200, () =>
+            FerruleJson.Serialize(UnpreparedCopy(PreparedReportSchema), instance)
+        );
+        var serializePrepared = Allocated(200, () =>
+            FerruleJson.Serialize(PreparedReportSchema, instance)
+        );
         if (report)
         {
-            Console.WriteLine($"descriptor {System.Text.Encoding.UTF8.GetByteCount(PreparedReportSchema)} bytes; small document {smallBytes.Length} bytes");
+            Console.WriteLine(
+                $"descriptor {System.Text.Encoding.UTF8.GetByteCount(PreparedReportSchema)} bytes; small document {smallBytes.Length} bytes"
+            );
             Console.WriteLine("| Operation | Allocated bytes |");
             Console.WriteLine("| --- | ---: |");
         }
         Row("`Parse`, small, fresh descriptor copy", parseUnprepared);
         Row("`Parse`, small, shared descriptor", parsePrepared);
-        Row("`ParseBytes`, small, shared descriptor", Allocated(200, () => FerruleJson.ParseBytes(PreparedReportSchema, smallBytes)));
+        Row(
+            "`ParseBytes`, small, shared descriptor",
+            Allocated(200, () => FerruleJson.ParseBytes(PreparedReportSchema, smallBytes))
+        );
         Row("`Serialize`, small, fresh descriptor copy", serializeUnprepared);
         Row("`Serialize`, small, shared descriptor", serializePrepared);
         Equal(true, parsePrepared * 2 < parseUnprepared);
@@ -252,17 +373,53 @@ internal static partial class Program
         var largeBytes = System.Text.Encoding.UTF8.GetBytes(large);
         var largeInstance = FerruleJson.ParseBytes(PreparedReportSchema, largeBytes);
         var output = FerruleJson.Serialize(PreparedReportSchema, largeInstance);
-        Console.WriteLine($"large document {largeBytes.Length} bytes; large output {System.Text.Encoding.UTF8.GetByteCount(output)} bytes");
-        Row("`ParseBytes`, large, shared descriptor", Allocated(3, () => FerruleJson.ParseBytes(PreparedReportSchema, largeBytes)));
-        Row("UTF-8 to UTF-16 decoding of the large input", Allocated(3, () => System.Text.Encoding.UTF8.GetString(largeBytes)));
-        Row("`System.Text.Json.JsonDocument` of the large input text", Allocated(3, () => System.Text.Json.JsonDocument.Parse(large).Dispose()));
-        Row("`System.Text.Json.JsonDocument` of the large input bytes", Allocated(3, () => System.Text.Json.JsonDocument.Parse(largeBytes.AsMemory()).Dispose()));
-        Row("`ParseEmbeddedBytes`, large, shared descriptor", Allocated(3, () => FerruleJson.ParseEmbeddedBytes(PreparedReportSchema, largeBytes)));
-        Row("`Serialize`, large, shared descriptor", Allocated(3, () => FerruleJson.Serialize(PreparedReportSchema, largeInstance)));
-        Row("`SerializeBytes`, large, shared descriptor", Allocated(3, () => FerruleJson.SerializeBytes(PreparedReportSchema, largeInstance)));
-        Row("UTF-16 to UTF-8 encoding of the large output", Allocated(3, () => System.Text.Encoding.UTF8.GetBytes(output)));
-        Row("`SerializeEmbeddedCompact`, large, shared descriptor", Allocated(3, () => FerruleJson.SerializeEmbeddedCompact(PreparedReportSchema, largeInstance)));
-        Row("`SerializeEmbeddedCompactBytes`, large, shared descriptor", Allocated(3, () => FerruleJson.SerializeEmbeddedCompactBytes(PreparedReportSchema, largeInstance)));
+        Console.WriteLine(
+            $"large document {largeBytes.Length} bytes; large output {System.Text.Encoding.UTF8.GetByteCount(output)} bytes"
+        );
+        Row(
+            "`ParseBytes`, large, shared descriptor",
+            Allocated(3, () => FerruleJson.ParseBytes(PreparedReportSchema, largeBytes))
+        );
+        Row(
+            "UTF-8 to UTF-16 decoding of the large input",
+            Allocated(3, () => System.Text.Encoding.UTF8.GetString(largeBytes))
+        );
+        Row(
+            "`System.Text.Json.JsonDocument` of the large input text",
+            Allocated(3, () => System.Text.Json.JsonDocument.Parse(large).Dispose())
+        );
+        Row(
+            "`System.Text.Json.JsonDocument` of the large input bytes",
+            Allocated(3, () => System.Text.Json.JsonDocument.Parse(largeBytes.AsMemory()).Dispose())
+        );
+        Row(
+            "`ParseEmbeddedBytes`, large, shared descriptor",
+            Allocated(3, () => FerruleJson.ParseEmbeddedBytes(PreparedReportSchema, largeBytes))
+        );
+        Row(
+            "`Serialize`, large, shared descriptor",
+            Allocated(3, () => FerruleJson.Serialize(PreparedReportSchema, largeInstance))
+        );
+        Row(
+            "`SerializeBytes`, large, shared descriptor",
+            Allocated(3, () => FerruleJson.SerializeBytes(PreparedReportSchema, largeInstance))
+        );
+        Row(
+            "UTF-16 to UTF-8 encoding of the large output",
+            Allocated(3, () => System.Text.Encoding.UTF8.GetBytes(output))
+        );
+        Row(
+            "`SerializeEmbeddedCompact`, large, shared descriptor",
+            Allocated(3, () =>
+                FerruleJson.SerializeEmbeddedCompact(PreparedReportSchema, largeInstance)
+            )
+        );
+        Row(
+            "`SerializeEmbeddedCompactBytes`, large, shared descriptor",
+            Allocated(3, () =>
+                FerruleJson.SerializeEmbeddedCompactBytes(PreparedReportSchema, largeInstance)
+            )
+        );
         var canonical = output[..^1];
         Row("final newline copy of the large output", Allocated(3, () => _ = canonical + "\n"));
     }

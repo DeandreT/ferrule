@@ -19,23 +19,19 @@ public static partial class FerruleFunctions
             throw Arity(FormatNumberName, 2, arguments.Count);
         }
 
-        var decimalPoint = arguments.Count >= 3
-            ? SingleFormatRune(arguments[2])
-            : new Rune('.');
-        var groupingSeparator = arguments.Count == 4
-            ? SingleFormatRune(arguments[3])
-            : new Rune(',');
+        var decimalPoint = arguments.Count >= 3 ? SingleFormatRune(arguments[2]) : new Rune('.');
+        var groupingSeparator =
+            arguments.Count == 4 ? SingleFormatRune(arguments[3]) : new Rune(',');
         if (decimalPoint == groupingSeparator)
         {
             throw InvalidArgument(
                 FormatNumberName,
-                "requires distinct decimal and grouping separators");
+                "requires distinct decimal and grouping separators"
+            );
         }
         if (CollidesWithPicture(decimalPoint) || CollidesWithPicture(groupingSeparator))
         {
-            throw InvalidArgument(
-                FormatNumberName,
-                "separator collides with a picture character");
+            throw InvalidArgument(FormatNumberName, "separator collides with a picture character");
         }
 
         var subformats = arguments[1].StringValue.Split(';');
@@ -43,7 +39,8 @@ public static partial class FerruleFunctions
         {
             throw InvalidArgument(
                 FormatNumberName,
-                "format requires one or two non-empty subformats");
+                "format requires one or two non-empty subformats"
+            );
         }
         var pictures = subformats
             .Select(part => NumberPicture.Parse(part, decimalPoint, groupingSeparator))
@@ -55,9 +52,9 @@ public static partial class FerruleFunctions
         var (integerPart, fractionPart) = RenderFormatDecimal(
             number,
             picture.MultiplierDigits,
-            picture.MaximumFractionDigits);
-        while (fractionPart.Length > picture.MinimumFractionDigits &&
-               fractionPart.EndsWith('0'))
+            picture.MaximumFractionDigits
+        );
+        while (fractionPart.Length > picture.MinimumFractionDigits && fractionPart.EndsWith('0'))
         {
             fractionPart = fractionPart[..^1];
         }
@@ -115,20 +112,22 @@ public static partial class FerruleFunctions
         return first;
     }
 
-    private static bool CollidesWithPicture(Rune separator) => separator.Value is
-        >= '0' and <= '9' or '#' or ';' or '%' or 0x2030;
+    private static bool CollidesWithPicture(Rune separator) =>
+        separator.Value is >= '0' and <= '9' or '#' or ';' or '%' or 0x2030;
 
     private static (string Integer, string Fraction) RenderFormatDecimal(
         FormatDecimal value,
         int multiplierDigits,
-        int fractionDigits)
+        int fractionDigits
+    )
     {
         var magnitude = value.Magnitude();
         var exponentMarker = magnitude.IndexOfAny(['e', 'E']);
         var mantissa = exponentMarker < 0 ? magnitude : magnitude[..exponentMarker];
-        var exponent = exponentMarker < 0
-            ? 0
-            : int.Parse(magnitude[(exponentMarker + 1)..], CultureInfo.InvariantCulture);
+        var exponent =
+            exponentMarker < 0
+                ? 0
+                : int.Parse(magnitude[(exponentMarker + 1)..], CultureInfo.InvariantCulture);
         var decimalMarker = mantissa.IndexOf('.');
         var whole = decimalMarker < 0 ? mantissa : mantissa[..decimalMarker];
         var fractional = decimalMarker < 0 ? string.Empty : mantissa[(decimalMarker + 1)..];
@@ -154,8 +153,9 @@ public static partial class FerruleFunctions
         }
 
         var firstRetainedDigit = 0;
-        while (firstRetainedDigit + 1 < integerPart.Length &&
-               integerPart[firstRetainedDigit] == '0')
+        while (
+            firstRetainedDigit + 1 < integerPart.Length && integerPart[firstRetainedDigit] == '0'
+        )
         {
             firstRetainedDigit++;
         }
@@ -255,24 +255,29 @@ public static partial class FerruleFunctions
 
     private readonly record struct FormatDecimal(bool IsInteger, long Integer, double Double)
     {
-        internal bool IsNegative => IsInteger
-            ? Integer < 0
-            : BitConverter.DoubleToInt64Bits(Double) < 0;
+        internal bool IsNegative =>
+            IsInteger ? Integer < 0 : BitConverter.DoubleToInt64Bits(Double) < 0;
 
-        internal static FormatDecimal From(FerruleValue value) => value.Kind switch
-        {
-            FerruleValueKind.Int64 => new(true, value.Int64Value, default),
-            FerruleValueKind.Double when double.IsFinite(value.DoubleValue) =>
-                new(false, default, value.DoubleValue),
-            FerruleValueKind.Double => throw InvalidArgument(
-                FormatNumberName,
-                "requires a finite number"),
-            _ => throw Type(FormatNumberName, value),
-        };
+        internal static FormatDecimal From(FerruleValue value) =>
+            value.Kind switch
+            {
+                FerruleValueKind.Int64 => new(true, value.Int64Value, default),
+                FerruleValueKind.Double when double.IsFinite(value.DoubleValue) => new(
+                    false,
+                    default,
+                    value.DoubleValue
+                ),
+                FerruleValueKind.Double => throw InvalidArgument(
+                    FormatNumberName,
+                    "requires a finite number"
+                ),
+                _ => throw Type(FormatNumberName, value),
+            };
 
-        internal string Magnitude() => IsInteger
-            ? BigInteger.Abs(new BigInteger(Integer)).ToString(CultureInfo.InvariantCulture)
-            : DoubleText(Math.Abs(Double));
+        internal string Magnitude() =>
+            IsInteger
+                ? BigInteger.Abs(new BigInteger(Integer)).ToString(CultureInfo.InvariantCulture)
+                : DoubleText(Math.Abs(Double));
     }
 
     private sealed record NumberPicture(
@@ -282,12 +287,14 @@ public static partial class FerruleFunctions
         int MinimumFractionDigits,
         int MaximumFractionDigits,
         int? GroupingSize,
-        int MultiplierDigits)
+        int MultiplierDigits
+    )
     {
         internal static NumberPicture Parse(
             string subformat,
             Rune decimalPoint,
-            Rune groupingSeparator)
+            Rune groupingSeparator
+        )
         {
             var first = -1;
             var last = -1;
@@ -303,9 +310,7 @@ public static partial class FerruleFunctions
             }
             if (first < 0)
             {
-                throw InvalidArgument(
-                    FormatNumberName,
-                    "format must contain a digit placeholder");
+                throw InvalidArgument(FormatNumberName, "format must contain a digit placeholder");
             }
 
             var prefix = subformat[..first];
@@ -319,14 +324,16 @@ public static partial class FerruleFunctions
                 {
                     throw InvalidArgument(
                         FormatNumberName,
-                        "format contains an invalid numeric picture");
+                        "format contains an invalid numeric picture"
+                    );
                 }
             }
             if (!hasDigit)
             {
                 throw InvalidArgument(
                     FormatNumberName,
-                    "format contains an invalid numeric picture");
+                    "format contains an invalid numeric picture"
+                );
             }
 
             var parts = SplitFormatRunes(body, decimalPoint);
@@ -336,7 +343,8 @@ public static partial class FerruleFunctions
             {
                 throw InvalidArgument(
                     FormatNumberName,
-                    "format contains invalid decimal or grouping separators");
+                    "format contains invalid decimal or grouping separators"
+                );
             }
 
             var integerDigits = RemoveFormatRune(integerPicture, groupingSeparator);
@@ -344,7 +352,8 @@ public static partial class FerruleFunctions
             {
                 throw InvalidArgument(
                     FormatNumberName,
-                    "format contains placeholders in an invalid order");
+                    "format contains placeholders in an invalid order"
+                );
             }
             var groupingSize = ParseGrouping(integerPicture, groupingSeparator);
 
@@ -359,7 +368,8 @@ public static partial class FerruleFunctions
             {
                 throw InvalidArgument(
                     FormatNumberName,
-                    "format allows one percent or per-mille character");
+                    "format allows one percent or per-mille character"
+                );
             }
 
             return new NumberPicture(
@@ -369,13 +379,13 @@ public static partial class FerruleFunctions
                 fractionPicture.Count(character => character == '0'),
                 RuneCount(fractionPicture),
                 groupingSize,
-                percentCount == 1 ? 2 : perMilleCount == 1 ? 3 : 0);
+                percentCount == 1 ? 2
+                    : perMilleCount == 1 ? 3
+                    : 0
+            );
         }
 
-        private static bool IsPictureRune(
-            Rune rune,
-            Rune decimalPoint,
-            Rune groupingSeparator) =>
+        private static bool IsPictureRune(Rune rune, Rune decimalPoint, Rune groupingSeparator) =>
             rune.Value is '0' or '#' || rune == decimalPoint || rune == groupingSeparator;
 
         private static bool ValidIntegerPicture(string picture)
@@ -427,7 +437,8 @@ public static partial class FerruleFunctions
             {
                 throw InvalidArgument(
                     FormatNumberName,
-                    "format contains misplaced grouping separators");
+                    "format contains misplaced grouping separators"
+                );
             }
             return RuneCount(groups[^1]);
         }
