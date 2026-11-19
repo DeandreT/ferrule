@@ -81,6 +81,7 @@ mod target_node_default;
 mod target_node_function;
 mod target_scope;
 mod target_type_cast;
+mod transposed_source;
 mod transposed_target;
 mod udf;
 mod unused_xml_source;
@@ -1082,8 +1083,20 @@ fn import_resolved(
         component.is_source = false;
     }
 
+    let alignment = transposed_source::absorb_alignment_filters(
+        structure,
+        &schema_components,
+        &fn_components,
+        &edges.feeds,
+        &mut warnings,
+    );
+
     // Only inputs with one distinct physical feed enter the lowering map.
-    let edge_from = &edges.feeds;
+    // Lower using repaired XLSX scalar feeds, but certify against the selected
+    // saved feeds: the raw graph still contains every disconnected sequence.
+    let (repaired, absorbed_alignment) = alignment.unzip();
+    let absorbed_alignment = absorbed_alignment.unwrap_or_default();
+    let edge_from = repaired.as_ref().unwrap_or(&edges.feeds);
     let connected_outputs = edge_from.values().copied().collect::<BTreeSet<_>>();
     for component in &schema_components {
         if matches!(selection, StageSelection::Ordinary)
@@ -1334,6 +1347,7 @@ fn import_resolved(
         count_construction.as_ref(),
         count_demand,
         matches!(selection, StageSelection::Ordinary) && filename_import == FilenameImport::None,
+        (&absorbed_alignment, &connected_outputs),
     );
     let certificate = udf::certificate::certify(&udf_registry, &udf_calls, normalized, structure);
     udf_registry
@@ -1424,6 +1438,9 @@ fn import_resolved(
         warnings: Vec::new(),
     };
     for (i, fc) in fn_components.iter().enumerate() {
+        if absorbed_alignment.contains(&i) {
+            continue;
+        }
         for &out in &fc.outputs {
             builder.fn_by_output.insert(out, i);
         }
@@ -1485,7 +1502,7 @@ fn import_resolved(
 
     // Other pipeline stages have different source boundaries. Eagerly lower only
     // functions demanded by this stage's targets and owned failure rules.
-    let eager_functions = (!matches!(selection, StageSelection::Ordinary)).then(|| {
+    let mut eager_functions = (!matches!(selection, StageSelection::Ordinary)).then(|| {
         materialize::stage_functions(
             &builder,
             connected_targets
@@ -1498,6 +1515,13 @@ fn import_resolved(
                 ),
         )
     });
+    // Keep the physical function slots stable for Count and UDF origin
+    // witnesses. Absorbed helpers are not independently executable functions.
+    if !absorbed_alignment.is_empty() {
+        eager_functions
+            .get_or_insert_with(|| (0..fn_components.len()).collect())
+            .retain(|index| !absorbed_alignment.contains(index));
+    }
     let csv_documents = (connected_targets.len() == 1)
         .then(|| csv_document_output::build(target, structure, &copy_all_targets, &mut builder))
         .flatten();
