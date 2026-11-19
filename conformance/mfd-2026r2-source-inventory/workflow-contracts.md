@@ -89,14 +89,15 @@ debugging, generated Rust/C#, or a vendor execution backend.
   both keeping preceding lines and leaving the first container empty when the
   matching line is last. For two lines, `pre` followed by `x#1`, those rules
   disagree about `pre`. The interior examples avoid both ambiguities.
-- **Independent review:** 55 of 358 cases (47 topics, 11 families) were
-  compared with their source sections. That review narrowed the XML input
-  duplication, generated Java path, FlexText split and PDF preview examples.
+- **Independent review:** All 358 workflow examples were compared with their
+  source sections: 55 in the first pass and 303 in the second. The review
+  clarified settings and outcomes for chained previews, SQL result sets,
+  FlexText assembly, EDI separators and debugger output, among others.
   All 576 workflow context references resolved in both directions. Across
   789 canonical records, 6,228 of 6,312 vendor-backend assessments remain
-  unassessed; the other 84 are marked not applicable. The sample does not
-  establish editorial coverage of the other 303 cases. Track remaining
-  review in [#820](https://github.com/DeandreT/ferrule/issues/820);
+  unassessed; the other 84 are marked not applicable. Additional operations
+  within these topics and their applicability are tracked in
+  [#820](https://github.com/DeandreT/ferrule/issues/820);
   `inventory_complete` remains false.
 
 Run `python verify_context_leaf_review.py` here to check membership, depth,
