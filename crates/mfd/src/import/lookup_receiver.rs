@@ -111,10 +111,10 @@ impl Receiver {
                 return None;
             }
             for a in ["inpkey", "outkey", "key"] {
-                if let Some(v) = n.attribute(a) {
-                    if !pins.insert(v.parse().ok()?) {
-                        return None;
-                    }
+                if let Some(v) = n.attribute(a)
+                    && !pins.insert(v.parse().ok()?)
+                {
+                    return None;
                 }
             }
         }

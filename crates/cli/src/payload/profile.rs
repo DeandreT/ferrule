@@ -10,6 +10,7 @@ pub(super) enum PayloadProfile {
     Compatibility,
     BoundedTabular,
     BoundedDocuments,
+    PortableWorkbook,
 }
 
 // One immutable native limit set for every boundary in a run. These codecs'
@@ -30,6 +31,7 @@ pub(super) enum BoundaryProfile<'a> {
         declared_path: Option<&'a str>,
     },
     BoundedDocuments,
+    PortableWorkbook,
 }
 
 impl<'a> BoundaryProfile<'a> {
@@ -38,6 +40,7 @@ impl<'a> BoundaryProfile<'a> {
             PayloadProfile::Compatibility => Self::Compatibility,
             PayloadProfile::BoundedTabular => Self::BoundedTabular { declared_path },
             PayloadProfile::BoundedDocuments => Self::BoundedDocuments,
+            PayloadProfile::PortableWorkbook => Self::PortableWorkbook,
         }
     }
 
@@ -52,6 +55,21 @@ impl<'a> BoundaryProfile<'a> {
                 declared_path.map_or(Path::new("declared-payload-boundary"), Path::new)
             }
             Self::BoundedDocuments => document_identity(options)?,
+            Self::PortableWorkbook => {
+                if *options
+                    != (FormatOptions {
+                        tabular_kind: Some(TabularBoundaryKind::Xlsx),
+                        has_header_row: Some(true),
+                        xlsx_sheet: options.xlsx_sheet.clone(),
+                        ..Default::default()
+                    })
+                {
+                    bail!(
+                        "portable workbook requires a saved worksheet with default columns and headers"
+                    );
+                }
+                Path::new("document.xlsx")
+            }
         })
     }
 
@@ -60,7 +78,7 @@ impl<'a> BoundaryProfile<'a> {
     }
 
     pub(super) fn documents(self) -> bool {
-        matches!(self, Self::BoundedDocuments)
+        matches!(self, Self::BoundedDocuments | Self::PortableWorkbook)
     }
 }
 
