@@ -25,6 +25,8 @@ mod literal;
 mod mapping;
 mod owned_basic;
 mod primary_csv;
+mod protobuf_bytes;
+pub use protobuf_bytes::emit_with_protobuf_bytes;
 mod primary_csv_document;
 mod primary_edi_document;
 mod primary_filename;
