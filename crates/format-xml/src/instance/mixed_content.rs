@@ -1,5 +1,3 @@
-use std::io::Write;
-
 use ir::{
     Instance, SchemaNode, Value, XML_ELEMENTS_FIELD, XML_MIXED_CONTENT_FIELD,
     XML_MIXED_CONTENT_VALUE_FIELD, XML_NAMESPACE_URI_FIELD, XML_NODE_NAME_FIELD, XML_TEXT_FIELD,
@@ -39,8 +37,8 @@ impl OrderedContentLayout {
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn write_ordered_mixed_content<W: std::io::Write>(
-    writer: &mut Writer<W>,
+pub(crate) fn write_ordered_mixed_content(
+    writer: &mut Writer<&mut Vec<u8>>,
     schema: &SchemaNode,
     children: &[SchemaNode],
     root_schema: &SchemaNode,
@@ -231,11 +229,9 @@ pub(crate) fn write_ordered_mixed_content<W: std::io::Write>(
                 // indentation anywhere in its subtree, even inside
                 // element-only children, would come back as text. Write the
                 // subtree through an unindented writer on the same output,
-                // leaving the outer writer's layout state as it was. The
-                // trait object keeps one writer type at every nesting level.
-                let output: &mut dyn Write = writer.get_mut();
+                // leaving the outer writer's layout state as it was.
                 write_ordered_element(
-                    &mut Writer::new(output),
+                    &mut Writer::new(writer.get_mut()),
                     child_schema,
                     root_schema,
                     child_instance,
@@ -256,8 +252,8 @@ pub(crate) fn write_ordered_mixed_content<W: std::io::Write>(
 }
 
 /// Writes one element item of an ordered content stream.
-fn write_ordered_element<W: std::io::Write>(
-    writer: &mut Writer<W>,
+fn write_ordered_element(
+    writer: &mut Writer<&mut Vec<u8>>,
     child_schema: &SchemaNode,
     root_schema: &SchemaNode,
     child_instance: &Instance,

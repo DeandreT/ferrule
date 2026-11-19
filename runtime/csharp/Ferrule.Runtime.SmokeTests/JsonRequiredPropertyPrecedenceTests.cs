@@ -6,26 +6,32 @@ namespace Ferrule.Runtime.SmokeTests;
 
 internal static partial class Program
 {
-    private const string JsonRequiredPrecedenceSchema =
-        """
+    private const string JsonRequiredPrecedenceSchema = """
         {"name":"Envelope","kind":{"kind":"group","children":[
           {"name":"id","kind":{"kind":"scalar","ty":"int"}}
         ],"required":["id"]}}
         """;
 
-    private const string JsonRequiredPrecedenceNullableSchema =
-        """
+    private const string JsonRequiredPrecedenceNullableSchema = """
         {"name":"Envelope","container_nullable":true,"kind":{"kind":"group","children":[
           {"name":"id","kind":{"kind":"scalar","ty":"int"}}
         ],"required":["id"]}}
         """;
 
     private sealed record JsonRequiredPrecedenceCase(
-        string Name, string Document, string Schema, string? ExpectedMessage);
+        string Name,
+        string Document,
+        string Schema,
+        string? ExpectedMessage
+    );
 
     private sealed record JsonRequiredPrecedenceOriginal(
-        JsonRequiredPrecedenceCase Case, string Api, byte[] Utf8,
-        FerruleInstance? Instance, Exception? Error);
+        JsonRequiredPrecedenceCase Case,
+        string Api,
+        byte[] Utf8,
+        FerruleInstance? Instance,
+        Exception? Error
+    );
 
     private static void JsonRequiredPropertyPrecedence()
     {
@@ -38,7 +44,12 @@ internal static partial class Program
             new("extra-only", """{"id":7,"extra":1}""", JsonRequiredPrecedenceSchema, extra),
             new("valid", """{"id":7}""", JsonRequiredPrecedenceSchema, null),
             new("nullable-object-null", "null", JsonRequiredPrecedenceNullableSchema, null),
-            new("malformed-json", """{"extra":1""", JsonRequiredPrecedenceSchema, "JSON input is invalid."),
+            new(
+                "malformed-json",
+                """{"extra":1""",
+                JsonRequiredPrecedenceSchema,
+                "JSON input is invalid."
+            ),
         ];
         var originals = new List<JsonRequiredPrecedenceOriginal>();
         foreach (var test in cases)
@@ -50,9 +61,10 @@ internal static partial class Program
                 Exception? error = null;
                 try
                 {
-                    instance = api == "FerruleJson.Parse"
-                        ? FerruleJson.Parse(test.Schema, test.Document)
-                        : FerruleJson.ParseBytes(test.Schema, bytes);
+                    instance =
+                        api == "FerruleJson.Parse"
+                            ? FerruleJson.Parse(test.Schema, test.Document)
+                            : FerruleJson.ParseBytes(test.Schema, bytes);
                 }
                 catch (Exception original)
                 {
@@ -64,29 +76,38 @@ internal static partial class Program
 
         // Every original object and exception remains alive through all assertions.
         // Emit all routes and controls first, including complete public error fields.
-        Console.Error.WriteLine("ISSUE171_CSHARP_ORIGINALS " + JsonSerializer.Serialize(
-            originals.Select(original => new
-            {
-                case_name = original.Case.Name,
-                api = original.Api,
-                schema_text = original.Case.Schema,
-                input = original.Case.Document,
-                utf8_bytes = original.Utf8.Select(value => (int)value).ToArray(),
-                expected_message = original.Case.ExpectedMessage,
-                instance = JsonRequiredPrecedenceInstance(original.Instance),
-                error = JsonRequiredPrecedenceError(original.Error),
-            })));
+        Console.Error.WriteLine(
+            "ISSUE171_CSHARP_ORIGINALS "
+                + JsonSerializer.Serialize(
+                    originals.Select(original => new
+                    {
+                        case_name = original.Case.Name,
+                        api = original.Api,
+                        schema_text = original.Case.Schema,
+                        input = original.Case.Document,
+                        utf8_bytes = original.Utf8.Select(value => (int)value).ToArray(),
+                        expected_message = original.Case.ExpectedMessage,
+                        instance = JsonRequiredPrecedenceInstance(original.Instance),
+                        error = JsonRequiredPrecedenceError(original.Error),
+                    })
+                )
+        );
         Console.Error.Flush();
 
-        foreach (var original in originals.OrderBy(original => original.Case.Name == "mixed-invalid" ? 1 : 0))
+        foreach (
+            var original in originals.OrderBy(original =>
+                original.Case.Name == "mixed-invalid" ? 1 : 0
+            )
+        )
         {
             if (original.Case.ExpectedMessage is string expected)
             {
                 if (original.Error is not FerruleRuntimeException error)
                 {
                     throw new InvalidOperationException(
-                        $"{original.Case.Name}/{original.Api}: expected JsonBoundary; " +
-                        $"found {original.Error?.ToString() ?? "a successful result"}.");
+                        $"{original.Case.Name}/{original.Api}: expected JsonBoundary; "
+                            + $"found {original.Error?.ToString() ?? "a successful result"}."
+                    );
                 }
                 Equal(FerruleRuntimeError.JsonBoundary, error.Error);
                 Equal(expected, error.Message);
@@ -94,12 +115,27 @@ internal static partial class Program
                 Equal<FerruleInstance?>(null, original.Instance);
                 object?[] unusedRuntimePayloads =
                 [
-                    error.Node, error.Function, error.ExpectedArity, error.ActualArity,
-                    error.FoundKind, error.AggregateOperation, error.RequestedItems,
-                    error.MaximumItems, error.MaximumDepth, error.RuntimeValue,
-                    error.FailureRule, error.MappingFailureMessage, error.MappingExceptionMessage,
-                    error.Join, error.UserFunction, error.FunctionParameter, error.ExpectedScalarType,
-                    error.RuntimeParameter, error.SourceField, error.FoundInstance, error.PrimaryRoot,
+                    error.Node,
+                    error.Function,
+                    error.ExpectedArity,
+                    error.ActualArity,
+                    error.FoundKind,
+                    error.AggregateOperation,
+                    error.RequestedItems,
+                    error.MaximumItems,
+                    error.MaximumDepth,
+                    error.RuntimeValue,
+                    error.FailureRule,
+                    error.MappingFailureMessage,
+                    error.MappingExceptionMessage,
+                    error.Join,
+                    error.UserFunction,
+                    error.FunctionParameter,
+                    error.ExpectedScalarType,
+                    error.RuntimeParameter,
+                    error.SourceField,
+                    error.FoundInstance,
+                    error.PrimaryRoot,
                 ];
                 Equal(true, unusedRuntimePayloads.All(value => value is null));
                 if (original.Case.Name == "malformed-json")
@@ -130,45 +166,62 @@ internal static partial class Program
             }
             else
             {
-                Equal(true, original.Instance is FerruleScalar { Value.Kind: FerruleValueKind.JsonNull });
+                Equal(
+                    true,
+                    original.Instance is FerruleScalar { Value.Kind: FerruleValueKind.JsonNull }
+                );
             }
         }
     }
 
-    private static object? JsonRequiredPrecedenceInstance(FerruleInstance? instance) => instance switch
-    {
-        null => null,
-        FerruleScalar scalar => new
+    private static object? JsonRequiredPrecedenceInstance(FerruleInstance? instance) =>
+        instance switch
         {
-            kind = "scalar", scalar_kind = scalar.Value.Kind.ToString(), value = scalar.Value.ToString(),
-        },
-        FerruleGroup group => new
-        {
-            kind = "group", xml_origin_kind = group.XmlTypeOrigin.Kind.ToString(),
-            xml_origin_identity = group.XmlTypeOrigin.Identity, xml_origin_literal = group.XmlTypeOrigin.Literal,
-            fields = group.Fields.Select(field => new
+            null => null,
+            FerruleScalar scalar => new
             {
-                name = field.Name, value = JsonRequiredPrecedenceInstance(field.Value),
-            }).ToArray(),
-        },
-        FerruleRepeated repeated => new
-        {
-            kind = "repeated", items = repeated.Items.Select(JsonRequiredPrecedenceInstance).ToArray(),
-        },
-        FerruleMappedSequence sequence => new
-        {
-            kind = "mapped_sequence", items = sequence.Items.Select(JsonRequiredPrecedenceInstance).ToArray(),
-        },
-        FerruleDocumentSet documents => new
-        {
-            kind = "document_set", documents = documents.Documents.Select(document => new
+                kind = "scalar",
+                scalar_kind = scalar.Value.Kind.ToString(),
+                value = scalar.Value.ToString(),
+            },
+            FerruleGroup group => new
             {
-                path = document.Path, resolved_source_path = document.ResolvedSourcePath,
-                value = JsonRequiredPrecedenceInstance(document.Value),
-            }).ToArray(),
-        },
-        _ => new { kind = instance.GetType().FullName, original = instance.ToString() },
-    };
+                kind = "group",
+                xml_origin_kind = group.XmlTypeOrigin.Kind.ToString(),
+                xml_origin_identity = group.XmlTypeOrigin.Identity,
+                xml_origin_literal = group.XmlTypeOrigin.Literal,
+                fields = group
+                    .Fields.Select(field => new
+                    {
+                        name = field.Name,
+                        value = JsonRequiredPrecedenceInstance(field.Value),
+                    })
+                    .ToArray(),
+            },
+            FerruleRepeated repeated => new
+            {
+                kind = "repeated",
+                items = repeated.Items.Select(JsonRequiredPrecedenceInstance).ToArray(),
+            },
+            FerruleMappedSequence sequence => new
+            {
+                kind = "mapped_sequence",
+                items = sequence.Items.Select(JsonRequiredPrecedenceInstance).ToArray(),
+            },
+            FerruleDocumentSet documents => new
+            {
+                kind = "document_set",
+                documents = documents
+                    .Documents.Select(document => new
+                    {
+                        path = document.Path,
+                        resolved_source_path = document.ResolvedSourcePath,
+                        value = JsonRequiredPrecedenceInstance(document.Value),
+                    })
+                    .ToArray(),
+            },
+            _ => new { kind = instance.GetType().FullName, original = instance.ToString() },
+        };
 
     private static object? JsonRequiredPrecedenceError(Exception? original)
     {
@@ -186,27 +239,48 @@ internal static partial class Program
             ["stack_trace"] = original.StackTrace,
             ["target_site"] = original.TargetSite?.ToString(),
             ["inner_exception"] = JsonRequiredPrecedenceError(original.InnerException),
-            ["data"] = original.Data.Keys.Cast<object>().Select(key => new
-            {
-                key = key.ToString(), value = original.Data[key]?.ToString(),
-            }).ToArray(),
+            ["data"] = original
+                .Data.Keys.Cast<object>()
+                .Select(key => new { key = key.ToString(), value = original.Data[key]?.ToString() })
+                .ToArray(),
         };
         if (original is FerruleRuntimeException error)
         {
             fields["runtime"] = new
             {
-                category = error.Error.ToString(), error.Node, error.Function,
-                error.ExpectedArity, error.ActualArity, error.FoundKind,
-                error.AggregateOperation, error.Detail, error.RequestedItems,
-                error.MaximumItems, error.MaximumDepth, error.RuntimeValue,
-                error.FailureRule, error.MappingFailureMessage, error.MappingExceptionMessage,
-                error.Join, error.UserFunction, error.FunctionParameter, error.ExpectedScalarType,
-                error.RuntimeParameter, error.SourceField, error.FoundInstance, error.PrimaryRoot,
+                category = error.Error.ToString(),
+                error.Node,
+                error.Function,
+                error.ExpectedArity,
+                error.ActualArity,
+                error.FoundKind,
+                error.AggregateOperation,
+                error.Detail,
+                error.RequestedItems,
+                error.MaximumItems,
+                error.MaximumDepth,
+                error.RuntimeValue,
+                error.FailureRule,
+                error.MappingFailureMessage,
+                error.MappingExceptionMessage,
+                error.Join,
+                error.UserFunction,
+                error.FunctionParameter,
+                error.ExpectedScalarType,
+                error.RuntimeParameter,
+                error.SourceField,
+                error.FoundInstance,
+                error.PrimaryRoot,
             };
         }
         if (original is JsonException syntax)
         {
-            fields["json"] = new { syntax.Path, syntax.LineNumber, syntax.BytePositionInLine };
+            fields["json"] = new
+            {
+                syntax.Path,
+                syntax.LineNumber,
+                syntax.BytePositionInLine,
+            };
         }
         return fields;
     }

@@ -4,10 +4,25 @@ using System.Text.Json;
 
 namespace Ferrule.Runtime;
 
-public enum FerruleJsonSourceKind { Null, Boolean, Number, String, Array, Object }
+public enum FerruleJsonSourceKind
+{
+    Null,
+    Boolean,
+    Number,
+    String,
+    Array,
+    Object,
+}
+
 public enum FerruleJsonSourceErrorKind
 {
-    InvalidLimits, InvalidIdentity, DocumentBytes, Utf8, Syntax, ContainerDepth, Values,
+    InvalidLimits,
+    InvalidIdentity,
+    DocumentBytes,
+    Utf8,
+    Syntax,
+    ContainerDepth,
+    Values,
 }
 
 public sealed class FerruleJsonSourceException : Exception
@@ -35,15 +50,21 @@ public sealed class FerruleJsonSourceValue
     public IReadOnlyList<FerruleJsonSourceValue> Items { get; }
     public IReadOnlyList<KeyValuePair<string, FerruleJsonSourceValue>> Members { get; }
 
-    internal FerruleJsonSourceValue(FerruleJsonSourceKind kind, string? text = null, bool? boolean = null,
+    internal FerruleJsonSourceValue(
+        FerruleJsonSourceKind kind,
+        string? text = null,
+        bool? boolean = null,
         List<FerruleJsonSourceValue>? items = null,
-        List<KeyValuePair<string, FerruleJsonSourceValue>>? members = null)
+        List<KeyValuePair<string, FerruleJsonSourceValue>>? members = null
+    )
     {
         Kind = kind;
         this.text = text;
         this.boolean = boolean;
         Items = new ReadOnlyCollection<FerruleJsonSourceValue>(items ?? []);
-        Members = new ReadOnlyCollection<KeyValuePair<string, FerruleJsonSourceValue>>(members ?? []);
+        Members = new ReadOnlyCollection<KeyValuePair<string, FerruleJsonSourceValue>>(
+            members ?? []
+        );
     }
 
     public string? StringValue => Kind == FerruleJsonSourceKind.String ? text : null;
@@ -81,17 +102,26 @@ public sealed class FerruleJsonSourceDocument
         Root = root;
     }
 
-    public static FerruleJsonSourceDocument Parse(string identity, ReadOnlySpan<byte> bytes,
-        FerruleJsonSourceLimits? limits = null)
+    public static FerruleJsonSourceDocument Parse(
+        string identity,
+        ReadOnlySpan<byte> bytes,
+        FerruleJsonSourceLimits? limits = null
+    )
     {
         limits ??= new();
-        if (limits.DocumentBytes is < 0 or > MaxDocumentBytes ||
-            limits.ContainerDepth is < 0 or > MaxContainerDepth || limits.Values is < 0 or > MaxValues)
+        if (
+            limits.DocumentBytes is < 0 or > MaxDocumentBytes
+            || limits.ContainerDepth is < 0 or > MaxContainerDepth
+            || limits.Values is < 0 or > MaxValues
+        )
             throw new FerruleJsonSourceException(FerruleJsonSourceErrorKind.InvalidLimits);
         try
         {
-            if (string.IsNullOrEmpty(identity) || identity.Contains('\0') ||
-                StrictUtf8.GetByteCount(identity) > MaxIdentityBytes)
+            if (
+                string.IsNullOrEmpty(identity)
+                || identity.Contains('\0')
+                || StrictUtf8.GetByteCount(identity) > MaxIdentityBytes
+            )
                 throw new FerruleJsonSourceException(FerruleJsonSourceErrorKind.InvalidIdentity);
         }
         catch (EncoderFallbackException error)
@@ -100,25 +130,34 @@ public sealed class FerruleJsonSourceDocument
         }
         if (bytes.Length > limits.DocumentBytes)
             throw new FerruleJsonSourceException(FerruleJsonSourceErrorKind.DocumentBytes);
-        try { _ = StrictUtf8.GetCharCount(bytes); }
+        try
+        {
+            _ = StrictUtf8.GetCharCount(bytes);
+        }
         catch (DecoderFallbackException error)
         {
             throw new FerruleJsonSourceException(FerruleJsonSourceErrorKind.Utf8, error);
         }
-        if (bytes.StartsWith(new byte[] { 0xef, 0xbb, 0xbf })) bytes = bytes[3..];
+        if (bytes.StartsWith(new byte[] { 0xef, 0xbb, 0xbf }))
+            bytes = bytes[3..];
         CheckDepth(bytes, limits.ContainerDepth);
         try
         {
-            var reader = new Utf8JsonReader(bytes, new JsonReaderOptions
-            {
-                MaxDepth = MaxContainerDepth,
-                CommentHandling = JsonCommentHandling.Disallow,
-                AllowTrailingCommas = false,
-            });
-            if (!reader.Read()) throw new JsonException("Expected one JSON value.");
+            var reader = new Utf8JsonReader(
+                bytes,
+                new JsonReaderOptions
+                {
+                    MaxDepth = MaxContainerDepth,
+                    CommentHandling = JsonCommentHandling.Disallow,
+                    AllowTrailingCommas = false,
+                }
+            );
+            if (!reader.Read())
+                throw new JsonException("Expected one JSON value.");
             var remaining = limits.Values;
             var root = ReadValue(ref reader, ref remaining);
-            if (reader.Read()) throw new JsonException("Unexpected trailing JSON value.");
+            if (reader.Read())
+                throw new JsonException("Unexpected trailing JSON value.");
             return new(identity, root);
         }
         catch (JsonException error)
@@ -135,16 +174,24 @@ public sealed class FerruleJsonSourceDocument
 
     private static FerruleJsonSourceValue ReadValue(ref Utf8JsonReader reader, ref int remaining)
     {
-        if (remaining == 0) throw new FerruleJsonSourceException(FerruleJsonSourceErrorKind.Values);
+        if (remaining == 0)
+            throw new FerruleJsonSourceException(FerruleJsonSourceErrorKind.Values);
         remaining--;
         switch (reader.TokenType)
         {
-            case JsonTokenType.Null: return new(FerruleJsonSourceKind.Null);
-            case JsonTokenType.True: return new(FerruleJsonSourceKind.Boolean, boolean: true);
-            case JsonTokenType.False: return new(FerruleJsonSourceKind.Boolean, boolean: false);
-            case JsonTokenType.String: return new(FerruleJsonSourceKind.String, text: reader.GetString());
+            case JsonTokenType.Null:
+                return new(FerruleJsonSourceKind.Null);
+            case JsonTokenType.True:
+                return new(FerruleJsonSourceKind.Boolean, boolean: true);
+            case JsonTokenType.False:
+                return new(FerruleJsonSourceKind.Boolean, boolean: false);
+            case JsonTokenType.String:
+                return new(FerruleJsonSourceKind.String, text: reader.GetString());
             case JsonTokenType.Number:
-                return new(FerruleJsonSourceKind.Number, text: Encoding.UTF8.GetString(reader.ValueSpan));
+                return new(
+                    FerruleJsonSourceKind.Number,
+                    text: Encoding.UTF8.GetString(reader.ValueSpan)
+                );
             case JsonTokenType.StartArray:
                 var items = new List<FerruleJsonSourceValue>();
                 while (reader.Read())
@@ -163,11 +210,13 @@ public sealed class FerruleJsonSourceDocument
                     if (reader.TokenType != JsonTokenType.PropertyName)
                         throw new JsonException("Expected a member name.");
                     var name = reader.GetString()!;
-                    if (!reader.Read()) throw new JsonException("Expected a member value.");
+                    if (!reader.Read())
+                        throw new JsonException("Expected a member value.");
                     members.Add(new(name, ReadValue(ref reader, ref remaining)));
                 }
                 throw new JsonException("Unterminated object.");
-            default: throw new JsonException("Expected a JSON value.");
+            default:
+                throw new JsonException("Expected a JSON value.");
         }
     }
 
@@ -181,17 +230,22 @@ public sealed class FerruleJsonSourceDocument
         {
             if (quoted)
             {
-                if (escaped) escaped = false;
-                else if (value == '\\') escaped = true;
-                else if (value == '"') quoted = false;
+                if (escaped)
+                    escaped = false;
+                else if (value == '\\')
+                    escaped = true;
+                else if (value == '"')
+                    quoted = false;
             }
-            else if (value == '"') quoted = true;
+            else if (value == '"')
+                quoted = true;
             else if (value is (byte)'{' or (byte)'[')
             {
                 if (++depth > maximum)
                     throw new FerruleJsonSourceException(FerruleJsonSourceErrorKind.ContainerDepth);
             }
-            else if (value is (byte)'}' or (byte)']') depth = Math.Max(0, depth - 1);
+            else if (value is (byte)'}' or (byte)']')
+                depth = Math.Max(0, depth - 1);
         }
     }
 }

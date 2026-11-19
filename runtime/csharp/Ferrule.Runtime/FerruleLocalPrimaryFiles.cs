@@ -2,7 +2,18 @@ namespace Ferrule.Runtime;
 
 public enum FerruleLocalFileError
 {
-    Root, Uri, Rooted, Parent, InvalidName, WildcardDirectory, NoMatches, Missing, Symlink, NotRegular, TooLarge, Io,
+    Root,
+    Uri,
+    Rooted,
+    Parent,
+    InvalidName,
+    WildcardDirectory,
+    NoMatches,
+    Missing,
+    Symlink,
+    NotRegular,
+    TooLarge,
+    Io,
 }
 
 /// <summary>
@@ -11,9 +22,16 @@ public enum FerruleLocalFileError
 /// </summary>
 public sealed class FerruleLocalFileException : Exception
 {
-    public FerruleLocalFileException(FerruleLocalFileError error, string subject, long? limit = null,
-        Exception? source = null)
-        : base($"local primary file {error}: {subject}" + (limit is null ? "" : $" ({limit} bytes)"), source)
+    public FerruleLocalFileException(
+        FerruleLocalFileError error,
+        string subject,
+        long? limit = null,
+        Exception? source = null
+    )
+        : base(
+            $"local primary file {error}: {subject}" + (limit is null ? "" : $" ({limit} bytes)"),
+            source
+        )
     {
         Error = error;
         Subject = subject;
@@ -41,15 +59,25 @@ public sealed class FerruleLocalPrimaryFiles : IFerrulePrimarySourceHost
     private readonly string _root;
     private readonly long _maximumDocumentBytes;
 
-    public FerruleLocalPrimaryFiles(string root, long maximumDocumentBytes = DefaultMaximumDocumentBytes)
+    public FerruleLocalPrimaryFiles(
+        string root,
+        long maximumDocumentBytes = DefaultMaximumDocumentBytes
+    )
     {
         ArgumentNullException.ThrowIfNull(root);
         ArgumentOutOfRangeException.ThrowIfNegative(maximumDocumentBytes);
         string full;
-        try { full = Path.GetFullPath(root); }
-        catch (Exception source) when (source is ArgumentException or IOException or NotSupportedException)
-        { throw new FerruleLocalFileException(FerruleLocalFileError.Root, root, source: source); }
-        if (!Directory.Exists(full)) throw new FerruleLocalFileException(FerruleLocalFileError.Root, root);
+        try
+        {
+            full = Path.GetFullPath(root);
+        }
+        catch (Exception source)
+            when (source is ArgumentException or IOException or NotSupportedException)
+        {
+            throw new FerruleLocalFileException(FerruleLocalFileError.Root, root, source: source);
+        }
+        if (!Directory.Exists(full))
+            throw new FerruleLocalFileException(FerruleLocalFileError.Root, root);
         _root = full;
         _maximumDocumentBytes = maximumDocumentBytes;
     }
@@ -65,22 +93,27 @@ public sealed class FerruleLocalPrimaryFiles : IFerrulePrimarySourceHost
         if (colon >= 0)
         {
             string prefix = filename[..colon];
-            bool scheme = prefix.Length > 0 && char.IsAsciiLetter(prefix[0]) &&
-                prefix.Skip(1).All(c => char.IsAsciiLetterOrDigit(c) || c is '+' or '-' or '.');
+            bool scheme =
+                prefix.Length > 0
+                && char.IsAsciiLetter(prefix[0])
+                && prefix.Skip(1).All(c => char.IsAsciiLetterOrDigit(c) || c is '+' or '-' or '.');
             throw scheme && prefix.Length == 1
                 ? new FerruleLocalFileException(FerruleLocalFileError.Rooted, filename)
-                : scheme
-                    ? new FerruleLocalFileException(FerruleLocalFileError.Uri, prefix)
-                    : new FerruleLocalFileException(FerruleLocalFileError.InvalidName, filename);
+            : scheme ? new FerruleLocalFileException(FerruleLocalFileError.Uri, prefix)
+            : new FerruleLocalFileException(FerruleLocalFileError.InvalidName, filename);
         }
-        if (filename[0] is '/' or '\\') throw new FerruleLocalFileException(FerruleLocalFileError.Rooted, filename);
+        if (filename[0] is '/' or '\\')
+            throw new FerruleLocalFileException(FerruleLocalFileError.Rooted, filename);
         var parts = filename.Split('/', '\\').Where(part => part is not ("" or ".")).ToArray();
-        if (parts.Contains("..")) throw new FerruleLocalFileException(FerruleLocalFileError.Parent, filename);
-        if (parts.Length == 0) throw new FerruleLocalFileException(FerruleLocalFileError.InvalidName, filename);
+        if (parts.Contains(".."))
+            throw new FerruleLocalFileException(FerruleLocalFileError.Parent, filename);
+        if (parts.Length == 0)
+            throw new FerruleLocalFileException(FerruleLocalFileError.InvalidName, filename);
         return parts;
     }
 
-    private static int[] Scalars(string text) => text.EnumerateRunes().Select(rune => rune.Value).ToArray();
+    private static int[] Scalars(string text) =>
+        text.EnumerateRunes().Select(rune => rune.Value).ToArray();
 
     internal static bool WildcardMatches(string pattern, string name)
     {
@@ -105,9 +138,11 @@ public sealed class FerruleLocalPrimaryFiles : IFerrulePrimarySourceHost
 
     private static int CompareScalars(string left, string right)
     {
-        int[] a = Scalars(left), b = Scalars(right);
+        int[] a = Scalars(left),
+            b = Scalars(right);
         for (int index = 0; index < Math.Min(a.Length, b.Length); index++)
-            if (a[index] != b[index]) return a[index].CompareTo(b[index]);
+            if (a[index] != b[index])
+                return a[index].CompareTo(b[index]);
         return a.Length.CompareTo(b.Length);
     }
 
@@ -115,7 +150,11 @@ public sealed class FerruleLocalPrimaryFiles : IFerrulePrimarySourceHost
     {
         for (int index = 0; index < name.Length; index++)
         {
-            if (char.IsHighSurrogate(name[index]) && index + 1 < name.Length && char.IsLowSurrogate(name[index + 1]))
+            if (
+                char.IsHighSurrogate(name[index])
+                && index + 1 < name.Length
+                && char.IsLowSurrogate(name[index + 1])
+            )
                 index++;
             else if (char.IsSurrogate(name[index]))
                 return false;
@@ -123,8 +162,11 @@ public sealed class FerruleLocalPrimaryFiles : IFerrulePrimarySourceHost
         return true;
     }
 
-    private static bool Missing(Exception error) => error is FileNotFoundException or DirectoryNotFoundException;
-    private static bool HostFailure(Exception error) => error is IOException or UnauthorizedAccessException;
+    private static bool Missing(Exception error) =>
+        error is FileNotFoundException or DirectoryNotFoundException;
+
+    private static bool HostFailure(Exception error) =>
+        error is IOException or UnauthorizedAccessException;
 
     // Check every component beneath the root without following links. The final
     // component must be a directory when `directory`, else a file.
@@ -136,11 +178,26 @@ public sealed class FerruleLocalPrimaryFiles : IFerrulePrimarySourceHost
         {
             path = Path.Join(path, components[index]);
             FileAttributes attributes;
-            try { attributes = File.GetAttributes(path); }
+            try
+            {
+                attributes = File.GetAttributes(path);
+            }
             catch (Exception error) when (Missing(error))
-            { throw new FerruleLocalFileException(FerruleLocalFileError.Missing, request, source: error); }
+            {
+                throw new FerruleLocalFileException(
+                    FerruleLocalFileError.Missing,
+                    request,
+                    source: error
+                );
+            }
             catch (Exception error) when (HostFailure(error))
-            { throw new FerruleLocalFileException(FerruleLocalFileError.Io, request, source: error); }
+            {
+                throw new FerruleLocalFileException(
+                    FerruleLocalFileError.Io,
+                    request,
+                    source: error
+                );
+            }
             if (attributes.HasFlag(FileAttributes.ReparsePoint))
                 throw new FerruleLocalFileException(FerruleLocalFileError.Symlink, request);
             bool expectDirectory = directory || index + 1 < components.Count;
@@ -153,12 +210,14 @@ public sealed class FerruleLocalPrimaryFiles : IFerrulePrimarySourceHost
     public IReadOnlyList<string> Select(string filename, FerrulePrimaryFileSelection selection)
     {
         string[] parts = Components(filename);
-        if (!selection.IsFileNameWildcard) return [string.Join('/', parts)];
+        if (!selection.IsFileNameWildcard)
+            return [string.Join('/', parts)];
         string pattern = parts[^1];
         string[] directories = parts[..^1];
         if (directories.Any(part => part.Contains('*') || part.Contains('?')))
             throw new FerruleLocalFileException(FerruleLocalFileError.WildcardDirectory, filename);
-        if (!pattern.Contains('*') && !pattern.Contains('?')) return [string.Join('/', parts)];
+        if (!pattern.Contains('*') && !pattern.Contains('?'))
+            return [string.Join('/', parts)];
         string directory = Check(directories, true);
         string location = string.Join('/', directories);
         var names = new List<string>();
@@ -172,19 +231,27 @@ public sealed class FerruleLocalPrimaryFiles : IFerrulePrimarySourceHost
         };
         try
         {
-            foreach (var entry in new DirectoryInfo(directory).EnumerateFileSystemInfos("*", options))
+            foreach (
+                var entry in new DirectoryInfo(directory).EnumerateFileSystemInfos("*", options)
+            )
             {
                 string name = entry.Name;
-                if (!IsUnicode(name) || !WildcardMatches(pattern, name)) continue;
+                if (!IsUnicode(name) || !WildcardMatches(pattern, name))
+                    continue;
                 var attributes = entry.Attributes;
                 if (attributes.HasFlag(FileAttributes.ReparsePoint))
-                    throw new FerruleLocalFileException(FerruleLocalFileError.Symlink,
-                        location.Length == 0 ? name : location + "/" + name);
-                if (!attributes.HasFlag(FileAttributes.Directory)) names.Add(name);
+                    throw new FerruleLocalFileException(
+                        FerruleLocalFileError.Symlink,
+                        location.Length == 0 ? name : location + "/" + name
+                    );
+                if (!attributes.HasFlag(FileAttributes.Directory))
+                    names.Add(name);
             }
         }
         catch (Exception error) when (HostFailure(error))
-        { throw new FerruleLocalFileException(FerruleLocalFileError.Io, location, source: error); }
+        {
+            throw new FerruleLocalFileException(FerruleLocalFileError.Io, location, source: error);
+        }
         if (names.Count == 0 && selection.Empty == FerruleEmptyFileSelection.Refuse)
             throw new FerruleLocalFileException(FerruleLocalFileError.NoMatches, filename);
         names.Sort(CompareScalars);
@@ -206,12 +273,21 @@ public sealed class FerruleLocalPrimaryFiles : IFerrulePrimarySourceHost
             {
                 bytes.Write(buffer, 0, read);
                 if (bytes.Length > _maximumDocumentBytes)
-                    throw new FerruleLocalFileException(FerruleLocalFileError.TooLarge, normalized,
-                        _maximumDocumentBytes);
+                    throw new FerruleLocalFileException(
+                        FerruleLocalFileError.TooLarge,
+                        normalized,
+                        _maximumDocumentBytes
+                    );
             }
         }
         catch (Exception error) when (HostFailure(error))
-        { throw new FerruleLocalFileException(FerruleLocalFileError.Io, normalized, source: error); }
+        {
+            throw new FerruleLocalFileException(
+                FerruleLocalFileError.Io,
+                normalized,
+                source: error
+            );
+        }
         return new FerruleCsvSourceData(bytes.ToArray(), path);
     }
 }

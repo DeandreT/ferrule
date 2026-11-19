@@ -12,7 +12,8 @@ internal static partial class Program
             root.GeneratedPosition(9, 10);
             throw new Exception("missing generated owner was accepted");
         }
-        catch (FerruleRuntimeException error) when (error.Error == FerruleRuntimeError.GeneratedPositionUnavailable) { }
+        catch (FerruleRuntimeException error)
+            when (error.Error == FerruleRuntimeError.GeneratedPositionUnavailable) { }
         var values = new[] { FerruleValue.FromInt64(8), FerruleValue.FromInt64(8) };
         var outer = root.IterateGenerated(values, 10);
         var selected = outer[1].WithCompactedPosition(1);

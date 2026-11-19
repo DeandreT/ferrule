@@ -23,7 +23,10 @@ public static partial class FerruleJson5Syntax
             }
             if (bare.Length >= 2 && bare[0] == '0' && bare[1] is 'x' or 'X')
             {
-                if (bare.Length == 2) { throw Syntax(FerruleJson5SyntaxKind.InvalidNumber, offset); }
+                if (bare.Length == 2)
+                {
+                    throw Syntax(FerruleJson5SyntaxKind.InvalidNumber, offset);
+                }
                 ulong magnitude = 0;
                 var overflow = false;
                 foreach (var value in bare[2..])
@@ -35,7 +38,10 @@ public static partial class FerruleJson5Syntax
                         >= 'A' and <= 'F' => value - 'A' + 10,
                         _ => -1,
                     };
-                    if (digit < 0) { throw Syntax(FerruleJson5SyntaxKind.InvalidNumber, offset); }
+                    if (digit < 0)
+                    {
+                        throw Syntax(FerruleJson5SyntaxKind.InvalidNumber, offset);
+                    }
                     Fold(ref magnitude, ref overflow, (ulong)digit, 16);
                 }
                 Integer(magnitude, overflow, negative, offset);
@@ -76,19 +82,34 @@ public static partial class FerruleJson5Syntax
             if (hasExponent)
             {
                 index++;
-                if (index < bare.Length && bare[index] is '+' or '-') { index++; }
+                if (index < bare.Length && bare[index] is '+' or '-')
+                {
+                    index++;
+                }
                 var exponentStart = index;
-                while (index < bare.Length && bare[index] is >= '0' and <= '9') { index++; }
-                if (exponentStart == index) { throw Syntax(FerruleJson5SyntaxKind.InvalidNumber, offset); }
+                while (index < bare.Length && bare[index] is >= '0' and <= '9')
+                {
+                    index++;
+                }
+                if (exponentStart == index)
+                {
+                    throw Syntax(FerruleJson5SyntaxKind.InvalidNumber, offset);
+                }
             }
-            if (index != bare.Length) { throw Syntax(FerruleJson5SyntaxKind.InvalidNumber, offset); }
+            if (index != bare.Length)
+            {
+                throw Syntax(FerruleJson5SyntaxKind.InvalidNumber, offset);
+            }
             if (!hasPoint && !hasExponent)
             {
                 // Checked exact integer folding is a separate complete pass.
                 Charge(bare.Length);
                 ulong magnitude = 0;
                 var overflow = false;
-                foreach (var value in bare) { Fold(ref magnitude, ref overflow, (ulong)(value - '0'), 10); }
+                foreach (var value in bare)
+                {
+                    Fold(ref magnitude, ref overflow, (ulong)(value - '0'), 10);
+                }
                 Integer(magnitude, overflow, negative, offset);
                 return;
             }
@@ -99,25 +120,53 @@ public static partial class FerruleJson5Syntax
             Charge(tokenBytes);
             if (nonzeroMantissa)
             {
-                if (!double.TryParse(token, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed))
+                if (
+                    !double.TryParse(
+                        token,
+                        NumberStyles.Float,
+                        CultureInfo.InvariantCulture,
+                        out var parsed
+                    )
+                )
                 {
                     throw Syntax(FerruleJson5SyntaxKind.InvalidNumber, offset);
                 }
-                if (!double.IsFinite(parsed)) { throw Syntax(FerruleJson5SyntaxKind.NonFiniteNumber, offset); }
+                if (!double.IsFinite(parsed))
+                {
+                    throw Syntax(FerruleJson5SyntaxKind.NonFiniteNumber, offset);
+                }
             }
-            if (negative) { AppendAscii("-"); }
-            if (integerDigits == 0) { AppendAscii("0"); }
+            if (negative)
+            {
+                AppendAscii("-");
+            }
+            if (integerDigits == 0)
+            {
+                AppendAscii("0");
+            }
             AppendAscii(bare[..exponent]);
-            if (hasPoint && fractionDigits == 0) { AppendAscii("0"); }
+            if (hasPoint && fractionDigits == 0)
+            {
+                AppendAscii("0");
+            }
             AppendAscii(bare[exponent..]);
         }
 
         private static void Fold(ref ulong magnitude, ref bool overflow, ulong digit, ulong radix)
         {
             // Keep inspecting later digits after overflow to retain syntax priority.
-            if (overflow) { return; }
-            if (magnitude > (ulong.MaxValue - digit) / radix) { overflow = true; }
-            else { magnitude = magnitude * radix + digit; }
+            if (overflow)
+            {
+                return;
+            }
+            if (magnitude > (ulong.MaxValue - digit) / radix)
+            {
+                overflow = true;
+            }
+            else
+            {
+                magnitude = magnitude * radix + digit;
+            }
         }
 
         private void Integer(ulong magnitude, bool overflow, bool negative, long offset)
@@ -128,7 +177,10 @@ public static partial class FerruleJson5Syntax
             }
             Charge(20);
             var digits = magnitude.ToString(CultureInfo.InvariantCulture);
-            if (negative && magnitude != 0) { AppendAscii("-"); }
+            if (negative && magnitude != 0)
+            {
+                AppendAscii("-");
+            }
             AppendAscii(digits);
         }
     }

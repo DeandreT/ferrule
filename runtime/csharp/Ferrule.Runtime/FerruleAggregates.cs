@@ -21,7 +21,11 @@ public enum FerruleAggregateOperation
 public static class FerruleAggregates
 {
     /// <summary>Advance a decimal fold before evaluating another operand; ordinary reductions remain eager.</summary>
-    public static void CollectValue(FerruleAggregateOperation operation, List<FerruleValue> values, FerruleValue value)
+    public static void CollectValue(
+        FerruleAggregateOperation operation,
+        List<FerruleValue> values,
+        FerruleValue value
+    )
     {
         ArgumentNullException.ThrowIfNull(values);
         if (operation == FerruleAggregateOperation.DecimalSum)
@@ -36,16 +40,22 @@ public static class FerruleAggregates
             values.Add(value);
         }
     }
+
     public static FerruleValue Apply(
         FerruleAggregateOperation operation,
         IReadOnlyList<FerruleValue> values,
-        FerruleValue? argument = null)
+        FerruleValue? argument = null
+    )
     {
         ArgumentNullException.ThrowIfNull(values);
         return operation switch
         {
-            FerruleAggregateOperation.LastPresentText or FerruleAggregateOperation.LastDistinctText =>
-                SelectText(operation, values, argument),
+            FerruleAggregateOperation.LastPresentText
+            or FerruleAggregateOperation.LastDistinctText => SelectText(
+                operation,
+                values,
+                argument
+            ),
             FerruleAggregateOperation.DecimalSum => DecimalSum(values, argument),
             FerruleAggregateOperation.Count => FerruleValue.FromInt64(values.Count),
             FerruleAggregateOperation.Sum => Sum(values),
@@ -61,13 +71,19 @@ public static class FerruleAggregates
     private static FerruleValue SelectText(
         FerruleAggregateOperation operation,
         IReadOnlyList<FerruleValue> values,
-        FerruleValue? argument)
+        FerruleValue? argument
+    )
     {
-        var function = operation == FerruleAggregateOperation.LastPresentText
-            ? "last_present_text" : "last_distinct_text";
+        var function =
+            operation == FerruleAggregateOperation.LastPresentText
+                ? "last_present_text"
+                : "last_distinct_text";
         if (argument.HasValue)
-            throw new FerruleRuntimeException(FerruleRuntimeError.FunctionInvalidArgument,
-                $"`{function}` does not accept an argument.", function: function);
+            throw new FerruleRuntimeException(
+                FerruleRuntimeError.FunctionInvalidArgument,
+                $"`{function}` does not accept an argument.",
+                function: function
+            );
         var distinct = operation == FerruleAggregateOperation.LastDistinctText;
         var seen = new HashSet<string>(StringComparer.Ordinal);
         var selected = FerruleValue.Null;
@@ -76,34 +92,53 @@ public static class FerruleAggregates
             if (value.Kind == FerruleValueKind.Null)
                 continue;
             if (value.Kind != FerruleValueKind.String)
-                throw new FerruleRuntimeException(FerruleRuntimeError.AggregateUnsupportedScalar,
+                throw new FerruleRuntimeException(
+                    FerruleRuntimeError.AggregateUnsupportedScalar,
                     $"{operation} aggregate cannot accept a {value.Kind} value.",
-                    foundKind: value.Kind, aggregateOperation: operation);
+                    foundKind: value.Kind,
+                    aggregateOperation: operation
+                );
             if (!distinct || seen.Add(value.StringValue))
                 selected = value;
         }
         return selected;
     }
 
-    private static FerruleValue DecimalSum(IReadOnlyList<FerruleValue> values, FerruleValue? argument)
+    private static FerruleValue DecimalSum(
+        IReadOnlyList<FerruleValue> values,
+        FerruleValue? argument
+    )
     {
         const FerruleAggregateOperation operation = FerruleAggregateOperation.DecimalSum;
         if (argument.HasValue)
-            throw new FerruleRuntimeException(FerruleRuntimeError.FunctionInvalidArgument,
-                "`decimal_sum` does not accept an argument.", function: "decimal_sum");
+            throw new FerruleRuntimeException(
+                FerruleRuntimeError.FunctionInvalidArgument,
+                "`decimal_sum` does not accept an argument.",
+                function: "decimal_sum"
+            );
         var total = FerruleDecimal96.Zero;
         foreach (var value in values)
         {
             if (value.Kind != FerruleValueKind.Decimal)
-                throw new FerruleRuntimeException(FerruleRuntimeError.AggregateUnsupportedScalar,
+                throw new FerruleRuntimeException(
+                    FerruleRuntimeError.AggregateUnsupportedScalar,
                     $"{operation} aggregate cannot accept a {value.Kind} value.",
-                    foundKind: value.Kind, aggregateOperation: operation);
-            try { total = total.AddRounded(value.DecimalValue); }
+                    foundKind: value.Kind,
+                    aggregateOperation: operation
+                );
+            try
+            {
+                total = total.AddRounded(value.DecimalValue);
+            }
             catch (FerruleDecimalException error)
             {
-                throw new FerruleRuntimeException(FerruleRuntimeError.AggregateDecimal,
-                    $"{operation} aggregate: {error.Message}", error,
-                    aggregateOperation: operation, detail: error.Error.ToString());
+                throw new FerruleRuntimeException(
+                    FerruleRuntimeError.AggregateDecimal,
+                    $"{operation} aggregate: {error.Message}",
+                    error,
+                    aggregateOperation: operation,
+                    detail: error.Error.ToString()
+                );
             }
         }
         return FerruleValue.FromDecimal(total);
@@ -144,7 +179,8 @@ public static class FerruleAggregates
 
     private static FerruleValue Extreme(
         FerruleAggregateOperation operation,
-        IReadOnlyList<FerruleValue> values)
+        IReadOnlyList<FerruleValue> values
+    )
     {
         var numbers = NumericValues(operation, values);
         if (numbers.Count == 0)
@@ -164,23 +200,24 @@ public static class FerruleAggregates
         return best.IntoValue();
     }
 
-    private static FerruleValue Join(
-        IReadOnlyList<FerruleValue> values,
-        FerruleValue? argument)
+    private static FerruleValue Join(IReadOnlyList<FerruleValue> values, FerruleValue? argument)
     {
         var separator = argument.HasValue
             ? FerruleFunctions.ScalarText(argument.Value)
             : string.Empty;
-        return FerruleValue.FromString(string.Join(
-            separator,
-            values
-                .Where(value => value.Kind is not (FerruleValueKind.Null or FerruleValueKind.JsonNull))
-                .Select(FerruleFunctions.ScalarText)));
+        return FerruleValue.FromString(
+            string.Join(
+                separator,
+                values
+                    .Where(value =>
+                        value.Kind is not (FerruleValueKind.Null or FerruleValueKind.JsonNull)
+                    )
+                    .Select(FerruleFunctions.ScalarText)
+            )
+        );
     }
 
-    private static FerruleValue ItemAt(
-        IReadOnlyList<FerruleValue> values,
-        FerruleValue? argument)
+    private static FerruleValue ItemAt(IReadOnlyList<FerruleValue> values, FerruleValue? argument)
     {
         if (argument is { Kind: FerruleValueKind.Decimal })
         {
@@ -200,11 +237,13 @@ public static class FerruleAggregates
         {
             FerruleValueKind.Int64 => value.Int64Value,
             FerruleValueKind.Double => RoundedInt64(value.DoubleValue),
-            FerruleValueKind.String when long.TryParse(
-                value.StringValue.Trim(),
-                NumberStyles.Integer,
-                CultureInfo.InvariantCulture,
-                out var index) => index,
+            FerruleValueKind.String
+                when long.TryParse(
+                    value.StringValue.Trim(),
+                    NumberStyles.Integer,
+                    CultureInfo.InvariantCulture,
+                    out var index
+                ) => index,
             _ => null,
         };
     }
@@ -229,7 +268,8 @@ public static class FerruleAggregates
 
     private static List<NumericValue> NumericValues(
         FerruleAggregateOperation operation,
-        IReadOnlyList<FerruleValue> values)
+        IReadOnlyList<FerruleValue> values
+    )
     {
         var numbers = new List<NumericValue>(values.Count);
         foreach (var value in values)
@@ -245,7 +285,8 @@ public static class FerruleAggregates
     private static bool TryNumericValue(
         FerruleAggregateOperation operation,
         FerruleValue value,
-        out NumericValue number)
+        out NumericValue number
+    )
     {
         if (value.Kind == FerruleValueKind.Decimal)
         {
@@ -269,12 +310,26 @@ public static class FerruleAggregates
         if (value.Kind == FerruleValueKind.String)
         {
             var text = value.StringValue.Trim();
-            if (long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var integer))
+            if (
+                long.TryParse(
+                    text,
+                    NumberStyles.Integer,
+                    CultureInfo.InvariantCulture,
+                    out var integer
+                )
+            )
             {
                 number = NumericValue.FromInteger(integer);
                 return true;
             }
-            if (double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var floating))
+            if (
+                double.TryParse(
+                    text,
+                    NumberStyles.Float,
+                    CultureInfo.InvariantCulture,
+                    out var floating
+                )
+            )
             {
                 if (!double.IsFinite(floating))
                 {
@@ -283,9 +338,11 @@ public static class FerruleAggregates
                 number = NumericValue.FromDouble(floating);
                 return true;
             }
-            if (text.Equals("inf", StringComparison.OrdinalIgnoreCase) ||
-                text.Equals("+inf", StringComparison.OrdinalIgnoreCase) ||
-                text.Equals("-inf", StringComparison.OrdinalIgnoreCase))
+            if (
+                text.Equals("inf", StringComparison.OrdinalIgnoreCase)
+                || text.Equals("+inf", StringComparison.OrdinalIgnoreCase)
+                || text.Equals("-inf", StringComparison.OrdinalIgnoreCase)
+            )
             {
                 throw NonFinite(operation);
             }
@@ -309,9 +366,8 @@ public static class FerruleAggregates
         {
             var value = number.AsDouble() / scale;
             var next = Finite(FerruleAggregateOperation.Sum, sum + value);
-            correction += Math.Abs(sum) >= Math.Abs(value)
-                ? (sum - next) + value
-                : (value - next) + sum;
+            correction +=
+                Math.Abs(sum) >= Math.Abs(value) ? (sum - next) + value : (value - next) + sum;
             correction = Finite(FerruleAggregateOperation.Sum, correction);
             sum = next;
         }
@@ -334,9 +390,8 @@ public static class FerruleAggregates
                 unscaled = false;
                 break;
             }
-            correction += Math.Abs(sum) >= Math.Abs(value)
-                ? (sum - next) + value
-                : (value - next) + sum;
+            correction +=
+                Math.Abs(sum) >= Math.Abs(value) ? (sum - next) + value : (value - next) + sum;
             if (!double.IsFinite(correction))
             {
                 unscaled = false;
@@ -366,9 +421,8 @@ public static class FerruleAggregates
         {
             var value = number.AsDouble() / scale;
             var next = Finite(FerruleAggregateOperation.Avg, sum + value);
-            correction += Math.Abs(sum) >= Math.Abs(value)
-                ? (sum - next) + value
-                : (value - next) + sum;
+            correction +=
+                Math.Abs(sum) >= Math.Abs(value) ? (sum - next) + value : (value - next) + sum;
             correction = Finite(FerruleAggregateOperation.Avg, correction);
             sum = next;
         }
@@ -433,25 +487,31 @@ public static class FerruleAggregates
 
     private static FerruleRuntimeException IntegerOverflow(
         FerruleAggregateOperation operation,
-        OverflowException exception) =>
+        OverflowException exception
+    ) =>
         new(
             FerruleRuntimeError.AggregateIntegerOverflow,
             $"{operation} aggregate overflowed the integer range",
             exception,
-            aggregateOperation: operation);
+            aggregateOperation: operation
+        );
 
     private static FerruleRuntimeException UnsupportedDecimal(
-        FerruleAggregateOperation operation) => new(
+        FerruleAggregateOperation operation
+    ) =>
+        new(
             FerruleRuntimeError.AggregateUnsupportedScalar,
             $"{operation} aggregate cannot accept a decimal value.",
             foundKind: FerruleValueKind.Decimal,
-            aggregateOperation: operation);
+            aggregateOperation: operation
+        );
 
     private static FerruleRuntimeException NonFinite(FerruleAggregateOperation operation) =>
         new(
             FerruleRuntimeError.AggregateNonFinite,
             $"{operation} aggregate encountered or produced a non-finite number",
-            aggregateOperation: operation);
+            aggregateOperation: operation
+        );
 
     private readonly struct NumericValue
     {
@@ -477,9 +537,8 @@ public static class FerruleAggregates
 
         internal double AsDouble() => IsInteger ? Integer : Double;
 
-        internal FerruleValue IntoValue() => IsInteger
-            ? FerruleValue.FromInt64(Integer)
-            : FerruleValue.FromDouble(Double);
+        internal FerruleValue IntoValue() =>
+            IsInteger ? FerruleValue.FromInt64(Integer) : FerruleValue.FromDouble(Double);
 
         internal static NumericValue FromInteger(long value) => new(value);
 

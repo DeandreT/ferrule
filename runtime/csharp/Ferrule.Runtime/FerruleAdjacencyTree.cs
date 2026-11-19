@@ -10,7 +10,8 @@ public static class FerruleAdjacencyTree
         IReadOnlyList<string> parentPath,
         string targetKey,
         string targetChildren,
-        Func<ScopeContext, FerruleValue>? root)
+        Func<ScopeContext, FerruleValue>? root
+    )
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(collectionPath);
@@ -26,7 +27,8 @@ public static class FerruleAdjacencyTree
             throw new FerruleRuntimeException(
                 FerruleRuntimeError.MissingAdjacencyCollection,
                 $"adjacency-tree collection '{path}' is missing",
-                sourceField: path);
+                sourceField: path
+            );
         }
         return BuildFrom(
             collection.Items,
@@ -34,7 +36,8 @@ public static class FerruleAdjacencyTree
             parentPath,
             targetKey,
             targetChildren,
-            root is null ? null : () => root(context));
+            root is null ? null : () => root(context)
+        );
     }
 
     /// <summary>
@@ -50,7 +53,8 @@ public static class FerruleAdjacencyTree
         IReadOnlyList<string> parentPath,
         string targetKey,
         string targetChildren,
-        Func<FerruleBasicScopeContext, FerruleValue>? root)
+        Func<FerruleBasicScopeContext, FerruleValue>? root
+    )
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(collectionPath);
@@ -76,7 +80,8 @@ public static class FerruleAdjacencyTree
             parentPath,
             targetKey,
             targetChildren,
-            root is null ? null : () => root(context));
+            root is null ? null : () => root(context)
+        );
     }
 
     // Legacy and owned rows share source order, limits and error precedence:
@@ -87,14 +92,16 @@ public static class FerruleAdjacencyTree
         IReadOnlyList<string> parentPath,
         string targetKey,
         string targetChildren,
-        Func<FerruleValue>? root)
+        Func<FerruleValue>? root
+    )
     {
         if ((ulong)items.Count > FerruleSequences.MaximumGeneratedSequenceItems)
         {
             throw new FerruleRuntimeException(
                 FerruleRuntimeError.AdjacencyTreeTooLarge,
                 $"adjacency tree produced more than {FerruleSequences.MaximumGeneratedSequenceItems} items",
-                maximumItems: FerruleSequences.MaximumGeneratedSequenceItems);
+                maximumItems: FerruleSequences.MaximumGeneratedSequenceItems
+            );
         }
 
         var rows = new List<Row>(items.Count);
@@ -110,7 +117,8 @@ public static class FerruleAdjacencyTree
                 throw new FerruleRuntimeException(
                     FerruleRuntimeError.DuplicateAdjacencyKey,
                     $"adjacency-tree key '{key}' occurs more than once",
-                    detail: key);
+                    detail: key
+                );
             }
             var parent = OptionalStringField(instance, parentPath, "parent");
             if (parent is null)
@@ -149,7 +157,9 @@ public static class FerruleAdjacencyTree
                 FerruleRuntimeError.AdjacencyRootCount,
                 $"adjacency tree requires exactly one selected root row, got {selectedRoots.Count}",
                 detail: selectedRoots.Count.ToString(
-                    System.Globalization.CultureInfo.InvariantCulture));
+                    System.Globalization.CultureInfo.InvariantCulture
+                )
+            );
         }
         return BuildRow(
             selectedRoots[0],
@@ -158,18 +168,21 @@ public static class FerruleAdjacencyTree
             targetKey,
             targetChildren,
             0,
-            new List<int>());
+            new List<int>()
+        );
     }
 
-    private static string? RootValue(FerruleValue value) => value.Kind switch
-    {
-        FerruleValueKind.Null or FerruleValueKind.JsonNull => null,
-        FerruleValueKind.String => value.StringValue,
-        _ => throw new FerruleRuntimeException(
-            FerruleRuntimeError.InvalidAdjacencyRoot,
-            $"adjacency-tree root requires a string or absent value, got {value.Kind}",
-            foundKind: value.Kind),
-    };
+    private static string? RootValue(FerruleValue value) =>
+        value.Kind switch
+        {
+            FerruleValueKind.Null or FerruleValueKind.JsonNull => null,
+            FerruleValueKind.String => value.StringValue,
+            _ => throw new FerruleRuntimeException(
+                FerruleRuntimeError.InvalidAdjacencyRoot,
+                $"adjacency-tree root requires a string or absent value, got {value.Kind}",
+                foundKind: value.Kind
+            ),
+        };
 
     private static FerruleGroup BuildRow(
         int index,
@@ -178,14 +191,16 @@ public static class FerruleAdjacencyTree
         string targetKey,
         string targetChildren,
         int depth,
-        List<int> active)
+        List<int> active
+    )
     {
         if (depth >= FerruleSequences.MaximumRecursiveSequenceDepth)
         {
             throw new FerruleRuntimeException(
                 FerruleRuntimeError.AdjacencyTreeDepth,
                 $"adjacency tree exceeds the {FerruleSequences.MaximumRecursiveSequenceDepth}-group depth limit",
-                maximumDepth: FerruleSequences.MaximumRecursiveSequenceDepth);
+                maximumDepth: FerruleSequences.MaximumRecursiveSequenceDepth
+            );
         }
         if (active.Contains(index))
         {
@@ -193,32 +208,40 @@ public static class FerruleAdjacencyTree
             throw new FerruleRuntimeException(
                 FerruleRuntimeError.AdjacencyCycle,
                 $"adjacency tree contains a cycle at key '{key}'",
-                detail: key);
+                detail: key
+            );
         }
         active.Add(index);
         var row = rows[index];
         var childIndices = byParent.GetValueOrDefault(row.Key) ?? new List<int>();
-        var children = childIndices.Select(child =>
-            (FerruleInstance)BuildRow(
-                child,
-                rows,
-                byParent,
-                targetKey,
-                targetChildren,
-                depth + 1,
-                active)).ToList();
+        var children = childIndices
+            .Select(child =>
+                (FerruleInstance)BuildRow(
+                    child,
+                    rows,
+                    byParent,
+                    targetKey,
+                    targetChildren,
+                    depth + 1,
+                    active
+                )
+            )
+            .ToList();
         active.RemoveAt(active.Count - 1);
-        return new FerruleGroup(new FerruleField[]
-        {
-            new(targetKey, new FerruleScalar(FerruleValue.FromString(row.Key))),
-            new(targetChildren, new FerruleRepeated(children)),
-        });
+        return new FerruleGroup(
+            new FerruleField[]
+            {
+                new(targetKey, new FerruleScalar(FerruleValue.FromString(row.Key))),
+                new(targetChildren, new FerruleRepeated(children)),
+            }
+        );
     }
 
     private static string StringField(
         FerruleInstance instance,
         IReadOnlyList<string> path,
-        string role)
+        string role
+    )
     {
         var value = FieldScalar(instance, path);
         if (value is { Kind: FerruleValueKind.String })
@@ -231,11 +254,11 @@ public static class FerruleAdjacencyTree
     private static string? OptionalStringField(
         FerruleInstance instance,
         IReadOnlyList<string> path,
-        string role)
+        string role
+    )
     {
         var value = FieldScalar(instance, path);
-        if (value is null ||
-            value.Value.Kind is FerruleValueKind.Null or FerruleValueKind.JsonNull)
+        if (value is null || value.Value.Kind is FerruleValueKind.Null or FerruleValueKind.JsonNull)
         {
             return null;
         }
@@ -246,9 +269,7 @@ public static class FerruleAdjacencyTree
         throw InvalidField(role, path, value.Value.Kind.ToString());
     }
 
-    private static FerruleValue? FieldScalar(
-        FerruleInstance instance,
-        IReadOnlyList<string> path)
+    private static FerruleValue? FieldScalar(FerruleInstance instance, IReadOnlyList<string> path)
     {
         FerruleInstance? current = instance;
         foreach (var segment in path)
@@ -266,15 +287,18 @@ public static class FerruleAdjacencyTree
         instance switch
         {
             FerruleGroup group when group.TryGetField(name, out var value) => value,
-            FerruleDocumentSet { Documents.Count: > 0 } documents =>
-                Field(documents.Documents[0].Value, name),
+            FerruleDocumentSet { Documents.Count: > 0 } documents => Field(
+                documents.Documents[0].Value,
+                name
+            ),
             _ => null,
         };
 
     private static FerruleRuntimeException InvalidField(
         string role,
         IReadOnlyList<string> path,
-        string found)
+        string found
+    )
     {
         var joined = string.Join('/', path);
         return new FerruleRuntimeException(
@@ -282,7 +306,8 @@ public static class FerruleAdjacencyTree
             $"adjacency-tree {role} field '{joined}' requires a string or absent value, got {found}",
             detail: role,
             sourceField: joined,
-            foundInstance: found);
+            foundInstance: found
+        );
     }
 
     private sealed record Row(string Key);
@@ -300,8 +325,10 @@ public sealed partial class ScopeContext
                 current = current switch
                 {
                     FerruleGroup group when group.TryGetField(segment, out var value) => value,
-                    FerruleDocumentSet { Documents.Count: > 0 } documents =>
-                        FollowField(documents.Documents[0].Value, segment),
+                    FerruleDocumentSet { Documents.Count: > 0 } documents => FollowField(
+                        documents.Documents[0].Value,
+                        segment
+                    ),
                     _ => null,
                 };
                 if (current is null)
@@ -321,8 +348,10 @@ public sealed partial class ScopeContext
         instance switch
         {
             FerruleGroup group when group.TryGetField(name, out var value) => value,
-            FerruleDocumentSet { Documents.Count: > 0 } documents =>
-                FollowField(documents.Documents[0].Value, name),
+            FerruleDocumentSet { Documents.Count: > 0 } documents => FollowField(
+                documents.Documents[0].Value,
+                name
+            ),
             _ => null,
         };
 }

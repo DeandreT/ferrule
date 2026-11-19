@@ -8,8 +8,12 @@ public sealed class FerruleJsonSourceOccurrence
     public FerruleJsonSourceValue Value { get; }
     public FerruleJsonSourceOccurrence? Parent { get; }
 
-    private FerruleJsonSourceOccurrence(FerruleJsonSourceDocument document,
-        FerruleJsonSourceValue value, object owner, FerruleJsonSourceOccurrence? parent)
+    private FerruleJsonSourceOccurrence(
+        FerruleJsonSourceDocument document,
+        FerruleJsonSourceValue value,
+        object owner,
+        FerruleJsonSourceOccurrence? parent
+    )
     {
         Document = document;
         Value = value;
@@ -25,10 +29,13 @@ public sealed class FerruleJsonSourceOccurrence
     }
 
     public bool SameOccurrence(FerruleJsonSourceOccurrence? other) =>
-        other is not null && ReferenceEquals(owner, other.owner) && ReferenceEquals(Value, other.Value);
+        other is not null
+        && ReferenceEquals(owner, other.owner)
+        && ReferenceEquals(Value, other.Value);
 
     /// <summary>Zero or one occurrence without conversion or another parent frame.</summary>
-    public FerruleJsonSourceOccurrence? OfKind(FerruleJsonSourceKind kind) => Value.Kind == kind ? this : null;
+    public FerruleJsonSourceOccurrence? OfKind(FerruleJsonSourceKind kind) =>
+        Value.Kind == kind ? this : null;
 
     public IEnumerable<FerruleJsonSourceOccurrence> MembersNamed(string name)
     {
@@ -45,6 +52,7 @@ public sealed class FerruleJsonSourceOccurrence
 public sealed class FerruleJsonSourceLoadException : Exception
 {
     public int Maximum { get; }
+
     internal FerruleJsonSourceLoadException(int maximum)
         : base($"JSON source exceeds the {maximum}-document limit") => Maximum = maximum;
 }
@@ -61,12 +69,16 @@ public static class FerruleJsonSources
     /// cleanup before returning a document. This API performs no file access.
     /// The document-count bound is not a retained-memory ceiling.
     /// </summary>
-    public static IEnumerable<FerruleJsonSourceOccurrence> Load(IEnumerable<string> requests,
-        Func<string, FerruleJsonSourceDocument> load, int maximum = MaxDocuments)
+    public static IEnumerable<FerruleJsonSourceOccurrence> Load(
+        IEnumerable<string> requests,
+        Func<string, FerruleJsonSourceDocument> load,
+        int maximum = MaxDocuments
+    )
     {
         ArgumentNullException.ThrowIfNull(requests);
         ArgumentNullException.ThrowIfNull(load);
-        if (maximum is < 0 or > MaxDocuments) throw new ArgumentOutOfRangeException(nameof(maximum));
+        if (maximum is < 0 or > MaxDocuments)
+            throw new ArgumentOutOfRangeException(nameof(maximum));
         return Enumerate();
 
         IEnumerable<FerruleJsonSourceOccurrence> Enumerate()
@@ -74,7 +86,8 @@ public static class FerruleJsonSources
             var count = 0;
             foreach (var request in requests)
             {
-                if (count == maximum) throw new FerruleJsonSourceLoadException(maximum);
+                if (count == maximum)
+                    throw new FerruleJsonSourceLoadException(maximum);
                 var document = load(request);
                 count++;
                 yield return FerruleJsonSourceOccurrence.Create(document);

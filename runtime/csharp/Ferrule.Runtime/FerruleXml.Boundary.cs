@@ -3,7 +3,12 @@ namespace Ferrule.Runtime;
 /// <summary>The phase that refused a generated XML document boundary.</summary>
 public enum FerruleXmlBoundaryErrorKind
 {
-    Schema, DocumentLimit, Utf8, Input, Mapping, Output,
+    Schema,
+    DocumentLimit,
+    Utf8,
+    Input,
+    Mapping,
+    Output,
 }
 
 /// <summary>Retains the original typed mapping failure as its inner exception.</summary>
@@ -14,7 +19,8 @@ public sealed class FerruleXmlBoundaryException : Exception
         string detail,
         Exception? inner = null,
         long? bytes = null,
-        long? limit = null)
+        long? limit = null
+    )
         : base($"{kind}: XML boundary failed: {detail}", inner)
     {
         Kind = kind;

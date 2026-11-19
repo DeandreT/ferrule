@@ -7,6 +7,7 @@ namespace Ferrule.Runtime;
 public static partial class FerruleJson
 {
     private const int MaximumJsonDependentSchemas = 32;
+
     // The temporary writer may expand one canonical UTF-8 byte to a six-byte
     // Unicode escape. The exact 64 MiB limit is checked after canonicalizing.
     private const int MaximumEscapedDocumentBytes = MaximumDocumentBytes * 6;
@@ -18,22 +19,21 @@ public static partial class FerruleJson
         NodeBudget schemaBudget,
         JsonPatternSchemaContext patternContext,
         int depth,
-        bool exactFloatMarkers)
+        bool exactFloatMarkers
+    )
     {
         JsonElement? declared = null;
         foreach (var property in element.EnumerateObject())
         {
-            if (!string.Equals(
-                    property.Name,
-                    "json_dependent_schemas",
-                    StringComparison.Ordinal))
+            if (!string.Equals(property.Name, "json_dependent_schemas", StringComparison.Ordinal))
             {
                 continue;
             }
             if (declared is not null)
             {
                 throw Boundary(
-                    $"Embedded JSON schema node '{name}' has duplicate dependent-schema metadata.");
+                    $"Embedded JSON schema node '{name}' has duplicate dependent-schema metadata."
+                );
             }
             declared = property.Value;
         }
@@ -44,14 +44,16 @@ public static partial class FerruleJson
         if (!isObject)
         {
             throw Boundary(
-                $"Embedded JSON schema node '{name}' has dependent schemas without an object.");
+                $"Embedded JSON schema node '{name}' has dependent schemas without an object."
+            );
         }
 
         RequireKind(
             declared.Value,
             JsonValueKind.Array,
             $"schema node '{name}' dependent schemas",
-            "array");
+            "array"
+        );
         var rules = new List<JsonDependentSchema>();
         var canonicalRules = new HashSet<byte[]>(UniqueItemKeyComparer.Instance);
         var canonicalBudget = new UniqueItemBudget();
@@ -61,32 +63,33 @@ public static partial class FerruleJson
             if (rules.Count == MaximumJsonDependentSchemas)
             {
                 throw Boundary(
-                    $"Embedded JSON schema node '{name}' has more than {MaximumJsonDependentSchemas} dependent schemas.");
+                    $"Embedded JSON schema node '{name}' has more than {MaximumJsonDependentSchemas} dependent schemas."
+                );
             }
             RequireKind(
                 ruleElement,
                 JsonValueKind.Object,
                 $"schema node '{name}' dependent-schema rule",
-                "object");
+                "object"
+            );
             var fields = new HashSet<string>(StringComparer.Ordinal);
             foreach (var property in ruleElement.EnumerateObject())
             {
-                if (property.Name is not ("trigger" or "predicate") ||
-                    !fields.Add(property.Name))
+                if (property.Name is not ("trigger" or "predicate") || !fields.Add(property.Name))
                 {
                     throw Boundary(
-                        $"Embedded JSON schema node '{name}' dependent-schema rule has an unknown or duplicate field '{property.Name}'.");
+                        $"Embedded JSON schema node '{name}' dependent-schema rule has an unknown or duplicate field '{property.Name}'."
+                    );
                 }
             }
 
             var trigger = RequiredString(ruleElement, "trigger");
-            triggerBytes = checked(
-                triggerBytes +
-                StrictUtf8.GetByteCount(trigger));
+            triggerBytes = checked(triggerBytes + StrictUtf8.GetByteCount(trigger));
             if (triggerBytes > MaximumJsonPropertyDependencyNameBytes)
             {
                 throw Boundary(
-                    $"Embedded JSON schema node '{name}' dependent-schema triggers exceed the {MaximumJsonPropertyDependencyNameBytes}-byte limit.");
+                    $"Embedded JSON schema node '{name}' dependent-schema triggers exceed the {MaximumJsonPropertyDependencyNameBytes}-byte limit."
+                );
             }
             var predicate = ReadJsonSchemaPredicate(
                 name,
@@ -95,25 +98,29 @@ public static partial class FerruleJson
                 patternContext,
                 depth + 1,
                 "dependent-schema",
-                exactFloatMarkers);
+                exactFloatMarkers
+            );
             if (predicate.Schema is { JsonAny: true, Repeating: false })
             {
                 throw Boundary(
-                    $"Embedded JSON schema node '{name}' has a tautological dependent schema for trigger '{trigger}'.");
+                    $"Embedded JSON schema node '{name}' has a tautological dependent schema for trigger '{trigger}'."
+                );
             }
 
             var canonical = CreateUniqueItemKey(ruleElement, canonicalBudget);
             if (!canonicalRules.Add(canonical))
             {
                 throw Boundary(
-                    $"Embedded JSON schema node '{name}' has a duplicate dependent schema.");
+                    $"Embedded JSON schema node '{name}' has a duplicate dependent schema."
+                );
             }
             rules.Add(new JsonDependentSchema(trigger, predicate));
         }
         if (rules.Count == 0)
         {
             throw Boundary(
-                $"Embedded JSON schema node '{name}' has empty dependent-schema metadata.");
+                $"Embedded JSON schema node '{name}' has empty dependent-schema metadata."
+            );
         }
         return rules;
     }
@@ -123,7 +130,8 @@ public static partial class FerruleJson
         IReadOnlyList<JsonProperty> properties,
         JsonElement value,
         NodeBudget budget,
-        int depth)
+        int depth
+    )
     {
         if (schema.DependentSchemas.Count == 0)
         {
@@ -132,19 +140,19 @@ public static partial class FerruleJson
         var matcher = budget.Matcher();
         foreach (var rule in schema.DependentSchemas)
         {
-            if (!properties.Any(property =>
-                    string.Equals(property.Name, rule.Trigger, StringComparison.Ordinal)))
+            if (
+                !properties.Any(property =>
+                    string.Equals(property.Name, rule.Trigger, StringComparison.Ordinal)
+                )
+            )
             {
                 continue;
             }
-            if (!MatchesJsonSchemaPredicate(
-                    rule.Predicate,
-                    value,
-                    matcher,
-                    depth))
+            if (!MatchesJsonSchemaPredicate(rule.Predicate, value, matcher, depth))
             {
                 throw Boundary(
-                    $"JSON object '{schema.Name}' triggered a dependent schema for property '{rule.Trigger}' that did not match.");
+                    $"JSON object '{schema.Name}' triggered a dependent schema for property '{rule.Trigger}' that did not match."
+                );
             }
         }
     }
@@ -154,26 +162,32 @@ public static partial class FerruleJson
         JsonSchemaNode schema,
         FerruleGroup group,
         NodeBudget budget,
-        int depth)
+        int depth
+    )
     {
         var buffer = new BoundedJsonBufferWriter(
             MaximumEscapedDocumentBytes,
-            $"Normalized JSON object '{schema.Name}'");
-        using (var objectWriter = new Utf8JsonWriter(
-                   buffer,
-                   new JsonWriterOptions
-                   {
-                       Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
-                       MaxDepth = MaximumDepth,
-                       SkipValidation = false,
-                   }))
+            $"Normalized JSON object '{schema.Name}'"
+        );
+        using (
+            var objectWriter = new Utf8JsonWriter(
+                buffer,
+                new JsonWriterOptions
+                {
+                    Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+                    MaxDepth = MaximumDepth,
+                    SkipValidation = false,
+                }
+            )
+        )
         {
             WriteObject(objectWriter, schema, group, budget, depth);
         }
         if (CanonicalOutputUtf8ByteCount(buffer.WrittenSpan) > MaximumDocumentBytes)
         {
             throw Boundary(
-                $"Normalized JSON object '{schema.Name}' exceeds the {MaximumDocumentBytes}-byte limit.");
+                $"Normalized JSON object '{schema.Name}' exceeds the {MaximumDocumentBytes}-byte limit."
+            );
         }
         using var document = JsonDocument.Parse(
             buffer.WrittenMemory,
@@ -182,20 +196,20 @@ public static partial class FerruleJson
                 MaxDepth = MaximumDepth,
                 CommentHandling = JsonCommentHandling.Disallow,
                 AllowTrailingCommas = false,
-            });
+            }
+        );
         var properties = OrderedProperties(document.RootElement);
         ValidateDependentSchemas(
             schema,
             properties,
             document.RootElement,
             budget.OutputMatcher(),
-            depth);
+            depth
+        );
         document.RootElement.WriteTo(writer);
     }
 
-    private sealed record JsonDependentSchema(
-        string Trigger,
-        JsonSchemaPredicate Predicate);
+    private sealed record JsonDependentSchema(string Trigger, JsonSchemaPredicate Predicate);
 
     private sealed class BoundedJsonBufferWriter : IBufferWriter<byte>
     {
@@ -217,8 +231,7 @@ public static partial class FerruleJson
         {
             if (count < 0 || count > _maximumBytes - _buffer.WrittenCount)
             {
-                throw Boundary(
-                    $"{_label} exceeds the {_maximumBytes}-byte limit.");
+                throw Boundary($"{_label} exceeds the {_maximumBytes}-byte limit.");
             }
             _buffer.Advance(count);
         }
@@ -227,18 +240,14 @@ public static partial class FerruleJson
         {
             var requested = RequestedCapacity(sizeHint);
             var memory = _buffer.GetMemory(requested);
-            return memory[..Math.Min(
-                memory.Length,
-                _maximumBytes - _buffer.WrittenCount)];
+            return memory[..Math.Min(memory.Length, _maximumBytes - _buffer.WrittenCount)];
         }
 
         public Span<byte> GetSpan(int sizeHint = 0)
         {
             var requested = RequestedCapacity(sizeHint);
             var span = _buffer.GetSpan(requested);
-            return span[..Math.Min(
-                span.Length,
-                _maximumBytes - _buffer.WrittenCount)];
+            return span[..Math.Min(span.Length, _maximumBytes - _buffer.WrittenCount)];
         }
 
         private int RequestedCapacity(int sizeHint)
@@ -250,8 +259,7 @@ public static partial class FerruleJson
             var requested = Math.Max(1, sizeHint);
             if (requested > _maximumBytes - _buffer.WrittenCount)
             {
-                throw Boundary(
-                    $"{_label} exceeds the {_maximumBytes}-byte limit.");
+                throw Boundary($"{_label} exceeds the {_maximumBytes}-byte limit.");
             }
             return requested;
         }

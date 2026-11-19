@@ -516,6 +516,10 @@ fn safe_second_target_uses_keep_their_registered_slot_when_targets_reorder() {
         assert_eq!(extra.name, descriptor.name);
         super::assert_complete_typed_output(&extra.instance, &expected);
         let xml = format_xml::to_string(&descriptor.schema, &extra.instance).unwrap();
+        let doc = roxmltree::Document::parse(&xml).unwrap();
+        let row = doc.root_element().last_element_child().unwrap();
+        assert_eq!(row.tag_name().name(), "Row");
+        assert!(row.first_child().is_none(), "{xml}");
         assert_eq!(
             format_xml::from_str(&xml, &descriptor.schema).unwrap(),
             format_xml::from_str(expected_xml, &descriptor.schema).unwrap()

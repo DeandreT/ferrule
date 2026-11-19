@@ -5,6 +5,7 @@ public enum FerruleEmptyFileSelection
 {
     /// <summary>A typed selection failure; the mapping does not run.</summary>
     Refuse,
+
     /// <summary>The mapping runs once over zero documents.</summary>
     MapNoDocuments,
 }
@@ -22,7 +23,8 @@ public readonly record struct FerrulePrimaryFileSelection
     public static FerrulePrimaryFileSelection Direct => default;
 
     /// <summary>'*' and '?' in the final component select every matching file in one directory.</summary>
-    public static FerrulePrimaryFileSelection FileNameWildcard(FerruleEmptyFileSelection empty) => new(true, empty);
+    public static FerrulePrimaryFileSelection FileNameWildcard(FerruleEmptyFileSelection empty) =>
+        new(true, empty);
 
     public bool IsFileNameWildcard { get; }
     public FerruleEmptyFileSelection Empty { get; }
@@ -44,15 +46,25 @@ public enum FerruleDocumentShape
 {
     /// <summary>Every document's rows, in selection then row order.</summary>
     Rows,
+
     /// <summary>The one directly named document.</summary>
     Document,
+
     /// <summary>A document set of every selected document, in selection order.</summary>
     DocumentSet,
 }
 
 public enum FerruleDocumentAcquisitionError
 {
-    InvalidLimit, Filename, Selection, DirectSelection, Request, Documents, Load, Input, Assembly,
+    InvalidLimit,
+    Filename,
+    Selection,
+    DirectSelection,
+    Request,
+    Documents,
+    Load,
+    Input,
+    Assembly,
 }
 
 /// <summary>
@@ -61,10 +73,18 @@ public enum FerruleDocumentAcquisitionError
 /// </summary>
 public sealed class FerrulePrimaryDocumentException : Exception
 {
-    public FerrulePrimaryDocumentException(FerruleDocumentAcquisitionError error, string? path = null,
-        int? count = null, Exception? source = null)
-        : base($"primary document {error}" + (path is null ? "" : $" for {path}") +
-            (count is null ? "" : $" ({count})"), source)
+    public FerrulePrimaryDocumentException(
+        FerruleDocumentAcquisitionError error,
+        string? path = null,
+        int? count = null,
+        Exception? source = null
+    )
+        : base(
+            $"primary document {error}"
+                + (path is null ? "" : $" for {path}")
+                + (count is null ? "" : $" ({count})"),
+            source
+        )
     {
         Error = error;
         Path = path;
@@ -73,6 +93,7 @@ public sealed class FerrulePrimaryDocumentException : Exception
 
     public FerruleDocumentAcquisitionError Error { get; }
     public string? Path { get; }
+
     /// <summary>The document limit, or the number of documents a direct filename selected.</summary>
     public int? Count { get; }
 }
@@ -81,9 +102,14 @@ public static class FerrulePrimaryDocuments
 {
     private static T At<T>(FerruleDocumentAcquisitionError error, Func<T> call, string? path = null)
     {
-        try { return call(); }
+        try
+        {
+            return call();
+        }
         catch (Exception source) when (source is not FerrulePrimaryDocumentException)
-        { throw new FerrulePrimaryDocumentException(error, path, source: source); }
+        {
+            throw new FerrulePrimaryDocumentException(error, path, source: source);
+        }
     }
 
     /// <summary>
@@ -91,50 +117,95 @@ public static class FerrulePrimaryDocuments
     /// form the one mapping source. The first failure ends acquisition before any later load;
     /// every document is parsed before the caller maps anything.
     /// </summary>
-    public static FerruleInstance AcquireDocuments(Func<string> filename, FerrulePrimaryFileSelection selection,
-        IFerrulePrimarySourceHost host, FerruleDocumentShape shape, int maximum,
-        Func<FerruleCsvSourceData, FerruleInstance> parse)
+    public static FerruleInstance AcquireDocuments(
+        Func<string> filename,
+        FerrulePrimaryFileSelection selection,
+        IFerrulePrimarySourceHost host,
+        FerruleDocumentShape shape,
+        int maximum,
+        Func<FerruleCsvSourceData, FerruleInstance> parse
+    )
     {
         ArgumentNullException.ThrowIfNull(filename);
         ArgumentNullException.ThrowIfNull(host);
         ArgumentNullException.ThrowIfNull(parse);
-        return AcquireDocuments(filename, selection, host, shape, maximum, (_, data) => parse(data));
+        return AcquireDocuments(filename, selection, host, shape, maximum, (_, data) =>
+            parse(data)
+        );
     }
 
     /// <summary>Like AcquireDocuments, with the exact logical request passed to the parser.</summary>
-    public static FerruleInstance AcquireDocuments(Func<string> filename, FerrulePrimaryFileSelection selection,
-        IFerrulePrimarySourceHost host, FerruleDocumentShape shape, int maximum,
-        Func<string, FerruleCsvSourceData, FerruleInstance> parse)
+    public static FerruleInstance AcquireDocuments(
+        Func<string> filename,
+        FerrulePrimaryFileSelection selection,
+        IFerrulePrimarySourceHost host,
+        FerruleDocumentShape shape,
+        int maximum,
+        Func<string, FerruleCsvSourceData, FerruleInstance> parse
+    )
     {
         ArgumentNullException.ThrowIfNull(filename);
         ArgumentNullException.ThrowIfNull(host);
         ArgumentNullException.ThrowIfNull(parse);
         if (maximum is < 0 or > FerruleCsvSourceRows.MaximumDocuments)
-            throw new FerrulePrimaryDocumentException(FerruleDocumentAcquisitionError.InvalidLimit, count: maximum);
+            throw new FerrulePrimaryDocumentException(
+                FerruleDocumentAcquisitionError.InvalidLimit,
+                count: maximum
+            );
         string name = At(FerruleDocumentAcquisitionError.Filename, filename);
-        var requests = At(FerruleDocumentAcquisitionError.Selection, () => host.Select(name, selection)
-            ?? throw new InvalidOperationException("Primary document selector returned no requests."));
+        var requests = At(FerruleDocumentAcquisitionError.Selection, () =>
+            host.Select(name, selection)
+            ?? throw new InvalidOperationException(
+                "Primary document selector returned no requests."
+            )
+        );
         if (!selection.IsFileNameWildcard && requests.Count != 1)
-            throw new FerrulePrimaryDocumentException(FerruleDocumentAcquisitionError.DirectSelection,
-                count: requests.Count);
+            throw new FerrulePrimaryDocumentException(
+                FerruleDocumentAcquisitionError.DirectSelection,
+                count: requests.Count
+            );
         var documents = new List<(string Request, string? Resolved, FerruleInstance Value)>();
         foreach (string request in requests)
         {
             if (documents.Count == maximum)
-                throw new FerrulePrimaryDocumentException(FerruleDocumentAcquisitionError.Documents, count: maximum);
-            try { FerruleCsvSourceDocument.ValidatePath(request, nameof(request)); }
+                throw new FerrulePrimaryDocumentException(
+                    FerruleDocumentAcquisitionError.Documents,
+                    count: maximum
+                );
+            try
+            {
+                FerruleCsvSourceDocument.ValidatePath(request, nameof(request));
+            }
             catch (Exception)
-            { throw new FerrulePrimaryDocumentException(FerruleDocumentAcquisitionError.Request, request); }
-            var data = At(FerruleDocumentAcquisitionError.Load, () => host.Load(request)
-                ?? throw new InvalidOperationException("Primary document loader returned no bytes."), request);
-            var value = At(FerruleDocumentAcquisitionError.Input, () => parse(request, data), request);
+            {
+                throw new FerrulePrimaryDocumentException(
+                    FerruleDocumentAcquisitionError.Request,
+                    request
+                );
+            }
+            var data = At(
+                FerruleDocumentAcquisitionError.Load,
+                () =>
+                    host.Load(request)
+                    ?? throw new InvalidOperationException(
+                        "Primary document loader returned no bytes."
+                    ),
+                request
+            );
+            var value = At(
+                FerruleDocumentAcquisitionError.Input,
+                () => parse(request, data),
+                request
+            );
             documents.Add((request, data.ResolvedPath, value));
         }
         return Assemble(shape, documents);
     }
 
-    private static FerruleInstance Assemble(FerruleDocumentShape shape,
-        List<(string Request, string? Resolved, FerruleInstance Value)> documents)
+    private static FerruleInstance Assemble(
+        FerruleDocumentShape shape,
+        List<(string Request, string? Resolved, FerruleInstance Value)> documents
+    )
     {
         switch (shape)
         {
@@ -143,21 +214,35 @@ public static class FerrulePrimaryDocuments
                 foreach (var document in documents)
                 {
                     if (document.Value is not FerruleRepeated repeated)
-                        throw new FerrulePrimaryDocumentException(FerruleDocumentAcquisitionError.Assembly,
-                            document.Request);
+                        throw new FerrulePrimaryDocumentException(
+                            FerruleDocumentAcquisitionError.Assembly,
+                            document.Request
+                        );
                     rows.AddRange(repeated.Items);
                 }
                 return new FerruleRepeated(rows);
             case FerruleDocumentShape.Document:
                 if (documents.Count != 1)
-                    throw new FerrulePrimaryDocumentException(FerruleDocumentAcquisitionError.Assembly,
-                        count: documents.Count);
+                    throw new FerrulePrimaryDocumentException(
+                        FerruleDocumentAcquisitionError.Assembly,
+                        count: documents.Count
+                    );
                 return documents[0].Value;
             default:
-                return new FerruleDocumentSet(documents.Select(document =>
-                    At(FerruleDocumentAcquisitionError.Assembly,
-                        () => new FerruleDocument(document.Request, document.Value, document.Resolved),
-                        document.Request)));
+                return new FerruleDocumentSet(
+                    documents.Select(document =>
+                        At(
+                            FerruleDocumentAcquisitionError.Assembly,
+                            () =>
+                                new FerruleDocument(
+                                    document.Request,
+                                    document.Value,
+                                    document.Resolved
+                                ),
+                            document.Request
+                        )
+                    )
+                );
         }
     }
 
@@ -166,15 +251,29 @@ public static class FerrulePrimaryDocuments
     /// order. The first failure ends acquisition before any later load. Success is one
     /// repeated row instance across all documents for a single mapping execution.
     /// </summary>
-    public static FerruleRepeated AcquireCsvRows(Func<string> filename, FerrulePrimaryFileSelection selection,
-        IFerrulePrimarySourceHost host, IReadOnlyList<FerruleCsvReadField> fields, FerruleCsvReadOptions? options,
-        FerruleCsvByteDecodingPolicy decoding, int maximum)
+    public static FerruleRepeated AcquireCsvRows(
+        Func<string> filename,
+        FerrulePrimaryFileSelection selection,
+        IFerrulePrimarySourceHost host,
+        IReadOnlyList<FerruleCsvReadField> fields,
+        FerruleCsvReadOptions? options,
+        FerruleCsvByteDecodingPolicy decoding,
+        int maximum
+    )
     {
         ArgumentNullException.ThrowIfNull(host);
-        using var rows = new FerruleCsvAcquisition(filename, name => host.Select(name, selection), host.Load,
-            fields, options, decoding, maximum);
+        using var rows = new FerruleCsvAcquisition(
+            filename,
+            name => host.Select(name, selection),
+            host.Load,
+            fields,
+            options,
+            decoding,
+            maximum
+        );
         var values = new List<FerruleInstance>();
-        while (rows.MoveNext()) values.Add(rows.Current.Value);
+        while (rows.MoveNext())
+            values.Add(rows.Current.Value);
         return new FerruleRepeated(values);
     }
 }

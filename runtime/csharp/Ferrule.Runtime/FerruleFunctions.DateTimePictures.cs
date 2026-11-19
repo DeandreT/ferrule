@@ -38,7 +38,8 @@ public static partial class FerruleFunctions
         int MinimumWidth,
         int MaximumWidth,
         int? FixedWidth,
-        DateTimePictureLetterCase? LetterCase) : DateTimePicturePart;
+        DateTimePictureLetterCase? LetterCase
+    ) : DateTimePicturePart;
 
     private static FerruleValue ParseDate(IReadOnlyList<FerruleValue> arguments)
     {
@@ -81,9 +82,10 @@ public static partial class FerruleFunctions
             throw Type(function, arguments[1]);
         }
 
-        var value = arguments[0].Kind == FerruleValueKind.String
-            ? arguments[0].StringValue
-            : ScalarText(arguments[0]);
+        var value =
+            arguments[0].Kind == FerruleValueKind.String
+                ? arguments[0].StringValue
+                : ScalarText(arguments[0]);
         var parsed = ParseDateTimePicture(value, arguments[1].StringValue, function);
         var (hour, minute, second) = parsed.Time(function, allowDefault: false);
         var output = new StringBuilder(FormatPictureTime(hour, minute, second));
@@ -93,7 +95,8 @@ public static partial class FerruleFunctions
 
     private static (string Value, string Picture) DateTimePictureStringPair(
         IReadOnlyList<FerruleValue> arguments,
-        string function)
+        string function
+    )
     {
         if (arguments.Count != 2)
         {
@@ -113,7 +116,8 @@ public static partial class FerruleFunctions
     private static ParsedDateTimePicture ParseDateTimePicture(
         string value,
         string picture,
-        string function)
+        string function
+    )
     {
         var parts = DateTimePictureParts(picture);
         if (parts is null)
@@ -140,7 +144,8 @@ public static partial class FerruleFunctions
             var width = DateTimePictureComponentWidth(
                 component,
                 parts.GetRange(index + 1, parts.Count - index - 1),
-                remaining);
+                remaining
+            );
             if (width is null)
             {
                 throw InvalidArgument(function, SupportedPictureDetail);
@@ -163,7 +168,8 @@ public static partial class FerruleFunctions
     private static int? DateTimePictureComponentWidth(
         DateTimePictureComponent component,
         IReadOnlyList<DateTimePicturePart> following,
-        string value)
+        string value
+    )
     {
         int width;
         if (component.FixedWidth is int fixedWidth)
@@ -191,9 +197,7 @@ public static partial class FerruleFunctions
         {
             return null;
         }
-        return width >= component.MinimumWidth && width <= component.MaximumWidth
-            ? width
-            : null;
+        return width >= component.MinimumWidth && width <= component.MaximumWidth ? width : null;
     }
 
     private static string? TakeDateTimePictureRunes(string value, int count)
@@ -306,12 +310,12 @@ public static partial class FerruleFunctions
         var (defaultMinimum, defaultMaximum) = field switch
         {
             DateTimePictureField.Year => (1, 9),
-            DateTimePictureField.Month or
-                DateTimePictureField.Day or
-                DateTimePictureField.Hour24 or
-                DateTimePictureField.Hour12 or
-                DateTimePictureField.Minute or
-                DateTimePictureField.Second => (1, 2),
+            DateTimePictureField.Month
+            or DateTimePictureField.Day
+            or DateTimePictureField.Hour24
+            or DateTimePictureField.Hour12
+            or DateTimePictureField.Minute
+            or DateTimePictureField.Second => (1, 2),
             DateTimePictureField.DayOfYear => (1, 3),
             DateTimePictureField.Fraction => (1, 9),
             DateTimePictureField.MonthName => (3, 9),
@@ -341,17 +345,18 @@ public static partial class FerruleFunctions
         {
             return null;
         }
-        var fixedWidth = parsedWidth.Value.Minimum == parsedWidth.Value.Maximum
-            ? parsedWidth.Value.Minimum
-            : presentationWidth;
+        var fixedWidth =
+            parsedWidth.Value.Minimum == parsedWidth.Value.Maximum
+                ? parsedWidth.Value.Minimum
+                : presentationWidth;
         var letterCase = (field, modifier) switch
         {
-            (DateTimePictureField.MonthName, "N") or
-                (DateTimePictureField.Period, "N") => DateTimePictureLetterCase.Upper,
-            (DateTimePictureField.MonthName, "n") or
-                (DateTimePictureField.Period, "n") => DateTimePictureLetterCase.Lower,
-            (DateTimePictureField.MonthName, "Nn") or
-                (DateTimePictureField.Period, "Nn") => DateTimePictureLetterCase.Title,
+            (DateTimePictureField.MonthName, "N") or (DateTimePictureField.Period, "N") =>
+                DateTimePictureLetterCase.Upper,
+            (DateTimePictureField.MonthName, "n") or (DateTimePictureField.Period, "n") =>
+                DateTimePictureLetterCase.Lower,
+            (DateTimePictureField.MonthName, "Nn") or (DateTimePictureField.Period, "Nn") =>
+                DateTimePictureLetterCase.Title,
             _ => (DateTimePictureLetterCase?)null,
         };
         return new DateTimePictureComponent(
@@ -359,30 +364,35 @@ public static partial class FerruleFunctions
             parsedWidth.Value.Minimum,
             parsedWidth.Value.Maximum,
             fixedWidth,
-            letterCase);
+            letterCase
+        );
     }
 
     private static (int Minimum, int Maximum)? ParseDateTimePictureWidth(
         string width,
-        int naturalMaximum)
+        int naturalMaximum
+    )
     {
         var dash = width.IndexOf('-');
         var minimumText = dash < 0 ? width : width[..dash];
-        var maximumText = dash < 0
-            ? naturalMaximum.ToString(CultureInfo.InvariantCulture)
-            : width[(dash + 1)..];
-        if (!int.TryParse(
+        var maximumText =
+            dash < 0 ? naturalMaximum.ToString(CultureInfo.InvariantCulture) : width[(dash + 1)..];
+        if (
+            !int.TryParse(
                 minimumText,
                 NumberStyles.None,
                 CultureInfo.InvariantCulture,
-                out var minimum) ||
-            !int.TryParse(
+                out var minimum
+            )
+            || !int.TryParse(
                 maximumText,
                 NumberStyles.None,
                 CultureInfo.InvariantCulture,
-                out var maximum) ||
-            minimum <= 0 ||
-            minimum > maximum)
+                out var maximum
+            )
+            || minimum <= 0
+            || minimum > maximum
+        )
         {
             return null;
         }
@@ -391,7 +401,8 @@ public static partial class FerruleFunctions
 
     private static void AppendDateTimePictureSuffix(
         StringBuilder output,
-        ParsedDateTimePicture parsed)
+        ParsedDateTimePicture parsed
+    )
     {
         if (parsed.Fraction is not null)
         {
@@ -405,23 +416,31 @@ public static partial class FerruleFunctions
     }
 
     private static string FormatPictureDate(uint year, uint month, uint day) =>
-        year.ToString("D4", CultureInfo.InvariantCulture) + "-" +
-        month.ToString("D2", CultureInfo.InvariantCulture) + "-" +
-        day.ToString("D2", CultureInfo.InvariantCulture);
+        year.ToString("D4", CultureInfo.InvariantCulture)
+        + "-"
+        + month.ToString("D2", CultureInfo.InvariantCulture)
+        + "-"
+        + day.ToString("D2", CultureInfo.InvariantCulture);
 
     private static string FormatPictureTime(uint hour, uint minute, uint second) =>
-        hour.ToString("D2", CultureInfo.InvariantCulture) + ":" +
-        minute.ToString("D2", CultureInfo.InvariantCulture) + ":" +
-        second.ToString("D2", CultureInfo.InvariantCulture);
+        hour.ToString("D2", CultureInfo.InvariantCulture)
+        + ":"
+        + minute.ToString("D2", CultureInfo.InvariantCulture)
+        + ":"
+        + second.ToString("D2", CultureInfo.InvariantCulture);
 
     private static uint DateTimePictureNumber(string value, string function)
     {
-        if (value.Length == 0 || !value.All(IsAsciiDigit) ||
-            !uint.TryParse(
+        if (
+            value.Length == 0
+            || !value.All(IsAsciiDigit)
+            || !uint.TryParse(
                 value,
                 NumberStyles.None,
                 CultureInfo.InvariantCulture,
-                out var number))
+                out var number
+            )
+        )
         {
             throw InvalidArgument(function, SupportedPictureDetail);
         }
@@ -445,11 +464,13 @@ public static partial class FerruleFunctions
             "november",
             "december",
         ];
-        var normalized = new string(value
-            .Select(character => character is >= 'A' and <= 'Z'
-                ? (char)(character + ('a' - 'A'))
-                : character)
-            .ToArray());
+        var normalized = new string(
+            value
+                .Select(character =>
+                    character is >= 'A' and <= 'Z' ? (char)(character + ('a' - 'A')) : character
+                )
+                .ToArray()
+        );
         var matches = months
             .Select((month, index) => (month, index))
             .Where(item => item.month.StartsWith(normalized, StringComparison.Ordinal))
@@ -463,12 +484,14 @@ public static partial class FerruleFunctions
 
     private static bool DateTimePicturePeriod(string value, string function)
     {
-        var normalized = new string(value
-            .Where(character => character is >= 'A' and <= 'Z' or >= 'a' and <= 'z')
-            .Select(character => character is >= 'A' and <= 'Z'
-                ? (char)(character + ('a' - 'A'))
-                : character)
-            .ToArray());
+        var normalized = new string(
+            value
+                .Where(character => character is >= 'A' and <= 'Z' or >= 'a' and <= 'z')
+                .Select(character =>
+                    character is >= 'A' and <= 'Z' ? (char)(character + ('a' - 'A')) : character
+                )
+                .ToArray()
+        );
         return normalized switch
         {
             "am" => false,
@@ -477,10 +500,7 @@ public static partial class FerruleFunctions
         };
     }
 
-    private static string DateTimePictureTimezone(
-        string value,
-        bool requiresGmt,
-        string function)
+    private static string DateTimePictureTimezone(string value, bool requiresGmt, string function)
     {
         if (requiresGmt)
         {
@@ -497,7 +517,8 @@ public static partial class FerruleFunctions
     private static (uint Month, uint Day) DateTimePictureMonthDayFromOrdinal(
         uint year,
         uint ordinal,
-        string function)
+        string function
+    )
     {
         var remaining = ordinal;
         for (uint month = 1; month <= 12; month++)
@@ -525,10 +546,7 @@ public static partial class FerruleFunctions
         };
     }
 
-    private static void SetDateTimePictureOnce<T>(
-        ref T? slot,
-        T value,
-        string function)
+    private static void SetDateTimePictureOnce<T>(ref T? slot, T value, string function)
         where T : struct
     {
         if (slot is not null)
@@ -538,10 +556,7 @@ public static partial class FerruleFunctions
         slot = value;
     }
 
-    private static void SetDateTimePictureOnce(
-        ref string? slot,
-        string value,
-        string function)
+    private static void SetDateTimePictureOnce(ref string? slot, string value, string function)
     {
         if (slot is not null)
         {
@@ -576,61 +591,71 @@ public static partial class FerruleFunctions
                     SetDateTimePictureOnce(
                         ref _year,
                         (DateTimePictureNumber(value, function), value.Length),
-                        function);
+                        function
+                    );
                     break;
                 case DateTimePictureField.Month:
                     SetDateTimePictureOnce(
                         ref _month,
                         DateTimePictureNumber(value, function),
-                        function);
+                        function
+                    );
                     break;
                 case DateTimePictureField.MonthName:
                     SetDateTimePictureOnce(
                         ref _month,
                         DateTimePictureMonthNumber(value, function),
-                        function);
+                        function
+                    );
                     break;
                 case DateTimePictureField.Day:
                     SetDateTimePictureOnce(
                         ref _day,
                         DateTimePictureNumber(value, function),
-                        function);
+                        function
+                    );
                     break;
                 case DateTimePictureField.DayOfYear:
                     SetDateTimePictureOnce(
                         ref _dayOfYear,
                         DateTimePictureNumber(value, function),
-                        function);
+                        function
+                    );
                     break;
                 case DateTimePictureField.Hour24:
                     SetDateTimePictureOnce(
                         ref _hour24,
                         DateTimePictureNumber(value, function),
-                        function);
+                        function
+                    );
                     break;
                 case DateTimePictureField.Hour12:
                     SetDateTimePictureOnce(
                         ref _hour12,
                         DateTimePictureNumber(value, function),
-                        function);
+                        function
+                    );
                     break;
                 case DateTimePictureField.Period:
                     SetDateTimePictureOnce(
                         ref _period,
                         DateTimePicturePeriod(value, function),
-                        function);
+                        function
+                    );
                     break;
                 case DateTimePictureField.Minute:
                     SetDateTimePictureOnce(
                         ref _minute,
                         DateTimePictureNumber(value, function),
-                        function);
+                        function
+                    );
                     break;
                 case DateTimePictureField.Second:
                     SetDateTimePictureOnce(
                         ref _second,
                         DateTimePictureNumber(value, function),
-                        function);
+                        function
+                    );
                     break;
                 case DateTimePictureField.Fraction:
                     if (!value.All(IsAsciiDigit))
@@ -643,13 +668,15 @@ public static partial class FerruleFunctions
                     SetDateTimePictureOnce(
                         ref _timezone,
                         DateTimePictureTimezone(value, requiresGmt: false, function),
-                        function);
+                        function
+                    );
                     break;
                 case DateTimePictureField.GmtTimezone:
                     SetDateTimePictureOnce(
                         ref _timezone,
                         DateTimePictureTimezone(value, requiresGmt: true, function),
-                        function);
+                        function
+                    );
                     break;
                 default:
                     throw InvalidArgument(function, SupportedPictureDetail);
@@ -677,33 +704,31 @@ public static partial class FerruleFunctions
             }
             else if (_month is null && _day is null && _dayOfYear is not null)
             {
-                (month, day) = DateTimePictureMonthDayFromOrdinal(
-                    year,
-                    _dayOfYear.Value,
-                    function);
+                (month, day) = DateTimePictureMonthDayFromOrdinal(year, _dayOfYear.Value, function);
             }
             else
             {
                 throw InvalidArgument(function, SupportedPictureDetail);
             }
-            if (year == 0 ||
-                month is < 1 or > 12 ||
-                day == 0 ||
-                day > DateTimePictureDaysInMonth(year, month))
+            if (
+                year == 0
+                || month is < 1 or > 12
+                || day == 0
+                || day > DateTimePictureDaysInMonth(year, month)
+            )
             {
                 throw InvalidArgument(function, SupportedPictureDetail);
             }
             return (year, month, day);
         }
 
-        internal (uint Hour, uint Minute, uint Second) Time(
-            string function,
-            bool allowDefault)
+        internal (uint Hour, uint Minute, uint Second) Time(string function, bool allowDefault)
         {
-            var hasTime = _hour24 is not null ||
-                _hour12 is not null ||
-                _minute is not null ||
-                _second is not null;
+            var hasTime =
+                _hour24 is not null
+                || _hour12 is not null
+                || _minute is not null
+                || _second is not null;
             if (!allowDefault && !hasTime)
             {
                 throw InvalidArgument(function, SupportedPictureDetail);
@@ -714,10 +739,12 @@ public static partial class FerruleFunctions
             {
                 hour = _hour24.Value;
             }
-            else if (_hour24 is null &&
-                     _hour12 is not null &&
-                     _period is not null &&
-                     _hour12 is >= 1 and <= 12)
+            else if (
+                _hour24 is null
+                && _hour12 is not null
+                && _period is not null
+                && _hour12 is >= 1 and <= 12
+            )
             {
                 hour = (_hour12.Value % 12) + (_period.Value ? 12u : 0u);
             }

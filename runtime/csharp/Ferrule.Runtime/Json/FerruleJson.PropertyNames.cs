@@ -13,52 +13,63 @@ public static partial class FerruleJson
         string name,
         JsonElement element,
         bool isGroup,
-        JsonPatternSchemaContext patternContext)
+        JsonPatternSchemaContext patternContext
+    )
     {
         JsonElement? declared = null;
         foreach (var property in element.EnumerateObject())
         {
-            if (!string.Equals(
-                    property.Name,
-                    "json_property_names",
-                    StringComparison.Ordinal))
+            if (!string.Equals(property.Name, "json_property_names", StringComparison.Ordinal))
             {
                 continue;
             }
             if (declared is not null)
             {
                 throw Boundary(
-                    $"Embedded JSON schema node '{name}' has duplicate JSON property-name metadata.");
+                    $"Embedded JSON schema node '{name}' has duplicate JSON property-name metadata."
+                );
             }
             declared = property.Value;
         }
-        if (declared is not { } constraintsElement ||
-            constraintsElement.ValueKind == JsonValueKind.Null)
+        if (
+            declared is not { } constraintsElement
+            || constraintsElement.ValueKind == JsonValueKind.Null
+        )
         {
             return null;
         }
         if (!isGroup)
         {
             throw Boundary(
-                $"Embedded JSON schema node '{name}' has JSON property-name constraints without an object domain.");
+                $"Embedded JSON schema node '{name}' has JSON property-name constraints without an object domain."
+            );
         }
 
         RequireKind(
             constraintsElement,
             JsonValueKind.Object,
             $"schema node '{name}' JSON property-name constraints",
-            "object");
+            "object"
+        );
         var kind = RequiredString(constraintsElement, "kind");
         var fields = new HashSet<string>(StringComparer.Ordinal);
         foreach (var property in constraintsElement.EnumerateObject())
         {
             var known = string.Equals(kind, "never", StringComparison.Ordinal)
                 ? property.Name is "kind"
-                : property.Name is "kind" or "allowed" or "excluded" or "length" or "patterns" or "excluded_patterns" or "formats";
+                : property.Name
+                    is "kind"
+                        or "allowed"
+                        or "excluded"
+                        or "length"
+                        or "patterns"
+                        or "excluded_patterns"
+                        or "formats";
             if (!known || !fields.Add(property.Name))
             {
                 throw Boundary(
-                    $"Embedded JSON schema node '{name}' JSON property-name constraints have an unknown or duplicate field '{property.Name}'.");
+                    $"Embedded JSON schema node '{name}' JSON property-name constraints have an unknown or duplicate field '{property.Name}'."
+                );
             }
         }
 
@@ -69,65 +80,79 @@ public static partial class FerruleJson
         if (!string.Equals(kind, "schema", StringComparison.Ordinal))
         {
             throw Boundary(
-                $"Embedded JSON schema node '{name}' has unknown JSON property-name constraint kind '{kind}'.");
+                $"Embedded JSON schema node '{name}' has unknown JSON property-name constraint kind '{kind}'."
+            );
         }
 
-        var allowed = constraintsElement.TryGetProperty("allowed", out var allowedElement) &&
-                      allowedElement.ValueKind != JsonValueKind.Null
-            ? ReadPropertyNameSet(name, allowedElement)
-            : null;
-        var excluded = constraintsElement.TryGetProperty("excluded", out var excludedElement) &&
-                       excludedElement.ValueKind != JsonValueKind.Null
-            ? ReadPropertyNameSet(name, excludedElement)
-            : null;
-        var length = constraintsElement.TryGetProperty("length", out var lengthElement) &&
-                     lengthElement.ValueKind != JsonValueKind.Null
-            ? ReadPropertyNameLength(name, lengthElement)
-            : null;
-        var patterns = constraintsElement.TryGetProperty("patterns", out var patternsElement) &&
-                       patternsElement.ValueKind != JsonValueKind.Null
-            ? ReadPropertyNamePatterns(name, patternsElement, patternContext)
-            : null;
-        var excludedPatterns = constraintsElement.TryGetProperty(
-                                   "excluded_patterns",
-                                   out var excludedPatternsElement) &&
-                               excludedPatternsElement.ValueKind != JsonValueKind.Null
-            ? ReadPropertyNamePatterns(name, excludedPatternsElement, patternContext)
-            : null;
+        var allowed =
+            constraintsElement.TryGetProperty("allowed", out var allowedElement)
+            && allowedElement.ValueKind != JsonValueKind.Null
+                ? ReadPropertyNameSet(name, allowedElement)
+                : null;
+        var excluded =
+            constraintsElement.TryGetProperty("excluded", out var excludedElement)
+            && excludedElement.ValueKind != JsonValueKind.Null
+                ? ReadPropertyNameSet(name, excludedElement)
+                : null;
+        var length =
+            constraintsElement.TryGetProperty("length", out var lengthElement)
+            && lengthElement.ValueKind != JsonValueKind.Null
+                ? ReadPropertyNameLength(name, lengthElement)
+                : null;
+        var patterns =
+            constraintsElement.TryGetProperty("patterns", out var patternsElement)
+            && patternsElement.ValueKind != JsonValueKind.Null
+                ? ReadPropertyNamePatterns(name, patternsElement, patternContext)
+                : null;
+        var excludedPatterns =
+            constraintsElement.TryGetProperty("excluded_patterns", out var excludedPatternsElement)
+            && excludedPatternsElement.ValueKind != JsonValueKind.Null
+                ? ReadPropertyNamePatterns(name, excludedPatternsElement, patternContext)
+                : null;
         var formats = constraintsElement.TryGetProperty("formats", out var formatsElement)
             ? ReadPropertyNameFormats(name, formatsElement)
             : Array.Empty<string>();
-        if (allowed is null &&
-            excluded is null &&
-            length is null &&
-            patterns is null &&
-            excludedPatterns is null &&
-            formats.Count == 0)
+        if (
+            allowed is null
+            && excluded is null
+            && length is null
+            && patterns is null
+            && excludedPatterns is null
+            && formats.Count == 0
+        )
         {
             throw Boundary(
-                $"Embedded JSON schema node '{name}' has tautological JSON property-name constraints that must be omitted.");
+                $"Embedded JSON schema node '{name}' has tautological JSON property-name constraints that must be omitted."
+            );
         }
 
-        if (allowed is not null &&
-            (excluded is not null || excludedPatterns is not null))
+        if (allowed is not null && (excluded is not null || excludedPatterns is not null))
         {
             throw Boundary(
-                $"Embedded JSON schema node '{name}' combines finite allowed names with excluded JSON property-name predicates.");
+                $"Embedded JSON schema node '{name}' combines finite allowed names with excluded JSON property-name predicates."
+            );
         }
-        if (patterns is not null &&
-            excludedPatterns is not null &&
-            SamePatternSources(patterns, excludedPatterns))
+        if (
+            patterns is not null
+            && excludedPatterns is not null
+            && SamePatternSources(patterns, excludedPatterns)
+        )
         {
             throw Boundary(
-                $"Embedded JSON schema node '{name}' has identical included and excluded JSON property-name patterns.");
+                $"Embedded JSON schema node '{name}' has identical included and excluded JSON property-name patterns."
+            );
         }
-        if (allowed is not null &&
-            allowed.Any(candidate =>
-                length is not null && !length.Contains(name, candidate) ||
-                patterns is not null && !patternContext.FixedMatches(patterns, candidate)))
+        if (
+            allowed is not null
+            && allowed.Any(candidate =>
+                length is not null && !length.Contains(name, candidate)
+                || patterns is not null && !patternContext.FixedMatches(patterns, candidate)
+            )
+        )
         {
             throw Boundary(
-                $"Embedded JSON schema node '{name}' has noncanonical JSON property-name allowed values.");
+                $"Embedded JSON schema node '{name}' has noncanonical JSON property-name allowed values."
+            );
         }
         return new JsonPropertyNameConstraints(
             false,
@@ -136,18 +161,18 @@ public static partial class FerruleJson
             length,
             patterns,
             excludedPatterns,
-            formats);
+            formats
+        );
     }
 
-    private static IReadOnlyList<string> ReadPropertyNameSet(
-        string name,
-        JsonElement element)
+    private static IReadOnlyList<string> ReadPropertyNameSet(string name, JsonElement element)
     {
         RequireKind(
             element,
             JsonValueKind.Array,
             $"schema node '{name}' JSON property-name allowed values",
-            "array");
+            "array"
+        );
         var names = new List<string>();
         var totalBytes = 0;
         string? previous = null;
@@ -156,32 +181,36 @@ public static partial class FerruleJson
             if (nameElement.ValueKind != JsonValueKind.String)
             {
                 throw Boundary(
-                    $"Embedded JSON schema node '{name}' JSON property-name allowed values must contain strings.");
+                    $"Embedded JSON schema node '{name}' JSON property-name allowed values must contain strings."
+                );
             }
             if (names.Count == MaximumJsonPropertyNames)
             {
                 throw Boundary(
-                    $"Embedded JSON schema node '{name}' has more than {MaximumJsonPropertyNames} allowed property names.");
+                    $"Embedded JSON schema node '{name}' has more than {MaximumJsonPropertyNames} allowed property names."
+                );
             }
 
             var candidate = nameElement.GetString() ?? string.Empty;
-            if (previous is not null &&
-                CompareUtf8Ordinal(previous, candidate) >= 0)
+            if (previous is not null && CompareUtf8Ordinal(previous, candidate) >= 0)
             {
                 throw Boundary(
-                    $"Embedded JSON schema node '{name}' JSON property-name allowed values are not strictly sorted and unique.");
+                    $"Embedded JSON schema node '{name}' JSON property-name allowed values are not strictly sorted and unique."
+                );
             }
             var bytes = StrictUtf8.GetByteCount(candidate);
             if (bytes > MaximumJsonPropertyNameBytes)
             {
                 throw Boundary(
-                    $"Embedded JSON schema node '{name}' has a property name larger than {MaximumJsonPropertyNameBytes} UTF-8 bytes.");
+                    $"Embedded JSON schema node '{name}' has a property name larger than {MaximumJsonPropertyNameBytes} UTF-8 bytes."
+                );
             }
             totalBytes = checked(totalBytes + bytes);
             if (totalBytes > MaximumJsonPropertyNameTotalBytes)
             {
                 throw Boundary(
-                    $"Embedded JSON schema node '{name}' property names exceed {MaximumJsonPropertyNameTotalBytes} UTF-8 bytes.");
+                    $"Embedded JSON schema node '{name}' property names exceed {MaximumJsonPropertyNameTotalBytes} UTF-8 bytes."
+                );
             }
             names.Add(candidate);
             previous = candidate;
@@ -189,37 +218,37 @@ public static partial class FerruleJson
         if (names.Count == 0)
         {
             throw Boundary(
-                $"Embedded JSON schema node '{name}' has an empty JSON property-name allowed set.");
+                $"Embedded JSON schema node '{name}' has an empty JSON property-name allowed set."
+            );
         }
         return names;
     }
 
-    private static JsonStringLengthRange ReadPropertyNameLength(
-        string name,
-        JsonElement element)
+    private static JsonStringLengthRange ReadPropertyNameLength(string name, JsonElement element)
     {
         RequireKind(
             element,
             JsonValueKind.Object,
             $"schema node '{name}' JSON property-name length",
-            "object");
+            "object"
+        );
         var fields = new HashSet<string>(StringComparer.Ordinal);
         foreach (var property in element.EnumerateObject())
         {
-            if (property.Name is not ("minimum" or "maximum") ||
-                !fields.Add(property.Name))
+            if (property.Name is not ("minimum" or "maximum") || !fields.Add(property.Name))
             {
                 throw Boundary(
-                    $"Embedded JSON schema node '{name}' JSON property-name length has an unknown or duplicate field '{property.Name}'.");
+                    $"Embedded JSON schema node '{name}' JSON property-name length has an unknown or duplicate field '{property.Name}'."
+                );
             }
         }
         var minimum = OptionalUInt64(element, "minimum", false) ?? 0;
         var maximum = OptionalUInt64(element, "maximum", true);
-        if (minimum == 0 && maximum is null ||
-            maximum is { } upper && minimum > upper)
+        if (minimum == 0 && maximum is null || maximum is { } upper && minimum > upper)
         {
             throw Boundary(
-                $"Embedded JSON schema node '{name}' has invalid JSON property-name length metadata.");
+                $"Embedded JSON schema node '{name}' has invalid JSON property-name length metadata."
+            );
         }
         return new JsonStringLengthRange(minimum, maximum);
     }
@@ -227,20 +256,23 @@ public static partial class FerruleJson
     private static JsonPatternConstraints ReadPropertyNamePatterns(
         string name,
         JsonElement element,
-        JsonPatternSchemaContext context)
+        JsonPatternSchemaContext context
+    )
     {
         RequireKind(
             element,
             JsonValueKind.Object,
             $"schema node '{name}' JSON property-name patterns",
-            "object");
+            "object"
+        );
         var fields = new HashSet<string>(StringComparer.Ordinal);
         foreach (var property in element.EnumerateObject())
         {
             if (property.Name is not "any_of" || !fields.Add(property.Name))
             {
                 throw Boundary(
-                    $"Embedded JSON schema node '{name}' JSON property-name patterns have an unknown or duplicate field '{property.Name}'.");
+                    $"Embedded JSON schema node '{name}' JSON property-name patterns have an unknown or duplicate field '{property.Name}'."
+                );
             }
         }
 
@@ -249,7 +281,8 @@ public static partial class FerruleJson
             alternativesElement,
             JsonValueKind.Array,
             $"schema node '{name}' JSON property-name pattern alternatives",
-            "array");
+            "array"
+        );
         var alternatives = new List<JsonPatternAlternative>();
         var canonicalSources = new List<string[]>();
         var distinctSources = new HashSet<string>(StringComparer.Ordinal);
@@ -261,13 +294,15 @@ public static partial class FerruleJson
             if (alternatives.Count == MaximumJsonPatternAlternatives)
             {
                 throw Boundary(
-                    $"Embedded JSON schema node '{name}' has more than {MaximumJsonPatternAlternatives} JSON property-name pattern alternatives.");
+                    $"Embedded JSON schema node '{name}' has more than {MaximumJsonPatternAlternatives} JSON property-name pattern alternatives."
+                );
             }
             RequireKind(
                 alternativeElement,
                 JsonValueKind.Array,
                 $"schema node '{name}' JSON property-name pattern alternative",
-                "array");
+                "array"
+            );
 
             var sources = new List<string>();
             var compiledTerms = new List<FerruleJsonPattern>();
@@ -277,31 +312,37 @@ public static partial class FerruleJson
                 if (terms > MaximumJsonPatternTerms)
                 {
                     throw Boundary(
-                        $"Embedded JSON schema node '{name}' has more than {MaximumJsonPatternTerms} JSON property-name pattern terms.");
+                        $"Embedded JSON schema node '{name}' has more than {MaximumJsonPatternTerms} JSON property-name pattern terms."
+                    );
                 }
                 if (termElement.ValueKind != JsonValueKind.String)
                 {
                     throw Boundary(
-                        $"Embedded JSON schema node '{name}' JSON property-name pattern terms must be strings.");
+                        $"Embedded JSON schema node '{name}' JSON property-name pattern terms must be strings."
+                    );
                 }
 
                 var source = termElement.GetString() ?? string.Empty;
                 if (sources.Contains(source, StringComparer.Ordinal))
                 {
                     throw Boundary(
-                        $"Embedded JSON schema node '{name}' has a duplicate JSON property-name pattern term.");
+                        $"Embedded JSON schema node '{name}' has a duplicate JSON property-name pattern term."
+                    );
                 }
                 var compiled = context.GetOrCompile(name, source);
                 if (distinctSources.Add(source))
                 {
                     sourceBytes = checked(sourceBytes + StrictUtf8.GetByteCount(source));
                     instructions = checked(instructions + compiled.InstructionCount);
-                    if (distinctSources.Count > MaximumDistinctJsonPatterns ||
-                        sourceBytes > MaximumJsonPatternSourceBytes ||
-                        instructions > MaximumJsonPatternInstructions)
+                    if (
+                        distinctSources.Count > MaximumDistinctJsonPatterns
+                        || sourceBytes > MaximumJsonPatternSourceBytes
+                        || instructions > MaximumJsonPatternInstructions
+                    )
                     {
                         throw Boundary(
-                            $"Embedded JSON schema node '{name}' exceeds a local JSON property-name pattern metadata limit.");
+                            $"Embedded JSON schema node '{name}' exceeds a local JSON property-name pattern metadata limit."
+                        );
                     }
                 }
                 sources.Add(source);
@@ -310,19 +351,24 @@ public static partial class FerruleJson
             if (sources.Count == 0)
             {
                 throw Boundary(
-                    $"Embedded JSON schema node '{name}' has an empty JSON property-name pattern alternative.");
+                    $"Embedded JSON schema node '{name}' has an empty JSON property-name pattern alternative."
+                );
             }
-            if (sources.Count != 1 &&
-                sources.Contains(string.Empty, StringComparer.Ordinal))
+            if (sources.Count != 1 && sources.Contains(string.Empty, StringComparer.Ordinal))
             {
                 throw Boundary(
-                    $"Embedded JSON schema node '{name}' has a noncanonical tautological JSON property-name pattern alternative.");
+                    $"Embedded JSON schema node '{name}' has a noncanonical tautological JSON property-name pattern alternative."
+                );
             }
-            if (canonicalSources.Any(previous =>
-                    previous.SequenceEqual(sources, StringComparer.Ordinal)))
+            if (
+                canonicalSources.Any(previous =>
+                    previous.SequenceEqual(sources, StringComparer.Ordinal)
+                )
+            )
             {
                 throw Boundary(
-                    $"Embedded JSON schema node '{name}' has a duplicate JSON property-name pattern alternative.");
+                    $"Embedded JSON schema node '{name}' has a duplicate JSON property-name pattern alternative."
+                );
             }
             canonicalSources.Add(sources.ToArray());
             alternatives.Add(new JsonPatternAlternative(sources.ToArray(), compiledTerms));
@@ -330,34 +376,39 @@ public static partial class FerruleJson
         if (alternatives.Count == 0)
         {
             throw Boundary(
-                $"Embedded JSON schema node '{name}' has empty JSON property-name pattern constraints.");
+                $"Embedded JSON schema node '{name}' has empty JSON property-name pattern constraints."
+            );
         }
-        if (canonicalSources.Count != 1 &&
-            canonicalSources.Any(sources =>
-                sources.Length == 1 && sources[0].Length == 0))
+        if (
+            canonicalSources.Count != 1
+            && canonicalSources.Any(sources => sources.Length == 1 && sources[0].Length == 0)
+        )
         {
             throw Boundary(
-                $"Embedded JSON schema node '{name}' has noncanonical tautological JSON property-name pattern constraints.");
+                $"Embedded JSON schema node '{name}' has noncanonical tautological JSON property-name pattern constraints."
+            );
         }
-        if (canonicalSources.Count == 1 &&
-            canonicalSources[0].Length == 1 &&
-            canonicalSources[0][0].Length == 0)
+        if (
+            canonicalSources.Count == 1
+            && canonicalSources[0].Length == 1
+            && canonicalSources[0][0].Length == 0
+        )
         {
             throw Boundary(
-                $"Embedded JSON schema node '{name}' has tautological JSON property-name pattern constraints that must be omitted.");
+                $"Embedded JSON schema node '{name}' has tautological JSON property-name pattern constraints that must be omitted."
+            );
         }
         return new JsonPatternConstraints(alternatives);
     }
 
-    private static IReadOnlyList<string> ReadPropertyNameFormats(
-        string name,
-        JsonElement element)
+    private static IReadOnlyList<string> ReadPropertyNameFormats(string name, JsonElement element)
     {
         RequireKind(
             element,
             JsonValueKind.Array,
             $"schema node '{name}' JSON property-name formats",
-            "array");
+            "array"
+        );
         var formats = new List<string>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
         var totalBytes = 0;
@@ -366,30 +417,35 @@ public static partial class FerruleJson
             if (formatElement.ValueKind != JsonValueKind.String)
             {
                 throw Boundary(
-                    $"Embedded JSON schema node '{name}' JSON property-name formats must contain strings.");
+                    $"Embedded JSON schema node '{name}' JSON property-name formats must contain strings."
+                );
             }
             if (formats.Count == MaximumJsonFormats)
             {
                 throw Boundary(
-                    $"Embedded JSON schema node '{name}' has more than {MaximumJsonFormats} JSON property-name format annotations.");
+                    $"Embedded JSON schema node '{name}' has more than {MaximumJsonFormats} JSON property-name format annotations."
+                );
             }
             var format = formatElement.GetString() ?? string.Empty;
             var bytes = Encoding.UTF8.GetByteCount(format);
             if (bytes > MaximumJsonFormatBytes)
             {
                 throw Boundary(
-                    $"Embedded JSON schema node '{name}' JSON property-name format annotation is larger than {MaximumJsonFormatBytes} UTF-8 bytes.");
+                    $"Embedded JSON schema node '{name}' JSON property-name format annotation is larger than {MaximumJsonFormatBytes} UTF-8 bytes."
+                );
             }
             totalBytes = checked(totalBytes + bytes);
             if (totalBytes > MaximumJsonFormatTotalBytes)
             {
                 throw Boundary(
-                    $"Embedded JSON schema node '{name}' JSON property-name format annotations exceed {MaximumJsonFormatTotalBytes} UTF-8 bytes.");
+                    $"Embedded JSON schema node '{name}' JSON property-name format annotations exceed {MaximumJsonFormatTotalBytes} UTF-8 bytes."
+                );
             }
             if (!seen.Add(format))
             {
                 throw Boundary(
-                    $"Embedded JSON schema node '{name}' has a duplicate JSON property-name format annotation '{format}'.");
+                    $"Embedded JSON schema node '{name}' has a duplicate JSON property-name format annotation '{format}'."
+                );
             }
             formats.Add(format);
         }
@@ -398,7 +454,8 @@ public static partial class FerruleJson
 
     private static bool SamePatternSources(
         JsonPatternConstraints left,
-        JsonPatternConstraints right)
+        JsonPatternConstraints right
+    )
     {
         if (left.AnyOf.Count != right.AnyOf.Count)
         {
@@ -406,9 +463,10 @@ public static partial class FerruleJson
         }
         for (var index = 0; index < left.AnyOf.Count; index++)
         {
-            if (!left.AnyOf[index].Sources.SequenceEqual(
-                    right.AnyOf[index].Sources,
-                    StringComparer.Ordinal))
+            if (
+                !left.AnyOf[index]
+                    .Sources.SequenceEqual(right.AnyOf[index].Sources, StringComparer.Ordinal)
+            )
             {
                 return false;
             }
@@ -424,50 +482,59 @@ public static partial class FerruleJson
         IReadOnlyList<JsonPropertyDependency> propertyDependencies,
         IReadOnlyList<string> required,
         IReadOnlyList<JsonAlternative> alternatives,
-        JsonPropertyCountRange? propertyCountRange)
+        JsonPropertyCountRange? propertyCountRange
+    )
     {
         if (constraints is null)
         {
             return;
         }
         var effectiveRequired = DependencyClosure(propertyDependencies, required);
-        if (effectiveRequired.Any(
-                requiredName => !constraints.AcceptsForSchema(requiredName)))
+        if (effectiveRequired.Any(requiredName => !constraints.AcceptsForSchema(requiredName)))
         {
             throw Boundary(
-                $"Embedded JSON schema node '{name}' requires a property forbidden by its JSON property-name constraints.");
+                $"Embedded JSON schema node '{name}' requires a property forbidden by its JSON property-name constraints."
+            );
         }
 
         var capacity = dynamic is null
-            ? children.Count(
-                child => constraints.AcceptsForSchema(child.Name))
+            ? children.Count(child => constraints.AcceptsForSchema(child.Name))
             : constraints.Allowed?.Count;
-        if (propertyCountRange is { } range &&
-            capacity is { } maximum &&
-            range.Minimum > (ulong)maximum)
+        if (
+            propertyCountRange is { } range
+            && capacity is { } maximum
+            && range.Minimum > (ulong)maximum
+        )
         {
             throw Boundary(
-                $"Embedded JSON schema node '{name}' cannot satisfy its property-count range within its JSON property-name constraints.");
+                $"Embedded JSON schema node '{name}' cannot satisfy its property-count range within its JSON property-name constraints."
+            );
         }
         foreach (var alternative in alternatives)
         {
             var alternativeRequired = DependencyClosure(
                 propertyDependencies,
-                effectiveRequired.Concat(alternative.Required).ToArray());
-            if (alternativeRequired.Any(
-                    requiredName =>
-                        !constraints.AcceptsForSchema(requiredName)))
+                effectiveRequired.Concat(alternative.Required).ToArray()
+            );
+            if (
+                alternativeRequired.Any(requiredName => !constraints.AcceptsForSchema(requiredName))
+            )
             {
                 throw Boundary(
-                    $"Embedded JSON schema node '{name}' has an alternative requiring a property forbidden by its JSON property-name constraints.");
+                    $"Embedded JSON schema node '{name}' has an alternative requiring a property forbidden by its JSON property-name constraints."
+                );
             }
-            var alternativeCapacity = alternative.Members.Count(
-                member => constraints.AcceptsForSchema(member));
-            if (propertyCountRange is { } alternativeRange &&
-                alternativeRange.Minimum > (ulong)alternativeCapacity)
+            var alternativeCapacity = alternative.Members.Count(member =>
+                constraints.AcceptsForSchema(member)
+            );
+            if (
+                propertyCountRange is { } alternativeRange
+                && alternativeRange.Minimum > (ulong)alternativeCapacity
+            )
             {
                 throw Boundary(
-                    $"Embedded JSON schema node '{name}' has an alternative that cannot satisfy its property-count range within its JSON property-name constraints.");
+                    $"Embedded JSON schema node '{name}' has an alternative that cannot satisfy its property-count range within its JSON property-name constraints."
+                );
             }
         }
     }
@@ -475,7 +542,8 @@ public static partial class FerruleJson
     private static void ValidatePropertyNames(
         JsonSchemaNode schema,
         IReadOnlyList<JsonProperty> properties,
-        NodeBudget budget)
+        NodeBudget budget
+    )
     {
         if (schema.PropertyNames is not { } constraints)
         {
@@ -490,7 +558,8 @@ public static partial class FerruleJson
     private static void ValidateOutputPropertyNames(
         JsonSchemaNode schema,
         FerruleGroup group,
-        NodeBudget budget)
+        NodeBudget budget
+    )
     {
         if (schema.PropertyNames is not { } constraints)
         {
@@ -503,11 +572,7 @@ public static partial class FerruleJson
                 var child = schema.Child(field.Name) ?? dynamic;
                 if (!BoundaryAbsence(child, field.Value))
                 {
-                    ValidatePropertyName(
-                        schema.Name,
-                        field.Name,
-                        constraints,
-                        budget);
+                    ValidatePropertyName(schema.Name, field.Name, constraints, budget);
                 }
             }
         }
@@ -515,14 +580,9 @@ public static partial class FerruleJson
         {
             foreach (var child in schema.Children)
             {
-                if (group.TryGetField(child.Name, out var value) &&
-                    !BoundaryAbsence(child, value))
+                if (group.TryGetField(child.Name, out var value) && !BoundaryAbsence(child, value))
                 {
-                    ValidatePropertyName(
-                        schema.Name,
-                        child.Name,
-                        constraints,
-                        budget);
+                    ValidatePropertyName(schema.Name, child.Name, constraints, budget);
                 }
             }
         }
@@ -532,12 +592,14 @@ public static partial class FerruleJson
         string objectName,
         string propertyName,
         JsonPropertyNameConstraints constraints,
-        NodeBudget budget)
+        NodeBudget budget
+    )
     {
         if (!constraints.Accepts(propertyName, budget))
         {
             throw Boundary(
-                $"JSON object '{objectName}' has invalid property name '{propertyName}'.");
+                $"JSON object '{objectName}' has invalid property name '{propertyName}'."
+            );
         }
     }
 
@@ -548,29 +610,29 @@ public static partial class FerruleJson
         JsonStringLengthRange? Length,
         JsonPatternConstraints? Patterns,
         JsonPatternConstraints? ExcludedPatterns,
-        IReadOnlyList<string> Formats)
+        IReadOnlyList<string> Formats
+    )
     {
         public static JsonPropertyNameConstraints Never { get; } =
             new(true, null, null, null, null, null, Array.Empty<string>());
 
         public bool AcceptsWithoutBudget(string name) =>
-            !RejectAll &&
-            (Allowed is null || Allowed.Contains(name, StringComparer.Ordinal)) &&
-            (Excluded is null || !Excluded.Contains(name, StringComparer.Ordinal)) &&
-            (Length is null || Length.Contains(string.Empty, name));
+            !RejectAll
+            && (Allowed is null || Allowed.Contains(name, StringComparer.Ordinal))
+            && (Excluded is null || !Excluded.Contains(name, StringComparer.Ordinal))
+            && (Length is null || Length.Contains(string.Empty, name));
 
         public bool AcceptsForSchema(string name)
         {
             var remainingWork = FerruleJsonPattern.MaximumBoundaryWork;
-            return AcceptsWithoutBudget(name) &&
-                (Patterns is null || Patterns.IsMatch(name, ref remainingWork)) &&
-                (ExcludedPatterns is null ||
-                    !ExcludedPatterns.IsMatch(name, ref remainingWork));
+            return AcceptsWithoutBudget(name)
+                && (Patterns is null || Patterns.IsMatch(name, ref remainingWork))
+                && (ExcludedPatterns is null || !ExcludedPatterns.IsMatch(name, ref remainingWork));
         }
 
         public bool Accepts(string name, NodeBudget budget) =>
-            AcceptsWithoutBudget(name) &&
-            (Patterns is null || budget.Matches(Patterns, name)) &&
-            (ExcludedPatterns is null || !budget.Matches(ExcludedPatterns, name));
+            AcceptsWithoutBudget(name)
+            && (Patterns is null || budget.Matches(Patterns, name))
+            && (ExcludedPatterns is null || !budget.Matches(ExcludedPatterns, name));
     }
 }

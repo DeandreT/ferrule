@@ -1,4 +1,3 @@
-use std::io::{Cursor, Write};
 use std::path::Path;
 
 use ir::{
@@ -145,11 +144,11 @@ pub(super) fn render_with_options(
             .validate()
             .map_err(XmlFormatError::InvalidSchemaHints)?;
     }
-    let cursor = Cursor::new(Vec::new());
+    let mut bytes = Vec::new();
     let mut writer = if options.indent {
-        Writer::new_with_indent(cursor, b' ', 2)
+        Writer::new_with_indent(&mut bytes, b' ', 2)
     } else {
-        Writer::new(cursor)
+        Writer::new(&mut bytes)
     };
     if options.declaration {
         writer.write_event(Event::Decl(quick_xml::events::BytesDecl::new(
@@ -171,7 +170,6 @@ pub(super) fn render_with_options(
             schema_hints: options.schema_hints.as_ref(),
         },
     )?;
-    let bytes = writer.into_inner().into_inner();
     Ok(String::from_utf8_lossy(&bytes).into_owned())
 }
 
@@ -183,8 +181,8 @@ pub(crate) struct NodeWriteContext<'a> {
     pub(crate) schema_hints: Option<&'a ir::XmlSchemaHints>,
 }
 
-pub(super) fn write_node<W: std::io::Write>(
-    writer: &mut Writer<W>,
+pub(super) fn write_node(
+    writer: &mut Writer<&mut Vec<u8>>,
     schema: &SchemaNode,
     root_schema: &SchemaNode,
     instance: &Instance,
@@ -300,8 +298,8 @@ pub(super) fn write_node<W: std::io::Write>(
     )
 }
 
-pub(super) fn write_single_node<W: std::io::Write>(
-    writer: &mut Writer<W>,
+pub(super) fn write_single_node(
+    writer: &mut Writer<&mut Vec<u8>>,
     schema: &SchemaNode,
     root_schema: &SchemaNode,
     instance: &Instance,
@@ -442,6 +440,8 @@ pub(super) fn write_single_node<W: std::io::Write>(
                 return Ok(());
             }
             writer.write_event(Event::Start(start))?;
+            let body_start = writer.get_ref().len();
+            let layout = OrderedContentLayout::for_children(children);
             if write_ordered_mixed_content(
                 writer,
                 schema,
@@ -450,10 +450,9 @@ pub(super) fn write_single_node<W: std::io::Write>(
                 fields,
                 recursion_depth,
                 element_namespace,
-                OrderedContentLayout::for_children(children),
+                layout,
             )? {
-                writer.write_event(Event::End(BytesEnd::new(element_name)))?;
-                return Ok(());
+                return finish_group(writer, element_name, layout, body_start);
             }
             for child_schema in children.iter().filter(|child| child.text) {
                 if let Some((_, child_instance)) =
@@ -471,7 +470,7 @@ pub(super) fn write_single_node<W: std::io::Write>(
                     }
                 }
             }
-            match OrderedContentLayout::for_children(children) {
+            match layout {
                 OrderedContentLayout::Indented => write_typed_element_children(
                     writer,
                     schema,
@@ -485,9 +484,8 @@ pub(super) fn write_single_node<W: std::io::Write>(
                     // The reader keeps every text node of a mixed parent, so
                     // typed children get no added layout, as in its ordered
                     // content stream.
-                    let output: &mut dyn Write = writer.get_mut();
                     write_typed_element_children(
-                        &mut Writer::new(output),
+                        &mut Writer::new(writer.get_mut()),
                         schema,
                         children,
                         root_schema,
@@ -500,17 +498,36 @@ pub(super) fn write_single_node<W: std::io::Write>(
                     writer.write_event(Event::Text(BytesText::new("")))?;
                 }
             }
-            writer.write_event(Event::End(BytesEnd::new(element_name)))?;
-            Ok(())
+            finish_group(writer, element_name, layout, body_start)
         }
         (SchemaKind::Scalar { .. }, other) => Err(shape_error(schema, "a scalar", other)),
         (SchemaKind::Group { .. }, other) => Err(shape_error(schema, "an element group", other)),
     }
 }
 
+fn finish_group(
+    writer: &mut Writer<&mut Vec<u8>>,
+    element_name: &str,
+    layout: OrderedContentLayout,
+    body_start: usize,
+) -> Result<(), XmlFormatError> {
+    let empty = layout == OrderedContentLayout::Indented && writer.get_ref().len() == body_start;
+    writer.write_event(Event::End(BytesEnd::new(element_name)))?;
+    // The end event unwinds quick-xml's layout state for the next sibling.
+    // Replace it only if it introduced whitespace into an otherwise empty
+    // body. Checking the emitted bytes leaves compact and mixed output alone
+    // and, unlike predicting the children, cannot bypass a shape error.
+    let output = writer.get_mut();
+    if empty && output.get(body_start) == Some(&b'\n') {
+        output.truncate(body_start - 1);
+        output.extend_from_slice(b"/>");
+    }
+    Ok(())
+}
+
 /// Writes the element children of a group from its typed fields.
-fn write_typed_element_children<W: std::io::Write>(
-    writer: &mut Writer<W>,
+fn write_typed_element_children(
+    writer: &mut Writer<&mut Vec<u8>>,
     schema: &SchemaNode,
     children: &[SchemaNode],
     root_schema: &SchemaNode,
@@ -546,8 +563,8 @@ fn write_typed_element_children<W: std::io::Write>(
     Ok(())
 }
 
-fn write_group_child<W: std::io::Write>(
-    writer: &mut Writer<W>,
+fn write_group_child(
+    writer: &mut Writer<&mut Vec<u8>>,
     child_schema: &SchemaNode,
     siblings: &[SchemaNode],
     root_schema: &SchemaNode,
@@ -613,8 +630,8 @@ fn write_group_child<W: std::io::Write>(
     )
 }
 
-fn write_repeating_sequence_children<W: std::io::Write>(
-    writer: &mut Writer<W>,
+fn write_repeating_sequence_children(
+    writer: &mut Writer<&mut Vec<u8>>,
     schema: &SchemaNode,
     children: &[SchemaNode],
     root_schema: &SchemaNode,
@@ -675,8 +692,8 @@ struct SequenceWriteContext<'a> {
     inherited_namespace: Option<&'a str>,
 }
 
-fn write_constructed_repeating_sequence<W: std::io::Write>(
-    writer: &mut Writer<W>,
+fn write_constructed_repeating_sequence(
+    writer: &mut Writer<&mut Vec<u8>>,
     schema: &SchemaNode,
     children: &[SchemaNode],
     sequence: &ir::XmlRepeatingSequence,
@@ -800,8 +817,8 @@ fn write_constructed_repeating_sequence<W: std::io::Write>(
     Ok(())
 }
 
-fn write_sequence_item<W: std::io::Write>(
-    writer: &mut Writer<W>,
+fn write_sequence_item(
+    writer: &mut Writer<&mut Vec<u8>>,
     child: &SchemaNode,
     root_schema: &SchemaNode,
     item: &Instance,

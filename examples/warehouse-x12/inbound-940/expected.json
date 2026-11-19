@@ -1,0 +1,8 @@
+{
+  "orderNumber": "VM-5804",
+  "purchaseOrder": "PO-7261",
+  "lines": [
+    { "line": 1, "item": "GLASS-FERN", "quantity": 36, "uom": "EA" },
+    { "line": 2, "item": "PAPER-WREN", "quantity": 4, "uom": "CA" }
+  ]
+}

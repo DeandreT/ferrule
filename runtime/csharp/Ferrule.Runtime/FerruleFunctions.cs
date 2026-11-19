@@ -13,21 +13,16 @@ public static partial class FerruleFunctions
             "concat" => Concat(arguments),
             "upper" => UnaryString(function, arguments, FerruleUnicodeCasing.ToUpper),
             "lower" => UnaryString(function, arguments, FerruleUnicodeCasing.ToLower),
-            "normalize_space" => UnaryString(
-                function,
-                arguments,
-                NormalizeXmlSpace),
+            "normalize_space" => UnaryString(function, arguments, NormalizeXmlSpace),
             "trim" => UnaryString(function, arguments, TrimRustWhitespace),
             "left" => EdgeCharacters(function, arguments, left: true),
             "right" => EdgeCharacters(function, arguments, left: false),
-            "left_trim" => UnaryString(
-                function,
-                arguments,
-                static value => value[CountLeadingXmlWhitespace(value)..]),
-            "right_trim" => UnaryString(
-                function,
-                arguments,
-                static value => value[..^CountTrailingXmlWhitespace(value)]),
+            "left_trim" => UnaryString(function, arguments, static value =>
+                value[CountLeadingXmlWhitespace(value)..]
+            ),
+            "right_trim" => UnaryString(function, arguments, static value =>
+                value[..^CountTrailingXmlWhitespace(value)]
+            ),
             "length" => Length(arguments),
             "sql_like" => BinaryString(function, arguments, SqlLike),
             "pad_string_left" => PadString(function, arguments, left: true),
@@ -54,10 +49,7 @@ public static partial class FerruleFunctions
             "round" => Round(arguments),
             "round_half_ceiling" => RoundHalfCeiling(arguments),
             "delay_passthrough" => DelayPassthrough(arguments),
-            "date_from_datetime" => UnaryString(
-                function,
-                arguments,
-                DateFromDateTime),
+            "date_from_datetime" => UnaryString(function, arguments, DateFromDateTime),
             "year_from_datetime" => YearFromDateTime(arguments),
             "month_from_datetime" => MonthFromDateTime(arguments),
             "day_from_datetime" => DayFromDateTime(arguments),
@@ -92,11 +84,14 @@ public static partial class FerruleFunctions
             "exists" => Exists(arguments),
             "is_empty" => IsEmpty(arguments),
             "starts_with" => BinaryScalarString(function, arguments, static (left, right) =>
-                left.StartsWith(right, StringComparison.Ordinal)),
+                left.StartsWith(right, StringComparison.Ordinal)
+            ),
             "ends_with" => BinaryScalarString(function, arguments, static (left, right) =>
-                left.EndsWith(right, StringComparison.Ordinal)),
+                left.EndsWith(right, StringComparison.Ordinal)
+            ),
             "contains" => BinaryScalarString(function, arguments, static (left, right) =>
-                left.Contains(right, StringComparison.Ordinal)),
+                left.Contains(right, StringComparison.Ordinal)
+            ),
             "matches" => Matches(arguments),
             "replace" => Replace(arguments),
             "replace_literal" => ReplaceLiteral(arguments),
@@ -114,7 +109,8 @@ public static partial class FerruleFunctions
             _ => throw new FerruleRuntimeException(
                 FerruleRuntimeError.UnknownFunction,
                 $"Unknown function '{function}'.",
-                function: function),
+                function: function
+            ),
         };
     }
 
@@ -138,7 +134,8 @@ public static partial class FerruleFunctions
                 FerruleRuntimeError.NotABool,
                 $"Graph node {conditionNode} expected a bool, found {TypeName(value)}.",
                 node: conditionNode,
-                foundKind: value.Kind);
+                foundKind: value.Kind
+            );
         }
 
         return value.BooleanValue;
@@ -148,7 +145,8 @@ public static partial class FerruleFunctions
     {
         RequireArity("exists", arguments, 1);
         return FerruleValue.FromBoolean(
-            arguments[0].Kind is not (FerruleValueKind.Null or FerruleValueKind.JsonNull));
+            arguments[0].Kind is not (FerruleValueKind.Null or FerruleValueKind.JsonNull)
+        );
     }
 
     private static FerruleValue IsEmpty(IReadOnlyList<FerruleValue> arguments)
@@ -160,7 +158,8 @@ public static partial class FerruleFunctions
     private static FerruleValue UnaryBoolean(
         string function,
         IReadOnlyList<FerruleValue> arguments,
-        Func<bool, bool> operation)
+        Func<bool, bool> operation
+    )
     {
         RequireArity(function, arguments, 1);
         return FerruleValue.FromBoolean(operation(RequireBooleanArgument(arguments[0], function)));
@@ -170,7 +169,8 @@ public static partial class FerruleFunctions
         string function,
         IReadOnlyList<FerruleValue> arguments,
         bool identity,
-        Func<bool, bool, bool> operation)
+        Func<bool, bool, bool> operation
+    )
     {
         if (arguments.Count < 2)
         {
@@ -195,7 +195,8 @@ public static partial class FerruleFunctions
     private static FerruleValue BinaryString(
         string function,
         IReadOnlyList<FerruleValue> arguments,
-        Func<string, string, bool> operation)
+        Func<string, string, bool> operation
+    )
     {
         RequireArity(function, arguments, 2);
         var left = RequireString(arguments[0], function);
@@ -206,7 +207,8 @@ public static partial class FerruleFunctions
     private static FerruleValue BinaryScalarString(
         string function,
         IReadOnlyList<FerruleValue> arguments,
-        Func<string, string, bool> operation)
+        Func<string, string, bool> operation
+    )
     {
         RequireArity(function, arguments, 2);
         var left = ScalarText(arguments[0]);
@@ -235,7 +237,8 @@ public static partial class FerruleFunctions
     private static void RequireArity(
         string function,
         IReadOnlyList<FerruleValue> arguments,
-        int expected)
+        int expected
+    )
     {
         if (arguments.Count != expected)
         {
@@ -249,33 +252,36 @@ public static partial class FerruleFunctions
             $"`{function}` expected {expected} argument(s), got {actual}.",
             function: function,
             expectedArity: expected,
-            actualArity: actual);
+            actualArity: actual
+        );
 
     private static FerruleRuntimeException Type(string function, FerruleValue value) =>
         new(
             FerruleRuntimeError.FunctionType,
             $"`{function}` cannot accept a {TypeName(value)} argument.",
             function: function,
-            foundKind: value.Kind);
+            foundKind: value.Kind
+        );
 
     private static FerruleRuntimeException InvalidArgument(string function, string detail) =>
         new(
             FerruleRuntimeError.FunctionInvalidArgument,
             $"`{function}` {detail}.",
             function: function,
-            detail: detail);
+            detail: detail
+        );
 
-    private static string TypeName(FerruleValue value) => value.Kind switch
-    {
-        FerruleValueKind.Null => "null",
-        FerruleValueKind.JsonNull => "json null",
-        FerruleValueKind.XmlNil => "xml nil",
-        FerruleValueKind.Bool => "bool",
-        FerruleValueKind.Int64 => "int",
-        FerruleValueKind.Double => "float",
-        FerruleValueKind.String => "string",
-        FerruleValueKind.Decimal => "decimal",
-        _ => "unknown",
-    };
-
+    private static string TypeName(FerruleValue value) =>
+        value.Kind switch
+        {
+            FerruleValueKind.Null => "null",
+            FerruleValueKind.JsonNull => "json null",
+            FerruleValueKind.XmlNil => "xml nil",
+            FerruleValueKind.Bool => "bool",
+            FerruleValueKind.Int64 => "int",
+            FerruleValueKind.Double => "float",
+            FerruleValueKind.String => "string",
+            FerruleValueKind.Decimal => "decimal",
+            _ => "unknown",
+        };
 }

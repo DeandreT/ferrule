@@ -2,32 +2,70 @@ using System.Text;
 
 namespace Ferrule.Runtime;
 
-public enum FerruleXmlInputSourceKind { Primary, Named }
+public enum FerruleXmlInputSourceKind
+{
+    Primary,
+    Named,
+}
+
 public sealed record FerruleXmlInputSource(FerruleXmlInputSourceKind Kind, int? Index, string? Name)
 {
-    public static FerruleXmlInputSource Primary { get; } = new(FerruleXmlInputSourceKind.Primary, null, null);
-    public static FerruleXmlInputSource Named(int index, string name) => new(FerruleXmlInputSourceKind.Named, index, name);
+    public static FerruleXmlInputSource Primary { get; } =
+        new(FerruleXmlInputSourceKind.Primary, null, null);
+
+    public static FerruleXmlInputSource Named(int index, string name) =>
+        new(FerruleXmlInputSourceKind.Named, index, name);
 }
 
 /// <summary>One exact phase owner and the unchanged original typed boundary.</summary>
 public sealed class FerruleXmlExecutionException : Exception
 {
-    private FerruleXmlExecutionException(FerruleXmlInputSource? input, FerruleXmlOutputTarget? output,
-        FerruleXmlBoundaryException boundary, FerruleXmlDynamicInputRequest? request = null)
-        : base(input is not null ? $"XML input {input}: {boundary.Message}" :
-            output is not null ? $"XML output {output}: {boundary.Message}" : boundary.Message, boundary)
-    { Input = input; Output = output; Boundary = boundary; Request = request; }
+    private FerruleXmlExecutionException(
+        FerruleXmlInputSource? input,
+        FerruleXmlOutputTarget? output,
+        FerruleXmlBoundaryException boundary,
+        FerruleXmlDynamicInputRequest? request = null
+    )
+        : base(
+            input is not null ? $"XML input {input}: {boundary.Message}"
+                : output is not null ? $"XML output {output}: {boundary.Message}"
+                : boundary.Message,
+            boundary
+        )
+    {
+        Input = input;
+        Output = output;
+        Boundary = boundary;
+        Request = request;
+    }
+
     public FerruleXmlInputSource? Input { get; }
     public FerruleXmlOutputTarget? Output { get; }
     public FerruleXmlBoundaryException Boundary { get; }
     public FerruleXmlDynamicInputRequest? Request { get; }
-    public static FerruleXmlExecutionException ForDynamicInput(FerruleXmlDynamicInputRequest request,
-        FerruleXmlBoundaryException boundary) =>
-        new(FerruleXmlInputSource.Named(request.DeclarationIndex, request.Source), null, boundary, request);
-    public static FerruleXmlExecutionException ForInput(FerruleXmlInputSource input, FerruleXmlBoundaryException boundary) =>
-        new(input, null, boundary);
-    public static FerruleXmlExecutionException Unowned(FerruleXmlBoundaryException boundary) => new(null, null, boundary);
-    public static FerruleXmlExecutionException FromOutput(FerruleXmlOutputSetException error) => new(null, error.Target, error.Boundary);
+
+    public static FerruleXmlExecutionException ForDynamicInput(
+        FerruleXmlDynamicInputRequest request,
+        FerruleXmlBoundaryException boundary
+    ) =>
+        new(
+            FerruleXmlInputSource.Named(request.DeclarationIndex, request.Source),
+            null,
+            boundary,
+            request
+        );
+
+    public static FerruleXmlExecutionException ForInput(
+        FerruleXmlInputSource input,
+        FerruleXmlBoundaryException boundary
+    ) => new(input, null, boundary);
+
+    public static FerruleXmlExecutionException Unowned(FerruleXmlBoundaryException boundary) =>
+        new(null, null, boundary);
+
+    public static FerruleXmlExecutionException FromOutput(FerruleXmlOutputSetException error) =>
+        new(null, error.Target, error.Boundary);
+
     public FerruleXmlOutputSetException ToOutputSet() => new(Output, Boundary);
 }
 
@@ -36,7 +74,12 @@ public sealed class FerruleXmlInputSetResourceException : Exception
 {
     public FerruleXmlInputSetResourceException(string resource, ulong observedCount, ulong limit)
         : base($"{resource} is {observedCount}; maximum is {limit}")
-    { Resource = resource; ObservedCount = observedCount; Limit = limit; }
+    {
+        Resource = resource;
+        ObservedCount = observedCount;
+        Limit = limit;
+    }
+
     public string Resource { get; }
     public ulong ObservedCount { get; }
     public ulong Limit { get; }
@@ -83,21 +126,35 @@ public sealed class FerruleXmlInputSetBudget
     {
         ArgumentOutOfRangeException.ThrowIfNegative(bytes);
         if (bytes > MaximumDocumentBytes)
-            throw FerruleXmlExecutionException.ForInput(source, new FerruleXmlBoundaryException(
-                FerruleXmlBoundaryErrorKind.DocumentLimit,
-                $"XML document is {bytes} bytes; maximum is {MaximumDocumentBytes}",
-                bytes: bytes, limit: MaximumDocumentBytes));
+            throw FerruleXmlExecutionException.ForInput(
+                source,
+                new FerruleXmlBoundaryException(
+                    FerruleXmlBoundaryErrorKind.DocumentLimit,
+                    $"XML document is {bytes} bytes; maximum is {MaximumDocumentBytes}",
+                    bytes: bytes,
+                    limit: MaximumDocumentBytes
+                )
+            );
     }
 
     /// <summary>No byte array is allocated; invalid CLR Unicode can refuse during this size pass.</summary>
     public static long Measure(FerruleXmlInputSource source, string xml)
     {
         ArgumentNullException.ThrowIfNull(xml);
-        try { return StrictUtf8.GetByteCount(xml); }
+        try
+        {
+            return StrictUtf8.GetByteCount(xml);
+        }
         catch (EncoderFallbackException error)
         {
-            throw FerruleXmlExecutionException.ForInput(source, new FerruleXmlBoundaryException(
-                FerruleXmlBoundaryErrorKind.Utf8, "XML input is not well-formed Unicode", error));
+            throw FerruleXmlExecutionException.ForInput(
+                source,
+                new FerruleXmlBoundaryException(
+                    FerruleXmlBoundaryErrorKind.Utf8,
+                    "XML input is not well-formed Unicode",
+                    error
+                )
+            );
         }
         catch (Exception error) when (error is ArgumentException or OverflowException)
         {
@@ -106,10 +163,17 @@ public sealed class FerruleXmlInputSetBudget
             long bytes = 0;
             while (!remaining.IsEmpty)
             {
-                if (Rune.DecodeFromUtf16(remaining, out var rune, out var consumed) !=
-                    System.Buffers.OperationStatus.Done)
-                    throw FerruleXmlExecutionException.ForInput(source, new FerruleXmlBoundaryException(
-                        FerruleXmlBoundaryErrorKind.Utf8, "XML input is not well-formed Unicode"));
+                if (
+                    Rune.DecodeFromUtf16(remaining, out var rune, out var consumed)
+                    != System.Buffers.OperationStatus.Done
+                )
+                    throw FerruleXmlExecutionException.ForInput(
+                        source,
+                        new FerruleXmlBoundaryException(
+                            FerruleXmlBoundaryErrorKind.Utf8,
+                            "XML input is not well-formed Unicode"
+                        )
+                    );
                 bytes += rune.Utf8SequenceLength;
                 remaining = remaining[consumed..];
             }
@@ -129,30 +193,66 @@ public sealed class FerruleXmlInputSetBudget
             var name = supplied[suppliedIndex];
             var index = -1;
             for (var i = 0; i < expected.Count; i++)
-                if (string.Equals(expected[i], name, StringComparison.Ordinal)) { index = i; break; }
-            if (index < 0) throw NameError(FerruleRuntimeError.UnexpectedNamedSource,
-                $"named source '{name}' is not declared by this mapping", name);
-            if (matched[index] >= 0) throw NameError(FerruleRuntimeError.DuplicateNamedSource,
-                $"named source '{expected[index]}' was supplied more than once", expected[index]);
+                if (string.Equals(expected[i], name, StringComparison.Ordinal))
+                {
+                    index = i;
+                    break;
+                }
+            if (index < 0)
+                throw NameError(
+                    FerruleRuntimeError.UnexpectedNamedSource,
+                    $"named source '{name}' is not declared by this mapping",
+                    name
+                );
+            if (matched[index] >= 0)
+                throw NameError(
+                    FerruleRuntimeError.DuplicateNamedSource,
+                    $"named source '{expected[index]}' was supplied more than once",
+                    expected[index]
+                );
             matched[index] = suppliedIndex;
         }
         for (var i = 0; i < expected.Count; i++)
-            if (matched[i] < 0) throw NameError(FerruleRuntimeError.MissingNamedSource,
-                $"named source {expected[i]} is required by this mapping", expected[i]);
+            if (matched[i] < 0)
+                throw NameError(
+                    FerruleRuntimeError.MissingNamedSource,
+                    $"named source {expected[i]} is required by this mapping",
+                    expected[i]
+                );
         return matched;
     }
 
-    private static FerruleXmlExecutionException NameError(FerruleRuntimeError kind, string message, string name)
+    private static FerruleXmlExecutionException NameError(
+        FerruleRuntimeError kind,
+        string message,
+        string name
+    )
     {
         var cause = new FerruleRuntimeException(kind, message, detail: name);
-        return FerruleXmlExecutionException.Unowned(new FerruleXmlBoundaryException(
-            FerruleXmlBoundaryErrorKind.Mapping, cause.Message, cause));
+        return FerruleXmlExecutionException.Unowned(
+            new FerruleXmlBoundaryException(
+                FerruleXmlBoundaryErrorKind.Mapping,
+                cause.Message,
+                cause
+            )
+        );
     }
 
-    private static FerruleXmlExecutionException Refusal(FerruleXmlInputSource? source, string resource, ulong count, ulong limit)
+    private static FerruleXmlExecutionException Refusal(
+        FerruleXmlInputSource? source,
+        string resource,
+        ulong count,
+        ulong limit
+    )
     {
         var cause = new FerruleXmlInputSetResourceException(resource, count, limit);
-        var boundary = new FerruleXmlBoundaryException(FerruleXmlBoundaryErrorKind.Input, cause.Message, cause);
-        return source is null ? FerruleXmlExecutionException.Unowned(boundary) : FerruleXmlExecutionException.ForInput(source, boundary);
+        var boundary = new FerruleXmlBoundaryException(
+            FerruleXmlBoundaryErrorKind.Input,
+            cause.Message,
+            cause
+        );
+        return source is null
+            ? FerruleXmlExecutionException.Unowned(boundary)
+            : FerruleXmlExecutionException.ForInput(source, boundary);
     }
 }

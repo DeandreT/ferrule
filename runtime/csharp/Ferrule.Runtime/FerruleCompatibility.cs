@@ -11,7 +11,9 @@ namespace Ferrule.Runtime;
 public sealed class FerruleCompatibilityException : Exception
 {
     public FerruleCompatibilityException(string field, string expected, string found)
-        : base($"ferrule generated library compatibility check failed for {field}: expected {expected}, found {found}")
+        : base(
+            $"ferrule generated library compatibility check failed for {field}: expected {expected}, found {found}"
+        )
     {
         Field = field;
         Expected = expected;
@@ -40,7 +42,8 @@ public static class FerruleCompatibility
         Assembly assembly,
         string manifest,
         string requiredRuntime,
-        string vendoredRuntime)
+        string vendoredRuntime
+    )
     {
         ArgumentNullException.ThrowIfNull(assembly);
         ArgumentNullException.ThrowIfNull(manifest);
@@ -48,21 +51,31 @@ public static class FerruleCompatibility
         ArgumentNullException.ThrowIfNull(vendoredRuntime);
         if (!string.Equals(requiredRuntime, vendoredRuntime, StringComparison.Ordinal))
         {
-            throw new FerruleCompatibilityException("runtime identity", requiredRuntime, vendoredRuntime);
+            throw new FerruleCompatibilityException(
+                "runtime identity",
+                requiredRuntime,
+                vendoredRuntime
+            );
         }
         using var stream = assembly.GetManifestResourceStream(ManifestResourceName)
-            ?? throw new FerruleCompatibilityException("manifest resource", ManifestResourceName, "no embedded resource");
+            ?? throw new FerruleCompatibilityException(
+                "manifest resource",
+                ManifestResourceName,
+                "no embedded resource"
+            );
         using var reader = new StreamReader(
             stream,
             new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true),
-            detectEncodingFromByteOrderMarks: false);
+            detectEncodingFromByteOrderMarks: false
+        );
         var embedded = reader.ReadToEnd();
         if (!string.Equals(embedded, manifest, StringComparison.Ordinal))
         {
             throw new FerruleCompatibilityException(
                 "manifest",
                 "the manifest compiled into the library",
-                "a different ferrule-manifest.json");
+                "a different ferrule-manifest.json"
+            );
         }
         using var document = JsonDocument.Parse(embedded);
         var root = document.RootElement;
@@ -77,12 +90,18 @@ public static class FerruleCompatibility
             throw new FerruleCompatibilityException(
                 "manifest format version",
                 ManifestFormatVersion.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                version.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                version.ToString(System.Globalization.CultureInfo.InvariantCulture)
+            );
         }
-        var runtime = root.GetProperty("runtime").GetProperty("identity").GetString() ?? string.Empty;
+        var runtime = root.GetProperty("runtime").GetProperty("identity").GetString()
+            ?? string.Empty;
         if (!string.Equals(runtime, vendoredRuntime, StringComparison.Ordinal))
         {
-            throw new FerruleCompatibilityException("manifest runtime identity", vendoredRuntime, runtime);
+            throw new FerruleCompatibilityException(
+                "manifest runtime identity",
+                vendoredRuntime,
+                runtime
+            );
         }
     }
 }

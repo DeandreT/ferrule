@@ -23,17 +23,15 @@ public static class FerruleDynamicDocuments
                 throw new FerruleRuntimeException(
                     FerruleRuntimeError.InvalidDocumentCollectionItem,
                     $"document collection requires document sets, found {found}",
-                    foundInstance: found);
+                    foundInstance: found
+                );
             }
             documents.AddRange(set.Documents);
         }
         return new FerruleDocumentSet(documents);
     }
 
-    public static FerruleDocument Create(
-        uint node,
-        FerruleValue path,
-        FerruleInstance value)
+    public static FerruleDocument Create(uint node, FerruleValue path, FerruleInstance value)
     {
         ArgumentNullException.ThrowIfNull(value);
         if (path.Kind != FerruleValueKind.String)
@@ -42,7 +40,8 @@ public static class FerruleDynamicDocuments
                 FerruleRuntimeError.DynamicTargetPath,
                 $"Node {node}: dynamic target path expected a string, got {path.Kind}.",
                 node: node,
-                foundKind: path.Kind);
+                foundKind: path.Kind
+            );
         }
 
         if (string.IsNullOrWhiteSpace(path.StringValue))
@@ -50,7 +49,8 @@ public static class FerruleDynamicDocuments
             throw new FerruleRuntimeException(
                 FerruleRuntimeError.EmptyDynamicTargetPath,
                 $"Node {node}: dynamic target path must not be empty.",
-                node: node);
+                node: node
+            );
         }
 
         try
@@ -58,14 +58,17 @@ public static class FerruleDynamicDocuments
             return new FerruleDocument(path.StringValue, value);
         }
         catch (FerruleRuntimeException error)
-            when (error.Error is FerruleRuntimeError.InvalidDocumentPath
-                or FerruleRuntimeError.NestedDocumentSet)
+            when (error.Error
+                    is FerruleRuntimeError.InvalidDocumentPath
+                        or FerruleRuntimeError.NestedDocumentSet
+            )
         {
             throw new FerruleRuntimeException(
                 FerruleRuntimeError.EmptyDynamicTargetPath,
                 $"Node {node}: dynamic target path must not be empty.",
                 error,
-                node: node);
+                node: node
+            );
         }
     }
 }

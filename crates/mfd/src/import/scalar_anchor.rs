@@ -105,6 +105,12 @@ impl GraphBuilder<'_> {
             );
         }
         let index = *self.fn_by_output.get(&key)?;
+        if self.fn_components[index].kind == 4
+            && let Some(target) = target
+            && let Some(node) = self.explicit_lookup_key_binding(key, active_anchor, target)
+        {
+            return Some(node);
+        }
         if is_filter(self.fn_components.get(index)?)
             && let Some(node) = self.scalar_filter_lookup_at_anchor(index, key, &[], active_anchor)
         {
@@ -112,7 +118,7 @@ impl GraphBuilder<'_> {
         }
         let function = self.fn_components.get(index)?;
         if self.json_parser_array_filter(index) {
-            return self.json_parser_lookup_at_anchor(index, key, active_anchor);
+            return self.json_parser_lookup_at_anchor(index, key, active_anchor, target);
         }
         if function.name == "group-by"
             && function.output_pins.get(1).copied().flatten() == Some(key)
