@@ -456,6 +456,13 @@ pub struct SnarlStyle {
     )]
     pub wire_style: Option<WireStyle>,
 
+    /// Route connected wires around intervening nodes. Default: true.
+    #[cfg_attr(
+        feature = "serde",
+        serde(skip_serializing_if = "Option::is_none", default)
+    )]
+    pub avoid_nodes: Option<bool>,
+
     /// Prefer separate lanes for connected wires where space permits. Default: false.
     pub avoid_other_wires: Option<bool>,
 
@@ -766,6 +773,7 @@ impl SnarlStyle {
             upscale_wire_frame: None,
             wire_style: None,
             avoid_other_wires: None,
+            avoid_nodes: None,
             wire_layer: None,
             header_drag_space: None,
             collapsible: None,
@@ -1152,6 +1160,11 @@ where
     let mut connected_wires = snarl.wires.iter().collect::<Vec<_>>();
     connected_wires.sort_by_key(|wire| (wire.out_pin, wire.in_pin));
     let mut lanes = style.avoid_other_wires.unwrap_or(false).then(Vec::new);
+    let obstacles = if style.avoid_nodes.unwrap_or(true) {
+        node_rects.as_slice()
+    } else {
+        &[]
+    };
     for wire in connected_wires {
         let Some(from_r) = output_info.get(&wire.out_pin) else {
             continue;
@@ -1175,7 +1188,7 @@ where
             to_r.pos,
             wire_threshold,
             wire_style,
-            &node_rects,
+            obstacles,
             6.0 + wire_width.max(1.0),
             lanes.as_mut(),
         );
