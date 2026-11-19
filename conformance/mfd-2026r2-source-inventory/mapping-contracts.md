@@ -64,18 +64,15 @@ Existing evidence answers narrower questions. For example:
   distinguish primary acquisition from per-record output. `file-parameter`,
   `dynamic-name-counter` and `dynamic-name-key` illustrate that distinction.
 
-## Remaining coverage
+## Coverage after the mapping review
 
-Of the original 462 leaves, 30 have manager contracts, 93 now have mapping
-contracts, and **339** remain at triage depth (211 operation facets and 128
-reference facets). These are page counts: a reviewed page may still contain
-unitemized behavior. The page count is not a count of qualified native capabilities.
-Further work includes connector- and driver-specific failure behavior, the
-remaining EDI dialects and validation rules, document collections, and backend
-restrictions on individual operations. All sixteen ledger assessment
-dimensions retain their existing independent evidence requirements.
+This review supplied cases for 93 leaves in addition to the 30 manager pages.
+The subsequent [workflow review](workflow-contracts.md) covers the other 339
+(211 operation facets and 128 reference facets). See its review handoff for
+the current partition and outstanding source and qualification questions.
 
 Run `python verify_context_leaf_review.py` for the repository checks. Use
 `--pdf PATH` with the pinned installer manual to check bookmark identity, page
-extent and all 112 in-section locators. That check establishes that the citation
+extent and the in-section locators for these 112 cases and the workflow cases.
+That check establishes that the citation
 can be found; interpretation of the surrounding text still needs review.
