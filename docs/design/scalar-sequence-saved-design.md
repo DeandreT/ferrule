@@ -2,10 +2,11 @@
 
 This design is the bounded deliverable for [#203](https://github.com/DeandreT/ferrule/issues/203). It inventories a possible saved-design representation of the existing scalar `filter_map_v1` operation. It changes no importer, exporter, model, engine, backend, or GUI code.
 
-**No `filter_map_v1` saved-design form is qualified by this proposal.** The
-[native controls](../conformance/scalar-sequence-native-controls.md) cover limited
-legacy Generate and identity-stage observations, not complete descriptor
-reconstruction or the distinguishing filter/map execution cases. The current
+**Keep the typed refusal for all 17 transform recipes.** The
+[native controls](../conformance/scalar-sequence-native-controls.md) distinguish
+source from dense positions, full consumption from early ItemAt, and capture
+failure on a nonempty range from empty-range success. No candidate reconstructs
+the complete descriptor. The current
 exporter must retain `MfdError::UnsupportedSequenceComposition { item }` for every
 such descriptor, including an unselected or otherwise valid one. XML parsing,
 a warning-free preflight, or a successful Ferrule reimport cannot establish
@@ -80,7 +81,7 @@ Literal typed expectations are written before any saved-design candidate. Comple
 
 ## Bounded public qualification
 
-The [ignored public qualification tests](../../crates/mfd/tests/scalar_sequence_saved_design203.rs)
+The [public qualification tests](../../crates/mfd/tests/scalar_sequence_saved_design203.rs)
 use the complete [descriptor recipes](../../crates/mfd/tests/fixtures/scalar_sequence_saved_design203_recipes.json)
 and [independent public expectations](../../crates/mfd/tests/fixtures/scalar_sequence_saved_design203_expected.json).
 The tests keep materialization and execution as separate gates:
@@ -100,20 +101,59 @@ The tests keep materialization and execution as separate gates:
   artifacts. The seven legacy controls are native baselines; this gate does not
   claim fresh legacy export or external save/reopen qualification.
 
-Both tests are ignored by default. Run them explicitly with a fresh, absent,
-normalized absolute `FERRULE_SAVED_DESIGN203_EVIDENCE_DIR`, using a distinct
-output directory for each gate. A complete public qualification requires all
+Only the materialization-only test is ignored by default. To retain evidence,
+run the tests with a fresh, absent, normalized absolute
+`FERRULE_SAVED_DESIGN203_EVIDENCE_DIR`, using a distinct output directory for
+each gate. A complete public qualification requires all
 24 native comparisons and all 51 typed refusal controls to pass; a partial or
 failed run does not qualify the cohort. The saved originals remain the evidence,
 not a summary flag alone.
 
 Public previews and checker boundaries do not expose every unused raw stage
 value, internal counter or intermediate sequence. Internal unit observations in
-[#253](https://github.com/DeandreT/ferrule/issues/253) and ordinary external
-create/save/reopen in [#263](https://github.com/DeandreT/ferrule/issues/263) remain
-separate, UNRUN qualification work. Native engine agreement and typed export
+[#253](https://github.com/DeandreT/ferrule/issues/253) qualified 11 internal
+controls. The separate controller checkpoint in
+[#263](https://github.com/DeandreT/ferrule/issues/263) does not qualify a
+filter/map topology. Native engine agreement and typed export
 refusal establish neither an external saved-design representation nor native
 MFD interoperability.
+
+## Disposition by frozen recipe
+
+Indices are the zero-based indices in the public expectations above. All 24
+have Ferrule interpreter comparisons. The seven legacy recipes remain baselines,
+with no change to their existing importer/exporter admission. For **every** row
+from 7 through 23 the interchange decision is **reject**. “Unverified” below
+describes the external evidence, not permission to export that recipe.
+
+| Index | Recipe | What the external controls decide |
+| --- | --- | --- |
+| 0 | Explicit range and positions | Complete values match the decimal and generic-literal controls; neither preserves the frozen Int declaration. |
+| 1 | Default lower bound | Disconnected lower input unverified. The [explicit/omitted probe pair](fixtures/native-feed-controls/README.md) isolates it. |
+| 2 | Reversed range | Empty rows observed in a transformed capture control; no exact legacy descriptor comparison. |
+| 3–6 | Filtered Exists; third ItemAt; computed Sum; computed rows | Legacy source paths exist; no exact external comparison for these four recipes. |
+| 7 | Identity rows | Matching values with an always-true filter hide the two positions. Repair import does not reconstruct the descriptor. |
+| 8 | Source, parent and dense positions | Variable rows distinguish original and dense ordinals; the parent-position-7 capture and both owners are unverified. |
+| 9 | Ordered string captures | No proof of declaration order, once-only evaluation or exact tags. |
+| 10 | False suppresses mapper Raise | The current scalar UDF exporter refuses the Raise body even on the unselected path. |
+| 11 | Eager before Exists | Late mapper error required; an ItemAt result cannot qualify Exists. |
+| 12 | Eager before ItemAt(1) | Unguarded variable returns 42 instead of the late native error. Count guard matches that one error, not its Ferrule cause or invocation count. |
+| 13 | Empty range, failing capture | Full-row candidate loses the reachable capture error on an empty range ([#1127](https://github.com/DeandreT/ferrule/pull/1127)). |
+| 14 | First bad capture before later Raise | Neither order nor exact first-capture type error is established by the one-capture experiment. |
+| 15–17 | Bool; Unicode String; finite Float | No exact saved/reopened typed result comparison for any of the three. |
+| 18 | Null mapper result | A missing XML value would not preserve the strict mapper-result error. |
+| 19 | Upper expression before lower coercion | Both expression evaluation and the original upper error are unverified. |
+| 20–21 | Atomic item reservation; cancellation before reservation | No ordinary saved representation of the shared run-state boundary has been identified. |
+| 22 | Nested later argument before adaptation | Pin order alone does not establish which exception reaches the caller. |
+| 23 | Sum over all mapped items | The existing legacy reducer is a different descriptor; no qualified reconstruction. |
+
+The refusal decision needs no further preview of the same failing candidates.
+The smallest useful **new transform** check requires a new topology with an
+explicit account of both owners and the shared host boundary. Check its
+saved/reopened descriptor against case 7 first. If it loses an owner or
+signature, stop there. If it passes, use the empty failing capture and late
+ItemAt cases before widening execution coverage. A positive legacy probe changes
+only its legacy cell.
 
 ## Minimum experiment before changing interchange
 
@@ -131,7 +171,7 @@ The host item/work/cancellation contract remains a blocker to general native int
 
 No production admission is recommended yet. Preserve the existing global typed transform refusal before artifact preparation in both compatibility and native export entry points. Preserve legacy import/export behavior and current nested-clone ownership. Do not fall back to a bare Generate, scalar map, legacy reducer, empty result, warning-only dropped filter, or partial design.
 
-No importer/exporter implementation issue is justified by this source-only inventory. After reviewed ordinary save/reopen and complete execution evidence establish a faithful bounded form, the minimum disjoint follow-ons would be:
+No importer/exporter implementation issue is justified for the tested candidates. After reviewed ordinary save/reopen and complete execution evidence establish a faithful bounded form, the minimum disjoint follow-ons would be:
 
 1. A focused importer recognizer in a new sequence-composition module, with a small fallible call seam in the graph/sequence importer. It would require a unique complete topology, exact stage/capture signatures and transitive UDFs, explicit source/output owner reconstruction, and typed refusal for ambiguous or unsupported forms. It must preserve declared target lineage and allocate no accidental shared private owners.
 2. A focused exporter planner/renderer in a new sequence-composition module, with the existing preflight refusal replaced only for the qualified form. Preflight must finish before any siblings/design are published; unrelated forms retain the same typed refusal. It depends on the reviewed representation and the importer round-trip controls, with no shared module edits in parallel.
@@ -143,6 +183,5 @@ These are conditional file-ownership boundaries, not created issues or authoriza
 - [x] Independently review this design and complete literals.
 - [x] Materialize all 24 complete public Projects and input shells.
 - [x] Qualify all 24 native comparisons and 51 separate typed export-refusal controls.
-- [ ] Perform ordinary create/save/reopen and complete descriptor/execution comparisons.
-- [ ] Establish any faithful supported form and its limits.
-- [ ] Create small implementation issues only after that evidence and review.
+- [x] Decide the tested candidates: retain the typed refusal; record the observed counterexamples and the unverified cells.
+- [ ] For a **new candidate only**, establish complete descriptor and execution preservation before opening importer/exporter implementation issues.

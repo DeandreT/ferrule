@@ -648,10 +648,11 @@ their refusals.
   [#237](https://github.com/DeandreT/ferrule/issues/237)/[#245](https://github.com/DeandreT/ferrule/pull/245).
   Zero/one-operand calls still refuse; broader nullable logical semantics and
   external equivalence remain separate.
-- [ ] Define explicit same-scope singular-target multiple-feed semantics in
-  [#241](https://github.com/DeandreT/ferrule/issues/241) before admitting them. Preserve
-  distinct expressions and the existing duplicate-binding refusal; #239's
-  declared ancestor branches do not supply an inferred winner.
+- [x] Decide the tested [same-scope singular-target shapes](docs/conformance/singular-target-feeds.md#disposition-by-target-shape)
+  in [#241](https://github.com/DeandreT/ferrule/issues/241): competing physical
+  wires refuse; separate cloned entries retain both bindings and refuse singular
+  validation. [#1464](https://github.com/DeandreT/ferrule/issues/1464) isolates
+  the remaining reference conversion-error question.
 - [x] Qualify #203's 24 independently authored public interpreter observations
   and 51 separate typed export refusals. All 237 interchange library tests,
   workspace strict warnings and formatting pass on the focused fixture candidate.
@@ -660,11 +661,11 @@ their refusals.
 - [x] Publish those fixtures in [#266](https://github.com/DeandreT/ferrule/pull/266).
   All three hosted jobs and fresh combined-main 24+51 / strict / format checks pass;
   #264 is closed. Repeated fixture runs do not increase the distinct totals.
-- [ ] Define a faithful saved form in [#203](https://github.com/DeandreT/ferrule/issues/203).
-  Public Ferrule observations and typed refusal do not establish external saved-
-  design execution or save/reopen. Exact stage/capture/position/error preservation
-  is required before importer/exporter implementation. XML annotations and JSON5
-  metadata remain separate contracts.
+- [x] Record the [saved-design decision for each frozen recipe](docs/design/scalar-sequence-saved-design.md#disposition-by-frozen-recipe)
+  in [#203](https://github.com/DeandreT/ferrule/issues/203). None of the tested
+  transform candidates qualifies. A future implementation needs a faithful saved
+  descriptor and execution comparison. The disconnected legacy lower-bound
+  reference control is tracked in [#1463](https://github.com/DeandreT/ferrule/issues/1463).
 - [x] Qualify #263's 13 simulated controller-policy groups / 41 subcases with
   independent expectations and complete failure retention. This is simulation,
   separate from its external owner's normal closure and any native application.
