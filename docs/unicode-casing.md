@@ -38,6 +38,22 @@ mapping changes their results. Case-insensitive regular-expression matching uses
 the separate regex folding profile described in
 [code generation](code-generation.md#portable-subset).
 
+### Caller culture
+
+`upper("i/ﬃ")` returns `I/FFI`, with scalar length 5, whether the caller
+uses English, Turkish or Azeri conventions. Portable casing also preserves
+combining marks: `lower("I\u0307Σ")` consists of `i`, U+0307 and final `ς`.
+The [composition test](../crates/functions/tests/portable_casing_composition.rs)
+checks the mapped text before passing it to `length`.
+
+A caller-culture uppercase operation would need its own identity. Besides
+language tailoring (Turkish `i` → `İ`), a simple-uppercase profile can leave a
+ligature as one scalar where portable full casing expands it. Choosing a
+culture alone therefore does not specify the algorithm. Such an operation
+would also need to define when it consults the host, what happens when no
+culture is supplied, and how Rust and C# hosts select the same profile.
+Ferrule's portable builtins require no culture callback.
+
 ## Implementation
 
 `crates/functions/src/casing/` owns the Rust implementation. Generated Rust
