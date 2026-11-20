@@ -56,6 +56,8 @@ When an envelope selects a message, the selected file must declare that type
 as the text of a single unqualified `Config/Message/MessageType`. A matching
 filename alone is insufficient. Filesystem lookup may still find a differently
 named sibling by its declaration; unrelated nested metadata does not count.
+The selected message's declaration is checked before following its segment
+includes. A mismatched message does not cause reads of its own includes.
 IDoc and SWIFT keep their separate existing budgets and APIs; they do not gain
 host-byte-reader support. Explicit bindings to those unsupported backends still
 refuse rather than falling back to filesystem access.

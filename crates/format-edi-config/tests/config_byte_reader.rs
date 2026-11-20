@@ -104,6 +104,69 @@ fn supplied_message_file_must_declare_the_selected_type() -> Result<(), Box<dyn 
 }
 
 #[test]
+fn selected_declaration_controls_which_includes_the_host_reads()
+-> Result<(), Box<dyn std::error::Error>> {
+    let root = std::env::current_dir()?.join("authored-edi-byte-identities");
+    for (declared, accepted) in [("ORBIT", false), ("850", true)] {
+        let reader = source(&root, ENVELOPE, "850.Config");
+        let segment = root.join("OrderFields.Segment");
+        let message = MESSAGE
+            .replace("<MessageType>850", &format!("<MessageType>{declared}"))
+            .replace("Fields.Segment", "OrderFields.Segment")
+            .replace("ref=\"BEG\"", "ref=\"OrderHeader\"");
+        let extra = br#"<Config><Elements><Segment name="OrderHeader"><Data ref="F999"/></Segment></Elements></Config>"#;
+        reader
+            .files
+            .borrow_mut()
+            .insert(root.join("850.Config"), Arc::from(message.as_bytes()));
+        reader
+            .files
+            .borrow_mut()
+            .insert(segment.clone(), Arc::from(extra.as_slice()));
+        let result = config::import_config_with_byte_reader(
+            &root.join("Envelope.Config"),
+            &root,
+            &["850".into()],
+            reader.clone(),
+        );
+        if accepted {
+            let compiled = result?;
+            assert!(
+                compiled
+                    .schema
+                    .child("Interchange")
+                    .and_then(|n| n.child("Group"))
+                    .and_then(|n| n.child("Message_850"))
+                    .and_then(|n| n.child("OrderHeader"))
+                    .is_some()
+            );
+        } else {
+            assert!(matches!(result, Err(config::ConfigError::Invalid(reason))
+                if reason.contains("declaring selected type")));
+        }
+        assert_eq!(
+            reader
+                .calls
+                .borrow()
+                .iter()
+                .filter(|p| *p == &segment)
+                .count(),
+            usize::from(accepted)
+        );
+        assert_eq!(
+            reader
+                .calls
+                .borrow()
+                .iter()
+                .filter(|p| p.ends_with("850.Config"))
+                .count(),
+            1
+        );
+    }
+    Ok(())
+}
+
+#[test]
 fn supplied_edi_does_not_discover_message_files_by_content()
 -> Result<(), Box<dyn std::error::Error>> {
     let root = std::env::current_dir()?.join("authored-edi-byte-identities");

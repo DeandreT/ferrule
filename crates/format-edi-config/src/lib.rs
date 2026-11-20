@@ -23,7 +23,7 @@ mod test_support;
 
 use std::path::{Path, PathBuf};
 
-use definitions::{Definitions, compiled_config, load_definitions};
+use definitions::{Definitions, compiled_config, load_definitions, load_root_definitions};
 pub use files::EdiConfigByteReader;
 use files::{Files, parse_document};
 use ir::SchemaNode;
@@ -175,7 +175,7 @@ fn import_config_with_files(
     let mut messages = Vec::with_capacity(selected_messages.len());
     for selected in selected_messages {
         let message_path = files.resolve_message(&path, selected)?;
-        load_definitions(&message_path, &mut files, &mut definitions)?;
+        let new_message = !files.contains(&message_path);
         let message_text = files.read(&message_path)?;
         let message_doc = parse_document(&message_path, &message_text)?;
         let message = selected_layout(&message_doc, selected).ok_or_else(|| {
@@ -183,6 +183,14 @@ fn import_config_with_files(
                 "expected one Message layout declaring selected type `{selected}`"
             ))
         })?;
+        if new_message {
+            load_root_definitions(
+                &message_path,
+                message_doc.root_element(),
+                &mut files,
+                &mut definitions,
+            )?;
+        }
         messages.push(build_message(
             message,
             &definitions,
