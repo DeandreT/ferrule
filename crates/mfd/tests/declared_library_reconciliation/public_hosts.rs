@@ -612,7 +612,11 @@ fn imported_guarded_projects_run_ordinary_release_public_hosts() {
             "cargo-version",
             rust_command(&cargo, &rust).arg("--version"),
         );
-        assert_eq!(version.trim(), cargo_version.trim(), "wrong installed Cargo");
+        assert_eq!(
+            version.trim(),
+            cargo_version.trim(),
+            "wrong installed Cargo"
+        );
         checked(
             &directory,
             "rust-lock",

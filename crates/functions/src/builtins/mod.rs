@@ -676,9 +676,12 @@ fn sqlite_multiply(args: &[Value]) -> Result<Value, FunctionError> {
         numeric_operand(left, FUNCTION)?,
         numeric_operand(right, FUNCTION)?,
     ) {
-        (NumericOperand::Int(left), NumericOperand::Int(right)) => Ok(left
-            .checked_mul(right)
-            .map_or_else(|| Value::Float(left as f64 * right as f64), Value::Int)),
+        (NumericOperand::Int(left), NumericOperand::Int(right)) => {
+            Ok(match left.checked_mul(right) {
+                Some(product) => Value::Int(product),
+                None => Value::Float(left as f64 * right as f64),
+            })
+        }
         (left, right) => Ok(Value::Float(left.as_f64() * right.as_f64())),
     }
 }
