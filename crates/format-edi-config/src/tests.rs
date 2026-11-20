@@ -157,6 +157,16 @@ fn envelope_selection_finds_message_type_and_sets_trigger_qualifier() {
         Some("005010X224A2")
     );
     assert!(message.repeating);
+    // A note about the selected type in another catalog is not a second match.
+    let other = r#"<Config><Format standard="X12"/><Note><MessageType>837-Q2</MessageType></Note>
+        <Message><MessageType>ORBIT</MessageType><Group name="Orbit"><Segment ref="ST"/></Group></Message></Config>"#;
+    write(&directory.join("orbit.Config"), other);
+    assert!(import_config(&envelope, &["837-Q2".into()]).is_ok());
+
+    // A wrong direct sibling must fail even with the valid dental catalog present.
+    write(&directory.join("837-Q2.Config"), other);
+    assert!(matches!(import_config(&envelope, &["837-Q2".into()]),
+        Err(ConfigError::Invalid(reason)) if reason.contains("declaring selected type")));
     std::fs::remove_dir_all(directory).unwrap();
 }
 

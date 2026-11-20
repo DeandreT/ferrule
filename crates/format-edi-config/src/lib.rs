@@ -178,15 +178,11 @@ fn import_config_with_files(
         load_definitions(&message_path, &mut files, &mut definitions)?;
         let message_text = files.read(&message_path)?;
         let message_doc = parse_document(&message_path, &message_text)?;
-        let message = message_doc
-            .root_element()
-            .children()
-            .find(|node| node.has_tag_name("Message"))
-            .ok_or_else(|| {
-                ConfigError::Invalid(format!(
-                    "selected message `{selected}` has no Message layout"
-                ))
-            })?;
+        let message = selected_layout(&message_doc, selected).ok_or_else(|| {
+            ConfigError::Invalid(format!(
+                "expected one Message layout declaring selected type `{selected}`"
+            ))
+        })?;
         messages.push(build_message(
             message,
             &definitions,
@@ -199,4 +195,30 @@ fn import_config_with_files(
     }
     let schema = build_envelope(root, standard, messages, &definitions, &mut schema_nodes)?;
     Ok(compiled_config(schema, &definitions))
+}
+
+/// Discovery and compilation must agree about which layout owns the type.
+/// A filename, group name or discriminator value is not a type declaration.
+fn selected_layout<'a, 'input>(
+    document: &'a roxmltree::Document<'input>,
+    selected: &str,
+) -> Option<roxmltree::Node<'a, 'input>> {
+    let root = document.root_element();
+    if root.tag_name().name() != "Config" || root.tag_name().namespace().is_some() {
+        return None;
+    }
+    let mut layouts = root.children().filter(|n| n.has_tag_name("Message"));
+    let layout = layouts.next()?;
+    let mut types = layout.children().filter(|n| n.has_tag_name("MessageType"));
+    let ty = types.next()?;
+    let mut content = ty.children().filter(|n| n.is_element() || n.is_text());
+    let value = content.next()?;
+    (layouts.next().is_none()
+        && types.next().is_none()
+        && layout.tag_name().namespace().is_none()
+        && ty.tag_name().namespace().is_none()
+        && value.is_text()
+        && value.text() == Some(selected)
+        && content.next().is_none())
+    .then_some(layout)
 }

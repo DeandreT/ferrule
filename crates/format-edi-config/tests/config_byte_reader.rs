@@ -72,6 +72,38 @@ fn repeated_edi_reads_consume_the_same_supplied_bytes_without_path_reopens()
 }
 
 #[test]
+fn supplied_message_file_must_declare_the_selected_type() -> Result<(), Box<dyn std::error::Error>>
+{
+    let root = std::env::current_dir()?.join("authored-edi-byte-identities");
+    let declared = "<MessageType>850</MessageType>";
+    for replacement in [
+        "<MessageType>ORBIT</MessageType>",
+        "<Note><MessageType>850</MessageType></Note>",
+        "<MessageType>850</MessageType><MessageType>ORBIT</MessageType>",
+        "<MessageType xmlns='urn:sample:notes'>850</MessageType>",
+        "<MessageType>850<Note/></MessageType>",
+    ] {
+        let source = source(&root, ENVELOPE, "850.Config");
+        source.files.borrow_mut().insert(
+            root.join("850.Config"),
+            Arc::from(MESSAGE.replace(declared, replacement).as_bytes()),
+        );
+        let result = config::import_config_with_byte_reader(
+            &root.join("Envelope.Config"),
+            &root,
+            &["850".into()],
+            source,
+        );
+        assert!(
+            matches!(result, Err(config::ConfigError::Invalid(reason))
+            if reason.contains("declaring selected type")),
+            "{replacement}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
 fn supplied_edi_does_not_discover_message_files_by_content()
 -> Result<(), Box<dyn std::error::Error>> {
     let root = std::env::current_dir()?.join("authored-edi-byte-identities");
