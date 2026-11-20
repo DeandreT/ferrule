@@ -51,7 +51,11 @@ fn rust_toolchain_keeps_lint_format_and_wasm_components() -> anyhow::Result<()> 
     assert_eq!(toolchain["profile"].as_str(), Some("minimal"));
     let components = toolchain["components"].as_array().unwrap();
     for required in ["clippy", "rustfmt"] {
-        assert!(components.iter().any(|value| value.as_str() == Some(required)));
+        assert!(
+            components
+                .iter()
+                .any(|value| value.as_str() == Some(required))
+        );
     }
     assert!(
         toolchain["targets"]
@@ -145,7 +149,10 @@ fn test_workflows_use_the_required_nextest_and_keep_doctests() -> anyhow::Result
 fn frontend_parallelism_is_automatic_for_generic_targets() -> anyhow::Result<()> {
     let config: toml::Value = toml::from_str(&read(".cargo/config.toml")?)?;
     let build = config["build"].as_table().unwrap();
-    assert!(build.get("target").is_none(), "do not change the default target");
+    assert!(
+        build.get("target").is_none(),
+        "do not change the default target"
+    );
     assert!(
         build.get("rustc-wrapper").is_none() && build.get("rustc-workspace-wrapper").is_none(),
         "inherit the caller's compiler cache wrapper"
@@ -201,8 +208,16 @@ fn fast_linkers_are_scoped_to_their_native_targets() -> anyhow::Result<()> {
             .collect::<Vec<_>>();
         assert_eq!(flags, expected, "{target}");
         let propagated_linker = &environment[&format!("{prefix}_LINKER")];
-        assert_eq!(propagated_linker["value"].as_str(), Some(linker), "{target}");
-        assert_eq!(propagated_linker["force"].as_bool(), Some(false), "{target}");
+        assert_eq!(
+            propagated_linker["value"].as_str(),
+            Some(linker),
+            "{target}"
+        );
+        assert_eq!(
+            propagated_linker["force"].as_bool(),
+            Some(false),
+            "{target}"
+        );
     }
     Ok(())
 }
