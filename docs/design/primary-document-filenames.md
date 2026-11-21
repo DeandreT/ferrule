@@ -138,8 +138,8 @@ input expression before pruning its graph dependencies. The selected source's
 data ports identify the owning declaration; a component label or declaration
 order alone is insufficient. Ambiguous feeds, missing connections and unsupported
 wrapper controls are refused.
-An optional header containing an empty namespace list, or the empty namespace
-followed by the MFD protocol namespace, is metadata rather than another file wrapper.
+An optional header containing an empty namespace list, or the native empty and
+reserved design-format namespace pair, is metadata rather than another file wrapper.
 Declared wrapper namespace slots must resolve to the protocol domain. Other
 header content, unresolved slots and multiple headers remain refused.
 
@@ -170,6 +170,12 @@ is admitted only as exact `UTF-8` on the JSON target, whose result is UTF-8
 bytes. Duplicate property blocks, unknown or namespaced properties, conflicting
 values, and source-side target-encoding settings refuse.
 
+Inside an endpoint's `data`, `text`, or `json` declaration, XML layout
+whitespace and comments are allowed. Character data such as `encoding=1000`
+is not a supported way to declare a reader policy: import refuses it instead
+of producing the same plan as an empty declaration. A namespace-qualified
+format element is not the unqualified `text` or `json` element.
+
 A required filename parameter may have no `sources`, an empty `sources`, or
 one empty keyless `datapoint` with absent or zero `pos`. That placeholder cannot
 name a default feed. Keyed placeholders, optional parameters, duplicate blocks,
@@ -181,6 +187,13 @@ markers at any depth are not transport decoration. A reader policy or conversion
 must be preserved explicitly before those saved forms can be admitted. The filename
 gate refuses them rather than relying on an ordinary reader's ignored metadata
 or a successful String-only example. It never rewrites the original design.
+
+The [dynamic file-name rules](https://www.altova.com/manual/en/mapforceenterprise/2024.0/mffdynamic_input_output-per-comp.html),
+[simple-input defaults](https://www.altova.com/manual/en/mapforceenterprise/2024.0/mff_in_create_default_value.html),
+and [JSON component encoding settings](https://www.altova.com/manual/en/mapforceenterprise/2024.0/mff_json_component_settings.html)
+describe separate settings. Documentation of their meaning and independently
+authored native/generated-host fixtures are not external-reference execution
+evidence or qualification of the deferred reader and conversion controls.
 
 The output filename is not a target data field or a document-producing scope.
 Only direct selection and singular document roots are admitted. Wildcard
@@ -445,7 +458,3 @@ document project.
   limits in place of the input file. Run publishes through the command-line
   run; Preview performs the same run in memory. Debug Run, Debug Preview and
   library generation are not offered for document projects.
-
-Sources: [dynamic file-name rules](https://www.altova.com/manual/en/mapforceenterprise/2024.0/mffdynamic_input_output-per-comp.html),
-[simple-input defaults](https://www.altova.com/manual/en/mapforceenterprise/2024.0/mff_in_create_default_value.html),
-[JSON component encoding settings](https://www.altova.com/manual/en/mapforceenterprise/2024.0/mff_json_component_settings.html).
