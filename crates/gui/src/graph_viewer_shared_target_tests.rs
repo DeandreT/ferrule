@@ -373,7 +373,8 @@ fn assert_named_control_blocks(project: &mut Project, node: NodeId, label: &str)
         assert!(
             viewer
                 .blocking_references_to(node)
-                .contains(&label.to_string())
+                .iter()
+                .any(|item| item == label)
         );
         assert!(!viewer.remove_graph_node(node, canvas, &mut snarl));
         assert!(

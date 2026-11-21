@@ -365,12 +365,18 @@ fn validation_checks_owner_collection_and_output_structure() {
     };
     let unknown = project(hierarchy(plan(owner(Some("missing")), &["Files", "File"])));
     assert!(
-        issues(&unknown).contains(&"unknown source owner `missing`".to_string()),
+        issues(&unknown)
+            .iter()
+            .any(|issue| issue == "unknown source owner `missing`"),
         "{:?}",
         issues(&unknown)
     );
     let empty = project(hierarchy(plan(owner(Some("")), &["Files", "File"])));
-    assert!(issues(&empty).contains(&"named source owner cannot be empty".to_string()));
+    assert!(
+        issues(&empty)
+            .iter()
+            .any(|issue| issue == "named source owner cannot be empty")
+    );
     for path in [
         &["Single"][..],
         &["Batch"],

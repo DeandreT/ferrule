@@ -587,11 +587,13 @@ fn wrong_and_inactive_owner_reads_are_typed_validation_errors() {
     }];
     let found = issues(&singleton);
     assert!(
-        found.contains(&"owned join field node 1 reads `x` below singleton collection primary `Header/code`; a singleton member is read with an empty path".to_string()),
+        found.iter().any(|issue| issue == "owned join field node 1 reads `x` below singleton collection primary `Header/code`; a singleton member is read with an empty path"),
         "{found:?}"
     );
     assert!(
-        found.contains(&"join position node 5 references inactive join 5".to_string()),
+        found
+            .iter()
+            .any(|issue| issue == "join position node 5 references inactive join 5"),
         "{found:?}"
     );
 }
