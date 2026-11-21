@@ -145,14 +145,40 @@ fn private_dir(path: &Path) {
         .expect("private test directory mode");
 }
 
-/// The example build of the worker entry, next to this test executable.
+fn worker_example_path(test_exe: &Path) -> PathBuf {
+    // Cargo puts test executables in `deps` or below `build`, but publishes the
+    // example under the profile directory in both layouts.
+    let test_directory = test_exe.parent().expect("test directory");
+    let profile = if test_directory.ends_with("out") {
+        test_directory
+            .ancestors()
+            .find(|path| path.ends_with("build"))
+            .and_then(Path::parent)
+    } else {
+        test_directory.parent()
+    };
+    profile
+        .expect("target profile directory")
+        .join("examples/packaged_pdf_worker")
+}
+
+#[test]
+fn worker_example_is_beside_the_profile_outputs_in_both_cargo_layouts() {
+    for test in [
+        "target/debug/deps/ferrule_gui-unit",
+        "target/debug/build/gui-unit/out/ferrule_gui-unit",
+        "target/debug/build/gui/unit/out/ferrule_gui-unit",
+    ] {
+        assert_eq!(
+            worker_example_path(Path::new(test)),
+            Path::new("target/debug/examples/packaged_pdf_worker")
+        );
+    }
+}
+
 fn built_worker() -> PathBuf {
     let exe = std::env::current_exe().expect("test executable");
-    let worker = exe
-        .parent()
-        .and_then(Path::parent)
-        .expect("target profile directory")
-        .join("examples/packaged_pdf_worker");
+    let worker = worker_example_path(&exe);
     assert!(
         worker.is_file(),
         "{} is missing; `cargo test -p gui` builds it",

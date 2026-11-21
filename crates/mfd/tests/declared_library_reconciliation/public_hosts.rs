@@ -430,13 +430,18 @@ fn rust_command(cargo: &Path, directory: &Path) -> Command {
     let temp = directory.join(".tmp");
     std::fs::create_dir_all(&temp).unwrap();
     command.env("TMPDIR", &temp).env("RUSTFLAGS", "-D warnings");
-    let channel = RUST_TOOLCHAIN
+    command
+        .env("RUSTUP_TOOLCHAIN", pinned_rust_channel())
+        .env_remove("RUSTC");
+    command
+}
+
+fn pinned_rust_channel() -> &'static str {
+    RUST_TOOLCHAIN
         .lines()
         .find_map(|line| line.trim().strip_prefix("channel = "))
         .expect("repository Rust toolchain must declare a channel")
-        .trim_matches('"');
-    command.env("RUSTUP_TOOLCHAIN", channel).env_remove("RUSTC");
-    command
+        .trim_matches('"')
 }
 
 fn verify_host_records(stdout: &str, spec: &Json, csharp: bool) {
@@ -528,10 +533,13 @@ fn imported_guarded_projects_run_ordinary_release_public_hosts() {
         .canonicalize()
         .unwrap();
     let cargo = executable(std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into()));
+    let mut rustup = Command::new("rustup");
     let cargo_version = checked(
         &root,
         "pinned-cargo-version",
-        rust_command(Path::new(env!("CARGO")), &root).arg("--version"),
+        rustup
+            .current_dir(&root)
+            .args(["run", pinned_rust_channel(), "cargo", "--version"]),
     );
     assert!(cargo_version.trim().starts_with("cargo "));
     let dotnet = executable(
