@@ -1,18 +1,19 @@
 [build]
-rustflags = ["-Zunstable-options", "--jobs-frontend=0"]
+rustflags = ["-Zthreads=0"]
 
 [target.x86_64-unknown-linux-gnu]
 linker = "cc"
-rustflags = ["-C", "link-arg=-fuse-ld=mold", "-Zunstable-options", "--jobs-frontend=0"]
+rustflags = ["-C", "link-arg=-fuse-ld=mold", "-Zthreads=0"]
 
 [target.x86_64-pc-windows-msvc]
 linker = "rust-lld.exe"
-rustflags = ["-C", "linker-flavor=lld-link", "-Zunstable-options", "--jobs-frontend=0"]
+rustflags = ["-C", "linker-flavor=lld-link", "-Zthreads=0"]
 
 [env]
-# Keep the linker policy for generated consumers outside the checkout. Do not
-# propagate frontend flags here: Cargo adds inherited target flags to its config.
+# The pinned compiler accepts repeated identical -Zthreads values when nested
+# Cargo also reads this config. --jobs-frontend rejects repeated arguments.
+CARGO_BUILD_RUSTFLAGS = { value = "-Zthreads=0", force = false }
 CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER = { value = "cc", force = false }
-CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS = { value = "-C link-arg=-fuse-ld=mold", force = false }
-CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS = { value = "-C linker-flavor=lld-link", force = false }
+CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS = { value = "-C link-arg=-fuse-ld=mold -Zthreads=0", force = false }
+CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS = { value = "-C linker-flavor=lld-link -Zthreads=0", force = false }
 CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER = { value = "rust-lld.exe", force = false }

@@ -163,7 +163,10 @@ fn frontend_parallelism_is_automatic_for_generic_targets() -> anyhow::Result<()>
         .iter()
         .map(|flag| flag.as_str().unwrap())
         .collect::<Vec<_>>();
-    assert_eq!(flags, ["-Zunstable-options", "--jobs-frontend=0"]);
+    assert_eq!(flags, ["-Zthreads=0"]);
+    let inherited = &config["env"]["CARGO_BUILD_RUSTFLAGS"];
+    assert_eq!(inherited["value"].as_str(), Some("-Zthreads=0"));
+    assert_eq!(inherited["force"].as_bool(), Some(false));
     Ok(())
 }
 
@@ -191,7 +194,7 @@ fn fast_linkers_are_scoped_to_their_native_targets() -> anyhow::Result<()> {
         ),
     ] {
         assert_eq!(targets[target]["linker"].as_str(), Some(linker), "{target}");
-        let expected = ["-C", linker_flag, "-Zunstable-options", "--jobs-frontend=0"];
+        let expected = ["-C", linker_flag, "-Zthreads=0"];
         let flags = targets[target]["rustflags"]
             .as_array()
             .unwrap()
@@ -206,7 +209,7 @@ fn fast_linkers_are_scoped_to_their_native_targets() -> anyhow::Result<()> {
             .unwrap()
             .split_whitespace()
             .collect::<Vec<_>>();
-        assert_eq!(flags, ["-C", linker_flag], "{target}");
+        assert_eq!(flags, expected, "{target}");
         let propagated_linker = &environment[&format!("{prefix}_LINKER")];
         assert_eq!(
             propagated_linker["value"].as_str(),
