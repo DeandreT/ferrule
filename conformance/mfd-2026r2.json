@@ -42,7 +42,9 @@
     {"id": "xlsx-create-import-test", "kind": "repository", "location": "crates/mfd/tests/xlsx_hierarchical_import.rs", "description": "Open a saved hierarchical workbook target and generate new workbook bytes."},
     {"id": "xlsx-flat-csharp-test", "kind": "repository", "location": "crates/codegen-csharp/tests/flat_xlsx_dotnet.rs", "description": "New flat workbook byte API and explicit update-existing refusal; this file is test source, not a run receipt."},
     {"id": "xlsx-update-roundtrip-test", "kind": "repository", "location": "crates/mfd/tests/xlsx_export.rs", "description": "Hierarchical update flag, file execution and local export/re-import assertions."},
-    {"id": "xlsx-update-style-test", "kind": "repository", "location": "crates/format-xlsx/tests/hierarchical_update.rs", "description": "Hierarchical workbook tests for styled cells, date format substitution and formula refusal."}
+    {"id": "xlsx-update-style-test", "kind": "repository", "location": "crates/format-xlsx/tests/hierarchical_update.rs", "description": "Hierarchical workbook tests for styled cells, date format substitution and formula refusal."},
+    {"id": "sqlite-select-cli-oracle", "kind": "repository", "location": "conformance/mfd-2026r2-source-inventory/local-oracles/select_cases.py", "description": "Local CLI comparisons with independent SQLite result sets, including invalid inputs, incomplete import and profile-specific re-import."},
+    {"id": "xlsx-write-cli-oracle", "kind": "repository", "location": "conformance/mfd-2026r2-source-inventory/local-oracles/workbook_cases.py", "description": "Local CLI comparisons against independently authored and reopened OOXML workbooks: generation, selective writes, formula handling and re-import."}
   ],
   "capabilities": [
     {
@@ -23404,18 +23406,20 @@
       "depends_on": [],
       "support": {
         "import": {
-          "status": "unverified",
+          "status": "partial",
           "evidence": [
-            "standalone-select-test"
+            "standalone-select-test",
+            "sqlite-select-cli-oracle"
           ],
-          "detail": "A saved SQLite SELECT with no Call parameter is recognized for a bounded ORDER BY and first-row pattern; general custom SELECT import is unqualified."
+          "detail": "Strict import accepts an explicitly projected SQLite top-one SELECT. Widening to four columns for three declared outputs refuses strict import; best effort emits an incomplete project."
         },
         "interpreter": {
-          "status": "unverified",
+          "status": "partial",
           "evidence": [
-            "standalone-select-test"
+            "standalone-select-test",
+            "sqlite-select-cli-oracle"
           ],
-          "detail": "The local test checks the winning row after lowering; it does not execute arbitrary authored SQL through a driver. No run receipt was attached in this review."
+          "detail": "The imported descending-price selection returns the same three XML fields as an independent SQLite maximum-price query on a unique winner."
         },
         "native_export": {
           "status": "unassessed",
@@ -23423,11 +23427,12 @@
           "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
         },
         "ferrule_roundtrip": {
-          "status": "unverified",
+          "status": "partial",
           "evidence": [
-            "standalone-select-test"
+            "standalone-select-test",
+            "sqlite-select-cli-oracle"
           ],
-          "detail": "Local re-import compares the result after exporting sort and first-items components, not the original SQL text."
+          "detail": "Ferrule-extension export and local re-import retain the result, with a new schema-location filename. Native-profile export refuses this first-item XML root."
         },
         "gui": {
           "status": "unassessed",
@@ -23503,18 +23508,20 @@
       "depends_on": [],
       "support": {
         "import": {
-          "status": "unverified",
+          "status": "partial",
           "evidence": [
-            "parameter-select-test"
+            "parameter-select-test",
+            "sqlite-select-cli-oracle"
           ],
-          "detail": "SQLite cases wire a named integer parameter into the saved Call. A literal supplied on a wire is still a parameter."
+          "detail": "Strict import accepts a saved SQLite Call with a required mapped integer and ordered three-column result. Best effort produces the same project."
         },
         "interpreter": {
-          "status": "unverified",
+          "status": "partial",
           "evidence": [
-            "parameter-select-test"
+            "parameter-select-test",
+            "sqlite-select-cli-oracle"
           ],
-          "detail": "A joined threshold case asserts different row counts for different host values. No run receipt or general SQL driver qualification is attached."
+          "detail": "Two different bound values yield distinct complete ordered CSVs of equal row count; no matches yields headers only. Missing and malformed arguments refuse without publication."
         },
         "native_export": {
           "status": "unassessed",
@@ -23522,11 +23529,12 @@
           "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
         },
         "ferrule_roundtrip": {
-          "status": "unverified",
+          "status": "partial",
           "evidence": [
-            "parameter-select-test"
+            "parameter-select-test",
+            "sqlite-select-cli-oracle"
           ],
-          "detail": "A required typed threshold is checked through two local export and re-import cycles; no vendor reopening follows."
+          "detail": "Local re-import of the native-profile export retains these values, ordering and failures after lowering the Call to mapping operations; SQL text preservation and external execution are unqualified."
         },
         "gui": {
           "status": "unassessed",
@@ -23602,18 +23610,20 @@
       "depends_on": [],
       "support": {
         "import": {
-          "status": "unverified",
+          "status": "partial",
           "evidence": [
-            "xlsx-create-import-test"
+            "xlsx-create-import-test",
+            "xlsx-write-cli-oracle"
           ],
-          "detail": "A saved hierarchical output fixture specifies runtime worksheet names and mapped bands; the fresh-output cohort is bounded."
+          "detail": "Strict and ordinary import agree for a hierarchical two-sheet output with fresh-workbook semantics."
         },
         "interpreter": {
-          "status": "unverified",
+          "status": "partial",
           "evidence": [
-            "xlsx-create-import-test"
+            "xlsx-create-import-test",
+            "xlsx-write-cli-oracle"
           ],
-          "detail": "The fixture maps XML input to two worksheets and invokes fresh-workbook serialization. It does not check replacement of an existing styled file."
+          "detail": "Fresh and same-name replacement writes produce the expected mapped sheets and cells without inheriting template sheets, formulas or styles."
         },
         "native_export": {
           "status": "unassessed",
@@ -23621,9 +23631,11 @@
           "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
         },
         "ferrule_roundtrip": {
-          "status": "unassessed",
-          "evidence": [],
-          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          "status": "partial",
+          "evidence": [
+            "xlsx-write-cli-oracle"
+          ],
+          "detail": "Local re-import retains the hierarchical target options and produces the same fresh and replacement workbook contents."
         },
         "gui": {
           "status": "unassessed",
@@ -23701,19 +23713,21 @@
       "depends_on": [],
       "support": {
         "import": {
-          "status": "unverified",
+          "status": "partial",
           "evidence": [
-            "xlsx-update-roundtrip-test"
+            "xlsx-update-roundtrip-test",
+            "xlsx-write-cli-oracle"
           ],
-          "detail": "A saved hierarchical target carries updateexistingfile and the output path. The vendor formula policies are not qualified by importing that flag."
+          "detail": "Strict import retains the update flag on the hierarchical target independently of its ranges. This does not identify a selectable formula policy."
         },
         "interpreter": {
-          "status": "unverified",
+          "status": "partial",
           "evidence": [
             "xlsx-update-style-test",
-            "xlsx-update-roundtrip-test"
+            "xlsx-update-roundtrip-test",
+            "xlsx-write-cli-oracle"
           ],
-          "detail": "Bounded hierarchical file tests check selected values, a preserved bold number format, and refusal on addressed formulas. Date cells can replace non-date formats. Ignore-with-warning and full formatting preservation remain unqualified."
+          "detail": "Hierarchical updates retain tested styles and unrelated formulas; an addressed formula refuses without changing destination bytes. Flat writes can replace that formula silently. Vendor skip-with-warning and general workbook fidelity are unqualified."
         },
         "native_export": {
           "status": "unassessed",
@@ -23721,11 +23735,12 @@
           "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
         },
         "ferrule_roundtrip": {
-          "status": "unverified",
+          "status": "partial",
           "evidence": [
-            "xlsx-update-roundtrip-test"
+            "xlsx-update-roundtrip-test",
+            "xlsx-write-cli-oracle"
           ],
-          "detail": "The local test compares target options and results after re-import, not vendor workbook update behavior."
+          "detail": "Local re-import retains update mode, reopened workbook values and styles, and the unchanged-destination formula refusal."
         },
         "gui": {
           "status": "unassessed",

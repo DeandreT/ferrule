@@ -60,6 +60,17 @@ class LiveInventory(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.verify_writes()
 
+    def test_local_operation_oracles_do_not_qualify_native_export(self):
+        for cap, evidence in [("connectors.select-with-inputs", "sqlite-select-cli-oracle"),
+                              ("formats.xlsx-update", "xlsx-write-cli-oracle")]:
+            with self.subTest(cap=cap):
+                cell = self.caps[cap]["support"]["native_export"]
+                original = cell.copy()
+                cell.update(status="partial", evidence=[evidence])
+                with self.assertRaises(ValueError):
+                    self.verify_writes()
+                cell.update(original)
+
     def test_formula_policies_cannot_replace_each_other(self):
         rows = read_cases("select-workbook.tsv")
         altered = [dict(r, locator="Stop on error") if r["case"] == "formula-skip" else r for r in rows]
