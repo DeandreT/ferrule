@@ -69,6 +69,20 @@ fn unsupported(reason: &str) -> MfdError {
     MfdError::UnsupportedImport(format!("filename endpoints: {reason}"))
 }
 
+// Only XML layout whitespace may separate declaration elements. In particular,
+// nonbreaking space is data, even when it appears inside a CDATA section.
+fn transport_text(node: roxmltree::Node<'_, '_>) -> bool {
+    node.children()
+        .filter(|child| child.is_text())
+        .any(|child| {
+            !child
+                .text()
+                .unwrap_or_default()
+                .bytes()
+                .all(|b| matches!(b, b' ' | b'\t' | b'\r' | b'\n'))
+        })
+}
+
 fn empty_filename_sources(component: roxmltree::Node<'_, '_>) -> bool {
     let sources = component
         .children()
@@ -335,7 +349,7 @@ impl Endpoints {
             {
                 return Err(unsupported("unsupported endpoint component controls"));
             }
-            if data.attributes().len() != 0 {
+            if data.attributes().len() != 0 || transport_text(*data) {
                 return Err(unsupported("unsupported endpoint data controls"));
             }
             let formats = data
@@ -345,20 +359,23 @@ impl Endpoints {
             let [format] = formats.as_slice() else {
                 return Err(unsupported("requires one endpoint format declaration"));
             };
-            if format.attributes().any(|attribute| {
-                attribute.namespace().is_some()
-                    || !(if is_edi {
-                        matches!(
-                            attribute.name(),
-                            "type" | "kind" | "config" | "inputinstance" | "outputinstance"
-                        )
-                    } else {
-                        matches!(
-                            attribute.name(),
-                            "schema" | "inputinstance" | "outputinstance"
-                        )
-                    })
-            }) || format.children().any(|node| node.is_element())
+            if format.tag_name().namespace().is_some()
+                || transport_text(*format)
+                || format.attributes().any(|attribute| {
+                    attribute.namespace().is_some()
+                        || !(if is_edi {
+                            matches!(
+                                attribute.name(),
+                                "type" | "kind" | "config" | "inputinstance" | "outputinstance"
+                            )
+                        } else {
+                            matches!(
+                                attribute.name(),
+                                "schema" | "inputinstance" | "outputinstance"
+                            )
+                        })
+                })
+                || format.children().any(|node| node.is_element())
                 || data
                     .children()
                     .any(|node| node.is_element() && node != *format && !node.has_tag_name("root"))
