@@ -5,7 +5,10 @@ These files review documentation bodies beyond the original topic inventory in
 Most are source-only supplements. The [workflow ownership review](workflow-owners.md)
 identifies eight native-profile ledger additions; the [adapter review](adapter-operations.md)
 adds 14 for raw binary I/O and structured strings. The [SELECT and workbook review](select-workbook.md)
-separates four operations and identifies their bounded test coverage. None establishes execution support.
+separates four operations and identifies their bounded test coverage. The
+[database operation review](database-operations.md) adds six for bulk writes,
+stored procedure modes, rollback and database trace output. Source itemization
+alone does not establish execution support.
 
 | File | Source coverage |
 | --- | --- |
