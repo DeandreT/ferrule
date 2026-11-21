@@ -15,6 +15,9 @@ component roles. The [output-signing review](output-signing.md) distinguishes
 XML/XBRL signature generation from signed-input verification. Source itemization
 alone does not establish execution support.
 
+The [JSON string parser replay](json-parser.md) records one bounded
+interpreter assessment against checked-in inputs and expected results.
+
 | File | Source coverage |
 | --- | --- |
 | `nonleaf.json` | 191 parent-topic bodies, including additional operations and existing-context refinements |

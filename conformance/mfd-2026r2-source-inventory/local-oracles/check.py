@@ -1,4 +1,4 @@
-"""Exercise the local SELECT/workbook contracts using an already-built Ferrule CLI."""
+"""Exercise bounded mapping contracts using an already-built Ferrule CLI."""
 
 import argparse
 from contextlib import chdir
@@ -49,17 +49,21 @@ class Cli:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("executable", type=Path)
-    parser.add_argument("--case", choices=["select", "workbook", "both"], default="both")
+    parser.add_argument("--case", choices=["select", "workbook", "json-parser", "both"], default="both")
     args = parser.parse_args()
     if not __debug__:
         parser.error("run without Python optimization so the oracle assertions execute")
     cli = Cli(args.executable)
     with TemporaryDirectory() as directory, chdir(directory):
-        if args.case != "workbook":
+        if args.case in ("select", "both"):
             from select_cases import check
             check(cli, HERE / "select")
             print("SELECT: ordered Call results, argument failures, direct result and local roundtrips passed")
-        if args.case != "select":
+        if args.case in ("workbook", "both"):
             from workbook_cases import check
             check(cli, FIXTURES)
             print("XLSX: fresh/replace, styled update, formula boundaries and local roundtrips passed")
+        if args.case == "json-parser":
+            from json_parser_cases import check
+            outputs, refusals = check(cli, FIXTURES)
+            print(f"JSON parser: {outputs} complete typed outputs and {refusals} refusals before output")

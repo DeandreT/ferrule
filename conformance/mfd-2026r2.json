@@ -44,7 +44,8 @@
     {"id": "xlsx-update-roundtrip-test", "kind": "repository", "location": "crates/mfd/tests/xlsx_export.rs", "description": "Hierarchical update flag, file execution and local export/re-import assertions."},
     {"id": "xlsx-update-style-test", "kind": "repository", "location": "crates/format-xlsx/tests/hierarchical_update.rs", "description": "Hierarchical workbook tests for styled cells, date format substitution and formula refusal."},
     {"id": "sqlite-select-cli-oracle", "kind": "repository", "location": "conformance/mfd-2026r2-source-inventory/local-oracles/select_cases.py", "description": "Local CLI comparisons with independent SQLite result sets, including invalid inputs, incomplete import and profile-specific re-import."},
-    {"id": "xlsx-write-cli-oracle", "kind": "repository", "location": "conformance/mfd-2026r2-source-inventory/local-oracles/workbook_cases.py", "description": "Local CLI comparisons against independently authored and reopened OOXML workbooks: generation, selective writes, formula handling and re-import."}
+    {"id": "xlsx-write-cli-oracle", "kind": "repository", "location": "conformance/mfd-2026r2-source-inventory/local-oracles/workbook_cases.py", "description": "Local CLI comparisons against independently authored and reopened OOXML workbooks: generation, selective writes, formula handling and re-import."},
+    {"id": "json-array-parser-cli-oracle", "kind": "repository", "location": "conformance/mfd-2026r2-source-inventory/local-oracles/json_parser_cases.py", "description": "Checked-in saved JSON parser and CLI parameter comparisons against complete typed results and refusals before output."}
   ],
   "capabilities": [
     {
@@ -23039,9 +23040,9 @@
           "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
         },
         "interpreter": {
-          "status": "unassessed",
-          "evidence": [],
-          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          "status": "partial",
+          "evidence": ["json-array-parser-cli-oracle"],
+          "detail": "A required string parameter drives one schema-bounded JSON array-of-records projection. Ordered rows, absence versus explicit null, empty arrays, and malformed or missing input are covered by complete CLI comparisons."
         },
         "native_export": {
           "status": "unassessed",
