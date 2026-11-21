@@ -14,7 +14,7 @@ fn fixture(name: &str) -> PathBuf {
         .join(name)
 }
 
-fn variant(reverse: bool, keyless: bool) -> (hosts::TempDir, mapping::Project) {
+fn import_design(design: &str) -> (hosts::TempDir, mapping::Project) {
     let directory = hosts::TempDir::new("lookup-syntax").unwrap();
     for name in [
         "primary.schema.json",
@@ -23,8 +23,22 @@ fn variant(reverse: bool, keyless: bool) -> (hosts::TempDir, mapping::Project) {
     ] {
         std::fs::copy(fixture(name), directory.0.join(name)).unwrap();
     }
-    // Public self-authored fixture format; change exactly the equality operand
-    // positions and/or the unused raw false slot, never the catalog or importer.
+    let path = directory.0.join("mapping.mfd");
+    std::fs::write(&path, design).unwrap();
+    let imported = mfd::import_with_profile(
+        &path,
+        &mfd::ImportOptions::default(),
+        mfd::ImportProfile::Executable,
+    )
+    .unwrap()
+    .imported;
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert!(engine::validate(&imported.project).is_empty());
+    (directory, imported.project)
+}
+
+fn variant(reverse: bool, keyless: bool) -> (hosts::TempDir, mapping::Project) {
+    // Change only the equality operand positions and/or the unused false slot.
     let mut design = std::fs::read_to_string(fixture("mapping.mfd")).unwrap();
     let mut replace = |from: &str, to: &str| {
         assert_eq!(design.matches(from).count(), 1, "{from}");
@@ -39,18 +53,62 @@ fn variant(reverse: bool, keyless: bool) -> (hosts::TempDir, mapping::Project) {
     if keyless {
         replace("<datapoint pos=\"1\" key=\"53\"/>", "<datapoint/>");
     }
-    let path = directory.0.join("mapping.mfd");
-    std::fs::write(&path, design).unwrap();
-    let imported = mfd::import_with_profile(
-        &path,
-        &mfd::ImportOptions::default(),
-        mfd::ImportProfile::Executable,
-    )
-    .unwrap()
-    .imported;
-    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
-    assert!(engine::validate(&imported.project).is_empty());
-    (directory, imported.project)
+    import_design(&design)
+}
+
+fn display_variant() -> (hosts::TempDir, mapping::Project) {
+    // The same source key feeds the equality operand and an uppercased display
+    // value. Distinct wire keys can have the same display spelling.
+    let design = include_str!("fixtures/json-array-lookup/mapping.mfd")
+        .replace(
+            "</children>",
+            r#"<component name="uppercase" library="lang" kind="5"><sources><datapoint pos="0" key="60"/></sources><targets><datapoint pos="0" key="61"/></targets></component></children>"#,
+        )
+        .replace(r#"<edge vertexkey="31"/>"#, r#"<edge vertexkey="60"/>"#)
+        .replace(
+            "</vertices>",
+            r#"<vertex vertexkey="61"><edges><edge vertexkey="31"/></edges></vertex></vertices>"#,
+        );
+    import_design(&design)
+}
+
+#[test]
+fn casing_a_display_field_preserves_the_distinct_lookup_keys_in_each_row() {
+    let (_directory, project) = display_variant();
+    let cases: Vec<serde_json::Value> = serde_json::from_str(include_str!(
+        "fixtures/json-array-lookup/display-cases.json"
+    ))
+    .unwrap();
+    for case in cases {
+        let source = format_json::from_str(&case["primary"].to_string(), &project.source).unwrap();
+        let mut parameters = engine::RuntimeParameters::new();
+        parameters
+            .insert(
+                "LookupText",
+                Value::String(case["lookup"].as_str().unwrap().into()),
+            )
+            .unwrap();
+        let context =
+            engine::ExecutionContext::new(Path::new("mapping.mfd")).with_parameters(&parameters);
+        let output = engine::run_with_context(&project, &source, &context).unwrap();
+        let actual: serde_json::Value =
+            serde_json::from_str(&format_json::to_string(&project.target, &output).unwrap())
+                .unwrap();
+        assert_eq!(actual, case["expected"], "{}", case["name"]);
+    }
+}
+
+#[test]
+#[ignore = "compiles generated Rust and C# Release consumers; requires .NET 10"]
+fn generated_lookup_display_keeps_wire_keys() {
+    let (_directory, project) = display_variant();
+    hosts::run(
+        &project,
+        &fixture("display-cases.json"),
+        "lookup-display",
+        include_str!("offline_composition/lookup.rs.txt"),
+        include_str!("offline_composition/lookup.cs.txt"),
+    );
 }
 
 #[test]
