@@ -43,12 +43,12 @@ target-specific linker configuration in `.cargo/config.toml`.
 Windows/MSVC selects `rust-lld.exe` with
 `linker-flavor=lld-link`, using Rust's bundled LLVM lld without an external
 LLVM installation. WebAssembly keeps its existing linker.
-For nested generated Rust projects outside this checkout, also export
+When running Cargo directly in a generated Rust project outside this checkout
+on x86_64 Linux, use
 `CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=cc` and
-`CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS="-Zunstable-options --jobs-frontend=0 -C link-arg=-fuse-ld=mold"`
-in the owning build environment so child Cargo processes use the same linker.
-The repository's `[env]` entries pass these defaults, and the Windows linker
-flavor, to inheriting child builds unless the caller has already selected a policy.
+`CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS="-C link-arg=-fuse-ld=mold"`
+for the same linker. Cargo processes started from the checkout already pass
+these linker defaults, and the Windows linker flavor, to inheriting children.
 
 Install the pinned nextest release with `cargo binstall cargo-nextest --version
 0.9.150 --secure`, or use the official prebuilt release. Run `cargo nextest run
@@ -73,13 +73,19 @@ count.
 `wasm32-unknown-unknown`. The explicit Linux GNU and Windows/MSVC target
 `rustflags` include them too, since target flags take precedence over build
 flags; their existing linker settings remain in place. The `[env]` defaults
-carry the frontend policy to nested Cargo builds that inherit the environment.
-Child processes that clear or replace those settings can use a different policy.
+pass the linker settings but not the frontend flags. Cargo appends inherited
+target flags to the checkout's target flags, and `rustc` accepts
+`--jobs-frontend` only once. Cargo started outside the checkout does not load
+this frontend configuration. To opt in there, use a replacement flag list
+as described below.
 
 Cargo's normal flag precedence still applies: caller-supplied
 `CARGO_ENCODED_RUSTFLAGS` or `RUSTFLAGS` replaces the configured flags rather than
 appending to them. Include the frontend options and the appropriate linker flags
-when supplying a replacement.
+when supplying a replacement, for example
+`RUSTFLAGS="-Zunstable-options --jobs-frontend=0 -C link-arg=-fuse-ld=mold"` on
+x86_64 Linux. Do not export a second `--jobs-frontend` in `CARGO_TARGET_*_RUSTFLAGS`
+for a Cargo process that reads this checkout's configuration.
 
 Frontend threads work within each compiler process. Cargo's `-j` or
 `CARGO_BUILD_JOBS` controls concurrent build jobs; nextest and test-thread limits
@@ -95,7 +101,7 @@ together. For Rust, choose an exact `nightly-YYYY-MM-DD`, not the moving
 `nightly` channel. Update `rust-toolchain.toml`, all five toolchain selectors in
 `ci.yml`, `codegen.yml` and `site.yml`, and the documented date together. Confirm
 that rustfmt, clippy and `wasm32-unknown-unknown` are available for that date and
-that the frontend flags and inherited child-build defaults remain supported.
+that the frontend flags and inherited linker defaults remain supported.
 Before merging, run on the new toolchain from a fresh target directory:
 
 - `cargo fmt --all --check` and `cargo clippy --workspace --all-targets --locked -- -D warnings`;

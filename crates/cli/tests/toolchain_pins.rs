@@ -206,7 +206,7 @@ fn fast_linkers_are_scoped_to_their_native_targets() -> anyhow::Result<()> {
             .unwrap()
             .split_whitespace()
             .collect::<Vec<_>>();
-        assert_eq!(flags, expected, "{target}");
+        assert_eq!(flags, ["-C", linker_flag], "{target}");
         let propagated_linker = &environment[&format!("{prefix}_LINKER")];
         assert_eq!(
             propagated_linker["value"].as_str(),
