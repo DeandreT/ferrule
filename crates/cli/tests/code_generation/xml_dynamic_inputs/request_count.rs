@@ -106,6 +106,9 @@ fn source_literal(rows: usize) -> String {
     text
 }
 fn output_literal(rows: usize) -> String {
+    if rows == 0 {
+        return String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Output/>");
+    }
     let mut text = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Output>\n");
     for id in 1..=rows {
         text.push_str(&format!(
