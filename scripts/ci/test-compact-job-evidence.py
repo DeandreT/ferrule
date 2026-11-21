@@ -115,6 +115,18 @@ class HookAncestryTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "actual pre-job hook"):
                     evidence.hook_ancestry()
 
+    def test_configured_symlink_cannot_select_a_worker_outside_the_installation(self):
+        self.hook()
+        worker = self.marker("actions-runner-other/bin/Runner.Worker")
+        bin_link = self.configured_worker.parent
+        bin_link.unlink()
+        bin_link.symlink_to(worker.parent, target_is_directory=True)
+        executable = self.processes["30"] / "exe"
+        executable.unlink()
+        executable.symlink_to(worker)
+        with self.assertRaisesRegex(ValueError, "outside its runner installation"):
+            evidence.hook_ancestry()
+
     def test_foreign_owned_worker_ancestor_does_not_authorize_compaction(self):
         self.hook()
         worker = self.processes["30"]
@@ -413,7 +425,10 @@ class EvidenceCompactionTests(unittest.TestCase):
     def test_direct_admin_invocation_cannot_claim_pre_job_closure(self):
         # Tests themselves can run beneath a real Actions worker. Model an
         # administrator's ancestry independently of the test harness's parent.
-        with patch.object(evidence, "WORKER", "/no-administrator-job-worker"):
+        worker = self.home / "runner/bin/Runner.Worker"
+        worker.parent.mkdir(parents=True)
+        worker.touch()
+        with patch.object(evidence, "WORKER", str(worker)):
             with self.assertRaisesRegex(ValueError, "actual pre-job hook"):
                 evidence.producer_closure(processes=[])
 
@@ -422,9 +437,14 @@ class EvidenceCompactionTests(unittest.TestCase):
         root_process.stat.return_value.st_uid = os.getuid() + 1
         root_process.__truediv__ = Mock(return_value=Mock())
         root_process.__truediv__.return_value.read_text.return_value = "1 (init) S 0"
+        def realpath(path, *, strict=False):
+            if path == evidence.WORKER and strict:
+                return path
+            raise PermissionError("root exe")
+
         with patch.object(evidence.os, "getpid", return_value=1), \
              patch.object(evidence, "Path", return_value=Mock(__truediv__=Mock(return_value=root_process))), \
-             patch.object(evidence.os.path, "realpath", side_effect=PermissionError("root exe")):
+             patch.object(evidence.os.path, "realpath", side_effect=realpath):
             with self.assertRaisesRegex(ValueError, "actual pre-job hook"):
                 evidence.hook_ancestry()
 
