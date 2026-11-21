@@ -14,6 +14,7 @@ from verify_live_cells import check_cells
 from verify_workflow_owners import check_pdf, load
 
 BASE = "b3e3186e7d7c3a0fc23b18f538e7f133c9822c72"
+INTRODUCTION = "c811449d64c91d51f3ee6d79764791012bec446b"
 LEDGER_PATH = "conformance/mfd-2026r2.json"
 RECEIPT = "output-signing-source.json"
 CAPABILITY = "formats.sign-xml-xbrl-output"
@@ -178,7 +179,8 @@ def verify_pdf(path, receipt, citations, matrix, pages):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--pdf", type=Path, help="English manual from the pinned installer")
-    parser.add_argument("--check-introduction", action="store_true", help="compare against exact Git parent")
+    parser.add_argument("--check-introduction", action="store_true",
+                        help="compare the historical signing introduction with its exact Git parent")
     args = parser.parse_args()
     ledger = load(HERE.parent / "mfd-2026r2.json")
     pages = load(HERE / "documentation-pages.json")["pages"]
@@ -190,10 +192,10 @@ if __name__ == "__main__":
     if args.pdf:
         verify_pdf(args.pdf, receipt, citations, matrix, pages)
     if args.check_introduction:
-        base = json.loads(subprocess.check_output(
-            ["git", "show", f"{BASE}:{LEDGER_PATH}"], cwd=HERE.parent.parent
-        ))
-        verify_introduction(ledger, base)
+        base, introduction = (json.loads(subprocess.check_output(
+            ["git", "show", f"{ref}:{LEDGER_PATH}"], cwd=HERE.parent.parent
+        )) for ref in (BASE, INTRODUCTION))
+        verify_introduction(introduction, base)
     print("1 signing operation, 4 format/placement cases; 16 live assessment cells checked"
           + ("; installer text, previews, graphical matrix and links verified" if args.pdf else "")
           + ("; prior 824 and versions unchanged, 16 new cells unassessed" if args.check_introduction else ""))
