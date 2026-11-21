@@ -13,7 +13,10 @@ pub use error::XmlFormatError;
 pub use finalization::{
     XmlWriteFinalizationError, XmlWritePreflight, to_string_with_options_and_finalizer,
 };
-pub use read::{XmlReadOptions, from_str, from_str_with_options, read, read_with_options};
+pub use read::{
+    XmlReadOptions, from_str, from_str_with_options, from_str_with_warnings, read,
+    read_with_options,
+};
 pub use soap::{from_wsdl_message_str, read_wsdl_message};
 pub use structured::from_str_structured;
 pub use write::{XmlWriteOptions, to_string, to_string_with_options, write, write_with_options};

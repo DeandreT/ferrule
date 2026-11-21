@@ -736,6 +736,22 @@ fn read_schema_component_resolved(
         authoritative_schema_path.as_deref(),
         authoritative_schema_bytes.as_deref(),
     );
+    if is_source
+        && in_count == 0
+        && !is_pass_through
+        && !local_xml_file_set
+        && !has_typed_entry_schema
+        && schema_file_authoritative
+        && schema_namespace == Some(None)
+        && root_view_is_source.is_none()
+        && document.and_then(|d| d.attribute("instanceroot"))
+            == Some(format!("{{}}{}", schema.name).as_str())
+        && input_instance.is_some()
+        && !data.descendants().any(|n| n.has_tag_name("parameter"))
+        && schema.closed_source_selection_schema().is_some()
+    {
+        schema.xml_closed_source_selection = true;
+    }
     let target_schema_hints = match crate::schema_location::derived_hints(
         schema_setting,
         schema_namespace

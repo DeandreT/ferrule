@@ -458,10 +458,9 @@ pub(super) fn resolve(parsed: &mut ParsedComplexType, state: &mut ParseState) {
 
 /// The expanded names a declared element particle contributes: its own name,
 /// its name alternatives and its concrete substitution members. A sibling
-/// without namespace identity is unqualified, as the finished import
-/// qualifies it beside a `lax` wildcard, unless a schema document reached
-/// through several namespace contexts declared it: its namespace is then
-/// unknowable.
+/// without namespace identity is a legacy name, matched as unqualified, unless
+/// a schema document reached through several namespace contexts declared it:
+/// its namespace is then unknowable.
 fn sibling_names(
     sibling: &SchemaNode,
     ambiguous: &std::collections::BTreeSet<String>,
