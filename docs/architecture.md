@@ -287,6 +287,17 @@ nested target rows. Repeating source paths can cross several collection levels;
 generated sequences and joins use their own typed iteration contexts. Absent
 values remain explicit rather than terminating a run.
 
+### Scalar sorting ownership
+
+`functions::compare_scope_sort_values` owns the scope-sort key policy shared by
+the interpreter and generated Rust runtime. Its ascending domain order is
+absence and JSON null (tied), Boolean, Int/Float, string, XML nil, then Decimal.
+Mixed Int/Float keys compare without rounding integers through `f64`; signed
+zeroes tie, and all NaNs tie after other numeric values. Decimal keys compare
+exactly in their separate domain, without Int/Float coercion. Each consumer
+owns key evaluation, sort direction, and stable tie retention. This is a sorting
+policy, not built-in expression comparison or grouping equality.
+
 ## Evaluation and Publication Order
 
 Global failure rules and graph Raise nodes have different ownership and timing.
