@@ -430,6 +430,38 @@ fn unknown_controls_and_ambiguous_pins_never_become_metadata_noops() -> Result {
 }
 
 #[test]
+fn format_declarations_cannot_hide_a_reader_or_writer_policy_in_text() -> Result {
+    let fixture = Fixture::new()?;
+    let original = metadata(31);
+    for (tag, last_attribute) in [
+        ("text", "inputinstance=\"unused-source.hl7\""),
+        ("json", "outputinstance=\"unused-target.json\""),
+    ] {
+        let end = format!("{last_attribute}/>");
+        assert_eq!(original.matches(&end).count(), 1);
+        let design =
+            |body: &str| original.replace(&end, &format!("{last_attribute}>{body}</{tag}>"));
+        fixture.import(&design("\r\n<!--layout-->\t "))?;
+        for rejected in ["encoding=1000", "<![CDATA[\u{a0}]]>"] {
+            fixture.refuse(
+                &design(rejected),
+                Some("unsupported endpoint transport settings"),
+            )?;
+        }
+        let start = format!("<{tag} ");
+        fixture.refuse(
+            &original.replace(&start, &format!("<w:{tag} xmlns:w=\"urn:foreign\" ")),
+            Some("unsupported endpoint transport settings"),
+        )?;
+        fixture.refuse(
+            &original.replace(&start, &format!("encoding=1{start}")),
+            Some("unsupported endpoint data controls"),
+        )?;
+    }
+    Ok(())
+}
+
+#[test]
 fn reader_and_cast_metadata_without_a_preserved_policy_still_refuse() -> Result {
     let fixture = Fixture::new()?;
     let original = metadata(31);
