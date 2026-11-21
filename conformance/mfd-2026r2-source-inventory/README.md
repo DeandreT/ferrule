@@ -17,6 +17,8 @@ alone does not establish execution support.
 
 The [JSON string parser replay](json-parser.md) records one bounded
 interpreter assessment against checked-in inputs and expected results.
+The [FlexText string parser replay](flextext-parser.md) covers strict import
+and one bounded XML-to-XML interpreter profile.
 
 | File | Source coverage |
 | --- | --- |

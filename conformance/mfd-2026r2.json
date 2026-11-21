@@ -45,7 +45,8 @@
     {"id": "xlsx-update-style-test", "kind": "repository", "location": "crates/format-xlsx/tests/hierarchical_update.rs", "description": "Hierarchical workbook tests for styled cells, date format substitution and formula refusal."},
     {"id": "sqlite-select-cli-oracle", "kind": "repository", "location": "conformance/mfd-2026r2-source-inventory/local-oracles/select_cases.py", "description": "Local CLI comparisons with independent SQLite result sets, including invalid inputs, incomplete import and profile-specific re-import."},
     {"id": "xlsx-write-cli-oracle", "kind": "repository", "location": "conformance/mfd-2026r2-source-inventory/local-oracles/workbook_cases.py", "description": "Local CLI comparisons against independently authored and reopened OOXML workbooks: generation, selective writes, formula handling and re-import."},
-    {"id": "json-array-parser-cli-oracle", "kind": "repository", "location": "conformance/mfd-2026r2-source-inventory/local-oracles/json_parser_cases.py", "description": "Checked-in saved JSON parser and CLI parameter comparisons against complete typed results and refusals before output."}
+    {"id": "json-array-parser-cli-oracle", "kind": "repository", "location": "conformance/mfd-2026r2-source-inventory/local-oracles/json_parser_cases.py", "description": "Checked-in saved JSON parser and CLI parameter comparisons against complete typed results and refusals before output."},
+    {"id": "flextext-string-parser-cli-oracle", "kind": "repository", "location": "conformance/mfd-2026r2-source-inventory/local-oracles/flextext_parser_cases.py", "description": "Strict import and complete XML interpreter comparisons for a saved, delimiter-configured string parser, including invalid input and no-output refusals."}
   ],
   "capabilities": [
     {
@@ -22849,14 +22850,14 @@
       "depends_on": [],
       "support": {
         "import": {
-          "status": "unassessed",
-          "evidence": [],
-          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          "status": "partial",
+          "evidence": ["flextext-string-parser-cli-oracle"],
+          "detail": "Strict executable import resolves an external FlexText delimiter configuration for one repeated XML string-to-record projection without warnings."
         },
         "interpreter": {
-          "status": "unassessed",
-          "evidence": [],
-          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          "status": "partial",
+          "evidence": ["flextext-string-parser-cli-oracle"],
+          "detail": "Complete XML comparisons cover ordered typed rows, quoting, Unicode, the first-record boundary, and invalid strings refusing before output."
         },
         "native_export": {
           "status": "unassessed",

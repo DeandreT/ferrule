@@ -49,7 +49,8 @@ class Cli:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("executable", type=Path)
-    parser.add_argument("--case", choices=["select", "workbook", "json-parser", "both"], default="both")
+    parser.add_argument("--case", choices=["select", "workbook", "json-parser", "flextext-parser", "both"],
+                        default="both")
     args = parser.parse_args()
     if not __debug__:
         parser.error("run without Python optimization so the oracle assertions execute")
@@ -67,3 +68,7 @@ if __name__ == "__main__":
             from json_parser_cases import check
             outputs, refusals = check(cli, FIXTURES)
             print(f"JSON parser: {outputs} complete typed outputs and {refusals} refusals before output")
+        if args.case == "flextext-parser":
+            from flextext_parser_cases import check
+            outputs, refusals = check(cli, FIXTURES)
+            print(f"FlexText parser: {outputs} complete XML outputs and {refusals} refusals before output")
