@@ -3,7 +3,8 @@
 These files review documentation bodies beyond the original topic inventory in
 [`mfd-2026r2.source-contracts.json`](../mfd-2026r2.source-contracts.json).
 Most are source-only supplements. The [workflow ownership review](workflow-owners.md)
-also identifies eight native-profile ledger additions. None establishes execution support.
+identifies eight native-profile ledger additions; the [adapter review](adapter-operations.md)
+adds 14 for raw binary I/O and structured strings. None establishes execution support.
 
 | File | Source coverage |
 | --- | --- |

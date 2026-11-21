@@ -36,7 +36,8 @@ built-in alone for updating. As another example, the SOAP **call** has a
 built-in mark, whereas the **generation** row marks C# and Java only.
 
 `ledger_context` points to a related native-profile capability where there is
-a useful broad match. An empty context leaves the join open. It does not
+a useful broad match. The [operation-level review](adapter-operations.md)
+resolves all four originally blank contexts without flattening their one-to-many joins. A broad match does not
 establish a one-to-one identity or transfer an assessment. Vendor `built_in`
 covers the product's output preview or server execution; `csharp` in this
 table concerns vendor output. Ferrule import, interpretation, native export,
