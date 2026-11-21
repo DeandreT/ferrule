@@ -47,10 +47,19 @@ Native and generated-backend CI can use the dedicated OVHcloud build runner.
 See [OVHcloud CI operations](ovh-ci.md) for provisioning, isolation, resource
 limits, and the GitHub-hosted fallback switch.
 
-The checkout pins Rust, the .NET SDK band and trunk; see
+The checkout pins Rust `nightly-2026-11-16`, the .NET SDK band and trunk; see
 [Toolchain baselines](toolchains.md). rustup installs the pinned Rust
 toolchain, with rustfmt, clippy and the wasm32 target, on the first `cargo`
-command in the checkout, so do not pass a `+toolchain` override.
+command in the checkout, so do not pass a `+toolchain` override. This does not
+change your global rustup default.
+
+The repository enables Rust's parallel frontend with
+`-Zthreads=0`, automatically selecting the logical CPU
+parallelism available to each compiler process. This is separate from Cargo's
+`-j`/`CARGO_BUILD_JOBS` build-job limit and test concurrency. Keep bounded jobs,
+scheduler limits and serial generated-consumer gates; frontend parallelism does
+not raise those limits. See [Toolchain baselines](toolchains.md#parallel-compiler-frontend)
+for CPU constraints, nested builds and caller-supplied flag overrides.
 
 ```sh
 cargo fmt --all --check

@@ -176,7 +176,7 @@ fn guarded_ordinary_release_public_hosts() {
     .unwrap();
     std::fs::write(
         rust.join("rust-toolchain.toml"),
-        "[toolchain]\nchannel = \"1.98.1\"\nprofile = \"minimal\"\n",
+        include_str!("../../../rust-toolchain.toml"),
     )
     .unwrap();
     let output = Command::new(std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into()))

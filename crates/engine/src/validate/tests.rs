@@ -307,7 +307,8 @@ fn transposed_xlsx_targets_validate_rows_schema_and_flat_options() {
     headers.target_options.xlsx_headers = vec!["Name".into(), "n".into()];
     assert!(
         target_messages(&headers)
-            .contains(&"`xlsx_headers` can be used only with a flat XLSX table".to_string())
+            .iter()
+            .any(|msg| msg == "`xlsx_headers` can be used only with a flat XLSX table")
     );
 
     let mut rows = project.clone();
@@ -333,8 +334,8 @@ fn transposed_xlsx_targets_validate_rows_schema_and_flat_options() {
             SchemaNode::scalar("n", ScalarType::String),
         ],
     );
-    assert!(target_messages(&position).contains(
-        &"a transposed XLSX target's `n` field must be one integer column position".to_string()
+    assert!(target_messages(&position).iter().any(
+        |msg| msg == "a transposed XLSX target's `n` field must be one integer column position"
     ));
     let mut nested = project.clone();
     nested.target = SchemaNode::group(
@@ -344,9 +345,12 @@ fn transposed_xlsx_targets_validate_rows_schema_and_flat_options() {
             vec![SchemaNode::scalar("value", ScalarType::String)],
         )],
     );
-    assert!(target_messages(&nested).contains(
-        &"a transposed XLSX target needs a non-repeating group of scalar fields".to_string()
-    ));
+    assert!(
+        target_messages(&nested)
+            .iter()
+            .any(|msg| msg
+                == "a transposed XLSX target needs a non-repeating group of scalar fields")
+    );
 
     // The same layout on the source side keeps its read-time checks.
     let mut source = valid_project();

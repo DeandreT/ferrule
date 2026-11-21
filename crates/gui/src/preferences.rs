@@ -197,7 +197,7 @@ mod tests {
         assert_eq!(recent.len(), MAX_RECENT_PROJECTS);
         assert_eq!(recent[0], "p3.json");
         assert_eq!(recent[1], format!("p{MAX_RECENT_PROJECTS}.json"));
-        assert!(!recent.contains(&"p0.json".to_string()));
+        assert!(!recent.iter().any(|path| path == "p0.json"));
         assert_eq!(recent.iter().filter(|path| *path == "p3.json").count(), 1);
 
         let preferences = EditorPreferences::default().with_recent_projects(recent.clone());
