@@ -219,14 +219,19 @@ fn selected_layout<'a, 'input>(
     let layout = layouts.next()?;
     let mut types = layout.children().filter(|n| n.has_tag_name("MessageType"));
     let ty = types.next()?;
-    let mut content = ty.children().filter(|n| n.is_element() || n.is_text());
-    let value = content.next()?;
+    // Comments and processing instructions can split one XML string value
+    // across text nodes. Compare its bytes exactly, without trimming or copying.
+    let text = ty
+        .children()
+        .filter(|n| n.is_text())
+        .filter_map(|n| n.text())
+        .flat_map(str::bytes);
     (layouts.next().is_none()
         && types.next().is_none()
         && layout.tag_name().namespace().is_none()
         && ty.tag_name().namespace().is_none()
-        && value.is_text()
-        && value.text() == Some(selected)
-        && content.next().is_none())
+        && !selected.is_empty()
+        && !ty.children().any(|n| n.is_element())
+        && text.eq(selected.bytes()))
     .then_some(layout)
 }

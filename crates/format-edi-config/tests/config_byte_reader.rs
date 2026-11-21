@@ -82,6 +82,9 @@ fn supplied_message_file_must_declare_the_selected_type() -> Result<(), Box<dyn 
         "<MessageType>850</MessageType><MessageType>ORBIT</MessageType>",
         "<MessageType xmlns='urn:sample:notes'>850</MessageType>",
         "<MessageType>850<Note/></MessageType>",
+        "<MessageType>850<!-- annotation -->1</MessageType>",
+        "<MessageType> 850 </MessageType>",
+        "<MessageType>850</MessageType><MessageType>850</MessageType>",
     ] {
         let source = source(&root, ENVELOPE, "850.Config");
         source.files.borrow_mut().insert(
@@ -100,6 +103,25 @@ fn supplied_message_file_must_declare_the_selected_type() -> Result<(), Box<dyn 
             "{replacement}"
         );
     }
+    Ok(())
+}
+
+#[test]
+fn supplied_message_compares_the_complete_xml_text_value() -> Result<(), Box<dyn std::error::Error>>
+{
+    let root = std::env::current_dir()?.join("authored-edi-byte-identities");
+    let reader = source(&root, ENVELOPE, "850.Config");
+    let message = MESSAGE.replace(">850<", ">8<!-- guide -->5<?revision draft?>0<");
+    reader
+        .files
+        .borrow_mut()
+        .insert(root.join("850.Config"), Arc::from(message.as_bytes()));
+    config::import_config_with_byte_reader(
+        &root.join("Envelope.Config"),
+        &root,
+        &["850".into()],
+        reader,
+    )?;
     Ok(())
 }
 

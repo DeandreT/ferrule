@@ -138,16 +138,14 @@ fn envelope_selection_finds_message_type_and_sets_trigger_qualifier() {
             <Group name="Group"><Segment ref="GS"/><Select field="ST/F143" maxOccurs="unbounded"/></Group>
           </Group></Group></Config>"#,
     );
-    write(
-        &directory.join("dental.Config"),
-        r#"<Config><Format standard="X12"/><Include href="Defs.Segment"/>
+    let dental = r#"<Config><Format standard="X12"/><Include href="Defs.Segment"/>
           <Message><MessageType>837-Q2</MessageType><Group name="Message_837-Q2">
             <Segment name="ST"><Condition path="F1705" value="005010X224A2"/>
               <Data ref="F143"><Values><Value Code="837"/></Values></Data>
               <Data ref="F1705"/>
             </Segment><Segment ref="SE"/>
-          </Group></Message></Config>"#,
-    );
+          </Group></Message></Config>"#;
+    write(&directory.join("dental.Config"), dental);
 
     let schema = import_config(&envelope, &["837-Q2".into()]).unwrap().schema;
     let message = at(&schema, &["Interchange", "Group", "Message_837-Q2"]);
@@ -157,6 +155,11 @@ fn envelope_selection_finds_message_type_and_sets_trigger_qualifier() {
         Some("005010X224A2")
     );
     assert!(message.repeating);
+    write(
+        &directory.join("dental.Config"),
+        &dental.replace(">837-Q2<", ">837<!-- guide -->-Q2<"),
+    );
+    assert!(import_config(&envelope, &["837-Q2".into()]).is_ok());
     // A note about the selected type in another catalog is not a second match.
     let other = r#"<Config><Format standard="X12"/><Note><MessageType>837-Q2</MessageType></Note>
         <Message><MessageType>ORBIT</MessageType><Group name="Orbit"><Segment ref="ST"/></Group></Message></Config>"#;
