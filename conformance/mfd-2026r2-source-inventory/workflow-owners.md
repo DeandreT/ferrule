@@ -110,7 +110,7 @@ artifacts. Exception classes for invalid indices, target-specific lifetimes,
 compiled libraries, exact dependencies and native ABI remain unqualified.
 
 Run `python verify_workflow_owners.py` for the ownership partition, original
-ledger preservation, empty assessment checks and slot/member joins. With
+ID membership, live cell checks and slot/member joins. With
 `--pdf PATH` it verifies 176 citations (164 optional-input and wrapper, five
 lead/output and seven mixed-workflow citations)
 inside their topic bookmarks and checks the declaration cells against the

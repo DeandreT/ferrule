@@ -36,7 +36,13 @@
     {"id": "external-export", "kind": "repository", "location": "crates/mfd/src/export/external_source.rs", "description": "Captured-response boundaries and Ferrule provenance."},
     {"id": "stage-pipeline", "kind": "repository", "location": "crates/engine/src/pipeline.rs", "description": "Typed in-memory stage DAG execution and validation; MFD stage import, GUI authoring and host effects are separate."},
     {"id": "pipeline-file-host", "kind": "repository", "location": "crates/cli/src/pipeline.rs", "description": "Typed pipeline file host with explicit inputs and selected atomic output publication."},
-    {"id": "xml-schema-reference", "kind": "vendor_execution", "location": "docs/conformance/xml-schema-reference.md", "description": "Finite 2026r2 Wine observation of physical XML schema-reference controls, complete outputs and an actual Ferrule export save/reopen."}
+    {"id": "xml-schema-reference", "kind": "vendor_execution", "location": "docs/conformance/xml-schema-reference.md", "description": "Finite 2026r2 Wine observation of physical XML schema-reference controls, complete outputs and an actual Ferrule export save/reopen."},
+    {"id": "standalone-select-test", "kind": "repository", "location": "crates/mfd/tests/standalone_db_query.rs", "description": "SQLite standalone SELECT import, winner and local semantic re-import assertions."},
+    {"id": "parameter-select-test", "kind": "repository", "location": "crates/mfd/tests/db_query_import.rs", "description": "Saved Call parameter wiring, typed threshold, local re-import and result assertions."},
+    {"id": "xlsx-create-import-test", "kind": "repository", "location": "crates/mfd/tests/xlsx_hierarchical_import.rs", "description": "Open a saved hierarchical workbook target and generate new workbook bytes."},
+    {"id": "xlsx-flat-csharp-test", "kind": "repository", "location": "crates/codegen-csharp/tests/flat_xlsx_dotnet.rs", "description": "New flat workbook byte API and explicit update-existing refusal; this file is test source, not a run receipt."},
+    {"id": "xlsx-update-roundtrip-test", "kind": "repository", "location": "crates/mfd/tests/xlsx_export.rs", "description": "Hierarchical update flag, file execution and local export/re-import assertions."},
+    {"id": "xlsx-update-style-test", "kind": "repository", "location": "crates/format-xlsx/tests/hierarchical_update.rs", "description": "Hierarchical workbook tests for styled cells, date format substitution and formula refusal."}
   ],
   "capabilities": [
     {
@@ -23323,6 +23329,403 @@
           "status": "unassessed",
           "evidence": [],
           "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "gui": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "debug": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "rust": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "csharp": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "vendor_backends": {
+          "xslt3": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "built_in": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "xslt1": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "xslt2": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "xquery1": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "cpp": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "java": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "csharp": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          }
+        }
+      }
+    },
+    {
+      "id": "connectors.select-without-inputs",
+      "title": "Map the result tree of a custom SQL SELECT without input parameters",
+      "category": "connectors",
+      "profiles": [
+        "mfd-2026r2-enterprise"
+      ],
+      "depends_on": [],
+      "support": {
+        "import": {
+          "status": "unverified",
+          "evidence": [
+            "standalone-select-test"
+          ],
+          "detail": "A saved SQLite SELECT with no Call parameter is recognized for a bounded ORDER BY and first-row pattern; general custom SELECT import is unqualified."
+        },
+        "interpreter": {
+          "status": "unverified",
+          "evidence": [
+            "standalone-select-test"
+          ],
+          "detail": "The local test checks the winning row after lowering; it does not execute arbitrary authored SQL through a driver. No run receipt was attached in this review."
+        },
+        "native_export": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "ferrule_roundtrip": {
+          "status": "unverified",
+          "evidence": [
+            "standalone-select-test"
+          ],
+          "detail": "Local re-import compares the result after exporting sort and first-items components, not the original SQL text."
+        },
+        "gui": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "debug": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "rust": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "csharp": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "vendor_backends": {
+          "xslt3": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "built_in": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "xslt1": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "xslt2": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "xquery1": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "cpp": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "java": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "csharp": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          }
+        }
+      }
+    },
+    {
+      "id": "connectors.select-with-inputs",
+      "title": "Bind a mapped input to a custom SQL SELECT Call and map its result tree",
+      "category": "connectors",
+      "profiles": [
+        "mfd-2026r2-enterprise"
+      ],
+      "depends_on": [],
+      "support": {
+        "import": {
+          "status": "unverified",
+          "evidence": [
+            "parameter-select-test"
+          ],
+          "detail": "SQLite cases wire a named integer parameter into the saved Call. A literal supplied on a wire is still a parameter."
+        },
+        "interpreter": {
+          "status": "unverified",
+          "evidence": [
+            "parameter-select-test"
+          ],
+          "detail": "A joined threshold case asserts different row counts for different host values. No run receipt or general SQL driver qualification is attached."
+        },
+        "native_export": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "ferrule_roundtrip": {
+          "status": "unverified",
+          "evidence": [
+            "parameter-select-test"
+          ],
+          "detail": "A required typed threshold is checked through two local export and re-import cycles; no vendor reopening follows."
+        },
+        "gui": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "debug": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "rust": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "csharp": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "vendor_backends": {
+          "xslt3": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "built_in": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "xslt1": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "xslt2": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "xquery1": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "cpp": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "java": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "csharp": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          }
+        }
+      }
+    },
+    {
+      "id": "formats.xlsx-create",
+      "title": "Generate an ordinary OOXML workbook rather than patch an existing workbook",
+      "category": "formats",
+      "profiles": [
+        "mfd-2026r2-enterprise"
+      ],
+      "depends_on": [],
+      "support": {
+        "import": {
+          "status": "unverified",
+          "evidence": [
+            "xlsx-create-import-test"
+          ],
+          "detail": "A saved hierarchical output fixture specifies runtime worksheet names and mapped bands; the fresh-output cohort is bounded."
+        },
+        "interpreter": {
+          "status": "unverified",
+          "evidence": [
+            "xlsx-create-import-test"
+          ],
+          "detail": "The fixture maps XML input to two worksheets and invokes fresh-workbook serialization. It does not check replacement of an existing styled file."
+        },
+        "native_export": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "ferrule_roundtrip": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "gui": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "debug": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "rust": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "csharp": {
+          "status": "unverified",
+          "evidence": [
+            "xlsx-flat-csharp-test"
+          ],
+          "detail": "The Release host test specifies a generated flat workbook byte result and independent decoding. This byte API is not an on-disk replace operation; no run receipt was attached."
+        },
+        "vendor_backends": {
+          "xslt3": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "built_in": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "xslt1": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "xslt2": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "xquery1": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "cpp": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "java": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "csharp": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          }
+        }
+      }
+    },
+    {
+      "id": "formats.xlsx-update",
+      "title": "Selectively update mapped cells in an existing ordinary OOXML workbook and retain formatting",
+      "category": "formats",
+      "profiles": [
+        "mfd-2026r2-enterprise"
+      ],
+      "depends_on": [],
+      "support": {
+        "import": {
+          "status": "unverified",
+          "evidence": [
+            "xlsx-update-roundtrip-test"
+          ],
+          "detail": "A saved hierarchical target carries updateexistingfile and the output path. The vendor formula policies are not qualified by importing that flag."
+        },
+        "interpreter": {
+          "status": "unverified",
+          "evidence": [
+            "xlsx-update-style-test",
+            "xlsx-update-roundtrip-test"
+          ],
+          "detail": "Bounded hierarchical file tests check selected values, a preserved bold number format, and refusal on addressed formulas. Date cells can replace non-date formats. Ignore-with-warning and full formatting preservation remain unqualified."
+        },
+        "native_export": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "ferrule_roundtrip": {
+          "status": "unverified",
+          "evidence": [
+            "xlsx-update-roundtrip-test"
+          ],
+          "detail": "The local test compares target options and results after re-import, not vendor workbook update behavior."
         },
         "gui": {
           "status": "unassessed",
