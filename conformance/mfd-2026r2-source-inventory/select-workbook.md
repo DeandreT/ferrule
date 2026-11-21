@@ -41,12 +41,45 @@ are not additional entries in those frozen case counts.
 | New workbook | `crates/mfd/tests/xlsx_hierarchical_import.rs` · `imports_and_executes_runtime_named_hierarchical_workbook`; `crates/codegen-csharp/tests/flat_xlsx_dotnet.rs` · `generated_workbook_decodes_to_interpreted_row`, `update_existing_is_not_a_new_document` | The former builds two new sheets. The latter checks a generated flat byte API and refuses update mode. [#1450](https://github.com/DeandreT/ferrule/issues/1450) is not a file replacement or update receipt. |
 | Update a styled workbook | `crates/mfd/tests/xlsx_export.rs` · `hierarchical_update_existing_target_imports_runs_and_roundtrips`; `crates/format-xlsx/tests/hierarchical_update.rs` · `updates_row_bands_and_preserves_everything_outside_them`, `dates_override_non_date_number_formats`, `refuses_formula_cells_inside_the_layout` | The tests check the saved flag, local cycle, bold font and numeric format. A date can **replace** a non-date format. The hierarchical path refuses a targeted formula; it does not establish the vendor's skip-with-warning behavior. [#1093](https://github.com/DeandreT/ferrule/issues/1093) and [#1215](https://github.com/DeandreT/ferrule/issues/1215) describe the bounded writer and file path. |
 
-Use two styled cells, one a formula, to qualify the two update policies
-separately; inspect the formula, ordinary cell, styles and preview warning.
-Compare parameterized SELECT results for two inputs over the same source, not
-merely the presence of a parameter declaration. A generated-host test using
-schema-normalized JSON for `Sales_to_Excel.mfd` cannot show that a chart or a
-cell style survived. No vendor, Rust or C# execution was performed for this review.
+### Reproduce the local execution checks
+
+From this directory run `python -B local-oracles/check.py PATH_TO_FERRULE`.
+Supply a built CLI, Python 3.11+ and, for workbook cases, openpyxl 3.1.5.
+`--case select` needs only the standard library; `--case workbook` skips
+SQLite. Each run uses a fresh temporary directory. No service, existing DB,
+installed spreadsheet application or vendor sample is needed.
+
+The [SELECT oracle](local-oracles/select_cases.py) uses synthetic saved
+variants of the standalone and Call designs from the MFD tests above. A
+separate SQLite connection computes the expected results. Two inputs to the
+same Call each produced three different rows, ordered by descending article number,
+matching the full expected CSV bytes. A third input produced just the header;
+missing and malformed inputs failed before creating an output. A direct
+three-column SELECT returned the unique maximum-price article. Strict import
+refused a deliberately mismatched wildcard; its best-effort project wrote an
+empty `Article`, not the expected winner. The Call survived local re-import of
+a native-profile export. The direct design required Ferrule extensions for its
+first-item XML target; compare the fields and the expected schema reference,
+not original SQL text or byte-identical XML.
+
+The [workbook oracle](local-oracles/workbook_cases.py) uses the repository's
+hierarchical XML/XLSX design and the same input for both write modes. Fresh
+and replacement writes produced only the mapped sheets. Updating an ordinary
+styled workbook retained unrelated values and formula expressions and the
+tested numeric cells' bold font, color, fill and number format. A formula in
+addressed D7 stopped the hierarchical update and preserved the destination
+bytes. The flat writer instead replaced that formula without warning; a
+formula in clear-only D8 survived. This is a layout difference, not the
+vendor's selectable skip-with-preview-warning policy. Both hierarchical write
+modes retained their target options and these behaviors after local re-import.
+
+These comparisons ran on a Windows Release CLI from `740af0c3`. The SQL
+lowering, SQLite reader, engine, file-output dispatch, hierarchical XLSX
+reader/writer and update code used for these cases match the corresponding
+source at the inventory base `f8ae6c68`. Shared import/export code did change:
+the new transposed-XLSX-source and JSON-parser-lookup paths do not apply to
+these XML/SQLite sources. This is evidence of the bounded behavior on the
+tested CLI, not an execution of a binary built from the inventory revision.
 
 ### Assessments and controls
 
@@ -57,6 +90,14 @@ not six execution receipts. The other 52 cells were `unassessed`, including
 all 32 vendor cells. A matrix dot is a documentation claim, not a vendor run;
 a blank was not promoted to `not_applicable`. The 811 prior rows, their
 assessments and earlier evidence remained intact. `inventory_complete=false`.
+
+After the local comparisons, **12 cells are `partial`**: import, interpreter
+and Ferrule self-roundtrip on all four rows. Generated Ferrule C# on workbook
+creation remains `unverified`; the other 51 cells remain `unassessed`. The
+oracles are `repository` evidence. Neither a local native-profile export nor
+a documented backend mark supplies the `vendor_execution` evidence needed
+for a positive native-export or vendor-backend claim. No generated host,
+vendor preview, arbitrary SQL driver or chart recalculation was tested here.
 
 Run `python verify_select_workbook.py --pdf PATH` for the joins and in-section
 citations and `python verify_installer_matrices.py --pdf PATH` for the dots.
