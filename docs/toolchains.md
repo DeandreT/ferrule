@@ -44,11 +44,16 @@ Windows/MSVC selects `rust-lld.exe` with
 `linker-flavor=lld-link`, using Rust's bundled LLVM lld without an external
 LLVM installation. WebAssembly keeps its existing linker.
 When running Cargo directly in a generated Rust project outside this checkout
-on x86_64 Linux, use
-`CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=cc` and
-`CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS="-C link-arg=-fuse-ld=mold -Zthreads=0"`
-for the same linker and frontend behavior. Cargo processes started from the
-checkout already pass these defaults and the Windows linker flavor to children.
+on x86_64 Linux, select the dated nightly explicitly and pass the flags locally:
+
+```sh
+CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=cc \
+CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS="-C link-arg=-fuse-ld=mold -Zthreads=0" \
+cargo +nightly-2026-11-16 build
+```
+
+Cargo processes started from the checkout already pass these defaults and the
+Windows linker flavor to children.
 
 Install the pinned nextest release with `cargo binstall cargo-nextest --version
 0.9.150 --secure`, or use the official prebuilt release. Run `cargo nextest run
