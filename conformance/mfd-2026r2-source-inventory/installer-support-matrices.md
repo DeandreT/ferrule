@@ -40,8 +40,10 @@ a useful broad match. The [operation-level review](adapter-operations.md)
 resolves all four originally blank contexts. The [SELECT and workbook review](select-workbook.md)
 distinguishes four operations whose original rows already had broad contexts. The
 [database operation review](database-operations.md) separates six operations
-across four further rows, including the Server requirement on bulk inserts. A broad match does not
-establish a one-to-one identity or transfer an assessment. Vendor `built_in`
+across four further rows, including the Server requirement on bulk inserts.
+The [Quick EDI-to-XML review](quick-edi-xml.md) distinguishes both ways to use
+that conversion from ordinary EDI output. A broad match does not establish a
+one-to-one identity or transfer an assessment. Vendor `built_in`
 covers the product's output preview or server execution; `csharp` in this
 table concerns vendor output. Ferrule import, interpretation, native export,
 self-roundtrip, GUI, debugging, generated Rust and generated C# require

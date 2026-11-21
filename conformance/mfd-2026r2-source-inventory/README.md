@@ -9,8 +9,9 @@ separates four operations and identifies their bounded test coverage. The
 [database operation review](database-operations.md) adds six for bulk writes,
 stored procedure modes, rollback and database trace output. The
 [recordset structure review](recordset-structure.md) adds the two designer
-actions for manually supplying or discovering a recordset shape. Source
-itemization alone does not establish execution support.
+actions for manually supplying or discovering a recordset shape. The
+[Quick EDI-to-XML review](quick-edi-xml.md) adds one conversion with two documented
+component roles. Source itemization alone does not establish execution support.
 
 | File | Source coverage |
 | --- | --- |

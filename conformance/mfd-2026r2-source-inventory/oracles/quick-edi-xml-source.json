@@ -1,0 +1,57 @@
+{
+  "release": "MapForce Enterprise 2026r2 x64",
+  "executable_version": "28.2.0.0",
+  "installer_pdf_sha256": "9cf5bfa17ec38140941566dd15b19a9c32185339b04fb7383674f50452f43a09",
+  "kind": "documentation_only",
+  "runtime_proof": false,
+  "canonical_id": "formats.quick-edi-to-xml",
+  "matrix": {
+    "surface": "quick-edi-to-xml",
+    "section": "20.1.2",
+    "pdf_page": 1606,
+    "row": 7,
+    "marked": ["built_in"],
+    "links_to_pdf_page": 505
+  },
+  "shared": {
+    "language": "built_in",
+    "xml_schema": "neither_required_nor_provided",
+    "empty_fields": "omitted",
+    "shape": "source_dependent_not_customizable"
+  },
+  "modes": [
+    {
+      "edi_role": "source",
+      "trigger": "create_mapping_to_xml",
+      "mapping_effect": "adds_xml_output_target_with_copy_all",
+      "output": "xml",
+      "illustration_ids": ["source_graph", "source_xml"]
+    },
+    {
+      "edi_role": "target",
+      "trigger": "write_content_in_xml_format",
+      "mapping_effect": "switches_existing_edi_target_output_to_xml",
+      "output": "xml",
+      "illustration_ids": ["target_xml"]
+    }
+  ],
+  "anchor_columns": ["fact", "topic_index", "section", "pdf_page", "locator"],
+  "anchors": [
+    ["target_only", 235, "4.7.2", 473, "meaningful only for a target EDI component"],
+    ["schema", 251, "4.7.5", 505, "requires nor provides an XML schema"],
+    ["omission", 251, "4.7.5", 505, "fields that do not contain data are omitted"],
+    ["shape", 251, "4.7.5", 505, "structure of the generated XML depends on the source EDI data and cannot be altered"],
+    ["language", 251, "4.7.5", 505, "must select the Built-In transformation language"],
+    ["source_graph", 251, "4.7.5", 506, "This creates a target XML component with the copy-all"],
+    ["source_xml", 251, "4.7.5", 506, "preview the generated XML"],
+    ["target_xml", 251, "4.7.5", 506, "produces XML output instead of EDI output"],
+    ["target_example", 251, "4.7.5", 507, "Xml_To_X12_Order.mfd."],
+    ["matrix_row", 1086, "20.1.2", 1606, "conversion of EDI to XML"]
+  ],
+  "illustration_columns": ["id", "pdf_page", "image_xref", "raw_stream_sha256"],
+  "illustrations": [
+    ["source_graph", 506, 3976, "8fc3742f1923380899d770592332eab350a32619b795949a25737e351daee39d"],
+    ["source_xml", 506, 3978, "13105b506db7bc0133a9c58a2e940768038a39c29cb885ce3d52d2c99011a147"],
+    ["target_xml", 507, 3983, "0ad3beee7a4a9d4af85cae1e92cd37d30588c340da8b3727a9825ac71f950677"]
+  ]
+}
