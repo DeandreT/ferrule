@@ -29,7 +29,8 @@ has **824** records and `inventory_complete=false`.
 The [source receipt](oracles/quick-edi-xml-source.json) pins the role-specific
 text and the three illustrations. Only anchors and hashes are retained, not
 the vendor artifacts. Run `python -B verify_quick_edi_xml.py --check-introduction`
-to compare the introduction to exact Git parent `b9a847ab`. With the retained
+to compare the historical introduction at `b3e3186e` to exact Git parent
+`b9a847ab`. With the retained
 installer PDF and PyMuPDF, add `--pdf PATH` to recheck the text, image fingerprints,
 matrix marks and matrix-to-topic link. Run `python -B -m unittest test_live_inventory`
 for the offline negative controls.

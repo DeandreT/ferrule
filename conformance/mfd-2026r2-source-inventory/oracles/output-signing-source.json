@@ -1,0 +1,65 @@
+{
+  "release": "MapForce Enterprise 2026r2 x64",
+  "executable_version": "28.2.0.0",
+  "installer_pdf_sha256": "9cf5bfa17ec38140941566dd15b19a9c32185339b04fb7383674f50452f43a09",
+  "kind": "documentation_only",
+  "runtime_proof": false,
+  "canonical_id": "formats.sign-xml-xbrl-output",
+  "scope": {
+    "operation": "create_output_signature",
+    "product_lane": "desktop_built_in_preview",
+    "signed_input_verification": "not_established",
+    "schema_validation": "separate",
+    "mapforce_server": "explicitly_excluded",
+    "command_line": "only_invalid_settings_behavior_documented_here"
+  },
+  "case_columns": ["target", "placement", "output_contract", "facts"],
+  "cases": [
+    ["xml", "detached", "separate_signature_references_document", ["xml_target", "reference", "preview_pair", "save_pair"]],
+    ["xml", "enveloped", "signature_last_child_of_document_element", ["xml_target", "last_child", "schema"]],
+    ["xbrl", "detached", "separate_signature_references_document", ["xbrl_target", "xbrl_detached", "reference"]],
+    ["xbrl", "enveloped", "excluded_by_placement_rule", ["xbrl_target", "xbrl_detached"]]
+  ],
+  "matrix": {
+    "feature": ["20.1.2", 1605, 16, "xml-xbrl-signatures"],
+    "label_pages": [1605, 1606],
+    "marks": ["built_in"],
+    "links_to_pdf_page": 168,
+    "format_context": [
+      ["20.1.1", 1602, 1, "xml", "xml-signatures", "xml_format_note"],
+      ["20.1.1", 1602, 5, "xbrl", "xbrl-signatures", "xbrl_format_note"]
+    ]
+  },
+  "anchor_columns": ["fact", "topic_index", "pdf_page", "locator"],
+  "anchors": [
+    ["xml_target", 82, 155, "add a digital signature to the XML output instance file"],
+    ["generation", 89, 168, "creating XML digital signatures for XML and XBRL output files"],
+    ["preview", 89, 168, "only in Built-In and only in the preview"],
+    ["server", 89, 168, "MapForce Server does not support digital signatures"],
+    ["component_settings", 90, 169, "stored for each component individually"],
+    ["persistence", 90, 169, "stored in the MFD file when it is saved"],
+    ["certificate_sign", 90, 170, "signature is generated using the private key"],
+    ["certificate_verify", 90, 170, "public key of the certificate is used to verify the signature"],
+    ["password", 90, 171, "password is used to create the signature"],
+    ["last_child", 90, 171, "last child element of the root (document) element"],
+    ["xbrl_detached", 90, 172, "for XBRL files can be created only as external signature files"],
+    ["reference", 90, 172, "via a reference in the signature file"],
+    ["verify_role", 90, 172, "must be done with the signature file active"],
+    ["key_info", 90, 172, "available only when the signature is certificate-based"],
+    ["included_public_key", 90, 172, "public-key information is placed inside the signature"],
+    ["cli_failure", 90, 172, "execution stops with an error or continues without signature"],
+    ["preview_pair", 91, 172, "temporary digital signature file"],
+    ["save_pair", 91, 173, "To generate the .xml and .xsig files in the output directory"],
+    ["schema", 91, 173, "the schema must contain the appropriate element declarations"],
+    ["xbrl_target", 278, 542, "add a digital signature to the XBRL output instance file"],
+    ["xml_format_note", 1085, 1604, "XML with digital signatures processing is supported only in BUILT-IN"],
+    ["xbrl_format_note", 1085, 1604, "XBRL with digital signatures processing is supported only in BUILT-IN"],
+    ["feature_label_start", 1086, 1605, "XML and XBRL digital"],
+    ["feature_label_end", 1086, 1606, "signatures 168"]
+  ],
+  "image_columns": ["id", "pdf_page", "image_xref", "raw_stream_sha256"],
+  "images": [
+    ["detached_preview_document", 173, 2204, "5985cff57d4901be0fa154d8f67d05fcef4851d789d60061a5cdda00397a5a7b"],
+    ["detached_preview_signature", 173, 2206, "c6099b9af231243695363bbc236eb5cc3479861f6387bb5cfb110e6ea8fb0650"]
+  ]
+}
