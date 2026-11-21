@@ -7,6 +7,10 @@ from copy import deepcopy
 from verify_adapter_operations import verify as adapters
 from verify_context_leaf_review import HERE, read_cases
 from verify_database_operations import verify as database_operations
+from verify_output_signing import CAPABILITY as OUTPUT_SIGNING
+from verify_output_signing import RECEIPT as SIGNING_RECEIPT
+from verify_output_signing import verify as output_signing
+from verify_output_signing import verify_introduction as signing_introduction
 from verify_quick_edi_xml import CAPABILITY as QUICK_EDI_XML
 from verify_quick_edi_xml import RECEIPT as QUICK_EDI_RECEIPT
 from verify_quick_edi_xml import verify as quick_edi_xml
@@ -57,13 +61,19 @@ class LiveInventory(unittest.TestCase):
         return quick_edi_xml(receipt, self.matrix, self.ledger, self.pages, self.companion,
                              read_cases("mapping-contracts.tsv"))
 
+    def verify_output_signing(self, receipt=None):
+        if receipt is None:
+            receipt = load(HERE / "oracles" / SIGNING_RECEIPT)
+        return output_signing(receipt, self.matrix, self.ledger, self.pages, self.companion,
+                              read_cases("workflow-contracts.tsv"))
+
     def test_later_reviews_can_change_status_and_evidence(self):
         # Simulated metadata changes only: no runtime claims about the real file.
         self.ledger["evidence"].append(dict(id="future-review", kind="repository", location="ROADMAP.md",
                                             description="Synthetic reference for this control."))
         for k in ["formats.xlsx", "deployment.credential-transfer",
                   "functions.read-binary-file", "formats.xlsx-update", "connectors.db-action-trace",
-                  DEFINE, QUICK_EDI_XML]:
+                  DEFINE, QUICK_EDI_XML, OUTPUT_SIGNING]:
             self.caps[k]["support"]["gui"] = dict(status="unverified", evidence=["future-review"],
                                                   detail="A later review requires a behavioral receipt.")
         self.verify_owners()
@@ -72,6 +82,7 @@ class LiveInventory(unittest.TestCase):
         self.verify_database()
         self.verify_recordsets()
         self.verify_quick_edi_xml()
+        self.verify_output_signing()
 
     def test_matrix_or_local_test_is_not_vendor_execution(self):
         for k, check in [("deployment.credential-transfer", self.verify_owners),
@@ -206,17 +217,84 @@ class LiveInventory(unittest.TestCase):
             self.verify_quick_edi_xml()
 
     def test_quick_edi_introduction_preserves_prior_ids_and_does_not_assess_blanks(self):
-        # CLI --check-introduction supplies the independent exact Git parent.
-        base = deepcopy(dict(self.ledger, capabilities=self.ledger["capabilities"][:823]))
-        quick_edi_introduction(self.ledger, base)
+        # Simulate the historic transition, independently checked by --check-introduction.
+        introduction = dict(self.ledger, capabilities=self.ledger["capabilities"][:824])
+        base = deepcopy(dict(introduction, capabilities=introduction["capabilities"][:823]))
+        quick_edi_introduction(introduction, base)
         cell = self.caps[QUICK_EDI_XML]["support"]["vendor_backends"]["csharp"]
         cell.update(status="not_applicable")
         with self.assertRaisesRegex(ValueError, "introduction not source-only"):
-            quick_edi_introduction(self.ledger, base)
+            quick_edi_introduction(introduction, base)
         cell.update(status="unassessed")
         self.caps["formats.edi"]["title"] += " (changed)"
         with self.assertRaisesRegex(ValueError, "prior ledger or evidence changed"):
-            quick_edi_introduction(self.ledger, base)
+            quick_edi_introduction(introduction, base)
+
+    def test_signing_does_not_promote_input_verification_schema_or_server(self):
+        for facet, value in (("signed_input_verification", "supported"),
+                             ("schema_validation", "equivalent_to_verification"),
+                             ("mapforce_server", "inherits_built_in"),
+                             ("command_line", "signs_successfully")):
+            receipt = load(HERE / "oracles" / SIGNING_RECEIPT)
+            receipt["scope"][facet] = value
+            with self.subTest(facet=facet), self.assertRaisesRegex(ValueError, "desktop output signing only"):
+                self.verify_output_signing(receipt)
+
+    def test_signing_private_and_public_key_citations_are_not_interchangeable(self):
+        receipt = load(HERE / "oracles" / SIGNING_RECEIPT)
+        anchors = {a[0]: a for a in receipt["anchors"]}
+        sign, verify = anchors["certificate_sign"], anchors["certificate_verify"]
+        sign[-1], verify[-1] = verify[-1], sign[-1]
+        with self.assertRaisesRegex(ValueError, "distinct locator: certificate_sign"):
+            self.verify_output_signing(receipt)
+
+    def test_signing_xbrl_cannot_inherit_xml_enveloped_placement(self):
+        receipt = load(HERE / "oracles" / SIGNING_RECEIPT)
+        xml_enveloped, xbrl_enveloped = receipt["cases"][1], receipt["cases"][3]
+        xbrl_enveloped[2:] = xml_enveloped[2:]
+        with self.assertRaisesRegex(ValueError, "distinct format and placement cases"):
+            self.verify_output_signing(receipt)
+
+    def test_signing_matrix_cannot_use_ordinary_format_marks_or_create_a_second_row(self):
+        for change in ({"marks": ["cpp", "csharp", "java", "built_in"]},
+                       {"feature": ["20.1.2", 1606, 1, "xml-xbrl-signatures"]}):
+            receipt = load(HERE / "oracles" / SIGNING_RECEIPT)
+            receipt["matrix"].update(change)
+            with self.subTest(change=change), self.assertRaisesRegex(ValueError, "one BUILT-IN signing row"):
+                self.verify_output_signing(receipt)
+
+    def test_signing_two_preview_images_are_not_interchangeable(self):
+        receipt = load(HERE / "oracles" / SIGNING_RECEIPT)
+        document, signature = receipt["images"]
+        document[2:], signature[2:] = signature[2:], document[2:]
+        with self.assertRaisesRegex(ValueError, "preview image: detached_preview_document"):
+            self.verify_output_signing(receipt)
+
+    def test_signing_manifest_and_matrix_cannot_claim_vendor_execution(self):
+        receipt = load(HERE / "oracles" / SIGNING_RECEIPT)
+        with self.assertRaisesRegex(ValueError, "cannot establish runtime proof"):
+            self.verify_output_signing(dict(receipt, runtime_proof=True))
+        self.caps[OUTPUT_SIGNING]["support"]["vendor_backends"]["built_in"].update(
+            status="partial", evidence=["vendor-codegen"])
+        with self.assertRaisesRegex(ValueError, "built_in"):
+            self.verify_output_signing()
+
+    def test_signing_introduction_cannot_assess_blanks_or_change_prior_versions(self):
+        # CLI --check-introduction checks against the independent exact Git parent.
+        base = deepcopy(dict(self.ledger, capabilities=self.ledger["capabilities"][:824]))
+        signing_introduction(self.ledger, base)
+        cell = self.caps[OUTPUT_SIGNING]["support"]["vendor_backends"]["cpp"]
+        cell.update(status="not_applicable")
+        with self.assertRaisesRegex(ValueError, "introduction not source-only"):
+            signing_introduction(self.ledger, base)
+        cell.update(status="unassessed")
+        self.ledger["schema_version"] += 1
+        with self.assertRaisesRegex(ValueError, "prior ledger, versions or evidence changed"):
+            signing_introduction(self.ledger, base)
+        self.ledger["schema_version"] -= 1
+        self.caps["formats.quick-edi-to-xml"]["title"] += " (changed)"
+        with self.assertRaisesRegex(ValueError, "prior ledger, versions or evidence changed"):
+            signing_introduction(self.ledger, base)
 
 
 if __name__ == "__main__":

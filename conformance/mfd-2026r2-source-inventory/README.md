@@ -11,7 +11,9 @@ stored procedure modes, rollback and database trace output. The
 [recordset structure review](recordset-structure.md) adds the two designer
 actions for manually supplying or discovering a recordset shape. The
 [Quick EDI-to-XML review](quick-edi-xml.md) adds one conversion with two documented
-component roles. Source itemization alone does not establish execution support.
+component roles. The [output-signing review](output-signing.md) distinguishes
+XML/XBRL signature generation from signed-input verification. Source itemization
+alone does not establish execution support.
 
 | File | Source coverage |
 | --- | --- |

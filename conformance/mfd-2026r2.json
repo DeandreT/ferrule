@@ -24642,6 +24642,99 @@
           }
         }
       }
+    },
+    {
+      "id": "formats.sign-xml-xbrl-output",
+      "title": "Create digital signatures for XML and XBRL mapping outputs",
+      "category": "formats",
+      "profiles": [
+        "mfd-2026r2-enterprise"
+      ],
+      "depends_on": [],
+      "support": {
+        "import": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "interpreter": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "native_export": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "ferrule_roundtrip": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "gui": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "debug": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "rust": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "csharp": {
+          "status": "unassessed",
+          "evidence": [],
+          "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+        },
+        "vendor_backends": {
+          "xslt3": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "built_in": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "xslt1": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "xslt2": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "xquery1": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "cpp": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "java": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          },
+          "csharp": {
+            "status": "unassessed",
+            "evidence": [],
+            "detail": "Documented operation only. Applicability and implementation on this surface have not been assessed."
+          }
+        }
+      }
     }
   ]
 }
