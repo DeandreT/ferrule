@@ -2,10 +2,13 @@
 
 import csv
 import unittest
+from copy import deepcopy
 
 from verify_adapter_operations import verify as adapters
 from verify_context_leaf_review import HERE, read_cases
 from verify_database_operations import verify as database_operations
+from verify_recordset_structure import DEFINE, DISCOVER, RECEIPT, verify as recordset_structure
+from verify_recordset_structure import verify_introduction
 from verify_select_workbook import verify as select_workbook
 from verify_workflow_owners import load, owners
 
@@ -37,18 +40,26 @@ class LiveInventory(unittest.TestCase):
             rows = read_cases("database-operations.tsv")
         database_operations(rows, self.matrix, self.ledger, self.pages, self.companion)
 
+    def verify_recordsets(self, receipt=None, rows=None):
+        if receipt is None:
+            receipt = load(HERE / "oracles" / RECEIPT)
+        if rows is None:
+            rows = read_cases("recordset-structure.tsv")
+        return recordset_structure(rows, receipt, self.matrix, self.ledger, self.pages, self.companion)
+
     def test_later_reviews_can_change_status_and_evidence(self):
         # Simulated metadata changes only: no runtime claims about the real file.
         self.ledger["evidence"].append(dict(id="future-review", kind="repository", location="ROADMAP.md",
                                             description="Synthetic reference for this control."))
         for k in ["formats.xlsx", "deployment.credential-transfer",
-                  "functions.read-binary-file", "formats.xlsx-update", "connectors.db-action-trace"]:
+                  "functions.read-binary-file", "formats.xlsx-update", "connectors.db-action-trace", DEFINE]:
             self.caps[k]["support"]["gui"] = dict(status="unverified", evidence=["future-review"],
                                                   detail="A later review requires a behavioral receipt.")
         self.verify_owners()
         self.verify_adapters()
         self.verify_writes()
         self.verify_database()
+        self.verify_recordsets()
 
     def test_matrix_or_local_test_is_not_vendor_execution(self):
         for k, check in [("deployment.credential-transfer", self.verify_owners),
@@ -105,6 +116,42 @@ class LiveInventory(unittest.TestCase):
         self.ledger["capabilities"].remove(self.caps["connectors.stored-procedure-target"])
         with self.assertRaisesRegex(ValueError, "database operation IDs"):
             self.verify_database()
+
+    def test_recordset_source_receipt_is_not_runtime_proof(self):
+        receipt = load(HERE / "oracles" / RECEIPT)
+        with self.assertRaisesRegex(ValueError, "cannot establish runtime proof"):
+            self.verify_recordsets(receipt=dict(receipt, runtime_proof=True))
+
+    def test_recordset_authoring_cannot_inherit_runtime_matrix(self):
+        receipt = load(HERE / "oracles" / RECEIPT)
+        receipt["matrix"]["design_time_operations"] = "inherits_stored_procedure_marks"
+        with self.assertRaisesRegex(ValueError, "matrix is context only"):
+            self.verify_recordsets(receipt=receipt)
+        cell = self.caps[DISCOVER]["support"]["vendor_backends"]["built_in"]
+        cell.update(status="supported", evidence=["vendor-formats"])
+        with self.assertRaisesRegex(ValueError, "built_in"):
+            self.verify_recordsets()
+
+    def test_recordset_trial_call_cannot_replace_manual_structure(self):
+        rows = read_cases("recordset-structure.tsv")
+        altered = [dict(r, facts="edit-structure-choice,call-execute")
+                   if r["case"] == "manual-call" else r for r in rows]
+        with self.assertRaisesRegex(ValueError, "operation/source join: manual-call"):
+            self.verify_recordsets(rows=altered)
+
+    def test_recordset_introduction_rejects_excluded_blank_and_changed_prior_row(self):
+        # CLI --check-introduction supplies the independent exact Git parent.
+        base = deepcopy(dict(self.ledger, capabilities=self.ledger["capabilities"][:821]))
+        verify_introduction(self.ledger, base)
+        cell = self.caps[DEFINE]["support"]["vendor_backends"]["cpp"]
+        original = cell.copy()
+        cell.update(status="not_applicable")
+        with self.assertRaisesRegex(ValueError, "introduction not source-only"):
+            verify_introduction(self.ledger, base)
+        cell.update(original)
+        self.caps["connectors.stored-procedure-source"]["title"] += " (changed)"
+        with self.assertRaisesRegex(ValueError, "prior ledger or evidence changed"):
+            verify_introduction(self.ledger, base)
 
 
 if __name__ == "__main__":
