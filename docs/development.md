@@ -54,7 +54,7 @@ command in the checkout, so do not pass a `+toolchain` override. This does not
 change your global rustup default.
 
 The repository enables Rust's parallel frontend with
-`-Zunstable-options --jobs-frontend=0`, automatically selecting the logical CPU
+`-Zthreads=0`, automatically selecting the logical CPU
 parallelism available to each compiler process. This is separate from Cargo's
 `-j`/`CARGO_BUILD_JOBS` build-job limit and test concurrency. Keep bounded jobs,
 scheduler limits and serial generated-consumer gates; frontend parallelism does
