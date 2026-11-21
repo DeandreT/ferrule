@@ -355,6 +355,11 @@ performing filesystem traversal. Direct files and bounded adjacent ZIP packages
 must remain canonically contained in that catalog.
 Every transitive EDI include, selected message configuration, and SWIFT common
 definition remains confined to the root that authorized the main configuration.
+An envelope's requested message type must match the selected file's single
+direct `MessageType` declaration before that file's includes are read. The
+comparison uses the complete XML text: comments and processing instructions
+do not change the value, and whitespace is significant. A differently named
+file can be discovered by its declaration when the match is unique.
 
 Separately managed JSON Schema catalogs use the same explicit ordered trust
 model:

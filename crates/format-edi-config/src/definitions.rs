@@ -189,7 +189,15 @@ pub(super) fn load_definitions(
     }
     let text = files.read(&canonical)?;
     let doc = parse_document(&canonical, &text)?;
-    let root = doc.root_element();
+    load_root_definitions(&canonical, doc.root_element(), files, definitions)
+}
+
+pub(super) fn load_root_definitions(
+    canonical: &Path,
+    root: roxmltree::Node<'_, '_>,
+    files: &mut Files,
+    definitions: &mut Definitions,
+) -> Result<(), ConfigError> {
     if let Some(elements) = root.children().find(|node| node.has_tag_name("Elements")) {
         for node in elements.children().filter(roxmltree::Node::is_element) {
             let Some(name) = node.attribute("name") else {
@@ -243,7 +251,7 @@ pub(super) fn load_definitions(
         .map(str::to_string)
         .collect::<Vec<_>>();
     for include in includes {
-        let include_path = files.resolve_sibling(&canonical, &include)?;
+        let include_path = files.resolve_sibling(canonical, &include)?;
         load_definitions(&include_path, files, definitions)?;
     }
     Ok(())
