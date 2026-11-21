@@ -28,6 +28,177 @@ prepare = load("prepare-ovh-job")
 job_evidence = load("job-evidence")
 
 
+class HookAncestryTests(unittest.TestCase):
+    """Resolve real fixture symlinks against an entirely synthetic process tree."""
+
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory(prefix="ferrule-hook-ancestry-")
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name)
+        self.uid = 1000
+        self.configured_worker = self.root / "actions-runner/bin/Runner.Worker"
+        self.processes = {}
+        self.proc = Mock()
+        self.proc.__truediv__ = Mock(side_effect=self.processes.__getitem__)
+        self.proc.iterdir.side_effect = AssertionError("Supply a synthetic process census")
+        self.getpid = Mock(return_value=40)
+        patches = (
+            patch.object(evidence, "Path", side_effect=self.proc_root),
+            patch.object(evidence, "WORKER", str(self.configured_worker)),
+            patch.object(evidence.os, "getpid", self.getpid),
+            patch.object(evidence.os, "getuid", return_value=self.uid),
+        )
+        for replacement in patches:
+            replacement.start()
+            self.addCleanup(replacement.stop)
+
+    def proc_root(self, path):
+        self.assertEqual(path, "/proc")
+        return self.proc
+
+    def marker(self, name):
+        # Ordinary identity markers, not executable programs or live runner files.
+        path = self.root / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("self-authored path identity fixture\n")
+        return path
+
+    def process(self, pid, parent, *, executable=None, owner=None):
+        fields = Mock()
+        fields.read_text.return_value = f"{pid} (fixture ) process) S {parent}"
+        entries = {"stat": fields}
+        if executable is not None:
+            directory = self.root / "proc" / str(pid)
+            directory.mkdir(parents=True)
+            link = directory / "exe"
+            link.symlink_to(executable)
+            entries["exe"] = link
+        process = Mock()
+        process.name = str(pid)
+        process.stat.return_value.st_uid = self.uid if owner is None else owner
+        # Foreign ancestors can omit exe entirely: inspecting it fails the test.
+        process.__truediv__ = Mock(side_effect=entries.__getitem__)
+        self.processes[str(pid)] = process
+        return process
+
+    def hook(self, *, versioned=True):
+        directory = "bin.2.337.0" if versioned else "bin"
+        worker = self.marker(f"actions-runner/{directory}/Runner.Worker")
+        if versioned:
+            self.configured_worker.parent.symlink_to(directory, target_is_directory=True)
+        self.process(40, 30, executable=self.marker("tools/python3"))
+        self.process(30, 20, executable=worker)
+        self.process(20, 1, executable=self.marker("tools/launcher"))
+        self.process(1, 0, owner=self.uid + 1)
+        return worker
+
+    def test_unversioned_worker_returns_complete_ancestry(self):
+        self.hook(versioned=False)
+        self.assertEqual(evidence.hook_ancestry(), {40, 30, 20, 1})
+
+    def test_configured_symlink_accepts_exact_versioned_worker_and_full_ancestry(self):
+        worker = self.hook()
+        self.assertNotEqual(worker, self.configured_worker)
+        self.assertTrue(self.configured_worker.parent.is_symlink())
+        self.assertEqual(evidence.hook_ancestry(), {40, 30, 20, 1})
+
+    def test_same_basename_other_installation_and_unselected_version_refuse(self):
+        self.hook()
+        executable = self.processes["30"] / "exe"
+        for name in ("unrelated/Runner.Worker",
+                     "other-actions-runner/bin/Runner.Worker",
+                     "actions-runner/bin.2.336.0/Runner.Worker"):
+            with self.subTest(executable=name):
+                target = self.marker(name)
+                executable.unlink()
+                executable.symlink_to(target)
+                with self.assertRaisesRegex(ValueError, "actual pre-job hook"):
+                    evidence.hook_ancestry()
+
+    def test_configured_symlink_cannot_select_a_worker_outside_the_installation(self):
+        self.hook()
+        worker = self.marker("actions-runner-other/bin/Runner.Worker")
+        bin_link = self.configured_worker.parent
+        bin_link.unlink()
+        bin_link.symlink_to(worker.parent, target_is_directory=True)
+        executable = self.processes["30"] / "exe"
+        executable.unlink()
+        executable.symlink_to(worker)
+        with self.assertRaisesRegex(ValueError, "outside its runner installation"):
+            evidence.hook_ancestry()
+
+    def test_foreign_owned_worker_ancestor_does_not_authorize_compaction(self):
+        self.hook()
+        worker = self.processes["30"]
+        worker.stat.return_value.st_uid = self.uid + 1
+        with self.assertRaisesRegex(ValueError, "actual pre-job hook"):
+            evidence.hook_ancestry()
+        worker.__truediv__.assert_called_once_with("stat")
+
+    def test_foreign_init_is_traversed_without_inspecting_its_executable(self):
+        self.hook()
+        self.assertEqual(evidence.hook_ancestry(), {40, 30, 20, 1})
+        self.processes["1"].__truediv__.assert_called_once_with("stat")
+
+    def test_missing_or_unreadable_owner_or_parent_metadata_after_worker_refuses(self):
+        self.hook()
+        ancestor = self.processes["20"]
+        for metadata, read in (("owner", ancestor.stat),
+                               ("parent", (ancestor / "stat").read_text)):
+            for error in (FileNotFoundError, PermissionError):
+                with self.subTest(metadata=metadata, error=error.__name__):
+                    read.side_effect = error("required synthetic ancestor metadata")
+                    try:
+                        with self.assertRaises(error):
+                            evidence.hook_ancestry()
+                    finally:
+                        read.side_effect = None
+                    self.processes["30"].__truediv__.assert_any_call("exe")
+
+    def test_worker_outside_ancestry_cannot_authorize_an_administrator(self):
+        self.hook()
+        self.process(90, 1, executable=self.marker("tools/administrator"))
+        self.getpid.return_value = 90
+        with self.assertRaisesRegex(ValueError, "actual pre-job hook"):
+            evidence.producer_closure(processes=[self.processes["30"]])
+        self.processes["30"].stat.assert_not_called()
+        self.proc.iterdir.assert_not_called()
+
+    def test_same_account_nonancestor_refuses_even_when_it_is_an_exact_worker(self):
+        worker = self.hook()
+        for pid, executable in ((60, self.marker("tools/earlier-producer")), (70, worker)):
+            with self.subTest(pid=pid, executable=executable):
+                producer = self.process(pid, 1, executable=executable)
+                with self.assertRaisesRegex(ValueError, f"still alive: {pid}"):
+                    evidence.producer_closure(processes=[producer])
+                producer.__truediv__.assert_not_called()
+        self.proc.iterdir.assert_not_called()
+
+    def test_vanished_nonancestor_is_ignored(self):
+        self.hook()
+        vanished = self.process(60, 1)
+        vanished.stat.side_effect = FileNotFoundError("synthetic producer exited")
+        evidence.producer_closure(processes=[vanished])
+        vanished.stat.assert_called_once_with()
+        self.proc.iterdir.assert_not_called()
+
+    def test_foreign_nonancestor_is_not_a_runner_producer(self):
+        self.hook()
+        foreign = self.process(60, 1, owner=self.uid + 1)
+        evidence.producer_closure(processes=[foreign])
+        foreign.stat.assert_called_once_with()
+        foreign.__truediv__.assert_not_called()
+        self.proc.iterdir.assert_not_called()
+
+    def test_unreadable_nonancestor_metadata_refuses(self):
+        self.hook()
+        unknown = self.process(60, 1)
+        unknown.stat.side_effect = PermissionError("synthetic producer unreadable")
+        with self.assertRaises(PermissionError):
+            evidence.producer_closure(processes=[unknown])
+        self.proc.iterdir.assert_not_called()
+
+
 class EvidenceCompactionTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory(prefix="ferrule-evidence-compaction-")
@@ -254,7 +425,10 @@ class EvidenceCompactionTests(unittest.TestCase):
     def test_direct_admin_invocation_cannot_claim_pre_job_closure(self):
         # Tests themselves can run beneath a real Actions worker. Model an
         # administrator's ancestry independently of the test harness's parent.
-        with patch.object(evidence, "WORKER", "/no-administrator-job-worker"):
+        worker = self.home / "runner/bin/Runner.Worker"
+        worker.parent.mkdir(parents=True)
+        worker.touch()
+        with patch.object(evidence, "WORKER", str(worker)):
             with self.assertRaisesRegex(ValueError, "actual pre-job hook"):
                 evidence.producer_closure(processes=[])
 
@@ -263,9 +437,14 @@ class EvidenceCompactionTests(unittest.TestCase):
         root_process.stat.return_value.st_uid = os.getuid() + 1
         root_process.__truediv__ = Mock(return_value=Mock())
         root_process.__truediv__.return_value.read_text.return_value = "1 (init) S 0"
+        def realpath(path, *, strict=False):
+            if path == evidence.WORKER and strict:
+                return path
+            raise PermissionError("root exe")
+
         with patch.object(evidence.os, "getpid", return_value=1), \
              patch.object(evidence, "Path", return_value=Mock(__truediv__=Mock(return_value=root_process))), \
-             patch.object(evidence.os.path, "realpath", side_effect=PermissionError("root exe")):
+             patch.object(evidence.os.path, "realpath", side_effect=realpath):
             with self.assertRaisesRegex(ValueError, "actual pre-job hook"):
                 evidence.hook_ancestry()
 
