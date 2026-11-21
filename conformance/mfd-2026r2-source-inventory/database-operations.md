@@ -59,8 +59,10 @@ The ledger has **821 records at addition**, versus 815 at `b99891ed`. All
 **96 new cells** (48 Ferrule and 48 vendor) are unassessed with no execution
 evidence. The table records documented applicability only; blanks are not new
 `not_applicable` assessments. Existing assessments and the original matrix
-remain unchanged. `inventory_complete=false`; normal table-action CRUD, MERGE,
-recordset discovery and other database contracts are not exhausted by this group.
+remain unchanged. `inventory_complete=false`; normal table-action CRUD and
+MERGE remain outside this group. See the separate
+[design-time recordset review](recordset-structure.md) for shape definition
+and discovery rather than runtime calls.
 
 Run `python -B verify_database_operations.py` for the joins and cell checks.
 Pass `--pdf PATH` to verify the pinned hash and in-section anchors. Run
