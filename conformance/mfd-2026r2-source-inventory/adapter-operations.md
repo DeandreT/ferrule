@@ -55,9 +55,9 @@ numeric validation and global root selection. Those contracts still apply;
 neither their cases nor the [358 workflow examples](workflow-contracts.md)
 are added to the 14.
 
-The ledger now has **811 records**: the existing 797 plus 14 native-profile
+At `703901ad` the ledger had **811 records**: the existing 797 plus 14 native-profile
 operations. All **224** new cells (112 Ferrule surface cells, 112 vendor cells)
-are unassessed, with empty evidence. For future qualification,
+were unassessed, with empty evidence. For future qualification,
 [#531](https://github.com/DeandreT/ferrule/issues/531) concerns scalar JSON
 parser fields from a required runtime string, and
 [#1170](https://github.com/DeandreT/ferrule/issues/1170) concerns JSON parser
@@ -67,7 +67,7 @@ The exact claims and runnable evidence still need independent review under
 [#89](https://github.com/DeandreT/ferrule/issues/89). `inventory_complete` remains false.
 
 Run `python verify_adapter_operations.py` to check the reconciliation against
-the original matrix, the ledger at the draft head, and both function source
+the original matrix, the current ledger and both function source
 identities. With `--pdf PATH` the verifier checks the cited passages inside
 their own topic bookmarks. `verify_installer_matrices.py --pdf PATH` separately
 checks the positions of all printed backend dots.

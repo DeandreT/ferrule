@@ -250,7 +250,7 @@ fn check_identities(inventory: &Value, ledger: &BTreeSet<String>) {
         .values()
         .map(|row| text(&row["canonical_id"]).to_owned())
         .collect();
-    // The frozen companion predates the workflow and adapter reconciliations.
+    // The frozen companion predates the workflow, adapter and operation reconciliations.
     // Require the exact complement rather than allowing arbitrary new IDs.
     assert!(canonical.is_subset(ledger));
     let additions: BTreeSet<_> = ledger.difference(&canonical).map(String::as_str).collect();
@@ -260,7 +260,11 @@ fn check_identities(inventory: &Value, ledger: &BTreeSet<String>) {
             "authoring.assisted-connections",
             "authoring.stylesheet-documentation",
             "connectors.oauth-credential",
+            "connectors.select-with-inputs",
+            "connectors.select-without-inputs",
             "deployment.credential-transfer",
+            "formats.xlsx-create",
+            "formats.xlsx-update",
             "functions.read-binary-file",
             "functions.write-binary-file",
             "interop.configured-resource-alias",

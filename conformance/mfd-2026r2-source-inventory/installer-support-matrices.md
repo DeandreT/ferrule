@@ -37,7 +37,8 @@ built-in mark, whereas the **generation** row marks C# and Java only.
 
 `ledger_context` points to a related native-profile capability where there is
 a useful broad match. The [operation-level review](adapter-operations.md)
-resolves all four originally blank contexts without flattening their one-to-many joins. A broad match does not
+resolves all four originally blank contexts. The [SELECT and workbook review](select-workbook.md)
+distinguishes four operations whose original rows already had broad contexts. A broad match does not
 establish a one-to-one identity or transfer an assessment. Vendor `built_in`
 covers the product's output preview or server execution; `csharp` in this
 table concerns vendor output. Ferrule import, interpretation, native export,

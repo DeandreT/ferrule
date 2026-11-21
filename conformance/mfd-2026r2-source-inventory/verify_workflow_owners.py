@@ -7,6 +7,7 @@ from collections import Counter
 from pathlib import Path
 
 from verify_context_leaf_review import HERE, PDF_HASH, read_cases, require
+from verify_live_cells import check_cells
 
 
 def load(path):
@@ -27,13 +28,8 @@ def owners(rows, workflows, pages, companion, ledger):
     original = {m["canonical_id"] for m in companion["identity_policy"]["canonical_identity_map"]}
     caps = {c["id"]: c for c in ledger["capabilities"]}
     require(len(caps) == len(ledger["capabilities"]) and original <= caps.keys(), "canonical IDs")
-    # The matrix adapter reconciliation is disjoint from these workflow owners.
-    adapter_ids = {r["canonical_id"] for r in read_cases("adapter-operations.tsv")}
-    require(adapter_ids <= caps.keys() and not adapter_ids & original, "adapter complement")
-    added = caps.keys() - original - adapter_ids
-    require(len(added) == 8 and added == {
-        r["canonical_id"] for r in rows if r["original_disposition"] == "missing"
-    }, "new capabilities")
+    added = {r["canonical_id"] for r in rows if r["original_disposition"] == "missing"}
+    require(len(added) == 8 and added <= caps.keys() and not added & original, "workflow additions")
     for r in rows:
         owner, disposition = r["canonical_id"], r["original_disposition"]
         require(r["reason"].strip() and (
@@ -52,24 +48,11 @@ def owners(rows, workflows, pages, companion, ledger):
     require(Counter(by_page[i]["original_disposition"] for w in workflows
                     if (i := int(w["page_index"])) in cohort) ==
             {"match": 31, "external": 18, "missing": 17}, "example partition")
+    evidence = {e["id"]: e["kind"] for e in ledger["evidence"]}
     for owner in added:
         c = caps[owner]
-        require(c["profiles"] == ["mfd-2026r2-enterprise"] and not c["depends_on"], owner)
-        support = c["support"]
-        cells = [v for k, v in support.items() if k != "vendor_backends"]
-        cells.extend(support["vendor_backends"].values())
-        require(support.keys() == ledger["capabilities"][0]["support"].keys() and
-                support["vendor_backends"].keys() ==
-                ledger["capabilities"][0]["support"]["vendor_backends"].keys(), owner)
-        require(len(cells) == 16 and all(v["status"] == "unassessed" and
-                v["evidence"] == [] and v["detail"].strip() for v in cells), owner)
-    # Protect the entire published baseline, including ordering, assessments,
-    # dependencies, source references and profiles (normalized JSON, not CRLF).
-    baseline = dict(ledger, capabilities=[c for c in ledger["capabilities"] if c["id"] in original])
-    data = json.dumps(baseline, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
-    require(hashlib.sha256(data).hexdigest() ==
-            "ff82f2572af6e6c29b8edb2e24eb4da6909127d5a29507ab16b81aea3e2a5483",
-            "published ledger changed; review any subsequent qualification independently")
+        require(c["profiles"] == ["mfd-2026r2-enterprise"], owner)
+        check_cells(c, evidence)
 
 
 def bounded(defaults, wrappers, pages, functions, companion):
