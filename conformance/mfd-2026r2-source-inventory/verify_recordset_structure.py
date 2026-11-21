@@ -12,6 +12,7 @@ from verify_live_cells import check_cells
 from verify_workflow_owners import check_pdf, load
 
 BASE = "2fc817398a3cefbe7176e312bc5ddf8ccd9ec3bc"
+INTRODUCTION = "b9a847ab76ddb4406705d1bc38f70bab602ebc95"
 LEDGER_PATH = "conformance/mfd-2026r2.json"
 RECEIPT = "recordset-structure-source.json"
 DEFINE = "authoring.define-procedure-recordset"
@@ -112,7 +113,8 @@ def verify_introduction(ledger, base):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--pdf", type=Path, help="English manual from the pinned installer")
-    parser.add_argument("--check-introduction", action="store_true", help="compare against exact Git parent")
+    parser.add_argument("--check-introduction", action="store_true",
+                        help="compare the historical recordset introduction with its exact Git parent")
     args = parser.parse_args()
     ledger = load(HERE.parent / "mfd-2026r2.json")
     pages = load(HERE / "documentation-pages.json")["pages"]
@@ -126,8 +128,10 @@ if __name__ == "__main__":
         compare_pdf(matrix, args.pdf)
     if args.check_introduction:
         root = HERE.parent.parent
-        base = json.loads(subprocess.check_output(["git", "show", f"{BASE}:{LEDGER_PATH}"], cwd=root))
-        verify_introduction(ledger, base)
+        base, introduction = (json.loads(subprocess.check_output(
+            ["git", "show", f"{ref}:{LEDGER_PATH}"], cwd=root
+        )) for ref in (BASE, INTRODUCTION))
+        verify_introduction(introduction, base)
     print("2 design-time operations; 4 cases; 32 live assessment cells checked"
           + (f"; {len(citations)} in-section citations and {len(matrix) * len(COLUMNS)} matrix cells verified" if args.pdf else "")
           + ("; prior 821 unchanged and 32 new cells unassessed" if args.check_introduction else ""))

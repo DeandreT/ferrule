@@ -37,7 +37,8 @@ has **823** records and `inventory_complete=false`.
 Use `python -B verify_recordset_structure.py` for the live checks. Pass
 `--pdf PATH` to verify the exact PDF hash, topic bookmarks and citation text
 and to recheck the original graphical matrix marks. Pass
-`--check-introduction` in a Git checkout to compare against the exact parent
-`2fc81739` and verify that only the two new unassessed rows were introduced.
+`--check-introduction` in a Git checkout to compare the historical ledger at
+`b9a847ab` with its exact parent `2fc81739` and verify that only the two new
+unassessed rows were introduced then.
 Run `python -B -m unittest test_live_inventory` for the negative controls.
 No procedure, mapping, vendor application or compiler was run for this slice.
