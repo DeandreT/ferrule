@@ -39,13 +39,14 @@ section. Topics 822 and 860 cover standalone invocation only.
 
 The 64 topics contain **66 original examples** (820 and 1091 each have two):
 31 match, 18 external, 17 missing at baseline. The facets do not increase
-that denominator. The ledger has **797 records**: the prior 796 plus the
+that denominator. At `2bd2311d` the ledger had **797 records**: the prior 796 plus the
 transfer ID, with 16 unassessed cells and no evidence. Relative to the 789
 baseline, all 128 added cells are unassessed, including 64 vendor cells.
 Of 6,376 vendor cells, 6,292 are unassessed and 84 remain not applicable.
 The [358-case workflow review](workflow-contracts.md#gaps-and-independent-review)
 comprised 55 initial cases and 303 further cases; it is distinct from review
-of the ownership and wrapper supplements.
+of the ownership and wrapper supplements. The [subsequent adapter review](adapter-operations.md)
+uses a separate matrix-row denominator.
 
 ## Optional inputs in the named function catalog
 

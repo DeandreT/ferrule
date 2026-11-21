@@ -27,7 +27,10 @@ def owners(rows, workflows, pages, companion, ledger):
     original = {m["canonical_id"] for m in companion["identity_policy"]["canonical_identity_map"]}
     caps = {c["id"]: c for c in ledger["capabilities"]}
     require(len(caps) == len(ledger["capabilities"]) and original <= caps.keys(), "canonical IDs")
-    added = caps.keys() - original
+    # The matrix adapter reconciliation is disjoint from these workflow owners.
+    adapter_ids = {r["canonical_id"] for r in read_cases("adapter-operations.tsv")}
+    require(adapter_ids <= caps.keys() and not adapter_ids & original, "adapter complement")
+    added = caps.keys() - original - adapter_ids
     require(len(added) == 8 and added == {
         r["canonical_id"] for r in rows if r["original_disposition"] == "missing"
     }, "new capabilities")
