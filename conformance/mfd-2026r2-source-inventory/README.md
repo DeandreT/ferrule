@@ -2,7 +2,23 @@
 
 These files review documentation bodies beyond the original topic inventory in
 [`mfd-2026r2.source-contracts.json`](../mfd-2026r2.source-contracts.json).
-They do not change the canonical capability ledger or establish execution support.
+Most are source-only supplements. The [workflow ownership review](workflow-owners.md)
+identifies eight native-profile ledger additions; the [adapter review](adapter-operations.md)
+adds 14 for raw binary I/O and structured strings. The [SELECT and workbook review](select-workbook.md)
+separates four operations and identifies their bounded test coverage. The
+[database operation review](database-operations.md) adds six for bulk writes,
+stored procedure modes, rollback and database trace output. The
+[recordset structure review](recordset-structure.md) adds the two designer
+actions for manually supplying or discovering a recordset shape. The
+[Quick EDI-to-XML review](quick-edi-xml.md) adds one conversion with two documented
+component roles. The [output-signing review](output-signing.md) distinguishes
+XML/XBRL signature generation from signed-input verification. Source itemization
+alone does not establish execution support.
+
+The [JSON string parser replay](json-parser.md) records one bounded
+interpreter assessment against checked-in inputs and expected results.
+The [FlexText string parser replay](flextext-parser.md) covers strict import
+and one bounded XML-to-XML interpreter profile.
 
 | File | Source coverage |
 | --- | --- |

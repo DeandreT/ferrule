@@ -1,0 +1,30 @@
+{
+  "release": "MapForce Enterprise 2026r2 x64",
+  "executable_version": "28.2.0.0",
+  "installer_pdf_sha256": "9cf5bfa17ec38140941566dd15b19a9c32185339b04fb7383674f50452f43a09",
+  "kind": "documentation_only",
+  "runtime_proof": false,
+  "matrix": {
+    "design_time_operations": "not_listed_separately",
+    "context_only": {"section": "20.1.2", "pdf_page": 1606, "row": 4, "surface": "stored-procedure"}
+  },
+  "columns": ["fact", "page_index", "section", "pdf_page", "locator"],
+  "anchors": [
+    ["driver-api", 173, "4.4.6", 324, "depending on the combination of driver and database API"],
+    ["fixed-shape", 173, "4.4.6", 324, "same number of recordsets with a fixed column structure"],
+    ["postgresql-function-metadata", 173, "4.4.6", 325, "no detection by execution or manual input of recordsets is needed"],
+    ["edit-structure-scope", 174, "4.4.6.1", 327, "Applicable for stored procedures that return recordsets"],
+    ["edit-structure-invocation", 174, "4.4.6.1", 327, "execute the stored procedure once, so that MapForce can determine the structure"],
+    ["edit-structure-choice", 174, "4.4.6.1", 327, "you can define the recordset structure manually"],
+    ["source-no-inputs", 175, "4.4.6.2", 328, "takes no input parameters"],
+    ["source-manual", 175, "4.4.6.2", 329, "by adding recordsets and their associated columns manually"],
+    ["source-execute", 175, "4.4.6.2", 330, "Click Execute, and then click OK"],
+    ["source-result", 175, "4.4.6.2", 330, "visible both on the \"Recordset Structures\" dialog box and on the mapping"],
+    ["call-side-effects", 176, "4.4.6.3", 333, "Calling a stored procedure at design time may have side effects"],
+    ["call-manual", 176, "4.4.6.3", 333, "Use the Add recordset or Add column buttons"],
+    ["call-execute", 176, "4.4.6.3", 334, "Fill in the parameter values as shown above, and click Execute"],
+    ["call-result", 176, "4.4.6.3", 334, "is now visible both on the \"Recordset Structures\" dialog box and on the mapping"],
+    ["call-mapping-connections", 176, "4.4.6.3", 334, "procedure's input parameters are supplied by means of constants"],
+    ["runtime-matrix-context", 1086, "20.1.2", 1606, "Database stored procedures 323"]
+  ]
+}
