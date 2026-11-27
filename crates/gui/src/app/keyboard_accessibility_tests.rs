@@ -304,6 +304,103 @@ fn focus_indicator_drawn(harness: &Harness<'_, FerruleApp>, id: egui::Id) -> boo
 }
 
 #[test]
+fn field_wiring_returns_to_the_exact_preview_target_and_never_substitutes_a_nested_field() {
+    use crate::preview::PreviewTarget;
+    let mut project = mapping::project_file::decode_bytes(cli::orders_example::PROJECT).unwrap();
+    let mut archive_root = project.root.clone();
+    archive_root
+        .bindings
+        .iter_mut()
+        .find(|binding| binding.target_field == "Desc")
+        .unwrap()
+        .node = 3;
+    project.extra_targets.push(mapping::NamedTarget {
+        name: "archive".into(),
+        path: Some("archive.csv".into()),
+        schema: project.target.clone(),
+        root: archive_root,
+        options: Default::default(),
+    });
+    project.extra_targets.push(mapping::NamedTarget {
+        name: "detail".into(),
+        path: None,
+        schema: SchemaNode::group(
+            "root",
+            vec![SchemaNode::group(
+                "child",
+                vec![SchemaNode::scalar("Desc", ScalarType::String)],
+            )],
+        ),
+        root: Default::default(),
+        options: Default::default(),
+    });
+    let mut app = FerruleApp::default();
+    app.install_untitled_mapping(project, "test.json");
+    let baseline = app.live_state();
+    app.show_run_report = true;
+    for (target, field) in [
+        (PreviewTarget::Named("missing".into()), "Desc"),
+        (PreviewTarget::Named("detail".into()), "Desc"),
+        (PreviewTarget::Named("archive".into()), "desc"),
+        (PreviewTarget::Primary, "absent"),
+    ] {
+        assert!(!app.reveal_preview_field(&target, field));
+        assert_eq!(app.mapping_workspace.active, MappingDocument::Main);
+        assert!(app.mapping_workspace.target_canvases.is_empty());
+        assert!(app.show_run_report);
+    }
+    let mut harness = harness_at_scale(app, 1.5);
+    for (target, document, expected_edges) in [
+        (
+            PreviewTarget::Named("archive".into()),
+            MappingDocument::Target(0),
+            1,
+        ),
+        (PreviewTarget::Primary, MappingDocument::Main, 2),
+    ] {
+        assert!(harness.state_mut().reveal_preview_field(&target, "Desc"));
+        harness.run_steps(4);
+        assert_eq!(harness.state().mapping_workspace.active, document);
+        assert_eq!(
+            focused_name(&harness).as_deref(),
+            Some("Input Desc · Target: row")
+        );
+        let tools_id = match document {
+            MappingDocument::Target(i) => {
+                harness.state().mapping_workspace.target_canvases[&i].tools_id
+            }
+            _ => harness.state().main_canvas.tools_id,
+        };
+        let wiring = crate::canvas_tools::field_wiring(&harness.ctx, tools_id).unwrap();
+        assert_eq!(wiring.field, "Desc");
+        assert_eq!(wiring.connections.len(), expected_edges);
+        assert!(
+            wiring.connections[0]
+                .1
+                .contains("/Orders/Order/Items/Item/Desc")
+        );
+        if document == MappingDocument::Main {
+            assert!(wiring.connections[0].1.contains("Uppercase (upper) #4"));
+        } else {
+            assert!(wiring.label.contains("(archive)"));
+        }
+        harness.get_by_label("Field wiring");
+        harness.get_by_label("Preview this field").click();
+        harness.run_steps(3);
+        assert_eq!(
+            harness.state().preview_draft.as_ref().unwrap().target,
+            target
+        );
+        harness.state_mut().preview_draft = None;
+        harness.run_steps(3);
+        press(&mut harness, egui::Key::Escape);
+        assert!(crate::canvas_tools::field_wiring(&harness.ctx, tools_id).is_none());
+        assert!(harness.state().live_state() == baseline);
+        assert!(!harness.state().can_undo());
+    }
+}
+
+#[test]
 fn field_finder_reveals_both_orders_paths_and_restores_focus_on_no_match() {
     for scale in [1.0, 1.5] {
         let mut app = FerruleApp::default();

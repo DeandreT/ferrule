@@ -226,6 +226,7 @@ impl FerruleApp {
                 MappingDocument::Function(_) => {}
             }
         }
+        self.show_field_wiring_panel(ui, editing_enabled);
         let page_id = ui.scope_id().with("inspector_page");
         let mut page = ui
             .ctx()

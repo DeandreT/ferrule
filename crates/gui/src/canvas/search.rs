@@ -14,6 +14,29 @@ pub(crate) struct FieldPin {
 }
 
 impl FieldPin {
+    pub(crate) fn from_canvas(
+        viewer: &GraphViewer<'_>,
+        snarl: &Snarl<CanvasNode>,
+        pin: CanvasPin,
+    ) -> Option<Self> {
+        let node = *snarl.get_node(pin.node())?;
+        let total = match (node, pin) {
+            (CanvasNode::SourceBlock(i), CanvasPin::Output(_)) => {
+                viewer.source_blocks.get(i)?.leaves.len()
+            }
+            (CanvasNode::TargetBlock(i), CanvasPin::Input(_)) => {
+                viewer.target_blocks.get(i)?.leaves.len()
+            }
+            _ => return None,
+        };
+        Some(Self {
+            node,
+            semantic: viewer
+                .endpoint_scroll
+                .semantic_pin(node, pin.index(), total)?,
+        })
+    }
+
     fn count(self, sources: &[SourceBlock], targets: &[TargetBlock]) -> Option<usize> {
         match self.node {
             CanvasNode::SourceBlock(i) => Some(sources.get(i)?.leaves.len()),
@@ -50,7 +73,21 @@ impl<'a> Fields<'a> {
                     .or_else(|| self.owners.primary_source_root())
                     .unwrap_or_else(|| block.title.trim_start_matches("Source: "));
                 let owner = named.map(|s| format!(" ({})", s.name)).unwrap_or_default();
-                Some(format!("Source{owner}  /{root}/{}", leaf.label))
+                // Named source frames/paths start with their runtime alias.
+                // The label already names the owner; the path starts at its schema.
+                let segments = leaf
+                    .frame
+                    .iter()
+                    .flatten()
+                    .chain(&leaf.path)
+                    .skip(usize::from(named.is_some()))
+                    .map(String::as_str);
+                let mut path = String::new();
+                for part in std::iter::once(root).chain(segments) {
+                    path.push('/');
+                    path.push_str(&part.replace('~', "~0").replace('/', "~1"));
+                }
+                Some(format!("Source{owner}  {path}"))
             }
             CanvasNode::TargetBlock(i) => {
                 let block = self.targets.get(i)?;
@@ -60,11 +97,20 @@ impl<'a> Fields<'a> {
                     .target
                     .unwrap_or_else(|| (block.title.trim_start_matches("Target: "), None));
                 let owner = owner.map(|s| format!(" ({s})")).unwrap_or_default();
-                let path = std::iter::once(root)
+                let mut path = String::new();
+                for part in std::iter::once(root)
                     .chain(leaf.chain.iter().map(String::as_str))
                     .chain([crate::target_xml_type::field_label(&leaf.field)])
-                    .collect::<Vec<_>>()
-                    .join(".");
+                {
+                    if part.contains(['.', '[', ']', '\\', '"']) {
+                        path.push_str(&format!("[{part:?}]"));
+                    } else {
+                        if !path.is_empty() {
+                            path.push('.');
+                        }
+                        path.push_str(part);
+                    }
+                }
                 Some(format!("Target{owner}  {path}"))
             }
             _ => None,
@@ -319,6 +365,46 @@ pub(crate) fn show(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn field_finder_distinguishes_named_sources_and_literal_path_separators() {
+        let mut project =
+            mapping::project_file::decode_bytes(cli::orders_example::PROJECT).unwrap();
+        project.extra_sources.push(mapping::NamedSource {
+            name: "repeat".into(),
+            path: "other.xml".into(),
+            schema: project.source.clone(),
+            options: Default::default(),
+            dynamic_path: None,
+        });
+        let scalar = |name| ir::SchemaNode::scalar(name, ir::ScalarType::String);
+        project.target = ir::SchemaNode::group(
+            "row",
+            vec![scalar("a.b"), ir::SchemaNode::group("a", vec![scalar("b")])],
+        );
+        let sources = crate::canvas::project_source_blocks(&project);
+        let targets = crate::canvas::target_blocks(&project.target);
+        let fields = Fields {
+            sources: &sources,
+            targets: &targets,
+            owners: ProjectGraphReferences::new(&[], &project.extra_sources)
+                .with_primary_source(&project.source)
+                .with_target("row", Some("archive")),
+        };
+        let found = fields.matches("/Orders/Order/Items/Item/Desc");
+        assert_eq!(found.len(), 2);
+        assert_eq!(found[0].0.node, CanvasNode::SourceBlock(0));
+        assert_eq!(found[1].0.node, CanvasNode::SourceBlock(1));
+        assert!(found[1].1.starts_with("Source (repeat)"));
+        assert_eq!(
+            fields.matches("row.a.b")[0].0.node,
+            CanvasNode::TargetBlock(1)
+        );
+        assert_eq!(
+            fields.matches("row[\"a.b\"]")[0].0.node,
+            CanvasNode::TargetBlock(0)
+        );
+    }
 
     #[test]
     fn field_finder_uses_the_semantic_pin_even_when_filtered_scrolled_and_collapsed() {

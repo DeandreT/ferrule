@@ -730,6 +730,26 @@ impl GraphViewer<'_> {
                                 LabelHover::Pin,
                             );
                             self.endpoint_scroll.record_field_row(canvas_node, row_rect);
+                            // Clicking the name inspects its field. Leave the native
+                            // pin as the single keyboard stop and wire drag target.
+                            let hit = row_rect.shrink2(egui::vec2(row_rect.height(), 0.0));
+                            if ui
+                                .interact(
+                                    hit,
+                                    ui.scope_id().with(("inspect_target", block, semantic_idx)),
+                                    egui::Sense::CLICK,
+                                )
+                                .clicked()
+                            {
+                                crate::canvas_tools::select_field(
+                                    ui.ctx(),
+                                    self,
+                                    crate::canvas_search::FieldPin {
+                                        node: canvas_node,
+                                        semantic: semantic_idx,
+                                    },
+                                );
+                            }
                         }
                     }
                     Some(EndpointDisplayPin::HiddenBefore) => show_endpoint_proxy_label(

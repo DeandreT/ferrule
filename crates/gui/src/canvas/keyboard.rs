@@ -18,6 +18,7 @@ const EDGE_PAN_SPEED: f32 = 900.0;
 pub struct CanvasInteraction {
     pub viewport_width: f32,
     pub focused: bool,
+    pub open_field_inspector: bool,
 }
 
 pub struct CanvasOptions {
@@ -130,14 +131,20 @@ pub fn show(
         .ctx()
         .data(|data| data.get_temp::<CanvasTransform>(transform_marker));
     let reveal_camera = canvas_id.with("before_field_reveal");
-    if !search.is_open()
-        && search.highlighted().is_some()
-        && shortcuts.enabled
-        && !crate::ui_kit::modal_open(ui.ctx())
-        && !egui::Popup::is_any_open(ui.ctx())
-        && !GraphViewer::properties_open(ui.ctx())
-        && !crate::canvas_tools::picker_open(ui.ctx())
-        && ui.input(|input| input.key_pressed(egui::Key::Escape))
+    let tools = options.tools_id.with("canvas_tools");
+    let restore_field = ui
+        .ctx()
+        .data_mut(|data| data.remove_temp::<bool>(tools.with("restore_field_view")))
+        .unwrap_or(false);
+    if search.highlighted().is_some()
+        && (restore_field
+            || (!search.is_open()
+                && shortcuts.enabled
+                && !crate::ui_kit::modal_open(ui.ctx())
+                && !egui::Popup::is_any_open(ui.ctx())
+                && !GraphViewer::properties_open(ui.ctx())
+                && !crate::canvas_tools::picker_open(ui.ctx())
+                && ui.input(|input| input.key_pressed(egui::Key::Escape))))
     {
         search.clear_reveal(snarl, viewer.endpoint_scroll);
         if let Some(camera) = ui
@@ -177,6 +184,9 @@ pub fn show(
     if find {
         search.open(ui.ctx().memory(|memory| memory.focused()));
     }
+    if let Some(field) = crate::canvas_tools::take_follow_request(ui.ctx()) {
+        search.request_reveal(field);
+    }
     if let Some(pin) = search.apply_reveal(
         snarl,
         viewer.endpoint_scroll,
@@ -195,9 +205,18 @@ pub fn show(
             });
         }
         focus::request_pin(ui.ctx(), canvas_id, pin);
+        if let Some((node, semantic)) = search.highlighted() {
+            crate::canvas_tools::select_field(
+                ui.ctx(),
+                viewer,
+                crate::canvas_search::FieldPin { node, semantic },
+            );
+        }
         ui.ctx().request_repaint();
     }
-    viewer.endpoint_search_match = search.highlighted();
+    viewer.endpoint_search_match = crate::canvas_tools::active_field(ui.ctx())
+        .map(|pin| (pin.node, pin.semantic))
+        .or_else(|| search.highlighted());
     // egui's Ctrl+wheel factor is intentionally strong for generic scenes.
     // Override only this canvas camera, retaining the point under the pointer.
     let zoom_delta = ui.ctx().input(|input| input.zoom_delta());
@@ -389,6 +408,10 @@ pub fn show(
     CanvasInteraction {
         viewport_width: viewport.width(),
         focused,
+        open_field_inspector: ui
+            .ctx()
+            .data_mut(|data| data.remove_temp::<bool>(tools.with("show_field_wiring")))
+            .unwrap_or(false),
     }
 }
 
