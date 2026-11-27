@@ -194,6 +194,65 @@ fn collision_after_review_or_after_worker_launch_preserves_competing_bytes() -> 
 }
 
 #[test]
+fn editor_workflow_preview_does_not_publish_and_a_late_conflict_reports_both_paths()
+-> anyhow::Result<()> {
+    use crate::app::run_ui::{FileRunCommand, FileRunEvent};
+    use crate::app::tests::wait_for_preview_completion;
+
+    let (fixture, mut app) = Orders::open(true)?;
+    let primary = fixture.0.join("order-lines.csv");
+    let named = fixture.0.join("named.csv");
+    let input = fixture.0.join("Orders.xml");
+    let project = fixture.0.join("orders.json");
+    let project_before = fs::read(&project)?;
+
+    app.begin_preview();
+    app.preview_draft.as_mut().unwrap().input_text = cli::orders_example::INPUT.to_owned();
+    app.execute_preview();
+    wait_for_preview_completion(&mut app);
+    assert!(app.show_run_report, "{}", app.status);
+    assert_eq!(fs::read_dir(&fixture.0)?.count(), 2);
+    assert!(!primary.exists() && !named.exists());
+    app.show_run_report = false;
+    app.run(&egui::Context::default());
+    assert!(review(&mut app).ready());
+    app.confirm_run_destinations();
+    // Intervene only after the real worker has finished staging and asked the
+    // UI for publication. This distinguishes a partial publication from a
+    // preflight refusal without a timing-dependent filesystem race.
+    let event = app
+        .pending_file_run
+        .as_ref()
+        .unwrap()
+        .receiver
+        .recv_timeout(std::time::Duration::from_secs(10))?;
+    assert!(matches!(event, FileRunEvent::ReadyToPublish));
+    let competitor = b"created after review";
+    fs::write(&named, competitor)?;
+    app.file_run_command(FileRunCommand::Publish);
+    wait_for_file_run_completion(&mut app);
+    assert_eq!(app.status, "run failed");
+    let [diagnostic] = app.diagnostics.items() else {
+        panic!("expected one publication diagnostic");
+    };
+    let (conflict, published) = diagnostic
+        .message
+        .split_once("; complete files already published: ")
+        .expect("diagnostic distinguishes the conflict from committed files");
+    assert!(
+        conflict.contains(&named.display().to_string()),
+        "{conflict}"
+    );
+    assert_eq!(published, primary.display().to_string());
+    assert_eq!(fs::read(primary)?, CSV);
+    assert_eq!(fs::read(named)?, competitor);
+    assert_eq!(fs::read(input)?, ORDERS);
+    assert_eq!(fs::read(project)?, project_before);
+    assert_eq!(fs::read_dir(&fixture.0)?.count(), 4);
+    Ok(())
+}
+
+#[test]
 fn tab_apply_and_escape_do_not_start_a_worker() -> anyhow::Result<()> {
     use egui_kittest::{
         Harness,

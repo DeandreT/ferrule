@@ -2075,7 +2075,7 @@ fn preview_executes_an_unsaved_project_without_writing_its_logical_output() -> a
     Ok(())
 }
 
-fn wait_for_preview_completion(app: &mut FerruleApp) {
+pub(super) fn wait_for_preview_completion(app: &mut FerruleApp) {
     let context = egui::Context::default();
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
     while app.pending_preview.is_some() && std::time::Instant::now() < deadline {

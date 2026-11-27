@@ -62,6 +62,69 @@ fn inspect(app: &mut FerruleApp) {
 }
 
 #[test]
+fn editor_workflow_previews_the_repaired_saved_copy_then_undo_restores_its_diagnostic() {
+    use crate::app::tests::wait_for_preview_completion;
+    use crate::preview_table::PreviewTable;
+    use crate::run_report::OutputPreview;
+
+    let scratch = Scratch::new();
+    let path = scratch.0.join("orders.json");
+    let output = scratch.0.join("order-lines.csv");
+    std::fs::write(&path, cli::orders_example::PROJECT).unwrap();
+    let mut app = FerruleApp::default();
+    app.load_project_from(&path);
+    damage(&mut app);
+    let problem = issue(&app, &ValidationEndpoint::Target);
+    let undo = app.history.undo_len();
+    assert!(app.navigate_to_diagnostic(&problem));
+    app.apply_connection_repair();
+    app.validate_now();
+    assert!(app.diagnostics.is_empty());
+    assert_eq!(app.history.undo_len(), undo + 1);
+    app.begin_preview();
+    let draft = app.preview_draft.as_mut().unwrap();
+    draft.input_identity = "Orders.xml".into();
+    draft.output_identity = output.to_str().unwrap().to_owned();
+    draft.input_text = cli::orders_example::INPUT.to_owned();
+    app.execute_preview();
+    wait_for_preview_completion(&mut app);
+    let report = &mut app.run_report.as_mut().unwrap().report;
+    assert_eq!(report.records_written, 6);
+    let OutputPreview::Text {
+        content,
+        total_bytes: 307,
+        truncated: false,
+    } = report.outputs[0].preview()
+    else {
+        panic!("expected a complete 307-byte in-memory preview");
+    };
+    assert_eq!(
+        content.as_bytes(),
+        include_bytes!("../../../../cli/tests/fixtures/orders/expected_order_lines.csv")
+    );
+    let table = PreviewTable::parse(
+        content.as_bytes(),
+        &app.project.target_options,
+        &app.project.target,
+    )
+    .unwrap();
+    let order = table.column("Order_ID").unwrap();
+    let item = table.column("Item_ID").unwrap();
+    let desc = table.column("Desc").unwrap();
+    let mut matches = table
+        .rows
+        .iter()
+        .filter(|row| row[order] == "A-1001" && row[item] == "BR-100");
+    assert_eq!(matches.next().unwrap()[desc], "PAINT BRUSH");
+    assert!(matches.next().is_none());
+    app.undo_project();
+    app.validate_now();
+    assert_eq!(issue(&app, &ValidationEndpoint::Target), problem);
+    assert_eq!(std::fs::read(path).unwrap(), cli::orders_example::PROJECT);
+    assert!(!output.exists());
+}
+
+#[test]
 fn restore_the_orders_definition_as_one_edit_then_run_and_verify_the_keyed_cell_and_all_bytes() {
     let mut app = intact();
     let original = project_snapshot_key(&app.project);
