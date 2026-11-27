@@ -1,13 +1,9 @@
 # PDF Worker Contract
 
-Status: **wire codec implemented and locally verified in
-[#325](https://github.com/DeandreT/ferrule/issues/325)**. The Linux owner and CLI
-opt-in, file-input preview acquisition and GUI cancellation are implemented in the
-dependent increments below, and the finite resource profile is recorded; no default
-changed. The codec does not launch processes or install resource limits.
-The planned first execution profile is one PDF extraction in an owned Linux
-child, using local filesystem documents. Mapping and target publication stay in
-the parent.
+The CLI and native editor can run file-based PDF extraction in an owned Linux
+child. The option is off by default. The worker returns one typed extraction
+result; mapping and publication stay in the parent. Library byte calls and
+editor-text previews remain in-process.
 
 ## Current boundary
 
@@ -52,23 +48,19 @@ moves extraction into a child that cancellation can stop.
 
 ## Eligible host and compatibility
 
-The proposed profile identifier is `linux-x86_64-v1`. It requires Linux x86_64,
-a packaged matching worker executable, PIDfd signaling/wait ownership, and
-successful installation of the limits below. Missing capabilities, a missing
-executable or failed resource setup return `UnsupportedHost` or `ResourceSetup`
-before PDF parsing. There is no automatic fallback after isolation was requested.
-Other operating systems and architectures are unsupported by this profile;
-their worker entry point must refuse rather than start extraction.
+The `linux-x86_64-v1` profile requires Linux x86_64, a matching packaged
+worker, PIDfd signaling/wait ownership, and the limits below.
 
-The first CLI increment adds an explicit worker policy/flag for filesystem PDF
-reads. The current default, pure library APIs and payload/stdio APIs keep their
-existing in-process behavior. Changing a default requires a later qualified
-increment. An isolated request accepts one regular local file, not a URL, pipe,
-device, socket, inline payload or caller-selected command. The host resolves the
-packaged worker independently of mapping input and does not search a PDF's
-directory or invoke a shell. Native filesystem paths need not become UTF-8 wire
-identities. This is process/resource isolation, not a filesystem, network or
-malicious-code sandbox.
+Missing capabilities or failed setup return `UnsupportedHost` or `ResourceSetup`
+before PDF parsing. Other platforms cannot use this profile; a failed request
+never falls back to in-process extraction.
+
+Use `ferrule run --pdf-worker` to select this policy for filesystem PDFs.
+It accepts one regular local file per request, not URLs, pipes, devices, inline
+payloads or a caller-selected command. The host selects the packaged worker
+without searching beside the PDF or invoking a shell. Native paths need not
+become UTF-8 wire identities. This is process/resource isolation, not a
+filesystem, network or malicious-code sandbox.
 
 The packaged worker is `ferrule-pdf-worker` in the directory of the running
 `ferrule` or `ferrule-gui` executable. Admission requires a regular single-link
@@ -166,6 +158,8 @@ partial document exists. A missing, trailing, duplicate or inconsistent result
 is `ProtocolError`. Never interpret an empty/malformed result as an empty PDF.
 
 ## Resource and child-ownership policy
+
+<a id="acceptance-gates"></a>
 
 | Profile control | Proposed policy |
 | --- | --- |
@@ -311,70 +305,10 @@ pending; the existing dirty-document confirmation follows.
 There is no hard process-memory claim for the parent, decoded tree, mapping,
 preview retention or serialized targets. See [Memory use and boundary limits](memory-and-limits.md).
 
-| Increment | Owned source boundary | Dependency and qualification |
-| --- | --- | --- |
-| [A. Versioned wire/library boundary (#325)](https://github.com/DeandreT/ferrule/issues/325) | New `crates/pdf-worker` protocol/error codec and bounded fixture tests; workspace registration | Implemented; 81 frozen cases, affected library tests, formatting and strict lint verified |
-| [B. Linux filesystem worker and CLI opt-in (#326)](https://github.com/DeandreT/ferrule/issues/326) | `crates/pdf-worker` Linux owner/client and worker binary; narrow `crates/cli` filesystem-policy/dispatch/packaging tests | A; real ready/limits/kill/reap and complete library-versus-worker fixture comparisons |
-| [C. GUI filesystem cancellation (#327)](https://github.com/DeandreT/ferrule/issues/327) | File-run and filesystem pipeline adapters/pending-state tests in `crates/gui`; narrow CLI cancellation API seam | B; alternate-display cancellation/close and existing publication regressions |
-| [D. Finite resource qualification (#328)](https://github.com/DeandreT/ferrule/issues/328) | Owned synthetic fixture/protocol tests and public bounded report | B; add C cases after C merges; repeated separate child/parent measurements before any default-policy change |
-| [E. File-input preview acquisition (#340)](https://github.com/DeandreT/ferrule/issues/340) | Explicit payload-or-file project and pipeline preview inputs in `crates/cli` | B and the borrowed reader (#344) |
-| [F. GUI preview ownership and shutdown (#341)](https://github.com/DeandreT/ferrule/issues/341) | Preview service, file-input preview selection and app-close deferral in `crates/gui` | C and E; the option stays off by default |
-
-Keep `format-pdf` extraction/layout semantics, `mapping::PdfLayout` and `ir` model
-unchanged. Wire code belongs to the worker package, not a process-launching
-pure format reader. B must remain usable without C; C must not reopen A's
-protocol. Each branch/PR has one increment and merges after its own gates pass.
-The design and pure codec received independent source review. Host, CLI and GUI
-implementation must retain the reviewed protocol and qualify their own behavior.
-
-[`pdf-worker`](../crates/pdf-worker/src/lib.rs) provides bounded request,
-instance, result, ready and start codecs. Ordered field pairs preserve duplicate
-data names, empty structures, absent values and Unicode. Instance byte counts and
-digests are checked before decoding. Its PDF error encoder retains all twelve
-existing variants; an oversized structured error produces a distinct host error
-with the complete attempted encoding's length and digest.
-
-The nine codec test functions execute 72 independently frozen cases plus nine
-additive controls. Two small synthetic PDFs match their complete expected
-`format-pdf` results; repair-layout priority and oversized input rejection also
-run through that library. These checks establish the portable wire boundary.
-They do not qualify subprocess limits, cancellation or memory use.
-
-## Acceptance gates
-
-- [x] Review the protocol, new host limits, Linux policy and default/unsupported
-  behavior for this design. Reconcile again against each implementation increment's fresh main.
-- [x] Render both diagrams and inspect complete legibility; source fences alone
-  are not render evidence.
-- [x] Freeze independently expected small PDFs/layouts/typed results before
-  codec and library execution, preserving full fields, order, nulls and all existing errors.
-- [x] Exercise the pure codec's exact and one-over request/result/instance,
-  diagnostic, depth and node limits; duplicate/unknown keys, digest/length mismatch,
-  unsupported instance kinds, all PDF error variants and borrowed writer failures.
-- [ ] Repeat boundary checks through the real worker, including input limits,
-  sparse and growing inputs, repair-layout priority, invalid/encrypted content,
-  upstream panic/abort and malformed/truncated/mismatched result controls;
-  retain oversized structured errors as `ErrorEnvelopeTooLarge` with the complete
-  attempted encoding's length/digest rather than a truncated library error.
-- [ ] Verify unsupported OS/capabilities and resource setup fail before parsing;
-  no fallback, shell invocation, unbounded capture or unexpected file creation.
-- [ ] Qualify early exit before ready, ready without start, TERM ignored, KILL,
-  cancellation at each transition, late result/receipt publication, PID reuse,
-  lost/competing wait, failed signal/reap and incomplete closure as distinct facts.
-- [ ] Use real Linux children for lifecycle gates. Injected clock/process models
-  supplement those gates and do not prove kernel signaling or physical closure.
-- [ ] Compare primary/static/dynamic selected-source acquisition and destination
-  preservation with existing CLI controls; no unnecessary worker for unused sources.
-- [x] Qualify GUI cancellation and app close on an alternate virtual display,
-  keeping the user's active monitors untouched and all publication controls intact.
-- [x] Record executable/profile/kernel/effective limits, repeated child and parent
-  RSS/CPU/wall brackets, exact outputs and all failures. Address-space limits,
-  RSS observations, input bytes and typed tree size remain separate quantities.
-
-Design review, diagram rendering and pure wire/library checks are complete. The
-Linux worker, CLI, GUI and resource qualification gates remain pending. The codec
-checks establish no actual worker success, hostile PDF safety, streaming behavior
-or RSS ceiling.
+The [`pdf-worker` wire codec](../crates/pdf-worker/src/lib.rs) preserves ordered
+fields, duplicate data names, empty structures, absent values and Unicode. It
+checks the instance length and digest before decoding. If a structured error
+is too large, `ErrorEnvelopeTooLarge` identifies its attempted length and digest.
 
 To compare extraction modes on Linux, build and run the
 [`pdf_worker_profile` example](../crates/cli/examples/pdf_worker_profile/main.rs):

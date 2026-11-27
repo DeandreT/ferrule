@@ -37,7 +37,8 @@ ferrule run "$sample/projects/inverse.json" --input "$sample/reference-input.x12
   --target Audit --output "$out/audit.json" --param Tag=batch-42 --param Stop=false
 ```
 
-The receipt contains `"tag": "batch-42"` and `"echo": "REF"`. Use
+The receipt contains `"tag": "batch-42"`, `"tagAgain": "batch-42"` and
+`"echo": "REF"`. Use
 `--target primary` for the primary target. Without `--target`, the run
 evaluates all targets; `--output` overrides only the primary destination.
 A selected target that names documents dynamically takes an output directory.

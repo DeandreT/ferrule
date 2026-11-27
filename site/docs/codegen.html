@@ -48,7 +48,7 @@
 
         <h2>C#</h2>
         <pre><code>cargo run -p cli -- generate \
-  --project project.json \
+  --project examples/codegen/project.json \
   --language csharp \
   --out generated-csharp</code></pre>
         <p>
@@ -60,7 +60,7 @@
 
         <h2>Rust</h2>
         <pre><code>cargo run -p cli -- generate \
-  --project project.json \
+  --project examples/codegen/project.json \
   --language rust \
   --out generated-rust \
   --rust-runtime-path crates/codegen-runtime</code></pre>
@@ -116,172 +116,17 @@
           instance-tree APIs.
         </p>
         <div class="callout">
-          <strong>Bounded documents.</strong>
-          Each JSON input and output is capped at 64 MiB and each trusted
-          embedded schema at 1 MiB. Invalid shapes, numeric conversions, scalar
-          constants, bounded exact scalar allowed-value sets, exact numeric ranges and decimal <code>multipleOf</code>
-          constraints, array item-count and <code>contains</code> match-count intervals, object property-count
-          intervals, object property dependencies and dependent-schema predicates,
-          property-name constraints, exact closed homogeneous
-          <code>patternProperties</code>, structural
-          <code>uniqueItems</code>, Unicode string-length
-          intervals, bounded portable JSON Schema
-          <code>pattern</code> assertions, exact open/closed object contracts,
-          output serialization, and size excess
-          produce typed boundary failures in both Rust and C#. These
-          methods are deliberately JSON-only; stored format paths and options
-          remain host metadata.
+          <strong>Document limits.</strong> Generated schema-shaped JSON admits
+          up to 64 MiB per document and 1 MiB per embedded schema. Both languages
+          check parsed inputs and normalized outputs. These limits do not bound
+          process memory. See the <a href="https://github.com/DeandreT/ferrule/blob/main/docs/code-generation.md#json-host-boundary">JSON host API</a>
+          and the <a href="https://github.com/DeandreT/ferrule/blob/main/docs/formats.md#json-schema">JSON Schema profile</a>.
         </div>
-
-        <p>
-          Omitted or <code>true</code> <code>additionalProperties</code>
-          preserves arbitrary JSON-valued fields, schema-valued declarations
-          validate unknown fields against their retained type, and explicit
-          <code>false</code> reports an undeclared property instead of silently
-          dropping it.
-        </p>
-
-        <p>
-          Embedded schemas retain a nonempty <code>patternProperties</code> map
-          exactly for an explicit <code>object</code> or
-          <code>object | null</code> with
-          <code>additionalProperties: false</code> when every bounded portable
-          selector has one identical exactly representable value schema.
-          Scalar, structured object, and homogeneous array values reuse the
-          ordinary supported JSON value profile. Selectors are ORed in
-          declaration order. Matching fixed properties must share that schema;
-          nonmatching fixed properties may differ. Generated decoding chooses
-          fixed properties first, while <code>propertyNames</code> remains
-          independent. Dependency rules whose triggers are neither fixed nor
-          selected normalize away as semantically unreachable, and nullable
-          null bypasses object checks. Rust and C# enforce input, normalized
-          output, and JSON Lines with the shared per-document pattern work
-          budget. Canonical export and re-import preserve the selector map; an
-          empty map is a no-op. Distinct selector schemas, open or typed
-          fallbacks, general overlap intersection, value shapes outside the
-          ordinary exact JSON profile, and active <code>allOf</code>, object
-          alternatives, or structural <code>$ref</code> siblings remain
-          outside the profile.
-        </p>
-
-        <p>
-          Exact object <code>minProperties</code>/<code>maxProperties</code>
-          intervals count distinct parsed input properties before decoding and
-          normalized output members after absent Ferrule values are omitted.
-          Duplicate input names use the parser's last value and count once.
-          Nullable object null bypasses the interval; nested, repeated, primary,
-          and named documents apply the same rule.
-        </p>
-
-        <p>
-          Embedded array <code>contains</code> assertions count members accepted
-          by each retained item predicate. Plain assertions require at least one
-          match, while retained <code>minContains</code>/<code>maxContains</code>
-          intervals apply exactly. Input checks the parsed array and output
-          checks the normalized emitted array; nullable array null bypasses the
-          assertions. Multiple compatible <code>allOf</code> assertions are
-          conjunctive, and predicate pattern matching shares the bounded
-          document work budget. Count mismatches remain typed input/output
-          boundary errors, while invalid embedded metadata and matcher work
-          exhaustion remain fatal.
-        </p>
-
-        <p>
-          The exact homogeneous <code>prefixItems</code> importer subset adds no
-          generated-runtime feature or new code-generation IR form. Draft
-          2020-12 and undeclared schemas whose bounded finite prefix
-          entries normalize to one item shape lower to the
-          existing repeated-item schema and item-count interval. A closed tail
-          becomes the equivalent <code>maxItems</code> bound, and canonical
-          export uses ordinary <code>items</code> plus that bound. Rust and C#
-          therefore execute the existing homogeneous array boundary;
-          heterogeneous prefixes and tails remain import-time rejections.
-        </p>
-
-        <p>
-          Homogeneous legacy tuple-form <code>items</code> uses the same
-          lowering for Draft 4, 6, 7, and 2019-09 resources and for schemas
-          without <code>$schema</code>. Its 1 to 4,096 identical positional
-          members become one repeated-item schema. A <code>false</code>
-          <code>additionalItems</code> tail becomes <code>maxItems</code> at
-          the tuple length; an identical tail remains unbounded. An absent or
-          <code>true</code> tail is accepted for an arbitrary-JSON item shape or when the
-          explicit maximum makes the tail unreachable; a different schema tail
-          requires that same maximum proof. Canonical export again uses
-          schema-valued
-          <code>items</code> and an optional <code>maxItems</code>, so generated
-          Rust and C# need no positional-array IR or runtime path. Draft 2020-12
-          array-valued <code>items</code> and all reachable heterogeneous
-          positional shapes reject during import.
-        </p>
-
-        <p>
-          Embedded object property dependencies are enforced on input and
-          normalized output too. Whenever a trigger property is present, every
-          dependent property must be present. Explicit JSON null counts as
-          presence on input; output checks after absent Ferrule values are
-          omitted. Nullable object null bypasses the relation, while nested,
-          repeated, primary, and named documents all use the same rule.
-        </p>
-
-        <p>
-          Embedded whole-object dependent-schema predicates use the same
-          property-presence rule. Required-only entries lower to ordinary
-          property dependencies; other retained predicates validate the
-          complete containing object. Repeated triggers remain conjunctive,
-          predicate patterns share the document work budget, and malformed
-          metadata remains a typed boundary failure. Text and UTF-8 byte entry
-          points enforce the same primary and named input/output behavior.
-          Draft 7, 2019-09, 2020-12, and undeclared explicitly typed object
-          schemas may spell one such rule as an <code>if</code> with exactly
-          one required-property presence trigger and a supported
-          <code>then</code> predicate. A nullable outer object is supported with an absent or
-          <code>true</code> <code>else</code> only when the
-          <code>if</code> explicitly proves <code>type: "object"</code>.
-          Exact <code>else: false</code> requires a trigger that can be
-          represented as an ordinary required field; it removes the nullable
-          bypass when the false branch rejects null and retains any supported
-          <code>then</code> dependency. It does not combine with existing
-          object alternatives, and a closed object must already declare the
-          trigger. Import lowers these forms to <code>required</code> plus
-          <code>dependentRequired</code> or <code>dependentSchemas</code>
-          metadata as appropriate, so generated Rust and C# need no separate
-          conditional runtime. Value-sensitive, multi-trigger,
-          general-<code>if</code>, and other nontrivial <code>else</code>
-          schemas remain unsupported.
-        </p>
-
-        <p>
-          Embedded <code>propertyNames</code> constraints inspect every actual
-          key instead of schema placeholders. Exact false, finite allowed-name
-          sets, Unicode-scalar length, portable patterns and their exact
-          complements, and nonasserting format annotations are retained. Raw
-          parsed input keys and normalized emitted keys are checked, including
-          runtime-named and empty-string properties. Nullable object null
-          bypasses the assertions.
-        </p>
-
-        <p>
-          Both generated runtimes evaluate <code>multipleOf</code> through the
-          same canonical decimal coefficient and exponent model, without
-          floating-point tolerance. Compatible conjunctions and exact
-          disjunctions therefore retain identical Rust and C# behavior.
-        </p>
-
-        <p>
-          JSON Schema patterns use Ferrule's Unicode-scalar Thompson-NFA
-          matcher in both generated runtimes. It supports anchors, dot,
-          character classes and ranges, alternation, groups, ordinary and
-          counted repetition, lazy suffixes, and explicit character or Unicode
-          escapes. Nonportable constructs such as backreferences, lookaround,
-          named groups, inline flags, shorthand classes, and Unicode properties
-          reject before execution. Compilation, embedded metadata, and one
-          shared matching-work budget per JSON document parse or serialization
-          call are bounded.
-          Mapping-language regex tokenization is separate and still uses the
-          documented Rust/.NET backend subset.
-        </p>
-
+        <p>For XML text or bytes, select a supported
+          <a href="https://github.com/DeandreT/ferrule/blob/main/docs/generated-xml-qualification-index.md#route-families">XML input and output combination</a>.
+          A method that returns the primary result of a complete run can still
+          fail on a named output. An explicit selected-target method evaluates
+          only its selected target after global failure rules.</p>
         <h2 id="examples">Run the examples</h2>
         <p>
           The repository includes one mapping project with matching Rust and
@@ -327,46 +172,16 @@
           </section>
         </div>
 
-        <h3>Generate and run Rust only</h3>
-        <pre><code>find examples/codegen/generated/rust -depth -delete 2&gt;/dev/null || true
-cargo run -p cli -- generate \
-  --project examples/codegen/project.json \
-  --language rust \
-  --out examples/codegen/generated/rust \
-  --rust-runtime-path crates/codegen-runtime
-
-cargo run \
-  --manifest-path examples/codegen/rust/Cargo.toml</code></pre>
-
-        <h3>Generate and run C# only</h3>
-        <pre><code>find examples/codegen/generated/csharp -depth -delete 2&gt;/dev/null || true
-cargo run -p cli -- generate \
-  --project examples/codegen/project.json \
-  --language csharp \
-  --out examples/codegen/generated/csharp
-
-dotnet run \
-  --project examples/codegen/csharp/Ferrule.CodegenExample.csproj \
-  --configuration Release</code></pre>
-
-        <div class="callout">
-          <strong>Generated trees are build artifacts.</strong>
-          Change the shared project or either host, then rerun the script. The
-          checked-in example owns the mapping and integration code; generation
-          recreates the language-specific libraries from that source.
-        </div>
-
+        <p>For one language only, follow the <a href="https://github.com/DeandreT/ferrule/blob/main/examples/codegen/rust/README.md">Rust host</a>
+          or <a href="https://github.com/DeandreT/ferrule/blob/main/examples/codegen/csharp/README.md">C# host</a> instructions.
+          Generate into a new directory; the shared example runner recreates
+          its own disposable output.</p>
         <h2>Portable subset</h2>
-        <ul>
-          <li>Scalar constants, ordinary and frame-pinned source fields, positions, lazy conditionals, value maps, lookups, schema-guided JSON-string field projection and typed object serialization, embedded delimited FlexText field projection, collection and raw/filtered/per-item-computed generated-sequence aggregates, and a closed scalar function set.</li>
-          <li>Primary and static named sources, one primary target, and ordered named targets.</li>
-          <li>Nested source iteration, generated scalar sequences, filters, multi-key sorting, sequence windows, grouping, mapped output, bounded recursive-filter, path-hierarchy, and adjacency-tree target construction, and compact positions.</li>
-          <li>Structured XML serialization and ordered mixed-content reconstruction with graph-computed replacements.</li>
-          <li>Root-context static inner joins plus bounded per-item joins anchored by one or more current-item scalar fields and optionally augmented with independent primary/named singleton scalars and repeating sources, with duplicate-preserving order and exact joined fields.</li>
-          <li>Typed runtime errors for arity, scalar types, missing or invalid host parameters, functions, aggregate bounds, generated sequence limits, and unsupported reachable constructs.</li>
-          <li>Typed reusable scalar user functions, including nested calls and access to the same stable runtime values and bounded host parameters as the main graph.</li>
-        </ul>
-
+        <p>The <a href="https://github.com/DeandreT/ferrule/blob/main/docs/code-generation.md#portable-subset">portable subset reference</a>
+          covers graph operations, evaluation order, scope construction and
+          backend-specific limits. For an explicit source or frame, select the
+          <a href="https://github.com/DeandreT/ferrule/blob/main/docs/code-generation.md#owned-generation-capabilities-and-presets">Basic preset</a>
+          whose capabilities admit the whole mapping.</p>
         <div class="callout">
           <strong>Generation is conservative.</strong>
           Unsupported reachable constructs are reported before artifacts are

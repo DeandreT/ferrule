@@ -1,14 +1,16 @@
 # Execution Tracing
 
-Ferrule can record the interpreter decisions behind a filesystem mapping run:
+To record the interpreter decisions behind the [invoice example](../examples/codegen/README.md),
+run this in a POSIX shell at the repository root:
 
 ```sh
-ferrule run \
-  --project mappings/order.json \
-  --target primary \
-  --trace-json traces/order.trace.jsonl
+out=$(mktemp -d)
+ferrule run --project examples/codegen/project.json --target primary \
+  --output "$out/invoices.json" --trace-json "$out/invoices.trace.jsonl"
 ```
 
+The output contains the [three expected invoices](../examples/codegen/expected-output.json);
+the JSON Lines file describes how the mapping produced them.
 Tracing does not change the mapping output, the human result report on stdout,
 or `--diagnostics json` records on stderr. `--trace-json -` is rejected because
 stdout is reserved either for the result report or raw mapped bytes from

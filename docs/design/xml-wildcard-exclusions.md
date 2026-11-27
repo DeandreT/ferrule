@@ -1,155 +1,34 @@
 # XSD 1.1 wildcard exclusions
 
-Design for [#1095](https://github.com/DeandreT/ferrule/issues/1095). It defines
-a bounded contract for the XSD 1.1 `notNamespace` and `notQName` attributes on
-`xs:any` and `xs:anyAttribute`. The contract adds two things: a negated
-namespace set and a closed set of excluded expanded names. Every other wildcard
-admission rule stays as it is. Each implementation route keeps its current
-refusal until its own follow-up scope qualifies it.
+Ferrule supports XSD 1.1 `notNamespace` and `notQName` on `skip` and `lax`
+element wildcards and on attribute wildcards. Import resolves the exclusions
+once against the schema graph; instance readers and writers compare expanded
+names, without consulting an XSD at runtime.
 
 ## Current behavior
 
-These facts describe the code this design builds on.
+A `skip` element wildcard uses a generic recursive `element()` group. A `lax`
+wildcard projects eligible global declarations to typed ports and keeps a
+generic fallback; `strict` keeps only its typed alternatives. A projected
+name yields to a declared sibling in the same namespace. Names with the
+same local part in different namespaces are not interchangeable.
 
-- **Import refusal.** For the `xs:any` particles and `xs:anyAttribute`
-  elements the importer reaches, `parse_wildcard` and
-  `parse_attribute_wildcard` in `crates/format-xml/src/xsd.rs` refuse any
-  attribute whose local name is `notNamespace` or `notQName`. The refusal is
-  `UnsupportedXmlWildcard`/`UnsupportedXmlAttributeWildcard` with the reason
-  "XSD 1.1 wildcard exclusions are not supported". `ParseState::finish`
-  returns the recorded error, so the whole import fails. MFD import
-  (`crates/mfd/src/import/schema/mod.rs`) then silently uses a typed entry
-  schema when one exists; otherwise it warns and falls back to the entry tree.
-  The [formats reference](../formats.md#unsupported-profiles),
-  [`formats.toml`](../reference/formats.toml) and
-  [MFD interop](../mfd-interop.md) list exclusions as unsupported. The
-  `formats.md` tables are generated from `formats.toml`.
-- **Open content.** `parse_complex_type` ignores `xs:openContent`, and nothing
-  reads `xs:defaultOpenContent`. Wildcards there never reach `parse_wildcard`,
-  so neither the exclusion refusal nor any other wildcard rule applies to them
-  ([#1143](https://github.com/DeandreT/ferrule/issues/1143)).
-- **Namespace attribute.** `parse_wildcard_namespace` accepts `##any`,
-  `##other`, or a list of URIs, `##local` and `##targetNamespace`. It refuses
-  other `##` tokens and refuses `##any`/`##other` mixed with list members. The
-  target namespace comes from the owning document's `targetNamespace` or from a
-  single chameleon context (`SubstitutionIndex::effective_namespace`). When the
-  document has no target namespace, `##targetNamespace` becomes unqualified.
-- **Model.** `crates/ir/src/lib.rs` defines `XmlWildcardNamespaceConstraint`
-  as `Any`, `Other { target_namespace }` or `List { namespaces }`.
-  `Other::allows` rejects both absent names and the target namespace. Also
-  defined there: `XmlWildcardProcessContents`, and the `SchemaNode` fields
-  `xml_wildcard_namespace` and `xml_wildcard_process_contents`. The model has
-  no negated arbitrary set and no field for disallowed names.
-- **Element projection.**
-  - A `skip` wildcard becomes the recursive generic `element()` group, with
-    `LocalName`, `NamespaceURI`, text, `attribute()` and nested `element()`.
-  - A `lax` wildcard adds typed fields for the matching indexed global
-    declarations, then a `lax` generic fallback. It silently skips
-    declarations that recurse under a repeating wildcard, declarations with
-    substitution members, and incompatible same-local declarations.
-  - A `strict` wildcard becomes typed alternatives only (`parse_strict_wildcard`)
-    and retains no generic group. It refuses when an unresolved include or
-    import could match, or when no declaration matches.
-  - A projected port whose expanded name a declared sibling already uses,
-    such as `<xs:element ref="Head"/>` beside the wildcard, yields to that
-    sibling (`xsd/wildcard_ports.rs`). While the complex type is parsed, each
-    projected port carries the wildcard's mode in
-    `xml_wildcard_process_contents`, and the wildcard's own choice carries a
-    reserved member, so both are identified exactly. Named complex types keep
-    their unresolved content for use as an extension base, so a derived type
-    resolves the base's ports against its own elements. The marks are cleared
-    when the type is complete. Names compare by `xml_namespace_matches`, and
-    same-local names in different namespaces still merge into one port with
-    name alternatives.
-    - A repeating sibling holds every occurrence. The wildcard's choice keeps
-      its name while the members stay adjacent and no other choice owns it,
-      so retained element order still interleaves them; otherwise the group
-      writes in schema order.
-    - A sibling after the wildcard, or an alternative in the same
-      `xs:choice`, takes precedence, so the wildcard never matches its name.
-    - A single-occurrence sibling before the wildcard in a sequence leaves
-      its extra occurrences to the wildcard. A `lax` projection drops the port
-      and its choice member, so the generic fallback receives them. A
-      `strict` projection has no fallback and is refused with
-      `UnsupportedXmlWildcard`, also when its port merged into that sibling.
-      The refusal comes from parsing the declaration, so it also fails a
-      document whose wildcard projects such a global declaration.
-    - These rules apply to the namespaces the declared siblings cover. A port
-      with name alternatives may be covered only partly. In one `xs:choice`
-      it keeps the other namespaces, which then merge into the declared
-      element as name alternatives. Elsewhere a `lax` projection drops the
-      port and the generic fallback receives the other namespaces, while a
-      `strict` projection would need a second port with the same local name
-      and is refused.
-  - Supported occurrences are `1..1`, `0..1` (not `skip`) and `0..unbounded`.
-  - The importer refuses `xs:any` inside `xs:all`, multiple element wildcards
-    in one type, and a `skip` wildcard beside declared elements.
-    `xsd/restriction.rs` refuses wildcards in `complexContent` restrictions.
-- **Attribute projection.** `lax`/`strict` add typed fields for matching global
-  attribute declarations, then one `attribute()` group carrying the namespace
-  constraint and mode. A local-only `skip` wildcard keeps the legacy group
-  without `NamespaceURI`. The importer refuses more than one attribute wildcard
-  per type.
-- **Declaration index.** `crates/format-xml/src/xsd/substitution.rs` indexes
-  top-level element declarations (abstract ones included and flagged) and
-  attribute declarations across the local include/import graph. It records
-  the namespace of every unresolved include or import. It does not process
-  `xs:redefine` or `xs:override`.
-- **Instance I/O.** `crates/format-xml/src/instance/generic.rs` works as
-  follows.
-  - `lax`/`strict` generic groups receive only elements and attributes that
-    match no typed field. `skip` attribute groups keep every attribute.
-  - A non-repeating typed field takes only its first matching element. A
-    later occurrence of that name is a surplus occurrence. A `lax` generic
-    group takes it through its usual checks as a generic item, which keeps
-    its place in retained element order. The reader refuses it with
-    `UnrepresentableXmlWildcardSurplusElement` when the group is unordered
-    and the typed field follows the wildcard, since writing would put the
-    extra occurrence first, and in a `strict` generic group. The importer
-    never builds such a group, so this applies only to hand-built schemas.
-  - Element read order (`read_group_fields`, then `read_generic_element`):
-    strict-undeclared (a surplus occurrence in a `strict` group reports
-    `UnrepresentableXmlWildcardSurplusElement` instead), then namespace
-    (`XmlWildcardNamespaceMismatch`), then, for a surplus occurrence in an
-    unordered group whose typed field follows the wildcard,
-    `UnrepresentableXmlWildcardSurplusElement`. Attribute read order:
-    namespace, then strict-undeclared.
-  - Element write order (`write_generic_element`): name syntax, namespace,
-    known typed field (`lax`/`strict`,
-    `KnownXmlWildcardElementRequiresTypedField`), strict. The known typed
-    field check admits a single-occurrence field's name once that field's own
-    element has been written: earlier in the ordered stream, or, without
-    retained order, from a populated field before the wildcard. A `strict`
-    group then reports `UnrepresentableXmlWildcardSurplusElement`. In an
-    ordered stream, an item that repeats an already written single-occurrence
-    field goes to a `lax`/`strict` wildcard and must hold a generic element
-    value; otherwise it reports the same error. Attribute write order
-    (`push_generic_attributes`): name syntax, namespace, strict, known declared
-    attribute (`lax`/`strict` only, `DuplicateField`), duplicate expanded name.
-    `skip` attribute groups never check declared names.
-  - `resolve_recursive_schema` (`instance/mod.rs`) copies wildcard metadata
-    from each nested occurrence. Descendants of a generic element therefore
-    carry no wildcard constraint.
-- **Export.** `crates/format-xml/src/xsd/export.rs` writes `namespace` and
-  `processContents`. It refuses `##other` under a different export target
-  namespace. A strict element wildcard exports as its typed choice.
-- **Consumers.**
-  - `crates/engine/src/validate/schema.rs` validates wildcard process
-    metadata.
-  - Generated XML adapters refuse generic XML elements
-    (`crates/codegen/src/validate/xml.rs`).
-  - The JSON5 profile (`crates/codegen-schema/src/json5_profile/schema.rs`),
-    the CSV boundary (`crates/codegen/src/csv_input_boundary.rs`) and the
-    structured XML input (`crates/ir/src/xml_structured_input.rs`) refuse any
-    wildcard metadata. The first two destructure `SchemaNode` exhaustively.
-  - `SchemaNode` deserialization ignores unknown members. Project files name
-    required reader capabilities through `crates/mapping/src/file_codec/mod.rs`.
+A repeating sibling owns all its occurrences. A single sibling before the
+wildcard can leave surplus occurrences to a `lax` fallback, in retained
+order; a `strict` projection that cannot represent them refuses. A sibling
+after the wildcard, or in the same choice, owns its declared name.
+An unordered surplus that would reverse output order refuses with
+`UnrepresentableXmlWildcardSurplusElement`. On write a generic item cannot
+stand in for a still-unwritten typed field.
 
-Existing metadata is not enough. `Other` cannot express an arbitrary negated
-set, and nothing records disallowed names. The runtime cannot evaluate
-`##defined` or `##definedSibling` from the IR either: lax projections drop some
-declarations, strict element wildcards keep no generic group, and the IR keeps
-no global declaration set.
+Typed `lax`/`strict` attributes take their declared names. Legacy `skip`
+without exclusions can still collect every attribute. A nested generic
+element has its own metadata; it does not inherit its parent's wildcard.
+
+`##other` excludes both the target namespace and the absent namespace. A
+negated arbitrary set needs a different representation. `##defined` and
+`##definedSibling` must be resolved before projection: a lax projection can
+omit declarations and the instance model has no global declaration index.
 
 ## Standard semantics
 
@@ -206,9 +85,9 @@ Admitted forms on `xs:any` and `xs:anyAttribute`:
   group, and the ordinary-group reader ignores unmatched children, so an
   excluded name would be accepted and dropped rather than refused. They become
   admissible only once that reader refuses unmatched names.
-- Open content (`xs:openContent`, `xs:defaultOpenContent`) is outside this
-  contract. Its wildcards are not processed today, with or without exclusions
-  ([#1143](https://github.com/DeandreT/ferrule/issues/1143)).
+- Active `xs:openContent` and `xs:defaultOpenContent` are outside this
+  profile. The importer [checks open content separately](../../crates/format-xml/tests/xsd_open_content.rs);
+  a disabled open-content declaration contributes no wildcard.
 
 ### Resolution at import
 
@@ -259,10 +138,9 @@ Import resolves every exclusion to exact expanded names.
   alternatives into one group by member name, so one `element()` field serves
   every alternative and can hold only one exclusion set. Import therefore
   refuses an element whose declared type and any attached alternative resolve
-  the shared wildcard to different exclusion sets. Today, members that differ
-  make `attach_type_alternatives` return without alternatives and without an
-  error. The native codec must report this case as the typed refusal rather
-  than inherit that silent return.
+  the shared wildcard to different exclusion sets. Dropping an alternative
+  would silently change the set of permitted names; import reports a typed
+  refusal instead.
 
 The excluded set is the union of explicit names and keyword results, after the
 namespace filter. It is deduplicated and sorted canonically. An empty result
@@ -271,7 +149,7 @@ are not retained.
 
 ### Model
 
-Follow-up scope 1 adds:
+The saved model distinguishes negated namespaces from excluded names:
 
 - `XmlWildcardNamespaceConstraint::Not { namespaces: XmlWildcardNamespaceList }`,
   serialized as `{"kind":"not","namespaces":[...]}`. `allows` returns true when
@@ -375,41 +253,14 @@ unsupported occurrences, optional single `skip`, several wildcards per type,
 `skip` beside declared elements, restriction wildcards, and unresolved or empty
 strict sets.
 
-## Follow-up scopes and route gates
+<a id="follow-up-scopes-and-route-gates"></a>
 
-Each scope is a separate issue. A route keeps its current refusal until its
-own scope merges with the matching tests.
-
-1. **Model.** `ir` types and validity, engine validation, the file capability,
-   and fail-closed handling in every consumer. The exhaustive destructuring in
-   the JSON5 profile and the CSV boundary must refuse the new field, and the
-   structured XML input must refuse it too. The field-by-field
-   `same_recursive_anchor_definition` comparisons in `xsd/export.rs` and
-   `xsd/export/set.rs` must compare the new field, so that anchors differing
-   only by exclusions refuse. Until scope 2, the canonical `attribute()`
-   equality check in `validate_export_node` refuses attribute groups that carry
-   exclusions. XSD export also refuses explicitly any element or attribute
-   group whose wildcard metadata uses `Not` or excluded names. That includes a
-   `Not`-only constraint from `notNamespace` without `notQName`:
-   `wildcard_namespace_attribute`, which serves both `xs:any` and
-   `xs:anyAttribute`, gains a refusing `Not` arm. MFD export refuses exclusion
-   metadata atomically. No importer change.
-2. **Native codec.** Covers `format-xml`
-   resolution, the reader/writer checks, XSD export (including the canonical
-   `attribute()` form with exclusions), and the frozen fixtures below. It also
-   narrows the unsupported row: edit `docs/reference/formats.toml`, regenerate
-   the generated block of `formats.md` with `cargo run -p reference-docs`, and
-   hand-edit the XML narrative that follows the generated block in
-   `formats.md`. `import-xsd`, the CLI and native runs gain the profile in this
-   scope. MFD import treats an exclusion-bearing schema like today's wildcard
-   import error.
-3. **MFD route.** Admit exclusion-bearing component schemas on import and
-   export their siblings. Self-authored designs cover this route, while
-   reference-application qualification stays external and separate.
-   [MFD interop](../mfd-interop.md) changes here.
-4. **Generated Rust and C#.** No scope is opened. Generated adapters refuse
-   generic XML wildcards altogether. Any future generated wildcard support must
-   implement exclusions in both languages in the same change, or refuse them.
+**Route boundaries.** MFD XML document components can import these schemas
+and export their exclusions in generated XSD siblings. A rejected selection
+adds no typed port; other physical boundaries, WSDL, request contracts and
+XML serializer schemas cannot export exclusions. Generated XML adapters
+do not gain a generic wildcard codec. Refer to the [format matrix](../formats.md)
+and [MFD contract](../mfd-interop.md) for those routes.
 
 ## Frozen fixtures
 
@@ -591,25 +442,10 @@ admissible, so its refusal test switches to a still-refused form.
 
 ## Acceptance plan
 
-- **Model scope.**
-  - Wire round trips for `Not` and excluded names.
-  - Validity refusals: wrong node, disallowed namespace, duplicate, empty,
-    over-limit and invalid NCName.
-  - Engine validation issues.
-  - Writing the capability, and older readers refusing it.
-  - Unchanged wire form for existing `Any`/`Other`/`List` fixtures.
-  - Refusals in every generated profile and the XML adapter.
-  - Recursive-anchor comparison that refuses anchors differing only by
-    exclusions, and explicit XSD export refusal.
-  - Atomic MFD export refusal.
-- **Native codec scope.**
-  - Every E1–E5 and A1 import shape, read row and write row.
-  - Export/re-import equality and instance equality.
-  - Unchanged MFD import fallback for an exclusion-bearing component schema.
-  - Every refusal row and every retained refusal.
-  - Unchanged check order and errors for existing strict attribute groups.
-  - The existing lax, QName and import/export wildcard suites still pass, with
-    only the one exclusion refusal case updated.
-- **MFD scope.** Self-authored designs over E1 and A1 import, run, export and
-  re-import without semantic drift. Reference-application evidence stays
-  separate.
+The [native fixture suite](../../crates/format-xml/tests/xsd_wildcard_exclusion_fixtures.rs)
+checks the E1–E5 and A1 import shapes, reads, writes and XSD re-imports.
+[Refusal tests](../../crates/format-xml/tests/xsd_wildcard_exclusion_refusals.rs)
+cover unresolvable names and unsupported wildcard shapes.
+[MFD import](../../crates/mfd/tests/xml_wildcard_exclusion_import.rs) and
+[export](../../crates/mfd/tests/xml_wildcard_exclusion_export.rs) exercise the
+document-component boundary. They are not external application qualification.

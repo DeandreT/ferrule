@@ -68,24 +68,12 @@ bindings in dropped or window-excluded groups remain lazy.
 
 ## Owned occurrences and nested members
 
-Each authenticated group retains the selected exact owner and absolute
-endpoint-local collection. Its scalar representative is its first surviving
-ordered member. Iterating that collection again enumerates only the current
-run's members, with independent one-based member positions. Other owners and
-incoming ancestor frames remain available under their own identities.
-
-A run retains its first member's intermediate source prefix. If a flattened run
-crosses two parent Batches, its nested members retain the first Batch's pinned
-context; grouping does not reconstruct a separate original parent stack for each
-member. Legacy wrapper labels remain distinct from canonical owned paths.
-
-The latest exact-owner occurrence governs explicit pins. A synthetic group at
-collection `[]` reads the immutable endpoint root for an explicit empty-frame
-pin; a repeated root cannot be unwrapped as its representative. A newer ordinary
-member at `[]` instead retains active-item pin behavior. A different owner's
-member cannot shadow that group, and a group at a nonempty collection does not
-alone create a root-pin exception. Existing declared-nonrepeating root rules
-continue independently.
+A run retains the [authenticated group-member occurrence](source-ownership.md#group-member-occurrence-identity).
+Its first member represents the run and supplies the intermediate prefix:
+even when members cross parent Batches, nested reads keep the first Batch's
+pin. A group at `[]` with an explicit empty-frame pin reads the immutable
+endpoint root; a newer ordinary member at `[]` keeps its active-item pin.
+Other owners and the declared nonrepeating-root rules remain independent.
 
 ## Runtime and metadata contract
 

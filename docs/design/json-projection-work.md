@@ -36,16 +36,8 @@ own immutable values after the decoder's `JsonDocument` is disposed. Replacing
 a slot cannot invalidate an earlier result. Rust contexts keep their existing
 single-threaded shared-context model; C# synchronizes document-state access
 when callers share a context across threads. Independent executions never share
-that state.
-
-C# context construction requires an explicit state argument, including
-target-typed constructors. Only the three actual root factories allocate it;
-sorting/grouping selection views, completed group targets, and filter/map
-callback boundaries forward it like other descendant views. Rust context
-literals require the state field and context clones retain its shared owner.
-Construction guards and generated sorted-grouping consumers cover these paths.
-Filter/map callback-boundary controls also exercise the actual runtime directly;
-they are not a claim of generated-graph filter/map conformance.
+that state. Sorting, grouping, target views and filter/map callbacks forward
+the invocation state.
 
 ## Validation and demand
 
@@ -99,10 +91,8 @@ decoder legitimately count zero attempts. The synthetic count profile has no
 raw uniqueness prepass; its count is not a claim about all internal parsing or
 validation work for other schemas.
 
-`functions` projection unit tests compare stateless and invocation-owned call
-counts. `mfd`'s `json_projection_work` tests construct synthetic graphs and
-independently authored complete outputs while varying rows and fields. Its
-opt-in generated test compiles instrumented Rust and C# Release consumers and
-checks complete outputs, typed failures, repeated executions and concurrent
-invocations. `json_array_parser` retains the importer refusal, optional-parent
-and error-profile regression cases.
+[Function tests](../../crates/functions/src/json/projection/tests.rs) compare
+stateless and invocation-owned call counts. [Mapping tests](../../crates/mfd/tests/json_projection_work.rs) vary rows
+and fields, compare complete results and typed failures, and distinguish
+repeated/concurrent invocations. Their opt-in Rust/C# hosts measure decoder
+calls; the importer has separate admission tests.

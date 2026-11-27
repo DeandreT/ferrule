@@ -1,7 +1,9 @@
 # XLSX instance I/O
 
-The existing readers and writers support the crate's flat and structured layouts.
-They retain their existing behavior and do not acquire resource limits implicitly.
+For worksheet selection, transposed rows and update-existing behavior, see
+[workbook layouts](../../docs/formats.md#workbook-layouts). This reference covers
+the opt-in bounded flat codec. Ordinary flat and structured file APIs do not
+acquire its resource limits implicitly.
 
 ## Opt-in bounded flat workbooks
 

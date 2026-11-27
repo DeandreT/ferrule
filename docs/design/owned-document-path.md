@@ -84,11 +84,9 @@ local XML file-set reader records them
 
 ## Qualification
 
-The [portable corpus](../../conformance/basic-owned-document-path/README.md)
-pairs same-shaped primary and named document sets with distinct locations and
-records complete expected outputs and typed failures. The CLI
-`code_generation` tests run every call through the interpreter; the ignored
-host test builds generated Rust and C# libraries and checks the same calls:
+The [document-set corpus](../../conformance/basic-owned-document-path/README.md)
+uses equal-shaped endpoints with different locations. Run the ignored public
+Rust/C# hosts separately from the interpreter:
 
 ```sh
 cargo test -p cli --test code_generation --features codegen-tests \

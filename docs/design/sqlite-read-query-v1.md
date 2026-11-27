@@ -1,15 +1,13 @@
 # Declared SQLite reads, version 1
 
-Design for [#103](https://github.com/DeandreT/ferrule/issues/103). Version 1
-is the `sqlite_read` source option summarized in the
-[formats reference](../formats.md#declared-sqlite-queries). Existing
-table/relational reads, replacement writes and imported MFD query lowering keep
-their behavior.
+`source_options.sqlite_read` selects a declared read from a local SQLite
+file. Ordinary table reads, replacement writes and imported MFD query
+lowering have separate contracts. See [declared SQLite queries](../formats.md#declared-sqlite-queries).
 
 ## Boundary and ownership
 
-Add an explicit filesystem-source profile `sqlite_read_v1`. It reads one ordinary
-table in `main`, materializes one repeating group of scalar fields, and closes
+The `sqlite_read_v1` filesystem profile reads one ordinary table in `main`,
+materializes one repeating group of scalar fields and closes
 its connection before mapping evaluation. It accepts projection, an ordered
 conjunction of comparisons, and an explicit total row order. SQL text, SQL
 fragments, joins, views, virtual tables, generated columns, subqueries, aggregate
@@ -89,29 +87,19 @@ refused before database access; use a NULL-test predicate instead.
 last. The key appears exactly once. Earlier terms select the requested order;
 the final key resolves every tie. Always emit explicit directions, NULL placement
 and String collation. Preserve duplicate projected values and repeated rows;
-do not emit DISTINCT. SQL lacks a guaranteed order without adequate ORDER BY,
-and NULL placement is configurable; this proposal makes both explicit.
+do not emit DISTINCT. Both ORDER BY and NULL placement are explicit so the
+same query has a repeatable row order.
 [SQLite SELECT](https://www.sqlite.org/lang_select.html)
 
 ## Parameters and first errors
 
-Declarations have unique case-sensitive names matching `[A-Za-z_][A-Za-z0-9_]*`,
-at most 128 ASCII bytes. A required binding names one existing required project
-runtime input parameter of exactly the declared scalar type. Preview values and
-imported defaults do not supply query bindings. Reuse the host's typed runtime
-parameter resolution; no new implicit String/Int/Bool conversion occurs here.
-An opt-in CLI run would continue using existing `--param name=value` coercion
-at the host boundary. Typed library callers provide typed Values. Do not persist
-parameter values or interpolate them into SQL/errors.
-
-Runtime declarations currently live in `Node::RuntimeParameter`; required query
-references must be validated and retained as host acquisition dependencies even
-when an otherwise unreachable graph node is their declaration. The existing
-runtime Values may still need coercion at graph evaluation today. Implementation
-must extract one shared typed-resolution step before acquisition, rather than
-assuming the current RuntimeParameters container already holds resolved tags or
-evaluating arbitrary graph nodes to obtain SQL bindings. Defaulted nodes remain
-outside this required-parameter profile.
+Parameter names are unique, case-sensitive ASCII identifiers matching
+`[A-Za-z_][A-Za-z0-9_]*`, up to 128 bytes. Each names a required runtime input
+of exactly the declared type, even if its declaration is otherwise unreachable.
+The filesystem CLI resolves `--param name=value` with ordinary runtime
+coercion before acquisition; the query API takes typed values. Preview values
+and defaults do not bind a query. Values are neither persisted nor interpolated
+into SQL or errors.
 
 Preserve existing project/host preflight precedence. Once that passes, the new
 boundary has this ordered failure protocol:
@@ -190,7 +178,7 @@ file from a live WAL database, or set immutable=1 on a mutable file. Refuse WAL
 environments that SQLite cannot open read-only, preserving the original error.
 [SQLite WAL](https://www.sqlite.org/wal.html)
 
-The proposed maximum policy is 100,000 candidate rows, 100,000 output rows,
+The maximum policy is 100,000 candidate rows, 100,000 output rows,
 1 MiB per cell, 64 MiB cumulative decoded scalar payload across validation and
 output, 64 KiB generated SQL, 32 parameters, a 5-second elapsed deadline, zero
 busy retries and 10 million approximate VM work units. A host can lower these
@@ -234,7 +222,7 @@ pub fn validate_sqlite_read_profile(
 // format_db::query
 pub fn read_query(
     path: &Path, schema: &SchemaNode, plan: &ValidatedSqliteRead,
-    bindings: &[(String, Value)], control: &QueryReadControl,
+    bindings: &[(String, Value)], control: &QueryReadControl<'_>,
 ) -> Result<Instance, QueryReadError>;
 ```
 
@@ -244,33 +232,20 @@ row, a typed kind, SQLite codes and the original cause. Runtime errors do not
 invent graph node IDs. Field/value order and the logical failure protocol above
 are the cross-host contract; OS-specific error text is retained separately.
 
-The CLI filesystem loader dispatches only when the explicit profile is
-present, for primary and static named SQLite inputs. Existing `RunOptions` can
-supply resolved parameters, but acquisition cancellation requires new or extended
-host-control plumbing: the current execution context is created after inputs are
-loaded, and `before_publish` is not an acquisition cancellation token. The query
-control must reach the acquisition owner before opening the database. Named
-inputs keep existing host acquisition order. All-target and selected-target
-runs use the same query input acquisition; output selection does not widen
-required-source closure. Filesystem Preview must use the same acquisition owner
-and return in-memory mapping artifacts only after connection closure.
+Filesystem Run and Preview admit primary and static named query sources.
+Bind parameters and the query cancellation control before opening the database;
+`before_publish` cannot cancel acquisition. Named acquisition retains its
+ordinary order and selected outputs do not widen required-source closure.
+Preview returns in-memory artifacts after connection closure.
 
-Payload, standard-stream and REST request-payload routes reject this profile
-before reading any database or evaluating a target. Filesystem pipelines may
-support it only after propagation of per-stage source context, cancellation and
-parameter ownership is tested. Portable code generation rejects the profile at
-the host-adapter admission boundary rather than dropping it; an explicitly
-pre-acquired typed Instance may feed an otherwise supported generated mapping.
-MFD import/export must refuse the new profile until an independently qualified
-interchange representation exists. Do not reinterpret imported query components.
+Payload, standard-stream, REST JSON, pipelines, offline bundles, generated
+adapters and MFD export refuse the profile. A host may supply a pre-acquired
+instance to an otherwise supported typed mapping. Import does not reinterpret
+an MFD query as this descriptor.
 
-Absent profile preserves all existing project JSON meanings and serialization.
-Before adding a field to FormatOptions, prove older readers reject the new
-capability: a currently unknown optional field may be ignored. Select a tested
-project capability/version gate if necessary; do not claim an additive field
-alone is fail-closed or globally tighten legacy JSON codecs. Round-trip old
-projects exactly and forbid query descriptors in output options. Saved explicit
-profiles must never fall back to an ordinary table read in any consumer.
+Saved projects require the [`sqlite_read_v1` file capability](../project-files.md#file-capabilities).
+Older readers refuse rather than silently perform an ordinary table read.
+The option is source-only; absent profiles preserve legacy serialization.
 
 ## Authored fixtures and implementation gates
 
@@ -288,20 +263,6 @@ closure and bounded cancellation against the same fixtures. Their
 explicit `repeated`/`group`/scalar-tag notation for independent logical comparison;
 it is not the current Instance serde wire format.
 
-The implementation is layered in this order:
-
-- The mapping model, with a capability gate that makes older readers refuse
-  saved profiles, and explicit refusals in every host and emitter that does not
-  own query acquisition.
-- format-db plan binding, metadata/key proof, candidate scan, quoted SELECT,
-  snapshot and typed acquisition errors.
-- Qualification of every parameter-priority pair against a nonexistent path;
-  all four scalar types and NULL; malformed storage hidden by filters;
-  missing columns; forbidden table types; injection-shaped identifiers and
-  bindings; work/payload refusal; lock refusal; live cancellation and closed
-  connection ownership, comparing complete Instances and error envelopes.
-- CLI primary/static named filesystem Run and Preview, old-project
-  compatibility, and refusal of every unsupported route before side effects.
-
-Generated-code adapters, GUI editing, pipeline stages and external runtimes
-remain closed to the profile.
+The [CLI regression](../../crates/cli/tests/sqlite_read_query.rs) exercises
+the public routes, parameter error precedence, restricted access and
+cancellation. The SQL verifier alone cannot establish host behavior.

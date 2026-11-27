@@ -23,16 +23,25 @@
   output to another.
 - [Understand what a project file stores](project-files.md) or
   [bundle a project with its local resources](offline-bundles.md).
+- For a live HTTP response, use the [opt-in JSON request host](rest-json-host.md).
+  For an application that supplies its own bytes, see the [bounded document profile](design/bounded-document-payloads.md).
 
 ## Diagnose a run
 
 - [Trace execution](tracing.md) to inspect the interpreter's decisions.
+- [Navigate the canvas](canvas-presentation.md) or use the
+  [editor keyboard controls](qualification/keyboard-only-editor.md#canvas-keys).
 - [Plan for large inputs](memory-and-limits.md): find the memory and document
   limits that apply to your execution route.
 
 ## Contribute
 
-- [Find and claim an issue](../CONTRIBUTING.md) or check the
-  [roadmap](../ROADMAP.md) for priorities and compatibility evidence.
+- [Find and claim an issue](../CONTRIBUTING.md) or see the
+  [product roadmap](../ROADMAP.md) for longer-term goals.
 - [Find the responsible crate](architecture.md) and use the
   [development checklist](development.md) to verify a change.
+- To update a published format or workspace table, edit its
+  [shared reference source](reference/README.md). For compatibility claims,
+  use the [conformance inventory](../conformance/README.md).
+- Maintainers: [CI runner operations](ovh-ci.md),
+  [Linux desktop packaging](linux-packaging.md), and [Pages deployment](pages-deployment.md).

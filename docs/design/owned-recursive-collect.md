@@ -61,24 +61,18 @@ owned producer in the interpreter and every generation profile.
 
 ## Generation profile
 
-`codegen::lower_with_basic_owned_recursive_collect` composes the owned
-adjacency-tree profile, which includes owned path hierarchies,
-[owned failure sources](owned-failure-sources.md) and the EndingWith controls,
-with ItemAt over the owned walk. That ItemAt may also form an owned adjacency
-tree's parent-context root. Every earlier profile, including the adjacency-tree
-and fixed-block companions, the ordinary emitters, directly constructed Program
-validation, `.mfd` export and GUI authoring keep refusing it; the GUI
-preserves saved producers read-only. The legacy walk stays a closed ItemAt
-producer in every Basic profile. An owned root keeps its endpoint optional in
-the named-input catalogue.
+`codegen::lower_with_basic_owned_recursive_collect` adds ItemAt over this
+walk to the owned adjacency-tree profile. It may supply the tree's
+parent-context root. The owner remains optional until read. Earlier and
+ordinary presets, direct Programs without the capability and MFD export
+refuse the form; the GUI displays it read-only. The legacy recursive walk
+remains unavailable to Basic ItemAt.
 
 ## Qualification
 
-The [portable corpus](../../conformance/basic-owned-recursive-collect/README.md)
-pairs same-path Primary and named trees with different values and records
-complete expected outputs and typed failures. The CLI `code_generation` tests
-run every call through the interpreter; the ignored host test builds generated
-Rust and C# libraries and checks the same calls:
+The [corpus](../../conformance/basic-owned-recursive-collect/README.md)
+uses same-path trees with different values to distinguish owners. The
+compiled-host comparison against the interpreter oracle is explicitly ignored:
 
 ```sh
 cargo test -p cli --test code_generation --features codegen-tests \

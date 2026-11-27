@@ -71,24 +71,17 @@ scopes.
 
 ## Generation profile
 
-`codegen::lower_with_basic_owned_dynamic_field` composes the owned
-lookup/find profile, which includes owned Lookup and CollectionFind, owned
-recursive filters, owned adjacency trees, owned path hierarchies,
-[owned failure sources](owned-failure-sources.md), the IntoBlocks controls and
-ItemAt over scalar and owned recursive producers, with owned dynamic reads.
-Every other profile, including the lookup/find, recursive-filter,
-recursive-collect and SequenceExists companions, the ordinary emitters,
-directly constructed Program validation, `.mfd` export and GUI authoring keep
-refusing the owned read; the GUI preserves saved reads and their key wires
-read-only. The selected owner stays optional in the named-input catalogue.
+`codegen::lower_with_basic_owned_dynamic_field` adds the read to the
+[Lookup/CollectionFind profile](owned-lookup-find.md#generation-profile).
+The owner remains optional until reached. Presets without this capability,
+ordinary generation and MFD export refuse it; the GUI preserves saved reads
+and key wires read-only.
 
 ## Qualification
 
-The [portable corpus](../../conformance/basic-owned-dynamic-field/README.md)
-pairs same-named Primary and named objects and properties with different values
-and records complete expected outputs and typed failures. The CLI
-`code_generation` tests run every call through the interpreter; the ignored
-host test builds generated Rust and C# libraries and checks the same calls:
+The [corpus](../../conformance/basic-owned-dynamic-field/README.md) distinguishes
+same-named objects and properties on two endpoints, including typed failures.
+The interpreter checks the calls; the compiled-host check is ignored by default:
 
 ```sh
 cargo test -p cli --test code_generation --features codegen-tests \
