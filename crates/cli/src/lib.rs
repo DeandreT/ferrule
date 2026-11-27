@@ -151,6 +151,23 @@ pub use format_csv::CsvFormatError;
 /// A bounded, quote-aware CSV sample for GUI schema authoring.
 pub use format_csv::CsvSample;
 
+/// Whether the in-memory preview writer selects delimited rows for this
+/// identity. Embedded formats take precedence over a `.csv` filename.
+pub fn preview_writes_csv(path: &Path, options: &FormatOptions) -> bool {
+    matches!(
+        format_selection::select(path, options, Direction::Output, false),
+        Ok(format_selection::SelectedFormat::Csv)
+    )
+}
+
+/// Whether primary payload bytes are read as an XML document.
+pub fn preview_reads_xml(path: &Path, options: &FormatOptions) -> bool {
+    matches!(
+        format_selection::select(path, options, Direction::Input, false),
+        Ok(format_selection::SelectedFormat::Xml(_))
+    )
+}
+
 pub fn sample_csv(
     path: &Path,
     delimiter: Option<char>,
