@@ -1,44 +1,40 @@
-# Your First Mapping
+# Your first visual mapping
 
-Start with one input, one output, and a few fields. A saved project contains
-the schemas and mapping; data files and the adjacent canvas-layout file have
-separate roles. See [Project files](project-files.md) for persistence details.
-
-## Choose a workflow
-
-| You want to… | Start here |
-| --- | --- |
-| Build and inspect a mapping visually | Native editor steps below |
-| Run an existing mapping in a script | [README CLI example](../README.md#quick-start) |
-| Run from host-owned bytes | [Payload API](../README.md#quick-start) and [memory limits](memory-and-limits.md) |
-| Embed generated Rust or C# code | [Code generation](code-generation.md) and [runnable hosts](../examples/codegen/) |
-| Connect several mappings | [Mapping pipelines](mapping-pipelines.md) |
-| Bring in an existing `.mfd` design | [Import and compatibility checks](mfd-interop.md) |
+Use the native editor to copy a number from one XML document to another.
+If you already have a project, see how to
+[run it from the CLI or a Rust application](running-mappings.md).
 
 ## Create and preview in the native editor
 
-Launch the editor from the repository:
+Launch the editor from the repository root:
 
 ```sh
 cargo run -p gui
 ```
 
-- [ ] Choose **File → New** to open the New Mapping window.
-- [ ] Choose a source schema or layout and a target schema or layout. For a
-  delimited source, **Choose CSV...** can derive a small editable row schema.
-- [ ] Review field names, types, and format settings before choosing **Create**.
-  Scroll the New Mapping window when its controls extend below the viewport.
-- [ ] Connect source fields to compatible target fields. Use
-  **Auto-connect fields...** for a proposed match, then review it.
-- [ ] Add functions and scope controls only where the mapping needs them.
-  Compact node headers retain full identities in hover text; the pencil opens
-  details or editable properties without expanding the closed canvas.
-- [ ] Save the project, then use **Preview...** with a small representative
-  input. Preview returns results without publishing output files.
-- [ ] Inspect validation and preview diagnostics, including missing values and
-  the selected row or expression that caused a failure.
-- [ ] Run with explicit input and output destinations when the preview is
-  correct. Reopen the saved project to check its mapping and layout.
+- [ ] Choose **New mapping…** on the start screen or **File → New**.
+- [ ] On each side, open **Choose format… → Schema or layout…**. From
+  [`crates/cli/tests/fixtures/executable-import/`](../crates/cli/tests/fixtures/executable-import/),
+  select `input.xsd` for **Source** and `output.xsd` for **Target**, then
+  choose **Create mapping**.
+- [ ] Drag from the pin beside **Number** on the source to the pin beside
+  **Value** on the target.
+- [ ] Choose **Mapping → Validate**, then **Run → Preview…**. Select **Editor text**.
+  Enter `input.xml` and `output.xml` for the logical input and output identities
+  so the editor uses XML.
+  Paste `<Input><Number>37</Number></Input>` as the input and choose **Preview**.
+  Look for `<Value>37</Value>` inside `Output`. Preview doesn't write a file.
+- [ ] Save the project. To write the result, save the sample input as `input.xml`,
+  select it and an `output.xml` destination in **Run → Run settings**, then
+  choose **Run → Run**. Open `output.xml` and check the same value.
+
+If you save as `mapping.json`, that [project file](project-files.md) contains
+the schemas and mapping. The editor saves canvas positions beside it in
+`mapping.layout.json`. Input and output data are separate files.
+
+When building your own mapping, **CSV / delimited text…** in the **Choose format…**
+menu can derive editable columns from a sample. **Mapping → Auto-connect fields…**
+offers suggested connections for you to review before applying them.
 
 Check disconnected required pins deliberately: they can yield an absent value
 rather than an intended default. Saving a draft and successfully executing it are separate checks.
@@ -263,9 +259,9 @@ Use the following worksheet settings:
 | `Name` column | `1` (A) | `1` (A) |
 | `Count` column | `3` (C) | `3` (C) |
 
-Choose **Configure workbook** independently for Source and Target. Columns and
-rows are numbered from one. With a header enabled, the row setting identifies
-the header; otherwise it identifies the first data row. Target header text is
+Choose **Use schema with… → Excel workbook** separately under Source and Target.
+Columns and rows are numbered from one. With a header enabled, the row setting
+identifies the header; otherwise it identifies the first data row. Target header text is
 editable independently of the schema's field names. Blank source sheet names
 read the first sheet; blank target sheet names use the default sheet.
 Data paths are optional during setup and can be supplied when running.
