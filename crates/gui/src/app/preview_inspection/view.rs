@@ -4,6 +4,7 @@ use egui::{Key, RichText, Ui};
 enum Action {
     Refresh,
     EditInputs,
+    SavedChecks,
     Wiring(String),
     Pin,
 }
@@ -42,13 +43,28 @@ impl FerruleApp {
             !self.rest_run_busy() && self.pending_preview.is_none() && self.preview_draft.is_none();
         let inspection = &mut self.preview_inspection;
         let report = self.run_report.as_mut().unwrap();
+        let saved_checks = &self.saved_checks;
+        let saved_mapping = self.document.saved_path().is_some();
         let response =
             crate::ui_kit::dialog(ctx, crate::ui_kit::DialogKind::Docked, "Preview results")
                 .id_salt("run_results")
                 .width(crate::ui_kit::DialogWidth::Wide)
-                .show_body(|ui| inspection.show(ui, report, stale, can_refresh));
+                .show_body(|ui| {
+                    if let Some(checks) = saved_checks {
+                        checks.show_last_check_detail(ui);
+                    }
+                    if ui
+                        .add_enabled(saved_mapping, egui::Button::new("Saved checks…"))
+                        .on_disabled_hover_text("Save the mapping first")
+                        .clicked()
+                    {
+                        return Some(Action::SavedChecks);
+                    }
+                    inspection.show(ui, report, stale, can_refresh)
+                });
         self.show_run_report = !response.close_requested;
         match response.body {
+            Some(Action::SavedChecks) => self.open_saved_checks(),
             Some(Action::Refresh | Action::EditInputs) if can_refresh => {
                 let edit = matches!(response.body, Some(Action::EditInputs));
                 if let Some(draft) = self.preview_inspection.last_draft.as_ref() {

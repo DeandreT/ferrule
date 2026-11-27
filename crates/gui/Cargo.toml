@@ -27,6 +27,8 @@ csv = { workspace = true }
 roxmltree = { workspace = true }
 sha2 = { workspace = true }
 anyhow = { workspace = true }
+base64 = "0.22"
+same-file = "1"
 egui = { workspace = true }
 eframe = { workspace = true, features = ["persistence"] }
 egui-snarl = { workspace = true }

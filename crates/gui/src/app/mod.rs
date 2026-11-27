@@ -108,6 +108,7 @@ mod route_preflight;
 mod run_destinations;
 #[path = "run.rs"]
 mod run_ui;
+mod saved_checks;
 mod scope_retirement;
 #[path = "scopes.rs"]
 mod scope_ui;
@@ -556,6 +557,7 @@ pub struct FerruleApp {
     pending_mfd_pipeline_import: Option<mfd_pipeline::PendingMfdPipelineImport>,
     pending_pipeline_mfd_export: Option<mfd_pipeline::PipelineMfdExport>,
     show_run_report: bool,
+    saved_checks: Option<saved_checks::Window>,
     show_appearance_editor: bool,
     appearance_tab: AppearanceTab,
     theme: ThemeState,
@@ -762,6 +764,7 @@ impl Default for FerruleApp {
             pending_mfd_pipeline_import: None,
             pending_pipeline_mfd_export: None,
             show_run_report: false,
+            saved_checks: None,
             show_appearance_editor: false,
             appearance_tab: AppearanceTab::default(),
             theme: ThemeState::default(),
@@ -1013,10 +1016,13 @@ fn pick_file(description: &str, extensions: &[&str]) -> std::sync::mpsc::Receive
     let description = description.to_string();
     let extensions: Vec<String> = extensions.iter().map(|e| e.to_string()).collect();
     std::thread::spawn(move || {
-        let result = rfd::FileDialog::new()
-            .add_filter(description, &extensions)
-            .pick_file()
-            .map(|p| p.display().to_string());
+        let dialog = rfd::FileDialog::new();
+        let dialog = if extensions.is_empty() {
+            dialog.set_title(description)
+        } else {
+            dialog.add_filter(description, &extensions)
+        };
+        let result = dialog.pick_file().map(|p| p.display().to_string());
         let _ = tx.send(result);
     });
     rx
@@ -1098,7 +1104,12 @@ impl FerruleApp {
     }
 
     fn ui_project_editing_enabled(&self) -> bool {
-        self.project_editing_enabled() && !self.pipeline_mfd_busy()
+        self.project_editing_enabled()
+            && !self.pipeline_mfd_busy()
+            && !self
+                .saved_checks
+                .as_ref()
+                .is_some_and(saved_checks::Window::editing)
     }
 
     fn handle_history_shortcuts(&mut self, context: &egui::Context, editing_enabled: bool) {
@@ -1727,6 +1738,7 @@ impl FerruleApp {
     ) {
         self.show_run_settings(ui.ctx(), project_editing_enabled);
         self.show_run_destinations(ui.ctx());
+        self.show_saved_checks(ui.ctx());
         self.show_mfd_import_dialog(ui.ctx());
         crate::appearance_editor::show(
             ui.ctx(),

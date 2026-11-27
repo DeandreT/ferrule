@@ -2303,6 +2303,7 @@ name = "gui"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "base64",
  "calamine",
  "cli",
  "csv",
@@ -2328,6 +2329,7 @@ dependencies = [
  "rfd",
  "roxmltree",
  "rustix 1.1.4",
+ "same-file",
  "serde",
  "serde_json",
  "sha2 0.10.9",
