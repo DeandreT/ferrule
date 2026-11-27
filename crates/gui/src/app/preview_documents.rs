@@ -81,7 +81,14 @@ impl FerruleApp {
                 }],
             })
             .map_err(|error| PreviewRunError::Failed(format!("{:#}", anyhow::Error::new(error))));
-            (result, crate::run_report::TraceReport::default())
+            let capture = result.as_ref().ok().map(|outcome| {
+                super::super::preview_inspection::Capture::documents(
+                    document.project(),
+                    &policy.input_root,
+                    outcome,
+                )
+            });
+            (result, crate::run_report::TraceReport::default(), capture)
         });
         let worker = match worker {
             Ok(worker) => worker,
@@ -102,11 +109,13 @@ impl FerruleApp {
             started: Instant::now(),
             input_path,
             target_label,
+            run_values: self.host_parameters.entries.clone(),
             debug: false,
             phase: PreviewPhase::Running,
             extraction: None,
             service: None,
         });
+        self.preview_inspection.attempt = Some("Preview is running.".into());
         self.show_run_report = false;
         self.diagnostics.clear();
         self.status = "preview running".into();

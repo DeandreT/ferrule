@@ -360,6 +360,7 @@ pub(super) fn show_breakpoint_value_condition(
 
 enum PreviewAction {
     Cancel,
+    ReturnToResults,
     Execute,
     Debug,
     Step,
@@ -389,6 +390,7 @@ enum PreviewWorkerEvent {
 type PreviewCompletion = (
     Result<cli::PayloadRunOutcome, PreviewRunError>,
     crate::run_report::TraceReport,
+    Option<super::preview_inspection::Capture>,
 );
 
 enum PreviewRunError {
@@ -419,6 +421,7 @@ pub(super) struct PendingPreview {
     started: Instant,
     input_path: PathBuf,
     target_label: String,
+    run_values: Vec<super::host_parameters::HostParameterEntry>,
     debug: bool,
     pub(super) phase: PreviewPhase,
     /// The opted-in owned PDF extraction of a file preview, if any.
@@ -523,6 +526,7 @@ impl FerruleApp {
                 .unwrap_or_default(),
         };
         self.preview_draft = Some(PreviewDraft::new(target, input_identity, output_identity));
+        self.preview_inspection.requested_field = None;
     }
 
     pub(super) fn show_preview_setup(&mut self, ctx: &egui::Context) {
@@ -568,6 +572,11 @@ impl FerruleApp {
             && self.preview_input_condition.compile().is_ok();
         let footer_ready = std::cell::Cell::new((false, false, false));
         let dialog_idle = self.pending_dialog.is_none();
+        let previous_results = self
+            .run_report
+            .as_ref()
+            .is_some_and(|report| report.report.kind == crate::run_report::RunReportKind::Preview);
+        let last_attempt = self.preview_inspection.attempt.as_deref();
         let mut browse_primary_root = false;
         let response = crate::ui_kit::dialog(
             ctx,
@@ -578,6 +587,9 @@ impl FerruleApp {
             .width(crate::ui_kit::DialogWidth::Wide)
             .show(|ui| {
                 let mut condition_valid = conditions_valid;
+                if !running && let Some(reason) = last_attempt {
+                    ui.colored_label(ui.visuals().warn_fg_color, reason);
+                }
                 let mut host_parameters_valid = self.host_parameters.compile().is_ok();
                 if let Some(session) = &mut self.primary_document {
                     ui.add_enabled_ui(!running && dialog_idle, |ui| {
@@ -861,6 +873,9 @@ impl FerruleApp {
                             if ui.button("Cancel").clicked() {
                                 action = Some(PreviewAction::Cancel);
                             }
+                            if previous_results && ui.button("Return to preview results").clicked() {
+                                action = Some(PreviewAction::ReturnToResults);
+                            }
                         });
                     }
                 });
@@ -876,6 +891,10 @@ impl FerruleApp {
             ctx.request_repaint();
         }
         match action {
+            Some(PreviewAction::ReturnToResults) => {
+                self.preview_draft = None;
+                self.show_run_report = true;
+            }
             Some(PreviewAction::Cancel) => {
                 if let Some(pending) = &mut self.pending_preview {
                     pending.command(PreviewCommand::Cancel);
@@ -905,6 +924,8 @@ impl FerruleApp {
         if self.pending_preview.is_some() {
             return;
         }
+        self.preview_inspection.attempt =
+            Some("Latest preview did not complete. See the preview setup and diagnostics.".into());
         let runtime_parameters = match self.host_parameters.compile() {
             Ok(parameters) => parameters,
             Err(error) => {
@@ -1081,11 +1102,13 @@ impl FerruleApp {
             started: Instant::now(),
             input_path,
             target_label,
+            run_values: self.host_parameters.entries.clone(),
             debug,
             phase: PreviewPhase::Running,
             extraction,
             service,
         });
+        self.preview_inspection.attempt = Some("Preview is running.".into());
         self.show_run_report = false;
         self.diagnostics.clear();
         self.status = if debug {
@@ -1224,22 +1247,25 @@ impl FerruleApp {
 
     /// Applies the outcome of a joined preview worker.
     fn finish_preview(&mut self, exit: WorkerExit<PreviewCompletion>) {
-        let Some(pending) = self.pending_preview.take() else {
+        let Some(mut pending) = self.pending_preview.take() else {
             return;
         };
-        let (result, trace) = match exit {
+        let (result, trace, capture) = match exit {
             WorkerExit::Reported(completion) => completion,
             WorkerExit::Unreported | WorkerExit::Panicked => (
                 Err(PreviewRunError::Failed(
                     "preview worker stopped unexpectedly".into(),
                 )),
                 crate::run_report::TraceReport::default(),
+                None,
             ),
         };
         if matches!(pending.phase, PreviewPhase::Stopping)
             || matches!(result, Err(PreviewRunError::Cancelled))
         {
             self.status = "preview cancelled".into();
+            self.preview_inspection.attempt =
+                Some("Preview cancelled. The last completed result is unchanged.".into());
             self.preview_draft = None;
             self.diagnostics.clear();
             return;
@@ -1257,16 +1283,23 @@ impl FerruleApp {
                     crate::ui_kit::plural(report.records_written, "record"),
                     pending.target_label
                 );
-                self.run_report = Some(
-                    crate::run_report::RunReportView::new(report)
-                        .with_project_labels(&self.project),
+                let mut report = crate::run_report::RunReportView::new(report)
+                    .with_project_labels(&self.project);
+                self.preview_inspection
+                    .restore_output_selection(&mut report, self.run_report.as_ref());
+                self.preview_inspection.complete(
+                    capture,
+                    &report,
+                    self.preview_draft.take(),
+                    std::mem::take(&mut pending.run_values),
                 );
+                self.run_report = Some(report);
                 self.show_run_report = true;
-                self.preview_draft = None;
                 self.diagnostics.clear();
             }
             Err(PreviewRunError::Failed(error)) => {
                 self.status = "preview failed".to_string();
+                self.preview_inspection.attempt = Some(format!("Preview failed: {error}"));
                 self.diagnostics.error("Preview failed", error);
             }
             Err(PreviewRunError::Cancelled) => {}

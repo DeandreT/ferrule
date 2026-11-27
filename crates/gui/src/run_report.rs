@@ -456,9 +456,14 @@ impl RunReportView {
         }
     }
 
-    #[cfg(test)]
     pub fn selected_output(&self) -> usize {
         self.selected_output
+    }
+
+    pub(crate) fn select_output(&mut self, index: usize) {
+        if index < self.report.outputs.len() {
+            self.selected_output = index;
+        }
     }
 
     /// Trace indices are stable only within the retained prefix of this report.
@@ -598,6 +603,9 @@ pub struct RunOutput {
 }
 
 impl RunOutput {
+    pub(crate) fn memory_preview(&self) -> Option<&OutputPreview> {
+        self.in_memory.then_some(self.preview.as_ref()).flatten()
+    }
     fn from_written(output: &cli::WrittenOutput) -> Self {
         Self::new(
             output.name.clone(),
@@ -748,7 +756,7 @@ pub fn show(ctx: &egui::Context, open: &mut bool, view: &mut RunReportView) {
     *open = !response.close_requested;
 }
 
-fn show_report(ui: &mut egui::Ui, view: &mut RunReportView) {
+pub(crate) fn show_report(ui: &mut egui::Ui, view: &mut RunReportView) {
     let output_count = view.report.outputs.len();
     ui.horizontal_wrapped(|ui| {
         ui.strong(match view.report.kind {
@@ -905,6 +913,10 @@ fn show_outputs(ui: &mut egui::Ui, view: &mut RunReportView) {
     });
     ui.separator();
 
+    show_output_content(ui, output, view.selected_output);
+}
+
+pub(crate) fn show_output_content(ui: &mut egui::Ui, output: &RunOutput, index: usize) {
     let Some(preview) = &output.preview else {
         return;
     };
@@ -924,7 +936,7 @@ fn show_outputs(ui: &mut egui::Ui, view: &mut RunReportView) {
                 }
             });
             egui::ScrollArea::both()
-                .id_salt(("run_output_preview", view.selected_output))
+                .id_salt(("run_output_preview", index))
                 .auto_shrink([false, false])
                 .max_height(
                     ui.available_height()
@@ -956,7 +968,7 @@ fn show_outputs(ui: &mut egui::Ui, view: &mut RunReportView) {
                 }
             });
             egui::ScrollArea::both()
-                .id_salt(("run_binary_preview", view.selected_output))
+                .id_salt(("run_binary_preview", index))
                 .auto_shrink([false, false])
                 .max_height(
                     ui.available_height()

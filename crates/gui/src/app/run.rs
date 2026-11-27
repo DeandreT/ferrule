@@ -335,6 +335,7 @@ impl Drop for FileRunCore {
 impl FerruleApp {
     pub(super) fn clear_run_report(&mut self) {
         self.run_report = None;
+        self.preview_inspection = Default::default();
         self.show_run_report = false;
         self.clear_rest_run_session();
     }

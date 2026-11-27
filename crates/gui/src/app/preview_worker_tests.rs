@@ -12,6 +12,7 @@ fn held_preview(
     let (worker, release, exited) = OwnedWorker::held_after_report_for_test((
         result,
         crate::run_report::TraceReport::default(),
+        None,
     ));
     let (_events, receiver) = mpsc::channel();
     let (commands, _command_receiver) = mpsc::channel();
@@ -23,6 +24,7 @@ fn held_preview(
         started: Instant::now(),
         input_path: PathBuf::from("input.json"),
         target_label: "Primary".into(),
+        run_values: Vec::new(),
         debug: false,
         phase: PreviewPhase::Running,
         extraction: None,
