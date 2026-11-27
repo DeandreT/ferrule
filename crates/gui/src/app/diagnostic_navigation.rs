@@ -202,6 +202,7 @@ fn resolve_destination(
 
 impl FerruleApp {
     pub(super) fn clear_diagnostic_navigation(&mut self) {
+        self.connection_repair = None;
         self.focused_schema = None;
         self.pending_scope_scroll = false;
         self.selected_failure_rule = None;
@@ -220,10 +221,15 @@ impl FerruleApp {
             self.status = "diagnostic is out of date; validate again".to_string();
             return false;
         }
-        let still_current = cli::validate(&self.project).into_iter().any(|issue| {
+        let issues = cli::validate(&self.project);
+        let still_current = issues.iter().any(|issue| {
             issue.owner.as_ref() == Some(owner)
-                && crate::diagnostics::validation_display_message(&self.project, &issue)
+                && crate::diagnostics::validation_display_message(&self.project, issue)
                     == diagnostic.message
+                && crate::diagnostics::broken_binding::BrokenBinding::from_issue(
+                    &self.project,
+                    issue,
+                ) == diagnostic.broken_binding
         });
         if !still_current {
             self.status = "diagnostic is out of date; validate again".to_string();
@@ -233,7 +239,15 @@ impl FerruleApp {
             self.status = "diagnostic location is no longer available".to_string();
             return false;
         };
-        self.navigate_to_destination(destination)
+        if !self.navigate_to_destination(destination) {
+            return false;
+        }
+        if let Some(binding) = &diagnostic.broken_binding
+            && self.ui_project_editing_enabled()
+        {
+            self.inspect_broken_connection(binding.clone(), &issues);
+        }
+        true
     }
 
     fn show_canvas_for_navigation(&mut self) {

@@ -29,7 +29,7 @@ impl<'a> Policy<'a> {
         })
     }
 
-    fn scope_allowed(self, graph: &Graph, scope: &Scope) -> bool {
+    pub(super) fn scope_allowed(self, graph: &Graph, scope: &Scope) -> bool {
         let mut allowed = true;
         scope.visit_roots(&mut |root| allowed &= self.allows(graph, root.node));
         allowed

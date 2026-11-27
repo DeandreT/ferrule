@@ -56,6 +56,9 @@ impl FerruleApp {
             // must not be restorable there.
             self.rebase_history();
         }
+        if let Some(fingerprint) = &layout.project_fingerprint {
+            self.remember_saved_mapping(fingerprint);
+        }
         let layout_warning = write_layout(path, &layout)
             .err()
             .map(|error| format!("canvas layout was not saved: {error:#}"));

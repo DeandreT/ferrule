@@ -247,6 +247,44 @@ fn binding_node_ids_with_policy<'a>(
     })
 }
 
+/// Choices for an explicit replacement outside the inspector. Use its same
+/// expression and ownership gates, with ancestors resolved by typed index.
+pub(crate) fn binding_replacement_choices(
+    project: &mapping::Project,
+    ancestors: &[&Scope],
+    primary_root: bool,
+) -> Vec<NodeId> {
+    let Some(scope) = ancestors.last() else {
+        return Vec::new();
+    };
+    if ancestors.iter().any(|scope| {
+        matches!(
+            scope.construction,
+            ScopeConstruction::CollectDocuments
+                | ScopeConstruction::CopyCurrentSource
+                | ScopeConstruction::CopyCurrentRows
+        )
+    }) {
+        return Vec::new();
+    }
+    let paths = SourcePathCatalog::new(&project.source, &project.extra_sources)
+        .with_primary_source_options(&project.source_options)
+        .with_project_ownership(project);
+    let receiving = ancestors
+        .iter()
+        .all(|scope| paths.lookup_binding_supported(scope, &[]));
+    let policy = lookup_admission::Policy::for_scope(&paths, scope, receiving);
+    if !policy.scope_allowed(&project.graph, scope) {
+        return Vec::new();
+    }
+    binding_node_ids_with_policy(
+        &project.graph,
+        primary_root && crate::primary_root_authoring::available(project),
+        policy,
+    )
+    .collect()
+}
+
 fn generated_sequence_label(sequence: &mapping::SequenceExpr) -> &'static str {
     match sequence {
         mapping::SequenceExpr::Tokenize { .. } => "Split text",
