@@ -126,7 +126,7 @@ pub use primary_document::{
     DEFAULT_MAX_PRIMARY_DOCUMENTS, DocumentFormatError, MAX_PRIMARY_DOCUMENT_OUTPUT_BYTES,
     PrimaryDocumentError, PrimaryDocumentOutput, PrimaryDocumentPolicy, PrimaryInputError,
     check_primary_document, execute_primary_document, execute_primary_document_with_host,
-    load_document_project, run_primary_document_file,
+    load_document_project, run_primary_document_create_new, run_primary_document_file,
 };
 pub use project_paths::{
     mapping_identity_relative_to as pipeline_mapping_identity, rebase as rebase_project_paths,

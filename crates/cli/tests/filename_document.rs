@@ -111,6 +111,31 @@ fn parameters(input: Option<&str>, output: Option<&str>) -> Result<engine::Runti
 }
 
 #[test]
+fn explicit_create_new_destination_cannot_override_a_connected_filename() -> Result {
+    let fixture = Fixture::new()?;
+    let connected = fixture.0.join("connected.json");
+    let chosen = fixture.0.join("chosen.json");
+    let error = cli::run_primary_document_create_new(
+        &fixture.document()?,
+        &fixture.0.join("unsaved.json"),
+        &chosen,
+        &cli::PrimaryDocumentPolicy::new(&fixture.0),
+        Some(&parameters(Some("input.hl7"), Some("connected.json"))?),
+        &|| panic!("connected output was ignored"),
+    )
+    .unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("cannot override a connected output filename"),
+        "{error:#}"
+    );
+    assert!(!connected.exists());
+    assert!(!chosen.exists());
+    Ok(())
+}
+
+#[test]
 fn filenames_persist_without_changing_mapping_or_ordinary_import() -> Result {
     let fixture = Fixture::new()?;
     let path = fixture.0.join("design.mfd");
