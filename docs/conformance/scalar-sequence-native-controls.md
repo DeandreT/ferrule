@@ -1,205 +1,32 @@
-# Native scalar-sequence controls — 2026-10-26
+# Scalar filter/map and MFD export
 
-These observations do **not** establish a faithful `filter_map_v1` representation or change
-its typed export refusal.
+Ferrule can [execute `filter_map_v1`](../design/scalar-sequence-composition.md),
+but MFD preflight, extension export and strict native export all refuse it
+with `MfdError::UnsupportedSequenceComposition { item }`, even if the
+descriptor is unselected. The legacy Generate and reduction forms have their
+own admission rules.
 
-## Reference and authoring
+A saved representation must preserve more than the output values:
 
-The reference application was the 2026r2 x64 build, executable 28.2.0.0, running
-offline in an isolated Wine environment. Its executable and copied resources
-were matched to the official installer. This is not native Windows ABI
-qualification.
+- A stage sees the original producer position; a consumer sees a dense
+  post-filter position. Matching these two ordinals on an identity mapping
+  cannot establish which owner supplied them.
+- Captures run once in declaration order, even on an empty input. A row
+  variable that produces an empty output without evaluating a failing capture
+  changes the result.
+- The sequence is built eagerly. An unguarded ItemAt can return an early
+  value instead of raising a later mapper error. Adding a count guard can
+  expose that error without establishing once-only evaluation.
+- Stage types, both private owners, work and item budgets, and cancellation
+  are part of the contract. Decimal or generic range bounds are not
+  interchangeable with a declared Int just because they yield the same rows.
 
-The designs were created through visible controls: independently authored XML
-schemas, two constants, Generate, Position, and then separate scalar predicate
-and mapper functions. Schemas and complete expected output values were fixed
-before preview execution. Missing standard XML Schema catalogs initially
-prevented schema validation; matching installer catalog/schema resources were
-added only to the isolated environment. Validation was not disabled.
-
-## Legacy Generate controls
-
-Both controls generated 3 through 5 and produced the complete ordered rows
-`(Value=3, Position=1)`, `(4,2)`, `(5,3)`. Outputs passed the independently
-authored target XSD, with no extra fields or root attributes. Every input,
-schema and original design remained unchanged. Output files were compared
-after the reference processes had closed, not immediately after a Save click.
-
-The native constant controls are significant:
-
-- **Number** saved the bounds as `datatype="decimal"`.
-- **All other** saved them as `datatype="anySimpleType"`.
-
-Neither is the exact Int-constant descriptor from the frozen Ferrule recipe.
-Their matching values are a finite behavioral observation, not proof that
-literal types or bound-error behavior can be erased.
-
-Each original native save was closed, reopened and saved to a fresh file before
-execution. The decimal control gained an explicit UTF-8 source encoding on
-re-save. The generic-literal control was byte-identical. The added encoding is
-retained as a metadata difference, not discarded as formatting.
-
-## Predicate and mapper candidate
-
-Visible function controls created `Keep` and `Map`, each with required,
-non-sequence integer inputs named `item` and `source_position`. `Keep` has a
-Boolean result fed by an All-other literal `true`; `Map` returns its integer
-item. The Inlined-use option was deselected. The saved definitions retain the
-unused parameter declarations, but that alone does not establish whether their
-arguments are evaluated or adapted eagerly.
-
-The straightforward candidate used Generate, the predicate call, a Filter,
-the mapper call and a row consumer. A separate output Position connected to
-the mapper result failed native validation:
-`The 'position' function cannot be used here because there is no current sequence.`
-Connecting that Position to the Filter's true output also failed, including
-when the Filter drove the target rows. Invalid Save attempts were declined;
-the full messages and authoring records were retained. These unsaved failures
-are not claimed as complete saved-descriptor comparisons, nor as proof that
-every possible native representation fails.
-
-A deliberately limited variant removed the extra Position and used the
-original Generate position for output. It saved, reopened, re-saved and
-executed with the same three complete rows as the legacy controls. Whole saved
-structures matched after removing only checked coordinate-only views and empty
-descriptions; complete original files and their differences were retained.
-Ferrule's best-effort import produced the same complete output, but executable
-import refused the unused physical source. This is not a clean executable
-round-trip or `filter_map_v1` reconstruction.
-
-## Complex variable: original and dense positions
-
-A separately authored candidate passes the filtered mapper result into an XML
-variable with the shape `Bucket/Row*/Value`, then reads that variable's rows into
-the final target. The physical input root drives the variable's `compute-when`
-input. A new Position reads the variable's Row output; the original Generate
-Position remains connected to the predicate and mapper arguments.
-
-For Generate `3..5`, predicate `item > 3`, and mapper
-`item * 10 + source_position`, the re-saved design produces the complete rows
-`(42,1), (53,2)`, valid against the independent target XSD. The mapped values
-retain original source positions `2,3`; the target positions are dense `1,2`.
-This establishes that finite distinction, not reconstruction of the complete
-scalar `filter_map_v1` descriptor.
-
-The first re-save changes coordinate-only views and adds
-`XSLTTargetEncoding="UTF-8"` to the variable. All other non-layout XML matches.
-The encoding addition is retained as a real metadata difference, not removed
-under formatting normalization. Ferrule's executable import refuses this
-generated repeated variable child because it is not one supported source
-collection. The repair-oriented import does not create an executable substitute.
-
-## Complex variable: late error versus ItemAt
-
-The next independently frozen control keeps the predicate and uses mapper
-`(item * 10 + source_position) / (5 + item * -1)`. Item `4` maps to `42`; the
-later retained item `5` reaches a zero denominator. The full-output and ItemAt
-designs retain the same mapper body and parameter identities. The ItemAt
-variant removes the full-row target and dense Position consumer, and feeds only
-the variable's Value sequence through ItemAt at index `1` to one integer field.
-
-| Source range | Consumer | Complete native outcome |
-| --- | --- | --- |
-| `3..4` | Full rows | One row `(42,1)` |
-| `3..5` | Full rows | Execution fails: `Numeric overflow.` |
-| `3..4` | ItemAt `1` | `FirstValue=42` |
-| `3..5` | ItemAt `1` | `FirstValue=42`; execution succeeds |
-
-Each design was saved, reopened, re-saved and executed separately. Complete
-messages, outputs and original-resource checks were retained before comparison.
-The reference's `Numeric overflow.` and the frozen Ferrule model's
-`division by zero` are distinct reported errors; no exception-type equivalence
-is asserted.
-
-The `3..5` ItemAt result contradicts the frozen expectation that the late native
-failure would survive the change of consumer. **This complex-variable candidate
-does not preserve the eager-error contract of `filter_map_v1`.** Its successful
-position control is not sufficient for general interchange admission. The
-observation concerns the visible result/error boundary, not proof of the
-reference's internal evaluation or caching strategy.
-
-## Count guard before ItemAt
-
-A further native-authored candidate retains the same variable, predicate,
-mapper and ItemAt index. Its sole target value comes from an If-Else:
-`if count(variable/Row/Value) > -1 then ItemAt(variable/Row/Value, 1) else 0`.
-The count has no connected parent-context input. Its value input is the same
-variable Value output used by ItemAt; there is no separate full-row target.
-The condition and both branch connections remain explicit in the saved graph.
-
-The two outcomes were fixed before authoring, then each complete design was
-saved, reopened, re-saved and executed:
-
-| Source range | Complete count-guarded native outcome |
-| --- | --- |
-| `3..4` | `FirstValue=42`; execution succeeds |
-| `3..5` | Execution fails: `Numeric overflow.` |
-
-All non-layout XML matched between each original save and its re-save after
-removing only checked coordinate-only views and empty descriptions. The mapper
-body matched the unguarded ItemAt control. Original designs and resources stayed
-unchanged; complete messages, the successful output and process closure were
-retained before comparison.
-
-The guard therefore preserves the late native error in this finite control,
-unlike the unguarded complex-variable candidate. It does not establish a faithful
-`filter_map_v1` representation: descriptor reconstruction, strict scalar
-adaptation, captures on empty ranges, stage invocation count, other error
-precedence, multiple consumers, shared limits and cancellation remain
-unqualified. In particular, the observation does not prove whether the value
-sequence is cached or evaluated again by ItemAt. The native and Ferrule error
-categories remain distinct, and every existing export refusal remains in place.
-
-## Captures on an empty range
-
-Four further controls distinguish an empty `4..3` range from one item `4..4`.
-Both stage functions declare ordered item, source-position and capture inputs.
-Keep returns true; Map returns `item + capture`. The capture input and Map result
-are declared `double`; the variable and target Value fields use `xs:double`.
-The full-row output keeps the variable's dense row position, with no ItemAt
-consumer whose empty-input behavior could mask the result.
-
-The successful capture is the native decimal literal `1`. The failing capture
-is the same parent's `divide(1, 0)` result, wired to both stage capture inputs.
-The bounds and true literal are saved as `anySimpleType`, not the exact typed
-constants of the independently frozen Ferrule models. These declaration
-differences remain explicit; numeric agreement does not establish strict Float
-identity or adaptation equivalence.
-
-| Source range | Capture | Complete native outcome |
-| --- | --- | --- |
-| `4..4` | `1` | One row `(5,1)` |
-| `4..4` | `divide(1,0)` | Execution fails: `Numeric overflow.` |
-| `4..3` | `1` | Empty Output; no rows |
-| `4..3` | `divide(1,0)` | Empty Output; execution succeeds |
-
-Each design validated without errors or warnings, then was saved, reopened,
-re-saved and executed. Raw saved bytes differed, but all non-layout XML matched
-after removing only checked coordinate-only views and empty descriptions. All
-original design and resource hashes stayed unchanged. Successful complete
-outputs validated against the target schema. Original error messages were
-retained; a failed execution was not replaced by an empty or null output.
-
-The nonempty failure establishes that the bad capture is reachable. The empty
-success contradicts the frozen eager-capture contract: both failing Ferrule
-models fail in Capture at the capture expression, before either stage runs.
-**This complex-variable/full-row candidate does not preserve capture failure on
-an empty source.** The observation describes the visible result/error boundary,
-not proof of whether the reference skipped evaluation or suppressed an error.
-It does not determine once-only capture evaluation, capture ordering, caching,
-strict adaptation or the behavior of a separately guarded capture expression.
-The native overflow message and Ferrule divide-by-zero cause remain distinct.
-
-## Remaining boundary
-
-The original identity variant is not a substitute for dense output positions:
-its predicate keeps every item, so original and filtered positions happen to
-agree. The unguarded complex-variable variant distinguishes the positions but
-fails the late-error/ItemAt control; the count-guarded variant matches that one
-late-error control. The full-row capture candidate also loses a failing capture
-on an empty source. None establishes the full two-private-owner descriptor,
-ordered captures,
-strict stage adaptation, late-error precedence, eager completion before a
-consumer, or shared work/cancellation limits. No importer or exporter admission
-follows from these observations. The distinguishing frozen controls and the
-existing typed refusal remain required.
+The [24 descriptor recipes](../design/fixtures/scalar-sequence-saved-design203.json)
+cover seven legacy controls and 17 filter/map cases. The
+[public tests](../../crates/mfd/tests/scalar_sequence_saved_design203.rs)
+materialize projects, compare complete interpreter outcomes to
+[independent expectations](../../crates/mfd/tests/fixtures/scalar_sequence_saved_design203_expected.json),
+and check all 51 export refusals before publication.
+Set `FERRULE_SAVED_DESIGN203_EVIDENCE_DIR` to a fresh absolute directory per
+test to retain the outputs. The [range fixtures](../design/fixtures/native-feed-controls/README.md)
+distinguish an omitted lower bound from an explicitly connected decimal 1.

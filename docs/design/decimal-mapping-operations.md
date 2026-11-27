@@ -18,23 +18,14 @@ separate legacy `parse_number`/`ParseNumber` binary64 policy is unchanged.
 `DecimalSum` is a separate aggregate operation. It consumes only Decimal values,
 returns decimal zero for an empty sequence, and refuses an extra aggregate
 argument. It never coerces or skips strings, missing values or other scalar kinds.
-Every addition uses the bounded decimal arithmetic policy in source order.
 
-Projection and decimal folding are interleaved within the existing aggregate
-iteration. An arithmetic error stops before the next projected operand is read;
-a later conversion failure must not replace an earlier overflow. Source/cohort
-construction retains its own existing evaluation contract. Ordinary aggregate
-operations retain their existing eager value collection.
-An omitted join expression contributes an implicit Null operand per tuple, which
-`DecimalSum` rejects before the parent argument is evaluated. An empty join has no operand
-to reject and retains its normal parent-argument evaluation.
-
-Ordinary collection, generated-sequence and join aggregates use the ordered
-decimal fold. Explicit owned-collection and owned-join companion profiles also
-admit it: each selected item's expression is evaluated and folded before the
-next item is read, using exactly the selected endpoint and its active context.
-Other reducers retain their existing eager collection behavior. Earlier profiles
-that do not admit owned collections or joins remain closed to those nodes.
+Unlike ordinary eager reducers, `DecimalSum` projects and folds in source
+order: an overflow precedes an invalid value in a later item. This holds
+for collection, generated-sequence and joined aggregates, including their
+explicitly admitted owned collection/join profiles. A missing tuple
+expression supplies Null and fails before the parent argument; an empty
+join has no such operand, so its parent argument is still evaluated.
+Selection and cohort construction keep their existing order.
 
 The incremental collection helper changes its saved total only after a successful
 append. A failed append does not discard or duplicate the previously accumulated

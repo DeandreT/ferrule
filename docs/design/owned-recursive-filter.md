@@ -59,24 +59,18 @@ while the owned view stays at the scope's frames plus two.
 
 ## Generation profile
 
-`codegen::lower_with_basic_owned_recursive_filter` composes the owned
-recursive-collect profile (owned adjacency trees and path hierarchies, owned
-failure sources, EndingWith controls and ItemAt over owned walks) with
-recursive filters over owned selectors and repeated output. Every earlier
-profile, including the recursive-collect, adjacency-tree, fixed-block and
-SequenceExists companions, the ordinary emitters, directly constructed Program validation,
-`.mfd` export and GUI authoring keep refusing it; the GUI preserves saved
-selectors read-only. Scope controls, First and mapped-sequence output,
-generated or dynamic parents and closed predicate operators stay refused. The
-owner stays optional in the named-input catalogue.
+`codegen::lower_with_basic_owned_recursive_filter` adds repeated output
+over an owned selector to the [recursive-collect profile](owned-recursive-collect.md).
+Earlier presets, ordinary generation, direct Programs without this operation
+and MFD export refuse it. The GUI preserves saved selectors read-only. The
+owner remains optional until reached. Scope controls, First, mapped sequences,
+generated/dynamic parents and unsupported predicates stay closed.
 
 ## Qualification
 
-The [portable corpus](../../conformance/basic-owned-recursive-filter/README.md)
-pairs same-shape Primary and named trees with different values and records
-complete expected outputs and typed failures. The CLI `code_generation` tests
-run every call through the interpreter; the ignored host test builds generated
-Rust and C# libraries and checks the same calls:
+The [corpus](../../conformance/basic-owned-recursive-filter/README.md)
+distinguishes equally shaped primary and named trees. The interpreter and
+the following ignored compiled hosts each compare complete results and failures:
 
 ```sh
 cargo test -p cli --test code_generation --features codegen-tests \

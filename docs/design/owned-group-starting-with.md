@@ -58,25 +58,11 @@ children; global failures retain their earlier precedence.
 
 ## Owner identity and members
 
-By, AdjacentBy, StartingWith, EndingWith and IntoBlocks use the same private authenticated
-GroupMembers occurrence. It identifies one exact owner and endpoint-local collection. Scalar
-reads use the first surviving ordered member; position reads use the group
-ordinal. Nested iteration of that collection enumerates only the current group's
-members with their own one-based positions. Other owners remain independently
-addressable.
-
-A group retains its first member's intermediate source prefix, even when later
-members cross parent collections. Wrapper labels do not substitute for an owned
-path. The latest exact-owner occurrence governs root pins: a grouped occurrence
-at `[]` reads the immutable endpoint root for an explicit empty-frame pin, while
-a newer ordinary repeated-root member retains active-item pin behavior. An
-unrelated owner's member cannot shadow it. See the shared
-[source-ownership rules](source-ownership.md#group-member-occurrence-identity).
-
-The marker is minted only by the five authenticated paired grouping operations.
-Ordinary containers, inherited grouping and wrapper-name collisions do not grant
-group-member identity. Clones, ranked frames, legacy bridges and immutable C#
-publications preserve the same distinction.
+A starting group uses the shared [group-member identity](source-ownership.md#group-member-occurrence-identity).
+Only authenticated grouping mints it. The first ordered member supplies the
+representative and intermediate prefix; exact-owner root pins, compact group
+ordinals and nested member positions stay distinct through clones, ranking,
+legacy bridges and immutable C# publication.
 
 ## Runtime and resource contract
 
@@ -100,24 +86,13 @@ node with no grouping key.
 
 ## Qualification boundaries
 
-The conformance corpus in `conformance/basic-owned-group-starting-with/` holds
-105 public profiles with 381 calls whose expected complete trees and typed errors
-are authored independently, plus refusal Projects, direct Programs and an
-ordinary saved project. `basic_owned_group_starting_with` in the CLI
-`code_generation` tests checks that every profile lowers, validates, keeps its
-expected named-input catalogue and emits both backends. It also checks the
-refusals, the earlier generation profiles' gates, and every interpreter call
-against its expected result.
-
-The ignored `basic_starting443_generated_rust_and_csharp_match_expected` test
-builds one Rust host linking every generated model and one C# host per model,
-runs all calls through the public generated APIs, and compares each result and
-the unchanged inputs with the same expectations:
+The [StartingWith corpus](../../conformance/basic-owned-group-starting-with/)
+covers 105 profiles and 381 calls, including complete typed outcomes. The
+ordinary suite also checks refused Projects/Programs, earlier presets, named
+inputs and the saved legacy project. To execute the generated public APIs
+against the same outcomes (Cargo and .NET 10):
 
 ```sh
 cargo test -p cli --test code_generation --features codegen-tests \
   basic_starting443_generated_rust_and_csharp_match_expected -- --ignored
 ```
-
-It needs Cargo and the .NET 10 SDK. Private resource and callback-order controls
-in the runtime unit and C# smoke tests cover separate component obligations.

@@ -150,14 +150,12 @@ There is one runner slot, so native and codegen matrix jobs execute sequentially
 The service has a CPU quota of 150% (1.5 cores), memory high watermark of 3 GiB,
 and hard limit of 3500 MiB. OVH jobs use one Cargo build job, two ordinary test
 threads, and one generated-backend test thread. Graphical tests use Xvfb with
-ambient Wayland handles removed. These limits leave capacity for the existing
-Wareboxes runner and Valheim service; they do not reserve capacity from them.
-The persistent Roslyn compiler process is disabled so C# builds release memory
-before subsequent Rust host builds.
-`TMPDIR=/home/ferrule-runner/ci-tmp` keeps compiler/test temporary files on disk.
-Ubuntu 26.04's `/tmp` is a memory-backed filesystem: native GUI diagnostic
-files reached 2.6 GiB and caused memory-pressure stalls in the first run.
-Private `/tmp` remains enabled for programs that ignore `TMPDIR`.
+ambient Wayland handles removed. These limits leave headroom for other services
+on the machine. The persistent
+Roslyn compiler is disabled so C# builds release memory before subsequent
+Rust host builds. `TMPDIR=/home/ferrule-runner/ci-tmp` puts large temporary
+files on disk instead of Ubuntu's memory-backed `/tmp`. Private `/tmp` remains
+enabled for programs that ignore `TMPDIR`.
 
 `scripts/ci/prepare-ovh-build.sh` refuses an unexpected account, symlinked cache
 paths, or less than 16 GiB free for native CI and 8 GiB for codegen CI.
@@ -169,8 +167,8 @@ retained job evidence, compiler/download caches and installed toolchains. Redire
 paths, unsafe profile entries, unreadable live processes or busy caches refuse
 reclamation; insufficient capacity still refuses the build. This policy assumes
 the dedicated runner has one job slot and Cargo builds use the configured targets.
-The first native build used approximately 13 GiB, mostly workspace test
-executables. It checks Xvfb and native build prerequisites before toolchain setup.
+The preparation script also checks Xvfb and native build prerequisites before
+toolchain setup.
 
 The XML process-custody tests receive the resolved GNU timeout path through
 `FERRULE_CODEGEN_GNU_TIMEOUT`. Ubuntu 26.04 provides `/usr/bin/gnutimeout`

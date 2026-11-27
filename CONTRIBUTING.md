@@ -5,8 +5,7 @@ live source for claims and status; this repository keeps no separate status list
 
 ## 1. Find an unclaimed lane
 
-- Start from a coordination issue's lane index, such as
-  [#1090](https://github.com/DeandreT/ferrule/issues/1090), or search open issues
+- Start from a coordination issue's lane index or search open issues
   without an assignee. `help wanted` marks issues suited to outside contributors.
 - Open the issue itself before choosing it. A lane index describes scope; the
   issue's state, assignee and comments show whether it is still available.
@@ -21,8 +20,7 @@ gh issue list --state open --label "help wanted" --search "no:assignee"
 Comment on the issue with the files you plan to change and any shared resource
 you need, then get assigned before editing. If you cannot assign yourself, the
 maintainer assigns you in response to your comment. Report a newly discovered
-gap as its own issue instead of widening your lane. See
-[Parallel work](docs/parallel-work.md#claim-a-lane) for the full procedure.
+gap as its own issue instead of widening your lane.
 
 ## 3. Work in your own branch and worktree
 

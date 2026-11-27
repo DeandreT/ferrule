@@ -39,13 +39,10 @@ Thus `false,false,true,true,false` partitions five candidates into `[1,2,3]`,
 every selected candidate, including the last, even though the last boundary
 cannot change the partition.
 
-The operation authenticates the complete original cohort and admits known
-metadata before semantic callbacks. Selection filtering and stable sorting keep
-their existing phase rules: sorting with FilterThenSort evaluates selection
-predicates before keys; without sorting, that mode does not add an eager
-all-predicates pass. Explicit window bounds evaluate once, in stored order, in
-the receiving parent after sorting and before boundary evaluation, including
-empty cohorts. FromTo evaluates the first bound before the last.
+Use the [same admission, sorting and window-bound phases as StartingWith](owned-group-starting-with.md#boundaries-and-callback-order):
+authenticate the full cohort, sort as configured and evaluate parent bounds
+in stored order, even for empty input. Unsorted FilterThenSort adds no
+eager predicate pass.
 
 For each reached candidate, any remaining selection predicate runs first, then
 the end boundary, then member retention. Only selected candidates close groups;
@@ -63,14 +60,10 @@ children; global failures retain their earlier precedence.
 
 ## Owner identity and members
 
-EndingWith uses the same private authenticated GroupMembers occurrence as By,
-AdjacentBy, StartingWith and IntoBlocks. Scalar reads use the first surviving ordered member;
-position reads use the group ordinal. Nested iteration of that collection
-enumerates only the current group's members with their own one-based positions,
-including a nested Ending scope over those members. Other owners remain
-independently addressable, so different owners with the same collection and
-boundary path partition independently. Root-pin and prefix rules are the shared
-[source-ownership rules](source-ownership.md#group-member-occurrence-identity).
+The [group-member rules](source-ownership.md#group-member-occurrence-identity)
+apply: first member for scalar reads, compact group ordinal for positions.
+A nested Ending walk enumerates only this group's members. Same-path owners
+still evaluate their own boundaries independently.
 
 ## Runtime and resource contract
 
@@ -92,24 +85,12 @@ GroupEnding filter phase before each member's retention decision.
 
 ## Qualification
 
-The conformance corpus in `conformance/basic-owned-group-ending-with/` holds
-public profiles whose expected complete trees and typed errors are written by
-hand, together with refusal Projects, a direct Program refusal and an ordinary
-saved project using legacy `group_ending_with`. `basic_owned_group_ending_with`
-in the CLI `code_generation` tests checks that every profile lowers, validates,
-keeps its named-input catalogue and emits both backends; that refusals and every
-earlier generation profile's gate hold; that the saved project round-trips; and
-that every interpreter call matches its expected result.
-
-The ignored `basic_ending444_generated_rust_and_csharp_match_expected` test
-builds one Rust host linking every generated model and one C# host per model,
-runs all calls through the public generated APIs, and compares each result and
-the unchanged inputs with the same expectations:
+The [EndingWith corpus](../../conformance/basic-owned-group-ending-with/)
+separates hand-authored trees/errors, rejected Projects/Programs and the
+legacy saved project. Interpreter and emission checks do not invoke the
+ignored generated hosts. To run those with Cargo and .NET 10:
 
 ```sh
 cargo test -p cli --test code_generation --features codegen-tests \
   basic_ending444_generated_rust_and_csharp_match_expected -- --ignored
 ```
-
-It needs Cargo and the .NET 10 SDK. Runtime unit tests and the C# smoke tests
-cover callback order, retention, windows and Boolean-boundary storage.

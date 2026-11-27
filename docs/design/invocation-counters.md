@@ -20,9 +20,7 @@ and tokens consume zero text bytes but still consume a counter slot. C# rejects
 unpaired UTF-16 surrogates rather than counting replacement characters; Rust
 strings already guarantee valid Unicode.
 
-The service is not a mapping builtin. It does not change graph persistence,
-MFD import, row-position lowering or generated invocation lifetime. A complete
-mapping caller must retain one instance across its output documents and create
-a fresh instance for its next invocation. That wiring and graph admission need
-their own full-document qualification; the standalone service does not establish
-mapping parity.
+For the mapping expression and its per-entry lifetime, see
+[invocation counter expressions](invocation-counter-expressions.md).
+The standalone table does not select MFD lowering or make a row position
+equivalent to a stateful call.

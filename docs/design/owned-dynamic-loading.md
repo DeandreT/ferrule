@@ -91,11 +91,9 @@ scopes and drivers read-only.
 
 ## Qualification
 
-The [portable corpus](../../conformance/basic-owned-dynamic-loading/README.md)
-pairs same-shaped Primary and named drivers and records complete expected
-outputs, typed failures, attempted callbacks and physical reads. The CLI
-`code_generation` tests run every call through the interpreter; the ignored
-host test builds generated Rust and C# libraries and checks the same calls:
+The [corpus](../../conformance/basic-owned-dynamic-loading/README.md) distinguishes
+driver ownership, attempted callbacks and physical reads. Run the ignored
+generated Rust/C# comparison in addition to the interpreter checks:
 
 ```sh
 cargo test -p cli --test code_generation --features codegen-tests \

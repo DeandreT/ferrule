@@ -5,6 +5,7 @@
 existing behavior and `ProtobufError` type. `to_vec_bounded` and
 `to_vec_message_bounded` opt into explicit
 in-memory encoding budgets through `EncodeLimits`; they do not load resources.
+For `.proto` selection in the editor, see [Create a Protocol Buffers mapping](../../docs/formats.md#creating-protocol-buffers-mappings).
 
 ## Bounded encoding
 

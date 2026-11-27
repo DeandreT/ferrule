@@ -17,52 +17,26 @@ The imported host name comes from the source component and is recorded in
 `flow.json`. Supply that name and the desired output path to `run-pipeline`.
 The example has one pass-through target. With three pass-through targets, the
 final stage ID is `mfd-stage-4`.
-The last pass-through target may also feed connected named XML targets in that
-final stage, or one named CSV or JSON document target beside an XML primary target. Use
-`--named-output STAGE TARGET PATH` to publish one. A bounded XML chain of at
-least three stages may also feed the final stage from one nonadjacent earlier
-intermediate as a named source while its immediate predecessor remains the
-primary source. Other intermediate branches and bypasses reject during import.
-CSV, fixed-width text, FlexText, JSON, Protocol Buffers, bounded XBRL, and XLSX
-are supported as the final primary target. Intermediate targets remain XML;
-other named targets remain XML.
-XLSX targets that update an existing workbook are outside this profile.
-Synthetic local round trips cover CSV, FlexText, JSON, and Protocol Buffers final targets. Local
-fixed-width, FlexText, Protocol Buffers, and hierarchical XLSX mappings run after an identity XML
-stage. Fixed-width and FlexText output retain exact serialized bytes and parsed
-values; Protocol Buffers retains exact binary output and decoded messages;
-XLSX retains decoded worksheet cells through strict export and reimport. A
-fixture-backed XBRL final target retains exact instance XML bytes and parsed
-fact/context elements; presentation metadata and numeric fact bindings remain outside this
-chain profile.
-XML-primary chains with a named CSV or JSON target retain both exact serialized
-outputs through strict export, reimport, and CLI publication. Named JSON Lines
-remain outside this profile.
-Protocol Buffers export includes a referenced `.proto` sibling. These checks do
-not establish reference-application acceptance.
-An intermediate XML pass-through component can retain its declared output
-instance and the next stage's source preview instance, even when those paths
-differ. Import and export preserve both paths on that one component; the local
-chained-report sample and a distinct-path synthetic case pass round trips.
-Import does not infer an output file from a source preview path or an absent
-instance. All four local chains export and reimport in the strict native
-profile; one requires bounded native XML date/time casting and exact XSD
-restoration. Unsupported casts reject before publishing artifacts.
-A serial chain can also connect an original static XML host source to named
-inputs in later stages, including intermediate stages and repeated use of the
-same source. Export reuses that original component when its name, schema, path,
-options, and output ports still match. Repeated connections from one output port
-share one graph vertex with multiple edges. Other connected later-stage named
-sources reject before publication. The earlier-result named source requires
-the same XML schema, options, and preview path used when the producer's
-immediate successor reads that result; one native component carries both
-connections. Synthetic four-stage runs cover branches from the first and
-second intermediates through execution and strict native export/reimport.
-The same trusted package manifest and ordered EDI/JSON catalog options used
-by ordinary `import-mfd` apply. Unsupported stage shapes fail before the
-pipeline file is written. Each imported stage records the original `.mfd`
-identity as a path relative to the saved pipeline, so moving both files
-together preserves runtime mapping-path expressions.
+
+Intermediates must be XML. For the final stage, an XML primary can have
+connected named XML targets or one named CSV or JSON document target (not JSON
+Lines). An XLSX target must create a new workbook. XBRL presentation metadata
+and numeric fact bindings are outside this chain profile. Export supplies a
+`.proto` or `.mft` sibling when the final boundary needs it.
+
+Keep the intermediate's output path and its next-stage preview path distinct:
+both are retained, and an absent output path is not inferred from a preview.
+An original static XML host input can also feed named sources in multiple
+stages when its name, schema, path, options and ports match. A chain of at least
+three stages may bind one nonadjacent intermediate as a final named input; its
+schema, options and preview path must match the immediate successor's view.
+Other branching shapes refuse before the pipeline file is written.
+
+Use the [same package and catalog options](mfd-interop.md#import) as for a
+single mapping. Each imported stage keeps its original design path relative to
+the pipeline, so the files can move together.
+
+## Stage bindings
 
 `mapping::Pipeline` connects complete Ferrule projects into a stage graph. A
 stage's primary source and each static named source can read a host-owned input,
