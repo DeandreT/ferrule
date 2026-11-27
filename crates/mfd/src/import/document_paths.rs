@@ -289,6 +289,19 @@ pub(super) struct Endpoints {
     output_feed: u32,
 }
 
+fn unqualified_transport_element(node: roxmltree::Node<'_, '_>) -> bool {
+    match node.tag_name().namespace() {
+        None => true,
+        // roxmltree reports both xmlns="" and a prefix bound to "" as Some("").
+        // Only the former spells an unqualified element.
+        Some("") => node.document().input_text()[node.range()]
+            .strip_prefix('<')
+            .and_then(|name| name.strip_prefix(node.tag_name().name()))
+            .is_some_and(|tail| tail.starts_with([' ', '\t', '\r', '\n', '/', '>'])),
+        Some(_) => false,
+    }
+}
+
 impl Endpoints {
     pub(super) fn inputs(&self) -> BTreeSet<u32> {
         [self.input, self.output].into()
@@ -343,13 +356,16 @@ impl Endpoints {
                 })
                 || component.children().any(|node| {
                     node.is_element()
-                        && (node.tag_name().namespace().is_some()
+                        && (!unqualified_transport_element(node)
                             || !matches!(node.tag_name().name(), "data" | "view" | "properties"))
                 })
             {
                 return Err(unsupported("unsupported endpoint component controls"));
             }
-            if data.attributes().len() != 0 || transport_text(*data) {
+            if data.attributes().len() != 0
+                || transport_text(*data)
+                || data.children().any(|node| node.is_pi())
+            {
                 return Err(unsupported("unsupported endpoint data controls"));
             }
             let formats = data
@@ -359,7 +375,7 @@ impl Endpoints {
             let [format] = formats.as_slice() else {
                 return Err(unsupported("requires one endpoint format declaration"));
             };
-            if format.tag_name().namespace().is_some()
+            if !unqualified_transport_element(*format)
                 || transport_text(*format)
                 || format.attributes().any(|attribute| {
                     attribute.namespace().is_some()
@@ -375,7 +391,9 @@ impl Endpoints {
                             )
                         })
                 })
-                || format.children().any(|node| node.is_element())
+                || format
+                    .children()
+                    .any(|node| node.is_element() || node.is_pi())
                 || data
                     .children()
                     .any(|node| node.is_element() && node != *format && !node.has_tag_name("root"))
