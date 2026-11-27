@@ -1980,6 +1980,37 @@ fn layout_failure_keeps_saved_project_and_editor_on_the_same_base() {
 }
 
 #[test]
+fn worked_example_opens_an_unsaved_copy_and_previews_the_bundled_orders() {
+    let mut app = FerruleApp::default();
+    let recents = app.recent_projects.clone();
+    app.open_worked_example();
+    assert!(app.document.saved_path().is_none());
+    assert!(app.observed_dirty());
+    assert_eq!(app.recent_projects, recents);
+    let draft = app
+        .preview_draft
+        .as_ref()
+        .expect("example opens Preview setup");
+    assert_eq!(draft.input_identity, "Orders.xml");
+    assert_eq!(draft.input_text, cli::orders_example::INPUT);
+    assert_eq!(draft.output_identity, "order-lines.csv");
+    app.execute_preview();
+    wait_for_preview_completion(&mut app);
+    let report = &app
+        .run_report
+        .as_ref()
+        .expect("in-memory example preview")
+        .report;
+    assert_eq!(report.records_written, 6);
+    assert!(matches!(report.outputs[0].preview(),
+        crate::run_report::OutputPreview::Text { content, .. }
+            if content.lines().eq(include_str!("../../../cli/tests/fixtures/orders/expected_order_lines.csv").lines())));
+    app.install_untitled_mapping(blank_project(), "other.json");
+    app.begin_preview();
+    assert!(app.preview_draft.as_ref().unwrap().input_text.is_empty());
+}
+
+#[test]
 fn preview_executes_an_unsaved_project_without_writing_its_logical_output() -> anyhow::Result<()> {
     let directory = std::env::temp_dir().join(format!(
         "ferrule-gui-preview-unsaved-{}",

@@ -474,6 +474,8 @@ pub struct FerruleApp {
     /// Owner of transient document editors, independent of canvas and history
     /// rebuilds. Only replacing the loaded mapping starts a new lifetime.
     document_ui_id: egui::Id,
+    /// Only this document lifetime opens Preview with the bundled orders sample.
+    worked_example: Option<egui::Id>,
     graph_drafts: graph_drafts::GraphDraftLifetimes,
     main_canvas: CanvasDocumentState,
     mapping_workspace: MappingWorkspace,
@@ -678,6 +680,7 @@ impl Default for FerruleApp {
         Self {
             project,
             document_ui_id: new_document_ui_id(),
+            worked_example: None,
             graph_drafts: Default::default(),
             main_canvas,
             mapping_workspace,

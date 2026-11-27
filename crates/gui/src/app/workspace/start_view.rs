@@ -9,6 +9,26 @@ static BLANK_PROJECT_KEY: std::sync::LazyLock<String> = std::sync::LazyLock::new
 });
 
 impl FerruleApp {
+    pub(in crate::app) fn open_worked_example(&mut self) {
+        if !self.is_start_state() || !self.ui_project_editing_enabled() {
+            return;
+        }
+        match mapping::project_file::decode_bytes(cli::orders_example::PROJECT) {
+            Ok(project) => {
+                self.install_untitled_mapping(project, "orders-example.json");
+                self.worked_example = Some(self.document_ui_id);
+                self.preview_input_source =
+                    crate::app::preview_service::PreviewInputSource::EditorText;
+                self.begin_preview();
+                self.status =
+                    "Unsaved orders example · preview the sample or edit the mapping".into();
+            }
+            Err(error) => self
+                .diagnostics
+                .error("Could not open the orders example", error.to_string()),
+        }
+    }
+
     /// Nothing is open yet: an untitled, unchanged, empty project.
     pub(in crate::app) fn is_start_state(&self) -> bool {
         self.document.saved_path().is_none()
@@ -23,7 +43,7 @@ impl FerruleApp {
         let editing_enabled = self.ui_project_editing_enabled();
         let busy = (!editing_enabled).then_some("Unavailable while another operation is running");
         let width = ui_kit::DialogWidth::Narrow.px().min(ui.available_width());
-        let top_space = (ui.available_height() * 0.25).max(ui_kit::space::XXL);
+        let top_space = (ui.available_height() * 0.08).max(ui_kit::space::MD);
         egui::ScrollArea::vertical()
             .id_salt("start_view_scroll")
             .auto_shrink([false, false])
@@ -41,8 +61,26 @@ impl FerruleApp {
             ui.add_space(top_space);
             ui.label(TextRole::Title.text("Start a mapping"));
             ui.add_space(ui_kit::space::SM);
-            ui_kit::help(ui, "Create a mapping from source and target schemas, open a saved project or import an MFD design.");
+            ui.label(TextRole::Section.text("Orders to order lines"));
+            ui_kit::help(
+                ui,
+                "Try an editable XML-to-CSV example. Three orders become six item rows.",
+            );
+            let palette = crate::theme::active_palette(ui.ctx());
+            if ui
+                .add_enabled(
+                    busy.is_none(),
+                    egui::Button::new(egui::RichText::new("Open example").color(palette.on_action))
+                        .fill(palette.action)
+                        .min_size(egui::vec2(width, METRICS.control_height)),
+                )
+                .clicked()
+            {
+                self.open_worked_example();
+                return;
+            }
             ui.add_space(METRICS.section_gap);
+            ui.label(TextRole::Section.text("Your work"));
             let mut action = None;
             for (icon, label, choice) in [
                 (Icon::FilePlus2, "New mapping…", StartAction::New),
@@ -52,7 +90,10 @@ impl FerruleApp {
             ] {
                 let button =
                     egui::Button::new((crate::icons::text(icon, METRICS.icon_size), label))
-                        .min_size(egui::vec2(width, METRICS.control_height + ui_kit::space::MD));
+                        .min_size(egui::vec2(
+                            width,
+                            METRICS.control_height + ui_kit::space::MD,
+                        ));
                 let response = ui.add_enabled(busy.is_none(), button);
                 let response = match busy {
                     Some(reason) => response.on_disabled_hover_text(reason),

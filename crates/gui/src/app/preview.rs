@@ -522,7 +522,17 @@ impl FerruleApp {
                 .or_else(|| self.project.source_path.clone())
                 .unwrap_or_default(),
         };
-        self.preview_draft = Some(PreviewDraft::new(target, input_identity, output_identity));
+        let mut draft = PreviewDraft::new(target, input_identity, output_identity);
+        if self.worked_example == Some(self.document_ui_id) && self.primary_document.is_none() {
+            if draft.input_identity.is_empty() {
+                draft.input_identity = "Orders.xml".into();
+            }
+            if draft.target == PreviewTarget::Primary && draft.output_identity.is_empty() {
+                draft.output_identity = "order-lines.csv".into();
+            }
+            draft.input_text = cli::orders_example::INPUT.to_owned();
+        }
+        self.preview_draft = Some(draft);
     }
 
     pub(super) fn show_preview_setup(&mut self, ctx: &egui::Context) {

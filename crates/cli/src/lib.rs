@@ -52,6 +52,11 @@ mod project_paths;
 mod read_set;
 mod route_capability;
 mod sqlite_query;
+/// The public XML-to-CSV example, embedded for use by installed clients.
+pub mod orders_example {
+    pub const PROJECT: &[u8] = include_bytes!("../tests/fixtures/orders/project.json");
+    pub const INPUT: &str = include_str!("../tests/fixtures/orders/Orders.xml");
+}
 pub use bundle::{BundleCatalog, BundleCatalogKind, BundleOptions, BundleOutcome, bundle_project};
 pub use dynamic_source_fault::{
     DynamicSourceReadError, UndeclaredDynamicSource, UnsuppliedPayloadSource,
