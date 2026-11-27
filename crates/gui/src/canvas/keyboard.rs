@@ -43,7 +43,7 @@ struct CanvasFocus {
     zoom: Option<f32>,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 // The last painted transform lets endpoint wheel input be consumed before
 // egui::Scene decides whether to pan the canvas behind an interactive node.
 struct CanvasTransform(egui::emath::TSTransform);
@@ -149,9 +149,11 @@ pub fn show(
         search.clear_reveal(snarl, viewer.endpoint_scroll);
         if let Some(camera) = ui
             .ctx()
-            .data_mut(|data| data.remove_temp::<CanvasFocus>(reveal_camera))
+            .data_mut(|data| data.remove_temp::<CanvasTransform>(reveal_camera))
         {
-            viewer.camera_focus = Some((camera.graph_position, viewport.center(), camera.zoom));
+            let center = viewport.center();
+            viewer.camera_focus =
+                Some((camera.0.inverse() * center, center, Some(camera.0.scaling)));
         }
         ui.ctx().request_repaint();
     }
@@ -194,15 +196,8 @@ pub fn show(
         viewer.target_blocks,
     ) {
         if let Some(transform) = previous_transform {
-            ui.ctx().data_mut(|data| {
-                data.insert_temp(
-                    reveal_camera,
-                    CanvasFocus {
-                        graph_position: transform.0.inverse() * viewport.center(),
-                        zoom: Some(transform.0.scaling),
-                    },
-                )
-            });
+            ui.ctx()
+                .data_mut(|data| data.insert_temp(reveal_camera, transform));
         }
         focus::request_pin(ui.ctx(), canvas_id, pin);
         if let Some((node, semantic)) = search.highlighted() {

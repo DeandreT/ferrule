@@ -98,6 +98,7 @@ impl FerruleApp {
         let key = tools_id.with("before_field_inspector");
         if open {
             ctx.data_mut(|data| {
+                data.insert_temp(tools_id.with("focus_field_inspector"), true);
                 if data.get_temp::<PreviousInspector>(key).is_none() {
                     data.insert_temp(
                         key,
@@ -157,29 +158,39 @@ impl FerruleApp {
                 }
             });
         let mut dismiss = false;
+        let focus_action = ui
+            .ctx()
+            .data_mut(|data| data.remove_temp::<bool>(tools_id.with("focus_field_inspector")))
+            .unwrap_or(false);
         ui.horizontal_wrapped(|ui| {
-            if wiring.chain.is_empty() {
-                if ui
-                    .add_enabled(
-                        editing_enabled && self.can_preview(),
-                        egui::Button::new("Preview this field"),
-                    )
-                    .clicked()
-                {
-                    self.inspect_preview_field(target, &wiring.field);
-                }
-            } else if ui
-                .add_enabled(
-                    editing_enabled && self.can_preview(),
-                    egui::Button::new("Preview target…"),
-                )
-                .on_hover_text("Nested fields are shown in their target document.")
-                .clicked()
-            {
-                self.begin_preview();
-                self.status = format!("Preview target for {}", wiring.label);
+            let root_field = wiring.chain.is_empty();
+            let action = ui.add_enabled(
+                editing_enabled && self.can_preview(),
+                egui::Button::new(if root_field {
+                    "Preview this field"
+                } else {
+                    "Preview target…"
+                }),
+            );
+            if focus_action && action.enabled() {
+                action.request_focus();
             }
-            dismiss = ui.button("Close field wiring").clicked();
+            if action.clicked() {
+                if root_field {
+                    self.inspect_preview_field(target, &wiring.field);
+                } else {
+                    self.begin_preview();
+                    self.status = format!("Preview target for {}", wiring.label);
+                }
+            }
+            let close = ui.button("Close field wiring");
+            if focus_action && !action.enabled() {
+                close.request_focus();
+            }
+            if !root_field {
+                action.on_hover_text("Nested fields are shown in their target document.");
+            }
+            dismiss = close.clicked();
         });
         // In the narrow layout the canvas isn't drawn behind the inspector.
         let inspector_only = self.last_layout_class == Some(LayoutClass::Narrow)

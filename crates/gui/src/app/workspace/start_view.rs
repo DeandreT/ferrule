@@ -94,7 +94,9 @@ impl FerruleApp {
                             width,
                             METRICS.control_height + ui_kit::space::MD,
                         ));
-                let response = ui.add_enabled(busy.is_none(), button);
+                let response = ui
+                    .add_enabled(busy.is_none(), button)
+                    .accessible_name(label);
                 let response = match busy {
                     Some(reason) => response.on_disabled_hover_text(reason),
                     None => response,

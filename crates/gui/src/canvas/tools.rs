@@ -811,9 +811,20 @@ pub(crate) fn toolbar(
         propose(&mut state, snarl, selected, wire, ui.available_width());
     }
     if let Some(wiring) = &state.wiring {
+        let inspect = !search_open
+            && shortcuts.enabled
+            && !crate::ui_kit::modal_open(ui.ctx())
+            && !egui::Popup::is_any_open(ui.ctx())
+            && !GraphViewer::properties_open(ui.ctx())
+            && ui.input_mut(|input| input.consume_key(egui::Modifiers::ALT, egui::Key::Enter));
         ui.horizontal_wrapped(|ui| {
             ui.label(&wiring.label);
-            if ui.button("Show field wiring").clicked() {
+            if ui
+                .button("Show field wiring")
+                .on_hover_text("Focus the field inspector (Alt+Enter)")
+                .clicked()
+                || inspect
+            {
                 ui.ctx()
                     .data_mut(|data| data.insert_temp(id.with("show_field_wiring"), true));
             }
@@ -954,6 +965,8 @@ pub(crate) fn toolbar(
             return;
         }
     } else if escape && state.wiring.take().is_some() {
+        ui.ctx()
+            .data_mut(|data| data.insert_temp(id.with("restore_field_view"), true));
         recompute(&mut state);
     } else if escape {
         state.focus = None;

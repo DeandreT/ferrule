@@ -2029,6 +2029,33 @@ fn worked_example_opens_an_unsaved_copy_and_previews_the_bundled_orders() {
 }
 
 #[test]
+fn worked_example_needs_no_files_in_its_launch_directory() -> anyhow::Result<()> {
+    let project = temporary_project_path("worked-example-launch");
+    let directory = project.parent().unwrap();
+    // A child gets its own cwd; other parallel tests keep theirs.
+    let run = std::process::Command::new(std::env::current_exe()?)
+        .current_dir(directory)
+        .args([
+            "--exact",
+            "app::tests::worked_example_opens_an_unsaved_copy_and_previews_the_bundled_orders",
+        ])
+        .output()?;
+    let created: Vec<_> = directory
+        .read_dir()?
+        .map(|entry| entry.map(|entry| entry.file_name()))
+        .collect::<std::io::Result<_>>()?;
+    std::fs::remove_dir_all(directory)?;
+    let stdout = String::from_utf8_lossy(&run.stdout);
+    assert!(
+        run.status.success() && stdout.contains("1 passed"),
+        "{stdout}\n{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert!(created.is_empty(), "preview wrote files: {created:?}");
+    Ok(())
+}
+
+#[test]
 fn preview_executes_an_unsaved_project_without_writing_its_logical_output() -> anyhow::Result<()> {
     let directory = std::env::temp_dir().join(format!(
         "ferrule-gui-preview-unsaved-{}",
