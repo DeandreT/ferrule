@@ -36,6 +36,8 @@ mod invocation_counters;
 #[cfg(feature = "runtime")]
 mod json;
 #[cfg(feature = "runtime")]
+mod ordering;
+#[cfg(feature = "runtime")]
 mod scalar;
 
 pub use catalog::{
@@ -52,6 +54,8 @@ pub use json::projection::{JsonArrayProjections, JsonProjectionOwner};
 pub use json::projection::{
     json_projection_full_parse_count, reset_json_projection_full_parse_count,
 };
+#[cfg(feature = "runtime")]
+pub use ordering::compare_scope_sort_values;
 
 #[derive(Debug, Error, PartialEq)]
 pub enum FunctionError {
