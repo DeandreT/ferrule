@@ -552,9 +552,12 @@ fn imported_guarded_projects_run_ordinary_release_public_hosts() {
     let cargo_path = checked(
         &root,
         "pinned-cargo-path",
-        Command::new(&rustup)
-            .current_dir(&root)
-            .args(["which", "--toolchain", pinned_rust_channel(), "cargo"]),
+        Command::new(&rustup).current_dir(&root).args([
+            "which",
+            "--toolchain",
+            pinned_rust_channel(),
+            "cargo",
+        ]),
     );
     let cargo = Path::new(cargo_path.trim_end_matches(['\r', '\n']));
     assert!(cargo.is_absolute() && cargo.is_file(), "{cargo:?}");
