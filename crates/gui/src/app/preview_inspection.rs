@@ -53,12 +53,30 @@ fn target_parts<'a>(
 ) -> Option<(&'a mapping::FormatOptions, &'a ir::SchemaNode, &'a Scope)> {
     match target {
         PreviewTarget::Primary => Some((&project.target_options, &project.target, &project.root)),
-        PreviewTarget::Named(name) => project
-            .extra_targets
-            .iter()
-            .find(|target| &target.name == name)
-            .map(|target| (&target.options, &target.schema, &target.root)),
+        PreviewTarget::Named(name) => named_target(project, name)
+            .ok()
+            .map(|(_, target)| (&target.options, &target.schema, &target.root)),
     }
+}
+
+fn named_target<'a>(
+    project: &'a Project,
+    name: &str,
+) -> Result<(usize, &'a mapping::NamedTarget), String> {
+    let mut matches = project
+        .extra_targets
+        .iter()
+        .enumerate()
+        .filter(|(_, target)| target.name == name);
+    let target = matches
+        .next()
+        .ok_or_else(|| format!("No target named `{name}`."))?;
+    if matches.next().is_some() {
+        return Err(format!(
+            "Ambiguous target `{name}`: more than one target has that name."
+        ));
+    }
+    Ok(target)
 }
 
 fn sha(bytes: &[u8]) -> String {
@@ -232,11 +250,6 @@ impl Inspection {
             self.page = Page::Inspect;
         }
         self.select(report);
-        if let Some((target, field)) = self.requested_field.take()
-            && self.capture.as_ref().is_some_and(|c| c.target == target)
-        {
-            self.open_field(&field);
-        }
     }
 
     fn select(&mut self, report: &RunReportView) {
@@ -278,27 +291,12 @@ impl Inspection {
         });
     }
 
-    fn open_field(&mut self, field: &str) -> bool {
+    fn focus_cell(&mut self, row: usize, column: usize) {
         self.page = Page::Inspect;
-        match self
-            .table
-            .as_ref()
-            .and_then(|t| t.as_ref().ok())
-            .map(|t| t.column(field))
-        {
-            Some(Ok(column)) => {
-                self.column = column;
-                self.row_focus = true;
-                self.note = None;
-                true
-            }
-            _ => {
-                self.note = Some(format!(
-                    "Field `{field}` has no unique column in this captured output."
-                ));
-                false
-            }
-        }
+        self.row = row;
+        self.column = column;
+        self.row_focus = true;
+        self.note = None;
     }
 }
 
@@ -384,13 +382,33 @@ impl FerruleApp {
         let Ok(column) = table.column(field) else {
             return false;
         };
-        self.preview_inspection.row = row;
-        self.preview_inspection.column = column;
-        self.preview_inspection.page = Page::Inspect;
-        self.preview_inspection.row_focus = true;
-        self.preview_inspection.note = None;
+        self.preview_inspection.focus_cell(row, column);
         self.show_run_report = true;
         true
+    }
+
+    pub(super) fn focus_captured_field(&mut self, target: &PreviewTarget, field: &str) {
+        let row = self.preview_inspection.row;
+        let column = self.fresh_preview().and_then(|(capture, _, table)| {
+            if &capture.target != target {
+                return Err("The captured preview belongs to another target.".into());
+            }
+            if row >= table.rows.len() {
+                return Err("The selected output has no such data row.".into());
+            }
+            table.column(field)
+        });
+        match column {
+            Ok(column) => {
+                self.preview_inspection.focus_cell(row, column);
+                self.show_run_report = true;
+            }
+            Err(reason) => {
+                self.status = format!("Cannot inspect `{field}`: {reason}");
+                self.preview_inspection.note = Some(self.status.clone());
+                self.preview_inspection.row_focus = false;
+            }
+        }
     }
 
     pub(crate) fn inspect_preview_field(&mut self, target: PreviewTarget, field: &str) {
@@ -404,8 +422,7 @@ impl FerruleApp {
                 .as_ref()
                 .is_some_and(|r| r.report.kind == RunReportKind::Preview)
         {
-            self.preview_inspection.open_field(field);
-            self.show_run_report = true;
+            self.focus_captured_field(&target, field);
             return;
         }
         if !self.can_preview() {
@@ -417,13 +434,12 @@ impl FerruleApp {
                 self.mapping_workspace.focused = MappingDocument::Main;
             }
             PreviewTarget::Named(name) => {
-                let Some(index) = self
-                    .project
-                    .extra_targets
-                    .iter()
-                    .position(|t| &t.name == name)
-                else {
-                    return;
+                let index = match named_target(&self.project, name) {
+                    Ok((index, _)) => index,
+                    Err(reason) => {
+                        self.status = reason;
+                        return;
+                    }
                 };
                 self.open_target_tab(index);
             }
