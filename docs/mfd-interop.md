@@ -1435,7 +1435,7 @@ diagnostics; executable admission refuses them.
 | --- | --- |
 | Referenced JSON Schema | Admitted [object, array, numeric and string constraints](formats.md#json-schema) remain executable on input and normalized output; export writes a canonical JSON Schema sibling. An unsupported dialect/shape, nonrepresentable union or unresolved schema triggers the component diagnostic rather than widening its domain. |
 | Positional JSON | Homogeneous tuples can normalize to one repeated field. MFD entries cannot address heterogeneous tuple-frame positions; import keeps the warning and entry tree, and a JSON string parser cannot embed a frame. See [tuple frames](design/json-tuple-arrays.md). |
-| XML declarations | Elements and attributes retain expanded names; foreign declarations export as an atomic graph of local XSD siblings. Compatible declarations with the same local name can share a port with exact namespace alternatives; incompatible shapes warn. |
+| XML declarations | Elements and attributes retain expanded names; foreign declarations export as an atomic graph of local XSD siblings. Compatible strict element-wildcard declarations can share a port across namespaces; resolved wildcard attributes with the same local name are refused. |
 | Other components | Only the admitted SQL/SQLite, workbook, FlexText, PDF and XBRL layouts execute. General database mutation, taxonomy-level XBRL, arbitrary service components and general sequence composition are outside the profile. See [format boundaries](formats.md#important-boundaries). |
 
 ### Open JSON target entries

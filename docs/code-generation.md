@@ -332,7 +332,7 @@ budgets and typed refusals. The typed calls retain the explicit Basic policy.
 
 | Preset and contract | When to use it |
 | --- | --- |
-| <a id="explicit-owned-group-by"></a>[`GroupBy`](design/owned-group-by.md) | Group by exact typed key, in first-seen order; retain members according to the group predicate. |
+| <a id="explicit-owned-group-by"></a>[`GroupBy`](design/owned-group-by.md) | Group by exact typed key, in first-seen order. Keep the whole group if any member passes; the first member remains its representative. |
 | <a id="explicit-owned-sequence-itemat"></a>[`SequenceItemAt`](design/owned-sequence-item-at.md) | Choose the one-based item using the parent context. |
 | <a id="explicit-owned-sequence-exists"></a>[`SequenceExists`](design/owned-sequence-exists.md) | Evaluate the predicate in the generated item's context. |
 | <a id="explicit-owned-sequence-aggregate"></a>[`SequenceAggregate`](design/owned-sequence-aggregate.md) | Reduce generated values with the operation's typed empty and error behavior. |
@@ -2116,6 +2116,9 @@ generation is expanding incrementally toward interpreter parity; see the
 
 For language-specific regression coverage, see the
 [authored examples](../examples/codegen/) and the [optional local corpus tests](../crates/cli/tests/code_generation/reference_corpus_generic.rs).
+With the local sample corpus and .NET 10 SDK, run the
+[interpreter, Rust and C# comparison](../crates/cli/tests/code_generation/reference_corpus.rs#L1-L4):
+`cargo test -p cli --features codegen-tests --test code_generation reference_corpus -- --ignored --nocapture`.
 A fixture comparing typed or JSON values does not establish physical file output,
 native-design round trips or editor behavior.
 
