@@ -155,6 +155,12 @@ class HookAncestryTests(unittest.TestCase):
                         read.side_effect = None
                     self.processes["30"].__truediv__.assert_any_call("exe")
 
+    def test_missing_same_account_executable_after_worker_refuses(self):
+        self.hook()
+        (self.processes["20"] / "exe").unlink()
+        with self.assertRaises(FileNotFoundError):
+            evidence.hook_ancestry()
+
     def test_worker_outside_ancestry_cannot_authorize_an_administrator(self):
         self.hook()
         self.process(90, 1, executable=self.marker("tools/administrator"))

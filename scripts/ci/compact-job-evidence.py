@@ -50,7 +50,7 @@ def hook_ancestry():
         # links may be unreadable. Only this account can be the job worker;
         # account-owned ancestors must remain fully inspectable.
         if process.stat().st_uid == os.getuid():
-            executable = os.path.realpath(process / "exe")
+            executable = os.path.realpath(process / "exe", strict=True)
             worker_seen |= executable == worker
         fields = (process / "stat").read_text().rsplit(")", 1)[1].split()
         pid = int(fields[1])
