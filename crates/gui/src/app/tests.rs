@@ -2002,9 +2002,21 @@ fn worked_example_opens_an_unsaved_copy_and_previews_the_bundled_orders() {
         .expect("in-memory example preview")
         .report;
     assert_eq!(report.records_written, 6);
-    assert!(matches!(report.outputs[0].preview(),
-        crate::run_report::OutputPreview::Text { content, .. }
-            if content.lines().eq(include_str!("../../../cli/tests/fixtures/orders/expected_order_lines.csv").lines())));
+    assert_eq!(report.outputs.len(), 1);
+    let crate::run_report::OutputPreview::Text {
+        content,
+        total_bytes,
+        truncated,
+    } = report.outputs[0].preview()
+    else {
+        panic!("expected the complete CSV text");
+    };
+    assert_eq!(*total_bytes, 307);
+    assert!(!*truncated);
+    assert_eq!(
+        content.as_bytes(),
+        include_bytes!("../../../cli/tests/fixtures/orders/expected_order_lines.csv")
+    );
     app.install_untitled_mapping(blank_project(), "other.json");
     app.begin_preview();
     assert!(app.preview_draft.as_ref().unwrap().input_text.is_empty());

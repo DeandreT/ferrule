@@ -1,0 +1,4 @@
+# These files are embedded in the desktop example or compared byte for byte.
+Orders.xml text eol=lf
+project.json text eol=lf
+expected_order_lines.csv text eol=lf
