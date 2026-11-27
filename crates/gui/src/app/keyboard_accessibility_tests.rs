@@ -323,7 +323,7 @@ fn field_wiring_returns_to_the_exact_preview_target_and_never_substitutes_a_nest
     });
     project.extra_targets.push(mapping::NamedTarget {
         name: "detail".into(),
-        path: None,
+        path: Some("detail.xml".into()),
         schema: SchemaNode::group(
             "root",
             vec![SchemaNode::group(
@@ -385,11 +385,19 @@ fn field_wiring_returns_to_the_exact_preview_target_and_never_substitutes_a_nest
             assert!(wiring.label.contains("(archive)"));
         }
         harness.get_by_label("Field wiring");
-        harness.get_by_label("Preview this field").click();
-        harness.run_steps(3);
+        press_with(&mut harness, egui::Modifiers::ALT, egui::Key::Enter);
+        assert_eq!(
+            focused_name(&harness).as_deref(),
+            Some("Preview this field")
+        );
+        press(&mut harness, egui::Key::Enter);
         assert_eq!(
             harness.state().preview_draft.as_ref().unwrap().target,
             target
+        );
+        assert_eq!(
+            harness.state().preview_inspection.requested_field.as_ref(),
+            Some(&(target, "Desc".to_owned()))
         );
         harness.state_mut().preview_draft = None;
         harness.run_steps(3);
@@ -398,6 +406,32 @@ fn field_wiring_returns_to_the_exact_preview_target_and_never_substitutes_a_nest
         assert!(harness.state().live_state() == baseline);
         assert!(!harness.state().can_undo());
     }
+    // The same spelling is a root CSV column on both other targets. From
+    // this nested leaf, the real button must instead open the named XML setup.
+    harness.state_mut().open_target_tab(1);
+    harness.run_steps(3);
+    assert!(tab_to(&mut harness, "Mapping canvas"));
+    press_with(&mut harness, command(), egui::Key::F);
+    type_text(&mut harness, "root.child.Desc");
+    press(&mut harness, egui::Key::Enter);
+    let detail_id = harness.state().mapping_workspace.target_canvases[&1].tools_id;
+    let wiring = crate::canvas_tools::field_wiring(&harness.ctx, detail_id).unwrap();
+    assert_eq!(wiring.chain, ["child"]);
+    assert_eq!(wiring.field, "Desc");
+    assert!(harness.query_by_label("Preview this field").is_none());
+    press_with(&mut harness, egui::Modifiers::ALT, egui::Key::Enter);
+    assert_eq!(focused_name(&harness).as_deref(), Some("Preview target…"));
+    press(&mut harness, egui::Key::Enter);
+    let draft = harness
+        .state()
+        .preview_draft
+        .as_ref()
+        .expect("named document preview setup");
+    assert_eq!(draft.target, PreviewTarget::Named("detail".into()));
+    assert_eq!(draft.output_identity, "detail.xml");
+    assert!(harness.state().preview_inspection.requested_field.is_none());
+    assert!(harness.state().live_state() == baseline);
+    assert!(!harness.state().can_undo());
 }
 
 #[test]
@@ -448,6 +482,35 @@ fn field_finder_reveals_both_orders_paths_and_restores_focus_on_no_match() {
             positions
         );
     }
+}
+
+#[test]
+fn worked_example_keyboard_actions_preview_six_rows_at_150_percent() {
+    let mut harness = harness_at_scale(FerruleApp::default(), 1.5);
+    for label in [
+        "New mapping…",
+        "Open project…",
+        "Import MFD…",
+        "Open pipeline…",
+    ] {
+        assert!(tab_to(&mut harness, label), "{label} is still reachable");
+    }
+    assert!(tab_to(&mut harness, "Open example"));
+    press(&mut harness, egui::Key::Enter);
+    assert!(harness.state().document.saved_path().is_none());
+    assert!(harness.state().recent_projects.is_empty());
+    assert!(tab_to(&mut harness, "Preview"));
+    press(&mut harness, egui::Key::Enter);
+    super::tests::wait_for_preview_completion(harness.state_mut());
+    let report = &harness
+        .state()
+        .run_report
+        .as_ref()
+        .expect("real example preview")
+        .report;
+    assert_eq!(report.records_written, 6);
+    assert!(harness.state().show_run_report);
+    assert!(harness.state().observed_dirty());
 }
 
 #[test]
