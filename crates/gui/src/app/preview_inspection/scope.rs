@@ -102,6 +102,7 @@ fn plain_child<'a, 'input>(node: XmlNode<'a, 'input>, name: &str) -> Option<XmlN
 #[derive(Default)]
 struct Values {
     by_node: HashMap<NodeId, usize>,
+    by_field: HashMap<(NodeId, usize), Option<usize>>,
     text: Vec<String>,
     cells: usize,
 }
@@ -119,27 +120,33 @@ impl Values {
         }
         Ok(fields
             .iter()
-            .map(|field| {
+            .enumerate()
+            .map(|(column, field)| {
                 let distance = depth.checked_sub(field.owner)?;
                 let frame = node.ancestors().nth(distance)?;
-                let leaf = field
+                let slot = (frame.id(), column);
+                if let Some(index) = self.by_field.get(&slot) {
+                    return *index;
+                }
+                let index = field
                     .path
                     .iter()
-                    .try_fold(frame, |owner, name| plain_child(owner, name))?;
-                if leaf.children().any(|child| child.is_element()) {
-                    return None;
-                }
-                let index = *self.by_node.entry(leaf.id()).or_insert_with(|| {
-                    let index = self.text.len();
-                    self.text.push(
-                        leaf.children()
-                            .filter(|child| child.is_text())
-                            .filter_map(|child| child.text())
-                            .collect::<String>(),
-                    );
-                    index
-                });
-                Some(index)
+                    .try_fold(frame, |owner, name| plain_child(owner, name))
+                    .filter(|leaf| !leaf.children().any(|child| child.is_element()))
+                    .map(|leaf| {
+                        *self.by_node.entry(leaf.id()).or_insert_with(|| {
+                            let index = self.text.len();
+                            self.text.push(
+                                leaf.children()
+                                    .filter(|child| child.is_text())
+                                    .filter_map(|child| child.text())
+                                    .collect(),
+                            );
+                            index
+                        })
+                    });
+                self.by_field.insert(slot, index);
+                index
             })
             .collect())
     }
@@ -319,22 +326,27 @@ impl RowScope {
         &self,
         output: &PreviewTable,
         keys: &[String],
-    ) -> Result<Vec<RowMatch>, String> {
+    ) -> Result<RowMatches, String> {
         if keys.is_empty() {
             return Err("Choose direct input key fields to match occurrences to data rows.".into());
         }
         let mut source_cols = Vec::new();
         let mut target_cols = Vec::new();
         for key in keys {
-            source_cols.push(
-                self.columns
-                    .iter()
-                    .position(|name| name == key)
-                    .ok_or_else(|| format!("`{key}` has no unambiguous direct input field."))?,
-            );
+            let mut columns = self
+                .columns
+                .iter()
+                .enumerate()
+                .filter(|(_, name)| *name == key);
+            let column = columns
+                .next()
+                .filter(|_| columns.next().is_none())
+                .ok_or_else(|| format!("`{key}` has no unambiguous direct input field."))?;
+            source_cols.push(column.0);
             target_cols.push(output.column(key)?);
         }
         let mut output_keys = BTreeMap::new();
+        let mut missing_output_keys = Vec::new();
         for (index, row) in output.rows.iter().enumerate() {
             let key: Vec<_> = target_cols.iter().map(|&col| row[col].as_str()).collect();
             if key.iter().all(|v| !v.is_empty()) {
@@ -342,6 +354,8 @@ impl RowScope {
                     .entry(key)
                     .and_modify(|found| *found = RowMatch::Ambiguous)
                     .or_insert(RowMatch::Row(index));
+            } else {
+                missing_output_keys.push(index);
             }
         }
         let input_keys: Vec<Option<Vec<_>>> = self
@@ -358,15 +372,37 @@ impl RowScope {
         for key in input_keys.iter().flatten() {
             *counts.entry(key.as_slice()).or_insert(0usize) += 1;
         }
-        Ok(input_keys
+        let items: Vec<_> = input_keys
             .iter()
             .map(|key| match key {
                 None => RowMatch::MissingKey,
                 Some(key) if counts[key.as_slice()] != 1 => RowMatch::Ambiguous,
                 Some(key) => output_keys.get(key).copied().unwrap_or(RowMatch::NoOutput),
             })
-            .collect())
+            .collect();
+        let matched = items
+            .iter()
+            .filter(|row| matches!(row, RowMatch::Row(_)))
+            .count();
+        let duplicate_output_keys = output_keys
+            .values()
+            .filter(|row| **row == RowMatch::Ambiguous)
+            .count();
+        Ok(RowMatches {
+            items,
+            missing_output_keys,
+            duplicate_output_keys,
+            unmatched_output_rows: output.rows.len() - matched,
+        })
     }
+}
+
+#[derive(Debug)]
+pub(super) struct RowMatches {
+    pub items: Vec<RowMatch>,
+    pub missing_output_keys: Vec<usize>,
+    pub duplicate_output_keys: usize,
+    pub unmatched_output_rows: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

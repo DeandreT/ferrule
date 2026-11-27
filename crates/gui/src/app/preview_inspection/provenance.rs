@@ -53,6 +53,21 @@ impl Provenance {
         {
             return None;
         }
+        // A legacy path can also enter a named source. Only attribute a
+        // primary source path when its owning collection is unambiguous.
+        if project
+            .extra_sources
+            .iter()
+            .any(|extra| collection.first() == Some(&extra.name))
+        {
+            return None;
+        }
+        let item_schema = collection
+            .iter()
+            .try_fold(&project.source, |node, field| node.child(field))?;
+        if !item_schema.repeating {
+            return None;
+        }
         let target = match selected {
             PreviewTarget::Primary => TraceTarget::Primary,
             PreviewTarget::Named(name) => TraceTarget::Named(name.clone()),
@@ -73,7 +88,13 @@ impl Provenance {
             else {
                 continue;
             };
-            if path.len() != 1 || frame.as_ref().is_some_and(|frame| frame != collection) {
+            if path.len() != 1
+                || frame.as_ref().is_some_and(|frame| frame != collection)
+                || (frame.is_none() && collection.first() == path.first())
+                || !item_schema.child(&path[0]).is_some_and(|field| {
+                    !field.repeating && matches!(&field.kind, ir::SchemaKind::Scalar { .. })
+                })
+            {
                 continue;
             }
             // Trace names are capped at 160 characters without an explicit
@@ -177,12 +198,14 @@ impl Provenance {
         if candidates.next().is_some() {
             return None;
         }
-        let read = source
+        let mut source_fields = source
             .fields
             .iter()
-            .find(|f| !f.name_truncated && f.name == field.source_name)?
-            .value
-            .as_ref()?;
+            .filter(|f| !f.name_truncated && f.name == field.source_name);
+        let read = source_fields.next()?.value.as_ref()?;
+        if source_fields.next().is_some() {
+            return None;
+        }
         let evaluated = &trace.events[start..write];
         let source_evaluated = evaluated.iter().any(|event| {
             matches!(event, TraceEvent::NodeValue { node, positions: at, value }

@@ -1285,11 +1285,10 @@ impl FerruleApp {
                 );
                 let mut report = crate::run_report::RunReportView::new(report)
                     .with_project_labels(&self.project);
-                self.preview_inspection
-                    .restore_output_selection(&mut report, self.run_report.as_ref());
                 self.preview_inspection.complete(
                     capture,
-                    &report,
+                    &mut report,
+                    self.run_report.as_ref(),
                     self.preview_draft.take(),
                     std::mem::take(&mut pending.run_values),
                 );
