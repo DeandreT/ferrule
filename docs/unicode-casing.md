@@ -124,3 +124,38 @@ hashes and is not committed.
 A Unicode version change updates the version pins, the generated leaves, the
 version constant in the Rust casing module and this contract. The change is
 intentional and reviewed.
+
+## Caller-culture regression coverage
+
+The CLI code-generation suite keeps its invariant-globalization Rust/C# casing
+comparison and a separate named-culture C# consumer. The latter compiles one
+consumer and launches a fresh process for `en-US`, `tr-TR`, `az-Latn-AZ`, `lt-LT`
+and an invariant-culture control. Each process sets and checks both
+`CurrentCulture` and `CurrentUICulture` around direct `FerruleFunctions.Call`
+dispatch and generated `GeneratedMapping.ExecuteJson` / `ExecuteJsonBytes` calls.
+
+The self-authored literal cases cover dotted and dotless I, Lithuanian combining
+accents and retained dots, sharp-s expansion, and final/non-final Greek sigma
+with case-ignorable context. Neither the interpreter nor .NET casing APIs supply
+the expected values.
+
+The dedicated consumer has `InvariantGlobalization=false` and
+`PredefinedCulturesOnly=true`; its child environment explicitly disables invariant
+globalization without changing the parent environment or the generated library's
+defaults. Named culture construction must succeed using the host's globalization
+support (ICU on Linux). Missing support is a test failure, not a skip.
+
+With the [pinned toolchains](toolchains.md) and the
+[C# test environment](code-generation.md#build-and-test-environment) available,
+run the ordinary test with:
+
+```sh
+cargo nextest run --locked -p cli --features codegen-tests --test code_generation \
+  -E 'test(=unicode_casing::generated_csharp_unicode_casing_is_independent_of_named_caller_cultures)'
+```
+
+Point `TMPDIR` at a task-owned disk-backed location with enough free space for the
+generated sources and .NET build. The consumer uses an isolated CLI home, package
+cache, temporary directory and build-artifacts directory beneath that test root.
+Failures retain the complete sources, literals, commands, status, stdout and
+stderr. `FERRULE_CODEGEN_KEEP_ARTIFACTS=1` also retains successful runs.
