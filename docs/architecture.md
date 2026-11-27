@@ -171,15 +171,10 @@ primary-then-extra target order. `RunOptions::with_target` can instead evaluate
 one primary or named target; unselected target scopes are not evaluated or
 published, while the default all-target mode keeps its collision checks.
 
-Stored relative input and static output paths resolve from the project directory.
-Dynamic primary and named targets use that same directory as their default output
-base. A basename such as `project.json` uses `.` just like `./project.json`;
-nested and absolute project paths retain their own directories. An explicit
-output path overrides only the primary or selected target. Relative overrides
-are not rebased to the project directory.
-Explicit empty paths are not replaced with defaults. Payload execution returns
-these paths as logical artifact identities without publishing files; filesystem
-execution validates and atomically publishes the complete selected output set.
+Stored paths resolve from the project directory; explicit CLI overrides resolve
+from the caller's working directory. An empty override is not a default. The
+[file and payload host guide](running-mappings.md) explains selection, relative
+paths and publication.
 
 Every host route (`run`, standard streams, `run-pipeline`, payload execution,
 `run-rest-json`, and generation) prepares an immutable request before it
@@ -211,17 +206,9 @@ exact thread handles: an outcome is reported only after the thread has been
 joined, and dropping an unfinished owner cancels it where cancellation exists
 and then waits for the thread to exit.
 
-These host services stay in the `cli` crate, re-exported from its root. Route
-capability is a query over the runners themselves: its plans come from
-`PreparedFileRun`, `PreparedStreamRun`, the pipeline runner, generation
-preparation, and the REST JSON preflight, so a separate crate would either
-carry those runners and their format, code-generation, and HTTP dependencies
-with it or hide them behind traits that only `cli` implements. Neither removes
-a dependency from any consumer: the GUI also executes, previews, traces,
-imports, and generates through `cli`, so it would still depend on the whole
-crate. `OwnedWorker` is a standard-library-only type private to the GUI and
-tested in place. Extract a crate only when a consumer can drop `cli` or a
-heavy dependency as a result.
+The preparation APIs live with their runners in `cli`. The GUI uses them for
+both preflight and execution; a separate copy of their admission rules would
+risk showing an action that the runner would refuse.
 
 Hosts that own transport and persistence can instead use
 `cli::PayloadRunOptions`. Each input carries bounded bytes plus a logical path
@@ -268,18 +255,10 @@ FlexText, explicit JSON/XML and X12/EDIFACT, refusing unsupported or selected
 dynamic boundaries. Native codec limits sit inside the existing outer payload
 budgets; they are not an interpreter-work or process-memory ceiling.
 
-The CLI exposes that payload boundary as `ferrule run PROJECT - -`: stdin is
-the primary document and stdout receives raw bytes only when exactly one
-artifact is produced. The configured source and target paths remain the
-logical format identities; named sources remain ordinary local paths. This
-mode rejects per-item dynamic named sources and all persistent-state operations
-before stdout is written.
-
-The `run --trace-json PATH` option streams interpreter events into a private
-sibling staging file and publishes it only after successful execution. Each
-JSON Lines record has a versioned envelope, deterministic sequence number, and
-a tagged node or scope/control event. Failed mappings leave an existing trace
-untouched. See [Execution tracing](tracing.md) for the stable wire contract.
+The [standard-stream host](running-mappings.md#stdin-stdout-and-diagnostics)
+returns exactly one serialized artifact on stdout. The [trace writer](tracing.md)
+stages its versioned JSON Lines separately and publishes only after a successful
+run. A failed mapping preserves an existing trace.
 
 During execution, source contexts form a stack. Field resolution begins at the
 innermost frame and falls outward, which allows parent values to broadcast into

@@ -68,15 +68,11 @@ accounting can differ. They do not measure an exclusive serialization peak.
 
 ## Correctness and scope
 
-- [x] Pass 24 existing CLI regressions covering callbacks, selected/all targets,
-  dynamic sources/documents, row release, and destination preservation.
-- [x] Pass formatting, strict workspace checks and both normal CLI builds.
-- [x] Run six small controls per build: full literals, BOM, alias refusal with
-  an unchanged sentinel, primary/named selection and explicit output override.
-- [x] Compare every byte, exact EOF and complete hashes for all eight large
-  outputs against an independent streaming literal oracle.
-- [x] Retain original streams, raw process snapshots, genuine status/resource
-  records and complete source/executable identities; close all 20 child processes.
+For each build, six small controls covered literal output, BOM handling,
+refused aliases with the destination preserved, target selection and explicit
+output overrides. An independent streaming oracle compared all eight large
+outputs through EOF. Timing, raw process snapshots and resource accounting
+belong to the measured builds above.
 
 The workload has no named or dynamic input, so it does not measure loader-cache
 release. Two repeats do not establish statistical significance. Earlier

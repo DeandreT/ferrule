@@ -1,9 +1,18 @@
 # `.mfd` Interoperability
 
-ferrule provides clean-room, best-effort import and export for
-`.mfd` mapping designs. Vendor samples may be used as black-box behavioral
-references, but ferrule's implementation and committed fixtures are original.
+Use `import-mfd` to recover an editable mapping, or add `--require-executable`
+to refuse incomplete imports. `export-mfd --profile native-mfd --check` tests
+what Ferrule can represent before writing any files. Local admission and a
+successful round trip do not establish execution in the reference application.
 
+| Starting point | Contract |
+| --- | --- |
+| One design on disk | [Import a project](#import); [resolve schemas and catalogs](#package-roots-and-catalogs) |
+| A design supplied as bytes | [Isolated byte packages](#isolated-byte-packages) |
+| One target feeds the next | [Import a connected pipeline](mapping-pipelines.md#importing-a-connected-mfd-design) |
+| Connected input and output filenames | [Import a document plan](#filename-driven-documents) |
+| A project to exchange | [Export](#export), [format boundaries](#current-boundaries), and [failure ordering](#global-failure-priority-and-strict-native-export) |
+| Evidence of external behavior | [Versioned conformance inventory](../conformance/README.md) and [survey procedure](#read-only-parity-surveys) |
 ## Isolated byte packages
 
 Hosts that cannot grant filesystem access use `MfdPackage::new`,
@@ -47,22 +56,16 @@ invalidate an otherwise complete protobuf graph.
 
 ## Import
 
-Document-local declarative `.mfd` function imports have a deliberately bounded
-[library contract](mfd-declared-libraries.md), with exact symbol ownership,
-resource limits and explicit refusals for unproved signatures or call roles.
-Immutable byte packages currently refuse this profile without filesystem fallback.
+From the repository root, start with the [XML example](../crates/cli/tests/fixtures/executable-import/design.mfd).
+The input's `Number` field feeds `Value` on the output:
 
 ```sh
-cargo run -p cli -- import-mfd --mfd design.mfd --out project.json
+cargo run -p cli -- import-mfd --mfd crates/cli/tests/fixtures/executable-import/design.mfd --out project.json --require-executable
 ```
 
-For a single project that must pass static execution admission, add
-`--require-executable`:
-
-```sh
-cargo run -p cli -- import-mfd \
-  --mfd design.mfd --out project.json --require-executable
-```
+Omit `--require-executable` to keep a repairable project and its warnings.
+Document-local declarative functions have a [separate library contract](mfd-declared-libraries.md);
+isolated byte packages refuse them without falling back to the filesystem.
 
 This selects `ImportProfile::Executable`: import warnings, unresolved runtime
 dependencies, and engine validation findings reject before the destination
@@ -72,6 +75,8 @@ semantics require the separate `--item-ordered-exceptions` option. The two flags
 may be combined. `--require-executable` applies to single-project imports and
 cannot be combined with `--pipeline`. Static admission does not execute the
 mapping or establish behavioral equivalence with another application.
+
+### Filters and producer ownership
 
 Source-field filters retain their selected true or false branch. Proven singleton
 scalar values use a nullable conditional; supported repeated-field selections use
@@ -116,6 +121,8 @@ contract for arbitrary hand-built `Instance` values. Its projects use the
 ordinary supported save/load codec without adding a guard capability. Count
 composition with guarded declared UDFs remains refused. This profile does not
 establish distinct-value Count behavior or MFD export/re-import equivalence.
+
+### Filename-driven documents
 
 CSV, JSON and EDI document imports diagnose connected `FileInstance` filename
 inputs and outputs. Their document-loading and output-document behavior is not
@@ -224,6 +231,8 @@ executable import. Ordinary import keeps the field's editable mapping and skips
 only the unresolved rule; supported rules and defaults retain their order.
 Unconnected references, nonmatching scalar filters, and blocked inherited rules
 do not produce this warning.
+
+### Package roots and catalogs
 
 For a mapping package whose resources sit above or beside the design directory,
 declare the trusted package root:
@@ -380,43 +389,7 @@ paths, ambiguous case-insensitive matches, and symlink escapes reject. Once the
 root schema matches a catalog, its nested local `$ref` graph remains confined
 to that same canonical root.
 
-### Read-only parity surveys
-
-The import/export, execution, and export/re-import execution surveys accept the
-same host-selected package manifest and ordered catalog roots as `import-mfd`.
-Set `FERRULE_MFD_SURVEY_PACKAGE_MANIFEST` to the manifest file. Set
-`FERRULE_MFD_SURVEY_EDI_CATALOG_ROOTS` and
-`FERRULE_MFD_SURVEY_JSON_SCHEMA_CATALOG_ROOTS` to platform path lists; roots
-retain their declared order after canonical deduplication. When no manifest is
-selected, the `ReferenceSamples` directory remains the package root.
-
-The surveys, and every other test that reads the gitignored
-`samples/ReferenceSamples` corpus, are ignored by ordinary test runs. An
-explicit run fails with a "private compatibility corpus not present at <path>"
-error when the corpus is missing; it never reports a pass without it. The
-reference-output survey likewise fails when the local reference application is
-missing.
-
-For example, on Unix:
-
-```sh
-FERRULE_MFD_SURVEY_PACKAGE_MANIFEST=/path/package/ferrule-package.json \
-FERRULE_MFD_SURVEY_EDI_CATALOG_ROOTS=/path/edi/current:/path/edi/archive \
-FERRULE_MFD_SURVEY_JSON_SCHEMA_CATALOG_ROOTS=/path/json/current:/path/json/archive \
-cargo test -p mfd --test samples_survey -- --ignored --nocapture
-```
-
-The same variables apply to `samples_execution_survey`, including its
-`survey_sample_execution` and `survey_export_reimport_execution` entry points,
-and to `codegen_samples_survey`. Execution reports explicitly use
-`execution_purpose: design_preview` (schema version 3); export/re-import
-execution reports use the same purpose (schema version 2). Unsupported preview
-contracts withhold reference and semantic-match claims even when a partially
-imported graph can execute. Other version-1 reports add an optional
-`resource_configuration` member. It records
-selection mode, effective catalog counts, and search precedence without
-disclosing package, manifest, or catalog host paths.
-
+### Components and expressions
 Import resolves the supported component graph into ferrule schemas, graph
 nodes, scopes, format options, and endpoints. Current coverage includes common
 XML, JSON, CSV/fixed-width/FlexText, XLSX, SQLite, EDI, Protocol Buffers, XBRL,
@@ -506,23 +479,18 @@ parent traversal within an explicitly selected package, while canonical
 symlink escapes reject with an actionable column warning. The imported schema
 is embedded in the project, so execution remains independent of the original
 root schema file.
-When one compact, declaration-free serializer feeds only a plain SQLite XML
-column, strict native export restores the column's `doc-xml` structure and
-writes an adjacent XSD. The local XML-to-SQLite sample reimports and stores
-the same XML payloads after export. Serializers with another consumer or
-nontrivial row controls keep their ordinary component and retain explicit
-native-profile diagnostics.
-For a single SQLite table mapped directly to XML rows, a guarded `LIKE`
-predicate with a literal ASCII prefix and one trailing `%`, null guards, and
-sorting by that same string column exports as the native database `where`
-control. Its parameter expression stays connected, including an optional named
-string input with a literal prefix default. Computed `concat`/`string` row
-bindings and related source fields remain wired. The local phone-list design
-reimports to identical XML with four default rows and three rows when the host
-supplies `NamePrefix=F`. Other `LIKE` patterns,
-shared predicate nodes, or additional row controls retain the ordinary
-diagnostic; the local database-filter sample reimports without warnings and
-produces the same output after strict export.
+### SQLite connections and query parameters
+
+When one compact, declaration-free XML serializer feeds only a plain SQLite
+column, native export restores `doc-xml` and writes an adjacent XSD. Other
+consumers or row controls retain the serializer and its native-profile diagnostic.
+
+A guarded `LIKE` with a literal ASCII prefix and one trailing `%`, null guards,
+and sorting on the same string column can export as a native `where` control
+on a single table mapped to XML rows. Its connected parameter can be an optional
+named string with a literal prefix default. The `concat`/`string` bindings
+remain connected. Shared predicates and additional row controls are outside
+this profile.
 The interpreter and generated Rust/C# `sql_like` calls compare text before the
 first NUL, fold ASCII case only, and treat `_` as one Unicode scalar. Patterns
 are limited to 50,000 UTF-8 bytes before NUL truncation, matching the bundled
@@ -531,18 +499,12 @@ normalized-pattern-scalar cell updates. Over-budget calls report typed errors.
 This work bound deliberately rejects some costly SQLite matches. An oversized
 pattern on a null source row still differs: the imported null guard skips the
 call, while SQLite reports a pattern-length error.
-An isolated canonical decimal string feeding the second input of a supported
-numeric comparison or addition can export through a native decimal input
-component. The local price and temperature samples reimport with identical
-XML. The imported component names `Markup`, `lower`, and `upper` survive
-project serialization and strict export. Named optional native inputs now retain
-their connected default expression and scalar type. The host value wins when
-the name is supplied; otherwise the default evaluates lazily. Explicit null
-does not select the default. String, integer, and decimal input tests cover
-strict warning-free export/reimport, overrides, and typed errors. Required and
-connected-default inputs retain enabled preview text separately, including
-empty and malformed lexical values. Input preview settings
-define those values as design-time only. `ExecutionPurpose::Preview` selects
+An isolated canonical decimal string feeding input two of a supported numeric
+comparison or addition can export through a native decimal input component.
+Optional native inputs retain their declared name, scalar type and connected
+default. An explicit host value, including null, wins; otherwise the default
+is lazy. Required and connected-default inputs retain enabled preview text,
+including empty or malformed values. `ExecutionPurpose::Preview` selects
 saved preview text only when no host value was supplied; it precedes a connected
 default. Explicit host null still wins. Ordinary runs and generated Rust/C#
 ignore preview metadata, so required inputs remain required and connected
@@ -557,41 +519,23 @@ diagnostics, and the executable import profile rejects them. Unnamed preview-onl
 inputs also remain unsupported. Execution surveys withhold reference and semantic
 matches for these unknown input contracts. Old serialized graphs that already
 lost preview provenance cannot reconstruct it.
-For the exact order-pricing graph, strict export restores the native decimal
-source rules on two XML price leaves. Anchored repeated-row reads apply those
-rules on reimport, preserving all three local CSV rows and the original typed
-conversion error for nonfinite hand-built inputs. Changed arithmetic, shared
-conversions, string leaves, and non-XML sources remain explicit blockers.
-Four local employee and manager mappings also reconstruct one native database
-`where` control for a guarded `%Word%` title predicate. Nested relation
-selection and an independent department or office filter stay connected,
-including typed optional pattern and selection inputs;
-strict reimport reproduces 8, 8, 2, and 5 XML rows respectively. Other
-patterns, shared predicate nodes, row controls, and changed field types reject.
-The guarded `concat(prefix, "%")` family also retains required String host
-inputs and their preview metadata. Two strict self-authored roundtrips cover
-normal missing-input errors, preview and host overrides, and explicit null.
-Null stays supplied; the existing concat semantics leave `%` and therefore match
-all present text rows. The local prefix-filter tutorial exports strictly again.
-Self-authored joined SQLite query tests reconstruct a native `SELECT` with a
-declared foreign key, numeric threshold filter, and computed column, including
-typed overflow behavior. The local `Tutorial/select-component.mfd` design has a
-text-declared required input compared to numeric `Quantity`; that cross-type
-query is now diagnosed and skipped rather than freezing its preview `2` as a
-runtime threshold. Its former local row match does not establish compatibility.
-Exact same-type optional query inputs retain host overrides rather
-than freezing the default. A guarded joined integer comparison exports its
-optional input through a declared native SELECT parameter; synthetic tests
-cover preview and connected defaults, overrides, nulls, and typed errors.
-Required inputs also retain exact same-type query parameters and preview metadata,
-including native joined integer SELECT thresholds and title WHERE patterns.
-Nonempty source rows require a supplied value; empty sources retain lazy reads.
-Ordinary execution requires host values for those required inputs; design
-preview may use the saved text. Optional inputs without defaults and cross-type
-dynamic query coercion remain unsupported. In particular, a text-declared
-parameter compared to a numeric column is diagnosed rather than freezing its
-preview into the runtime query. A filter whose predicate could not import also
-skips its dependent iteration instead of producing unfiltered rows.
+The order-pricing shape restores two native decimal rules on XML price leaves.
+Repeated-row reads keep the conversion error for nonfinite input. Changed
+arithmetic, shared conversions, string leaves or non-XML sources refuse.
+
+A guarded `%Word%` title predicate can reconstruct one native database `where`
+while preserving nested relations, an independent department or office filter,
+and same-type pattern/selection inputs. For `concat(prefix, "%")`, an explicit
+null is supplied: concat yields `%` and matches every present text row. Shared
+predicates, extra row controls and changed field types refuse.
+
+Joined query export supports a declared foreign key, numeric threshold and a
+computed column with typed overflow. A required or optional same-type parameter
+remains connected; an empty source can avoid reading a required input. Normal
+runs ignore saved preview text. Cross-type coercion (for example a string host
+parameter compared with `Quantity`) and optional parameters without defaults
+are unsupported. An unimportable predicate disconnects its iteration instead
+of returning unfiltered rows.
 If the database cannot be
 resolved for the read-only foreign-key check, the exporter leaves its internal
 function and reports the native limitation.
@@ -613,33 +557,24 @@ columns; nonempty text membership with unknown collation and quoted identifier
 operands remain unsupported. Constant filters retain source iteration, ordered
 row controls, and eager reads in unrelated conjunction predicates through both
 export profiles. Other database dialects are not inferred.
-Two temperature designs recover their original native numeric wiring. The
-annual PDF mapping retains all eight conversions inside its user function and
-strictly reimports its native-shaped PDF extraction template to the same 148
-CSV rows. The grouped XML mapping restores 21
-target-side and six user-function conversions through an exact descendant
-node-function rule; its five yearly rows and typed nonfinite conversion error
-match after strict export/reimport. The recovery requires the closed source,
-target, graph, and scope shapes of these two designs; changed numeric calls,
-shared branches, or added row controls keep the explicit incompatibility.
-Four bounded recursive construction families export as synthesized native user
-functions: one repeated string path list builds a directory/file hierarchy,
-one flat key/parent catalog builds a recursive adjacency tree, and a same-shape
-directory tree filters its direct files at every level, and one recursive
-directory collector emits a flat list of file paths. These require
-plain XML boundaries and exact supported schemas and scopes. Local strict
-round trips preserve the 16-directory/90-file tree and the 49-type hierarchy
-byte for byte. The recursive filter retains all 16 directories and 33 `.xml`
-files by default; a supplied `.xsd` search retains 16 files, with matching XML
-before and after reimport. The flat collector preserves all 90 paths and
-direct-file-before-child ordering, including interleaved XML input. Original function names and canvas layouts are not retained by
-these normalized constructions; duplicate/cycle behavior in the native
-application remains unverified.
-Native XML date-time target casts can also be reconstructed in nested and
-repeated target scopes when every selected leaf and graph consumer satisfies
-the closed-schema guards. Invalid lexical values retain the same typed local
-failure after reimport. This removes the IDoc sample's internal cast component;
-its separate EDI schema/layout blockers remain.
+### Numeric wiring and recursive construction
+
+Two closed temperature shapes recover native conversions: the annual PDF
+mapping inside its user function and the grouped XML mapping through its
+descendant node-function rule. Changed arithmetic, shared branches or added
+row controls keep an explicit incompatibility.
+
+Strict export can synthesize native user functions for four ordinary XML
+constructions with proved schemas and scopes: a path-list hierarchy, a
+key/parent adjacency tree, a same-shape recursive file filter, and a recursive
+collector with direct files before child directories. Normalization loses the
+original function names and canvas layout. Native duplicate/cycle behavior
+has not been established.
+
+Nested and repeated XML target scopes can restore a native date-time cast
+when every selected leaf and graph consumer satisfies the closed-schema
+guards. Invalid lexical input remains a typed conversion failure; EDI
+schema/layout admission is a separate check.
 Flat XML targets also preserve the evaluation-time conversion of proved direct
 String-to-`xs:double` feeds into repeated scalar fields, with either explicit
 `cast-in-subtree` metadata or the verified enabled default. The bounded
@@ -767,30 +702,14 @@ actionable warning where possible. Producer-ownership and safety failures can
 remain hard errors in either profile; repair-oriented import does not waive
 those checks.
 
-A connected target that also supplies a later target cannot be represented as
-two independent targets in one `Project`. Ordinary `import-mfd` reports that
-loss, and the executable import profile rejects it. For a connected XML design
-with up to 64 serial pass-through targets, import the design as a typed
-pipeline instead:
+### Connected targets and saved paths
 
-```sh
-cargo run -p cli -- import-mfd --mfd chained.mfd --pipeline --out flow.json
-```
-
-Each computed intermediate target supplies the next stage's source, with
-original source components bound as host inputs. In a bounded XML chain of at
-least three stages, one nonadjacent earlier intermediate may also feed a named
-source of the final stage while its immediate predecessor remains the primary
-source. The final intermediate may feed one default and up to 255 connected
-named XML targets. The import validates
-the whole stage graph before writing `flow.json`; other intermediate branches,
-cycles, bypasses, and disconnected XML boundaries reject explicitly. See
-[mapping pipelines](mapping-pipelines.md) for input binding and execution.
-The GUI can preview or debug the saved pipeline without publishing outputs.
-Its bounded byte host retains typed intermediate results and returns each
-stage's primary and named artifacts with stage-qualified traces. This local
-workflow does not establish reference-application acceptance of exported designs.
-
+An intermediate target feeding a later source is not two independent
+`Project` targets. Ordinary import warns about the lost connection; executable
+single-project import refuses. Use [`import-mfd --pipeline`](mapping-pipelines.md#importing-a-connected-mfd-design)
+for a supported serial XML design. The final intermediate can feed one primary
+and up to 255 named XML targets. Unsupported branches, cycles and disconnected
+boundaries refuse before the pipeline is written.
 Static source, target, named-source, and named-target paths are rebased when
 the generated project is written somewhere other than the design directory.
 HTTP URLs and graph-computed paths are unchanged. Moving or using Save As on a
@@ -878,6 +797,13 @@ publishing artifacts; unproved import shapes retain actionable diagnostics.
 
 ## Export
 
+```sh
+cargo run -p cli -- export-mfd --project project.json --out design.mfd
+cargo run -p cli -- export-mfd --project project.json --out design.mfd --profile native-mfd --check --report-json
+cargo run -p cli -- export-mfd --project project.json --out design.mfd --profile native-mfd
+cargo run -p cli -- export-mfd --project flow.json --pipeline --out chained.mfd --profile native-mfd
+```
+
 Ordinary and connected `.mfd` designs share a 64 MiB UTF-8 byte limit. Import
 checks file size before reading and bounds the actual read; export checks the
 complete XML, including escaping and embedded metadata, before publishing any
@@ -907,13 +833,6 @@ so; source hints and explicit XML schema hints remain outside MFD export. The
 finite
 [schema-reference observation](conformance/xml-schema-reference.md) covers real
 controls, full outputs and a native save/reopen of an actual Ferrule export.
-
-```sh
-cargo run -p cli -- export-mfd --project project.json --out design.mfd
-cargo run -p cli -- export-mfd --project project.json --out design.mfd --profile native-mfd --check --report-json
-cargo run -p cli -- export-mfd --project project.json --out design.mfd --profile native-mfd
-cargo run -p cli -- export-mfd --project flow.json --pipeline --out chained.mfd --profile native-mfd
-```
 
 The native editor exposes both profiles under File: “Export MFD (Ferrule)...”
 and “Export native MFD...”. Both suggest an `.mfd` filename in the project's
@@ -1031,75 +950,23 @@ behavior; intentional host-preparsed typed instances remain usable. CSV
 source setup exposes “Keep empty text fields.” Browser reads and writes now
 also honor custom or disabled quoting, including the writer's boundary errors.
 
+### Connected pipeline export
 
-The GUI's **File → Import MFD as Pipeline** action opens the supported connected
-design in the separate pipeline editor. Choose a new pipeline location; the
-document stays unsaved until **Save pipeline**. Ordinary single-mapping import
-and export remain separate actions. The editor can export its current applied,
-validated snapshot with either **Export MFD (Ferrule)** or **Export native MFD**
-without saving the pipeline JSON first. These actions retain the same native
-serial-chain limits and diagnostics as the CLI; unsupported branching does not
-fall back to a single mapping. The main mapping canvas and its layout are
-preserved throughout. See [GUI pipeline editing](mapping-pipelines.md#editing-in-the-gui)
-for save, cancellation, path, and warning behavior.
+For the CLI and editor operations, supported final formats and named-source
+bindings, see [Mapping pipelines](mapping-pipelines.md). A serial chain has
+2–65 stages. Repeated connections from one output port share one vertex. Each
+repeated target branch must have exactly one uncloned publication port; zero
+or several refuse before any design or schema sibling is published. A
+pass-through component preserves both its output instance and the next source
+preview path. An absent output instance is never inferred.
 
-Pipeline export writes one connected design for a validated serial XML
-pass-through chain of 2–65 stages. Each intermediate primary target becomes
-the next stage's pass-through source. The final primary target may be XML,
-delimited CSV, fixed-width text, configured FlexText, JSON, Protocol Buffers,
-XBRL without presentation metadata, or a new XLSX workbook. Connected named
-final targets may be XML, or one CSV or JSON document target beside an XML primary target. An original static XML
-host source may connect to named inputs in multiple stages, including the
-first and later intermediate stages, when its boundary and output ports still
-match. Connections from a
-reused output port share one vertex with multiple edges. Intermediate XML
-pass-through components retain their declared output instance and source
-preview instance, even when the two
-paths differ. An undeclared output instance is not inferred from an input
-preview or schema default. Repeated target branches connect the unique
-uncloned publication port; zero or multiple base ports reject before output
-artifacts are written. Preflight and native-profile checks run before any
-design or schema sibling is published.
-The earlier-result named source must match its producing intermediate's
-schema and options and share the immediate successor's source preview path.
-Independent intermediate targets, disconnected final targets, other connected later-stage
-named sources, and other non-XML intermediate boundaries reject
-explicitly. Other non-XML targets remain final-primary only; updating an
-existing workbook is outside this profile.
-Synthetic two- and four-stage export/re-import runs preserve stage results;
-terminal fan-out, repeated named-host connections, and CSV, fixed-width,
-FlexText, JSON, Protocol Buffers, bounded XBRL, or XLSX final targets preserve
-their connected outputs. CSV and
-fixed-width results pass local write/read checks; fixed-width text, FlexText,
-and JSON retain exact serialized bytes after re-import, Protocol Buffers retains
-exact encoded bytes and decoded messages, bounded XBRL retains exact instance
-XML bytes and parsed fact/context elements, and XLSX retains decoded worksheet cells.
-XML-primary chains with a named CSV or JSON target retain both exact serialized
-outputs through strict export, reimport, and CLI publication. Named JSON Lines
-remain outside this profile. FlexText
-export writes a new `.mft` beside the combined design
-and refers to that sibling by name; unsupported layouts reject before either
-artifact is published. Protocol Buffers export likewise writes a `.proto`
-sibling beside the design; intermediate or named binary boundaries and
-unresolved schemas reject before publication.
-XLSX stage-value checks match group fields by name while preserving worksheet
-and row order; workbook layout, rather than group field insertion order,
-determines cell coordinates. Local mappings to JSON, XLSX, fixed-width text,
-FlexText, and Protocol Buffers also run unchanged after an identity XML stage.
-A fixture-backed XML-to-XBRL mapping preserves its instance document after that
-stage; presentation metadata and numeric fact bindings are outside this chain
-profile. A local
-chained-report sample and a synthetic distinct-path case preserve both
-intermediate instance identities across export/reimport.
-All four local chains reimport after strict native export. The date/time chain
-lowers uniquely bound direct XML dateTime conversions to the document's native
-`cast-in-subtree` mode and restores `xs:dateTime` on precisely those generated
-XSD elements; local date-only, dateTime, null, and invalid-input checks retain
-the imported execution behavior. Calls shared with another graph consumer and
-target schemas with defaults or unsupported subtree shapes still reject before
-publishing artifacts. The internal schema does not retain general native cast
-provenance, so this lowering is limited to the proven direct-binding case.
-Acceptance by the proprietary application remains unverified.
+A uniquely bound direct XML date-time conversion can export as `cast-in-subtree`
+with `xs:dateTime` restored on the corresponding XSD leaves. A shared graph
+consumer, a target default or an unsupported subtree refuses before
+publication. See [target casting](conformance/xml-target-casting.md) for the
+observed external cases.
+
+### JSON string parsers and structural variables
 When an imported JSON boundary or JSON string parser fell back to its entry
 tree because its schema was unavailable, best-effort export records that
 unresolved reference beside the generated schema and re-import reports it
@@ -1318,6 +1185,8 @@ An X12 variable cannot introduce parser-error ports absent from its selected
 configuration; configured fields whose names begin with `ParserErrors_` remain
 ordinary data.
 
+### Joins and iterations
+
 Import also admits a computed join key: in a two-input join beside one
 repeating source collection, either input may be fed by a constant, a runtime
 input parameter, or a call chain of `uppercase`, `lowercase`, `concat` and
@@ -1446,6 +1315,8 @@ reused component or successive target rows, and even with `lang/sleep` delays
 between the reads. Several date/time uses therefore export without refusal.
 Target-type date/time coercion remains a separate extension dependency.
 
+### Scalar functions in native designs
+
 Exported designs select the built-in execution language, so each function call
 exports only as a function that language provides with the same inputs and
 meaning; otherwise export fails before writing anything and names the function:
@@ -1526,6 +1397,8 @@ checked against native runs. Arithmetic that feeds a rounding still uses binary
 floating point, so a computed input can differ from the native decimal result
 before it is rounded.
 
+### Export profiles and diagnostics
+
 The default `ferrule-extensions` profile preserves the existing Ferrule
 round-trip representation. Export now reports whether the rendered design has
 known native `.mfd` compatibility dependencies, Ferrule extension
@@ -1553,54 +1426,19 @@ expected to re-import and validate as ferrule projects.
 
 ## Current Boundaries
 
-The main remaining gaps are some XML derived-type input shapes beyond compatible
-`complexContent` and scalar-text/attribute-only `simpleContent` hierarchies,
-XSD 1.1 wildcard exclusions outside the native XSD subset (such as strict
-element wildcards), unordered wildcard compositors, unresolved strict wildcard
-declaration sets, heterogeneous or correlated numeric-range scalar unions and
-general heterogeneous arrays,
-overlapping cross-mode, and incompatible typed-wrapper JSON union composition,
-first-class sequence composition, general SQL and database mutation, broader
-XLSX/PDF/FlexText configuration shapes, taxonomy-level XBRL execution, and
-direct execution of unrecognized or external-service user components. Bounded
-cross-namespace substitution groups, heterogeneous scalar type arrays,
-pairwise-disjoint scalar `oneOf`, exact scalar `anyOf` unions, bounded exact
-multi-value scalar `enum` domains, and array `anyOf` branches whose scalar item
-domain subsumes every narrower branch are preserved, including required or
-optional typed and JSON-null discriminators.
-Flat nullable compositions may combine null with multiple compatible object,
-scalar-union, or subsumed-array branches.
-JSON components retain exact ordinary integer and finite-number ranges from
-their referenced schemas, including nullable numeric fields and compatible
-`allOf` intersections. Those constraints apply when imported mappings read
-source documents and write targets; malformed, empty, or precision-ambiguous
-ranges trigger the component's existing schema-fallback diagnostic instead of
-silently widening the mapping boundary.
-Positive finite JSON Schema `multipleOf` divisors likewise retain exact
-canonical decimal semantics through referenced schemas, compatible
-compositions, MFD import, and generated schema export. Native and generated
-Rust/C# boundaries enforce the divisor on input and normalized output.
-Correlated unions that vary both a numeric range and its paired divisor fall
-back with an actionable diagnostic rather than being widened.
-Referenced JSON arrays likewise retain exact `minItems`/`maxItems` intervals
-through references, nullable wrappers, and compatible compositions. Invalid or
-nonrepresentable item-count unions use the same actionable schema fallback;
-valid constraints remain executable after MFD import.
-Referenced array `uniqueItems: true` assertions also remain executable across
-MFD import and generated-schema export, with exact structural comparison on
-native and generated Rust/C# JSON boundaries.
-Referenced arrays also retain bounded `contains` assertions through MFD import,
-canonical schema export, and re-import. Plain assertions require at least one
-matching member; Draft 2019-09 and newer `minContains`/`maxContains` modifiers
-retain an exact match-count interval. Compatible `allOf` assertions remain
-conjunctive, nullable array null bypasses them, and predicate patterns use the
-same bounded document matcher budget as ordinary string constraints.
-Referenced JSON objects preserve their exact openness contract as well.
-Omitted or `true` `additionalProperties` remains an unconstrained dynamic
-property domain, schema-valued declarations remain typed, and explicit `false`
-rejects undeclared input properties instead of discarding them. MFD export
-writes a canonical JSON Schema sibling and re-import retains the same open,
-typed-open, or closed behavior.
+A recovered entry tree is enough to reopen and repair a design. It does not
+replace a missing schema or prove that a reader will accept the original
+input. Unsupported schemas, layout settings and connections retain their
+diagnostics; executable admission refuses them.
+
+| Boundary | What survives interchange |
+| --- | --- |
+| Referenced JSON Schema | Admitted [object, array, numeric and string constraints](formats.md#json-schema) remain executable on input and normalized output; export writes a canonical JSON Schema sibling. An unsupported dialect/shape, nonrepresentable union or unresolved schema triggers the component diagnostic rather than widening its domain. |
+| Positional JSON | Homogeneous tuples can normalize to one repeated field. MFD entries cannot address heterogeneous tuple-frame positions; import keeps the warning and entry tree, and a JSON string parser cannot embed a frame. See [tuple frames](design/json-tuple-arrays.md). |
+| XML declarations | Elements and attributes retain expanded names; foreign declarations export as an atomic graph of local XSD siblings. Compatible declarations with the same local name can share a port with exact namespace alternatives; incompatible shapes warn. |
+| Other components | Only the admitted SQL/SQLite, workbook, FlexText, PDF and XBRL layouts execute. General database mutation, taxonomy-level XBRL, arbitrary service components and general sequence composition are outside the profile. See [format boundaries](formats.md#important-boundaries). |
+
+### Open JSON target entries
 A JSON target entry may name a property that its open object admits without
 declaring it, such as `code` beside a declared `Code`. Import keeps the exact
 entry name and records an explicit undeclared member
@@ -1615,144 +1453,16 @@ the object's selectors or `propertyNames` is reported and skipped. When a
 required member's mapped value is absent, native and generated Rust/C# output
 refuse the object for the missing required property, exactly as for a declared
 property of the same name, rather than emitting the object without it.
-Referenced schemas also retain exact closed homogeneous `patternProperties`.
-The containing schema must explicitly type `object` or `object | null`, use
-`additionalProperties: false`, and assign every portable selector in a
-nonempty bounded map one identical exactly representable value schema. Scalar,
-structured object, and homogeneous array values reuse the ordinary supported
-JSON value profile. Selectors are ORed in declaration order. Any matching fixed
-property must have that schema; nonmatching fixed properties remain
-independent. Runtime decoding selects fixed properties first, then applies the
-selector set to remaining names, while `propertyNames` continues to constrain
-every key independently. Dependency rules whose triggers are neither fixed nor
-selected normalize away as semantically unreachable. Nullable null bypasses
-the object checks. Native and generated Rust/C# boundaries enforce the
-selectors on input, normalized output, and every JSON Lines row with the shared
-per-document pattern work budget. Canonical MFD schema export and re-import
-preserve the selector map and closed fallback. An empty map is a no-op.
-Referenced JSON objects also retain exact `minProperties`/`maxProperties`
-intervals through nullable wrappers, dialect-aware references, compatible
-`allOf`, and alternatives with one common effective interval. Imported
-mappings enforce each distinct parsed input-property set and normalized output
-object in native and generated Rust/C# boundaries; canonical MFD export and
-re-import retains the interval. Unsatisfiable required/closed-object bounds and
-correlated alternative intervals produce the existing actionable
-schema-fallback diagnostic rather than silently widening the contract.
-Referenced JSON objects retain executable property dependencies as well.
-Modern `dependentRequired` and legacy property-array `dependencies` normalize
-to the same bounded relation and export canonically as `dependentRequired`.
-Native and generated Rust/C# boundaries require every dependent name whenever
-its trigger is present, counting explicit JSON null as input presence and
-checking normalized output after absent fields are omitted. Nullable object
-null bypasses the rule, compatible `allOf` branches unite rules, and alternatives
-must share one identical effective relation. Schema-valued legacy dependencies
-and modern `dependentSchemas` are executable when their whole-object predicate
-fits Ferrule's retained JSON subset. Required-only predicates lower to the
-property-dependency relation; nontrivial predicates retain nested ordinary
-object/array constraints and export canonically as `dependentSchemas`.
-Repeated rules for a trigger remain conjunctive through export and re-import;
-ordered outer `allOf` branches preserve interleaved trigger declaration order.
-Nested dependent schemas retain the same recursively bounded behavior. Draft 7,
-2019-09, 2020-12, and undeclared explicitly typed object schemas may also
-express one of these rules as an `if` with exactly one required-property
-presence trigger and a supported `then` predicate. A nullable outer object is
-supported with an absent or `true` `else` only when the `if` explicitly proves
-`type: "object"`. Exact `else: false` requires a trigger that can be represented
-as an ordinary required field; it removes the nullable bypass when the false
-branch rejects null and retains any supported `then` dependency. It does not
-combine with existing object alternatives, and a closed object must already
-declare the trigger. Import normalizes these forms to `required` plus
-`dependentRequired` or `dependentSchemas` metadata as appropriate, which
-canonical MFD schema export preserves. Value-sensitive, multi-trigger,
-general-`if`, other nontrivial `else` schemas, distinct per-selector
-`patternProperties` schemas, open or typed pattern-property fallbacks, general
-selector-overlap intersection, value shapes outside the ordinary exact JSON
-profile, pattern-property objects under active `allOf`, alternatives, or
-structural `$ref` siblings, unevaluated property keywords, and heterogeneous
-positional array schemas still produce the existing actionable schema-fallback
-diagnostic rather than being widened or discarded. Declared Draft 4/6/7
-resources use legacy schema-valued `dependencies`; declared 2019-09/2020-12 use
-modern `dependentSchemas`. Schemas without `$schema` intentionally accept both
-spellings while retaining modern reference-sibling behavior, which preserves
-older MFD schema packages without weakening explicitly declared dialects.
-Referenced JSON arrays using homogeneous legacy tuple-form `items` also remain
-executable through MFD import. Draft 4, 6, 7, and 2019-09 resources, plus
-schemas without `$schema`, normalize 1 to 4,096 identical positional members
-to one repeated item shape. An identical `additionalItems` tail remains
-unbounded, while `false` closes the array at the tuple length. An absent or
-`true` tail is accepted for an arbitrary-JSON item shape or when an explicit
-maximum makes the tail unreachable; a different schema tail requires that
-same maximum proof. The derived maximum intersects explicit
-item-count bounds. MFD schema export writes ordinary schema-valued `items` and
-an optional `maxItems`, so export/re-import and generated Rust/C# use the existing
-homogeneous-array path. Draft 2020-12 array-valued `items`, contradictory
-counts, and reachable heterogeneous members or tails produce the actionable
-schema-fallback diagnostic instead of being reinterpreted as `prefixItems`.
-MFD import refuses any referenced JSON Schema that imports with a
-[JSON tuple frame](design/json-tuple-arrays.md), so heterogeneous positional
-arrays keep that diagnostic and the entry tree until MFD entries can address
-tuple positions. The schema descriptors embedded in JSON string parser calls
-never carry tuple frames.
-Referenced JSON objects retain supported `propertyNames` schemas as well.
-Exact false, finite `const`/`enum` names and their finite `not` complements,
-Unicode-scalar length intervals, bounded portable pattern
-conjunctions/disjunctions and their exact complements, and nonasserting
-`format` annotations remain executable across import, canonical schema export,
-and re-import. Native and generated Rust/C# boundaries check every raw parsed
-input key and normalized emitted key, including runtime-named and empty-string
-properties. Unconstrained forms normalize away; correlated predicates and
-complements involving length, format, or mixed assertions produce the existing
-actionable schema-fallback diagnostic. Each
-referenced schema resource retains its dialect: Draft 4 ignores
-`propertyNames`, while Draft 6 and newer resources apply it.
-Referenced string-capable JSON fields retain exact `minLength`/`maxLength`
-intervals measured in Unicode scalar values, including nullable fields, array
-items, typed dynamic properties, and compatible compositions. The constraints
-remain executable on imported source and target boundaries and round-trip
-alongside opaque `format` annotations. Referenced `pattern` assertions use
-Ferrule's bounded Unicode-scalar pattern language, survive dialect-aware
-references, conjunctive `allOf`, exact disjunctive `anyOf`, and disjoint scalar
-`oneOf`, and export canonically. Null bypasses string assertions in nullable
-domains; native and generated Rust/C# boundaries apply them identically to
-input and normalized output. Nonportable regex constructs reject during schema
-import and trigger the component's existing actionable schema-fallback
-diagnostic rather than changing meaning between runtimes.
-Expanded-name identity for ordinary elements and attributes is preserved;
-foreign declarations export as an atomic graph of local XSD siblings.
-Compatible strict-wildcard declarations that share one local name across
-namespaces use one mapping port with exact expanded-name alternatives. Selected
-QName ports narrow that ambiguity before target construction; incompatible
-same-local shapes remain actionable warnings.
-Namespace-constrained optional/unbounded element wildcards with
-`processContents="skip"` round-trip as recursive generic element groups, while
-closed strict wildcards become exact singular or repeating typed choices. Lax
-element wildcards in sequences and repeating choices expose resolved global
-declarations as typed fields and route only undeclared matching names to the
-generic fallback. Direct or named-attribute-group wildcards preserve namespace
-constraints and processing mode; known declarations remain typed, lax unknowns
-remain generic, and strict unknowns reject at the XML boundary.
-XSD 1.1 `notNamespace` and `notQName` exclusions in an XML component's schema
-import with the component, so its runs refuse excluded names at the XML
-boundary. Export writes them into the generated XSD siblings of XML document
-components as explicit names, and re-import restores the same schema. A
-`<selections>` QName that the wildcard's namespace constraint or excluded names
-reject is refused with a warning and adds no typed port, since a selected port
-would admit an element the schema forbids. Export refuses exclusions anywhere
-else before writing anything: on non-XML or WSDL boundaries, in XML serializer
-schemas, in request contracts, and on nodes that are not valid wildcard groups.
+### XML wildcard selections
 
-The exact supported surface evolves quickly. The
-[workflow-parity roadmap](../ROADMAP.md) records the strategic gaps, while the
-`mfd` test suite contains self-authored regression designs for executable
-behavior.
-
-## Independence
-
-ferrule is an independent project and is not affiliated with or endorsed by
-the developer of the reference application.
-
-
-### Global failure priority and strict native export
+The [wildcard contract](design/xml-wildcard-exclusions.md) defines namespace
+constraints, `skip`, `lax`, `strict`, and the placements of XSD 1.1 exclusions.
+A `<selections>` QName rejected by its wildcard's namespace or exclusion list
+produces a warning and no typed port. Only XML document components export
+exclusions into XSD siblings as explicit names. Exclusions on non-XML or WSDL
+boundaries, serializer schemas, request contracts or invalid wildcard nodes
+refuse before publication.
+## Global failure priority and strict native export
 
 Failure rules scan their complete collections in declaration order before any
 target is evaluated. A native exception attached to a filtered item branch does
@@ -1786,7 +1496,6 @@ typed values. The default extension profile continues to preserve global rules
 for local round-trips, including refused strict-native cases. Existing exported
 global rules have no item-order marker. Item-ordered import requires the explicit
 opt-in described below and does not reinterpret legacy global rules.
-
 
 Native exception import has an explicit item-order option:
 `ImportOptions::with_item_ordered_exceptions()`. The CLI exposes it as
@@ -1852,7 +1561,6 @@ in the already admitted tree without other iterations or private frames.
 Unsupported projections produce an opt-in warning before a guard is published;
 strict executable import refuses it without using a global failure-rule fallback.
 
-
 The item-order opt-in also accepts one transparent typed XML scope-sequence
 variable for one immediate repeated primary collection. Its complete schema
 must equal that collection's schema; it has no instance-file boundaries or
@@ -1871,3 +1579,45 @@ produce opt-in diagnostics. Strict executable import refuses those designs
 without a global-rule fallback; default import retains its legacy pre-target
 rules. This is a bounded local import route, not a promise of identical native
 serialization, file publication or arbitrary host-input behavior.
+
+## Read-only parity surveys
+
+The import/export, execution, and export/re-import execution surveys accept the
+same host-selected package manifest and ordered catalog roots as `import-mfd`.
+Set `FERRULE_MFD_SURVEY_PACKAGE_MANIFEST` to the manifest file. Set
+`FERRULE_MFD_SURVEY_EDI_CATALOG_ROOTS` and
+`FERRULE_MFD_SURVEY_JSON_SCHEMA_CATALOG_ROOTS` to platform path lists; roots
+retain their declared order after canonical deduplication. When no manifest is
+selected, the `ReferenceSamples` directory remains the package root.
+
+The surveys, and every other test that reads the gitignored
+`samples/ReferenceSamples` corpus, are ignored by ordinary test runs. An
+explicit run fails with a "private compatibility corpus not present at <path>"
+error when the corpus is missing; it never reports a pass without it. The
+reference-output survey likewise fails when the local reference application is
+missing.
+
+For example, on Unix:
+
+```sh
+FERRULE_MFD_SURVEY_PACKAGE_MANIFEST=/path/package/ferrule-package.json \
+FERRULE_MFD_SURVEY_EDI_CATALOG_ROOTS=/path/edi/current:/path/edi/archive \
+FERRULE_MFD_SURVEY_JSON_SCHEMA_CATALOG_ROOTS=/path/json/current:/path/json/archive \
+cargo test -p mfd --test samples_survey -- --ignored --nocapture
+```
+
+The same variables apply to `samples_execution_survey`, including its
+`survey_sample_execution` and `survey_export_reimport_execution` entry points,
+and to `codegen_samples_survey`. Execution reports explicitly use
+`execution_purpose: design_preview` (schema version 3); export/re-import
+execution reports use the same purpose (schema version 2). Unsupported preview
+contracts withhold reference and semantic-match claims even when a partially
+imported graph can execute. Other version-1 reports add an optional
+`resource_configuration` member. It records
+selection mode, effective catalog counts, and search precedence without
+disclosing package, manifest, or catalog host paths.
+
+## Independence
+
+ferrule is an independent project and is not affiliated with or endorsed by
+the developer of the reference application.

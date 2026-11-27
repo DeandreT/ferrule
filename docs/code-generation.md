@@ -1,18 +1,26 @@
 # Rust and C# Code Generation
 
-ferrule can lower the portable subset of a validated project into a buildable
-mapping library. Both backends use the same backend-neutral program, so supported
-projects retain matching evaluation order, Null behavior, output shape, and
-typed failures.
+Generate a standalone Rust crate or package-free .NET 10 library from a
+validated mapping. From the repository root, try the
+[example mapping](../examples/codegen/project.json); choose a new output directory:
 
-Standard Boolean `and` and `or` calls accept two or more strict Bool operands
-and evaluate every argument in declaration order. See
-[Variadic Boolean calls](design/variadic-boolean-calls.md) for type and error
-ordering, including the strict Null boundary.
+```sh
+cargo run -p cli -- generate --project examples/codegen/project.json --language csharp --out generated-csharp
+cargo run -p cli -- generate --project examples/codegen/project.json --language rust --rust-runtime-path crates/codegen-runtime --out generated-rust
+```
 
-Generation rejects unsupported reachable constructs with capability diagnostics
-before creating the destination. Unreachable graph nodes do not prevent an
-otherwise portable project from being generated.
+The [paired hosts](../examples/codegen/README.md) show how to build the libraries
+and compare their results with the expected JSON. Both backends lower the same
+reachable program. An unsupported reachable construct refuses generation before
+publication; a successful typed mapping does not guarantee every document adapter.
+
+| What will the host pass? | Where to start |
+| --- | --- |
+| Typed instances; optional execution context, parameters or named inputs | [C#](#c) or [Rust](#rust); [library identities and manifests](#library-identities-and-compatibility-manifests) |
+| Strict JSON or XML text/bytes | [JSON](#json-host-boundary) or [XML](#xml-host-boundary); distinguish selecting one target from returning the primary of a complete run |
+| Flat files, EDI or a filename-driven document | [CSV](#flat-csv-output), [X12](#explicit-c-x12-companions), [JSON5](#explicit-json5-companions), [workbooks](generated-flat-xlsx.md) or [filename plans](design/primary-document-filenames.md) |
+| A mapping with explicit source/frame ownership | [Basic presets and their exact capabilities](#owned-generation-capabilities-and-presets) |
+| The portable operations and their limits | [Portable subset](#portable-subset) |
 
 ## Generate a Library in the Native Editor
 
@@ -26,20 +34,13 @@ Select **Include CSV output** to add CSV methods for a flat row table using the
 mapping’s output settings. The choice is saved with the generation request; it
 does not change the mapping itself.
 
-Select **Save and generate** to save the mapping before generation. An untitled
-mapping opens Save As. Relative library and Rust runtime paths resolve from the
-folder where the mapping is actually saved. Canceling Save As or a failed save
-prevents generation from starting; the settings remain available to correct or
-retry.
+**Save and generate** saves first. For an untitled mapping, the folder finally
+chosen in Save As determines relative library and runtime paths. A failed or
+canceled save leaves generation unstarted. During generation the editor locks
+project actions and defers close until the background writer finishes. Build
+the published source with the [project toolchain](toolchains.md).
 
-Generation runs in the background through the same public writer used by the
-CLI. It publishes the complete source tree into a new folder and does not
-replace an existing destination. Mapping or generation failures appear in the
-settings window and diagnostics, including their full error details. Build the
-generated source with the Rust or .NET toolchain to obtain a compiled library.
-
-While generation runs, project actions are locked. A request to close the editor
-waits for generation to finish, then follows the editor's usual close guards.
+<a id="output-safety"></a>
 
 ## Output Filesystem
 
@@ -50,14 +51,10 @@ empty folders. The destination filesystem and the CLI's operating-system
 runtime must support that operation. On Linux, this requires the filesystem's
 [`RENAME_NOREPLACE` support](https://man7.org/linux/man-pages/man2/rename.2.html).
 
-The writer retains the original OS cause and attempts to remove its staging
-tree on failure. An unavailable-operation diagnostic suggests choosing a supporting
-filesystem or a CLI built for the destination's native operating system.
-For a Linux CLI running under WSL, choose a new folder on the WSL Linux
-filesystem, such as `/tmp/generated-csharp` or a folder under the Linux home
-directory. To generate directly onto a Windows filesystem, use a Windows build
-of the CLI. The same publication requirement applies to ordinary generation
-and explicitly selected companions.
+On failure the writer retains the OS cause and attempts to remove its own staging
+tree. Use a destination filesystem with no-replace rename support. For example,
+use the Linux filesystem with a WSL CLI, or a native Windows CLI for a Windows
+destination. The same requirement applies to optional companions.
 
 ## Owned generation capabilities and presets
 
@@ -325,801 +322,55 @@ failure profiles remain closed. Observer APIs are outside this generated profile
 For native Basic `TraceSink`/`DebugHook` observers, see
 [Execution Tracing](tracing.md#basic-owned-source-observers).
 
-## Explicit owned group-by
-
-Select this profile with `codegen::lower_with_basic_owned_group_by`, then
-`codegen_rust::emit_with_basic_owned_group_by(&program, &options)` or
-`codegen_csharp::emit_with_basic_owned_group_by(&program)`. Direct Program hosts
-use `validate_basic_owned_group_by_emission`; named-input admission uses
-`legacy_named_input_admission_plan_with_basic_owned_group_by`. The profile
-combines static By grouping and member-retention predicates with the qualified
-filter, sort, window and primary-row-failure controls. Generated libraries expose
-the two typed explicit-policy Basic execution methods described above.
-
-Each group retains its exact source owner and absolute endpoint-local collection
-identity. Group bindings read the first surviving ordered member. Nested
-iteration over that collection enumerates all its members with independent
-one-based member positions; it does not return the group as an identity row.
-The final groups have compact one-based group ordinals. Other owners and outer
-frames remain available under their own identities, even when collection names
-and key values collide. An explicit empty root pin at a grouped root selects the
-immutable registered root; a repeated registered root cannot be read as a
-representative. A nested ordinary repeated-root member instead retains its
-existing active-frame pin behavior. A nonrepeating owned root groups as one
-member in one group.
-
-Grouping uses exact tagged value equality and first-seen bucket order. For
-example, integer `1` and floating-point `1.0` are different keys; signed floating
-zeros compare equal, and each NaN creates a distinct bucket. Members preserve
-their filtered/sorted order. A post-group predicate evaluates once for every
-reached member: any true result retains the whole group, including members whose
-predicate was false. It neither filters individual members nor changes the
-representative to the first true member.
-
-Filter-then-sort evaluates every source predicate before sort keys. Otherwise,
-grouping evaluates each surviving candidate's filter, key and post predicate
-before advancing to the next candidate. Sort keys use structural positions;
-group keys and post predicates use the selected candidate's position. Explicit
-window bounds evaluate once in the receiving parent after sorting and before
-group keys. Windows, including implicit First, select retained groups afterward.
-Consequently `First(0)` cannot suppress a group-key error, and an empty source
-still evaluates its parent bounds. Global failure rules finish before target
-grouping begins.
-
-The paired runtime authenticates the complete original cohort and terminal
-observations before semantic callbacks. One checked operation budget accounts
-for fixed-capacity order, key, bucket, member-link and window storage, prefix
-templates, sorted views and output metadata. Templates preserve the first
-member's intermediate source prefix; grouped payloads and context identities
-cannot be reused as provenance for another group. Known metadata is admitted
-before operation-owned allocation. String keys are admitted immediately after
-their scalar callback returns and before comparison or retention. These are
-metadata bounds, not limits on source/output payload allocation or process RAM.
-Rust and C# have representation-specific slot ceilings under the same five-field
-policy and admission ordering. The [paired runtime design](design/owned-group-by.md)
-defines the terminal witnesses, storage layout and checked slot envelope.
-
-The group-by profile has its own capability gate. Other owned grouping modes,
-specialized consumers and grouped observer snapshots retain typed refusals.
-Ordinary static legacy grouping subtrees without owned demand or owned ancestry
-keep their ordinary dispatch. A paired By scope establishes grouped ancestry
-even when its only owned read is in the key or post predicate. Existing generation
-profiles retain their gates and saved Projects require no new wire fields.
-
-## Explicit owned sequence ItemAt
-
-Use `codegen::lower_with_basic_owned_sequence_item_at`, followed by
-`codegen_rust::emit_with_basic_owned_sequence_item_at(&program, &options)` or
-`codegen_csharp::emit_with_basic_owned_sequence_item_at(&program)`. Direct Program
-validation and named-input admission use the corresponding
-`validate_program_with_basic_owned_sequence_item_at`,
-`validate_basic_owned_sequence_item_at_emission`, and
-`legacy_named_input_admission_plan_with_basic_owned_sequence_item_at` APIs.
-
-This profile composes the By/filter/sort/window and primary-row-failure controls
-with `SequenceItemAt` over Generate, Tokenize, TokenizeByLength and TokenizeRegex.
-Owned scalar reads are allowed in both the producer's parent arguments and its
-index, including nested eligible ItemAt expressions. The generated libraries use
-the two typed Basic execution entries and the mandatory five-field policy.
-
-The producer materializes its complete scalar sequence before evaluating the
-index exactly once, including when production returns an empty sequence. Both
-phases use the receiving source context: exact owners, parent pins, grouped
-representatives and member positions remain available. A producer exception
-prevents index evaluation. A node shared by a producer argument and the index is
-evaluated separately at each semantic edge.
-
-Selection is one-based. Integer indexes are used directly; Float indexes round
-ties away from zero, and trimmed integer strings are parsed. Other index kinds,
-NaN and out-of-range positions produce Null. The selected scalar retains its
-type before ordinary target adaptation. Producer null suppression and existing
-pure-sequence limits apply independently of the owned metadata policy.
-
-This permission is scoped to the four scalar producers and their parent-context
-consumer. RecursiveCollect, FilterMap, other sequence consumers, generated-source
-iteration and inherited specialized contexts have separate capability gates.
-The permission does not apply to owned failure predicates or messages. Existing
-generation and JSON-adapter profiles keep their own admission rules; native
-export, GUI authoring and observer eligibility are independently gated.
-See [the ownership contract](design/owned-sequence-item-at.md) and
-[the genuine-Project corpus](../conformance/basic-owned-sequence-item-at/README.md).
-
-## Explicit owned sequence Exists
-
-Use `codegen::lower_with_basic_owned_sequence_exists`, followed by
-`codegen_rust::emit_with_basic_owned_sequence_exists(&program, &options)` or
-`codegen_csharp::emit_with_basic_owned_sequence_exists(&program)`. Direct Program
-validation and named-input admission use
-`validate_program_with_basic_owned_sequence_exists`,
-`validate_basic_owned_sequence_exists_emission` and
-`legacy_named_input_admission_plan_with_basic_owned_sequence_exists`.
-
-This profile admits `SequenceExists` over Generate, Tokenize, TokenizeByLength
-and TokenizeRegex beside the ItemAt permission and the By, AdjacentBy, StartingWith
-and EndingWith controls with their filter, sort, window and primary-row-failure
-permissions. Owned scalar reads are allowed in the producer arguments and the
-predicate, including nested eligible Exists and ItemAt consumers. The generated
-libraries use the two typed Basic execution entries and the mandatory
-five-field policy.
-
-Producer arguments evaluate once in the receiving context and materialize the
-complete sequence. Items are then visited in order; the first true predicate
-returns true and later items are not evaluated, so their predicate errors are
-not raised. An empty or null-suppressed sequence returns false without
-evaluating the predicate. A producer exception prevents every predicate, and a
-non-Boolean predicate fails with a typed error naming the predicate node.
-
-Each predicate evaluation appends the private item to the receiving context as
-an empty-path collection frame. The item declaration, empty-path ordinary reads
-and empty legacy positions see that item. Owned reads ignore it: exact owners,
-root and collection pins, grouped representatives and member positions keep
-their receiving meaning, and an unavailable selected owner fails only when a
-reached predicate reads it. The generated Rust and C# contexts copy the paired
-view for each reached item and admit that copy against the caller's policy.
-
-Legacy and owned RecursiveCollect, FilterMap, closed operators inside the predicate, owned
-failure predicates and generated-sequence scopes keep their refusals. Existing
-generation profiles, including ItemAt and EndingWith, continue to reject
-`SequenceExists` in owned contexts. See [the ownership contract](design/owned-sequence-exists.md)
-and [the genuine-Project corpus](../conformance/basic-owned-sequence-exists/README.md).
-
-## Explicit owned sequence aggregate
-
-Use `codegen::lower_with_basic_owned_sequence_aggregate`, followed by
-`codegen_rust::emit_with_basic_owned_sequence_aggregate(&program, &options)` or
-`codegen_csharp::emit_with_basic_owned_sequence_aggregate(&program)`. Direct
-Program validation and named-input admission use
-`validate_program_with_basic_owned_sequence_aggregate`,
-`validate_basic_owned_sequence_aggregate_emission` and
-`legacy_named_input_admission_plan_with_basic_owned_sequence_aggregate`.
-
-This profile admits `SequenceAggregate` over Generate, Tokenize, TokenizeByLength
-and TokenizeRegex beside everything the SequenceExists profile admits: the Exists
-and ItemAt consumers and the By, AdjacentBy, StartingWith and EndingWith controls
-with their filter, sort, window and primary-row-failure permissions. Owned
-scalar reads are allowed in the producer arguments, predicate, value expression
-and argument, including nested eligible aggregate, Exists and ItemAt consumers.
-The generated libraries use the two typed Basic execution entries and the
-mandatory five-field policy.
-
-Producer arguments evaluate once in the receiving context and materialize the
-complete sequence. Items are then visited in order: the predicate, then the
-value expression of a selected item; rejected items never evaluate the
-expression. The argument evaluates once afterwards in the receiving context,
-including for an empty or null-suppressed sequence. A producer exception
-prevents every later phase, an item-phase exception prevents later items and the
-argument, and a non-Boolean predicate fails with a typed error naming the
-predicate node. Count, sum, avg, min, max, join and item_at keep their ordinary
-empty results, numeric parsing, integer/float tags and typed overflow and
-non-finite failures.
-
-Each item phase appends the private item to the receiving context as an
-empty-path collection frame. The item declaration, empty-path ordinary reads and
-empty legacy positions see that item, with raw positions that do not compact
-after rejected items. Owned reads ignore it: exact owners, root and collection
-pins, grouped representatives and member positions keep their receiving
-meaning, and an unavailable selected owner fails only when a reached phase reads
-it. The generated Rust and C# contexts copy the paired view for each item and
-admit that copy against the caller's policy.
-
-Legacy and owned RecursiveCollect, FilterMap, collection and joined aggregates,
-closed operators in any phase, owned failure predicates and generated-sequence
-scopes keep their refusals. Every other generation profile, including
-SequenceExists, RecursiveFilter, owned Lookup/CollectionFind and owned dynamic
-source fields, continues to reject `SequenceAggregate` in owned contexts. See
-[the ownership contract](design/owned-sequence-aggregate.md) and
-[the genuine-Project corpus](../conformance/basic-owned-sequence-aggregate/README.md).
-
-## Explicit owned adjacent grouping
-
-Use `codegen::lower_with_basic_owned_group_adjacent_by`, then
-`codegen_rust::emit_with_basic_owned_group_adjacent_by(&program, &options)` or
-`codegen_csharp::emit_with_basic_owned_group_adjacent_by(&program)`. This explicit
-profile adds contiguous exact-key runs to the By/filter/sort/window controls and
-composes the parent-context ItemAt permission. Existing execution entry names
-and the mandatory five-field Basic policy remain the same.
-
-`A,B,A` forms three runs. A member-retention predicate retains the whole run when
-any member matches; dropping an intervening run does not merge its neighbors.
-Group bindings use the first surviving representative, while nested members
-have independent positions. Parent window bounds evaluate before keys, and the
-windows select retained groups afterward, so `First(0)` does not hide key errors.
-
-Direct Program validation and named-input discovery use the corresponding
-`_with_basic_owned_group_adjacent_by` companions. Earlier generation profiles
-keep their gates. The [adjacent grouping contract](design/owned-group-adjacent-by.md)
-defines exact-owner root pins, phase ordering, storage bounds and closed contexts.
-
-## Explicit owned starting-boundary grouping
-
-Use `codegen::lower_with_basic_owned_group_starting_with`, then
-`codegen_rust::emit_with_basic_owned_group_starting_with(&program, &options)` or
-`codegen_csharp::emit_with_basic_owned_group_starting_with(&program)`. The matching
-validation and named-input companions select the same explicit profile. Existing
-execution entry names, five-field policy and earlier profile gates remain intact.
-
-The first selected candidate creates a group even with a false boundary. Each
-later true boundary starts a new group at that candidate. Boundary evaluation
-precedes member retention; both use candidate positions. Windows evaluate their
-bounds in the parent before boundaries and select retained groups afterward.
-Only selected groups evaluate bindings and children.
-
-The runtimes use Boolean start controls with the unchanged grouping metadata
-shape. A start boundary consumes no grouping-key text credits. The
-[Starting contract](design/owned-group-starting-with.md) defines the full callback,
-authenticated-member, resource and qualification requirements.
-
-## Explicit owned ending-boundary grouping
-
-Use `codegen::lower_with_basic_owned_group_ending_with`, then
-`codegen_rust::emit_with_basic_owned_group_ending_with(&program, &options)` or
-`codegen_csharp::emit_with_basic_owned_group_ending_with(&program)`. The matching
-validation and named-input companions select the same explicit profile, which
-also admits By, AdjacentBy and StartingWith. Existing execution entry names,
-five-field policy and earlier profile gates, including Starting's, remain intact.
-
-A true boundary closes the current group at that candidate; candidates after
-the last true boundary form a trailing group, and an empty cohort forms none.
-Every selected candidate's boundary is evaluated, including the last. Boundary
-evaluation precedes member retention; both use candidate positions. Windows
-evaluate their bounds in the parent before boundaries and select retained groups
-afterward. Only selected groups evaluate bindings and children.
-
-The runtimes use Boolean end controls with the unchanged grouping metadata
-shape. An end boundary consumes no grouping-key text credits. The
-[Ending contract](design/owned-group-ending-with.md) defines the full callback,
-authenticated-member, resource and qualification requirements.
-
-## Explicit owned fixed-block grouping
-
-Use `codegen::lower_with_basic_owned_group_into_blocks`, then
-`codegen_rust::emit_with_basic_owned_group_into_blocks(&program, &options)` or
-`codegen_csharp::emit_with_basic_owned_group_into_blocks(&program)`. The
-matching validation and named-input companions select the same explicit
-profile, which also admits By, AdjacentBy, StartingWith and EndingWith.
-Existing execution entry names, five-field policy and earlier profile gates,
-including Ending's, remain intact.
-
-The block size is a parent expression evaluated once after the window bounds and
-before candidate controls, even for an empty cohort. It converts like an item
-count; zero after clamping is a typed `InvalidBlockSize` and a non-count is a
-typed `NotAnItemCount`. Selected candidates fill blocks in order and the last
-block may be partial. Retention runs per candidate and keeps whole blocks;
-windows select retained blocks afterward. Only selected blocks evaluate
-bindings and children.
-
-The runtimes use a parent block-size control with the unchanged grouping
-metadata shape and charge no grouping-key text. The
-[IntoBlocks contract](design/owned-group-into-blocks.md) defines the full
-callback, authenticated-member, resource and qualification requirements.
-
-## Explicit owned failure-rule iteration
-
-Use `codegen::lower_with_basic_owned_failure_sources`, then
-`codegen_rust::emit_with_basic_owned_failure_sources(&program, &options)` or
-`codegen_csharp::emit_with_basic_owned_failure_sources(&program)`. Direct Program
-hosts use `validate_program_with_basic_owned_failure_sources` and
-`validate_basic_owned_failure_source_emission`; named-input discovery uses
-`legacy_named_input_admission_plan_with_basic_owned_failure_sources`.
-
-The profile composes the EndingWith target controls, scalar-producer ItemAt and
-primary-row failures with failure rules whose iteration is `owned_source`. Such
-a rule walks rows from exactly its declared Primary or named endpoint; rules,
-selection modes, first-failure and lazy-message semantics are unchanged, and
-another endpoint never supplies rows when the selected collection is absent. An
-unsupplied owner fails with the typed owned-source error. Predicates and
-messages keep a closed scalar subset that adds exact owned reads, positions and
-pins for every static endpoint. Owned walks keep their endpoint optional in the
-named-input catalogue.
-
-Generated libraries use the existing typed Basic execution entries and
-mandatory five-field policy. Earlier profiles and the ordinary emitters keep
-refusing owned walks. The [owned failure contract](design/owned-failure-sources.md)
-defines the wire form, row and absence rules, and qualification.
-
-## Explicit owned path hierarchy
-
-`ScopeConstruction::OwnedPathHierarchy` builds the bounded directory tree of the
-legacy path-hierarchy construction from one explicitly owned input collection.
-Use `codegen::lower_with_basic_owned_path_hierarchy`, then
-`codegen_rust::emit_with_basic_owned_path_hierarchy(&program, &options)` or
-`codegen_csharp::emit_with_basic_owned_path_hierarchy(&program)`. The matching
-`validate_program_with_basic_owned_path_hierarchy`,
-`validate_basic_owned_path_hierarchy_emission` and
-`legacy_named_input_admission_plan_with_basic_owned_path_hierarchy` APIs select
-the same profile. It composes the EndingWith controls, scalar-producer ItemAt,
-primary-row failures and owned failure-rule walks; the execution entries and
-five-field Basic policy are unchanged.
-
-Only the collection carries an owner. The directory, file and name fields
-describe the generated recursive target and never select a source. The
-collection is read from its exact endpoint: an active same-owner frame pins its
-prefix, otherwise the endpoint root is used. Other endpoints, legacy aliases and
-outward fallback never supply items. A supplied endpoint whose collection is
-empty or missing produces the ordinary zero-root error; an unsupplied optional
-named endpoint reports the typed unavailable-source error when reached.
-
-Item order, separator rules, null and top-level-file omission, single-root
-validation, depth and materialization bounds, and the value-type error are
-shared with the legacy builders. The scope cannot contain bindings, children,
-controls or iteration, and the collection must be a repeating scalar in its
-owner's schema. Validation reports unknown, empty and unresolved owners as owned
-structure errors. The default validator and every earlier profile refuse the
-construction as a tree operator, and closed contexts (generated items, dynamic
-owners and other specialized scopes) keep their typed refusals. The legacy
-`PathHierarchy` plan, its wire form and its errors are unchanged; it continues
-to use the ordinary emitters. See [the ownership design](design/source-ownership.md#owned-path-hierarchy-input-collections)
-and [the corpus](../conformance/basic-owned-path-hierarchy/README.md).
-
-## Explicit owned adjacency tree
-
-`ScopeConstruction::OwnedAdjacencyTree` builds the bounded recursive group of
-the legacy adjacency-tree construction from one explicitly owned row
-collection. Use `codegen::lower_with_basic_owned_adjacency_tree`, then
-`codegen_rust::emit_with_basic_owned_adjacency_tree(&program, &options)` or
-`codegen_csharp::emit_with_basic_owned_adjacency_tree(&program)`. The matching
-`validate_program_with_basic_owned_adjacency_tree`,
-`validate_basic_owned_adjacency_tree_emission` and
-`legacy_named_input_admission_plan_with_basic_owned_adjacency_tree` APIs select
-the same profile. It composes the owned path-hierarchy profile (EndingWith
-controls, scalar-producer ItemAt, primary-row failures, owned failure-rule walks
-and owned path hierarchies); the execution entries and five-field Basic policy
-are unchanged.
-
-Only the collection carries an owner. Rows are read from the exact endpoint: an
-active same-owner frame pins its prefix, otherwise the endpoint root is used,
-including an endpoint whose root is the row collection. Other endpoints, legacy
-aliases and outward fallback never supply rows, so equal keys in another
-endpoint neither merge nor parent the selected rows. The key and parent paths
-are relative to each selected row, and the target key and children names only
-describe the output. The optional root expression is evaluated once in the
-receiving context, after the rows are read, and may read any static endpoint.
-A supplied endpoint whose collection is empty or absent selects no root row; an
-unsupplied endpoint, for the rows or the root, reports the typed
-unavailable-source error when reached.
-
-Source-order children, unreachable-row omission, and the duplicate-key, row
-field, root value, root count, cycle and depth errors are shared with the legacy
-builders. The scope cannot contain bindings, children, controls or iteration;
-the collection must be a repeating group in its owner's schema whose key and
-parent are non-repeating strings. Validation reports unknown, empty and
-unresolved owners as owned structure errors, and the root expression keeps the
-Basic scalar subset. The default validator and every earlier profile refuse the
-construction as a tree operator, and closed contexts (generated items, dynamic
-owners and other specialized scopes) keep their typed refusals. The legacy
-`AdjacencyTree` plan, its wire form and its errors are unchanged; it continues
-to use the ordinary emitters. See [the ownership design](design/source-ownership.md#owned-adjacency-tree-row-collections)
-and [the corpus](../conformance/basic-owned-adjacency-tree/README.md).
-
-## Explicit owned recursive collection
-
-Use `codegen::lower_with_basic_owned_recursive_collect`, then
-`codegen_rust::emit_with_basic_owned_recursive_collect(&program, &options)` or
-`codegen_csharp::emit_with_basic_owned_recursive_collect(&program)`. Direct
-Program hosts use `validate_program_with_basic_owned_recursive_collect` and
-`validate_basic_owned_recursive_collect_emission`; named-input discovery uses
-`legacy_named_input_admission_plan_with_basic_owned_recursive_collect`.
-
-The profile composes the owned adjacency-tree profile (EndingWith controls,
-scalar-producer ItemAt, primary-row failures, owned failure-rule walks, owned
-path hierarchies and owned adjacency trees) with SequenceItemAt over an
-`owned_recursive_collect` producer. The producer's root collection belongs to
-exactly one Primary or named endpoint; child, descent and value paths stay
-relative to each selected group. Prefix, separator and index keep the receiving
-parent context and may read exact owned fields. A same-owner active frame pins
-the root collection's prefix, otherwise the walk starts at the endpoint root;
-another endpoint never supplies roots, and an unsupplied owner fails with the
-typed owned-source error at the consuming ItemAt node. Owned roots keep their
-endpoint optional in the named-input catalogue.
-
-Only ItemAt consumes the owned producer, including in an owned adjacency tree's
-parent-context root expression. Generated scope iteration,
-generated-sequence failure rules, SequenceExists, SequenceAggregate, closed
-parent contexts and function bodies keep refusing it, as do every earlier
-profile (including the adjacency-tree and fixed-block companions) and the
-ordinary emitters. The legacy `recursive_collect` form keeps its
-wire, admission and emission. The
-[owned recursive collection contract](design/owned-recursive-collect.md)
-defines the wire form, phases, limits and qualification.
-
-## Explicit owned recursive filter
-
-Use `codegen::lower_with_basic_owned_recursive_filter`, then
-`codegen_rust::emit_with_basic_owned_recursive_filter(&program, &options)` or
-`codegen_csharp::emit_with_basic_owned_recursive_filter(&program)`. Direct
-Program hosts use `validate_program_with_basic_owned_recursive_filter` and
-`validate_basic_owned_recursive_filter_emission`; named-input discovery uses
-`legacy_named_input_admission_plan_with_basic_owned_recursive_filter`.
-
-The profile composes the owned recursive-collect profile with recursive-filter
-scopes whose source is an owned selector and whose output is repeated. The
-selector is the filter's only owner: generated Rust calls
-`codegen_runtime::owned_recursive_filter` and generated C# calls
-`FerruleRecursiveFilter.ApplyOwned` with that exact owner and collection. Each
-item's predicate runs in a paired Basic context whose owned frames give every
-group the owner's collection identity and every item that collection plus the
-item field, so owned reads and positions resolve the current item and innermost
-group without falling back; legacy reads keep the legacy filter's stacked
-frames. Traversal order, the 256-group depth limit, copied fields, the rebuilt
-ordered XML stream and typed errors match the legacy filter. Each level also
-adds one legacy frame to the paired view, bounded by the host's legacy-frame
-limit. The owner stays optional in the named-input catalogue.
-
-Legacy recursive filters, scope controls, First and mapped-sequence output,
-generated or dynamic parents and closed predicate operators keep their typed
-refusals, as do every earlier profile (including the recursive-collect,
-adjacency-tree, fixed-block and SequenceExists companions) and the ordinary
-emitters. The
-[owned recursive filter contract](design/owned-recursive-filter.md) defines the
-wire form, frames, limits and qualification.
-
-## Explicit owned Lookup and CollectionFind
-
-Use `codegen::lower_with_basic_owned_lookup_find`, then
-`codegen_rust::emit_with_basic_owned_lookup_find(&program, &options)` or
-`codegen_csharp::emit_with_basic_owned_lookup_find(&program)`. Direct Program
-hosts use `validate_program_with_basic_owned_lookup_find` and
-`validate_basic_owned_lookup_find_emission`; named-input discovery uses
-`legacy_named_input_admission_plan_with_basic_owned_lookup_find`.
-
-The profile composes the owned recursive-filter profile (and through it the
-owned recursive-collect, adjacency-tree, path-hierarchy, failure-source and
-EndingWith profiles) and owned IntoBlocks grouping with `owned_lookup` and
-`owned_collection_find` expressions. Each walks one
-collection of exactly its
-declared Primary or named endpoint, anchored by the latest active frame of that
-owner; another endpoint never supplies items. A lookup needle executes once in
-the parent before the walk, keys and values are owned reads of the selected
-item, Null-like keys never match, and a miss is `Null`. A find predicate and
-value run in each item's context in source order; Null-like predicates skip an
-item and other non-Booleans fail at the predicate. Owned searches keep their
-endpoint optional in the named-input catalogue.
-
-Earlier profiles, including the path-hierarchy, adjacency-tree, IntoBlocks,
-recursive-collect, SequenceExists and recursive-filter companions, refuse
-owned search
-with `AggregateLookup`, and owned joins (admitted by the join companion below)
-and legacy Lookup or CollectionFind stay closed. Owned aggregates stay closed in
-this profile and open in its explicit aggregate companion below. The
-[owned search contract](design/owned-lookup-find.md) defines the wire form,
-selection rules and qualification.
-
-## Explicit owned dynamic source fields
-
-Use `codegen::lower_with_basic_owned_dynamic_field`, then
-`codegen_rust::emit_with_basic_owned_dynamic_field(&program, &options)` or
-`codegen_csharp::emit_with_basic_owned_dynamic_field(&program)`. Direct Program
-hosts use `validate_program_with_basic_owned_dynamic_field` and
-`validate_basic_owned_dynamic_field_emission`; named-input discovery uses
-`legacy_named_input_admission_plan_with_basic_owned_dynamic_field`.
-
-The profile composes the owned lookup/find profile with
-`owned_dynamic_source_field` reads. The key is evaluated first in the receiving
-context; a non-string key reads nothing. The open object belongs to exactly one
-Primary or named endpoint and is selected through that owner's latest active
-frame, an explicit frame or the explicit root pin, never through another
-endpoint or frame. Absent and structural properties are Null and a present JSON
-null stays distinct; crossing an uniterated repetition, an inactive explicit
-frame and an unsupplied owner are typed owned-source failures at the read's
-node. The generated Rust and C# runtimes expose the read as
-`BasicScopeContext::owned_dynamic_field` and
-`FerruleBasicScopeContext.ResolveOwnedDynamicField`. Owned objects keep their
-endpoint optional in the named-input catalogue.
-
-Failure-rule expressions, function bodies and closed contexts keep refusing
-the owned read, as do every other profile (including the lookup/find,
-recursive-filter, recursive-collect and SequenceExists companions) and the
-ordinary emitters; only the owned XML serialization profile composes it.
-Legacy `dynamic_source_field` reads keep their wire and ordinary emission and
-stay closed in Basic owned profiles. The
-[owned dynamic-field contract](design/owned-dynamic-field.md) defines the wire
-form, order and qualification.
-
-## Explicit owned dynamic driver loading
-
-Use `codegen::lower_with_basic_owned_dynamic_loading`, then
-`codegen_rust::emit_with_basic_owned_dynamic_loading(&program, &options)` or
-`codegen_csharp::emit_with_basic_owned_dynamic_loading(&program)`. Direct
-Program hosts use `validate_program_with_basic_owned_dynamic_loading` and
-`validate_basic_owned_dynamic_loading_emission`; named-input discovery uses
-`legacy_named_input_admission_plan_with_basic_owned_dynamic_loading`.
-
-The profile composes the owned dynamic source-field profile with loading
-scopes over owned dynamic drivers. A loading scope requests every document of
-its exact driver collection, in driver order, before walking them under their
-own driver rows; exact owned field and position reads see the current
-document. Generated libraries expose
-`execute_with_basic_owned_sources_and_dynamic_source_loader` and
-`execute_selected_with_basic_owned_sources_and_dynamic_source_loader` in Rust
-and `ExecuteWithBasicOwnedSourcesAndDynamicSourceLoader` and
-`ExecuteSelectedWithBasicOwnedSourcesAndDynamicSourceLoader` in C#; the
-ordinary entry points fail at a reached loading scope with the missing-loader
-error. Generated code makes one loader callback per reached path and never
-caches documents. Every other profile and the ordinary emitters keep refusing
-owned drivers. The [owned dynamic-loading contract](design/owned-dynamic-loading.md)
-defines the wire form, order and qualification.
-
-## Explicit owned document-set paths
-
-Use `codegen::lower_with_basic_owned_document_paths`, then
-`codegen_rust::emit_with_basic_owned_document_paths(&program, &options)` or
-`codegen_csharp::emit_with_basic_owned_document_paths(&program)`. Direct
-Program hosts use `validate_program_with_basic_owned_document_paths` and
-`validate_basic_owned_document_path_emission`; named-input discovery uses
-`legacy_named_input_admission_plan_with_basic_owned_document_paths`.
-
-Every ungrouped owned scope of the profile walks a document-set endpoint with
-no active document member by member, with that member's document as its
-owner's root, and filter, sort and window controls run over the complete
-cohort. `owned_source_document_path` returns the location of its exact owner's
-active member, or fails with a typed missing-document-path error; another
-owner's document, an uniterated set and an ancestor never answer it. The
-generated runtimes expose the walk as
-`BasicScopeContext::walk_owned_document_source_cohort` and
-`FerruleBasicScopeContext.WalkOwnedDocumentSourceCohort`, and the read as
-`owned_document_path` and `OwnedDocumentPath`. Hosts supply document sets
-through the typed instance entry points, or as XML member lists through the
-`XmlDocumentSets` preset below. Every other profile and the ordinary
-emitters refuse the read, and their owned walks keep refusing a document-set
-endpoint; legacy dynamic owners stay closed. The [owned document-path contract](design/owned-document-path.md)
-defines the wire form, order and qualification.
-
-`DynamicDocumentPaths` (`*_with_basic_owned_dynamic_document_paths`) composes
-the dynamic-loading profile with document sets and admits the read of an owned
-dynamic endpoint inside its loading scope, where it returns the logical path
-that loaded the current document. Its libraries expose the loader-taking entry
-points of the dynamic-loading profile.
-
-## Explicit owned XML document-set inputs
-
-The `XmlDocumentSets` preset adds XML entry points to the document-path
-profile. Use `codegen::lower_with_basic_owned_xml_document_sets`, then
-`codegen_rust::emit_with_basic_owned_xml_document_sets(&program, &options)` or
-`codegen_csharp::emit_with_basic_owned_xml_document_sets(&program)`; direct
-Program hosts use `validate_program_with_basic_owned_xml_document_sets` and
-`validate_basic_owned_xml_document_set_emission`, and named-input discovery uses
-`legacy_named_input_admission_plan_with_basic_owned_xml_document_sets`.
-
-Each endpoint arrives as an ordered list of members, each with its portable
-path, an optional resolved location and its XML text or UTF-8 bytes. The
-library parses every member through the closed structured XML profile into
-one document-set member, exactly as `format_xml::read_local_file_set` reads a
-matched file: the path and resolved location are kept as supplied, so owned
-document-path reads return the same locations, and each member is its owner's
-root when an owned scope walks the set. Rust exposes
-`execute_xml_document_sets_with_basic_owned_sources`,
-`execute_selected_xml_document_sets_with_basic_owned_sources` and their
-`execute_xml_bytes_*` and `execute_selected_xml_bytes_*` counterparts over
-`codegen_runtime::XmlDocumentSetMember` and `NamedXmlDocumentSet`. C# exposes
-`ExecuteXmlDocumentSetsWithBasicOwnedSources`,
-`ExecuteSelectedXmlDocumentSetsWithBasicOwnedSources` and the `XmlBytes`
-counterparts over `FerruleXmlDocumentSetMember` and
-`FerruleNamedXmlDocumentSet` (or their `Bytes` records). Arguments and outputs
-follow the typed entry points: an explicit owned-source policy, an optional
-execution context and typed output instances.
-
-A call resolves a selected target first, then admits the supplied names
-exactly as the typed entry points do: unexpected and duplicate names in
-supplied order, then missing legacy-required names, before any member is read.
-It then admits the whole input set without parsing: at most 4096 members in
-total, a non-empty path and a non-empty resolved location when one is given,
-and the 64 MiB document and 256 MiB set limits of the XML input boundaries.
-Members are parsed afterwards, the primary first and then each named set in
-supplied order. A per-member refusal or parse failure names its source, its
-zero-based index and its path (`XmlDocumentSetInputError::member`,
-`FerruleXmlDocumentSetInputException.Member`); name admission, the member count
-and mapping failures name no member, and a mapping failure keeps its typed
-runtime error as the boundary's cause. An empty list is an empty set, and an
-omitted owned-only named source keeps its `SourceUnavailable` failure.
-
-The preset refuses, before any artifact exists, a Program without the ordinary
-structured XML format identity (`MissingXmlBoundary`), an observed root-view
-primary (`ObservedPrimaryInput`) and a per-driver named source
-(`DynamicSource`), as `ProgramValidationError::XmlDocumentSetInput`. Every
-other preset renders no XML document-set entry. The
-[portable corpus](../conformance/basic-owned-xml-document-set/README.md)
-compares the interpreter, generated Rust and generated C#.
-
-## Explicit owned XML serialization
-
-`Node::OwnedXmlSerialize` serializes one schema-known structured element read
-from exactly one Primary or named endpoint. Use
-`codegen::lower_with_basic_owned_xml_serialize`, then
-`codegen_rust::emit_with_basic_owned_xml_serialize(&program, &options)` or
-`codegen_csharp::emit_with_basic_owned_xml_serialize(&program)`. The matching
-`validate_program_with_basic_owned_xml_serialize`,
-`validate_basic_owned_xml_serialize_emission` and
-`legacy_named_input_admission_plan_with_basic_owned_xml_serialize` APIs select
-the same profile. It composes the owned dynamic source-field profile (and
-through it owned Lookup and CollectionFind, owned IntoBlocks grouping and the
-recursive-filter, recursive-collect, adjacency-tree, path-hierarchy,
-failure-source and EndingWith profiles); the execution entries and five-field
-Basic policy are unchanged. The SequenceExists and SequenceAggregate companions
-are a separate branch and keep refusing the owned serializer.
-
-The element path is endpoint-local and an optional frame prefixes it, with the
-owned field's selection rules: an explicit frame selects the latest exact
-same-owner occurrence, an explicit empty frame reads the declared nonrepeating
-endpoint root, and an unframed read uses the latest same-owner occurrence that
-prefixes the path or else the endpoint root. A group-member occurrence supplies
-its first member. The selected owner is authoritative: a missing element is a
-typed owned-source failure attributed to the node and is never repaired from
-another endpoint, a legacy alias or an outer frame. The read never reduces an
-uniterated repetition to its first item; it reports the typed repetition error.
-Inactive frames and unsupplied named endpoints report their typed errors when
-the node is evaluated.
-
-The serializer schema, declaration, indent and default-namespace options keep
-the legacy meaning and the legacy writer, so XML bytes, writer type failures,
-size limits, the refusal of characters outside XML 1.0 after the size check and
-the read-then-write error order are shared. Validation checks
-the schema name and kind against the exact owner's schema and keeps the legacy
-document checks (non-repeating schema, non-empty namespace, closed schema
-features). Unknown, empty and unresolved owners, frames that do not prefix the
-path and frames that are not collections are owned structure errors. The
-default validator and every earlier profile refuse the expression as an XML
-operator; failure rules, generated items, isolated functions, dynamic owners and
-other specialized contexts keep their typed refusals. The legacy
-`XmlSerialize` node, its wire form, defaults, fallback and errors are unchanged
-and continue to use the ordinary emitters; only the owned XML mixed-content
-profile composes this one. See
-[the ownership design](design/source-ownership.md#owned-xml-element-serialization)
-and [the corpus](../conformance/basic-owned-xml-serialize/README.md).
-
-## Explicit owned collection aggregates
-
-Use `codegen::lower_with_basic_owned_collection_aggregates`, then
-`codegen_rust::emit_with_basic_owned_collection_aggregates(&program, &options)`
-or `codegen_csharp::emit_with_basic_owned_collection_aggregates(&program)`.
-Direct Program hosts use
-`validate_program_with_basic_owned_collection_aggregates` and
-`validate_basic_owned_collection_aggregates_emission`; named-input discovery uses
-`legacy_named_input_admission_plan_with_basic_owned_collection_aggregates`.
-
-The profile composes the complete owned search profile with `owned_aggregate`
-expressions. Each qualifies one collection of exactly its declared Primary or
-named endpoint once, anchored by the latest active frame of that owner, so a
-grouped or block scope reduces only its members; another endpoint never
-supplies items. A value path is an owned read of each item and a value
-expression runs in each item's context in source order; Count never reads a
-value path. The optional `join` separator or `item_at` index then runs once in
-the parent context. All seven reducers keep their legacy empty, null, numeric
-and typed overflow/non-finite behavior, and owned aggregates keep their
-endpoint optional in the named-input catalogue.
-
-Every other profile, including the owned search companion, the dynamic-field and
-XML-serialization companions built beside it and the generated-sequence
-aggregate companion, refuses owned aggregates with `AggregateLookup`; owned
-dynamic source fields and XML serializers, joins, the legacy aggregate, Lookup
-and CollectionFind, generated-item contexts and SequenceExists stay closed. The
-[owned aggregate contract](design/owned-collection-aggregates.md) defines the
-wire form, evaluation order and qualification.
-
-## Explicit owned inner joins and joined aggregates
-
-Use `codegen::lower_with_basic_owned_joins`, then
-`codegen_rust::emit_with_basic_owned_joins(&program, &options)` or
-`codegen_csharp::emit_with_basic_owned_joins(&program)`. Direct Program hosts
-use `validate_program_with_basic_owned_joins` and
-`validate_basic_owned_joins_emission`; named-input discovery uses
-`legacy_named_input_admission_plan_with_basic_owned_joins`.
-
-The profile composes the owned Lookup and CollectionFind profile with owned
-inner-join scopes. Each source walks exactly its declared endpoint, anchored by
-the latest active frame of that owner, and tuples keep left-major order and
-duplicates. `owned_join_field` and `owned_join_source_position` read one member
-by its owner and collection; `join_position` reads the flattened position, which
-filters, sorts and windows treat like the legacy join while raw member
-positions never change. Join scopes admit Group or Scalar construction,
-Repeated or First output, filters, sorts, windows and static descendant groups.
-Generated Rust calls `BasicScopeContext::owned_inner_join` and generated C#
-calls `FerruleBasicScopeContext.OwnedInnerJoin`. Join sources keep their
-endpoints optional in the named-input catalogue.
-
-The same profile admits `owned_join_aggregate` in Basic receiving contexts. It
-plans its join once in that context, so an active owned row correlates only
-sources of its own owner and an owned group or block joins only its members;
-its optional expression reads each tuple with the closed tuple subset and its
-`arg` runs once in the receiving context after every tuple value. Generated
-code calls the same owned join entry point and reduces the tuple values with
-the shared legacy reducers, keeping their empty, null and type policies; a
-failure of the aggregate's own join carries its node.
-
-Earlier profiles, the ordinary emitters and directly constructed Program
-validation refuse owned joins and joined aggregates with the `Join`
-capability, as do tuple contexts for every read other than owned join reads,
-the join position and pure scalar nodes, including a nested joined aggregate.
-Legacy joins stay closed in the Basic profiles, and owned dynamic source-field
-reads, owned XML serialization and mixed content and owned collection
-aggregates keep their separate sibling companions, which refuse owned joins and
-joined aggregates in turn. The [owned join contract](design/owned-joins.md)
-defines the wire form, members, positions, joined aggregates and
-qualification.
-
-## Explicit owned XML mixed content
-
-`Node::OwnedXmlMixedContent` atomizes one mixed-content group read from exactly
-one Primary or named endpoint, replacing matching direct child elements with
-graph-computed values. Use
-`codegen::lower_with_basic_owned_xml_mixed_content`, then
-`codegen_rust::emit_with_basic_owned_xml_mixed_content(&program, &options)` or
-`codegen_csharp::emit_with_basic_owned_xml_mixed_content(&program)`. The
-matching `validate_program_with_basic_owned_xml_mixed_content`,
-`validate_basic_owned_xml_mixed_content_emission` and
-`legacy_named_input_admission_plan_with_basic_owned_xml_mixed_content` APIs
-select the same profile. It composes the owned XML serialization profile and
-everything that profile composes; the execution entries and five-field Basic
-policy are unchanged. The owned collection-aggregate and owned join profiles
-are separate branches built on owned search: they refuse owned mixed content,
-and this profile refuses owned aggregates, owned joins and joined aggregates.
-
-The group is read with the owned element rules of the serializer: an explicit
-frame selects the latest exact same-owner occurrence, an explicit empty frame
-reads the declared nonrepeating endpoint root, and an unframed read uses the
-latest same-owner occurrence prefixing the path or else the endpoint root. A
-missing group is a typed owned-source failure attributed to the node and is
-never repaired from another endpoint, a legacy alias or an outer frame. A group
-without a retained ordered stream returns its text value, or Null.
-
-Text nodes and unmatched elements keep their text in source order. Each
-replacement names its context. A `parent` replacement evaluates in the
-receiving context once per matching element. An `occurrence` replacement
-evaluates with the matching element's retained value as the latest occurrence
-of the group's own endpoint at the group path plus the element name, numbered
-per element name from one, so owned fields and positions of that collection
-read the occurrence while every outer frame stays active; reads of another
-endpoint never see it. An element item without a retained value is no
-occurrence and keeps its text. Null-like replacement values contribute nothing;
-other scalars use their lexical form. Replacements for elements that do not
-occur are never evaluated, and replacement failures keep their own node.
-
-Validation requires a mixed group in the exact owner's schema, a frame that
-prefixes the path and is the endpoint root or a repeating owner path, nonempty
-unique replacement elements, and a repeating direct child element for every
-occurrence replacement; the legacy replacement diagnostics report these. The
-default validator and every earlier profile, including the owned serialization
-profile, refuse the expression as an XML operator; failure rules, generated
-items, isolated functions, dynamic owners and other specialized contexts keep
-their typed refusals. The legacy `XmlMixedContent` node, its wire form,
-outward fallback and untyped missing-group error are unchanged and continue to
-use the ordinary emitters; only the owned mixed-content construction profile
-composes this one. See
-[the ownership design](design/source-ownership.md#owned-xml-mixed-content-atomization)
-and [the corpus](../conformance/basic-owned-xml-mixed-content/README.md).
-
-## Explicit owned XML mixed-content construction
-
-A scope whose iteration is an owned source selector may use the existing
-`XmlMixedContent` construction. Use
-`codegen::lower_with_basic_owned_xml_mixed_construction`, then
-`codegen_rust::emit_with_basic_owned_xml_mixed_construction(&program, &options)`
-or `codegen_csharp::emit_with_basic_owned_xml_mixed_construction(&program)`.
-The matching `validate_program_with_basic_owned_xml_mixed_construction`,
-`validate_basic_owned_xml_mixed_construction_emission` and
-`legacy_named_input_admission_plan_with_basic_owned_xml_mixed_construction`
-APIs select the same profile, which composes the owned mixed-content
-atomization profile. No new wire field exists: the scope's owned selector is
-the construction's only owner.
-
-Each item's retained text/element order comes from that selector's exact
-current occurrence, or from the immutable endpoint root when the selector is
-the endpoint root; another endpoint's frame and the innermost legacy frame are
-never consulted. Bindings and child scopes are evaluated as for any owned item,
-so mapped direct children, renames, filters, cardinality, empty occurrences,
-Null values and lazy errors keep the legacy construction's meaning: element
-occurrences take the mapped target values in order, exhausted occurrences and
-unmapped elements are omitted, and text nodes are kept. A group without a
-retained stream gets no stream.
-
-Grouped or post-group-filtered owned selectors, legacy-selected constructions
-inside owned ancestry and constructions without their own selector keep
-refusing the scope (as grouping or an XML operator); dynamic owners and
-specialized contexts keep their typed refusals. Default validation and every
-earlier profile, including the owned atomization profile, refuse the
-construction as an XML operator. Legacy-selected constructions keep their wire,
-current-frame source and ordinary emitters. See
-[the ownership design](design/source-ownership.md#owned-xml-mixed-content-construction)
-and [the corpus](../conformance/basic-owned-xml-mixed-construction/README.md).
+## Choose an owned operator
+
+Select the **same preset** when lowering, validating, planning named inputs and
+emitting. For example, `lower_with_basic_owned_group_by` pairs with the Rust or
+C# `emit_with_basic_owned_group_by`; it does not enable joins. Use the [preset capability table](#owned-generation-capabilities-and-presets)
+for permitted combinations, and these contracts for the wire forms, ordering,
+budgets and typed refusals. The typed calls retain the explicit Basic policy.
+
+| Preset and contract | When to use it |
+| --- | --- |
+| <a id="explicit-owned-group-by"></a>[`GroupBy`](design/owned-group-by.md) | Group by exact typed key, in first-seen order; retain members according to the group predicate. |
+| <a id="explicit-owned-sequence-itemat"></a>[`SequenceItemAt`](design/owned-sequence-item-at.md) | Choose the one-based item using the parent context. |
+| <a id="explicit-owned-sequence-exists"></a>[`SequenceExists`](design/owned-sequence-exists.md) | Evaluate the predicate in the generated item's context. |
+| <a id="explicit-owned-sequence-aggregate"></a>[`SequenceAggregate`](design/owned-sequence-aggregate.md) | Reduce generated values with the operation's typed empty and error behavior. |
+| <a id="explicit-owned-adjacent-grouping"></a>[`GroupAdjacentBy`](design/owned-group-adjacent-by.md) | Keep contiguous equal-key runs; A, B, A is three groups. |
+| <a id="explicit-owned-starting-boundary-grouping"></a>[`GroupStartingWith`](design/owned-group-starting-with.md) | The first item starts a group; a later true predicate starts the next one. |
+| <a id="explicit-owned-ending-boundary-grouping"></a>[`GroupEndingWith`](design/owned-group-ending-with.md) | Include the closing item in its current group. |
+| <a id="explicit-owned-fixed-block-grouping"></a>[`GroupIntoBlocks`](design/owned-group-into-blocks.md) | Partition ordered candidates by the admitted block size. |
+| <a id="explicit-owned-failure-rule-iteration"></a>[`FailureSources`](design/owned-failure-sources.md) | Check failure-rule iteration, predicate and message against the same owned endpoint. |
+| <a id="explicit-owned-path-hierarchy"></a>[`PathHierarchy`](design/source-ownership.md#owned-path-hierarchy-input-collections) | Construct the bounded directory tree from one owned collection. |
+| <a id="explicit-owned-adjacency-tree"></a>[`AdjacencyTree`](design/source-ownership.md#owned-adjacency-tree-row-collections) | Build a recursive group from one owned row collection. |
+| <a id="explicit-owned-recursive-collection"></a>[`RecursiveCollect`](design/owned-recursive-collect.md) | Walk the owned root and its child frames; include only the admitted recursive consumer. |
+| <a id="explicit-owned-recursive-filter"></a>[`RecursiveFilter`](design/owned-recursive-filter.md) | Filter a recursive scope's own source selector. |
+| <a id="explicit-owned-lookup-and-collectionfind"></a>[`LookupFind`](design/owned-lookup-find.md) | Search the owned collection, retaining selection and item identity. |
+| <a id="explicit-owned-dynamic-source-fields"></a>[`DynamicField`](design/owned-dynamic-field.md) | Resolve a dynamic field on its selected owned source. |
+| <a id="explicit-owned-dynamic-driver-loading"></a>[`DynamicLoading`](design/owned-dynamic-loading.md) | Load a document for the exact driver item; the host owns transport. |
+| <a id="explicit-owned-document-set-paths"></a>[`DocumentPaths`](design/owned-document-path.md) | Read the logical location of the active member of the exact document set. |
+| [`DynamicDocumentPaths`](design/owned-document-path.md#loaded-documents) | Inside the owned loading scope, read the logical path that loaded the current document. |
+| <a id="explicit-owned-xml-document-set-inputs"></a>[`XmlDocumentSets`](../conformance/basic-owned-xml-document-set/README.md) | Read ordered Structured XML members for the primary and each static named endpoint. |
+| <a id="explicit-owned-xml-serialization"></a>[`XmlSerialize`](design/source-ownership.md#owned-xml-element-serialization) | Serialize a schema-known element from the primary or one named endpoint. |
+| <a id="explicit-owned-collection-aggregates"></a>[`CollectionAggregates`](design/owned-collection-aggregates.md) | Evaluate the aggregate in the declared collection and frame. |
+| <a id="explicit-owned-inner-joins-and-joined-aggregates"></a>[`Joins`](design/owned-joins.md) | Use exact-owner inner joins, tuple reads and joined aggregates. |
+| <a id="explicit-owned-xml-mixed-content"></a>[`XmlMixedContent`](design/source-ownership.md#owned-xml-mixed-content-atomization) | Read ordered mixed content and replace selected direct children. |
+| <a id="explicit-owned-xml-mixed-content-construction"></a>[`XmlMixedConstruction`](design/source-ownership.md#owned-xml-mixed-content-construction) | Construct ordered mixed content from an owned scope selector. |
+
+The `XmlDocumentSets` preset returns **typed** instances. Rust's
+`execute_xml_document_sets_with_basic_owned_sources` and
+`execute_selected_xml_document_sets_with_basic_owned_sources` take ordered
+`XmlDocumentSetMember` lists; C# has `ExecuteXmlDocumentSetsWithBasicOwnedSources`
+and `ExecuteSelectedXmlDocumentSetsWithBasicOwnedSources`. Both have strict
+UTF-8 byte variants. Resolve the target and validate supplied names first.
+Before parsing, the whole set must fit 4,096 members, 64 MiB per document and
+256 MiB total. A member path and any supplied resolved location must be nonempty.
+Parse primary members first, then named sets in supplied order. A member failure
+identifies its source, zero-based index and path; a mapping failure keeps its
+typed cause without assigning blame to a member. An empty list is an empty set.
+An omitted owned-only source keeps its `SourceUnavailable` behavior. The
+[document-set corpus](../conformance/basic-owned-xml-document-set/README.md)
+distinguishes this Structured input profile from RootView and per-driver loaders.
 
 ## C#
 
@@ -1139,35 +390,13 @@ ordinary user global-tools directory.
 
 ### Library composition
 
-The C# emitter composes a generated library from typed parts in
-`crates/codegen-csharp/src/composition.rs`; it never searches or rewrites
-emitted text. The ordinary mapping renderer returns the `GeneratedMapping`
-class as a `ClassPart`: the top-level types its compilation unit declares and
-the class members. A `Library` holds that class together with:
+The [C# composition model](../crates/codegen-csharp/src/composition.rs)
+assembles typed class parts, companion compilation units and their runtime
+sources before rendering the project file. `GeneratedMapping` is partial only
+when extended. Complete CSV documents extend CSV output; primary document
+companions retain their filename evaluator and their own admission rules.
 
-- further partial declarations appended to `GeneratedMapping.cs` (the primary
-  filename evaluator);
-- companion sources, each its own compilation unit holding one partial
-  declaration (`GeneratedMapping.Csv.cs`, `.CsvDocument.cs`, `.PrimaryCsv.cs`,
-  `.PrimaryCsvDocument.cs`, `.PrimaryXmlDocument.cs`, `.PrimaryJsonDocument.cs`,
-  `.PrimaryFixedWidthDocument.cs`, `.PrimaryEdiDocument.cs`, `.CsvJson.cs`,
-  `.CsvX12.cs`, `.Json5.cs`, `.X12.cs` and `.Documents.cs`);
-- optional runtime sources beyond the fixed runtime set.
-
-Only `Library::into_artifacts` renders text. The class declaration is
-`partial` exactly when another declaration extends it. The project file is
-rendered from its compile items: the mapping source, then each companion with
-the most recently layered first, then `GeneratedTargetBuilder.cs` and the
-runtime glob. Layered emitters extend the library of the emitter they build
-on: CSV documents extend CSV output, primary CSV acquisition extends the
-primary filename library, primary CSV documents extend CSV documents with
-the primary filename evaluator, and primary XML documents extend the ordinary
-library and its XML adapter with that evaluator. Primary JSON documents extend
-the ordinary library and its strict JSON adapter with the evaluator and bounded
-document-set acquisition. Primary EDI documents use the same acquisition model
-with embedded family-specific schemas and options; their package-free codecs
-handle X12, EDIFACT, HL7 v2, TRADACOMS, and IDoc. Each layer keeps its own admission ahead of the
-layer below it.
+#### EDI source validation
 
 The generic EDI document inputs enforce retained `edi_value_constraints` on
 the decoded, schema-projected source spelling before scalar conversion or
@@ -1203,27 +432,13 @@ resolve before the input host is called. This opt-in plan does not admit mixed
 formats for existing same-format document projects. See the
 [MFD filename route](mfd-interop.md#import) for import and transport boundaries.
 
-The Basic owned mappings render their own complete compilation unit, which
-may append the separate partial declaration of the owned JSON documents; they
-are assembled with the ordinary project file and take no companions. When a
-mapping contains a filter-map sequence, expression and user-function node
-bodies are declared under their `NodeCore_` and `UserFunctionCore_` names and
-the scoped `Node_` and `UserFunction_*_Node_` wrappers are appended after them.
-
-`crates/cli/tests/code_generation/csharp_composition.rs` records every C#
-emission route over the owned conformance corpora and the authored generation
-fixtures, including fixtures whose literals and parameter names resemble the
-composed parts. Set `FERRULE_UPDATE_CSHARP_COMPOSITION=1` to rewrite
-`fixtures/csharp_composition.txt` after an intended emission change.
+Basic owned mappings render their own compilation unit; the optional Basic
+JSON document methods extend it. For contributor checks over the emitted API
+and text, see the [composition fixture](../crates/cli/tests/code_generation/csharp_composition.rs).
 
 ### Generate the library
 
-```sh
-cargo run -p cli -- generate \
-  --project project.json \
-  --language csharp \
-  --out generated-csharp
-```
+Use `--language csharp` as in the [example above](#rust-and-c-code-generation).
 
 The result is a standalone, package-free .NET 10 library. Its generated artifact
 tree includes the C# runtime sources required by the mapping. The generated
@@ -1245,14 +460,6 @@ Projects with per-driver dynamic sources use
 for each generated `(sourceName, logicalPath)` request.
 
 ## Rust
-
-```sh
-cargo run -p cli -- generate \
-  --project project.json \
-  --language rust \
-  --out generated-rust \
-  --rust-runtime-path crates/codegen-runtime
-```
 
 Rust generation currently requires `--rust-runtime-path`. The generated crate
 links that local runtime until the runtime is published as a versioned package.
@@ -1425,76 +632,29 @@ abstraction across formats.
 
 ## Explicit C# X12 Companions
 
-Add `--x12-adapters` to the C# CLI generation command for explicit raw X12
-input/output methods around the ordinary typed mapping. Fixed ISA12/GS08
-schemas select `00401`/`004010`, `00501`/`005010`, or `00604`/`006040`.
-The flag defaults
-to false and conflicts with `--csv-output` and `--json5-adapters`. The public
-writer is `generate_project_with_x12_adapters`; ordinary generation retains its
-existing typed/JSON APIs and artifact tree. The optional, package-free .NET 10
-boundary embeds its admitted schema and metadata and returns complete text or
-strict UTF-8 bytes. Selected input metadata supports bounded lenient traversal
-and Float implied-decimal scaling; selected output metadata supports compact
-date/time and plain-decimal formatting plus explicit X12 envelope completion.
-Repetition punctuation is inactive metadata under 00401 and active ISA11
-syntax in the modern profiles, where declared repeating body elements read and
-write ordered occurrences.
-The envelope defaults to one functional group and transaction. Explicit
-`--x12-source-envelope-profile grouped-transactions` or
-`--x12-target-envelope-profile grouped-transactions` selects declared repeated
-GS/GE and ST/SE owners within one interchange on that X12 side. The value
-`mapforce-interchanges` selects MapForce's standard X12 `Envelope.Config`
-ownership: repeated interchanges, functional groups and messages, with the
-version taken from the retained interchange version. Each selected
-side has its own schema/version agreement, counts and controls. Both flags
-require `--x12-adapters`; an explicit selection on JSON refuses. The additive
-`generate_project_with_x12_envelope_profiles` writer accepts the two optional
-selections while the existing writer keeps default singleton behavior.
-Contextual output
-completion uses the host-supplied execution-context dateTime, formats a private
-view, completes permitted fields, and validates final controls and counts.
-The ordinary `x12_dotnet` integration target includes an independently authored
-saved-profile compiled-host gate and requires the .NET 10 SDK; the additional
-strict companion cohort remains an explicit ignored test. Native and compiled
-checks compare complete values, scalar types, bytes and typed failures.
-See [the schema, syntax, API and limit contract](design/generated-x12-csharp.md)
-for direction selection, rejected metadata and typed boundary failures.
+Use `--language csharp --x12-adapters` for raw X12 text or strict UTF-8 bytes.
+The ordinary typed and JSON APIs remain available. ISA12/GS08 must match an
+admitted version pair: `00401`/`004010`, `00501`/`005010` or `00604`/`006040`.
+Single-transaction envelopes are the default. Use `--x12-source-envelope-profile`
+or `--x12-target-envelope-profile` to choose `grouped-transactions` or
+`mapforce-interchanges` on the corresponding X12 side. Repetition punctuation
+is inactive under 00401; modern profiles use ISA11. The host context supplies
+the date/time for contextual output completion.
 
-For complete static named JSON/X12/EDIFACT inputs and explicitly selected primary or
-named output, use C# `--static-document-adapters` and
-`generate_project_with_static_document_adapters`. Every endpoint retains its
-own admitted schema and format identity, including unused sources and
-unselected targets. The generated text and UTF-8 byte carriers retain the
-selected target name and format. Name/list preflight precedes primary parsing;
-all supplied documents parse before typed selected execution. The same context
-reaches selected EDI completion. This flag is separate from, and conflicts with,
-the primary `--x12-adapters` flag. The normal `code_generation` integration
-target contains the authored native and compiled static-document contracts;
-it requires `--features codegen-tests` and the .NET 10 SDK. See the
-[static document API and error order](design/generated-x12-csharp.md#static-named-documents-and-selected-output).
-EDIFACT uses the shared codec with strict envelope checks; see
-[static EDIFACT boundaries](design/static-edifact-documents.md).
+For static named JSON/X12/EDIFACT inputs and a selected output, use the separate
+`--static-document-adapters` profile. It preflights names and parses all supplied
+documents before selected execution. The two generation flags are mutually
+exclusive. See the [X12 companion contract](design/generated-x12-csharp.md)
+and [static EDIFACT boundaries](design/static-edifact-documents.md) for
+direction-specific schemas, limits, versions and typed failures.
 
 ## Explicit JSON5 Companions
 
-Add `--json5-adapters` to either CLI generation command to include singular
-JSON5 document companions. The flag defaults to false and conflicts with
-`--csv-output`. The public writer also provides
-`generate_project_with_json5_adapters`; ordinary `generate_project` retains its
-existing artifact tree. File suffixes and stored JSON5 options do not select
-these methods.
-
-Rust adds `execute_json5`, `execute_json5_with_context`, `execute_json5_bytes`
-and `execute_json5_bytes_with_context`. C# adds `ExecuteJson5` and
-`ExecuteJson5Bytes`, each with source-only and execution-context overloads.
-They accept one closed, non-repeating object with supported scalar leaves and
-static nested groups, and return complete strict JSON with a final LF.
-Unsupported schemas, format options and mapping routes refuse before publication.
-See [the profile and syntax contract](generated-json5-contract.md) for admission,
-encoding, limits, typed causes and the current identifier restrictions. Named
-inputs or outputs, root arrays, JSON Lines and dynamic routes are outside this
-companion profile. Physical resource-boundary qualification is separate from
-the small public-host tests.
+Add `--json5-adapters` for a single closed, non-repeating object input with
+supported scalar leaves and static nested groups. Both backends return strict
+JSON with a final LF. Filename suffixes and stored format options do not select
+this profile. The [JSON5 companion contract](generated-json5-contract.md)
+lists methods, encoding, syntax, typed causes, resource limits and exclusions.
 
 ## Flat CSV Output
 
@@ -2251,20 +1411,11 @@ executions and user-function graphs do not share the state. See
 [JSON projection work](design/json-projection-work.md) for the full-parse
 call-count bound, ownership, instrumentation and remaining costs.
 
-Embedded scalar constants, bounded exact scalar allowed-value sets, and
-exact integer/finite-number ranges are enforced on both input and generated
-output in Rust and C#, including after supported output coercion. Embedded
-array `uniqueItems` assertions compare complete raw input values and normalized
-output values, ignoring object member order while retaining nested array order.
-Embedded array `contains` assertions count members accepted by each retained
-item predicate. Plain assertions require at least one match, while retained
-`minContains`/`maxContains` intervals apply exactly. Input checks the parsed
-array and output checks the normalized emitted array; nullable array null
-bypasses the assertions. Multiple compatible `allOf` assertions are
-conjunctive, and predicate pattern matching shares the bounded document work
-budget. A count mismatch remains a typed input/output boundary error, while
-invalid embedded metadata and matcher work exhaustion remain fatal instead of
-being treated as ordinary nonmatches.
+Both generated languages enforce the admitted [JSON Schema constraints](formats.md#json-schema)
+on parsed input and on the normalized output after coercion. For `uniqueItems`,
+object member order is immaterial but array order is significant. A mismatch is
+a typed boundary error. Invalid embedded metadata and matcher budget exhaustion
+are fatal, not ordinary predicate nonmatches.
 
 Nested schema-valued arrays retain an explicit `json_array_wrapper` role in
 embedded descriptors. A marked repeated group has exactly one repeated child
@@ -2280,93 +1431,22 @@ properties named `item` retain their existing shape. Invalid marked descriptors
 refuse before document processing, and XML, CSV, and EDI boundaries do not
 reinterpret the JSON role.
 
-The exact homogeneous `prefixItems` importer subset adds no generated-runtime
-feature or new code-generation IR form. Draft 2020-12 and
-undeclared schemas whose bounded finite prefix entries normalize to
-one item shape lower to the existing repeated-item schema and item-count
-interval. A closed tail becomes the equivalent `maxItems` bound, and canonical
-export uses ordinary `items` plus that bound. Rust and C# therefore execute the
-same existing homogeneous array boundary; heterogeneous prefixes
-and tails remain import-time rejections.
+A positional schema can become an ordinary repeated item or an exact tuple
+frame. The [tuple contract](design/json-tuple-arrays.md) defines the dialect,
+tail and count rules. Generated strict JSON can read and write admitted frames;
+the JSON5 companion and graph-level parser descriptors cannot.
 
-Homogeneous legacy tuple-form `items` uses the same lowering for Draft 4, 6, 7,
-and 2019-09 resources and for schemas without `$schema`. Its 1 to 4,096
-identical positional members become one repeated-item schema. A `false`
-`additionalItems` tail becomes `maxItems` at the tuple length; an identical
-tail remains unbounded. An absent or `true` tail is accepted for an
-arbitrary-JSON item shape or when the explicit maximum makes the tail
-unreachable; a different schema tail requires that same maximum proof.
-Canonical export again uses schema-valued `items` and an optional `maxItems`,
-so generated Rust and C#
-need no positional-array IR or runtime path. Draft 2020-12 array-valued `items`
-and all reachable heterogeneous positional shapes reject during import.
+For objects, missing and explicit JSON null differ. Required properties must be
+present on input and on the emitted object after Ferrule `Null` omission.
+Duplicate input names use their last value; counts and dependencies operate
+on that distinct property set. Text and byte entry points use the same rules
+for primary and named documents. See [object constraints](formats.md#object-properties-and-dependencies)
+for typed dynamic properties, selectors, conditional dependencies and their limits.
 
-Embedded object-property requirements are enforced on input and generated output:
-explicit JSON null satisfies presence when nullable, while an omitted property
-or Ferrule `Null` does not. Object openness is exact as well: omitted or `true`
-`additionalProperties` preserves arbitrary JSON-valued fields, schema-valued
-`additionalProperties` validates each unknown field against its retained type,
-and explicit `false` produces a typed undeclared-property boundary error rather
-than dropping data. Exact object `minProperties`/`maxProperties` intervals
-count distinct parsed input properties before decoding and normalized output
-members after Ferrule `Null` omission. Duplicate input names use the parser's
-last value and count once. Nullable object null bypasses the interval; nested,
-repeated, primary, and named documents apply the same rule. Embedded object
-schemas may also carry exact closed homogeneous `patternProperties`. A
-nonempty selector map requires an explicit `object` or `object | null`,
-`additionalProperties: false`, and one identical exactly representable value
-schema for every bounded portable selector. Scalar, structured object, and
-homogeneous array values reuse the ordinary supported JSON value profile.
-Selectors are ORed in declaration order. Matching fixed properties must use
-that schema; nonmatching fixed properties remain independent. Generated
-decoding checks fixed properties first and uses the selectors only for
-remaining names. An independent `propertyNames` constraint still checks every
-key. Dependency rules whose triggers are neither fixed nor selected normalize
-away as semantically unreachable, and nullable null bypasses the object rules.
-Rust and C# enforce selectors on input, normalized output, and JSON Lines with
-the same shared per-document pattern work budget as ordinary string patterns.
-Canonical JSON Schema export/re-import retains the selector map and closed
-fallback. An empty map has no effect. Distinct selector schemas, open or typed
-fallbacks, general overlap intersection, value shapes outside the ordinary
-exact JSON profile, and active `allOf`, object-alternative, or structural
-`$ref`-sibling composition remain outside the generated profile.
-Embedded object property dependencies are enforced as well. Whenever a
-trigger property is present, every dependent property must be present.
-Explicit JSON null counts as
-presence on input; generated output is checked after absent Ferrule values are
-omitted. Nullable object null bypasses the relation, while nested, repeated,
-primary, and named documents all use the same rule. Embedded whole-object
-dependent-schema predicates use the same presence rule. Required-only entries
-lower to ordinary property dependencies; other retained predicates validate
-the complete containing object. Multiple predicates for one trigger remain
-conjunctive, patterns consume the same per-document work budget as ordinary
-field patterns, and malformed embedded metadata remains a typed boundary
-failure. Text and UTF-8 byte entry points enforce identical behavior for
-primary and named inputs and outputs. Draft 7, 2019-09, 2020-12, and undeclared
-explicitly typed object schemas may spell one such rule as an `if` with exactly
-one required-property presence trigger and a supported `then` predicate. A
-nullable outer object is supported with an absent or `true` `else` only when
-the `if` explicitly proves `type: "object"`. Exact `else: false` requires a
-trigger that can be represented as an ordinary required field; it removes the
-nullable bypass when the false branch rejects null and retains any supported
-`then` dependency. It does not combine with existing object alternatives, and
-a closed object must already declare the trigger. Import lowers these forms to
-`required` plus `dependentRequired` or `dependentSchemas` metadata as
-appropriate before generation, so generated Rust and C# enforce the same
-semantics without a separate conditional runtime. Value-sensitive,
-multi-trigger, general-`if`, and other nontrivial `else` schemas remain outside
-the generated boundary subset.
-Embedded `propertyNames`
-constraints likewise inspect every actual key rather than schema placeholders.
-They retain exact false, finite allowed-name sets, Unicode-scalar length,
-finite `not` exclusions, portable patterns and their exact complements, and
-nonasserting format metadata; raw parsed input keys and normalized emitted
-keys are checked, including the empty string. Nullable
-object null bypasses these name assertions. These APIs
-intentionally use JSON regardless of stored project paths or format options.
-Supported primary XML mappings also have the XML document APIs below.
-Hosts needing other physical formats should use the interpreter payload API
-or adapt a typed `Instance` at their own boundary.
+These entry points use JSON regardless of stored suffix or format options. For
+XML, see the [XML host boundary](#xml-host-boundary); for other physical formats
+choose an explicit adapter or the [interpreter payload host](running-mappings.md#rust-payload-host).
+
 Dynamic JSON documents share the 64 MiB per-document limit and additionally
 have a 256 MiB combined budget per execution.
 
@@ -2480,20 +1560,12 @@ admission and evaluation/serialization of every output before selecting primary.
 
 ### Static Named Inputs
 
-The `Structured` profile adds document APIs that accept the complete declared
-static named input set. These methods can return either the primary document
-or the complete ordered output set:
-
-| Input and result | Rust | C# |
-| --- | --- | --- |
-| Text, primary | `execute_xml_with_sources` | `GeneratedMapping.ExecuteXmlWithSources` |
-| UTF-8 bytes, primary | `execute_xml_bytes_with_sources` | `GeneratedMapping.ExecuteXmlBytesWithSources` |
-| Text, output set | `execute_xml_outputs_with_sources` | `GeneratedMapping.ExecuteXmlOutputsWithSources` |
-| UTF-8 bytes, output set | `execute_xml_bytes_outputs_with_sources` | `GeneratedMapping.ExecuteXmlBytesOutputsWithSources` |
-
-Rust context variants append `_and_context` to each name in the table and
-accept `&ExecutionContext` after the input slice. C# provides an overload of
-each method with `FerruleExecutionContext` after the input list.
+For `Structured` XML, use the [XML route table](generated-xml-qualification-index.md#route-families)
+to choose text or bytes, optional context, and primary, named-set or document-list
+results. The complete-input methods require every declared static source,
+including unused ones. Supply exact names; the checks run in declaration order
+after names have been admitted. An unknown or missing name and an oversized
+later document can therefore fail before a malformed primary is parsed.
 
 Rust:
 
@@ -2532,558 +1604,80 @@ foreach (var output in outputs.Extras)
 }
 ```
 
-Byte methods use `NamedXmlBytesInput`: borrowed `&[u8]` documents in Rust and
-`byte[]` documents in C#. Output sets retain the existing
-`XmlExecutionOutputs` / `XmlBytesExecutionOutputs` result types. A singular call
-still maps and serializes every output before selecting its primary document.
-The host owns publication and keeps its input slices, lists and byte buffers
-stable for the duration of a call.
-
-Validation proceeds in this order:
-
-1. Check at most 4,096 input documents including primary, before name bookkeeping.
-2. Check exact case-sensitive names in supplied order for unexpected or duplicate
-   entries, then check missing names in project declaration order. C# also checks
-   every named `Document` for null after names succeed and before sizing.
-3. Check every original document against the 64 MiB UTF-8 limit, primary first
-   and then named inputs in declaration order.
-4. Check at most 256 MiB of combined original UTF-8 input, in that same order.
-5. Parse primary and then each named document against its own embedded schema
-   in declaration order, execute all mappings, and serialize all outputs.
-
-Thus a missing name wins over malformed primary XML, and an oversized later
-named document wins over malformed primary bytes. All per-document sizes are
-checked before the combined sum. Byte entry points complete size validation
-before UTF-8 decoding. C# text methods count UTF-8 without allocating an encoded
-byte array; invalid UTF-16 can fail with `Utf8` during that size pass.
-No input is omitted because it is unused by the mapping, and no partial output
-set is returned when any phase fails.
-
-Rust returns `codegen_runtime::XmlExecutionError`; C# throws
-`FerruleXmlExecutionException`. The original boundary is retained as `boundary`
-/ `Boundary` and as the standard error source / inner exception. Rust boxes the
-boundary to keep the execution error small; `boundary.as_ref()` borrows that
-same original error. An input-phase
-failure identifies primary or a named input's zero-based declaration index and
-exact declared name in `input` / `Input`. A serialization-phase failure instead
-retains the original output owner in `output` / `Output`. Complete-set name
-errors and global mapping failures have neither owner; their original typed
-runtime cause is retained. Owners describe the failing phase, independently
-of the boundary's `Schema`, `DocumentLimit`, `Utf8`, `Input`, `Mapping` or
-`Output` category.
-
-Input count and combined-size refusals have category `Input` with an
-`XmlInputSetResourceError` / `FerruleXmlInputSetResourceException` cause.
-Its resource is `xml_input_artifact_count` or `xml_input_set_utf8_bytes`, with
-observed count and limit. A count refusal has no guessed input owner; a sum
-refusal owns the document whose charge crosses the limit. Boundary byte fields
-remain unset for these resources. A per-document `DocumentLimit` retains that
-document's original byte count and 64 MiB limit instead. Output-set counters
-remain independent and retain their existing output categories and owners.
-
-For zero-named-input `Structured` projects, the existing no-sources APIs
-use the same complete execution with an empty named-input list. They retain
-`XmlOutputSetError` / `FerruleXmlOutputSetException` for sets and the original
-`XmlBoundaryError` / `FerruleXmlBoundaryException` for singular results. The
-new with-sources APIs retain their source-aware wrapper. An admitted `RootView`
-primary can also accept static `Structured` named inputs: its eight existing
-single-input methods and eight source-aware methods give sixteen signatures,
-with text/bytes, singular/output-set and context variants. Complete input
-preflight precedes the original observed primary parser; each named input uses
-its own Structured parser. The separately proved flat combined static-input
-and static-output shape is described under [Observed Root-View Input](#observed-root-view-input).
-Dynamic named inputs, document-list outputs and observed named-input profiles
-remain strict refusals; the sixteen signatures do not imply all combinations.
-
-An unproved ordinary input, unsupported format or schema, or excessive declared
-count omits the entire optional XML adapter,
-while preserving otherwise supported typed/JSON core generation. Valid literal
-output hints remain optional metadata during that fallback. Generation never
-silently drops a named input or output.
-
 ### Dynamic XML Input Loader
 
-An admitted `Structured` project with one or more dynamic named sources adds eight
-loader methods. The input list contains every declared static source and excludes
-all dynamic sources. Requests begin only when evaluation reaches a dynamic scope;
-that scope loads its driver documents eagerly before target projection. These
-methods return the primary document or the complete output set:
-
-| Input and result | Rust | C# |
-| --- | --- | --- |
-| Text, primary | `execute_xml_with_sources_and_dynamic_source_loader` | `GeneratedMapping.ExecuteXmlWithSourcesAndDynamicSourceLoader` |
-| UTF-8 bytes, primary | `execute_xml_bytes_with_sources_and_dynamic_source_loader` | `GeneratedMapping.ExecuteXmlBytesWithSourcesAndDynamicSourceLoader` |
-| Text, output set | `execute_xml_outputs_with_sources_and_dynamic_source_loader` | `GeneratedMapping.ExecuteXmlOutputsWithSourcesAndDynamicSourceLoader` |
-| UTF-8 bytes, output set | `execute_xml_bytes_outputs_with_sources_and_dynamic_source_loader` | `GeneratedMapping.ExecuteXmlBytesOutputsWithSourcesAndDynamicSourceLoader` |
-
-Rust context variants replace `_with_sources_and_dynamic_source_loader` with
-`_with_sources_context_and_dynamic_source_loader`. C# context variants replace
-`WithSourcesAndDynamicSourceLoader` with
-`WithSourcesContextAndDynamicSourceLoader`. Arguments are primary input, static
-input list, execution context when present, and loader last.
-
-The host implements `DynamicXmlSourceLoader::load` in Rust or
-`IFerruleDynamicXmlSourceLoader.Load` in C# and returns original UTF-8 bytes for
-the requested source name and logical path. The host resolves, authorizes and
-confines that path. Generated libraries do no file or network I/O and do not cache documents. A
-reached dynamic scope loads its driver documents eagerly before that scope's
-filters and windows; it requests no documents beyond evaluated scopes. Returned
-bytes are parsed against that dynamic
-source's embedded closed schema, with the same per-document parser and
-materialization limits as other `Structured` inputs.
-
-Each request selects the exact named source's embedded schema and original
-position in the complete source declaration list. Identical logical paths under
-different source names retain distinct schema and error owners. Scopes and
-targets determine source callback order; each reached source scope retains its
-own driver order. One request ordinal spans all sources and targets in the run.
-
-Initial name and document-shape checks, all primary/static document sizes,
-combined original bytes and initial parsing finish before any loader callback.
-The live input budget starts with primary and supplied static documents. Before each
-callback, it reserves one of the 4,096 document slots; repeated requests count
-separately. A rejected reservation invokes no host callback. A host failure
-consumes its reserved slot but charges no document bytes. Returned documents
-are checked against 64 MiB before their original bytes are charged to the shared
-256 MiB budget, then decoded and parsed. One budget covers the entire execution,
-including requests needed by different sources and targets. Output limits remain separate.
-
-These methods retain `XmlExecutionError` / `FerruleXmlExecutionException`.
-Only this adapter's product-input refusals add `request` / `Request`, containing
-the original zero-based source declaration index, declared name, logical path,
-one-based callback reservation ordinal and `callback_invoked` / `CallbackInvoked`.
-The input owner uses the full declaration index, even when static and dynamic
-sources are interleaved. Count refusal reports the next ordinal with callback
-false; a returned-document refusal reports callback true. The original XML
-boundary and typed cause remain available through the error chain. A host load
-failure stays an unowned `Mapping` error with its original runtime cause, even
-if the host throws an XML boundary exception in C#. Global name errors, path
-errors, missing-loader errors, mapping failures and output failures have no
-dynamic request metadata. Output failures retain their output owner.
-
-The existing no-loader methods retain their signatures, error wrappers and
-lazy missing-loader behavior. Reaching a dynamic scope requires a loader before
-enumerating its drivers, including an empty or all-absent driver collection.
-An unused dynamic declaration does not trigger a callback or a missing-loader
-failure. Absent or explicit JSON-null paths skip their driver; `XmlNil` is not
-an absent path. A pre-target mapping failure can stop execution before a dynamic
-scope is reached. All targets map before serialization, and any failure returns
-no primary document or partial output set.
-
-Low-level `XmlDynamicSourceAdapter` / `FerruleXmlDynamicSourceAdapter` instances
-are for one execution and are terminal after any failed load, including a host
-failure. Only the first failed load may be recovered; do not retry a load or
-reuse its adapter for another execution. Restoring a product refusal in Rust
-requires the original returned nonempty marker `String` to stay live and move unchanged through the
-typed `DynamicSourceLoad` error into synchronous `recover`; cloned text does not
-identify it. C# product recovery requires the original private exception
-reference wrapped by the typed loader. The generated methods construct a fresh adapter
-and abort and recover immediately, so hosts normally implement only the raw
-loader interface.
-
-These limits admit original input bytes and callback counts. They do not bound
-caller buffers, eager parsed instances or mapping allocations, and are not
-streaming or process-RSS guarantees. The host must keep input buffers stable
-for the duration of the call.
+Dynamic names are not static bindings. Loaded documents are requested in driver
+order through a host callback. Missing inputs, callback refusal, an invalid
+returned document and a mapping failure have different owners. The [XML phase
+order](generated-xml-qualification-index.md#phase-order-resources-and-ownership)
+defines the shared count and byte budgets, request identity, callback timing,
+and which original cause a failed request preserves.
 
 ### Static Named Output Sets
 
-An admitted ordinary XML mapping can return its primary document and every
-static named target in declaration order:
-
-| Input and result | Rust | C# |
-| --- | --- | --- |
-| XML text | `execute_xml_outputs` | `GeneratedMapping.ExecuteXmlOutputs` |
-| UTF-8 bytes | `execute_xml_bytes_outputs` | `GeneratedMapping.ExecuteXmlBytesOutputs` |
-| XML text with execution context | `execute_xml_outputs_with_context` | `GeneratedMapping.ExecuteXmlOutputs(source, executionContext)` |
-| UTF-8 bytes with execution context | `execute_xml_bytes_outputs_with_context` | `GeneratedMapping.ExecuteXmlBytesOutputs(source, executionContext)` |
-
-String calls return `XmlExecutionOutputs`; byte calls return
-`XmlBytesExecutionOutputs`. Each contains a primary document and ordered
-`NamedXmlOutput` or `NamedXmlBytesOutput` entries with a target name and document.
-Zero named targets produce an empty extras collection. The host owns any file
-publication; generated APIs neither resolve stored target paths nor open
-schema-hint locations.
-
-Input is parsed once, and all typed targets are mapped once before any target
-is serialized. Each document uses its own embedded target schema and output
-policy. Parsing, mapping, or serialization failure returns no output set.
-An unsuitable ordinary target omits the whole optional XML adapter while
-preserving otherwise supported typed/JSON core generation, including when
-other XML targets retain literal hints. Observed root-view boundaries retain
-their explicit compound restrictions, including the static named-document
-routes described below.
-
-Set APIs return `codegen_runtime::XmlOutputSetError` in Rust and throw
-`FerruleXmlOutputSetException` in C#. The wrapper retains the original typed
-XML boundary error. Serialization failures identify the primary target or
-the named target's zero-based extra index and exact declared name. Input and
-mapping failures have no inferred target owner. The existing singular APIs
-retain their signatures and unwrap the original boundary error.
-
-Sets permit at most 4,096 artifacts including primary, with at most 256 MiB
-of combined serialized UTF-8. The 64 MiB limit still applies independently to
-each document. Set-limit failures have kind `Output` and a typed resource
-cause (`xml_output_artifact_count` or `xml_output_set_utf8_bytes`) with its
-observed count and limit; per-document byte fields remain unset. These counters
-do not bound eager typed-target allocations or peak process memory.
-
-Hand-built code-generation programs must also provide
-`XmlBoundaryProgram.extra_inputs`: `Vec::new()` for zero named inputs, otherwise
-one `NamedXmlInputPolicy` per named source in exact declaration order, with its
-exact name and a `Structured` input policy (both observed flags false). The
-corresponding schemas stay in `Program.extra_sources`, including every dynamic
-declaration when present. Missing, reordered or surplus policies and observed
-named policies reject before emission. Zero-named `RootView` programs use an
-empty `extra_inputs` vector; their static named-input route retains the complete
-`Structured` declarations.
-
-`XmlBoundaryProgram.extra_outputs` remains required:
-an empty vector for one output, or one exact named policy per declared target
-in declaration order. Model validation rejects missing, reordered or surplus
-policies before emission.
+Complete-output methods return primary then named targets in declaration order;
+singular methods on these mappings serialize the complete set before returning
+primary. To skip an unrelated target use the [selected-target byte API](#isolated-selected-xml-byte-output).
 
 ### Dynamic Primary Documents
 
-An ordinary `Structured` XML mapping whose root constructs dynamic documents can
-return an ordered list of XML documents and their logical paths. This adapter
-requires one primary input, no named sources or targets, a driver path ending
-in a repeating group, and a closed nonrepeating group schema for each target
-document. Both observed input flags remain false. Other combinations preserve
-the supported typed/JSON core without receiving these XML methods.
+`execute_xml_documents` / `ExecuteXmlDocuments` return ordered members with
+logical paths. A path is not a filesystem instruction; duplicate member paths
+are preserved. The output driver must be a nonempty path to a repeating group
+of the primary input and the member schema a closed non-repeating group.
 
-| Input and result | Rust | C# |
-| --- | --- | --- |
-| XML text | `execute_xml_documents` | `GeneratedMapping.ExecuteXmlDocuments` |
-| UTF-8 bytes | `execute_xml_bytes_documents` | `GeneratedMapping.ExecuteXmlBytesDocuments` |
-| XML text with execution context | `execute_xml_documents_with_context` | `GeneratedMapping.ExecuteXmlDocuments(source, executionContext)` |
-| UTF-8 bytes with execution context | `execute_xml_bytes_documents_with_context` | `GeneratedMapping.ExecuteXmlBytesDocuments(source, executionContext)` |
-
-Text methods return ordered `XmlDocumentOutput` entries containing `path` and
-`document` in Rust, or `Path` and `Document` in C#. Byte methods return
-`XmlBytesDocumentOutput` entries with owned UTF-8 buffers. An empty mapped
-document set returns an empty list. Duplicate paths remain separate entries
-in mapping order. Paths are opaque metadata: hosts decide how to resolve,
-confine, handle collisions, and publish them. The library performs no file or
-network publication and does not load schema-hint locations.
-
-The adapter parses the input once and finishes the complete typed mapping
-before serialization starts. It then validates the actual member count and
-serializes each member using the embedded target schema and XML policy.
-Any parsing, mapping, or serialization failure returns no document list.
-Consequently, a later mapping failure takes priority over a serialization
-failure that an earlier member would have produced.
-
-Rust methods return `codegen_runtime::XmlDocumentExecutionError`; C# methods
-throw `FerruleXmlDocumentExecutionException`. Each wrapper retains the original
-XML boundary and typed cause. Member-specific serialization failures identify
-the primary target, the zero-based index in the final output list, and the
-exact logical path. Input, mapping, descriptor setup, output shape, and total
-member-count failures have no invented member owner. A combined-byte refusal
-identifies the member that crossed the limit. The existing singular and static
-output-set methods keep their signatures and apply to single-document mode.
-
-The list permits zero through 4,096 actual documents, each at most 64 MiB, with
-at most 256 MiB of combined serialized UTF-8. A count or combined-byte refusal
-retains the existing `Output` boundary and typed resource cause. Per-document
-refusals retain their original byte count and limit. Logical paths are excluded
-from the byte counter. Mapping instances can already be live when output limits
-are checked; these limits do not provide streaming or a process memory ceiling.
-
-The checked `Program::xml_output_mode()` query distinguishes `SingleDocument`,
-`DynamicPrimaryDocuments`, `StaticNamedInputsDynamicPrimaryDocuments`,
-`DynamicNamedInputDynamicPrimaryDocuments`, `StaticPrimaryDynamicNamedDocuments`,
-`StaticNamedInputsStaticPrimaryDynamicNamedDocuments`, and
-`DynamicNamedInputStaticPrimaryDynamicNamedDocuments`, returns no optional adapter for an
-unsupported ordinary boundary, and preserves the original
-typed error for an invalid hand-built program. External exhaustive matches on
-this public enum must handle the added variant.
-
-### Static Named Inputs and Dynamic Primary Documents
-
-An ordinary `Structured` XML mapping can combine a primary dynamic document list
-with static named XML inputs. This separate mode requires at least one static
-named input, no dynamic named sources or named targets, a nonempty driver path
-in the primary schema ending in a repeating group, and a closed nonrepeating
-member group. Every declared input retains its own closed `Structured` schema
-and policy in original declaration order, including inputs unused by the mapper.
-Both observed flags remain false. Unsupported ordinary combinations preserve the
-typed/JSON core without these XML methods; observed profiles retain their strict
-refusals.
-
-| Input and result | Rust | C# |
-| --- | --- | --- |
-| XML text and named inputs | `execute_xml_documents_with_sources` | `GeneratedMapping.ExecuteXmlDocumentsWithSources` |
-| UTF-8 bytes and named inputs | `execute_xml_bytes_documents_with_sources` | `GeneratedMapping.ExecuteXmlBytesDocumentsWithSources` |
-| XML text, named inputs and context | `execute_xml_documents_with_sources_and_context` | `GeneratedMapping.ExecuteXmlDocumentsWithSources(source, extraSources, executionContext)` |
-| UTF-8 bytes, named inputs and context | `execute_xml_bytes_documents_with_sources_and_context` | `GeneratedMapping.ExecuteXmlBytesDocumentsWithSources(source, extraSources, executionContext)` |
-
-The input entries reuse `NamedXmlInput` and `NamedXmlBytesInput`. The results reuse
-ordered `XmlDocumentOutput` and `XmlBytesDocumentOutput` lists. The adapter admits
-all exact input names, complete document shapes, per-document sizes and combined
-input bytes before parsing primary and then each named declaration. A complete
-input set is still required when the mapped output list is empty. In C#, invalid
-UTF-16 can refuse during the strict text-size pass; byte decoding happens during
-primary-then-declaration parsing. All mapping finishes before actual output count
-checks or serialization. Input and output ledgers are independent: each permits
-at most 4,096 artifacts and 256 MiB UTF-8, with a 64 MiB per-document limit. Input
-count includes primary and every static declaration; output count is the actual
-final member count and can be zero.
-
-Rust returns `XmlInputDocumentExecutionError`; C# throws
-`FerruleXmlInputDocumentExecutionException`. An optional exclusive owner identifies
-either `Input` with the original `XmlInputSource`, or `Member` with the primary
-target, zero-based final member index and exact opaque path. The wrapper retains
-the original boundary and typed cause. Existing input descriptor/parser failures
-retain their exact input owner; serializer `Schema` setup errors remain unowned.
-Exact-name failures, initial input count, mapping, alignment and output count
-failures remain unowned. Combined-byte failures identify the input or member that
-crossed its independent limit. No partial list is returned. The four zero-named
-primary-list APIs and the static named-input APIs keep their existing signatures,
-wrappers and semantics. Paths remain opaque metadata with no publication.
-
-### Dynamic Named Inputs and Dynamic Primary Documents
-
-An ordinary `Structured` XML mapping can combine one or more dynamic named
-XML sources and optional static named XML inputs with a primary dynamic document
-list. Every input retains its own closed schema and policy in original
-declaration order, including unused static inputs. The output driver must be
-a nonempty path in the primary schema ending in a repeating group. The target
-member is a closed nonrepeating group, named targets are absent, and both
-observed input flags remain false. Drivers rooted in named inputs, observed
-root-view profiles and advanced unsupported schemas remain
-outside this adapter. Unsupported ordinary boundaries retain the typed and JSON
-core without these XML methods; observed profiles keep their strict refusals.
-
-| Input and result | Rust | C# |
-| --- | --- | --- |
-| XML text, static inputs and loader | `execute_xml_documents_with_sources_and_dynamic_source_loader` | `GeneratedMapping.ExecuteXmlDocumentsWithSourcesAndDynamicSourceLoader` |
-| UTF-8 bytes, static inputs and loader | `execute_xml_bytes_documents_with_sources_and_dynamic_source_loader` | `GeneratedMapping.ExecuteXmlBytesDocumentsWithSourcesAndDynamicSourceLoader` |
-| XML text, static inputs, context and loader | `execute_xml_documents_with_sources_context_and_dynamic_source_loader` | `GeneratedMapping.ExecuteXmlDocumentsWithSourcesContextAndDynamicSourceLoader` |
-| UTF-8 bytes, static inputs, context and loader | `execute_xml_bytes_documents_with_sources_context_and_dynamic_source_loader` | `GeneratedMapping.ExecuteXmlBytesDocumentsWithSourcesContextAndDynamicSourceLoader` |
-
-The argument order is primary, static input collection, optional execution
-context, then loader. The input entries reuse `NamedXmlInput` and
-`NamedXmlBytesInput`; the collection contains exactly the static declaration
-subsequence and may be empty. A dynamic declaration is supplied exclusively
-through `DynamicXmlSourceLoader` or `IFerruleDynamicXmlSourceLoader`. Its host
-callback receives the exact source name and logical path and returns original
-UTF-8 bytes. The host resolves paths and performs any I/O. Results reuse ordered
-`XmlDocumentOutput` and `XmlBytesDocumentOutput` lists with opaque paths; duplicate,
-absolute, traversal-shaped and Unicode paths retain their exact identities.
-C# collections are read-only and byte results own their buffers.
-
-The adapter checks the initial input count, complete static names and document
-shapes, all static per-document sizes and then combined original bytes before
-parsing primary and each static input in declaration order. Owners retain the
-original indices across all dynamic declarations. C# strict text measurement can
-reject invalid UTF-16 during the size pass; byte decoding occurs during parsing.
-An empty final list still requires all static inputs to be admitted and parsed.
-After static admission, one fresh loader adapter owns each dynamic declaration's
-exact source name, original index and independent schema. All dynamic sources
-share the input budget, whole-execution request ordinal and first-failure channel.
-The same logical path under two source names is parsed with each source's schema.
-Existing typed traversal determines callbacks, Null path skips, lazy context
-reads and repeated loads; an XML adapter does not move them
-before mapping or suppress reached callbacks. Each request reserves its document
-count before invoking the host. A host failure reserves count and charges no
-bytes. Repeated loads count and charge again. A failed adapter is terminal; the
-generated method aborts and synchronously recovers its first failure without retry.
-
-Rust returns `XmlDynamicInputDocumentExecutionError`; C# throws
-`FerruleXmlDynamicInputDocumentExecutionException`. The optional exclusive owner
-is either `Input` with the original `XmlInputSource` or `Member` with the primary
-target, zero-based final member index and exact path. `Request` is present only
-for this adapter's original XML or input-resource refusal; it retains the dynamic
-declaration index, source, path, one-based whole-execution ordinal and whether the
-host callback ran. Exact marker identity, source and path restore the original
-boundary and typed cause. An externally thrown XML exception, matching error text,
-host loader failure, invalid path or missing context cannot fabricate this channel.
-Static input descriptor and parser failures keep their input owner without a
-request. Serializer `Schema` setup, exact-name and initial-count failures, mapping,
-alignment and final output-count failures remain unowned without a request.
-Combined-byte failures identify the crossing input request or final member.
-
-All mapping completes once before final output alignment, actual member count,
-capacity or serialization. The input and output ledgers are independent: each
-permits at most 4,096 documents and 256 MiB UTF-8, with a 64 MiB per-document
-limit. Input count includes primary, every static input and each reserved loader
-request; output count is the final primary member count and may be zero.
-Serialization and output charging occur in final member order before retaining
-strings or converting them to owned byte buffers. Any failure returns no partial
-list. Existing XML APIs, wrappers and loader behavior keep their signatures and
-semantics. These byte limits do not provide streaming or a process memory ceiling,
-and the library does not publish files or open schema-hint locations.
+<a id="static-named-inputs-and-dynamic-primary-documents"></a>
+<a id="dynamic-named-inputs-and-dynamic-primary-documents"></a>
+The named-input and loader variants retain those same output requirements.
+Static declarations supply documents, dynamic declarations supply callbacks.
+Observed root views and drivers rooted in named inputs are outside these modes.
 
 ### Static Primary and Dynamic Named Documents
 
-An ordinary `Structured` XML mapping can return one static primary document and
-one or more named targets containing ordered dynamic documents. This adapter
-requires a closed nonrepeating primary group with a noniterating root and no
-named inputs. Every named target must have a dynamic-document root whose
-nonempty source path ends in a repeating group; each member schema must be a
-closed nonrepeating group. Both observed input flags remain false. Existing
-XML schema, namespace, and literal schema-hint restrictions still apply.
+<a id="static-named-inputs-with-static-primary-and-dynamic-named-documents"></a>
+<a id="dynamic-named-inputs-with-static-primary-and-dynamic-named-documents"></a>
+A static primary plus named document lists uses `execute_xml_document_outputs`
+/ `ExecuteXmlDocumentOutputs` and the applicable named-input or loader variant.
+Each endpoint has its own schema and policy. The primary is a closed,
+non-repeating group with a non-iterating root; each list's driver ends in a
+repeated primary-source group. An ordinary mapping outside these profiles can
+still generate its typed/JSON core without XML methods.
 
-| Input and result | Rust | C# |
-| --- | --- | --- |
-| XML text | `execute_xml_document_outputs` | `GeneratedMapping.ExecuteXmlDocumentOutputs` |
-| UTF-8 bytes | `execute_xml_bytes_document_outputs` | `GeneratedMapping.ExecuteXmlBytesDocumentOutputs` |
-| XML text with execution context | `execute_xml_document_outputs_with_context` | `GeneratedMapping.ExecuteXmlDocumentOutputs(source, executionContext)` |
-| UTF-8 bytes with execution context | `execute_xml_bytes_document_outputs_with_context` | `GeneratedMapping.ExecuteXmlBytesDocumentOutputs(source, executionContext)` |
+### Static named documents beside named document lists
 
-Text methods return `XmlDocumentExecutionOutputs`; byte methods return
-`XmlBytesDocumentExecutionOutputs`. Each result owns its primary document and an
-ordered `extras` collection containing each declared named envelope with `name`
-and `documents` fields. C# uses the corresponding `Primary`, `Extras`, `Name`, and
-`Documents` properties and read-only collections. Members retain their exact
-logical paths beside XML strings or owned UTF-8 buffers. Duplicate, absolute,
-and traversal-shaped paths remain opaque metadata for the host to resolve and
-publish. Every named envelope remains in declaration order, including empty
-lists; an empty list still returns its named envelope beside the primary.
+A Structured XML primary with no named inputs can expose one static primary,
+one static named document, and one or more independent dynamic named document
+lists. Named declarations retain their original order. The `StaticPrimaryMixedNamedXmlOutputs`
+mode requires flat, ordinary Group roots; each list root uses its own primary
+repeating Group driver. Existing all-static and all-list modes keep their APIs.
 
-The adapter completes the whole typed mapping once before serialization. It
-checks output shape, name alignment, and the actual artifact count before
-allocating output collections or serializing documents. The maximum of 4,096
-artifacts includes the primary, permitting at most 4,095 named members across
-all targets. It serializes and charges the primary first, then each named target
-in declaration order and its members in final order.
-Each document is limited to 64 MiB and the complete set to 256 MiB of serialized
-UTF-8, excluding logical paths. These limits do not bound live mapping instances
-or provide streaming or a process memory ceiling.
+Generated Rust provides `execute_xml_mixed_outputs` and
+`execute_xml_bytes_mixed_outputs`, each with a `_with_context` companion.
+Generated C# provides `ExecuteXmlMixedOutputs` and `ExecuteXmlBytesMixedOutputs`,
+each with a context overload. `XmlMixedExecutionOutputs` and
+`XmlMixedBytesExecutionOutputs` contain one primary document and ordered named
+variants: `SingleDocument` has an original declaration index, name and document;
+`DocumentList` has an original declaration index, name and ordered path-bearing
+members. An empty list retains its envelope. Static documents have no fabricated
+path or member index. Existing DTOs are unchanged.
 
-Rust returns `codegen_runtime::XmlDocumentOutputsExecutionError`; C# throws
-`FerruleXmlDocumentOutputsExecutionException`. Input, mapping, schema setup,
-alignment, and count failures have no output owner. Other primary serialization
-failures own `Primary`, which has no member index or path. Named serialization
-and combined-byte failures identify the declaration index and name, final
-zero-based member index, and exact path. The wrapper preserves the original XML
-boundary and typed cause. Any failure returns no partial output envelope, and a
-later mapping failure takes priority over an earlier potential serialization
-failure. Existing single-document and primary-list methods keep their meanings.
+The complete core mapping finishes before any writer. Writers run Primary first,
+then named declarations and final list members in order. Failure returns no
+partial result. `XmlMixedExecutionError` (Rust) and `XmlMixedExecutionException`
+(C#) preserve the original boundary and cause. `XmlMixedOutputOwner` distinguishes
+`Primary`, static `Named` (declaration index/name), and `Member` (declaration
+index/name/final member index/original opaque path). Input, mapping, descriptor
+Schema, alignment and total-count failures are unowned. Logical paths are neither
+normalized nor opened.
 
-### Static Named Inputs with Static Primary and Dynamic Named Documents
-
-An ordinary `Structured` XML mapping can combine static named inputs with a
-static primary document and one or more dynamic named document lists. This
-separate mode requires at least one static named input. Every input has its own
-closed `Structured` schema and policy in original declaration order, including
-unused inputs. The primary is a closed nonrepeating group with a noniterating
-root. Every named output has a closed nonrepeating member group and a root
-`DynamicDocuments` driver whose nonempty path ends in a repeating group of the
-primary input. Both observed flags remain false. Dynamic named sources, observed
-root-view profiles, static named output roots mixed with document-list roots,
-and advanced unsupported XML schemas remain outside this adapter.
-
-| Input and result | Rust | C# |
-| --- | --- | --- |
-| XML text and named inputs | `execute_xml_document_outputs_with_sources` | `GeneratedMapping.ExecuteXmlDocumentOutputsWithSources` |
-| UTF-8 bytes and named inputs | `execute_xml_bytes_document_outputs_with_sources` | `GeneratedMapping.ExecuteXmlBytesDocumentOutputsWithSources` |
-| XML text, named inputs and context | `execute_xml_document_outputs_with_sources_and_context` | `GeneratedMapping.ExecuteXmlDocumentOutputsWithSources(source, extraSources, executionContext)` |
-| UTF-8 bytes, named inputs and context | `execute_xml_bytes_document_outputs_with_sources_and_context` | `GeneratedMapping.ExecuteXmlBytesDocumentOutputsWithSources(source, extraSources, executionContext)` |
-
-Inputs reuse `NamedXmlInput` and `NamedXmlBytesInput`. Results reuse
-`XmlDocumentExecutionOutputs` and `XmlBytesDocumentExecutionOutputs`, retaining
-the primary and every named envelope in declaration order, including empty
-lists. Members retain their exact opaque logical paths. The adapter admits the
-complete input count, exact names and document shapes, all per-document sizes,
-and combined original input bytes before parsing the primary and then each
-named declaration. Empty output lists still require every input. C# strict text
-measurement can refuse invalid UTF-16 during the size pass; byte decoding occurs
-during primary-then-declaration parsing.
-
-All typed mapping completes once before output alignment, checked actual count,
-capacity, or serialization. The adapter checks `1 + sum(named member counts)`
-including the primary, then serializes and charges the primary followed by each
-named declaration and its members in final order. The input and output ledgers
-are independent. Each permits at most 4,096 artifacts and 256 MiB UTF-8, with a
-64 MiB per-document limit. The output always includes the primary; all named
-lists can be empty.
-
-Rust returns `XmlInputDocumentOutputsExecutionError`; C# throws
-`FerruleXmlInputDocumentOutputsExecutionException`. The optional exclusive owner
-identifies either `Input` with the original input owner, or `Output` with the
-existing mixed-output owner: `Primary` has no member fields, while `NamedMember`
-retains the original declaration index and name, zero-based final member index,
-and exact path. The original boundary and typed cause remain unchanged. Input
-descriptor and parser failures keep their input owner; serializer `Schema`
-setup remains unowned. Global names/count, mapping and alignment failures remain
-unowned. Shared-byte refusals identify the crossing input or output. Any failure
-returns no partial envelope. Existing XML methods keep their signatures,
-wrappers and behavior. Paths remain opaque; the library does not publish files,
-resolve paths or open schema-hint locations. These serialized-byte limits do not
-provide streaming or a process memory ceiling.
-
-### Dynamic Named Inputs with Static Primary and Dynamic Named Documents
-
-An ordinary `Structured` XML mapping can combine one or more dynamic named inputs,
-optional static named inputs, one static primary document and one or more named
-document lists. Each input and output retains its own closed schema and policy.
-The primary target is a closed nonrepeating group with a noniterating root. Each
-named output has a closed nonrepeating member group and a nonempty document driver
-path ending in a repeating group of the primary input. Named-input output
-drivers, observed root-view profiles, static named output roots
-mixed with document lists, and unsupported advanced XML schemas remain outside
-this adapter.
-
-| Input and result | Rust | C# |
-| --- | --- | --- |
-| XML text, static inputs and loader | `execute_xml_document_outputs_with_sources_and_dynamic_source_loader` | `GeneratedMapping.ExecuteXmlDocumentOutputsWithSourcesAndDynamicSourceLoader` |
-| UTF-8 bytes, static inputs and loader | `execute_xml_bytes_document_outputs_with_sources_and_dynamic_source_loader` | `GeneratedMapping.ExecuteXmlBytesDocumentOutputsWithSourcesAndDynamicSourceLoader` |
-| XML text, static inputs, context and loader | `execute_xml_document_outputs_with_sources_context_and_dynamic_source_loader` | `GeneratedMapping.ExecuteXmlDocumentOutputsWithSourcesContextAndDynamicSourceLoader` |
-| UTF-8 bytes, static inputs, context and loader | `execute_xml_bytes_document_outputs_with_sources_context_and_dynamic_source_loader` | `GeneratedMapping.ExecuteXmlBytesDocumentOutputsWithSourcesContextAndDynamicSourceLoader` |
-
-Arguments are primary, static input collection, optional execution context, then
-loader. Inputs reuse `NamedXmlInput` and `NamedXmlBytesInput`. The collection
-contains exactly the static declaration subsequence and may be empty. The host
-implements `DynamicXmlSourceLoader` or `IFerruleDynamicXmlSourceLoader` and returns
-original UTF-8 bytes for each exact source name and logical path. The library
-performs no file or URL access.
-
-Results reuse `XmlDocumentExecutionOutputs` and `XmlBytesDocumentExecutionOutputs`.
-They contain the primary and every named envelope in original declaration order,
-including empty lists. Member paths remain exact opaque metadata, including
-duplicates, Unicode, absolute and traversal-shaped paths. C# collections are
-read-only; byte results own separate buffers. This mode exposes these four XML
-methods rather than the old singular or primary-list XML families.
-
-The adapter admits the complete initial count, exact static names and document
-shapes, every per-document size and combined original bytes before parsing primary
-and then static declarations in order. Unused static inputs are still required.
-One fresh dynamic adapter then shares that input ledger and request ordinal across
-all dynamic declarations. Policies retain original declaration indices, exact
-source names and independent schemas; the same logical path under different
-source names remains a separate load with its own schema.
-It reserves each request's document count before the host callback and charges
-returned original bytes before parsing them. Repeated loads count and charge
-again. Mapping determines callback reachability and lazy context reads.
-
-The complete mapping runs once before output alignment, checked actual count,
-capacity or writers. Output count is `1 + sum(named member counts)`, including the
-primary. Serialization and charging proceed primary first, then original named
-declaration order and final member order, each with its own schema and hints. A
-later mapping failure precedes any potential writer failure. Any failure returns
-no partial result. Input and output ledgers are independent: each permits 4,096
-documents and 256 MiB UTF-8, with a 64 MiB per-document limit. Logical output paths
-do not count toward serialized bytes. These acceptance limits do not provide
-streaming or a process memory ceiling.
-
-Rust returns `XmlDynamicInputDocumentOutputsExecutionError`; C# throws
-`FerruleXmlDynamicInputDocumentOutputsExecutionException`. Its optional exclusive
-owner is `Input` with the original `XmlInputSource`, or `Output` with the existing
-mixed-output owner. Output `Primary` has no member fields; `NamedMember` retains
-original declaration index and name, final zero-based member index and exact path.
-Input descriptor/parser failures retain their input owner; output `Schema` setup,
-global name/count, mapping and alignment failures remain unowned. The original
-boundary and typed cause are preserved.
-
-Optional `Request` is present only for an original refusal synchronously recovered
-from this fresh adapter. It preserves the dynamic declaration index, source, path,
-one-based request ordinal and whether the host callback ran. An external XML
-exception, similar error text or marker, host failure, missing context or invalid
-mapping path cannot authenticate that request channel. Ordinary C# null/list
-accessor guards remain ordinary CLR exceptions. Existing XML methods retain their
-signatures and behavior.
+One shared budget counts `2 + the sum of every list’s members` and charges actual serialized UTF-8
+bytes. The existing limits remain 4096 artifacts, 64 MiB per document and 256 MiB
+per output set. Charge occurs before retaining/converting each new document.
+These are admission limits, not streaming or peak-memory guarantees: mapped
+values and previously accepted buffers may coexist. Runtime and vendored source
+files are unchanged. Adding a public `XmlOutputMode` variant requires downstream
+exhaustive matches to include the new case; old mapping-specific APIs and their
+result meanings remain unchanged.
 
 ### Observed Root-View Input
 
@@ -3213,24 +1807,11 @@ document are not measurements or bounds for a complete named-input set.
 
 ## Runnable Hosts
 
-[`examples/codegen/`](../examples/codegen/) contains one portable mapping with
-matching Rust and C# host applications. The mapping filters zero-value orders,
-sorts the remaining rows, assigns compact positions, and formats invoice labels.
-The checked-in input and expected output show the equivalent JSON boundaries;
-the hosts pass those documents directly through the generated JSON APIs.
-
-Generate both libraries and run both hosts from the repository root:
-
-```sh
-./examples/codegen/run.sh
-```
-
-Generated artifacts are recreated under `examples/codegen/generated/` and are
-not committed. The [Rust host](../examples/codegen/rust/) calls
-`ferrule_generated_mapping::execute_json`, while the
-[C# host](../examples/codegen/csharp/) calls
-`Ferrule.Generated.GeneratedMapping.ExecuteJson`. Both validate the complete
-filtered and sorted JSON result before printing it.
+[`examples/codegen`](../examples/codegen/README.md) contains the checked-in
+project, input, expected result and both host programs. Run
+`./examples/codegen/run.sh` from the repository root to regenerate and execute
+both. The [Rust](../examples/codegen/rust/) and [C#](../examples/codegen/csharp/)
+hosts call the JSON methods and compare the complete filtered and sorted result.
 
 ## Portable Subset
 
@@ -3533,227 +2114,10 @@ ownership and parent-context rules need a broader portable join model. Code
 generation is expanding incrementally toward interpreter parity; see the
 [roadmap](../ROADMAP.md) for the broader direction.
 
-An opt-in local-corpus smoke test imports forty-three warning-free designs: JSON to
-JSON, XML to JSON, FlexText to XML, grouped CSV to XML, grouped XML to XML
-with yearly minimum, maximum, and average temperatures, XML to XML with
-three-key person sorting, XML to XML with top-ten temperature selection, and
-XML to XML with positions compacted after filtering, plus XML to XML with an
-ordered string-join aggregate across nested contacts and XML to XML with lazy
-temperature classification and optional target attributes. The eleventh
-design maps XML to CSV through lookup-fed token existence and ordered root
-scope concatenation. The twelfth joins a primary XML source with a named XML
-source on a composite person key. The thirteenth reads embedded-schema
-Protobuf input and maps it to CSV through a value map and numeric function.
-The fourteenth reads transposed XLSX columns and maps them to CSV with
-position-indexed item-at aggregates. The fifteenth reads a recursive XML
-hierarchy and collects 90 distinct nested file paths into XML; its
-schema-shaped JSON input retains recursive group fields in both generated
-backends. The sixteenth maps four expense items through integer and boolean
-value maps into XML. Its nominally nonrepeating XSD group receives several
-mapped XML occurrences, so this case compares the public generated Instance
-APIs and XML serializers while retaining schema-shaped JSON input parsing.
-The seventeenth joins a formatted summary across XML items, evaluating a call
-and two keyed lookups for each aggregate item. The eighteenth maps runtime-named
-generic XML elements and their text into sixteen key/value properties. The
-nineteenth reads a bounded local XML file set and creates two separately named
-XML documents. It retains each source member's portable path and resolved file
-location while crossing the source schema-shaped JSON boundary, supplies the
-same mapping-file context to the interpreter and both generated typed Instance
-APIs, and compares ordered portable output paths, normalized XML, and typed
-JSON for each output member without writing into the sample corpus. The twentieth
-design uses the same confined two-member source transport to merge both input
-documents into one XML target; it compares that target's normalized XML and
-typed JSON across the interpreter and generated hosts. The twenty-first reads
-one expense-report XML source and evaluates two independent XML targets. The
-third XML component is the primary `SecondXML.xml` accommodation report;
-the earlier `ExpReport-Target.xml` travel report is the ordered `Company` named
-target. Generated Rust and C# `execute_outputs` hosts receive the same
-JSON projection of the source, then compare each target's normalized XML and
-typed JSON projection against the interpreter. The mapping does not read the
-recursive mixed-description branches, which are omitted only from JSON
-transport; full original XSD-derived schemas remain in the XML comparisons.
-The C# XML serializer receives the imported root namespace through its explicit
-`defaultNamespace` option; general per-node XML namespace metadata parity
-remains separate. The full recursive mixed-description JSON boundary remains
-unsupported. The earlier PDF stock execution case is withdrawn: its imported ObjectFind
-layout is a repair draft because visual candidate detection is not implemented.
-Physical PDF reads now reject before decoding; generated hosts may still accept
-intentional host-preparsed schema-shaped JSON, without asserting native PDF
-extraction. The twenty-third maps an XML source containing four explicit `xsi:nil`
-values to an XML target using nil-sensitive functions. Its test carries the
-non-nil fields through schema-shaped JSON, restores the four known nil values in
-the generated Rust and C# typed `Instance` hosts, verifies that this transport
-preserves the interpreter result, then compares exact XML serialization bytes.
-The JSON host boundary cannot represent XML nil directly, so this case exercises
-the generated typed host APIs rather than claiming JSON input parity for nil.
-The twenty-fourth reads a locally configured EDIFACT order and maps its buyer
-contact to a headerless CSV row, including UN/EDIFACT 2379 date-time conversion.
-The native EDIFACT reader's typed source must survive schema-shaped JSON
-transport unchanged. The test compares both generated backends with the
-interpreter as typed JSON and as exact CSV bytes after applying the same target
-CSV writer; generated hosts do not parse EDIFACT or write CSV themselves.
-The twenty-fifth recursively filters an XML directory tree for filenames
-containing `.xml`, preserving all directory levels and 33 matching files.
-The native XML reader retains private child-order metadata that schema-shaped
-JSON cannot carry. The test verifies that native interpreter XML output
-round-trips with only the filtered files, then compares the interpreter and
-generated Rust/C# typed and JSON entry points under the same JSON-transported
-source as both typed JSON and exact XML bytes. Focused runtime tests also check
-that typed native inputs prune the retained ordered stream at every depth.
-The twenty-sixth reads an XML manifest that names two local XML documents.
-Each manifest item drives a dynamic secondary-source load under the same
-mapping-file path in the interpreter and generated Rust/C# hosts. The test
-confines the loader to those two files, checks request order, and compares the
-merged offices as typed JSON and exact XML bytes through both generated typed
-and JSON APIs. No native reference output is pinned for this design.
-The twenty-seventh reads an XML expense report and evaluates a pre-target
-failure rule over each expense item. The original local input contains one
-expense above the limit, so the test compares the interpreter and generated
-Rust/C# typed and JSON APIs on the failure rule number and message. A
-test-owned in-memory variant moves that value below the limit and checks the
-successful result as typed JSON and exact XML bytes. The source XML must
-survive schema-shaped JSON transport unchanged; no native reference output is
-pinned for this design.
-The twenty-eighth reads four XML name strings and applies the imported,
-embedded FlexText delimiter layout to project first, last, mother, and father
-fields into a headerless CSV table. It checks the four ordered rows and
-compares generated Rust/C# typed JSON and exact CSV bytes with the interpreter
-through the same CSV writer. The generated hosts receive schema-shaped JSON
-from the native XML reader; they execute the embedded string parser without
-reopening its `.mft` configuration. No native reference output is pinned for
-this design.
-The twenty-ninth reads local XML temperatures and constructs one yearly result
-through an inclusive generated sequence. Three expression-valued aggregates
-select the 2008 readings inside that generated-item scope, producing minimum
-−0.5, maximum 24, and average 11.6. The test proves native XML survives
-schema-shaped JSON transport, then compares generated Rust/C# typed and JSON
-APIs with the interpreter as typed JSON and exact XML bytes. No native
-reference output is pinned for this design.
-The thirtieth reads twelve local JSON item rows and selects a computed
-`out-of-stock` property. Absent and false values are excluded before the five
-remaining rows are sorted by part number into a headered CSV table. The test
-checks their names and order, then compares generated Rust/C# typed JSON and
-exact CSV bytes with the interpreter through the same CSV writer. No native
-reference output is pinned for this design.
-The thirty-first maps local JSON purchase orders to a namespace-qualified XML
-document. It checks three orders, twelve line items, and the EU/US address
-alternatives selected by their distinct fields. Generated Rust/C# typed APIs
-must agree with their JSON APIs and the interpreter's schema-shaped JSON; their
-XML serialization must match the interpreter byte for byte. The C# host passes
-the imported root namespace explicitly to its XML serializer. No native
-reference output is pinned for this design.
-The thirty-second maps local XML employees to a proto2 `Persons` target. It
-checks all 21 ordered people, representative names, IDs, email addresses, and
-phone records with the fixed WORK enum value. Generated Rust/C# typed and JSON
-APIs must agree with the interpreter's schema-shaped values; the same embedded
-Protobuf layout must encode both results to identical bytes and decode them
-back to the mapped values. No native reference binary is pinned for this design.
-The thirty-third reads a local SAP IDoc order using its embedded fixed-record
-layout and maps it to XML. It checks the order number, the date/time converted
-by the imported two-argument user function, both item amounts and prices, and
-the empty customer and item-name fields selected from the first sparse partner
-and description records. The native IDoc instance must survive schema-shaped
-JSON transport unchanged. Generated Rust/C# typed APIs must produce the
-interpreter's exact XML bytes. The mapping leaves `Amount` as lexical strings
-`1.000` and `2.000` in the typed target; XML and JSON output boundaries convert
-them to exact integers without changing the typed mapping result. Both
-generated JSON string and byte APIs match the interpreter's schema-shaped
-output, and parsing each XML result through the target schema yields the same
-values. No native reference XML output is pinned for this design.
-The thirty-fourth reads a local X12 order with separators and implied-decimal
-metadata retained from its embedded `X12.Nanonull.zip` configuration. The
-native reader's typed instance must survive schema-shaped JSON transport
-unchanged. The mapping selects one customer row with name `Michelle Butler`,
-salutation `Mrs`, and date `20200430`. The test pins the interpreter's exact
-headerless CSV bytes and compares generated Rust and C# results after the same
-CSV writer. Generated hosts receive the parsed JSON source; they do not parse
-X12 themselves. No native reference CSV output is pinned for this design.
-The thirty-fifth reads a local XBRL income table and maps four statement
-periods to a new XLSX worksheet named `Operating Expenses`. The test verifies
-that the XBRL reader's typed source survives schema-shaped JSON transport,
-then pins the ordered dates and totals, including `3,454,000,000` for the
-first period. Generated Rust and C# typed and JSON APIs must agree with the
-interpreter. The same flat-table writer produces each workbook, whose sheet,
-header, and typed cells are decoded and compared; ZIP bytes are not used as a
-semantic equality check. No native reference workbook is pinned for this
-design.
-The thirty-sixth reads a local SQLite account database, follows nested
-user-to-group-to-application relationships, and maps four ordered users to
-headerless CSV. The test checks the shared application on the first three
-rows and the last row's `Misc.` and `No Description` fallbacks. Its relational
-source survives schema-shaped JSON transport; generated Rust and C# typed
-and JSON APIs match the interpreter, including exact CSV bytes from the same
-writer. No native reference CSV output is pinned for this design.
-The thirty-seventh reads four periods and their duration facts from a local
-SQLite database and maps them to an XBRL income statement. The test checks
-the writer's four contexts, two units, and 100 ordered facts, including the
-first period's passenger revenue and net income. Its relational source and
-mapped target survive schema-shaped JSON transport; generated Rust and C#
-typed and JSON APIs match the interpreter, and the same XBRL writer produces
-identical instance bytes. No native reference XBRL output is pinned for this
-design.
-The thirty-eighth maps an XML organization into a hierarchical XLSX workbook
-with two runtime-named worksheets. It checks fixed office and employee headers,
-typed office dates, ordered address/employee/department bands, and the
-relative department band positions after 15 and 6 employees. Generated Rust
-and C# typed and JSON APIs match the interpreter; the same hierarchical writer
-produces each workbook, which is decoded to compare sheet order and cells.
-ZIP bytes are not used as a semantic equality check. No native reference
-workbook is pinned for this design.
-The thirty-ninth parses a local database log through an embedded FlexText
-first-match switch. The test checks that all 17 source lines reach exactly
-one of three fixed-width outputs in primary, `Output B`, `Output C` order,
-with 6, 5, and 6 rows. It verifies schema-shaped JSON transport of the
-nested Switch instance, interpreter and generated Rust/C# typed and JSON
-output sets, and exact 100-column space-padded LF records from the same
-fixed-width writer. No native reference output files are pinned for this
-design.
-The fortieth maps XLSX staff rows to SQLite, retaining nested JSON text and
-database-generated IDs after native adapter writes. The forty-first
-formats scaled sales values using imported numeric pictures while preserving
-current and enclosing XML fields. The forty-second selects address lines and
-composes substring functions, preserving office order and omitting the parent
-location when an address is absent. Its native XML readback comparison covers
-every mapped field; declared but unmapped fields remain outside that comparison.
-The forty-third combines nested office/department grouping, sentinel-to-Null
-conditionals, numeric defaults and a generated zero-or-one optional name group.
-An independent row evaluator constructs the full expected typed output and
-checks four valid graph mutations. Generated JSON string and byte hosts preserve
-group order, numeric adaptation and scalar/optional-group omission. This case
-adds no physical or generated XML codec comparison.
-Ordinary corpus JSON hosts call both string and UTF-8 byte entry points with
-identical primary and named input content, then require exact output bytes before
-the existing interpreter comparison. Specialized typed, XML and dynamic-input
-hosts retain their separately described checks; this addition does not test
-invalid raw UTF-8 or every named target's byte buffer.
-The test executes every design in the interpreter, then compiles and runs
-generated Rust and C# hosts. Run it with
-`cargo test -p cli --features codegen-tests --test code_generation reference_corpus -- --ignored --nocapture`
-when the ignored `samples/ReferenceSamples` corpus and .NET 10 SDK are present.
-Set `FERRULE_REFERENCE_CORPUS_CASE` to a sample path such as
-`DB_ApplicationList.mfd` to run one case while developing it.
-The corpus files are never added to the repository. This checks generated
-backends against the local interpreter; the yearly-temperature mapping has
-no pinned native reference output in the corpus.
-A separate opt-in generic host has compiled and executed sixty additional local
-designs in both languages without adding their fixture contents to the repository.
-Both local-corpus hosts stage the complete bounded package before import, check
-database paths before introspection, and verify that the original files retain
-their bytes and modification times. Admission
-requires warning-free import, deterministic execution without preview host
-values, and exact typed source round trips through schema-shaped JSON. All
-primary and static named inputs are retained, and every primary/named output
-is compared in declaration order after schema-shaped normalization. Each
-compiled host checks its string and UTF-8 byte APIs against the same inputs,
-including missing, duplicate and unexpected named-input rejection.
-
-Run `generic_generated_hosts_execute_sixty_additional_local_designs` with the
-same feature and `--ignored --nocapture` options. Set
-`FERRULE_GENERIC_CORPUS_CASE` to one exact reviewed filename for a focused run;
-omitting it requires the complete sixty-design list. Target comparison uses
-normalized JSON fixed points, not raw internal output instances or generated
-physical format codecs. Context-dependent, dynamic, warning-bearing and
-nonrepresentable adapter contracts remain outside this host's admission gate.
+For language-specific regression coverage, see the
+[authored examples](../examples/codegen/) and the [optional local corpus tests](../crates/cli/tests/code_generation/reference_corpus_generic.rs).
+A fixture comparing typed or JSON values does not establish physical file output,
+native-design round trips or editor behavior.
 
 Closed schemas may declare a field more than once. Generated C# retains each
 typed declaration in order, resolves the first slot during field lookup, and
@@ -3766,56 +2130,11 @@ path as generated parser configuration. Only the input expression executes at
 runtime; configuration constants also used by ordinary expressions remain
 reachable. Strict generated Rust builds cover main mappings and nested functions.
 
-The filtered-position case has XSD-derived `Contact` and
-`ContactWithAddress` alternatives whose member sets overlap. JSON hosts accept
-the value only when one matching type has a member set strictly contained in
-every other matching type's member set for this
-XSD-origin shape; ordinary overlapping JSON `oneOf` remains ambiguous. The
+For XSD-derived alternatives whose populated member sets overlap, the JSON
+host accepts a value only when one matching type's member set is strictly
+contained in every other match for that shape; ordinary overlapping JSON `oneOf` remains ambiguous. The
 JSON host still cannot preserve an explicit `xsi:type` identity when two types
 have identical populated fields.
 For flat CSV-style sources, the JSON host input is a root array of row objects
 even when the embedded row schema itself is non-repeating. Each row is checked
 against that schema; arrays inside a row still require repeating fields.
-
-## Output Safety
-
-The CLI validates and stages a complete artifact tree before publishing it.
-Generation requires a destination that does not already exist, avoiding partial
-replacement of user-managed source trees.
-
-
-### Static named documents beside named document lists
-
-A Structured XML primary with no named inputs can expose one static primary,
-one static named document, and one or more independent dynamic named document
-lists. Named declarations retain their original order. The `StaticPrimaryMixedNamedXmlOutputs`
-mode requires flat, ordinary Group roots; each list root uses its own primary
-repeating Group driver. Existing all-static and all-list modes keep their APIs.
-
-Generated Rust provides `execute_xml_mixed_outputs` and
-`execute_xml_bytes_mixed_outputs`, each with a `_with_context` companion.
-Generated C# provides `ExecuteXmlMixedOutputs` and `ExecuteXmlBytesMixedOutputs`,
-each with a context overload. `XmlMixedExecutionOutputs` and
-`XmlMixedBytesExecutionOutputs` contain one primary document and ordered named
-variants: `SingleDocument` has an original declaration index, name and document;
-`DocumentList` has an original declaration index, name and ordered path-bearing
-members. An empty list retains its envelope. Static documents have no fabricated
-path or member index. Existing DTOs are unchanged.
-
-The complete core mapping finishes before any writer. Writers run Primary first,
-then named declarations and final list members in order. Failure returns no
-partial result. `XmlMixedExecutionError` (Rust) and `XmlMixedExecutionException`
-(C#) preserve the original boundary and cause. `XmlMixedOutputOwner` distinguishes
-`Primary`, static `Named` (declaration index/name), and `Member` (declaration
-index/name/final member index/original opaque path). Input, mapping, descriptor
-Schema, alignment and total-count failures are unowned. Logical paths are neither
-normalized nor opened.
-
-One shared budget counts `2 + the sum of every list’s members` and charges actual serialized UTF-8
-bytes. The existing limits remain 4096 artifacts, 64 MiB per document and 256 MiB
-per output set. Charge occurs before retaining/converting each new document.
-These are admission limits, not streaming or peak-memory guarantees: mapped
-values and previously accepted buffers may coexist. Runtime and vendored source
-files are unchanged. Adding a public `XmlOutputMode` variant requires downstream
-exhaustive matches to include the new case; old mapping-specific APIs and their
-result meanings remain unchanged.

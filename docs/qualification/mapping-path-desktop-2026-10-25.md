@@ -1,9 +1,8 @@
 # Mapping-path desktop qualification — 2026-10-25
 
-The ordinary Linux Ferrule editor completed the focused desktop workflow in
-[#108](https://github.com/DeandreT/ferrule/issues/108). No runtime or GUI production
-code changes were needed. This qualifies this self-authored scenario, not other
-desktop gates or other platforms.
+The ordinary Linux editor was used to author, save and reopen this synthetic
+fixture on 2026-10-25. The observations below cover the two targets and one
+isolated function, with separate checks of both Preview outputs.
 
 ## Observed result
 
@@ -146,14 +145,7 @@ frames when wiring. Recheck coordinates after Undo/Redo because a canvas rebuild
 may recenter the viewport. On bare Xvfb, refocus Ferrule after a native chooser:
 pointer input can work while keyboard focus is still on the closed chooser.
 
-An early audit comparison added previously unmaterialized shared-node entries
-to the inactive main layout during rebuild; no existing position or project
-content changed. The complete history comparison was repeated after both views
-contained all shared nodes. Earlier focus/coordinate attempts and their captures
-remain retained separately from the passing comparisons.
-
-The verifier compares the complete expected project, entire before/after layout
-objects, complete Preview outputs, and normal exit/owned process closure. The
-focused engine suite and `cargo clippy -p engine --all-targets --locked -- -D
-warnings` also passed. No external application, vendor sample, or fake-dialog
-test is used as evidence for this desktop result.
+Visit both canvases before recording layout comparisons: rebuilding an inactive
+view can add positions for newly shared nodes. Compare the complete project,
+before/after layouts and Preview outputs, then verify normal process closure.
+These are desktop observations for this fixture.

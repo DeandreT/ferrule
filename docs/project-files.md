@@ -1,21 +1,15 @@
 # Project and pipeline files
 
-Projects with an explicit `ClosedPrimarySourceV1` execution contract require
-the version-3 `primary-source-safety-guard-v1` capability, including when
-embedded in pipelines or document projects. See the
-[primary-source safety guard](primary-source-safety-guard.md) for model/input
-admission and the raw-Serde compatibility boundary. Guarded models cannot be
-saved as plain/version-2 artifacts or exported to MFD.
+The CLI and both editors use the same mapping file codec. A pipeline uses it for
+every embedded project. Legacy unmarked files remain readable, and saving
+preserves the complete model, including finite floating-point bits and negative
+zero.
 
-The CLI, native editor, and browser editor share the mapping crate's project
-file codec. Pipeline files use the same codec for all embedded projects.
-Existing unmarked files retain their ordinary JSON wire format.
-
-Saving a project must preserve its values when it is reopened. The shared
-JSON parser now correctly rounds finite floating-point tokens. Earlier parsing
-could shift a shortest-decimal value by one representable step. The file codec
-verifies the complete model and preserves floating-point bits, including
-negative zero.
+A project declaring `ClosedPrimarySourceV1`, including one embedded in a
+pipeline or document project, requires the version-3 `primary-source-safety-guard-v1`
+capability. It cannot be saved as plain/version-2 JSON or exported to MFD. The
+[guard contract](primary-source-safety-guard.md) explains admission and the
+raw-Serde boundary.
 
 Files that round-trip exactly retain the ordinary JSON form. Other files use
 a versioned JSON envelope containing the document and its floating-point bit
@@ -113,7 +107,6 @@ capabilities are:
   [closed primary-source execution contract](primary-source-safety-guard.md),
   independently of expression reachability or whether a source read is used.
 
-
 ## Primary XML root reads
 
 `SourceRootXmlTypeEquals` compares the input root's actual `xsi:type` annotation
@@ -145,7 +138,6 @@ the same bounded source schema/options; selecting another format cannot silently
 ignore the policy. A bounded flat String-attribute root-view pattern
 supports `.mfd` import and export; other root expression graphs remain
 unsupported. See [XML root-view interoperability](mfd-interop.md#xml-root-view-interoperability).
-
 
 ## Target XML type selection
 

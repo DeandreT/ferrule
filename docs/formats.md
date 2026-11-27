@@ -110,566 +110,567 @@ reloading a project starts from that project's saved headers.
 
 ## Important Boundaries
 
-- MFD import constructs a required, non-null singleton XML scalar document root
-  from one matching String, Bool, Int or Float constant, or one required XML
-  element path whose root and ancestors are singular. The selected scalar
-  declaration uses qualified `xs:string`, `xs:boolean`, `xs:long` or `xs:double`.
-  Its own XSD must prove default or explicit 1..1 occurrences through each
-  selected element and containing sequence or all particle. Constants must have
-  valid saved lexical values; Float constants must be finite. Primary and named
-  targets retain their own schemas and output identities. Repeated, optional,
-  nullable, competing and metadata-dependent root feeds, custom scalar facets,
-  lists, unions, attributes and simple-content paths produce repair warnings
-  and refuse executable import. XML instance readers and writers retain their
-  existing typed errors, including nonfinite output refusal. Singleton scalar
-  root MFD export remains unsupported and refuses before publishing artifacts.
-- JSON5 input accepts comments, trailing commas, single-quoted strings, and
-  other supported JSON5 syntax; comments are not represented in mapping values
-  or written back. Output omits quotes around property names when JSON5 allows
-  it. JSON5 uses one document, so `json5` and `json_lines` cannot be combined.
-  Input is limited to 64 MiB and 128 nested containers; exact `uniqueItems`
-  checks retain numeric token values, including hexadecimal numbers. Nonfinite
-  values are rejected. JSON5 file parsing and writing are provided by the CLI
-  and browser runtime. Ordinary generated Rust and C# library entry points
-  exchange strict schema-shaped JSON with their hosts; the explicit
-  `--json5-adapters` profile adds singular JSON5-input, strict-JSON-output
-  companions for closed object schemas, as described in the
-   [generated JSON5 companion contract](generated-json5-contract.md). MFD import
-   retains observed JSON5 metadata separately and refuses execution/export: the
-   vendor setting, filename selection and numeric behavior differ from these
-   codecs. See the [interchange observation](conformance/json5-interchange.md).
-- Native JSON, JSON Lines and JSON5 codecs, including prepared schemas, read
-  and write [JSON tuple frames](design/json-tuple-arrays.md). Generated Rust
-  and C# JSON and JSON Lines boundaries share these semantics; the generated
-  JSON5 companion profile still refuses frames. Array position *k* is the
-  frame's `item`*k* field, and an open frame's later items are its repeating
-  `rest` field. A missing frame property and a position beyond the end of the
-  array read as absent (`Null`); writing omits an absent frame, and writes
-  `null` only for an explicit JSON null that the frame or member admits. The
-  array length is checked against the frame's bounds before any position is
-  read, and an error inside a position names its one-based position. Writing
-  never pads with `null`: an absent position before a present position or a
-  non-empty `rest` is a typed gap error. Root rows and JSON Lines refuse a
-  non-repeating frame root, while a repeating frame root writes one tuple per
-  line. A recursive reference that would nest a frame inside one of its own
-  positions, or that expands a frame, is refused rather than expanded. `.mfd`
-  export refuses schemas that contain a frame before writing anything.
-- PDF targets are not supported.
-- XBRL taxonomy formula, presentation, calculation, and linkbase execution are
-  outside the current runtime.
-- XML preserves declared expanded-name identity for elements and attributes.
-  Scalar, simple-content, and retained mixed-content text preserve carriage
-  returns through XML character references; attributes and generated XSD
-  fixed/default values also preserve tabs and line breaks.
-  Generic elements matched by a wildcard keep every text node between their
-  child elements, including whitespace, and the writer adds no indentation
-  inside them. In a generic element without child elements, whitespace-only
-  text containing a line break reads as empty text.
-  Declared mixed content (XSD `mixed`, DTD mixed `#PCDATA`, and DTD `ANY`)
-  likewise keeps its text exactly, and the writer adds no indentation inside a
-  mixed element, including inside its element-only children, so the output
-  reads back unchanged. This holds whether a mixed element is written from its
-  ordered content or from typed fields alone. Element-only content outside
-  mixed elements stays indented.
-  MFD export partitions foreign declarations into deterministic local XSD
-  siblings and publishes the complete graph atomically. Bounded local-graph
-  substitution groups, compatible element-only or mixed `complexContent`
-  extension/restriction `xsi:type` hierarchies,
-  scalar-text/attribute-only `simpleContent` derivations,
-  optional/unbounded named model groups with exactly one nonrepeating member,
-  namespace-constrained optional/unbounded `processContents="skip"` element
-  wildcards declared inline or through named model groups, declaration-aware
-  lax wildcards inside sequences or repeating choices, closed strict wildcards
-  resolved to exact singular or repeating typed choices, and namespace-aware
-  attribute wildcards are supported. Lax processing gives resolved declarations
-  typed mapping fields and reserves the generic fallback for undeclared names.
-  An extra occurrence of a single-occurrence declared element is a generic
-  item after the typed field takes the first one; reads refuse extras the
-  wildcard cannot keep, such as names outside its namespace constraint. A
-  wildcard's typed port for a declaration the type already declares yields to
-  that declaration for the namespaces it covers. A strict wildcard after a
-  single-occurrence declaration of the same name is refused, because it has
-  no generic fallback for that declaration's extra occurrences.
-  Strict attribute processing rejects undeclared runtime names.
-  XSD 1.1 `notNamespace` and `notQName` exclusions apply to `skip` and `lax`
-  element wildcards and to attribute wildcards. Import resolves them to exact
-  expanded names: `##defined` takes the matching global declarations, and
-  `##definedSibling` takes the element declarations of the complete governing
-  type, including a derived type's own elements and substitution members. A
-  lax wildcard projects no typed field for an excluded name, and reads and
-  writes refuse excluded names right after the namespace check. With
-  exclusions, an attribute wildcard leaves declared attributes to their typed
-  fields in every mode. XSD export writes the names as explicit QNames, which
-  need an XSD 1.1 processor. The `vc:` refusal applies only to wildcards with
-  exclusions: a schema without them still imports with `vc:minVersion` on
-  `xs:schema`. Strict element wildcards with exclusions, unordered wildcard
-  compositors, and unresolved strict declaration sets remain outside the
-  subset. MFD XML components import exclusions with their schemas and export
-  them in their generated XSD siblings ([MFD interop](mfd-interop.md)).
-  XSD import keeps at most 256 nesting and reference levels open at once.
-  Each element declaration or reference, named complex type reference
-  (including a derivation base), complex type content, compositor, and model
-  or attribute group reference takes one level, so about 64 nested elements of
-  named types, 85 of anonymous types, or 128 derivation or group hops fit.
-  Deeper schemas return a typed depth-limit error before stack exhaustion; MFD
-  import then falls back to the component's entry tree with a warning.
-  Following `xs:include` and `xs:import` links from one schema file to the
-  next takes no level and no stack: the documents are visited depth first in
-  document order from a heap worklist, and a document already visited is not
-  expanded again, so cycles end. A filesystem import may therefore follow a
-  chain of any length, and each file in it costs only its bounded read.
-  Imports through an `XmlSchemaByteReader`, including MFD packages, read at
-  most 64 distinct documents and make at most 4,096 reads.
-  Because mapping paths use local field names, strict wildcard declarations
-  with the same local name collapse onto one port only when their complete
-  typed shapes match. The port retains every exact expanded name and ordered
-  runtime occurrences retain the selected namespace. Incompatible same-local
-  declarations reject explicitly.
-  Beside a `lax` or `strict` element wildcard, element declarations of a
-  schema without a target namespace match only unqualified elements, so a
-  qualified element with the same local name is a wildcard item.
-  `form="unqualified"` locals match only unqualified elements everywhere.
-  Closed content of a schema without a target namespace, DTD schemas, and
-  entry-tree schemas carry no namespace identity and still match elements by
-  local name.
-- JSON Schema supports compatible structural `allOf` intersections across objects,
-  scalar domains, and matching arrays, selected object alternatives, exact nullable
-  scalar/object/array wrappers and flat compatible multi-branch nullable
-  compositions, heterogeneous scalar type arrays, exact scalar
-  `anyOf` unions, pairwise-disjoint scalar `oneOf`, and identical or
-  scalar-domain-subsumed array `anyOf` branches, including local references.
-  Admitted scalar `anyOf` and `oneOf` compositions may carry a redundant
-  `type` sibling. The declaration must be a standard type name or a nonempty
-  array of distinct standard names, and must contain the complete retained
-  scalar domain, including JSON null. `number` contains integer values;
-  `integer` does not contain an unbounded finite-number domain. Finite
-  `const`/`enum` compositions prove containment after exclusive-branch
-  filtering, using mathematical JSON integer semantics for integral values.
-  Broader type declarations do not widen the branch domain. Nullable scalar
-  wrappers prove containment after null-overlap normalization. Restrictive
-  intersections and type siblings on structured nullable or modern `$ref`
-  compositions retain their existing refusal contracts.
-  File and in-memory imports share a 64-hop reference-depth limit, a 64-edge
-  schema-materialization nesting limit, and a 100,000-step parsing budget.
-  Excess returns a typed resource-limit error before stack exhaustion. The
-  main parser resolves flat references iteratively, so those hops do not
-  consume materialization depth. In-memory
-  `format_json::json_schema::import_str` resolves document-local references
-  without opening files and rejects external resources.
-  A cyclic or unresolved reference inside a schema degrades to a string field.
-  A root whose whole `$ref` chain is cyclic or unresolved, and a schema
-  position holding a JSON value other than an object or boolean, instead return
-  a typed `ContentlessSchema` error; non-UTF-8 schema files return a typed
-  `SchemaEncoding` error naming the file. MFD import then falls back to the
-  component's entry tree with a warning. The `true` and `{}` schemas still
-  import as an arbitrary JSON value.
-  Object-shaped `required` declarations preserve property presence independently
-  from value nullability, including declared names on closed objects and named
-  runtime properties on open objects. Required-only schemas without an object
-  shape remain outside the subset because they also admit every non-object value.
-  Objects with omitted or `true` `additionalProperties` retain an unconstrained
-  dynamic field, while a schema-valued declaration retains that exact dynamic
-  value shape. Explicit `false` remains closed: native and generated Rust/C#
-  input boundaries reject undeclared properties instead of silently dropping
-  them. Canonical export writes `{}` for an unconstrained open object and
-  `false` for a closed object, so MFD export/re-import preserves the behavior.
-  Compatible `allOf` object branches intersect their declared and dynamic
-  property permissions rather than widening a closed branch.
-  A nonempty `patternProperties` map is retained exactly for an explicitly
-  typed `object` or `object | null` with `additionalProperties: false` when
-  every bounded portable selector has one identical exactly representable
-  value schema. Scalar, structured object, and homogeneous array values reuse
-  the ordinary supported JSON value profile. Selectors are ORed and retain
-  declaration order. A fixed property matched by any selector must have that
-  same schema; nonmatching fixed properties may differ. Runtime decoding
-  checks fixed properties first, then admits a remaining name when any
-  selector matches and validates its value against the common schema.
-  `propertyNames` remains an independent constraint on every key. Dependency
-  rules whose triggers are neither fixed nor selected are semantically
-  unreachable and normalize away. Nullable object null bypasses the object
-  checks. Native, generated Rust, and generated C# input, normalized output,
-  and JSON Lines boundaries share the portable matcher and one per-document
-  pattern work budget. Canonical export writes the selectors and
-  `additionalProperties: false`; re-import preserves the contract. An empty
-  `patternProperties` object is a no-op.
-  Concrete objects retain exact non-negative `minProperties` and
-  `maxProperties` intervals through references, nullable wrappers, compatible
-  `allOf` intersections, and object alternatives that share one identical
-  effective interval. Input counts distinct parsed properties before
-  required-property and openness validation, so explicit JSON null and
-  undeclared names both count; duplicate names use the parser's last value and
-  count once. Output counts the normalized object after Ferrule `Null` fields
-  are omitted. A nullable object value of JSON null bypasses the object
-  interval; every JSON Lines row is checked independently. A maximum below the
-  required property count, a closed-object minimum beyond its declared
-  capacity, and alternatives with differing correlated intervals reject rather
-  than widen.
-  Object property dependencies are retained as bounded trigger-to-required-name
-  relations. A present trigger requires every named dependent property:
-  explicit JSON null counts as present on input, while output checks the
-  normalized object after omitted Ferrule `Null` fields are removed. Nullable
-  object null bypasses the relation, compatible `allOf` branches unite their
-  rules, and object alternatives must produce one identical effective relation
-  rather than correlating different dependencies with different branches.
-  Modern `dependentRequired` imports directly. Legacy property-array
-  `dependencies` normalizes to the same model and canonical export writes
-  `dependentRequired`. Metadata is limited to 256 triggers, 4,096 dependency
-  edges, and 256 KiB of property-name text per object. Unconditional
-  required-property closure must remain possible under the object's closed
-  shape and `maxProperties` interval.
-  Schema-valued legacy `dependencies` and modern `dependentSchemas` apply a
-  schema to the complete containing object when their trigger property is
-  present. The containing schema must have a concrete object shape; a typeless
-  schema that also admits non-object values rejects rather than narrowing those
-  values away. Required-only predicates lower to the property-dependency model.
-  Other predicates retain the currently executable scalar, object, and array
-  JSON constraints, including nested ordinary schemas and bounded patterns.
-  Input uses raw property presence, so explicit null activates a rule; output
-  uses the normalized object after Ferrule `Null` omission. Repeated entries
-  for one trigger are conjunctive. Canonical export groups contiguous entries
-  for that trigger with an inner `allOf`; when a trigger reappears after another
-  trigger, ordered outer `allOf` branches preserve the complete retained rule
-  order through re-import. Compatible outer `allOf` branches append rules in
-  declaration order, while alternatives must have one identical effective rule
-  set. Each object retains at most 32 nontrivial predicates and 256 KiB of
-  trigger-name text.
-  Nullable object null bypasses the rules, and JSON Lines checks every object
-  row independently. Predicate patterns share the document matcher budget.
-  Nested dependent schemas are supported recursively, with the same per-object
-  bounds. Draft 7, 2019-09, 2020-12, and schemas without `$schema` also support
-  an exact conditional on an explicitly typed object schema whose `if` tests
-  the presence of exactly one required property and whose `then` fits the
-  supported dependent-schema predicate subset. A nullable outer object is
-  supported with an absent or `true` `else`
-  only when the `if` explicitly proves `type: "object"`. Exact `else: false`
-  requires a trigger that can be represented as an ordinary required field; it
-  removes the nullable bypass when the false branch rejects null and retains
-  any supported `then` dependency. It does not combine with existing object
-  alternatives, and a closed object must already declare the trigger.
-  Canonical export writes `required` and, when `then` retains a dependency,
-  `dependentRequired` or `dependentSchemas` as appropriate. Value-sensitive,
-  multi-trigger, general-`if`, and other nontrivial `else` schemas remain unsupported.
-  `unevaluatedProperties`, `unevaluatedItems` outside its direct array form,
-  and heterogeneous positional arrays likewise reject instead of being
-  approximated. A lone
-  validation-neutral conditional keyword is ignored.
-  Declared Draft 4/6/7 resources accept schema-valued legacy `dependencies`
-  and ignore modern `dependentSchemas`/`dependentRequired`; Draft 4 requires
-  those schema values to use its object form, while Draft 6/7 also accept
-  boolean schemas. Declared
-  2019-09/2020-12 resources accept modern dependency keywords and ignore
-  legacy `dependencies`. A resource without `$schema` intentionally uses a
-  compatibility dialect: modern reference-sibling and structural behavior
-  applies, while both legacy and modern dependency spellings are accepted.
-  Object `propertyNames` constraints apply to every actual property name,
-  including declared fields, runtime-named fields, and the empty string. Input
-  checks raw parsed keys before object decoding; output checks the normalized
-  emitted key set after absent Ferrule values are omitted. Exact `false`
-  rejects every nonempty object, while `true` and an unconstrained schema
-  normalize away. Nullable object null bypasses name assertions, and each JSON
-  Lines object row is checked independently. Supported string assertions are
-  finite `const`/`enum` name sets, their exact finite complements through
-  `not`, `minLength`/`maxLength` measured in Unicode scalar values, bounded
-  portable `pattern` conjunctions/disjunctions and their exact complements,
-  and ordered `format` annotations retained without vocabulary assertion.
-  Finite complements intersect by excluding the union of their sets;
-  compatible `anyOf` branches exclude only names common to every branch, and
-  a double complement restores the positive finite or pattern predicate.
-  Correlated predicates and complements involving length, format, or mixed
-  assertions reject instead of being widened. Draft 4
-  resources ignore `propertyNames`; Draft 6 and newer resources apply it.
-  Finite name domains are limited to 4,096 names, 256 KiB per name, and 1 MiB
-  total, while name patterns share the document's bounded matcher budget.
-  Array `contains` assertions retain a bounded conjunction of schema-shaped
-  item predicates and exact match-count intervals. Plain `contains` defaults
-  to one or more matches; Draft 2019-09 and newer `minContains`/`maxContains`
-  set explicit bounds. Raw parsed members and normalized emitted members are
-  counted, nullable array null bypasses the assertions, and predicate patterns
-  share the document matcher budget. Compatible `allOf` branches append their
-  assertions. Array alternatives retain only identical assertions or an exact
-  containment relation rather than weakening correlated predicates and
-  intervals. Draft 4 ignores `contains`; Draft 6/7 apply the default minimum
-  and ignore the newer modifiers.
-  Bounded scalar `const` and `enum` constraints are enforced exactly on both
-  input and normalized output and survive canonical export. Sets may combine
-  strings, booleans, signed integers, exactly representable finite numbers, and
-  JSON null. References and compatible `allOf` intersect their values; finite
-  scalar `anyOf` takes their union, while `oneOf` retains values admitted by
-  exactly one branch. Structured object and array enum members remain outside
-  the scalar mapping model.
-  Ordinary `minimum`, `maximum`, `exclusiveMinimum`, and `exclusiveMaximum`
-  constraints are likewise enforced for concrete integer and finite-number
-  scalars, including nullable scalar wrappers. Integer constraints normalize to
-  one exact inclusive `i64` interval; number constraints retain inclusive or
-  exclusive finite endpoints and reject intervals containing no representable
-  finite value. Signed 64-bit integer JSON tokens on `number` boundaries
-  normalize to the nearest binary64 endpoint with the inclusion flag that
-  preserves the exact original inequality over Float values. This includes
-  endpoints beyond binary64's contiguous integer precision and both signed
-  extremes; an exact endpoint retains its original inclusion flag. Instance
-  and constant precision checks remain separate from boundary normalization.
-  At actual schema positions, native import preserves exact integral decimal
-  and exponent spellings of the four range bounds as signed or unsigned JSON
-  integer tokens, including negative zero. This applies to inline text, file
-  roots, and confined local reference resources. Fractional or out-of-token-domain
-  endpoints retain their existing admission rules; a rounded near-integer is
-  never treated as an exact integral spelling. Opaque annotations and data,
-  `multipleOf`, runtime instance numbers, duplicate-key behavior, dialect policy,
-  and schema resource limits are unchanged. Native and generated Rust/C# adapters enforce the resulting exact bounds. Import accepts both modern numeric
-  exclusive bounds and Draft 4
-  boolean exclusives regardless of the declared dialect for interoperability;
-  export emits the canonical normalized form. Positive finite `multipleOf`
-  divisors are retained as canonical decimal coefficients and exponents, with
-  no floating-point tolerance. Compatible `allOf` branches form conjunctions
-  and exact `anyOf` branches form disjunctions. Contiguous same-type numeric
-  range branches normalize to one exact interval when their divisor constraints
-  are identical. When an `anyOf` varies both its numeric range and divisor
-  constraint, Ferrule rejects the correlated union rather than independently
-  widening either axis. An exact String-or-Int union can retain one integer
-  interval. An exact String-or-Float union can retain one finite-number interval
-  when its String branch is unconstrained. Numeric input and output enforce the
-  interval after the ordinary Float precision/coercion checks; text retains its
-  String tag even when it looks numeric. Nullable forms additionally admit
-  explicit JSON null. Canonical type-array export and re-import preserve these
-  domains and bounds.
-  Scalar `anyOf` and `oneOf` apply outer numeric bounds to the represented
-  concrete numeric or exact String-or-Int/String-or-Float domain. Concrete
-  intervals and String-or-Int intervals retain exact compatible intersections.
-  A branch-bounded String-or-Float interval composition refuses additional outer
-  numeric, length, pattern, multiple-of, const, or enum assertions. Its direct
-  type-array form admits one interval without those other assertions. Redundant
-  outer type containment and nonasserting annotations remain separate. This
-  String-or-Float range composition requires exactly one unconstrained String
-  branch and one bounded Number branch. Wider range-bearing heterogeneous
-  domains and correlated range predicates remain outside this subset.
-  Homogeneous numeric interval unions retain their separate compatible-union
-  behavior.
-  Concrete arrays retain exact non-negative `minItems` and `maxItems`
-  intervals through references, nullable wrappers, compatible `allOf`
-  intersections, and exactly representable `anyOf` unions. Input and output
-  enforce the interval before visiting array items. JSON Lines applies a root
-  array interval to the total nonblank line count; nullable root arrays reject
-  because line-oriented null-container semantics are ambiguous. Disjoint count
-  unions reject rather than widen. Nested schema-valued arrays retain each
-  level in an explicitly marked repeating group whose sole repeating child is
-  `item`. Each outer item is a group containing the complete inner array;
-  empty outer arrays and arrays containing empty inner arrays remain distinct.
-  Item-count, uniqueness, supported `contains`, and container nullability apply
-  to their own level. Array-item nullability is separate from outer-container
-  nullability. Canonical JSON Schema export and `.mfd` array/item ports retain
-  those levels and declared paths. An ordinary object property named `item`
-  does not acquire the wrapper role. XML, CSV, and EDI boundaries reject the
-  JSON wrapper role. Arrays of objects also keep the array's nullability
-  independent from the object's nullability: a nullable array of nonnullable
-  objects accepts `null` and `[{}]` but rejects `[null]`; a nonnullable array
-  of nullable objects accepts `[null]` and rejects `null`. The optional
-  `json_object_item_nullable` schema field carries the item setting on genuine
-  repeated object groups. When absent, existing schemas retain their legacy
-  item behavior. Arrays of scalars keep the array's nullability separate from
-  the items' own `nullable` domain: a nullable array of nonnullable integers
-  accepts `null` and `[1]` but rejects `[null]` and `[1,null]`. Positional
-  nested arrays and unsupported structured predicates remain outside this
-  subset. `$ref` siblings follow the dialect declared by their physical schema
-  resource: Draft 4, 6, and 7 ignore them, while Draft 2019-09, 2020-12, and
-  schemas without `$schema` apply Ferrule's supported numeric, `multipleOf`,
-  item-count, string-length, and annotation metadata. Concrete string-capable scalar
-  domains retain exact non-negative `minLength` and `maxLength` intervals.
-  Tuple arrays use `prefixItems` in Draft 2020-12 and schemas without
-  `$schema`, and array-valued `items` with `additionalItems` in Draft 4, 6, 7,
-  2019-09 and schemas without `$schema`; Draft 2020-12 rejects array-valued
-  `items`, and earlier drafts ignore `prefixItems`. Every member and tail is
-  validated first, even a tail that `maxItems` makes unreachable. The tuple's
-  own `minItems`/`maxItems`, modern `$ref` sibling counts and count-only
-  `allOf` branches are then intersected, and only the result is put into
-  canonical form: positions beyond the maximum are dropped, and a maximum at
-  or below the member count closes the tuple. Identical members whose tail is
-  closed, identical, or open over an arbitrary-JSON member lower to an ordinary
-  homogeneous array; every other tuple of 1 to 4,096 members imports as a
-  [JSON tuple frame](design/json-tuple-arrays.md) and is never widened.
-  Members and the tail may be scalars, scalar unions, objects or arbitrary JSON,
-  through any supported reference or composition, and the frame takes the usual
-  nullable wrappers, including arrays of tuples. Refused shapes include tuple
-  `anyOf`/`oneOf` alternatives, two positional `allOf` branches, a branch
-  beside a tuple that contributes more than `type: array` and item counts,
-  `contains` or `uniqueItems: true` on a tuple, a tuple beside its own
-  composition or under `not`, conditionals, `contains` or `dependentSchemas`, a
-  tuple as an `additionalProperties` or `patternProperties` value, a `false`
-  member, a member or tail that is itself an array or tuple, a reference cycle
-  through a position, and `prefixItems` beside `additionalItems` without
-  `$schema` when the result is a frame. Active `unevaluatedItems` is supported
-  only on a direct concrete array schema without composition, `not`,
-  conditionals, `dependentSchemas`, `contains` or a reference sibling. After
-  schema-valued `items`, or `additionalItems` after tuple-form `items`, it is
-  validated and has no effect; otherwise it is the tail after the positional
-  members, or the item schema when there are none. Every other active form is
-  refused. Export writes a
-  frame without `$schema` as `prefixItems`, with `items: false` for a closed
-  tail, the tail schema for an open tail and no `items` for an arbitrary tail;
-  `minItems` appears when it is above zero and `maxItems` only on an open frame.
-  Homogeneous tuples keep their ordinary `items` export, and re-import
-  reproduces the same schema.
-  Concrete array wrappers also retain `uniqueItems: true` through supported
-  references and compatible composition. Native and generated Rust/C#
-  boundaries compare complete raw input values and normalized output values:
-  object member order is irrelevant, nested array order is significant, and
-  mathematically equal JSON numbers are duplicates before typed input
-  normalization. Inside private `contains` and `dependentSchemas` predicates,
-  `uniqueItems` rejects item shapes that admit non-integral `number` values or
-  arbitrary JSON, including through nested fields, until predicate matching
-  can retain raw numeric lexemes. Closed integer, string, boolean, and object
-  item shapes remain supported.
-  Ferrule measures them in Unicode scalar values, applies them only when a
-  scalar union's runtime value is a string, and enforces them on native and
-  generated input and output boundaries. They survive nullable wrappers,
-  references, compatible `allOf`, contiguous exact `anyOf` unions, array-item
-  projection, typed dynamic properties, and canonical export. Disjoint length
-  unions and ambiguous untyped assertions reject rather than move or widen an
-  assertion.
-  Concrete string-capable fields and scalar unions also retain JSON Schema
-  `pattern` assertions. Null bypasses a pattern in nullable domains, while
-  string values in array items and typed dynamic properties are checked.
-  Compatible `allOf` branches form a conjunction, exact `anyOf` branches form
-  a disjunction of conjunctions, and `oneOf` remains limited to provably
-  disjoint scalar branches. References and `$ref` siblings follow the same
-  per-resource dialect policy as the other supported assertions. Canonical
-  export uses direct `pattern`, `allOf`, or `anyOf` shapes as needed.
-  Native and generated Rust/C# boundaries enforce the same portable,
-  Unicode-scalar matcher on both input and normalized output.
-  The portable syntax includes unanchored matching, `^` and `$`, dot,
-  positive and complemented scalar classes and ranges, alternation,
-  capturing or noncapturing groups, `*`, `+`, `?`, bounded or open counted
-  repetition, lazy quantifier suffixes, and explicit character/Unicode
-  escapes. Backreferences, lookaround, named groups, inline flags, Unicode
-  properties, shorthand classes such as `\d`, octal/control escapes, and
-  class-set operators reject rather than acquire backend-specific semantics.
-  Distinct per-selector `patternProperties` value schemas, open or typed
-  `additionalProperties` fallbacks, general overlap intersection, value shapes
-  outside the ordinary exact JSON profile, and pattern-property objects under
-  active `allOf`, object alternatives, or structural `$ref` siblings remain
-  outside the exact homogeneous profile. `unevaluatedProperties` also remains
-  unsupported. These forms reject rather than silently weakening an otherwise
-  typed object.
-  Each source is limited to 64 KiB, 256 nesting levels, 8,192 syntax nodes,
-  and 16,384 compiled instructions. Each constrained node retains at most 32
-  alternatives and 64 total terms; a complete schema retains at most 64
-  distinct sources, 256 KiB of distinct source text, and 65,536 distinct
-  compiled instructions. Each JSON document parse or serialization call shares
-  one deterministic 100-million-unit pattern work budget across that document.
-  Unknown and empty string `format` annotations are
-  retained exactly on string-capable values and array items, accumulated in
-  order through compatible `allOf`, references, and exact scalar/array unions,
-  and exported without turning them into assertions. Ferrule does not validate
-  values against named format vocabularies. Annotations on non-string values
-  and arbitrary-JSON nodes are syntactically validated but not retained. Each
-  node retains at most 64 distinct annotations, each at most 1 KiB and at most
-  16 KiB in total.
-  Unsupported modern structural intersections reject explicitly instead of
-  widening silently; external resources select their own policy.
-  Export emits the canonical normalized constraint form.
-  General heterogeneous array composition, heterogeneous or correlated
-  numeric-range scalar unions,
-  and mixed structural unions remain unsupported.
-  Other shape-neutral validation keywords are accepted for schema recovery but
-  are not enforced by the mapping runtime.
-- Database execution is SQLite-specific and does not yet provide a general SQL
-  mutation or multi-database connector model.
-- Complex XLSX, PDF, EDI, and FlexText layouts depend on an embedded validated
-  configuration; unsupported imported commands remain explicit warnings.
-- XLSX update-existing targets (`xlsx_update_existing`, MFD
-  `updateexistingfile="1"`) write into the workbook already at the output path
-  and keep its other worksheets and the cells outside the layout. A flat table
-  replaces its selected table. A hierarchical layout needs every worksheet it
-  names to exist already. It clears the cells its bands occupied before the
-  update, so shorter output leaves no stale rows, and it inserts or shifts
-  nothing. Rewritten cells keep their style, and new data cells take the style
-  of their band's first data row. The update refuses, and leaves the workbook
-  unchanged, when a written or cleared cell holds a formula or belongs to a
-  merged range, when a newly addressed cell outside the previous layout holds
-  content, when an open band would write an empty row, or when two bands
-  address one cell. It also checks charts, drawings, comments, and every
-  package relationship, and refuses content the workbook library would drop or
-  rewrite, such as absolute drawing anchors or unmodeled chart types. Worksheet
-  features the library does not model are dropped, for example `extLst`
-  sparklines, x14 conditional formats, `ignoredErrors`, protected ranges, and
-  custom sheet views. Transposed targets always write a new workbook, and grid,
-  worksheet-set, and composite layouts are input-only; all four refuse
-  update-existing. Payload, standard-stream, and
-  pipeline-preview runs refuse it because it needs the persistent workbook,
-  and pipeline `.mfd` import and export refuse it on the final target.
-- A grid source reads one header row and the data rows below it on one
-  worksheet, producing one record per non-empty header cell, each with the
-  header value and column, fixed cells, and the complete row and cell matrix.
-  One grid uses `xlsx_grid`, and its records are the source root. Several
-  grids, or a grid beside tables or fixed records on other worksheets, use
-  `xlsx_composite` `grids`: each grid fills its own repeating group of the
-  composite root, and `table` may then be omitted. Each grid needs its own
-  worksheet. MFD import refuses a worksheet holding several grids, because
-  pairing their header and data ranges is not established. Grids are
-  input-only, and generated code refuses composite sources with grids.
-- Transposed XLSX targets (`xlsx_rows` on a target) write each record into one
-  worksheet column and each data field into its selected row, in schema order.
-  There is no header row, and `xlsx_start_row`, `xlsx_columns`, and
-  `xlsx_headers` are refused. Records fill columns from A in order. An integer
-  field named `n` places a record at that column instead (1 to 16,384, each
-  column once), and a missing value then leaves its cell empty. Without `n`,
-  every record needs a value in every row, and at most 16,384 records fit. The
-  first selected row is the driver: a record whose driver value is missing or
-  an empty string is refused, because reading the workbook back would skip
-  that column. Every record is checked before the file is written. The file,
-  payload, and pipeline-preview routes write transposed targets;
-  standard-stream and bounded-document runs refuse them. Generated code
-  returns the target's records as schema-shaped values, as for other XLSX
-  targets, and writes no workbook.
-- In the reference application each transposed target row is an independent
-  run of cells: a missing value adds no cell, so later values in that row move
-  left unless the row's `n` input is connected, and an empty string still adds
-  an empty cell. When `n` repeats, the first value wins and later ones are
-  dropped. Ferrule keeps records aligned instead, so a design without `n`
-  fails on a missing value rather than shifting it, and a repeated `n` is
-  refused. MFD import maps a target's rows to one record per item of the first
-  row's feed, and warns when another row or an `n` input follows a different
-  feed. `n` must be connected to every row from the same value; the reference
-  application positions only the rows whose `n` is connected. Export writes
-  every row's `n` input from the record's `n` binding.
-- The reference application also reads each selected row of a transposed
-  XLSX source as its own run of non-empty cells, so rows do not line up by
-  column on their own. MFD export iterates records over the first row's
-  cells and reads each later row through a filter that keeps the cell whose
-  `n` equals the first row's `n`. Import turns that filter back into the
-  plain field only for direct scalar target bindings in a proven first-row
-  driver context. It retains the physical owner of every index, including
-  unmarked later-row indexes; missing or duplicate indexes cannot prove
-  alignment. Sequence consumers and unproved contexts are disconnected with
-  their dependent results and reported as non-executable imports, rather than
-  silently becoming unfiltered bindings. Refusal follows physical component
-  input/output ports through specialized producers as well as ordinary
-  functions; UDF defaults, serializers, parsers and dynamic sources cannot
-  replace a refused value with a new result. Export refuses aggregates over later
-  rows, whose native cell sequences include non-driver columns and omit
-  missing record values. It also refuses computed aggregates over transposed
-  records until their native record alignment is established. Direct
-  driver-row aggregates remain supported. Integer row schemas are refused
-  rather than converted through
-  double and losing exact `i64` values; the synthetic column index `n` remains
-  supported. A `ferrule-datatype` annotation never overrides the declared Cell
-  datatype: only matching canonical annotations are accepted, and unsupported
-  or conflicting annotations warn and retain the declared type. These export
-  refusals happen before any design or schema files are published.
-- Native EDI input validates configured length and code-list constraints against
-  each present decoded wire field, before numeric conversion and any
-  route-selected implied-decimal scaling. Leading zeros remain significant.
-  This applies to X12, EDIFACT, HL7, TRADACOMS and fixed-record IDoc reads,
-  including file and payload/standard-input routes. Empty or absent fields
-  remain governed by the existing segment rules.
-  SWIFT MT uses its separate embedded field grammar and refuses generic EDI
-  source value constraints rather than ignoring them.
-  EDI output validates after wire lexical formatting. Both use bounded reports
-  with occurrence-qualified schema paths; input refusal prevents mapping and
-  output publication, and output validation failures do not replace the
-  destination.
+### XML names, wildcards and schema limits
 
-The [workflow-parity roadmap](../ROADMAP.md) tracks the remaining format and
-connector work.
+XML preserves declared expanded-name identity for elements and attributes.
+Scalar, simple-content, and retained mixed-content text preserve carriage
+returns through XML character references; attributes and generated XSD
+fixed/default values also preserve tabs and line breaks.
+Generic elements matched by a wildcard keep every text node between their
+child elements, including whitespace, and the writer adds no indentation
+inside them. In a generic element without child elements, whitespace-only
+text containing a line break reads as empty text.
+Declared mixed content (XSD `mixed`, DTD mixed `#PCDATA`, and DTD `ANY`)
+likewise keeps its text exactly, and the writer adds no indentation inside a
+mixed element, including inside its element-only children, so the output
+reads back unchanged. This holds whether a mixed element is written from its
+ordered content or from typed fields alone. Element-only content outside
+mixed elements stays indented.
+
+MFD export partitions foreign declarations into deterministic local XSD
+siblings and publishes the complete graph atomically. Bounded local-graph
+substitution groups, compatible element-only or mixed `complexContent`
+extension/restriction `xsi:type` hierarchies,
+scalar-text/attribute-only `simpleContent` derivations,
+optional/unbounded named model groups with exactly one nonrepeating member,
+namespace-constrained optional/unbounded `processContents="skip"` element
+wildcards declared inline or through named model groups, declaration-aware
+lax wildcards inside sequences or repeating choices, closed strict wildcards
+resolved to exact singular or repeating typed choices, and namespace-aware
+attribute wildcards are supported. Lax processing gives resolved declarations
+typed mapping fields and reserves the generic fallback for undeclared names.
+An extra occurrence of a single-occurrence declared element is a generic
+item after the typed field takes the first one; reads refuse extras the
+wildcard cannot keep, such as names outside its namespace constraint. A
+wildcard's typed port for a declaration the type already declares yields to
+that declaration for the namespaces it covers. A strict wildcard after a
+single-occurrence declaration of the same name is refused, because it has
+no generic fallback for that declaration's extra occurrences.
+Strict attribute processing rejects undeclared runtime names.
+
+XSD 1.1 `notNamespace` and `notQName` are supported for `skip`/`lax`
+element wildcards and for attribute wildcards. Import resolves exclusions to
+expanded names; export writes explicit QNames and requires an XSD 1.1 processor.
+See the [wildcard contract](design/xml-wildcard-exclusions.md) for `##defined`,
+`##definedSibling`, versioning guards, and rejected placements. Strict element
+wildcards with exclusions, unordered wildcard compositors and unresolved
+strict declaration sets refuse.
+
+XSD import keeps at most 256 nesting and reference levels open at once.
+Each element declaration or reference, named complex type reference
+(including a derivation base), complex type content, compositor, and model
+or attribute group reference takes one level, so about 64 nested elements of
+named types, 85 of anonymous types, or 128 derivation or group hops fit.
+Deeper schemas return a typed depth-limit error before stack exhaustion; MFD
+import then falls back to the component's entry tree with a warning.
+Following `xs:include` and `xs:import` links from one schema file to the
+next takes no level and no stack: the documents are visited depth first in
+document order from a heap worklist, and a document already visited is not
+expanded again, so cycles end. A filesystem import may therefore follow a
+chain of any length, and each file in it costs only its bounded read.
+Imports through an `XmlSchemaByteReader`, including MFD packages, read at
+most 64 distinct documents and make at most 4,096 reads.
+
+Because mapping paths use local field names, strict wildcard declarations
+with the same local name collapse onto one port only when their complete
+typed shapes match. The port retains every exact expanded name and ordered
+runtime occurrences retain the selected namespace. Incompatible same-local
+declarations reject explicitly.
+Beside a `lax` or `strict` element wildcard, element declarations of a
+schema without a target namespace match only unqualified elements, so a
+qualified element with the same local name is a wildcard item.
+`form="unqualified"` locals match only unqualified elements everywhere.
+Closed content of a schema without a target namespace, DTD schemas, and
+entry-tree schemas carry no namespace identity and still match elements by
+local name.
+
+#### Scalar XML roots in MFD
+
+MFD import constructs a required, non-null singleton XML scalar document root
+from one matching String, Bool, Int or Float constant, or one required XML
+element path whose root and ancestors are singular. The selected scalar
+declaration uses qualified `xs:string`, `xs:boolean`, `xs:long` or `xs:double`.
+Its own XSD must prove default or explicit 1..1 occurrences through each
+selected element and containing sequence or all particle. Constants must have
+valid saved lexical values; Float constants must be finite. Primary and named
+targets retain their own schemas and output identities. Repeated, optional,
+nullable, competing and metadata-dependent root feeds, custom scalar facets,
+lists, unions, attributes and simple-content paths produce repair warnings
+and refuse executable import. XML instance readers and writers retain their
+existing typed errors, including nonfinite output refusal. Singleton scalar
+root MFD export remains unsupported and refuses before publishing artifacts.
+
+### JSON, JSON Lines and JSON5
+
+JSON5 input accepts comments, trailing commas, single-quoted strings, and
+other supported JSON5 syntax; comments are not represented in mapping values
+or written back. Output omits quotes around property names when JSON5 allows
+it. JSON5 uses one document, so `json5` and `json_lines` cannot be combined.
+Input is limited to 64 MiB and 128 nested containers; exact `uniqueItems`
+checks retain numeric token values, including hexadecimal numbers. Nonfinite
+values are rejected. JSON5 file parsing and writing are provided by the CLI
+and browser runtime. Ordinary generated Rust and C# library entry points
+exchange strict schema-shaped JSON with their hosts; the explicit
+`--json5-adapters` profile adds singular JSON5-input, strict-JSON-output
+companions for closed object schemas, as described in the
+ [generated JSON5 companion contract](generated-json5-contract.md). MFD import
+ retains observed JSON5 metadata separately and refuses execution/export: the
+ vendor setting, filename selection and numeric behavior differ from these
+ codecs. See the [interchange observation](conformance/json5-interchange.md).
+
+Native JSON, JSON Lines and JSON5 read and write [tuple frames](design/json-tuple-arrays.md).
+Generated strict JSON and JSON Lines preserve the same positions and refuse gaps;
+the explicit generated JSON5 adapters refuse frames. `.mfd` export also refuses
+a frame before writing. See the [generated JSON5 contract](generated-json5-contract.md)
+for the closed-object adapter.
+
+### JSON Schema
+
+JSON Schema supports compatible structural `allOf` intersections across objects,
+scalar domains, and matching arrays, selected object alternatives, exact nullable
+scalar/object/array wrappers and flat compatible multi-branch nullable
+compositions, heterogeneous scalar type arrays, exact scalar
+`anyOf` unions, pairwise-disjoint scalar `oneOf`, and identical or
+scalar-domain-subsumed array `anyOf` branches, including local references.
+
+Admitted scalar `anyOf` and `oneOf` compositions may carry a redundant
+`type` sibling. The declaration must be a standard type name or a nonempty
+array of distinct standard names, and must contain the complete retained
+scalar domain, including JSON null. `number` contains integer values;
+`integer` does not contain an unbounded finite-number domain. Finite
+`const`/`enum` compositions prove containment after exclusive-branch
+filtering, using mathematical JSON integer semantics for integral values.
+Broader type declarations do not widen the branch domain. Nullable scalar
+wrappers prove containment after null-overlap normalization. Restrictive
+intersections and type siblings on structured nullable or modern `$ref`
+compositions retain their existing refusal contracts.
+
+File and in-memory imports share a 64-hop reference-depth limit, a 64-edge
+schema-materialization nesting limit, and a 100,000-step parsing budget.
+Excess returns a typed resource-limit error before stack exhaustion. The
+main parser resolves flat references iteratively, so those hops do not
+consume materialization depth. In-memory
+`format_json::json_schema::import_str` resolves document-local references
+without opening files and rejects external resources.
+
+A cyclic or unresolved reference inside a schema degrades to a string field.
+A root whose whole `$ref` chain is cyclic or unresolved, and a schema
+position holding a JSON value other than an object or boolean, instead return
+a typed `ContentlessSchema` error; non-UTF-8 schema files return a typed
+`SchemaEncoding` error naming the file. MFD import then falls back to the
+component's entry tree with a warning. The `true` and `{}` schemas still
+import as an arbitrary JSON value.
+
+#### Object properties and dependencies
+
+Object-shaped `required` declarations preserve property presence independently
+from value nullability, including declared names on closed objects and named
+runtime properties on open objects. Required-only schemas without an object
+shape remain outside the subset because they also admit every non-object value.
+Objects with omitted or `true` `additionalProperties` retain an unconstrained
+dynamic field, while a schema-valued declaration retains that exact dynamic
+value shape. Explicit `false` remains closed: native and generated Rust/C#
+input boundaries reject undeclared properties instead of silently dropping
+them. Canonical export writes `{}` for an unconstrained open object and
+`false` for a closed object, so MFD export/re-import preserves the behavior.
+Compatible `allOf` object branches intersect their declared and dynamic
+property permissions rather than widening a closed branch.
+
+A nonempty `patternProperties` map is retained exactly for an explicitly
+typed `object` or `object | null` with `additionalProperties: false` when
+every bounded portable selector has one identical exactly representable
+value schema. Scalar, structured object, and homogeneous array values reuse
+the ordinary supported JSON value profile. Selectors are ORed and retain
+declaration order. A fixed property matched by any selector must have that
+same schema; nonmatching fixed properties may differ. Runtime decoding
+checks fixed properties first, then admits a remaining name when any
+selector matches and validates its value against the common schema.
+`propertyNames` remains an independent constraint on every key. Dependency
+rules whose triggers are neither fixed nor selected are semantically
+unreachable and normalize away. Nullable object null bypasses the object
+checks. Native, generated Rust, and generated C# input, normalized output,
+and JSON Lines boundaries share the portable matcher and one per-document
+pattern work budget. Canonical export writes the selectors and
+`additionalProperties: false`; re-import preserves the contract. An empty
+`patternProperties` object is a no-op.
+
+Concrete objects retain exact non-negative `minProperties` and
+`maxProperties` intervals through references, nullable wrappers, compatible
+`allOf` intersections, and object alternatives that share one identical
+effective interval. Input counts distinct parsed properties before
+required-property and openness validation, so explicit JSON null and
+undeclared names both count; duplicate names use the parser's last value and
+count once. Output counts the normalized object after Ferrule `Null` fields
+are omitted. A nullable object value of JSON null bypasses the object
+interval; every JSON Lines row is checked independently. A maximum below the
+required property count, a closed-object minimum beyond its declared
+capacity, and alternatives with differing correlated intervals reject rather
+than widen.
+
+Object property dependencies are retained as bounded trigger-to-required-name
+relations. A present trigger requires every named dependent property:
+explicit JSON null counts as present on input, while output checks the
+normalized object after omitted Ferrule `Null` fields are removed. Nullable
+object null bypasses the relation, compatible `allOf` branches unite their
+rules, and object alternatives must produce one identical effective relation
+rather than correlating different dependencies with different branches.
+Modern `dependentRequired` imports directly. Legacy property-array
+`dependencies` normalizes to the same model and canonical export writes
+`dependentRequired`. Metadata is limited to 256 triggers, 4,096 dependency
+edges, and 256 KiB of property-name text per object. Unconditional
+required-property closure must remain possible under the object's closed
+shape and `maxProperties` interval.
+
+Schema-valued legacy `dependencies` and modern `dependentSchemas` apply a
+schema to the complete containing object when their trigger property is
+present. The containing schema must have a concrete object shape; a typeless
+schema that also admits non-object values rejects rather than narrowing those
+values away. Required-only predicates lower to the property-dependency model.
+Other predicates retain the currently executable scalar, object, and array
+JSON constraints, including nested ordinary schemas and bounded patterns.
+Input uses raw property presence, so explicit null activates a rule; output
+uses the normalized object after Ferrule `Null` omission. Repeated entries
+for one trigger are conjunctive. Canonical export groups contiguous entries
+for that trigger with an inner `allOf`; when a trigger reappears after another
+trigger, ordered outer `allOf` branches preserve the complete retained rule
+order through re-import. Compatible outer `allOf` branches append rules in
+declaration order, while alternatives must have one identical effective rule
+set. Each object retains at most 32 nontrivial predicates and 256 KiB of
+trigger-name text.
+Nullable object null bypasses the rules, and JSON Lines checks every object
+row independently. Predicate patterns share the document matcher budget.
+
+Nested dependent schemas are supported recursively, with the same per-object
+bounds. Draft 7, 2019-09, 2020-12, and schemas without `$schema` also support
+an exact conditional on an explicitly typed object schema whose `if` tests
+the presence of exactly one required property and whose `then` fits the
+supported dependent-schema predicate subset. A nullable outer object is
+supported with an absent or `true` `else`
+only when the `if` explicitly proves `type: "object"`. Exact `else: false`
+requires a trigger that can be represented as an ordinary required field; it
+removes the nullable bypass when the false branch rejects null and retains
+any supported `then` dependency. It does not combine with existing object
+alternatives, and a closed object must already declare the trigger.
+Canonical export writes `required` and, when `then` retains a dependency,
+`dependentRequired` or `dependentSchemas` as appropriate. Value-sensitive,
+multi-trigger, general-`if`, and other nontrivial `else` schemas remain unsupported.
+
+`unevaluatedProperties`, `unevaluatedItems` outside its direct array form,
+and heterogeneous positional arrays likewise reject instead of being
+approximated. A lone
+validation-neutral conditional keyword is ignored.
+Declared Draft 4/6/7 resources accept schema-valued legacy `dependencies`
+and ignore modern `dependentSchemas`/`dependentRequired`; Draft 4 requires
+those schema values to use its object form, while Draft 6/7 also accept
+boolean schemas. Declared
+2019-09/2020-12 resources accept modern dependency keywords and ignore
+legacy `dependencies`. A resource without `$schema` intentionally uses a
+compatibility dialect: modern reference-sibling and structural behavior
+applies, while both legacy and modern dependency spellings are accepted.
+
+Object `propertyNames` constraints apply to every actual property name,
+including declared fields, runtime-named fields, and the empty string. Input
+checks raw parsed keys before object decoding; output checks the normalized
+emitted key set after absent Ferrule values are omitted. Exact `false`
+rejects every nonempty object, while `true` and an unconstrained schema
+normalize away. Nullable object null bypasses name assertions, and each JSON
+Lines object row is checked independently. Supported string assertions are
+finite `const`/`enum` name sets, their exact finite complements through
+`not`, `minLength`/`maxLength` measured in Unicode scalar values, bounded
+portable `pattern` conjunctions/disjunctions and their exact complements,
+and ordered `format` annotations retained without vocabulary assertion.
+Finite complements intersect by excluding the union of their sets;
+compatible `anyOf` branches exclude only names common to every branch, and
+a double complement restores the positive finite or pattern predicate.
+Correlated predicates and complements involving length, format, or mixed
+assertions reject instead of being widened. Draft 4
+resources ignore `propertyNames`; Draft 6 and newer resources apply it.
+Finite name domains are limited to 4,096 names, 256 KiB per name, and 1 MiB
+total, while name patterns share the document's bounded matcher budget.
+
+#### Numeric and enumeration constraints
+
+Bounded scalar `const` and `enum` constraints are enforced exactly on both
+input and normalized output and survive canonical export. Sets may combine
+strings, booleans, signed integers, exactly representable finite numbers, and
+JSON null. References and compatible `allOf` intersect their values; finite
+scalar `anyOf` takes their union, while `oneOf` retains values admitted by
+exactly one branch. Structured object and array enum members remain outside
+the scalar mapping model.
+
+Ordinary `minimum`, `maximum`, `exclusiveMinimum`, and `exclusiveMaximum`
+constraints are likewise enforced for concrete integer and finite-number
+scalars, including nullable scalar wrappers. Integer constraints normalize to
+one exact inclusive `i64` interval; number constraints retain inclusive or
+exclusive finite endpoints and reject intervals containing no representable
+finite value. Signed 64-bit integer JSON tokens on `number` boundaries
+normalize to the nearest binary64 endpoint with the inclusion flag that
+preserves the exact original inequality over Float values. This includes
+endpoints beyond binary64's contiguous integer precision and both signed
+extremes; an exact endpoint retains its original inclusion flag. Instance
+and constant precision checks remain separate from boundary normalization.
+
+At actual schema positions, native import preserves exact integral decimal
+and exponent spellings of the four range bounds as signed or unsigned JSON
+integer tokens, including negative zero. This applies to inline text, file
+roots, and confined local reference resources. Fractional or out-of-token-domain
+endpoints retain their existing admission rules; a rounded near-integer is
+never treated as an exact integral spelling. Opaque annotations and data,
+`multipleOf`, runtime instance numbers, duplicate-key behavior, dialect policy,
+and schema resource limits are unchanged. Native and generated Rust/C# adapters enforce the resulting exact bounds. Import accepts both modern numeric
+exclusive bounds and Draft 4
+boolean exclusives regardless of the declared dialect for interoperability;
+export emits the canonical normalized form. Positive finite `multipleOf`
+divisors are retained as canonical decimal coefficients and exponents, with
+no floating-point tolerance. Compatible `allOf` branches form conjunctions
+and exact `anyOf` branches form disjunctions. Contiguous same-type numeric
+range branches normalize to one exact interval when their divisor constraints
+are identical. When an `anyOf` varies both its numeric range and divisor
+constraint, Ferrule rejects the correlated union rather than independently
+widening either axis. An exact String-or-Int union can retain one integer
+interval. An exact String-or-Float union can retain one finite-number interval
+when its String branch is unconstrained. Numeric input and output enforce the
+interval after the ordinary Float precision/coercion checks; text retains its
+String tag even when it looks numeric. Nullable forms additionally admit
+explicit JSON null. Canonical type-array export and re-import preserve these
+domains and bounds.
+
+Scalar `anyOf` and `oneOf` apply outer numeric bounds to the represented
+concrete numeric or exact String-or-Int/String-or-Float domain. Concrete
+intervals and String-or-Int intervals retain exact compatible intersections.
+A branch-bounded String-or-Float interval composition refuses additional outer
+numeric, length, pattern, multiple-of, const, or enum assertions. Its direct
+type-array form admits one interval without those other assertions. Redundant
+outer type containment and nonasserting annotations remain separate. This
+String-or-Float range composition requires exactly one unconstrained String
+branch and one bounded Number branch. Wider range-bearing heterogeneous
+domains and correlated range predicates remain outside this subset.
+Homogeneous numeric interval unions retain their separate compatible-union
+behavior.
+
+#### Array counts, uniqueness and tuples
+
+Array `contains` assertions retain a bounded conjunction of schema-shaped
+item predicates and exact match-count intervals. Plain `contains` defaults
+to one or more matches; Draft 2019-09 and newer `minContains`/`maxContains`
+set explicit bounds. Raw parsed members and normalized emitted members are
+counted, nullable array null bypasses the assertions, and predicate patterns
+share the document matcher budget. Compatible `allOf` branches append their
+assertions. Array alternatives retain only identical assertions or an exact
+containment relation rather than weakening correlated predicates and
+intervals. Draft 4 ignores `contains`; Draft 6/7 apply the default minimum
+and ignore the newer modifiers.
+
+Concrete arrays retain exact non-negative `minItems` and `maxItems`
+intervals through references, nullable wrappers, compatible `allOf`
+intersections, and exactly representable `anyOf` unions. Input and output
+enforce the interval before visiting array items. JSON Lines applies a root
+array interval to the total nonblank line count; nullable root arrays reject
+because line-oriented null-container semantics are ambiguous. Disjoint count
+unions reject rather than widen. Nested schema-valued arrays retain each
+level in an explicitly marked repeating group whose sole repeating child is
+`item`. Each outer item is a group containing the complete inner array;
+empty outer arrays and arrays containing empty inner arrays remain distinct.
+Item-count, uniqueness, supported `contains`, and container nullability apply
+to their own level. Array-item nullability is separate from outer-container
+nullability. Canonical JSON Schema export and `.mfd` array/item ports retain
+those levels and declared paths. An ordinary object property named `item`
+does not acquire the wrapper role. XML, CSV, and EDI boundaries reject the
+JSON wrapper role. Arrays of objects also keep the array's nullability
+independent from the object's nullability: a nullable array of nonnullable
+objects accepts `null` and `[{}]` but rejects `[null]`; a nonnullable array
+of nullable objects accepts `[null]` and rejects `null`. The optional
+`json_object_item_nullable` schema field carries the item setting on genuine
+repeated object groups. When absent, existing schemas retain their legacy
+item behavior. Arrays of scalars keep the array's nullability separate from
+the items' own `nullable` domain: a nullable array of nonnullable integers
+accepts `null` and `[1]` but rejects `[null]` and `[1,null]`. Positional
+nested arrays and unsupported structured predicates remain outside this
+subset. `$ref` siblings follow the dialect declared by their physical schema
+resource: Draft 4, 6, and 7 ignore them, while Draft 2019-09, 2020-12, and
+schemas without `$schema` apply Ferrule's supported numeric, `multipleOf`,
+item-count, string-length, and annotation metadata.
+
+Concrete array wrappers also retain `uniqueItems: true` through supported
+references and compatible composition. Native and generated Rust/C#
+boundaries compare complete raw input values and normalized output values:
+object member order is irrelevant, nested array order is significant, and
+mathematically equal JSON numbers are duplicates before typed input
+normalization. Inside private `contains` and `dependentSchemas` predicates,
+`uniqueItems` rejects item shapes that admit non-integral `number` values or
+arbitrary JSON, including through nested fields, until predicate matching
+can retain raw numeric lexemes. Closed integer, string, boolean, and object
+item shapes remain supported.
+
+The [tuple frame contract](design/json-tuple-arrays.md) covers dialect selection,
+the 1–4,096 positional members, closed or typed tails, heterogeneous frames,
+`unevaluatedItems`, canonical export and the cases that refuse. Homogeneous
+tuples lower to the ordinary repeated-item schema when their reachable member
+and tail schemas agree; a closed tail bounds `maxItems`. Never treat a
+2020-12 array-valued `items` as `prefixItems`.
+
+#### Strings, patterns and annotations
+
+`minLength` and `maxLength` are exact non-negative bounds.
+Ferrule measures lengths in Unicode scalar values, applies them only when a
+scalar union's runtime value is a string, and enforces them on native and
+generated input and output boundaries. They survive nullable wrappers,
+references, compatible `allOf`, contiguous exact `anyOf` unions, array-item
+projection, typed dynamic properties, and canonical export. Disjoint length
+unions and ambiguous untyped assertions reject rather than move or widen an
+assertion.
+
+Concrete string-capable fields and scalar unions also retain JSON Schema
+`pattern` assertions. Null bypasses a pattern in nullable domains, while
+string values in array items and typed dynamic properties are checked.
+Compatible `allOf` branches form a conjunction, exact `anyOf` branches form
+a disjunction of conjunctions, and `oneOf` remains limited to provably
+disjoint scalar branches. References and `$ref` siblings follow the same
+per-resource dialect policy as the other supported assertions. Canonical
+export uses direct `pattern`, `allOf`, or `anyOf` shapes as needed.
+Native and generated Rust/C# boundaries enforce the same portable,
+Unicode-scalar matcher on both input and normalized output.
+The portable syntax includes unanchored matching, `^` and `$`, dot,
+positive and complemented scalar classes and ranges, alternation,
+capturing or noncapturing groups, `*`, `+`, `?`, bounded or open counted
+repetition, lazy quantifier suffixes, and explicit character/Unicode
+escapes. Backreferences, lookaround, named groups, inline flags, Unicode
+properties, shorthand classes such as `\d`, octal/control escapes, and
+class-set operators reject rather than acquire backend-specific semantics.
+
+Distinct per-selector `patternProperties` value schemas, open or typed
+`additionalProperties` fallbacks, general overlap intersection, value shapes
+outside the ordinary exact JSON profile, and pattern-property objects under
+active `allOf`, object alternatives, or structural `$ref` siblings remain
+outside the exact homogeneous profile. `unevaluatedProperties` also remains
+unsupported. These forms reject rather than silently weakening an otherwise
+typed object.
+Each source is limited to 64 KiB, 256 nesting levels, 8,192 syntax nodes,
+and 16,384 compiled instructions. Each constrained node retains at most 32
+alternatives and 64 total terms; a complete schema retains at most 64
+distinct sources, 256 KiB of distinct source text, and 65,536 distinct
+compiled instructions. Each JSON document parse or serialization call shares
+one deterministic 100-million-unit pattern work budget across that document.
+
+Unknown and empty string `format` annotations are
+retained exactly on string-capable values and array items, accumulated in
+order through compatible `allOf`, references, and exact scalar/array unions,
+and exported without turning them into assertions. Ferrule does not validate
+values against named format vocabularies. Annotations on non-string values
+and arbitrary-JSON nodes are syntactically validated but not retained. Each
+node retains at most 64 distinct annotations, each at most 1 KiB and at most
+16 KiB in total.
+
+Unsupported modern structural intersections reject explicitly instead of
+widening silently; external resources select their own policy.
+Export emits the canonical normalized constraint form.
+General heterogeneous array composition, heterogeneous or correlated
+numeric-range scalar unions,
+and mixed structural unions remain unsupported.
+Other shape-neutral validation keywords are accepted for schema recovery but
+are not enforced by the mapping runtime.
+
+### Workbook layouts
+
+XLSX update-existing targets (`xlsx_update_existing`, MFD
+`updateexistingfile="1"`) write into the workbook already at the output path
+and keep its other worksheets and the cells outside the layout. A flat table
+replaces its selected table. A hierarchical layout needs every worksheet it
+names to exist already. It clears the cells its bands occupied before the
+update, so shorter output leaves no stale rows, and it inserts or shifts
+nothing. Rewritten cells keep their style, and new data cells take the style
+of their band's first data row. The update refuses, and leaves the workbook
+unchanged, when a written or cleared cell holds a formula or belongs to a
+merged range, when a newly addressed cell outside the previous layout holds
+content, when an open band would write an empty row, or when two bands
+address one cell. It also checks charts, drawings, comments, and every
+package relationship, and refuses content the workbook library would drop or
+rewrite, such as absolute drawing anchors or unmodeled chart types. Worksheet
+features the library does not model are dropped, for example `extLst`
+sparklines, x14 conditional formats, `ignoredErrors`, protected ranges, and
+custom sheet views. Transposed targets always write a new workbook, and grid,
+worksheet-set, and composite layouts are input-only; all four refuse
+update-existing. Payload, standard-stream, and
+pipeline-preview runs refuse it because it needs the persistent workbook,
+and pipeline `.mfd` import and export refuse it on the final target.
+
+A grid source reads one header row and the data rows below it on one
+worksheet, producing one record per non-empty header cell, each with the
+header value and column, fixed cells, and the complete row and cell matrix.
+One grid uses `xlsx_grid`, and its records are the source root. Several
+grids, or a grid beside tables or fixed records on other worksheets, use
+`xlsx_composite` `grids`: each grid fills its own repeating group of the
+composite root, and `table` may then be omitted. Each grid needs its own
+worksheet. MFD import refuses a worksheet holding several grids, because
+pairing their header and data ranges is not established. Grids are
+input-only, and generated code refuses composite sources with grids.
+
+Transposed XLSX targets (`xlsx_rows` on a target) write each record into one
+worksheet column and each data field into its selected row, in schema order.
+There is no header row, and `xlsx_start_row`, `xlsx_columns`, and
+`xlsx_headers` are refused. Records fill columns from A in order. An integer
+field named `n` places a record at that column instead (1 to 16,384, each
+column once), and a missing value then leaves its cell empty. Without `n`,
+every record needs a value in every row, and at most 16,384 records fit. The
+first selected row is the driver: a record whose driver value is missing or
+an empty string is refused, because reading the workbook back would skip
+that column. Every record is checked before the file is written. The file,
+payload, and pipeline-preview routes write transposed targets;
+standard-stream and bounded-document runs refuse them. Generated code
+returns the target's records as schema-shaped values, as for other XLSX
+targets, and writes no workbook.
+
+In the reference application each transposed target row is an independent
+run of cells: a missing value adds no cell, so later values in that row move
+left unless the row's `n` input is connected, and an empty string still adds
+an empty cell. When `n` repeats, the first value wins and later ones are
+dropped. Ferrule keeps records aligned instead, so a design without `n`
+fails on a missing value rather than shifting it, and a repeated `n` is
+refused. MFD import maps a target's rows to one record per item of the first
+row's feed, and warns when another row or an `n` input follows a different
+feed. `n` must be connected to every row from the same value; the reference
+application positions only the rows whose `n` is connected. Export writes
+every row's `n` input from the record's `n` binding.
+
+The reference application also reads each selected row of a transposed
+XLSX source as its own run of non-empty cells, so rows do not line up by
+column on their own. MFD export iterates records over the first row's
+cells and reads each later row through a filter that keeps the cell whose
+`n` equals the first row's `n`. Import turns that filter back into the
+plain field only for direct scalar target bindings in a proven first-row
+driver context. It retains the physical owner of every index, including
+unmarked later-row indexes; missing or duplicate indexes cannot prove
+alignment. Sequence consumers and unproved contexts are disconnected with
+their dependent results and reported as non-executable imports, rather than
+silently becoming unfiltered bindings. Refusal follows physical component
+input/output ports through specialized producers as well as ordinary
+functions; UDF defaults, serializers, parsers and dynamic sources cannot
+replace a refused value with a new result. Export refuses aggregates over later
+rows, whose native cell sequences include non-driver columns and omit
+missing record values. It also refuses computed aggregates over transposed
+records until their native record alignment is established. Direct
+driver-row aggregates remain supported. Integer row schemas are refused
+rather than converted through
+double and losing exact `i64` values; the synthetic column index `n` remains
+supported. A `ferrule-datatype` annotation never overrides the declared Cell
+datatype: only matching canonical annotations are accepted, and unsupported
+or conflicting annotations warn and retain the declared type. These export
+refusals happen before any design or schema files are published.
+
+### EDI fields
+
+Native EDI input validates configured length and code-list constraints against
+each present decoded wire field, before numeric conversion and any
+route-selected implied-decimal scaling. Leading zeros remain significant.
+This applies to X12, EDIFACT, HL7, TRADACOMS and fixed-record IDoc reads,
+including file and payload/standard-input routes. Empty or absent fields
+remain governed by the existing segment rules.
+SWIFT MT uses its separate embedded field grammar and refuses generic EDI
+source value constraints rather than ignoring them.
+EDI output validates after wire lexical formatting. Both use bounded reports
+with occurrence-qualified schema paths; input refusal prevents mapping and
+output publication, and output validation failures do not replace the
+destination.
 
 ### SQLite metadata inspection
 

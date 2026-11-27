@@ -100,38 +100,13 @@ sparse readings cannot locate an exclusive parser, mapper or writer peak.
 | Many | 2 | +40,324 KiB (+39.4 MiB; +25.36%) |
 | Wide | 2 | +31,992 KiB (+31.2 MiB; +25.86%) |
 
-## Correctness, closure and disk
+## Correctness and scope
 
-Eight separate, unmeasured verifiers passed complete ordered typed input/output
-rows, selected/all-target engine outcomes, group origins, ordered `RunOutcome`
-fields, and every output byte, hash and EOF. All eight primary and four named
-documents matched the independent oracles. Full actual parser/engine/origin
-originals preceded assertions. The accepted passive analysis preserved all
-eight rows and no errors; all 45 numeric accept/refuse controls matched their
-declared outcomes. Scoped example warnings and formatting checks also passed.
-
-All sixteen measurement/verification invocations closed normally: genuine
-child reaping, empty final census, lease release, unchanged source/survey and
-all seven input/tool/body guards. There were no timeout, signal, cleanup or
-primary/lifecycle/custody errors. The normal example build also closed normally.
-Exit zero was checked alongside those original lifecycle and custody records.
-
-Build free space was 24,980,070,400 bytes before and 25,023,070,208 after;
-allocated shared target was 375,776,456,704 then 376,188,461,056 bytes.
-Campaign free-space readings ranged from 24,827,129,856 to 24,878,493,696 bytes,
-always above the coordinated 20 GiB reserve. The shared target stayed at
-376,188,461,056 bytes throughout the sixteen invocations. Ordinary host/storage
-activity means free-space differences cannot be attributed solely to this work.
-The retained campaign, trial, build and tool-version originals comprise 221
-files, 2,106,831,353 logical bytes (1.962 GiB) and 2,107,416,576 allocated bytes
-by summed `st_blocks`. That inventory excludes immutable executables, the shared
-target, private source/review packets and later analysis outputs; it is disk
-evidence, not process RSS or unique physical-storage attribution.
-
-- [x] Record the ordinary profile, compiler, complete source, fixtures and binaries.
-- [x] Retain all eight time results and all twenty-four boundary observations.
-- [x] Complete eight verifier runs and all twelve full-byte document comparisons.
-- [x] Complete independent actual-evidence/report review.
+Eight untimed verifiers compared complete typed values, group origins,
+`RunOutcome` order and every output byte. All eight primary documents and four
+named documents matched the independent oracles. Measurements and verification
+used separate processes. Disk-space readings and retained artifact sizes are
+not part of the RSS measurement.
 
 ## Source lifetimes and limits
 

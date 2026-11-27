@@ -48,25 +48,16 @@ read the complete **93,623,912-byte test harness** before replacing itself with
 that executable. These are identified verification costs; the table does not
 separate them from extraction, startup or other process costs.
 
-Executable verification has since been changed to bounded streaming, with
-separate control checks. Those checks are not memory trials. A fresh resource
-campaign and report remain pending; no post-correction RSS result or reduction
-is claimed here.
+The [separate resource profile](pdf-worker-resource-profile.md) used bounded
+streaming executable verification. Its corpus differs from these five runs;
+the two studies cannot establish a before/after RSS reduction.
 
 ## Follow-up
 
-The [resource profile](pdf-worker-resource-profile.md) repeats worker and
-in-process extraction with the corrected verification path on a separate
-self-authored corpus, recording the build profile, brackets, complete outcomes,
-own-reap usage and allocation failures. It does not reuse the inputs above, so it
-makes no improvement or parser-memory claim against these five observations.
-
-Track resource qualification in [#328](https://github.com/DeandreT/ferrule/issues/328)
-and bounded executable verification/reporting in
-[#394](https://github.com/DeandreT/ferrule/issues/394). The twelve filesystem-route
-checks in [#388](https://github.com/DeandreT/ferrule/issues/388) and load-request
-observations in [#391](https://github.com/DeandreT/ferrule/issues/391) have separate
-functional scopes. This table does not qualify those routes or callback counts.
+The [follow-up study](pdf-worker-resource-profile.md) records child and parent
+observations, build profile, brackets, complete outcomes and allocation
+failures for its own fixtures. The callback observations below measure a
+different quantity.
 
 ## Real loader-request counts
 

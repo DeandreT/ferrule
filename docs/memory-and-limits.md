@@ -72,10 +72,10 @@ deny-by-default filesystem roots and HTTP origins, plus explicit work,
 evaluation-depth and join-row budgets. It enforces a policy inside the process
 and is not a sandbox.
 
-The [PDF worker contract](pdf-worker-contract.md) is a proposed filesystem host
-route for #104. Its Linux child, transport limits, deadline, cancellation and
-owned cleanup require implementation and qualification. Current PDF library and
-payload calls remain in-process; no worker or RSS ceiling is claimed here.
+For file-backed PDFs, the CLI and native editor offer an opt-in
+[Linux x86_64 worker](pdf-worker-contract.md#eligible-host-and-compatibility).
+It isolates extraction; mapping and output remain in the parent. Payload calls
+stay in-process. Neither route promises a whole-process RSS ceiling.
 
 See [Project files](project-files.md), [Supported formats](formats.md),
 [Code generation](code-generation.md), and the

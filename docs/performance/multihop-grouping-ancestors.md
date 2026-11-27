@@ -1,7 +1,7 @@
 # Multi-hop grouping ancestor copies — 2026-10-20
 
-For [#782](https://github.com/DeandreT/ferrule/issues/782), the interpreter's
-legacy grouping path no longer copies intermediate ancestors for each group.
+The interpreter's legacy grouping path borrows intermediate ancestors instead
+of copying them for each group.
 A grouping scope whose source path crosses several repeating levels (for
 example `Order/Item`) evaluates each group with its first member's ancestor
 prefix. That prefix used to be deep-cloned into every new group, so one order

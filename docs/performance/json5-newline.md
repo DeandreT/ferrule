@@ -1,10 +1,10 @@
 # C# JSON5 final-newline materialization — 2026-10-15
 
-For [#765](https://github.com/DeandreT/ferrule/issues/765), JSON5 now appends its
-document newline to the canonicalizer's builder before materializing the final
-string. The repeated 64 MiB output-success recipe reported about 576 MiB of
+Appending the document newline before materializing the canonical JSON5 string
+reduced sampled serialization allocation on the 64 MiB success case.
+The repeated recipe reported about 576 MiB of
 serialization allocation accounting, versus 704 MiB in the retained
-[#160 baseline](json5-allocations.md). Matched uninstrumented whole-host peak RSS
+[allocation baseline](json5-allocations.md). Matched uninstrumented whole-host peak RSS
 fell by 123.6–128.6 MiB on this machine. Output-limit refusals retained the same
 typed errors; their RSS varied slightly upward in some runs.
 
@@ -29,13 +29,10 @@ C# library closures has the same 87 C# source paths as its retained baseline and
 differs in exactly those two runtime files. The generated mapping and host source
 are unchanged. There is no new byte-counting algorithm or public signature.
 
-The measured checkout was based on
-`60ff0466a4d1e7fbefbaf428b8b3bb95f18ce833` (the profiling fixture in PR #766),
-whose production runtime preimage is the baseline's
-`7ff83194882f49285b47d14bdc44464d44bf8dbe`. The candidate binding and retained
-patch identify the working changes; the evidence JSON identifies the complete
-candidate runtime. A later remote resource-binding update did not overlap these
-runtime files. The follow-up remains stacked on the profiling fixture.
+The measured checkout used `60ff0466a4d1e7fbefbaf428b8b3bb95f18ce833`;
+its production runtime preimage was the baseline's
+`7ff83194882f49285b47d14bdc44464d44bf8dbe`. The evidence JSON identifies
+the complete candidate runtime as measured, including the working changes.
 
 ## Matched workload and observations
 
@@ -94,37 +91,17 @@ not exact object sizes, exact per-phase totals or simultaneous live memory. The
 672 `GCHeapStats` events remain separate post-GC observations in the CSV and do
 not establish retained roots, a heap graph or ownership of the RSS maximum.
 
-## Complete behavior and evidence checks
+## Output and resource controls
 
-- The original prerequisite passed all 184 small public calls: 92 Rust and 92 C#,
-  retaining its 276 complete original result records and source/library guards.
-- All 96 physical calls passed: 48 complete returned values and 48 expected typed
-  refusals. The independent verifier checked every literal input and returned
-  byte, original exception fields/chains, trace PID/accounting consistency,
-  source/artifact identities and all 154 closed command groups.
-- All 221 C# smoke tests passed, including the new newline/ordinary-writer
-  regression. Its seven literal cases make 14 JSON5 and 28 ordinary-JSON complete
-  comparisons across text/byte results, escaping, supplementary/BMP Unicode,
-  U+2028/U+2029 and builder-sized string boundaries.
-- Separate [Unicode cap controls](../../examples/performance/json5-newline/README.md)
-  passed eight calls across baseline/candidate and text/byte routes. Complete
-  67,108,864-byte outputs containing 22,369,616 `雪` characters matched the literal
-  oracle. Adding one ASCII character preserved `Output / OutputDocumentBytes`,
-  requested 67,108,865, maximum 67,108,864, the original inner resource cause and
-  absence of a partial result. A separate readback checked every retained byte
-  and all ten command closures. These controls ran after the profiling campaign
-  and do not enter its RSS/allocation comparison.
-- Strict Clippy passed for all C# emitter targets (`--no-deps`), and workspace
-  formatting, whitespace, report links and checked-in data/source digest checks
-  passed.
-
-Original evidence remains under `target/qualification/765-campaign-1`, its
-independent audit under `765-audit-1`, supplementary controls under
-`765-unicode-controls-1`/`765-unicode-audit-1`, and setup/build/smoke originals under
-`765-tooling`. The campaign retained every full output/error, raw trace and
-analysis record, and complete source/tool/generated/artifact bindings. Its final
-guards passed with no remaining or forcibly cleaned-up process-group members.
-The original baseline remains separately retained under `160-campaign-2`.
+The physical comparison contained 48 complete results and 48 expected typed
+refusals. The verifier compared every input and returned byte or original
+exception, and tied the traces to the measured processes and artifacts.
+Separate [Unicode cap controls](../../examples/performance/json5-newline/README.md)
+exercised both builds and both text and byte routes. The 67,108,864-byte outputs
+containing 22,369,616 `雪` characters matched the literal oracle. One additional
+ASCII character returned `Output / OutputDocumentBytes` (requested 67,108,865,
+maximum 67,108,864) with its inner resource cause and no partial result. These
+controls ran after profiling and are not part of the RSS/allocation comparison.
 
 The finite protocol reserved 4 GiB available memory and 20 GiB free disk, bounded
 logical campaign evidence to 8 GiB and each command to 180 seconds (900 seconds
@@ -133,14 +110,6 @@ were 6.685 GiB available memory and 59.376 GiB free disk; largest observed logic
 campaign size was 1.566 GiB. These are admission thresholds and observations,
 rather than kernel quotas. Complete environments stay private in local evidence;
 checked-in data contains selected non-secret source/artifact identities.
-
-After all builds and calls closed, exact prerequisite CLI/Rust-host executables
-were retained before Cargo removed 1.4 GiB of workspace build files and 734.8 MiB
-from the owned generated-host cache. The exact observed executables were restored
-at their recorded paths. A complete post-cleanup independent audit passed with
-the identical 96-row CSV digest. Original evidence and other agents' caches were
-preserved. Cleanup records and retained-executable identities remain local under
-`765-tooling` and `765-retained-build-artifacts`.
 
 This result qualifies the bounded JSON5 newline change. It does not extend
 grammar/schema admission, add streaming, change allocator/GC policy, establish

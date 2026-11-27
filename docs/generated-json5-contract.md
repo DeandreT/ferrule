@@ -2,13 +2,13 @@
 
 JSON5 companions accept one complete JSON5 object and return complete strict JSON. They are an explicit, additive generation profile: ordinary JSON APIs, descriptor codecs and default generated artifacts retain their existing behavior.
 
-The shared policy, both language integrations and CLI selection are merged: [policy PR #151](https://github.com/DeandreT/ferrule/pull/151), [Rust PR #153](https://github.com/DeandreT/ferrule/pull/153), [C# PR #155](https://github.com/DeandreT/ferrule/pull/155) and [CLI PR #156](https://github.com/DeandreT/ferrule/pull/156). The coverage below is specific to this profile within [#96](https://github.com/DeandreT/ferrule/issues/96).
-
 ## Explicit generation and public APIs
 
 Select `codegen_rust::emit_with_json5(program, options)` or `codegen_csharp::emit_with_json5(program)` to add the companions. Ordinary `emit` does not add them. C# includes the optional package-free runtime sources; Rust uses the existing local `codegen-runtime` dependency. Neither backend infers selection from a file suffix or stored `json5` settings.
 
-The CLI increment adds `generate --json5-adapters` and the public writer `cli::generate_project_with_json5_adapters`. The flag defaults to false and conflicts with `--csv-output`; ordinary `generate_project` retains its existing artifact tree. Unsupported projects refuse before destination publication. The complete artifact tree is staged and published into a new destination; an existing destination is not replaced. See [Code generation](code-generation.md#explicit-json5-companions) for the commands.
+Use `generate --json5-adapters` or `cli::generate_project_with_json5_adapters`.
+It conflicts with `--csv-output`. Ineligible projects refuse before publication;
+the [writer](code-generation.md#output-filesystem) requires a new destination.
 
 | Route | Rust generated method | C# generated method | Input and owned result |
 | --- | --- | --- | --- |
@@ -134,19 +134,6 @@ python3 scripts/generate_json5_identifiers.py \
 
 Duplicate input properties survive normalization and retain last-value-wins typed reading. Every lexical number is checked before projection, including an overwritten or undeclared member. `NaN`, signed infinities and decimal overflow to nonfinite values refuse at Syntax. Exact decimal and hexadecimal integer tokens use checked signed/unsigned 64-bit ranges. Decimal floating tokens keep their spelling, with a leading plus removed and missing decimal-side zeros supplied; they are not rounded and rewritten by the normalizer. Typed projection still applies the declared Int or Float domain, so a syntactically valid unsigned integer or an integer not exactly representable as Float can refuse at Input. Integer `-0` normalizes to `0`; a floating negative-zero lexical retains its sign.
 
-The current shared 75-record syntax fixture declares **48 normalization successes and 27 Syntax refusals**. Its two former Unicode deferrals, raw and escaped `雪`, now declare the same normalized name. The earlier ASCII-only inventory recorded 46 syntax successes and 29 refusals; six of those successes were later refused at Input, leaving 40 public successes in that historical inventory. Syntax fixtures alone do not establish a revised public mapping count. Root arrays, undeclared fields, required presence, null/type adaptation and numeric representability still belong to projection. This inventory is distinct from the compiled public-call cohort below. The existing local JSON5 reader is also separate; its nullable/nonfinite verification lane remains [#130](https://github.com/DeandreT/ferrule/issues/130).
-
-The separate [#135](https://github.com/DeandreT/ferrule/issues/135) regression source freezes these inventories:
-
-| Inventory | Literal expectations |
-| --- | --- |
-| Identifier documents | 75: 32 normalized results and 43 syntax refusals, in each language |
-| C# original UTF-16 encoding | 6 unpaired-surrogate refusals, including failure after a valid multibyte prefix |
-| Membership/domain | 40 rows: Rust checks 37 valid scalars plus 3 invalid `char`-domain integers; C# checks all 40 integer inputs |
-| Scaled budget conservation | 8 exact/one-over controls per language, covering syntax work, original bytes, normalized bytes and container depth |
-
-These are independently authored literal regression expectations, not additional generated mapping calls, physical boundary measurements or native/desktop evidence. They cover start/continuation categories, combining and supplementary scalars, Unicode-version changes, raw/escaped aliases, malformed surrogate escapes, exclusions and original error offsets. On **2026-10-10**, the pinned generator completed two independent output sets and a read-only byte check. Focused Rust verification passed nine syntax/identifier tests, 368 ordinary JSON tests, six runtime adapter tests and three C# emitter tests; all 185 C# smoke groups also passed. The corrected compiled public cohort completed 92 Rust and 92 C# JSON5 calls with no comparison failures. Four successful typed Unicode-name baseline checks in each language are separate from those 184 calls. Formatting and strict warnings passed for the affected Rust packages and CLI test targets. This verification does not rerun or extend the historical 48 physical calls or their memory measurements.
-
 ## Runtime limits and typed causes
 
 MiB means 1,048,576 bytes. The limits below apply to one API call; the policy limits above apply separately to each embedded schema.
@@ -167,7 +154,10 @@ These are serialized-boundary limits, not a process-memory ceiling or a streamin
 
 ## Physical boundary checks and measured memory
 
-On **2026-10-08**, [PR #159](https://github.com/DeandreT/ferrule/pull/159) completed all **48 serial physical calls** after a fresh complete 184-call small cohort: six cases × four public routes × two languages. All eight generated hosts built successfully. Every case checked the complete successful result or typed refusal, including the reported limit and original cause where applicable. Failures returned no partial output. The original, normalized and output boundaries were exercised at exactly 64 MiB and one byte above that limit. Successful normalized sizes are established by independent literal corpus recipes; the public API does not expose its intermediate normalized buffer.
+The [physical-boundary study](https://github.com/DeandreT/ferrule/pull/159)
+measured exact and one-byte-over inputs, normalized documents and outputs.
+The normalized sizes came from independent corpus recipes; the public API does
+not expose its intermediate buffer.
 
 The table records whole-host peak resident memory in KiB. Each range covers four different routes: text and bytes, each with and without context. These are route ranges, not repeated trials of an identical call.
 
@@ -182,22 +172,6 @@ The table records whole-host peak resident memory in KiB. Each range covers four
 
 Measurement includes process startup, input reading, the public API call, returned-output retention and hashing, and the host's final evidence checks. Host builds and the outer controller's checks are outside that measurement. The Linux Rust hosts used the development profile with optimization level 0 and debug information level 2; the C# hosts used Release on .NET 10.
 
-The largest observed peaks were about **264 MiB for Rust** and **1.34 GiB for C#**, both in the exact-output case. These measurements do not isolate API allocations, attribute a particular stage, establish a universal memory ceiling, or qualify streaming. [#160](https://github.com/DeandreT/ferrule/issues/160) scopes separate C# allocation attribution before any optimization work. See [Memory use and boundary limits](memory-and-limits.md) for the wider memory model.
-
-## Increment checklist
-
-- [x] Define additive shared schema, descriptor, program and option policy APIs.
-- [x] Keep ordinary codecs and lowering intact and retain typed original causes.
-- [x] Refuse duplicate decoded descriptor keys without changing mapping input duplicates.
-- [x] Run duplicate-field, escaped-alias, quoted-string and original-error precedence controls.
-- [x] Run focused and complete affected policy suites, formatting and strict warnings.
-- [x] Merge explicit Rust runtime and emitter companions ([PR #153](https://github.com/DeandreT/ferrule/pull/153)).
-- [x] Merge explicit C# runtime and emitter companions ([PR #155](https://github.com/DeandreT/ferrule/pull/155)).
-- [x] Merge explicit CLI selection with verified unchanged defaults and atomic refusal ([PR #156](https://github.com/DeandreT/ferrule/pull/156)).
-- [x] Compile both public hosts and complete all 184 small calls: 17 representation plus six mapping/context cases × four routes × two languages ([#144](https://github.com/DeandreT/ferrule/issues/144)).
-- [x] Qualify all 48 serial physical original/normalized/output exact and one-over calls after all small prerequisites ([PR #159](https://github.com/DeandreT/ferrule/pull/159)).
-- [x] Regenerate and byte-compare the pinned Unicode 17 identifier data and both language leaves ([#135](https://github.com/DeandreT/ferrule/issues/135)).
-- [x] Complete the Unicode regression inventory and full 185-group C# smoke verification without broadening public-call evidence.
-- [x] Complete affected formatting and strict-warning checks for #135.
-
-The local coverage recorded on **2026-10-08** includes the merged language regressions and the complete 184-call compiled cohort: 92 Rust and 92 C# calls with independent results, output bytes and original error causes. Six additional C# null-source/context controls are separate from that total. The 75-record syntax inventory, direct helper controls and compiled calls are separate evidence sets; the public cohort does not execute every inventory record. All 48 physical calls also completed, with normal process closure and passing local formatting and strict-warning checks. None of these checks qualifies broader schemas, native metadata ([#106](https://github.com/DeandreT/ferrule/issues/106)), desktop controls or total process memory.
+These ranges cover different routes, not repetitions of one call. For C#
+allocation attribution and its limitations, see the [measured workload](performance/json5-allocations.md).
+Whole-host RSS is not an API allocation limit.

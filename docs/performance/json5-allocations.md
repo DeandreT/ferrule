@@ -1,13 +1,11 @@
 # Generated C# JSON5 allocation attribution — 2026-10-15
 
-For [#160](https://github.com/DeandreT/ferrule/issues/160), all 96 physical C#
-calls passed: 48 complete returned values and 48 expected typed resource refusals.
-The 64 MiB output-success recipe consistently attributed about 704 MiB of sampled
-allocation accounting to serialization, including large allocations beneath the
-canonicalizer and the final newline append. Mapping, normalization, projection,
-parsing and host handling also allocate substantially. This identifies a bounded
-optimization opportunity; it does not measure an API-only peak or exact retained
-heap, and this change implements no optimization.
+On the measured generated C# host, the 64 MiB output-success recipe attributed
+about **704 MiB of sampled allocation accounting** to serialization, including
+the canonicalizer and final newline append. Mapping, normalization, projection,
+parsing and host handling also allocated. These samples do not measure API-only
+peak or exact retained heap. See the [matched newline study](json5-newline.md)
+for the subsequent change.
 
 The [fixture and protocol](../../examples/performance/json5-allocations/README.md),
 [96 individual observations](json5-allocation-observations-2026-10-15.csv), and
@@ -168,56 +166,18 @@ The study establishes no streaming behavior, cross-language memory comparison,
 universal RAM ceiling, grammar/schema expansion, desktop parity or optimization.
 It preserves full materialization, validation and existing resource refusals.
 
-## Evidence, failures and cleanup
+## Reproduction and verification
 
-Before physical preparation, the original CLI prerequisite cohort passed all 184
-small public calls (92 Rust, 92 C#), with its 276 complete original per-call
-records, source/library guards and complete receipt. The successful campaign then
-closed all 154 commands without remaining or forcibly cleaned-up process-group
-members. Its final source/tool and generated/artifact guards matched. A separate
-[verifier](../../examples/performance/json5-allocations/verify.py) checked the full
-96-row matrix, all six literal input recipes, every returned byte, original typed
-error fields/chains, receipt records, trace PID/count/accounting consistency,
-artifact hashes and process closure. It produced the checked-in CSV and summary.
+The [verifier](../../examples/performance/json5-allocations/verify.py) checked
+the 96 physical calls (48 complete results and 48 typed refusals), six input
+recipes, exact returned bytes or original error chains, trace process IDs and
+accounting, and source/artifact hashes. The measured host and collection tools
+stayed fixed. Earlier setup and classifier probes did not contribute physical
+observations.
 
-The runner's four focused tests pass, including immutable failure evidence,
-modified-source refusal, exact child-error retention and timeout/grandchild
-reaping. The Rust example and all C# emitter targets pass strict local Clippy
-(`--no-deps`); the Release analyzer builds without warnings, and workspace format
-and whitespace checks pass.
-
-Original evidence is retained locally under `target/qualification/160-campaign-2`,
-with setup/tool/build originals under `target/qualification/160-tooling` and the
-independent audit under `target/qualification/160-audit-final`. The finite protocol
-reserved 4 GiB available memory and 20 GiB free disk, limited logical campaign
-evidence to 8 GiB, bounded each command and the one-hour campaign, and used a
-64 MiB trace buffer. Observed minima were 6.737 GiB available memory and
-60.623 GiB free disk; the largest observed campaign size was 1.567 GiB. These are
-admission/stop thresholds, not kernel quotas or a RAM cap.
-
-Failed setup originals were retained separately. The first collector probe could
-not attach through a launched wrapper; the successful protocol uses an explicit
-short reverse diagnostic socket with target and collector as siblings. An early
-example build exposed a private fixture-identity field, and an analyzer setup
-attempt passed a restore-only option to build; both were corrected before the
-campaign. During the first setup campaign, review found the classifier could
-confuse shared byte-count helpers with normalization. Its source guard refused
-after preparation/builds and before any physical call. That entire failed root,
-`target/qualification/160-campaign-1`, remains intact; the corrected campaign
-reran the complete small prerequisite cohort and all 96 physical calls.
-
-Raw evidence includes complete effective environments and stays local; review
-those records before sharing. Report, CSV and the offline verifier were produced
-after measurement closure. The measured host, preparation, collector and analyzer
-code stayed unchanged throughout the successful campaign.
-
-After closure, verified prerequisite/CLI executable bytes were retained before
-clearing compiler caches. Cargo removed 1.4 GiB of workspace build files. It
-refused the dedicated generated cache's missing `CACHEDIR.TAG`; an initial
-cleanup audit also caught the temporarily absent recorded CLI executable.
-Saved exact executable bytes were restored, ownership of the dedicated directory
-was checked, and its disposable cache was cleared while retaining the observed
-executable. That directory shrank from 719 MiB to 116 MiB. The complete independent
-audit then passed again with the identical observation CSV digest. Cleanup
-refusals, file inventories, retained-executable identities and final audit
-originals remain under `160-tooling` and `160-audit-after-clean-final`.
+The protocol used a 64 MiB trace buffer, a one-hour deadline, an 8 GiB logical
+evidence budget, and reserves of 4 GiB available memory and 20 GiB free disk.
+The observed minima were 6.737 GiB and 60.623 GiB respectively; the largest
+campaign occupied 1.567 GiB. These are admission thresholds and observations,
+not kernel quotas. Use the linked CSV and evidence manifest for the original
+route, build and per-call values.

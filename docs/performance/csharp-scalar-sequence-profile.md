@@ -30,12 +30,9 @@ Group origins are Unknown, with null identity and literal metadata. Every field,
 item, value, origin and output byte was checked against independent frozen
 expectations. No other backend supplied an oracle.
 
-- [x] All eight measured calls and eight separate untimed verifiers exited
-  successfully with complete retained output comparisons through EOF.
-- [x] All four post-closure trace decoders completed; four independent actual
-  review packets accepted the bounded observations.
-- [x] All 20 command owners closed normally without cleanup, with their own
-  source and protected-corpus guards preserved.
+The eight measured calls used separate untimed verifiers. Four traces were
+decoded after process closure; their allocation events are sampled and do
+not replace the complete byte comparisons.
 
 The public [fixture contract](../../examples/performance/scalar-sequences/fixtures.json)
 and [measurement host](../../examples/performance/scalar-sequences/CSharpHost.cs)

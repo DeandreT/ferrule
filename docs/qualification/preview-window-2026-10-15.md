@@ -3,12 +3,10 @@
 The Preview setup now scrolls vertically, keeping its input and actions
 reachable on a short desktop. Its nested input editor also has a finite height
 when the outer scrolling window offers unbounded content space.
-This is the focused correction for [#770](https://github.com/DeandreT/ferrule/issues/770).
 
 On main `4c1aa380`, the original 1280 × 720 native session showed the input
 starting below the screen and no reachable action row. The real-theme widget
-regression independently reproduced a 792-pixel window in a 699-pixel client;
-both action tests failed before the production change.
+regression independently reproduced a 792-pixel window in a 699-pixel client.
 
 ![Original dialog with input and actions below the screen](preview-window-2026-10-15-before.jpg)
 
@@ -38,26 +36,11 @@ The original fixture, input and expected bytes stayed unchanged. The GUI exited
 normally, every owned desktop process group closed, and all bound source files
 and the retained executable matched their pre-session identities.
 
-Validation also includes two real-layout widget tests at 1280 × 699 and
-960 × 560 client sizes, with actual scroll/button events, complete input/output
-comparison and complete project equality after Cancel. All 800 GUI tests passed
-before the equivalent existing test-helper lint correction in
-[PR #772](https://github.com/DeandreT/ferrule/pull/772). The final stack passed the
-two Preview regressions, strict GUI all-target Clippy without suppressions,
-formatting and a normal GUI build; the lint-only parent separately passed both
-existing aggregate-authoring tests.
+Separate widget tests exercised 1280 × 699 and 960 × 560 client sizes, actual
+scroll and button events, the complete output and unchanged project after
+Cancel. The [evidence index](preview-window-2026-10-15.evidence.json) binds the
+source, executable, original captures and fixture to this session.
 
-The [evidence index](preview-window-2026-10-15.evidence.json) records source and
-executable identities, original image/fixture hashes, commands, process closure
-and retained failures. Earlier attempts include the initial wheel-event compile
-error, three memory-reserve interruptions, a private monitor race during normal
-temporary-file removal, and the separately corrected baseline lint warning.
-Interrupted fixture originals were copied from RAM-backed `/tmp` to disk and
-verified individually before releasing their old locations. The successful full
-run used disk-backed temporary space and a monitor that tolerates disappearing
-temporary files; the memory, disk and evidence reserves stayed enforced.
-
-This qualifies the recorded Preview reachability and tiny constant-output
-workflow. The full mapping-path authoring/persistence workflow in
-[#108](https://github.com/DeandreT/ferrule/issues/108), other desktop platforms,
-and broader Basic and observer acceptance retain their separate gates.
+These observations cover Preview reachability and a constant-output mapping.
+The [mapping-path desktop record](mapping-path-desktop-2026-10-25.md) covers
+authoring and persistence on its own fixture.

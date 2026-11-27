@@ -1,7 +1,7 @@
 # Offline bundle producer qualification
 
-Local evidence for [#105](https://github.com/DeandreT/ferrule/issues/105),
-2026-10-15, against main `7ff83194882f49285b47d14bdc44464d44bf8dbe`.
+This 2026-10-15 record covers the Linux producer at
+`7ff83194882f49285b47d14bdc44464d44bf8dbe`.
 The [command contract](../offline-bundles.md) defines the producer profile,
 included-data policy, resource declarations, budgets and runtime requirements.
 
@@ -46,35 +46,15 @@ checks. They do not qualify another producer platform, every resource grammar,
 schema dependency discovery, generated code, GUI workflows, external applications
 or power-loss/network-storage durability.
 
-## Checks and originals
+## Build and evidence
 
-Toolchain: Rust `1.97.0-nightly (9838411cb 2026-04-25)`, Linux x86_64 GNU,
-locked dependency versions, two build jobs, incremental disabled and dev/test
-debug information disabled. The one lockfile change adds the CLI's dependency
-edge to an already locked Unicode normalization package; no version changes.
+These results were observed with Rust `1.97.0-nightly (9838411cb 2026-04-25)`,
+Linux x86_64 GNU, locked dependencies, two build jobs, incremental compilation
+off and dev/test debug information off. The [producer fixture](../../crates/cli/tests/offline_bundle.rs)
+exercises the public exporter and CLI. The retained inventory was checked
+against each file's full bytes, length and SHA-256; only CLI lint was qualified.
 
-| Check | Result |
-| --- | --- |
-| `cargo +nightly test --locked -p cli --test offline_bundle -- --test-threads=1 --nocapture` | 12 passed |
-| `cargo +nightly test --locked -p cli --lib` | 96 passed, two ignored; includes both staged validation/publication controls |
-| `cargo +nightly test --locked -p cli --test import_mfd_json_schema_root --test export_mfd_paths` | All ten existing tests passed |
-| `cargo +nightly clippy --locked -p cli --all-targets --no-deps -- -D warnings` | Passed for every CLI target |
-| `cargo +nightly fmt --all --check`, diff whitespace checks and documentation links | Passed |
-| Independent retained bundle inventory verification | Every recorded file's full bytes match its SHA-256 and length |
-
-The wider Clippy command without `--no-deps` stops in unchanged XML source at
-`parser_guards.rs:202-207` with `clippy::collapsible_match`.
-[#760](https://github.com/DeandreT/ferrule/issues/760) tracks that separate local
-toolchain repair. The passing CLI-only lint does not qualify dependency lint or
-claim hosted CI failure/success.
-
-The first integration run passed eight controls but failed a collision fixture's
-setup: it attempted to create a child beneath an existing file. The corrected
-fixture uses a source directory whose destination conflicts with generated
-`project.json`; all original refusal criteria remain. That failed run is retained
-separately from the later positive runs.
-
-Final production/test source identities:
+Measured source identities:
 
 | File | SHA-256 |
 | --- | --- |
@@ -83,8 +63,6 @@ Final production/test source identities:
 | `crates/cli/src/code_generation.rs` | `ec84885ca6bd82ad8cb6ec0b5ca0b872dd24cedb4a6ee5e7544ae83fe9639c13` |
 | `crates/cli/src/project_paths.rs` | `3afeb9edad7c3aa118cc852f3d70811aff48f4b21d9b3e76f40791dfa419477b` |
 
-Complete local logs and test roots are retained under the isolated worktree's
-`target/qualification/105-*`. Source originals and all output bytes are available
-there; retained test roots use `FERRULE_BUNDLE_EVIDENCE_ROOT`. Ordinary runs use
-exclusively created temporary roots and clean up their own files. Build-cache
-cleanup must preserve the qualification directory.
+To retain the fixture's generated evidence during a new run, set
+`FERRULE_BUNDLE_EVIDENCE_ROOT` to a fresh destination. Otherwise the fixture
+uses its own temporary roots.

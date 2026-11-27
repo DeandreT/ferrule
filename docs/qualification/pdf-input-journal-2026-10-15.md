@@ -1,9 +1,8 @@
 # PDF input-limit observation journal
 
-Local qualification for [#387](https://github.com/DeandreT/ferrule/issues/387),
-2026-10-15. Only the ignored physical fixture and its new test-only journal
-helper changed. Production staging, worker/parser behavior, limits, deadlines
-and all sixteen frozen expected rows are unchanged.
+Observation for [#387](https://github.com/DeandreT/ferrule/issues/387),
+2026-10-15. This fixture records staging and custody of the bounded input; it
+does not parse a PDF or qualify the worker's parser memory.
 
 ## Capture policy
 
@@ -46,19 +45,11 @@ Base: `7ff83194882f49285b47d14bdc44464d44bf8dbe`.
 Linux x86_64 GNU, Rust `1.97.0-nightly (9838411cb 2026-04-25)`, locked dependencies,
 two build jobs, incremental disabled, dev/test debug information disabled.
 
-| Check | Result |
-| --- | --- |
-| Package build, `cargo +nightly build --locked -p cli --bins` | Passed; CLI and sibling worker copied into a dedicated package directory |
-| `cargo +nightly test --locked -p pdf-worker --lib` | 26 passed, two ignored; includes five new journal tests |
-| `cargo +nightly clippy --locked -p pdf-worker --all-targets -- -D warnings` | Passed |
-| `cargo +nightly fmt --all --check` and diff whitespace checks | Passed |
-| Explicit ignored physical fixture, final source | All sixteen original rows passed; 19.74 seconds |
-| Same fixture with `FERRULE_PDF_387_CASE_RECORD_LIMIT=2` | Expected refusal, exit 101; third operation retained in the refusal reserve, no manager begin and no semantic comparison |
-| Separate retained-log verification | All seventeen hashes, exact lengths and continuous sequences match their complete summaries |
-
-The lowered record-limit variable is solely a test-fixture refusal control.
-It accepts a positive limit no larger than the default; it cannot raise any
-worker, journal or owner allowance.
+The packaged CLI and sibling worker completed the sixteen frozen fixture rows.
+An independent replay checked all seventeen journal hashes, byte lengths and
+unbroken sequences. Setting `FERRULE_PDF_387_CASE_RECORD_LIMIT=2` produced the
+expected refusal on the third operation before manager start or semantic
+comparison. This test-only override can lower, never raise, the positive limit.
 
 The five focused tests cover ordered full-value records, checkpoints/sealing,
 exclusive creation, case and campaign count limits, byte/encoding overflow,
@@ -82,18 +73,11 @@ These are actual logical sizes of this run, including sparse source/job files
 and metadata; they are not allocated disk-block usage, an all-future-run bound
 or a nominal estimate. The scope does not parse a PDF or measure parser memory.
 
-The first attempted physical run refused the direct Cargo worker artifact
-because Cargo had hard-linked it. That negative is retained. A dedicated package
-copy satisfied the existing single-link worker admission without changing it.
-Subsequent successful runs and deliberate budget refusals remain separate;
-the final verification uses the following literal source bodies:
+The physical fixture required a single-link packaged worker; the hard-linked
+Cargo artifact was refused. The recorded hashes identify the exact sources:
 
 | File | SHA-256 |
 | --- | --- |
 | `stage_fault382.rs` | `0150237bc9cfb7aa75cd6b1fa82a49058162119b0e15682b4457098d2eb887ea` |
 | `stage_fault382/journal.rs` | `5e8e41346915ae7e50a5afe202d5548a03633dd4e26a377e275c8be805a6ca98` |
 | Unchanged `stage_fault382.expected.json` | `1ddce0b7cd306d3b35b3ef7cb6f8473681d2c29e9457f409838b9bbbdf6a2a14` |
-
-Complete local logs, raw journals, originals and summaries are retained under
-the isolated worktree's `target/qualification/`; they are not checked into Git.
-Build cache cleanup must preserve that evidence directory.

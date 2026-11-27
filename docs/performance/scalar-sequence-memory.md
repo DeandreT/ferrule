@@ -118,20 +118,9 @@ is substituted for or normalized to the other.
 The verifiers retain complete typed source/output outcomes, exact scalar tags and
 values, ordered fields/items, Group origins, error causes and unexpected float
 bits before comparisons. They compare every actual output byte through EOF to an
-independent oracle; another backend is never the oracle. Root review and separate
-reviewers accepted each backend's 24 measured/24 verifier cohort. All 144 calls
-had normal, cleanup-free owned process closure, unchanged source/survey inputs
-and at least 20 GiB free disk at admission and completion.
-
-Two small three-item output cases per backend and six direct error-recorder
-controls were qualified separately before the campaign; they are not among the
-72 measured rows. Preparation failures were retained: the first native build
-used a private validation-module path, and the first composed generated-Rust lock
-attempt had nested workspace roots. Corrections use the public validation facade,
-a Linux-only study module and study-only member-manifest packaging; complete raw
-emitted artifact sets remain retained. A missing system GNU time path was resolved
-by using an already qualified local GNU time binary. No failed attempt is promoted
-to a successful measurement or omitted from the retained preparation evidence.
+independent oracle; another backend is never the oracle. Each backend had 24
+measured runs and 24 separate verifiers. Preparation failures and small
+three-item/error controls are not included in the 72 measured rows.
 
 Every study document is below 64 MiB. The generated JSON document bound, native
 host admission and existing item/work limits do not bound eager process RAM.
@@ -141,12 +130,5 @@ selected-target execution, cancellation or long-lived host behavior. Filesystem
 caches, ordinary machine activity, allocator retention and JIT/runtime startup
 can affect results. No total-RAM ceiling, precise phase attribution, hard-time
 guarantee or production memory improvement is claimed.
-
-- [x] Independently review the bounded Projects and full fixture/oracle recipes.
-- [x] Materialize and seal all full fixtures before compilation or measurement.
-- [x] Qualify native/Rust/C# hosts and complete artifact/source identities.
-- [x] Run all 72 matched trials and separate complete typed/byte verifiers.
-- [x] Independently review every raw row and owned lifecycle record.
-- [x] Complete independent dataset/prose/plot review before publication.
 
 See [reproduction instructions](../../examples/performance/scalar-sequences/README.md).

@@ -1,12 +1,9 @@
 # Generated XML qualification index
 
-This index maps the current public Rust and C# XML document APIs to their source
-tests, retained execution and remaining verification work. A source fixture is
-evidence that a test has been written; it is not evidence that generation,
-compilation or execution passed. The compiled results below have separate local
-execution records. This documentation change reruns no mappings and changes no
-conformance-survey status. The index is finite, rather than a complete parity
-inventory.
+Use this reference to select a generated **physical XML** entry point. The rows
+specify admitted input and output families; a typed or JSON call does not test
+an XML parser or writer. A linked fixture identifies a contract, not a passing
+execution on every revision.
 
 Use the [XML host guide](code-generation.md#xml-host-boundary) for signatures and
 examples. The authoritative adapter dispatch and admission are
@@ -161,106 +158,22 @@ thrown XML exception cannot fabricate that channel. Recovery requires the
 original Rust marker allocation or C# private exception identity; the adapter
 is terminal after a failed load.
 
-## Written controls and retained execution
-
-The linked source families contain real generated Rust/C# hosts, distinct text
-and byte calls, context variants, manual physical/typed output comparisons, and
-original wrapper/cause assertions. They also contain generation/admission tests
-and direct budget tests. Those levels must be recorded separately: calling a
-budget with a supplied size does not exercise a generated parser or writer with
-a document of that size.
-
-The following previously retained finite cohorts can be reused after checking
-their exact source/project/tool bindings. This index does not rerun them or
-claim that they qualify every route in the table on a new source revision.
-
-| Retained cohort | Bounded result scope | Exclusions |
-| --- | --- | --- |
-| Fourteen strict-imported item-error projects | 56 XML calls per backend: text/bytes × context/no context; 140 total typed/JSON/XML calls per backend; four complete XML writer oracles | No named-input loader, list-output or combined-resource coverage is inferred. Native error/publication categories remain separate. |
-| Seven original signed-integer/global-rule projects, with explicit XML-adapter clones | 64 XML calls per backend; 156 total calls per backend across original and XML profiles; three XML and three JSON writer oracles | Original default format and explicit XML adapters are distinct. This does not establish named-input/list resource boundaries. |
-| Nine saved ordinary designs replayed locally | Three full successful typed/XML-content/XSD checks and six exact global-rule messages | This is import/local replay evidence, not generated-host XML evidence. Root schema annotations, numeric categories and failed native publication remain explicit differences. |
-
-An XML expression such as `Node::XmlSerialize`, a typed host whose result is later
-written by an external XML writer, or a JSON host with an XML-shaped schema is
-not a physical XML-input API call. The
-[XML expression tests](../crates/codegen-rust/src/tests/xml_serialize.rs) and
-[C# expression tests](../crates/codegen-csharp/tests/xml_serialize_dotnet.rs)
-remain useful evidence for their own layer.
-
 ## Compiled resource qualification
 
-The following finite checks were qualified locally and merged by **2026-10-08**,
-through [PR #139](https://github.com/DeandreT/ferrule/pull/139). Generated Rust and
-C# libraries were compiled and called through their public XML APIs. The retained
-records include full original results before assertions, independent output or
-typed-error checks, and exact source/corpus/host guards after execution. These are
-local compiled-host results; no hosted-CI pass or coverage of every route in the
-index is inferred.
+These four controls exercise real generated XML boundaries. They qualify only
+the route and resource shown. Each ordinary text/byte and context variant
+retains typed input, mapping or output ownership; no failure returns a partial result.
 
-Call counts below total **both backends**. Each ordinary small test is separate
-from the opt-in boundary test. The latter runs its own fresh small prerequisites
-before physical boundary calls; those prerequisites are included in its total.
+| Boundary | Exact and over-limit behavior |
+| --- | --- |
+| [Static named input bytes](../crates/cli/tests/code_generation/xml_input_sets/combined_bytes.rs) | 256 MiB combined succeeds; one extra byte reports `xml_input_set_utf8_bytes`. All declared inputs count, including unused ones. An oversized later document fails before a malformed primary is parsed. |
+| [Primary output list](../crates/cli/tests/code_generation/xml_dynamic_outputs/combined_output_bytes.rs) | Each document can fit its own 64 MiB limit and still cross `xml_output_set_utf8_bytes` (256 MiB combined). Failure retains the output member index and logical path, even for duplicate paths. |
+| [Dynamic requests](../crates/cli/tests/code_generation/xml_dynamic_inputs/request_count.rs) | With primary and one static input, 4,094 callbacks fit. The next request reserves document 4,097 and refuses before its callback. The declaration, path, ordinal and `callback_invoked=false` survive. |
+| [Mixed-output count and graph error](../crates/cli/tests/code_generation/xml_mixed_named_outputs/late_mapping_count.rs) | A static primary, one static named output and 4,094 members fit the 4,096-artifact cap. One more reports `xml_output_artifact_count`; a reached graph Raise takes precedence over counting or writing. |
 
-| Check | Separate ordinary small calls | Opt-in test: own small + physical calls | Physical observations per backend |
-| --- | ---: | ---: | ---: |
-| Combined static input bytes | 64 | 64 + 80 = 144 | 40 |
-| Combined primary-list output bytes | 8 | 8 + 16 = 24 | 8 |
-| Dynamic input request count | 16 | 16 + 16 = 32 | 8 |
-| Late mapping exception versus mixed-output count | 24 | 24 + 24 = 48 | 12 |
-
-- [x] **[Combined static input bytes](https://github.com/DeandreT/ferrule/issues/116)**
-  ([source controls](../crates/cli/tests/code_generation/xml_input_sets/combined_bytes.rs),
-  [PR #131](https://github.com/DeandreT/ferrule/pull/131)). Eight routes per
-  backend cover singular/output-set × text/bytes × context/no context, with all
-  four static declarations counted, including unused inputs. The physical calls
-  produced 32 successes at exactly 256 MiB, 32 refusals at one byte over and 16
-  later-document-limit refusals. Combined refusals retain named declaration `3`,
-  name `d`, and `xml_input_set_utf8_bytes` observed `268435457`, limit `268435456`,
-  even when supplied names are reversed. A malformed primary paired with a later
-  document of 64 MiB plus one byte retains that document's `DocumentLimit` before
-  parsing the primary. Refusals preserve the original wrapper/cause and return
-  no result.
-- [x] **[Combined primary-list output bytes](https://github.com/DeandreT/ferrule/issues/117)**
-  ([source controls](../crates/cli/tests/code_generation/xml_dynamic_outputs/combined_output_bytes.rs),
-  [PR #137](https://github.com/DeandreT/ferrule/pull/137)). Four routes per
-  backend cover text/bytes × context/no context for one primary document list.
-  Five documents, each within 64 MiB, total exactly 256 MiB on success. One extra
-  byte fails at primary member index `4` with opaque path `same.xml` and
-  `xml_output_set_utf8_bytes` observed `268435457`, limit `268435456`. Duplicate
-  paths, full successful document bytes and original cause identity are checked;
-  failures return no partial envelope. This does not qualify named/static output
-  combinations at the same byte boundary.
-- [x] **[Dynamic input request count](https://github.com/DeandreT/ferrule/issues/118)**
-  ([source controls](../crates/cli/tests/code_generation/xml_dynamic_inputs/request_count.rs),
-  [PR #138](https://github.com/DeandreT/ferrule/pull/138)). Four singular-loader
-  routes per backend cover text/bytes × context/no context. Primary plus static
-  `rates` declaration `0` plus 4,094 actual `catalog` declaration `1` callbacks
-  reach 4,096 documents; every dynamic path is `same.xml`. Request ordinal 4,095
-  reserves document 4,097 and refuses before its callback, leaving 4,094 actual
-  callbacks. The refusal retains named input index `1`, name `catalog`, the
-  request's declaration/path/ordinal and `callback_invoked=false`, plus the
-  original public boundary/resource cause. No private adapter-marker identity or
-  list-output loader coverage is inferred.
-- [x] **[Late graph exception versus mixed-output count](https://github.com/DeandreT/ferrule/issues/119)**
-  ([source controls](../crates/cli/tests/code_generation/xml_mixed_named_outputs/late_mapping_count.rs),
-  [PR #139](https://github.com/DeandreT/ferrule/pull/139)). Four routes per
-  backend cover mixed text/bytes × context/no context with no named inputs and
-  no global failure rules. The outputs are primary `Summary`, static `receipt`
-  declaration `0`, and `items` declaration `1` members with duplicate path
-  `same.xml`. With 4,094 passing rows, all 4,096 artifacts and 375,712 document
-  bytes match. With 4,095 passing rows, the unowned `Output` refusal retains
-  `xml_output_artifact_count` observed `4097`, limit `4096`. Selecting lazy graph
-  Raise on the final row instead retains the unowned `Mapping` boundary and
-  `MappingException` node `4`, message `Some("late")`, before count or writers.
-  Failure calls return no result. This is the graph-error priority case, not a
-  global failure-rule ordering qualification.
-
-The [memory guide](memory-and-limits.md#compiled-xml-host-observations) records
-whole-host memory observations from these same physical calls. Boundary byte
-counts and host memory are different units. Retain each cohort's exact source,
-project/input, compiler result and raw output/error chain when reusing it on a
-new revision. Broader route combinations, input formats and repeated performance
-measurements remain separate work; JSON, typed and XML calls remain distinct.
+See the [historical compiled checks](https://github.com/DeandreT/ferrule/pull/139)
+and [whole-host memory observations](memory-and-limits.md#compiled-xml-host-observations).
+Byte and count limits measure documents, not process memory.
 
 ### C# host limits for static Structured byte inputs
 

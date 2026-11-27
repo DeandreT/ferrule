@@ -36,31 +36,12 @@ When building your own mapping, **CSV / delimited text…** in the **Choose form
 menu can derive editable columns from a sample. **Mapping → Auto-connect fields…**
 offers suggested connections for you to review before applying them.
 
-Check disconnected required pins deliberately: they can yield an absent value
-rather than an intended default. Saving a draft and successfully executing it are separate checks.
-Undo/redo and dirty-state prompts help preserve work during schema changes,
-imports, and closing.
-
-Preview keeps the input editor above the optional run values and debugging
-settings, with actions at the bottom of the dialog. Results show an output
-selector only when a run produces several outputs. Trace and history rows use
-readable node labels; select a trace row to inspect its replay state. Pipeline
-traces keep labels tied to their originating stage.
-
-For filename-based document projects, run settings provide an input-root folder
-picker and a per-document limit in MiB. Diagnostics wrap long messages and offer
-a copy action so the complete failure can be shared without truncation.
-
-```mermaid
-flowchart LR
-    S[Choose schemas and formats] --> C[Create mapping]
-    C --> W[Connect fields and controls]
-    W --> V[Validate and preview]
-    V -->|Fix a diagnostic| W
-    V -->|Expected values and order| P[Save project]
-    P --> R[Run to chosen destinations]
-    R --> O[Inspect artifacts and reopen]
-```
+A disconnected required pin can produce an absent value rather than a default.
+Validate and preview after editing. Preview offers an output selector when a
+run produces several outputs. Select a trace row to inspect the replay state;
+pipeline traces keep the originating stage. For a filename-driven document,
+choose the input root and per-document MiB limit in Run settings. See
+[canvas controls](canvas-presentation.md) and [execution tracing](tracing.md).
 
 ## Add compact source and runtime nodes
 
@@ -104,15 +85,8 @@ Turning **Calculate each value** off preserves the stored field selection for
 field-based operations. Inspect imported expressions before changing their
 mode; opening the properties alone preserves them.
 
-Per-item expression evaluation is eager: **Count** and **Item at** still
-observe errors from any evaluated item, including items after the requested
-index. They do not skip a failing expression merely because its value is not
-needed for the final result. Preview a small collection with a late failing
-item and check the parent delimiter or index before running a complete mapping.
-
-Automated local checks cover computed-value editing, real wiring,
-persistence, and Preview. Normal desktop and broader authoring coverage
-remain tracked in the [roadmap](../ROADMAP.md#current-priorities).
+Per-item evaluation is eager: even **Count** and **Item at** observe errors in
+later items. Use Preview to check the collection and the parent index or delimiter.
 
 ## Choose Value map input conversion
 
@@ -141,12 +115,6 @@ made, matching uses the original arriving value. If no key matches, the result
 is **Default** when enabled, or an absent value when no Default is set. An
 empty-text Default is distinct from having no Default. An absent input remains
 absent and can match an existing absent-value key.
-
-Preview representative values, an unmatched value, and a missing value before
-running. Local checks cover the real conversion controls, imported-value
-preservation, locked editing, history, save/reopen, and Preview. Normal desktop
-and broader authoring coverage remain tracked in the
-[roadmap](../ROADMAP.md#current-priorities).
 
 ## Add computed JSON properties
 
@@ -185,12 +153,6 @@ Imported properties outside this subset remain visible and read-only rather
 than being repaired. Repeating owners, group/array/union or arbitrary JSON
 property values, and other scope construction or iteration controls are outside
 this editor. It is unavailable in isolated functions and embedded stage views.
-Save and reopen the project to check the property choices, then use **Preview...**
-with representative names, values, and duplicate-name cases before running.
-Automated local checks cover the real computed-property controls, ordered
-names and values, locked editing, history, save/reopen, and Preview. Normal
-desktop and broader target-shape coverage remain separate work in the
-[roadmap](../ROADMAP.md#current-priorities).
 
 ## Make a target group optional
 
@@ -281,20 +243,9 @@ row selection: each record fills one column from A, or the column in an integer
 `n` field, and no header row is written. The first selected row needs a value
 in every record. Changes remain in the wizard until **Create mapping**; creation uses
 the existing new-document workflow, while later edits have ordinary undo/redo.
-Local checks cover the controls and workbook reading/writing. A separate desktop
-check verifies configuration, saving, and reopening at 1200×800 and 1200×760;
-see [#98](https://github.com/DeandreT/ferrule/issues/98).
-
-Workbook setup preserves the selected schema and does not read a workbook to
-guess its fields. Check a real small workbook after creating the mapping;
-the physical columns, sheet, and header settings must agree with the file.
-The wizard and small-viewport controls have automated local coverage. The
-normal Linux desktop setup, create/save, and reopen workflow is also
-[qualified for one eight-field flat-row fixture](qualification/flat-workbook-desktop-2026-10-08.md)
-at 1200 × 800 and 1200 × 760 window sizes. The check preserves the complete
-project, worksheet settings, and layout; it does not execute the mapping or
-read or write a workbook. Other desktop workflows remain separate gates in
-the [roadmap](../ROADMAP.md#current-priorities).
+The wizard uses the schema you selected; it does not infer fields from workbook
+contents. Check a small workbook with the intended sheet, columns and header
+settings. [Flat worksheet desktop record](qualification/flat-workbook-desktop-2026-10-08.md).
 
 ## Import and generate deliberately
 
@@ -309,10 +260,5 @@ failure rule checks its collection before targets; a graph Raise happens only
 when its expression is reached. Use the [exception contract](mfd-interop.md#global-failure-priority-and-strict-native-export)
 when choosing between them.
 
-For code generation, validate first, then choose the language and destination in
-**File → Generate Library...**. The dialog can include CSV output when eligible.
-Rust needs the runtime crate location; C# emits package-free runtime sources.
-Build and call the emitted library with a small
-host fixture before integrating it. Emission, compilation, and runtime
-equivalence are distinct checks. See [Code generation](code-generation.md)
-for exact APIs, optional CSV output, structured XML eligibility, and limits.
+Use [Generate a library](code-generation.md#generate-a-library-in-the-native-editor)
+for the editor action, destination rules and language-specific runtime requirements.

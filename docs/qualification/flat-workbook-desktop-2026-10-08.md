@@ -6,8 +6,6 @@ The observed application used an ordinary non-test debug build whose GUI
 dependency sources were checked against
 [commit 1573de551e109bfa04eb8acceb3e97c4d8624324](https://github.com/DeandreT/ferrule/commit/1573de551e109bfa04eb8acceb3e97c4d8624324).
 The session used an isolated virtual display and file-dialog session.
-This closes the focused desktop setup gate in
-[issue #92](https://github.com/DeandreT/ferrule/issues/92).
 
 ## Configuration retained
 
@@ -60,30 +58,16 @@ Each chooser's actual full-path entry matched its fixed destination before
 activation. Reopen identity also used the saved file and complete public
 comparison; the clipped on-screen path label alone was insufficient evidence.
 
-Both public comparisons passed. The 3,846-byte project and 310-byte layout
-sidecar were byte-for-byte identical before and after reopening. The complete
-comparison retained both schemas, every format option, and the empty graph and
-scope. The application and file-dialog session closed, with no owned processes
-remaining. The complete source inventory and executable identities remained
-equal before and after the cohort.
+The 3,846-byte project and 310-byte layout sidecar were byte-identical before
+and after reopening, including both schemas, every format option, and the empty
+graph and scope.
 
 ## Qualification boundary
 
-- [x] Choose both flat schemas through ordinary desktop file choosers.
-- [x] Configure the source and target independently at ordinary window sizes.
-- [x] Reach **Create** with real outer scrolling at 1200 × 760.
-- [x] Save and reopen the complete project, worksheet settings, and layout.
-- [ ] Execute a connected mapping or qualify Preview/Run in this desktop cohort.
-- [ ] Read or write a physical workbook and inspect its cells in this cohort.
-- [ ] Extend this desktop check to advanced layouts or other platforms and
-  file-dialog backends.
-
-The saved draft has no graph nodes, bindings, or child scopes. Successful setup
-and persistence do not establish a runnable mapping. Existing adapter and local
-widget tests are separate evidence; this session does not promote their scope.
-Earlier failed chooser and capture attempts remain separately retained, and
-this successful cohort does not replace their observations. It adds no claim
-about general GUI coverage, pixel identity, or diagram rendering.
+The recorded Linux session covers both native schema choosers, independent
+source and target setup, reaching **Create** at 1200 × 760, and save/reopen.
+The saved draft had no bindings. This did not run or preview a mapping, read
+or write workbook cells, or exercise advanced layouts or other platforms.
 
 For ordinary authoring steps, see
 [Set up a flat workbook table](../getting-started.md#set-up-a-flat-workbook-table).

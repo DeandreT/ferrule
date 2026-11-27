@@ -2,8 +2,8 @@
 
 All eight candidate runs used less GNU-time process peak memory than their
 fresh original-writer counterparts: **8.7–40.4 MiB (6.96–24.65%) less** for these
-fixtures. Sixteen separate verifiers passed all twenty-four complete published
-output documents. This is a workload-specific comparison of two ordinary debug
+fixtures. All twenty-four published documents matched their independent byte
+oracles. This is a workload-specific comparison of two ordinary debug
 builds, not a universal RAM bound or an allocation-level measurement.
 Scope: [#184](https://github.com/DeandreT/ferrule/issues/184); the dated
 [#107 baseline report](json-output-set-memory.md) retains the earlier results.
@@ -62,13 +62,10 @@ identical to #107. Complete SHA-256 identities:
 | Wide input | `b9e29419ced6496de1b9f8236988eadf2e7a0b82752e499d341a3c885e8a726f` |
 | Wide expected / each published output | `2cee8faec100279f7fb386bdbdd659f64eacb863acfe4a66468364000f398dd3` |
 
-The original compiled #107 executable was retained with a Btrfs reflink before
-rebuilding. Its complete bytes match the original baseline artifact. Output and
-large verification originals moved to a spare local drive to preserve build
-headroom. To account for that storage change, the retained original executable
-was measured again in eight fresh trials on that drive, followed by eight
-separate verifiers. The candidate then used fresh directories on the same drive.
-The historical eight peaks remain visible below; they were not replaced.
+The original executable matched the earlier baseline artifact. Both executables
+were measured in eight fresh trials on the same storage, with verification
+separate from timing. Historical and remeasured baseline peaks are shown
+separately below.
 
 | Identity | Original executable | Candidate executable |
 | --- | --- | --- |
@@ -168,53 +165,13 @@ Coverage includes nested/root rows, coercion, unions, dynamic/duplicate members,
 null omission, constraints, error precedence, Unicode, non-finite values and
 validation-before-publication.
 
-Preparation failures were preserved and corrected separately: an intentionally
-invalid required-field schema initially stopped before any writer call;
-constructor constraints then stopped two and one schema preparations after
-122 and 124 reached public calls. The two singleton-enum test schemas gained a
-second distinct value; a fixed-plus-enum precedence control uses explicit test
-construction because schema deserialization intentionally rejects that metadata
-combination. All original inputs and expected outcomes remain unchanged. The
-original and corrected metadata catalogs are retained separately. These failed
-attempts are not counted as passing writer baselines.
+Tests also checked pointer identity for borrowed 65,536-byte names and text.
+The independent verifiers compared complete outcomes, group origins, output
+order and every output byte; preparation failures are excluded from the
+paired measurements. The tested catalog and source hashes above identify
+which results can be compared.
 
-Two direct unit tests verify pointer identity for borrowed ordinary 65,536-byte
-text/member names and constrained text after validation. The complete JSON
-unit/integration suite passed **396 tests**, with one existing ignored test.
-Two existing CLI publication tests also passed. These totals include the
-borrowing tests and the new catalog test; repeated focused runs are not added.
-Workspace all-target/all-feature warnings passed, including the benchmark.
-
-Both cohorts completed eight measured runs and eight separate verifiers.
-Every verifier checked complete typed parser/engine outcomes, ordered group
-origins, ordered public RunOutcome fields, and every byte/hash/EOF of its one or
-two published outputs. All twenty-four documents match the independent oracles.
-Passive analysis retains all rows, including any errors; there were none. The
-unchanged numeric parsing functions passed all 45 original accept/refuse
-controls for each namespace-only analysis adapter (90 calls total).
-
-All thirty-two measurement/verification invocations closed normally, with direct
-child reaping, empty final census, lease release, no timeout/signal/cleanup,
-no primary/lifecycle/custody errors, unchanged source/survey and all seven
-input/tool body-and-stat guards. Build and correctness gates retain their own
-complete closure and source records. Exit zero alone was not treated as proof.
-
-- [x] Preserve the original executable, historical peaks and independent fixtures.
-- [x] Retain all sixteen fresh time results and forty-eight boundary observations.
-- [x] Complete sixteen separate verifiers and twenty-four full-document comparisons.
-- [x] Preserve all writer outcomes, source/origin evidence and preparation failures.
-- [x] Demonstrate actual borrowing while preserving existing APIs and publication.
-- [x] Complete independent actual-evidence/report review before merging.
-
-## Disk use, reproduction and limits
-
-The thirty-two gate readings retained at least 22,519,635,968 free bytes on the
-build volume, above the 20 GiB reserve; readings ranged to 22,815,703,040 bytes.
-At this report's draft inventory, the new spare-volume campaign and analysis
-originals contain 412 files, 3,976,152,216 logical bytes and
-3,977,228,288 allocated bytes by summed `st_blocks`. These are disk readings,
-not process RSS or unique physical-storage attribution. The shared build target
-was reused; no additional Cargo target cache was created for this campaign.
+## Reproduction and limits
 
 To reproduce, retain the original executable before rebuilding, use the existing
 fixture preparer with fresh absolute directories, and preserve every complete

@@ -7,39 +7,15 @@ compatibility contracts live in [Supported formats](formats.md),
 
 ## Coordinate issue work
 
-[Contributing](../CONTRIBUTING.md) covers finding, claiming and delivering an
-issue. [Parallel work](parallel-work.md) covers shared-file handoffs and shared
-build/display resources. GitHub issues are the only live claim and status
-source: get assigned before editing, open a scoped issue for a new gap before
-implementation, agree on overlapping files, and link the implementing PR.
+Follow [Contributing](../CONTRIBUTING.md) to claim an issue and
+[Parallel work](parallel-work.md) when paths, build resources or displays are
+shared. Keep a change to one user-visible outcome. Use a self-authored fixture
+and compare the complete expected values, bytes or typed failure, including
+cancellation or destination preservation where applicable.
 
-Keep issue comments concise: result, evidence link, blocker, and next step.
-Report source review, local tests, generated calls, desktop interaction, external
-execution and memory trials separately. Close only the acceptance gates that
-have evidence; leave the remaining checks explicit.
-
-## Keep a change reviewable
-
-- [ ] Describe one concrete input or user action and the expected result.
-- [ ] Identify the owning schema, graph, scope, adapter, or interface layer.
-- [ ] Keep format-specific behavior at its boundary; preserve typed engine
-  errors and existing public defaults.
-- [ ] Add a self-authored fixture with an independent full-value or full-byte
-  oracle. Include the error or cancellation path that motivates the change.
-- [ ] Preserve existing project identities, paths, ordering, and optional-input
-  behavior unless the change explicitly revises that contract.
-- [ ] Update the focused contract document and roadmap gate, then run the
-  relevant checks. A new test that only repeats the implementation is weak evidence.
-
-For GUI changes, exercise the real controls in addition to state methods:
-
-- [ ] Create or edit, undo/redo, save, and reopen.
-- [ ] Verify pins, wires, hover identities, readable compact summaries, and
-  positions in every affected canvas.
-- [ ] Check disabled controls, dirty prompts, cancellation, stale drafts, and
-  checked ID allocation before mutation.
-- [ ] Use a realistic viewport and actual wheel/keyboard/pointer events.
-- [ ] Verify Preview separately from Run and output publication.
+For editor changes, exercise the affected controls in a realistic viewport:
+check their disabled state, undo/redo, save/reopen and dirty prompts. Preview
+and publication are separate behaviors.
 
 ## Run the appropriate checks
 
