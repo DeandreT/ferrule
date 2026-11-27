@@ -1773,6 +1773,9 @@ impl FerruleApp {
 mod tests;
 
 #[cfg(test)]
+mod workflow_integration_tests;
+
+#[cfg(test)]
 mod canvas_presentation_tests;
 
 #[cfg(test)]
