@@ -1,0 +1,14 @@
+[
+  { "text": "I", "upper": "I", "lower": "i" },
+  { "text": "i", "upper": "I", "lower": "i" },
+  { "text": "\u0130", "upper": "\u0130", "lower": "i\u0307" },
+  { "text": "\u0131", "upper": "I", "lower": "\u0131" },
+  { "text": "I\u0307 i\u0307", "upper": "I\u0307 I\u0307", "lower": "i\u0307 i\u0307" },
+  { "text": "I\u0301 J\u0300 \u012e\u0301", "upper": "I\u0301 J\u0300 \u012e\u0301", "lower": "i\u0301 j\u0300 \u012f\u0301" },
+  { "text": "i\u0307\u0301 j\u0307\u0300", "upper": "I\u0307\u0301 J\u0307\u0300", "lower": "i\u0307\u0301 j\u0307\u0300" },
+  { "text": "\u00cc \u00cd \u0128", "upper": "\u00cc \u00cd \u0128", "lower": "\u00ec \u00ed \u0129" },
+  { "text": "stra\u00dfe \u1e9e", "upper": "STRASSE \u1e9e", "lower": "stra\u00dfe \u00df" },
+  { "text": "\u039f\u0394\u039f\u03a3 \u03a3\u0391 \u03a3", "upper": "\u039f\u0394\u039f\u03a3 \u03a3\u0391 \u03a3", "lower": "\u03bf\u03b4\u03bf\u03c2 \u03c3\u03b1 \u03c3" },
+  { "text": "A\u03a3'B A'\u03a3 A\u03a3\u0301", "upper": "A\u03a3'B A'\u03a3 A\u03a3\u0301", "lower": "a\u03c3'b a'\u03c2 a\u03c2\u0301" },
+  { "text": "\u02b0\u03a3 A\u02b0\u03a3", "upper": "\u02b0\u03a3 A\u02b0\u03a3", "lower": "\u02b0\u03c3 a\u02b0\u03c2" }
+]
