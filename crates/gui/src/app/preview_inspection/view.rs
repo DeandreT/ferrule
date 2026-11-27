@@ -176,6 +176,36 @@ impl Inspection {
             }
         });
         ui.separator();
+        if let Some(path) = &self.unavailable_output {
+            ui.colored_label(
+                palette.warning,
+                format!(
+                    "The previously selected artifact `{}` has no unique match in this preview.",
+                    path.display()
+                ),
+            );
+            if report.report.outputs.is_empty() {
+                ui.weak("No output artifacts were produced.");
+            } else {
+                let mut chosen = None;
+                egui::ComboBox::from_label("Replacement artifact")
+                    .selected_text("Select a captured output")
+                    .show_ui(ui, |ui| {
+                        for (index, output) in report.report.outputs.iter().enumerate() {
+                            let label = format!("{} · {}", index + 1, output.path.display());
+                            if ui.selectable_label(false, label).clicked() {
+                                chosen = Some(index);
+                            }
+                        }
+                    });
+                if let Some(index) = chosen {
+                    self.unavailable_output = None;
+                    report.select_output(index);
+                    self.select(report);
+                }
+            }
+            return action;
+        }
         if self.page == Page::Summary {
             crate::run_report::show_report(ui, report);
             self.select(report);
@@ -197,20 +227,23 @@ impl Inspection {
             ui.weak("No output artifacts were produced.");
             return action;
         };
+        let identity = selected_output_identity(report);
+        if let Err(reason) = &identity {
+            ui.colored_label(palette.warning, reason);
+        }
         ui.horizontal_wrapped(|ui| {
             ui.strong(self.capture.as_ref().unwrap().target.label());
             ui.monospace(output.path.display().to_string());
-            if self.page != Page::Summary
-                && ui
-                    .add_enabled(
-                        fresh && matches!(self.table, Some(Ok(_))),
-                        egui::Button::new(if self.pinned.is_some() {
-                            "Replace pinned A"
-                        } else {
-                            "Pin as A"
-                        }),
-                    )
-                    .clicked()
+            if ui
+                .add_enabled(
+                    fresh && identity.is_ok() && matches!(self.table, Some(Ok(_))),
+                    egui::Button::new(if self.pinned.is_some() {
+                        "Replace pinned A"
+                    } else {
+                        "Pin as A"
+                    }),
+                )
+                .clicked()
             {
                 action = Some(Action::Pin);
             }
@@ -229,7 +262,7 @@ impl Inspection {
         };
         match self.page {
             Page::Inspect => {
-                if let Some(field) = self.inspect(ui, report, &table, fresh) {
+                if let Some(field) = self.inspect(ui, report, &table, fresh && identity.is_ok()) {
                     action = Some(Action::Wiring(field));
                 }
             }
@@ -279,7 +312,11 @@ impl Inspection {
             .matches
             .as_ref()
             .and_then(|r| r.as_ref().ok())
-            .and_then(|rows| rows.iter().position(|m| *m == RowMatch::Row(self.row)));
+            .and_then(|rows| {
+                rows.items
+                    .iter()
+                    .position(|m| *m == RowMatch::Row(self.row))
+            });
         let mut sample = self.sample;
         let mut selected_col = self.column;
         let mut focus = self.row_focus;
@@ -475,9 +512,16 @@ fn short_label(ui: &mut Ui, value: &str) {
     }
 }
 
-fn key_picker(ui: &mut Ui, id: &str, names: &[String], keys: &mut Vec<String>) -> bool {
+fn key_picker(
+    ui: &mut Ui,
+    id: &str,
+    label: egui::Id,
+    names: &[String],
+    keys: &mut Vec<String>,
+) -> bool {
     let mut changed = false;
     egui::ComboBox::from_id_salt(id)
+        .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
         .selected_text(if keys.is_empty() {
             "Choose key fields".into()
         } else {
@@ -499,7 +543,12 @@ fn key_picker(ui: &mut Ui, id: &str, names: &[String], keys: &mut Vec<String>) -
                     changed = true;
                 }
             }
-        });
+            if ui.button("Use selected key").clicked() {
+                ui.close();
+            }
+        })
+        .response
+        .labelled_by(label);
     changed
 }
 
@@ -544,12 +593,12 @@ impl Inspection {
             ui,
             |ui| {
                 panel(ui, "A / PINNED BASELINE", palette.action, |ui| {
-                    snapshot_label(ui, &a.target, &a.path, &a.sha)
+                    snapshot_label(ui, &a.target, &a.path, &a.sha, &a.input_path)
                 })
             },
             |ui| {
                 panel(ui, "B / WORKING PREVIEW", palette.target, |ui| {
-                    snapshot_label(ui, &c.target, &b.path, &artifact.sha)
+                    snapshot_label(ui, &c.target, &b.path, &artifact.sha, &c.input_path)
                 })
             },
         );
@@ -560,7 +609,10 @@ impl Inspection {
             (Some(a_sha), Some(b_sha)) if a_sha == b_sha => {
                 "Different input identity · same primary input bytes"
             }
-            (Some(_), Some(_)) => "Different primary input bytes",
+            (Some(_), Some(_)) if a.input_path == c.input_path => {
+                "Same input identity · different primary input bytes"
+            }
+            (Some(_), Some(_)) => "Different input identities and primary input bytes",
             _ if a.input_path == c.input_path => "Same input identity · file bytes not captured",
             _ => "Different input identities · file bytes not captured",
         };
@@ -577,12 +629,18 @@ impl Inspection {
         }
         let mut changed = false;
         ui.horizontal_wrapped(|ui| {
-            ui.label("Match rows by");
+            let label = ui.label("Match rows by");
             changed |= ui
                 .radio_value(&mut self.key.position, false, "Key fields")
                 .changed();
             if !self.key.position {
-                changed |= key_picker(ui, "compare_keys", &table.headers, &mut self.key.keys);
+                changed |= key_picker(
+                    ui,
+                    "compare_keys",
+                    label.id,
+                    &table.headers,
+                    &mut self.key.keys,
+                );
             }
             changed |= ui
                 .radio_value(&mut self.key.position, true, "Row position")
@@ -592,6 +650,7 @@ impl Inspection {
             self.change = 0;
             self.diff = None;
             self.pair_open = false;
+            self.row_focus = false;
         }
         let diff = self
             .diff
@@ -761,21 +820,55 @@ impl Inspection {
             }
         }
         ui.horizontal_wrapped(|ui| {
-            ui.label("Match input and output by");
+            let label = ui.label("Match input and output by");
             if key_picker(
                 ui,
                 "preview_scope_keys",
+                label.id,
                 &scope.columns,
                 &mut self.scope_keys,
             ) {
                 self.matches = None;
+                self.row_focus = false;
             }
         });
         let matches = self
             .matches
             .get_or_insert_with(|| scope.match_rows(table, &self.scope_keys));
-        if let Err(reason) = matches {
-            ui.weak(reason.as_str());
+        match matches.as_ref() {
+            Ok(matches) => {
+                if matches.unmatched_output_rows > 0 {
+                    ui.label(format!(
+                        "{} output rows have no unique input match.",
+                        matches.unmatched_output_rows
+                    ));
+                }
+                if !matches.missing_output_keys.is_empty() {
+                    let examples = matches
+                        .missing_output_keys
+                        .iter()
+                        .take(5)
+                        .map(|i| (i + 1).to_string())
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    ui.colored_label(
+                        ui.visuals().warn_fg_color,
+                        format!(
+                            "Missing output key in {} data rows (including {examples}).",
+                            matches.missing_output_keys.len()
+                        ),
+                    );
+                }
+                if matches.duplicate_output_keys > 0 {
+                    ui.colored_label(
+                        ui.visuals().warn_fg_color,
+                        format!("Ambiguous output keys: {}.", matches.duplicate_output_keys),
+                    );
+                }
+            }
+            Err(reason) => {
+                ui.weak(reason);
+            }
         }
         ui.weak("Compared by key · Data row numbers exclude the CSV header. This is not runtime lineage.");
         if scope.groups.is_empty() {
@@ -887,6 +980,15 @@ impl Inspection {
                             ui.weak("Select matching fields to locate output rows.");
                             return;
                         };
+                        let found = matches.items[group.items.clone()]
+                            .iter()
+                            .filter(|r| matches!(r, RowMatch::Row(_)))
+                            .count();
+                        ui.weak(format!(
+                            "{} of {} input items match a unique output row.",
+                            found,
+                            group.items.len()
+                        ));
                         let items = self
                             .group_item
                             .map_or_else(|| group.items.clone(), |item| item..item + 1);
@@ -901,7 +1003,7 @@ impl Inspection {
                                     let item = i + items.start;
                                     let label =
                                         scope.label(self.group, Some(item), &self.scope_keys);
-                                    match matches[item] {
+                                    match matches.items[item] {
                                         RowMatch::Row(r) => {
                                             if ui
                                                 .selectable_label(
@@ -963,11 +1065,12 @@ impl Inspection {
     }
 }
 
-fn snapshot_label(ui: &mut Ui, target: &PreviewTarget, path: &Path, sha: &str) {
+fn snapshot_label(ui: &mut Ui, target: &PreviewTarget, path: &Path, sha: &str, input: &Path) {
     ui.strong(target.label());
     ui.label(path.display().to_string());
     ui.monospace(format!("SHA-256  {}", &sha[..12]))
         .on_hover_text(sha);
+    ui.weak(format!("Primary input: {}", input.display()));
 }
 
 fn compact(s: &str) -> &str {

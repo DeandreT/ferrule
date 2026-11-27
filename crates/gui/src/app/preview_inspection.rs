@@ -24,7 +24,7 @@ mod tests;
 mod view;
 
 use compare::{Differences, MatchBy};
-use scope::{RowMatch, RowScope};
+use scope::{RowMatch, RowMatches, RowScope};
 
 struct Artifact {
     sha: String,
@@ -81,6 +81,26 @@ fn named_target<'a>(
 
 fn sha(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
+}
+
+fn selected_output_identity(report: &RunReportView) -> Result<&Path, String> {
+    let index = report.selected_output();
+    let path = &report
+        .report
+        .outputs
+        .get(index)
+        .ok_or("No output artifact was produced.")?
+        .path;
+    if report
+        .report
+        .outputs
+        .iter()
+        .enumerate()
+        .any(|(i, other)| i != index && &other.path == path)
+    {
+        return Err(format!("Ambiguous output identity `{}`.", path.display()));
+    }
+    Ok(path)
 }
 
 impl Capture {
@@ -185,6 +205,7 @@ pub(super) struct Inspection {
     capture: Option<Capture>,
     table: Option<Result<Arc<PreviewTable>, String>>,
     output: Option<usize>,
+    unavailable_output: Option<PathBuf>,
     pinned: Option<Pinned>,
     last_draft: Option<PreviewDraft>,
     run_values: Vec<super::host_parameters::HostParameterEntry>,
@@ -200,7 +221,7 @@ pub(super) struct Inspection {
     change: usize,
     pair_open: bool,
     scope_keys: Vec<String>,
-    matches: Option<Result<Vec<RowMatch>, String>>,
+    matches: Option<Result<RowMatches, String>>,
     group: usize,
     group_item: Option<usize>,
     expanded: Option<usize>,
@@ -209,27 +230,11 @@ pub(super) struct Inspection {
 }
 
 impl Inspection {
-    pub(super) fn restore_output_selection(
-        &self,
-        next: &mut RunReportView,
-        previous: Option<&RunReportView>,
-    ) {
-        if let Some(previous) = previous.filter(|p| p.report.kind == RunReportKind::Preview)
-            && let Some(old) = previous.report.outputs.get(previous.selected_output())
-            && let Some(index) = next
-                .report
-                .outputs
-                .iter()
-                .position(|o| o.path == old.path && o.name == old.name)
-        {
-            next.select_output(index);
-        }
-    }
-
     pub(super) fn complete(
         &mut self,
         capture: Option<Capture>,
-        report: &RunReportView,
+        report: &mut RunReportView,
+        previous: Option<&RunReportView>,
         draft: Option<PreviewDraft>,
         run_values: Vec<super::host_parameters::HostParameterEntry>,
     ) {
@@ -238,6 +243,42 @@ impl Inspection {
             .as_ref()
             .zip(capture.as_ref())
             .is_some_and(|(a, b)| a.target == b.target);
+        // A refresh can reorder dynamic artifacts, emit a different subset,
+        // or switch between one and many (which changes the display labels).
+        // Preserve a unique path, never infer the selection from its old index.
+        let same_request = same
+            && self
+                .last_draft
+                .as_ref()
+                .zip(draft.as_ref())
+                .is_some_and(|(old, new)| old.output_identity.trim() == new.output_identity.trim());
+        let previous_path = self.unavailable_output.take().or_else(|| {
+            let previous = previous.filter(|p| p.report.kind == RunReportKind::Preview)?;
+            Some(
+                previous
+                    .report
+                    .outputs
+                    .get(previous.selected_output())?
+                    .path
+                    .clone(),
+            )
+        });
+        if same_request && let Some(path) = previous_path {
+            let mut indices = report
+                .report
+                .outputs
+                .iter()
+                .enumerate()
+                .filter(|(_, output)| output.path == path)
+                .map(|(index, _)| index);
+            if let Some(index) = indices.next()
+                && indices.next().is_none()
+            {
+                report.select_output(index);
+            } else {
+                self.unavailable_output = Some(path);
+            }
+        }
         self.capture = capture;
         self.last_draft = draft;
         self.run_values = run_values;
@@ -254,7 +295,7 @@ impl Inspection {
 
     fn select(&mut self, report: &RunReportView) {
         let index = report.selected_output();
-        if self.output == Some(index) {
+        if self.output == Some(index) || self.unavailable_output.is_some() {
             return;
         }
         self.output = Some(index);
@@ -316,11 +357,18 @@ impl FerruleApp {
             .filter(|r| r.report.kind == RunReportKind::Preview)
             .ok_or("Select an in-memory mapping preview.")?;
         if !self.preview_current(capture) {
-            return Err("Stale preview: refresh after changing the mapping.".into());
+            return Err("Stale preview: the mapping or preview inputs have changed.".into());
+        }
+        if let Some(path) = &inspection.unavailable_output {
+            return Err(format!(
+                "The previously selected artifact `{}` has no unique match. Select an output.",
+                path.display()
+            ));
         }
         if inspection.output != Some(report.selected_output()) {
             return Err("Output selection has changed.".into());
         }
+        selected_output_identity(report)?;
         let table = inspection
             .table
             .as_ref()
