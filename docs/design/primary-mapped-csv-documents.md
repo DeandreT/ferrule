@@ -115,10 +115,6 @@ refuses delimiter/newline-bearing values; raw-delimited mode is not admitted.
 Earlier input failures prevent mapping. Mapping and serialization failures occur
 after acquisition and retain the original stage, document/path and nested cause.
 
-This profile composes existing Ferrule contracts. Its independent fixtures and
-generated Release consumers qualify that composition, not untouched MFD import,
-active integration membership or MapForce parity.
-The CLI route provides product access to that existing composition. Authored
-saved-model fixtures do not establish new captured-MFD admission or reference
-parity; CLI-source and consumer qualification must be run separately for the
-exact source revision being released.
+These saved-model fixtures exercise direct CSV acquisition and mapped
+document output. Captured MFD admission and native application parity
+require independent evidence.

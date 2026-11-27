@@ -1,62 +1,27 @@
 # Native saved-design reopen checkpoint
 
-This checkpoint covers one existing, independently admitted, owned design. It
-checks generation, saving, and reopening the exact saved design in two serial
-phases. It does not establish a saved representation for new sequence, filter,
-map, or capture forms.
+**The first real native phase timed out before producing a saved design.**
+The 398-byte XML output was retained; there was no native success result,
+`Saved1`, reopen, or structural review. The cause of the timeout is unknown.
+This checkpoint covers one independently admitted design, not new sequence,
+filter/map or capture forms.
 
-The protocol belongs to [#263](https://github.com/DeandreT/ferrule/issues/263).
-The complete XML oracle and its controls belong to
-[#268](https://github.com/DeandreT/ferrule/issues/268). Their independently reviewed
-control results and later preparation/fixture reruns are recorded below. Read-only
-preparation completed, but the first real native phase timed out before a native
-result or saved artifact. Save/reopen acceptance and the complete saved-design
-structural review remain **pending in this checkpoint**. The retained timeout is
-being investigated in [#285](https://github.com/DeandreT/ferrule/issues/285); its
-cause is unknown.
+[Protocol](https://github.com/DeandreT/ferrule/issues/263) ·
+[XML oracle](https://github.com/DeandreT/ferrule/issues/268) ·
+[retained native refusal](https://github.com/DeandreT/ferrule/issues/285).
 
 ## Evidence boundaries
 
-| Evidence | Bounded result | What it establishes |
-| --- | --- | --- |
-| Earlier controller-policy cohort | 13 groups, 41 simulated subcases; all frozen expectations matched | Refusal, retention, and two-phase controller behavior under stubs |
-| Original byte-compatibility rerun after the XML-oracle addition | The same 13 groups and 41 frozen simulated subcases; all matched | Conservation of the earlier byte-comparison mode and its controls |
-| Original complete XML helper | 34 literal recipes in each of two phases: 68 observations; all expected outcomes matched | Six expected positive observations and 62 expected negative observations of the unchanged helper |
-| Original XML admission/controller policy | Seven groups, 17 simulated subcases; all matched | Fourteen refusals before execution-root creation, plus one two-phase success and two retained first-phase refusals |
-| Read-only staging repair and preparation | Preparation completed with zero exit; 33 originals retained, a 56-node staged tree, exactly four declared path redirects, and the staged design frozen read-only | Existing source originals remained unchanged; the explicitly owned staging copy was writable only during its declared redirect |
-| First compatibility rerun after read-only staging | 41 simulated subcases: 40 matched and one fixture raised `PermissionError` before its expected `AssertionError`; admission rerun stopped unrun | A genuine retained fixture failure, followed by the narrow [#283](https://github.com/DeandreT/ferrule/issues/283) correction |
-| Corrected compatibility and admission reruns | The same 41 compatibility and 17 admission subcases all matched in two separate zero-exit owned runs; independent actual review accepted the complete originals | The corrected fixture and admission controls, with the earlier failure preserved |
-| First real native phase | Timed out at its 180-second inner deadline; a 398-byte XML artifact was retained; no native success/result, first saved design, or reopen phase | A retained native negative and proven cleanup/closure, with no completed save/reopen acceptance |
-| Complete saved-design structural/reference review | **Pending**; no saved design was produced | Requires review of actual saved artifacts and all declared references |
+| Boundary | Recorded result |
+| --- | --- |
+| Controller and byte-compatibility stubs | 13 groups, 41 distinct simulated subcases. Original policy and compatibility runs matched the same expectations. |
+| Complete XML helper | 34 recipes per phase: 6 positive and 62 negative observations across both phases. |
+| XML admission/controller | 17 simulated subcases in seven groups: 14 precreation refusals, one two-phase success and two retained first-phase failures. |
+| Staging | 33 originals unchanged; four declared redirects in a 56-node staged tree. Only the owned staging copy was writable during redirection, then frozen before the native call. |
+| Staging regressions | One fixture raised `PermissionError` instead of its expected `AssertionError` (40/41; admission unrun). After the [fixture correction](https://github.com/DeandreT/ferrule/issues/283), 41+17 fresh observations matched; the 68 helper observations were inherited. |
 
-The original XML-oracle checkpoint comprised 126 distinct observations: 68 helper,
-41 compatibility, and 17 admission. The earlier policy suite, original
-compatibility rerun, failed rerun, and corrected rerun are separate executions of
-the same frozen 41 cases; they do not add distinct policy cases. The corrected
-41+17 reruns supply 58 fresh control observations. The helper's 68 observations
-inherit their earlier acceptance and were not rerun. All of these controls use
-simulated application boundaries and do not establish a real saved-file reopen.
-
-The staging repair belongs to [#281](https://github.com/DeandreT/ferrule/issues/281).
-It makes only the owned staging copy writable for the exact redirect and freezes
-it again before the baseline and native call. The later saved-metadata control
-fixture likewise makes only its owned saved copy writable before pinning metadata
-and intentionally changing it. Its frozen expected refusal remains unchanged.
-
-Independent review checked the original and corrected controls' complete bodies,
-identity metadata, source/tool bindings, retention, refusal ordering, and owned
-closure. The failed fixture remains a failure. The successful preparation and
-simulated controls remain separate from the first real native negative.
-
-The retained 398-byte artifact matches the independently frozen complete XML
-fields and fresh schema URI under the permitted CRLF spelling. This was a manual
-complete-body review; the controller did not reach its output-oracle comparison.
-The artifact match does not supply the missing native result or saved design.
-The inner timeout was 180.001 seconds. The outer owner exited one and needed
-cleanup: its normal-closure flag is false, while final owned closure and lease
-release are proven, with source/survey guards unchanged. The timeout was not an
-outer-owner deadline failure. Neither this closure nor the retained XML identifies
-the cause of the native stall.
+There are **126 distinct** original helper/controller observations. Rerunning
+frozen cases does not increase that count. None is an application save/reopen.
 
 ## Freeze the independent expectation
 
@@ -77,23 +42,12 @@ The checkpoint's complete expected XML content is:
 | Root content | No logical text, element children, comments, processing instructions, entities, or tail content |
 | Additional content | No other attributes, namespace declarations, elements, or document nodes |
 
-The base type has no child elements and requires `Token`. Its derived type also
-has no child elements and requires `Supplement`. These facts close the entire
-expected tree rather than just a selected data signature.
-
-The schema hint is an explicit condition of this checkpoint. Its presence is not
-inferred from general schema validity or from earlier output. Actual native
-schema-hint compatibility remains pending. Bind its URI from the fresh normalized
-staged target-schema location, apply the declared URI encoding, and compare the
-complete string exactly. Do not accept an old-root URI or normalize a different
-URI into equivalence.
-
-Freeze two complete expectation profiles, with separate first-phase and
-reopen-phase identifiers and hashes. Both use the same staged target schema and
-the same logical content. The profiles must include the complete document,
-namespace, attribute, type, and content fields above. Duplicate profile keys,
-extra or missing fields, an incorrect phase, or a stale profile hash refuse
-admission. Observed native formatting must not rewrite either profile.
+The base type requires `Token`; the derived type requires `Supplement`;
+neither has children. Bind the schema hint to the *fresh staged* target URI
+with the declared encoding. A stale but equivalent-looking URI fails.
+Freeze the complete profiles and hashes separately for first and reopen
+phases before execution. Wrong phases, duplicate keys, missing/extra fields
+or a stale hash refuse admission.
 
 ## Permitted lexical differences
 
@@ -139,127 +93,50 @@ checked independently for both phases.
 | Duplicate attribute, trailing document content, or malformed root | 3 | Complete parser error |
 | DTD/entity declaration, unbound or padded type QName, XML 1.1, standalone declaration, or non-UTF-8 declaration | 7 | Complete refusal/error record |
 
-Both hypothetical multiple-child orders are refused because the expected tree
-has zero children. These controls do not qualify a valid multiple-child ordering
-case.
-
-The 17 admission subcases separately check a missing admission receipt; three
-unqualified or changed admission conditions; three incorrect helper/profile
-hashes; a coherent but wrong fresh-root URI; four extra/missing profile-field
-cases; two duplicate-profile-key cases; and three execution branches. The last
-three are a simulated complete success, a schema-valid wrong data value, and
-malformed XML. The two failures retain the complete first phase and leave the
-second phase unrun. Full exception type, message, traceback, parser diagnostics,
-raw XML, and expected profile remain available before comparison.
-
-The earlier 41-case policy suite and its byte-compatibility rerun also preserve
-precreation refusal, occupied destinations, first-phase errors, exact saved-file
-selection, second-phase errors, source/output/metadata mutations, and partial or
-incorrect evidence-copy failures. A negative control passes when its frozen
-refusal and retention expectations match; the underlying refused operation
-remains a refusal.
+Both unexpected child orders refuse because the expected tree is empty;
+this is not positive child-order evidence. Admission controls check receipt,
+identity, exact hashes, fresh URI, profile shape and refusal ordering. A
+wrong but schema-valid value and malformed XML both retain the first phase
+and bar the second. Byte-mode controls also cover occupied destinations,
+changed originals and incomplete evidence copies.
 
 ## Two-phase protocol
 
-```mermaid
-flowchart TD
-    Admission["Bind the one owned design and fresh environment"]
-    Freeze["Freeze input, schemas and both complete profiles"]
-    Open1["Phase 1: open the admitted design"]
-    Generate1["Generate output, save Saved1, then close"]
-    Retain1["Retain all closed first-phase originals"]
-    Check1{"Closure, guards, schema and profile match?"}
-    Open2["Phase 2: open exact Saved1"]
-    Generate2["Generate fresh output, save Saved2, then close"]
-    Retain2["Retain all closed second-phase originals"]
-    Check2{"First-phase invariant and second-phase match?"}
-    Review["Review complete saved structure and references"]
-    Report["Publish only the independently accepted finite result"]
-    Stop["Preserve refusal, errors and all available originals"]
-    Pending["Keep native or structural acceptance pending"]
-    Admission --> Freeze
-    Admission -->|refused| Stop
-    Freeze --> Open1
-    Open1 --> Generate1
-    Generate1 --> Retain1
-    Retain1 --> Check1
-    Check1 -->|yes| Open2
-    Check1 -->|no| Stop
-    Open2 --> Generate2
-    Generate2 --> Retain2
-    Retain2 --> Check2
-    Check2 -->|yes| Review
-    Check2 -->|no| Stop
-    Review -->|accepted| Report
-    Review -->|not yet accepted| Pending
-```
-
 ### Before the first phase
 
-- [ ] Independently admit exactly one owned design and its declared input,
-  schemas, boundaries, and existing saved-form scope.
-- [ ] Bind complete source/tool/environment identities and the independently
-  accepted control receipts. Confirm the declared native version and isolated
-  alternate-display environment without reusing historical process identities.
-- [ ] Freeze both complete profiles and the exact fresh schema URI. Check every
-  admission receipt and helper/profile hash before creating the execution root.
-- [ ] Require fresh absent execution/output/save destinations. Keep the admitted
-  source originals unchanged and stage only explicitly owned copies.
-- [ ] Bind one exclusive outer owner, declared deadlines, process-birth ownership,
-  cleanup obligations, source/survey guards, and sufficient resource headroom.
+Bind one admitted design, sources, tool/environment identities, accepted
+controls, deadlines, process births and exclusive owner. Freeze both profiles
+and the schema URI before creating fresh execution, output and save paths.
+Keep source originals untouched; redirect only declared staging copies.
 
 ### First phase and transition
 
-- [ ] Open the admitted design, generate the declared output, save `Saved1` to its
-  fresh destination, and close the document and owned host.
-- [ ] Retain the complete closed output, saved design, logs, status, errors, and
-  identity metadata. Complete evidence-copy and readback checks precede output
-  comparison, including on partial, malformed, or failed output.
-- [ ] Require the declared host result, owned closure, unchanged staged input and
-  sources, complete schema validation, and complete first-phase profile match.
-- [ ] Bind the exact `Saved1` path, body, and identity as the second phase's input.
-  Its path must differ from the admitted starting design. Do not reopen a seed or an
-  alternative file that merely has similar content.
-- [ ] If any first-phase condition refuses, retain its complete evidence and do
-  not start the second phase.
+Open the admitted design, generate output, save `Saved1`, and close the
+document and host. Retain and read back all closed originals, logs, errors
+and identities before comparing. Require the host result, owned closure,
+unchanged guards, schema validity and complete first-phase oracle. On any
+refusal, stop. Otherwise bind the exact path, body and identity of `Saved1`;
+a seed or an equivalent file cannot stand in for it.
 
 ### Reopen phase and final review
 
-- [ ] Use a second serial owned host to open exact `Saved1`. Generate into a
-  different fresh output directory, save `Saved2` to a different fresh path, and
-  close the document and host.
-- [ ] Retain every complete closed second-phase original before comparison.
-  Verify that all guarded first-phase originals remain unchanged through reopen.
-- [ ] Require owned closure, input/source guards, complete schema validation, and
-  the complete second-phase profile match. A zero process exit alone does not
-  supply the other observations.
-- [ ] Review the entire actual saved structure and all declared roots, identities,
-  links, schema/input/output references, and connection boundaries against the
-  independently admitted contract. Record any permitted serializer-only
-  differences explicitly rather than dropping unreviewed fields.
-- [ ] Obtain a different author's finite original/custody/semantic review before
-  replacing the pending result fields below.
+A second serial host reopens `Saved1`, generates into a fresh directory
+and saves `Saved2` separately. Close and retain the second phase before
+comparison. Check the first-phase originals through reopen, both phase
+oracles, and the entire saved structure, identities, links and referenced
+files. Only declared serializer differences are admissible. A different
+reviewer checks the originals, custody and finite result.
 
 ## Native results and remaining acceptance
 
-| Required result | Current checkpoint state |
-| --- | --- |
-| Fresh real-native admission, environment and owned process identities | Complete admitted preparation and ownership originals retained; final negative cleanup/closure independently reviewed |
-| First-phase generation, saved artifact, complete XML/schema result and closure | **Timed out** at 180 seconds; 398-byte XML retained; no native success/result or first saved design |
-| Exact `Saved1` used as second-phase input | **Unrun**; `Saved1` is absent |
-| Second-phase generation, separate saved/output artifacts and closure | **Unrun**; no reopen call or `Saved2` |
-| First-phase source/artifact/metadata invariance through reopen | **Pending**; preparation/source invariants through the failure were checked, but no reopen occurred |
-| Complete saved-design structural and reference review | **Pending**; no saved design exists |
-| Independent finite native acceptance and retained-original custody | The negative and its complete custody/cleanup are accepted as recorded; completed save/reopen acceptance remains **pending** |
+The inner deadline expired at 180.001 seconds. The outer owner exited 1;
+normal closure was false, although cleanup, final owned closure, lease
+release and source/survey guards were verified. The retained XML matched
+the complete oracle under the allowed CRLF spelling on **manual** review;
+the controller never reached that comparison.
 
-All 46 execution originals, three outer-owner originals, and six retained
-first-phase copy pairs remain available. The frozen 25-file packet and 33-file
-preparation evidence remain unchanged. The historical receipt's filename used a
-48-file label; its authoritative list contains 46 execution originals.
-
-Keep the original fixture failure, native timeout, errors, partial output, and
-cleanup records intact. Fill the remaining results only from complete fresh
-actual evidence and independent review. Parser acceptance, synthetic control
-success, a matching retained XML artifact, or successful generation alone does
-not establish broader saved-form interoperability or support for new sequence
-forms.
+The record contains 46 execution originals (the historical filename says
+48), three outer-owner originals and six first-phase copy pairs. The
+25-file frozen packet and 33-file preparation evidence remain distinct.
+Only the negative and its custody were accepted. Neither that output nor
+the simulated controls supply the missing save, reopen or structural review.

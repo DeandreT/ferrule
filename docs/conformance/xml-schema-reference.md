@@ -20,23 +20,12 @@ property is present; other values retain their refusal.
 
 ## Reference observation
 
-MapForce Enterprise 2026r2 x64, executable version 28.2.0.0, ran offline in an
-isolated Wine prefix and virtual display. No original reference files or bundled
-samples were changed. These are black-box observations, not native Windows ABI
-qualification or proof of the installation's original acquisition provenance.
-
-The fixture was independently authored: one unqualified `Envelope` containing
-an `xs:long` Amount and a string Label. The reference application populated its
-entry tree from the source and target schemas; the two field connections and
-instance filenames were set through its real controls.
-
-- Initial checkbox on, empty reference field: the property is absent in the
-  saved MFD.
-- Checkbox off: the only complete-file change is `AddSchemaLocation="0"` on the
-  target properties.
-- Save, close, reopen and re-save preserve the complete off-state bytes.
-- Turning the checkbox back on restores the original complete bytes; its
-  save/reopen/re-save bytes also match.
+MapForce Enterprise 2026r2 x64 (28.2.0.0) ran offline under Wine. This is
+finite black-box evidence, not native Windows ABI qualification. The
+self-authored unqualified `Envelope` contained `xs:long` Amount and String
+Label. Switching **Add schema/DTD reference** off added only
+`AddSchemaLocation="0"`; switching it on restored the original bytes.
+The saved settings were stable after reopen.
 
 Eight independently frozen runtime cases covered signed 64-bit minimum, zero,
 maximum and malformed XML with the checkbox on and off. All six successful
@@ -46,20 +35,13 @@ target XSD. The on cases carried exactly the expected schema-instance
 cases failed with `An end tag is missing for start tag name 'Envelope'.`
 Original output sentinels remained unchanged during preview.
 
-Complete raw output and messages were retained. Comparisons use expanded XML
-names and exact text/attributes; declaration and element-only indentation are
-not byte-identity requirements. No output prefixes or selected fields substitute
-for full comparison.
+Comparisons used all expanded names, text and attributes. XML declarations
+and element-only indentation were not raw-byte requirements.
 
 ## Explicit and namespaced settings
 
-A second set of independently derived controls reused the same unqualified
-design and schemas in separate case directories. An explicit
-`AddSchemaLocation="1"` was written into the saved target properties, and two
-namespaced variants used a target schema with its own `targetNamespace` and
-qualified elements. Each design was opened, validated, saved, reopened and
-saved again, then executed; the complete output was retained and validated
-against its target XSD.
+The five controls below distinguish absent, explicit on/off and namespaced
+roots. Each actual saved design was validated, reopened, resaved and executed.
 
 | Target root | Setting | Output root hint | Saved setting |
 | --- | --- | --- | --- |
@@ -69,12 +51,9 @@ against its target XSD.
 | Namespaced | absent | `xsi:schemaLocation` of the root namespace and the schema's absolute `file:///` URI | absent |
 | Namespaced | `"1"` | the same pair as absent | absent |
 
-All five designs executed successfully with schema-valid outputs and identical
-element values; save and re-save were byte-identical in every case. Saving an
-explicit `"1"` removes the attribute, so `"1"` and absent are the same setting.
-The namespaced output declares the root namespace as its default namespace and
-adds no `noNamespaceSchemaLocation`. Original inputs, schemas, designs and
-output sentinels stayed unchanged.
+All five outputs passed their XSDs with identical data values; resaves
+matched byte for byte. Saving explicit `"1"` removed the property. A
+namespaced root used its default namespace and had no `noNamespaceSchemaLocation`.
 
 Ferrule imports both enabled forms with the schema reference the design stores,
 converted to a URI reference, instead of the machine-specific absolute URI; the
@@ -84,27 +63,17 @@ names the schema only for output written beside the design.
 
 ## Actual Ferrule exports
 
-The pre-change Ferrule export opened and executed successfully in the reference
-application, but gained its implicit root schema hint. Ferrule's local output
-had no hint. This directly reproduced the annotation mismatch.
+Before the export correction, the reference added an implicit root hint to
+an unhinted Ferrule output. The corrected physical target set the off
+property. The exported design and its native resave both produced the full
+XSD-valid no-hint oracle, the two native saves matched byte for byte, and
+executable re-import reproduced the previous Ferrule output bytes.
 
-The control's `xs:long` is projected by Ferrule to an integer domain and exported
-as `xs:integer`. These exported-file checks cover the selected signed-integer
-values, not preservation of the original bounded-long schema declaration.
-
-The changed export differs only in generated sibling filenames and the explicit
-off property. Its reference execution matched the complete no-hint oracle. The
-actual exported design was saved, closed, reopened and executed again, then
-saved a second time. Both native saves were byte-identical, and both outputs
-matched the complete oracle and target XSD. Executable Ferrule re-import of the
-native re-save produced the same local output bytes as before the export change.
-
-The final comparison saved a separate project inside each case directory and
-verified the MFD's actual input and output references against the guarded files,
-including both native re-saves. Those original files and target sentinels stayed
-unchanged. An earlier comparison had guarded similarly named case-local files
-while its imported paths referred outside the case directory; that preliminary
-record is retained but supplies no file-integrity or publication proof.
+The fixture's `xs:long` became `xs:integer` on export: the evidence is for
+those signed values, **not** preservation of the bounded-long declaration.
+Only the final comparison verified the actual files referenced by both saves
+and the guarded sentinels. An earlier path check and handwritten entry-cache
+warning supply no file-integrity or successful execution evidence.
 
 `crates/mfd/tests/xml_schema_reference.rs` covers primary and named physical
 targets, strict re-import, unchanged mapping values and the no-hint default.
@@ -115,9 +84,6 @@ admission and continued refusal of other spellings.
 each setting and root form, its target-only role, DTD targets, a mapped `xsi`
 attribute, non-XML sources, and the native export/re-import of the default.
 
-The first handwritten entry-cache attempt and its load-preview schema warning
-were retained rather than treated as a successful execution. The qualified
-runtime inputs explicitly name their independently authored source schema.
-This finite observation does not requalify the historical signed-integer cohort,
-general XML export, partial-artifact publication, or the separate native
-save/reopen and owned-dialog protocols.
+This finite export observation does not qualify general XML export, the
+historical signed-integer cohort, partial publication or the separate
+[two-phase native reopen protocol](native-saved-design-reopen.md).

@@ -1,26 +1,15 @@
 # Exact JSON Schema tuple arrays
 
-A tuple array gives each array position its own schema: Draft 2020-12
-`prefixItems`, or array-valued `items` in earlier drafts. Ferrule imports a
-tuple only when it reduces exactly to an ordinary homogeneous array
-(`crates/format-json/src/json_schema/positional_items.rs`). This design adds
-one bounded representation for the remaining exact cases, the *tuple frame*,
-and fixes which shapes stay refused. It changes no behavior by itself; the
-ownership lanes below implement it.
+A positional JSON array uses Draft 2020-12 `prefixItems` or an older draft's
+array-valued `items`. Ferrule uses an ordinary homogeneous array whenever it
+can represent the schema exactly. Otherwise a bounded *tuple frame*
+holds the distinct positions and the optional tail.
 
-## Refusals this design replaces
+<a id="refusals-this-design-replaces"></a>
 
-Three import refusals are replaced. Every other existing refusal stays.
-
-- Positional members that differ after parsing ("positional item schemas must
-  have one identical item schema").
-- A tail that is reachable and either differs from the members or is open
-  over a constrained member. A tail counts as reachable unless an explicit
-  `maxItems` of N or less rules it out. An open tail is an absent or `true`
-  tail. A `false` tail closes the tuple and is already supported.
-- Active `unevaluatedItems` (`reject_unsupported_object_keywords` in
-  `crates/format-json/src/json_schema.rs`), but only in the direct form
-  specified below.
+Different positional schemas, a reachable heterogeneous tail, and the direct
+`unevaluatedItems` form below can all be represented. Unsupported compositions
+are refused rather than widened to accept extra values.
 
 ## Dialects
 
@@ -62,7 +51,7 @@ shape exactly, the shape is refused.
 
 ## Tuple frame
 
-A frame is a `SchemaKind::Group` with new metadata:
+A frame is a `SchemaKind::Group` with layout metadata:
 
 ```rust
 pub json_tuple: Option<JsonTupleLayout>,
@@ -90,8 +79,7 @@ existing "cannot contain a nested array wrapper" refusal. A member may be a
 scalar, a scalar union, an object (including alternatives and dynamic
 properties) or an arbitrary-JSON string.
 
-The frame check, modeled on `check_json_array_wrapper_frame`
-(`crates/ir/src/schema/json_array_wrapper.rs`), enforces:
+The [tuple-frame validator](../../crates/ir/src/schema/json_tuple.rs) enforces:
 
 - **Children:** exactly the child list above, each following the member rule.
 - **Canonical form:** a closed frame has a length maximum of exactly N; an
@@ -126,10 +114,10 @@ repeating frame, `container_nullable` covers the outer array and
 `json_single_container_nullable` (`crates/ir/src/lib.rs`) otherwise falls back
 to `container_nullable`.
 
-The frame check does not look through `recursive_ref`, so a member whose
-recursive reference names the frame itself passes it. Import refuses a
-reference cycle through a position (see "Unsupported shapes"), and the native
-codec (lane 2) must refuse such a recursive frame rather than expand it.
+The frame check does not follow `recursive_ref`, so a member referring to
+the frame itself can pass this local check. Import refuses cycles through
+a position; the native codec also refuses a recursive
+frame instead of expanding it.
 
 In the mapping graph a frame is an ordinary group: paths address
 `/point/item2` and iterate `/point/rest`. XML, CSV, XLSX, EDI, IDoc, SWIFT,
@@ -266,8 +254,8 @@ Null layers and outer arrays use the existing wrappers. Export never writes
 `additionalItems`. Because the frame check admits only canonical shapes,
 importing an export reproduces the identical frame. Legacy inputs are
 converted to the `prefixItems` spelling, and homogeneous tuples keep their
-current `items` export. MFD export goes through its existing re-import fidelity
-check (`crates/mfd/src/export/json_schema_fidelity.rs`).
+ordinary `items` export. This is JSON Schema export; MFD entry-tree export
+has a separate refusal.
 
 ## Examples
 
@@ -393,81 +381,21 @@ string array with a maximum of 1.
 | `type: array`, `allOf: [{P}]`, `unevaluatedItems: false` | refused: depends on annotations |
 | Draft 7: array `items` [string, integer], `additionalItems: {"type":"boolean"}`, `unevaluatedItems: false` | `unevaluatedItems` ignored; Boolean tail |
 
-## Ownership lanes
-
-Each lane is a separate issue with its own reserved paths. A lane removes only
-the refusals listed for it. Until it merges, those refusals stay.
-
-1. **Schema model.** This lane has three parts:
-   - **Model.** `JsonTupleLayout` and the frame check in `crates/ir`, serde
-     and tree validation, engine schema validation, and refusal at non-JSON
-     boundaries and in schema edits that break a frame.
-     `crates/codegen-schema/src/json5_profile/schema.rs` destructures
-     `SchemaNode` exhaustively, so this part also adds the generated JSON5
-     refusal for frames.
-   - **Gates.** A `json_tuple_arrays_v1` file capability in
-     `crates/mapping/src/file_codec`, descriptor version 5 in
-     `crates/codegen-schema`, and a generation-time refusal in
-     `crates/codegen-csharp` for schemas that contain frames. The graph-level
-     `json_parse_field` and `json_parse_object_exists` functions take plain
-     `SchemaNode` text with no capability or descriptor version, so older
-     readers would silently drop frame metadata there. Frames therefore never
-     enter those strings. This part refuses a frame descriptor in the Rust
-     evaluator, `crates/functions/src/json.rs`; lanes 3 and 4 own the C#
-     evaluator and the producer.
-   - **Import and export.** Selection, canonical form, composition, refusals
-     and export in `crates/format-json/src/json_schema/`. This part merges
-     only after lane 2 and after the first step of lane 4.
-2. **Native codec.** Covers reading and writing, frame-property absence, gap
-   and length errors, prepared codecs, JSON5, JSON Lines and the borrowed
-   writer in `crates/format-json`. It also includes engine handling of
-   `Scalar(Null)` for absent frames and positions.
-3. **Generated Rust and C#.** Generated Rust already shares the native codec
-   through `format_json::PreparedSchema`; this lane adds generated-host tests
-   for it. For C#, the lane adds the version 5 descriptor, frame check,
-   reader, writer and first-error order in `runtime/csharp/Ferrule.Runtime/`,
-   then removes lane 1's generation-time refusal. It refuses frame descriptors
-   in the C# function evaluator,
-   `runtime/csharp/Ferrule.Runtime/FerruleFunctions.Json.cs`. It also updates
-   `Ferrule.Runtime.SmokeTests/JsonEmbeddedSchemaTests.cs`, which uses `/5` as
-   its unsupported-version sample.
-4. **MFD.** First, refuse frames explicitly at the MFD JSON schema boundary
-   and in the JSON string parser recipe encoder
-   (`crates/mfd/src/json_parser_recipe.rs`). That encoder is the only producer
-   of graph-level function schema strings; `json_parse_field` is hidden from
-   the editor palette. Affected projects keep today's schema-fallback
-   diagnostic. Next, a black-box study establishes how the
-   reference application names positional entries. Only after that do frames
-   map to entries, become executable, and round-trip through export and
-   re-import.
-5. **`unevaluatedItems`.** The direct form above. It depends on the import and
-   export part of lane 1.
-
-Each lane updates [formats](../formats.md),
-[compatibility baseline](../compatibility-baseline.md),
-[code generation](../code-generation.md) or [MFD interop](../mfd-interop.md),
-and the [file capabilities](../project-files.md#file-capabilities) list, in the
-PR whose behavior those pages describe.
+<a id="ownership-lanes"></a>
 
 ## Acceptance tests
 
-A shared self-authored corpus,
-`crates/format-json/tests/fixtures/json_tuple_arrays/cases.json`, follows
-`nested_array_wrappers/cases.json`. Each case contains:
+The [tuple corpus](../../crates/format-json/tests/fixtures/json_tuple_arrays/cases.json)
+contains schemas, canonical models, accepted trees, one-based error positions
+and write-only gap cases. [Schema](../../crates/format-json/tests/json_tuple_schema.rs)
+and [codec tests](../../crates/format-json/tests/json_tuple_arrays.rs) cover
+different boundaries. Native prepared JSON, JSON5 and JSON Lines support
+frames; generated Rust/C# JSON and JSON Lines use the same shape. The
+generated JSON5 companion still refuses them.
 
-- the schema and the expected model;
-- accepted instances with their instance trees;
-- rejected instances with their error kind and one-based position;
-- write-only instances covering gaps, length bounds, and absent frames and
-  positions.
-
-| Lane | Coverage |
-| --- | --- |
-| 1 | Import, canonical form, export, re-import and refusals, including examples 1 to 6; refusal by older readers and the Rust graph-level JSON function evaluator |
-| 2 | Native, prepared and JSON Lines reads and writes |
-| 3 | The same cases through Rust and C# hosts under `crates/cli/tests/code_generation/`, compared with `engine::run`; the C# graph-level JSON function refusal |
-| 4 | Self-authored MFD fixtures |
-
-The existing importer tests `prefix_items.rs`, `tuple_items.rs` and
-`unsupported_keywords.rs` keep passing unchanged, except that heterogeneous
-cases accepted by a lane move into the corpus as accepted cases.
+Project files require `json_tuple_arrays_v1`; generated descriptors carry
+the version that can represent the frame. Graph-level JSON parser functions
+take unversioned schema strings and reject frames. MFD entry trees cannot
+address positional fields: [import](../../crates/mfd/tests/json_tuple_import.rs)
+keeps the schema-fallback diagnostic, and [export](../../crates/mfd/tests/json_tuple_export.rs)
+refuses before writing any artifact. Homogeneous arrays remain supported.

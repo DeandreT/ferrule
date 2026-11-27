@@ -1,14 +1,9 @@
 # Generated C# X12 companions
 
-Generated C# libraries can include an explicit raw X12 boundary around the
-ordinary typed mapping. The default envelope profile contains one interchange,
-functional group and transaction. An explicit grouped profile admits declared
-functional-group and transaction collections inside one interchange. An
-explicit MapForce profile admits repeated interchanges in the shape of
-MapForce's standard X12 `Envelope.Config`. Source and
-target schemas, separators and
-selected format options are embedded in the generated source; execution does not
-download schemas or read an external EDI configuration.
+The C# X12 companion parses and writes raw documents around a typed mapping
+using embedded schemas and options. Select a single transaction (default),
+declared groups in one interchange, or repeated MapForce interchanges; each
+endpoint owns its format and version. No external EDI configuration is read.
 
 ## Select the boundary
 
@@ -44,12 +39,9 @@ supported target pair; the graph must supply its headers. In the single and
 grouped profiles ST has exactly two fields, so an implementation reference in
 ST03 is outside them.
 
-Rust callers constructing `X12BoundaryOptions` can supply the optional
-`interchange_version` constraint or use `..Default::default()` when none was
-retained. This field preserves the saved physical setting through shared
-admission; it does not independently select a version. Exhaustive struct
-literals include this field and `envelope_profile`. Generated C# public method
-signatures are unchanged.
+`X12BoundaryOptions.interchange_version` constrains the saved version; it
+does not select one independently. Rust callers may use `..Default::default()`
+for omitted options.
 
 ### Declared grouped envelopes
 
@@ -102,37 +94,19 @@ index and declared owner path with occurrence indices. Counts or equal control
 values alone never establish ownership. Body qualifiers and scalar validation
 run after envelope validation.
 
-Output retains lexical formatting, supplied-context completion, final scalar
-constraints, then owner validation. Completion materializes absent declared
-SE/GE/IEA groups and fills missing, Null or empty scalar control fields in present
-envelope groups. GS/ST owner groups are supplied by the mapping. Envelope
-containers require Group instances. Nonempty supplied counts and controls remain
-unchanged for final validation. Fallback ST controls use document order across
-groups. Replacements identify an occurrence by declared child-slot and
-repeated-item indices, including reserved absent trailer slots. Reused caller
-Group objects can therefore receive
-different values in the private output view without changing any caller fields,
-collections, values or references. Physical ordinals and object references do
-not serve as replacement keys.
+On output, format values first, complete with the supplied context, then
+validate scalars and owners. The mapping supplies GS/ST groups; completion
+can supply missing SE/GE/IEA and empty control fields but cannot repair a
+wrong nonempty count. Fallback ST numbers span groups. Replacements use
+declared slot and occurrence indices, so the same Group object reused twice
+can receive different controls without mutation. Limits never reset per owner.
 
-Resource limits remain whole-document limits at each stage and never reset for
-an individual owner. Native EDI structural reading and completion can admit
-empty collections or synthesize trailers more broadly; generated strict owner
-validation does not inherit those behaviors.
-
-For the CLI companion request, a retained X12 component family selects that
-side, including an imported component whose stored instance path ends in
-`.txt`. Otherwise an `.edi` or `.x12` identity selects X12, and an explicit JSON
-identity selects strict JSON. Without a stored format identity, the schema's
-declared EDI dialect can select X12. A different retained family or physical
-format is refused. These choices only apply after the caller requests the
-companion; stored paths and metadata never add it to ordinary generation.
-
-The complete optional contract is admitted before the public writer stages a
-source tree. An existing destination is not replaced. Ordinary generation
-retains its artifact set and typed/JSON APIs. The companion adds
-`GeneratedMapping.X12.cs` and package-free `Runtime/X12` sources to the standalone
-.NET 10 project.
+Once the companion is requested, a retained X12 family wins even for a
+`.txt` path. Otherwise `.edi`/`.x12` or explicit strict JSON can select a
+side; only in the absence of stored identity can a declared schema dialect
+select X12. Other families refuse. The writer admits the complete contract
+before staging `GeneratedMapping.X12.cs` and the .NET 10 `Runtime/X12`
+sources, and does not replace an existing destination.
 
 ### MapForce interchange envelopes
 
@@ -158,19 +132,12 @@ Envelope                 singular root
    └─ IEA                repeating segment
 ```
 
-The importer represents MapForce's optional (`minOccurs="0"`) segments as
-repeating, so ISA, GS, GE and IEA must be repeating; singular variants are
-refused. Admission requires:
+The tree above is exact. MapForce optional segments import as repetitions;
+singular ISA/GS/GE/IEA variants refuse. ST is singular; SE may be singular
+or optional (repeating in the imported model). Output allows at most one SE
+per message and creates a missing one only with completion. The message
+body contains no envelope segments. Other admission rules:
 
-- A singular root whose only child is a repeating non-segment interchange
-  container.
-- An interchange of exactly ISA, one repeating non-segment functional-group
-  container and IEA. A group has exactly GS, one repeating non-segment message
-  container and GE.
-- A message with singular ST first and SE last. SE may be singular or optional
-  (repeating, as message configurations declare it); output permits at most one
-  SE per message, and only selected completion creates a missing one. Its body
-  contains no envelope segment.
 - ISA with 16 elements, GS with 8, ST with 2 or 3 (a String ST03), and SE, GE
   and IEA with 2. ISA13, GS06, SE01, GE01, GE02, IEA01 and IEA02 may be String,
   Int or Float, as in MapForce's numeric data elements. Every other envelope
@@ -248,15 +215,10 @@ Without completion, a Float ISA13 must already have nine digits: 100000123
 writes, while 123 fails as an ISA width error, as natively. Completion writes
 123 as `000000123`.
 
-Native reading, writing or completion can accept documents that this profile
-refuses: later interchanges with another selected version, a configured syntax
-mismatch, missing trailers
-without completion, empty interchanges or groups, more than one GE or IEA per
-owner, a missing ISA or GS occurrence, mismatched counts or controls, an
-undeclared ST03, negative or fractional numeric controls, and acknowledgment
-segments that populate a source acknowledgment branch. Target acknowledgment
-branches, several message alternatives per group and release separators remain
-outside the profile.
+This envelope check is stricter than native structural reading or completion.
+For example, it refuses an empty group, a second trailer for one owner, a
+later ISA with the wrong version or a segment that populates an acknowledgment
+branch. A matching count alone does not establish ownership.
 
 ## Public generated methods
 
@@ -269,18 +231,12 @@ Methods are emitted for the selected direction, on
 | JSON source, X12 target | `ExecuteJsonToX12(string)` | `ExecuteJsonToX12Bytes(byte[])` |
 | X12 source and target | `ExecuteX12ToX12(string)` | `ExecuteX12ToX12Bytes(byte[])` |
 
-Each method also has an overload taking `FerruleExecutionContext`. A call
-parses its source once, runs the ordinary typed mapping once, then serializes
-the complete target. Mapping evaluation, runtime parameters and execution
-context semantics remain those of the typed API. The companion returns one
-complete string or byte array; it does not publish files or transport messages.
-
-An X12 source also adds `ParseX12(string)` and `ParseX12Bytes(byte[])`, returning
-a `FerruleInstance`. An X12 target adds `SerializeX12(FerruleInstance)` and
-`SerializeX12Bytes(FerruleInstance)`. Both target helpers also have overloads
-taking `FerruleExecutionContext`. These helpers use the same embedded boundary
-contract as the mapping methods. A contextual mapping method passes that same
-context to X12 output after the ordinary mapping succeeds.
+Each method has a `FerruleExecutionContext` overload and returns one complete
+string or byte array. It parses once, calls the typed mapping once and
+serializes once; the same context reaches output completion. Directional
+helpers are `ParseX12` / `ParseX12Bytes` (returning `FerruleInstance`) and
+`SerializeX12` / `SerializeX12Bytes` (with optional context overloads).
+Publication remains the caller's responsibility.
 
 ## Static named documents and selected output
 
@@ -331,7 +287,7 @@ SelectedDocumentBytesTargetOutput ExecuteDocumentBytesSelectedTargetWithHost(
 `NamedDocumentInput` and `NamedDocumentBytesInput` contain `Name` and `Document`.
 The result is either a `Primary` carrier with `Format` and `Document`, or a
 `Named` carrier whose `Output` also retains the declared `Name`. `Format` is
-`DocumentBoundaryFormat.Json` or `.X12`; callers select a declared target with
+`DocumentBoundaryFormat.Json`, `.X12` or `.Edifact`; select the target with
 `FerruleTargetSelection.Primary()` or `.Named(name)`.
 
 Calls first reject a null source, then a null selection, then resolve the
@@ -342,16 +298,12 @@ unknown name, then duplicate name. Missing inputs fail in declaration order.
 For a program with no named sources, entry and name checks precede the
 unexpected-source error, and the supplied document is not inspected.
 
-The primary document parses first, followed by every supplied named document
-in caller order, including unused inputs. Byte-document null is checked at its
-own parse turn, preserving the `extraSource.Document` parameter name. Each
-document uses its own strict JSON or X12 codec and existing resource limits.
-The companion then delegates once to the ordinary typed selected-target API:
-global failure rules run in declaration order, only the selected target is
-constructed, and existing context and per-binding evaluation semantics apply.
-Only that target's own codec serializes the resulting instance. The same
-execution context reaches selected X12 completion. Caller arrays, lists and
-instances remain unchanged, and a failure returns no output carrier.
+Parse the primary first, then every supplied named document in caller order,
+including unused inputs. A null byte document fails at its own parse turn
+(`extraSource.Document`). Each endpoint uses its own codec and limits.
+The typed call runs global failures in declaration order, constructs only
+the selected target and serializes with that target's codec. X12 completion
+uses the same context. Failure returns no output; caller data stays unchanged.
 
 ## Default singular schema and metadata
 
@@ -502,22 +454,13 @@ delimiter. No occurrences write an empty element. A single Null occurrence also
 writes an empty element, so at a trailing position it is trimmed and reads back
 with no occurrences, as in the native writer.
 
-Generated LF input and output use the existing terminator contract, which the
-native reader and writer share: an LF terminator is written alone. The native
-writer also accepts a CR terminator; generated profiles refuse it. The version profiles add raw C# companions only. Generated Rust continues to
-expose its ordinary typed and JSON interfaces; a host can apply the native X12
-boundary separately.
-
-Output uses the configured separators, or `*`, `:` and `~` when none are
-selected. ISA's fixed-width text fields are padded as an encoding operation.
-Other segments omit trailing empty elements. A punctuation terminator is
-followed by LF; LF terminators already provide the line break. Returned bytes
-are UTF-8 without a BOM.
-
-The qualification fixtures use a separate width-formatted ISA input for the
-native comparison. The generated companion receives unpadded text and applies
-its fixed-width encoding. Both paths compare against the same independent
-complete 945 byte oracle.
+ISA receives its fixed-width padding. Other segments omit trailing empty
+elements. Output is UTF-8 without BOM. By default a visible terminator is
+followed by LF; an LF terminator stands alone. A target can explicitly select
+[CRLF segment suffixes](x12-line-endings.md) with a visible terminator. The
+native writer also admits a CR terminator; this generated profile refuses it.
+The native 945 fixture supplies a width-formatted ISA and the generated
+fixture an unpadded ISA; both compare the complete output to the same bytes.
 
 Without selected completion, the host supplies all envelope controls, dates,
 times and trailer counts.
@@ -599,43 +542,18 @@ external trading-partner acceptance remain host responsibilities.
 
 ## Repeatable qualification
 
-Self-authored fixtures and complete independent oracles live in
-`crates/codegen-csharp/tests/x12/`. The `x12_dotnet` integration target compares
-native order values and shipment bytes, checks descriptor-depth admission, and
-separately compiles fresh standalone C# libraries for source, target and both-side
-profiles. Its compiled cohort invokes text, byte, execution-context and direct
-helper methods, with ordinary typed/JSON controls and failure fixtures.
-Saved-profile fixtures compare complete values and scalar types, literal wire
-bytes, typed failures and failure ordering for native helpers and generated
-public APIs separately. They cover selected reading, numeric scaling,
-formatting and completion metadata, with strict and inactive-option controls.
-Repeated-element fixtures compare native values and bytes with compiled `005010`
-and `006040` libraries, including empty and absent occurrences, per-occurrence
-options, custom separators and typed admission, input and output refusals.
-MapForce interchange fixtures compare native values, bytes and completion with
-compiled `004010`, `005010` and `006040` libraries, and record each document
-that native accepts while the generated profile refuses it.
-
-The ordinary integration run includes native and descriptor checks plus the
-freshly generated saved-profile public-host cohort. It requires `dotnet` on
-PATH with the .NET 10 SDK and targeting pack installed:
+The [self-authored fixtures](../../crates/codegen-csharp/tests/x12/) supply
+complete native value and wire oracles, including cases the generated profile
+refuses. [`x12_dotnet`](../../crates/codegen-csharp/tests/x12_dotnet.rs) separates native
+and descriptor checks, a compiled saved-profile cohort, and additional
+compiled strict source/target/both-side calls. With the .NET 10 SDK and
+targeting pack on `PATH`:
 
 ```sh
 cargo test -p codegen-csharp --test x12_dotnet
-```
-
-The additional strict source/target/both-side compiled cohort is explicitly
-ignored in an ordinary test run. The generated libraries and harnesses are
-package-free; their builds clear NuGet package sources and disable runtime-pack
-downloads. Run that additional cohort explicitly:
-
-```sh
 cargo test -p codegen-csharp --test x12_dotnet -- --ignored
 ```
 
-The target prints its owned temporary evidence directories for native,
-saved-profile and strict-cohort qualification. Complete fixtures, generated source, command
-outcomes, stdout/stderr and produced artifacts are retained before comparisons,
-including failed runs. Keep those directories when investigating a failure;
-source emission alone does not establish compiled execution. Direct runtime
-controls also live in `runtime/csharp/Ferrule.Runtime.SmokeTests/X12Tests.cs`.
+The second command runs explicitly ignored hosts; successful emission does
+not exercise their public calls. The package-free harness retains complete
+artifacts and outcomes before comparison.

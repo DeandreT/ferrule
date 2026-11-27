@@ -2,18 +2,12 @@
 
 ## Contract
 
-Within one target scope, two wires to the same physical input connector are not
-two declared target occurrences. Ferrule does not choose a first, last or
-non-null winner for either case when the target schema is singular. Executable
-import refuses competing wires; best-effort import retains a repair project with
-diagnostics. Separate
-cloned entries retain their separate bindings, and executable
-validation rejects duplicate bindings to a singular target field.
-
-A repeating target is different: its separately declared entries can emit each
-value in entry-tree order. Existing declared-ancestor ownership remains required
-for nested branches. Equal expression IDs, reversed graph vertices or repeated
-XML names do not establish a different owner or authorize singular selection.
+Two wires to one physical pin and two cloned entries are different shapes.
+Executable import refuses competing wires; repair import preserves diagnostics.
+Cloned entries retain separate bindings, even for a shared expression.
+A singular target refuses duplicates; a repeating target emits the present
+occurrences in entry-tree order. Nested branches still require a declared
+ancestor owner. No first-, last- or non-null-winner policy is implied.
 
 ## Native observation
 
@@ -38,28 +32,16 @@ retained. This is not native Windows ABI or general XML qualification.
 - **Cloned repeating entries:** the same values and order passed the explicitly
   repeating target XSD. Its raw output matched the cloned-singular output.
 
-The cloned designs retained byte-identical native save/reopen/resave results.
-Actual source and target references were checked, and guarded designs, schemas,
-inputs and preexisting output sentinels stayed unchanged during preview.
-Full XML comparisons preserve names, attributes, text and child order; an XML
-declaration and element-only indentation are not semantic differences.
-
-The initial attempt to save the invalid competing-feed design stopped at
-“Mapping is not valid, Save anyway?” A separate inspection selected **No** and
-retained the validation message. The later run validated first and did not try
-to save or execute invalid designs. That failed attempt is not counted as a
-successful save/reopen.
+The clone designs saved and reopened byte-identically. Comparisons checked
+complete ordered XML and guarded inputs and output sentinels. Invalid
+competing-feed designs stopped at validation; they supply no execution or
+successful save/reopen evidence.
 
 ## Ferrule comparison and regression ownership
 
-The comparison first exposed a separate renamed-constant defect: the native
-kind-2 constant displayed as `SecondValue` was imported as an unknown function.
-After correcting that recognition in [#1080](https://github.com/DeandreT/ferrule/issues/1080),
-the unchanged single-feed and repeating-clone designs imported and executed
-with complete XML agreement. Direct competing feeds and singular cloned entries
-still refused executable import. No feed-selection rule changed.
-
-The existing self-authored regressions cover the implementation boundaries:
+After the [renamed-constant fix](https://github.com/DeandreT/ferrule/issues/1080),
+the single-feed and repeating-clone designs agreed on complete XML. The
+same-pin and singular-clone designs still refused executable import:
 
 - `crates/mfd/tests/input_guard.rs`: competing physical input feeds and preserved
   strict-import refusal.
@@ -130,18 +112,10 @@ do not establish other nil lexical forms, nested nil, coercion or error ordering
 | Separate declared ancestor branches | Existing [#239](https://github.com/DeandreT/ferrule/issues/239) ownership rules | Resolve the declared owner first, then check cardinality within that scope. Equal field names across owners are not evidence of competition. |
 | Untyped null, JSON null, other expression failures or ambiguous owners | No additional admission | XML nil controls give no JSON or general error-order rule. An ambiguous owner cannot be repaired by choosing a value. |
 
-**Decision for [#241](https://github.com/DeandreT/ferrule/issues/241): no
-same-scope singular multiple-feed shape qualifies.** The
+**No same-scope singular multiple-feed shape qualifies.** The
 [distinct-constant fixture](../../crates/mfd/tests/fixtures/input_guard/competing-singular.mfd)
-remains a refusal control. The public-route test checks the exact validation
-location and message before input acquisition or generated artifact publication.
-There is no compiled singular success case: both generation paths stop at
-validation. The compiled full-value comparisons above apply to repeating
-targets only.
-
-The [singular two-conversion probes](../design/fixtures/native-feed-controls/README.md)
-reproduced the first failing conversion in declared order before and after
-reopening. All four failing controls left partial XML. This cannot repair the two-value
-cardinality counterexample. Revisit executable admission only for a distinct
-saved shape that guarantees at most one result across its input domain, with
-independent full-value and exact-error controls for that shape.
+refuses before acquisition or generated publication. Compiled full-value
+comparisons cover repeating targets only. The [two-conversion probes](../design/fixtures/native-feed-controls/README.md)
+reproduced the first failing token before and after reopen and left partial
+XML in all four failures. They cannot turn two present values into a
+schema-valid singular result.

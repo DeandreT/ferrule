@@ -14,14 +14,9 @@ including partial XML on conversion failure.
 | `east-bad`, `west-bad` | Only the first or only the second string fails conversion | The failing token is respectively `ochre` or `indigo`; retain the complete diagnostic and any output. |
 | `both-bad`, `both-bad-reversed` | Both conversions fail; reverse entry order while keeping source tokens, port identities and edge order fixed | First failure names `ochre`, then `indigo`, if declared order selects it. |
 
-Run the explicit-bound control first. Compare both saves and the reopened
-execution; check the actual lower/upper connections and saved datatypes. The
-probe tests scalar range values only, not Position or a filter/map descriptor.
-For the singular cohort, check the saved field, clone markers, entry order and
-endpoints before comparing complete outputs, XSD validity and diagnostics.
-Record unexpected success, failure or partial output without changing the
-predictions. Match source-specific native causes; do not equate diagnostic
-wording across products or versions.
+Compare complete saved connections, declared types and clone order with
+the frozen outputs, XSD validity and first diagnostic. The range probes test
+scalar values, not Position or a filter/map descriptor.
 
 ## Observed results
 

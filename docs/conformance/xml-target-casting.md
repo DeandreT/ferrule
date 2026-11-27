@@ -37,17 +37,12 @@ and Label `safe`:
 | Tab, space, `2.5`, space, newline | Execution fails with conversion-to-double failure |
 | `1.25e2` | Emits `125` |
 
-The large-number and whitespace controls are counterexamples, not passing
-qualification. The output does not establish where or how the reference lost
-precision internally. Ferrule's existing XML writer accepts the tested
-whitespace and uses its own round-trip numeric rendering; those rules are not
-weakened to imitate these isolated outputs.
+The large integer and whitespace are counterexamples to general fidelity.
+Ferrule accepts the tested whitespace and writes round-trip binary64 text.
 
 ## Enabled casting lexical boundary
 
-Further enabled controls reuse the independently authored exponent design and
-schemas unchanged; only the input String differs. Each design was saved,
-reopened and resaved, and its complete output and messages were retained.
+Only the input text varied in the saved/reopened exponent design:
 
 | Input String | Native first Amount | Ferrule `coerce_float` |
 | --- | --- | --- |
@@ -83,10 +78,9 @@ pins these inputs for the interpreter and generated Rust and C#.
 
 ## Disabling casting is a different contract
 
-The Target component's **Cast values to target types** option was explicitly
-unchecked through the native Component Settings dialog. The saved Target then
-uses `casttotargettypemode="suppress-cast-in-subtree"`; the Source retains its
-enabled setting. The graph and target-entry order are unchanged.
+Unchecking **Cast values to target types** saved
+`casttotargettypemode="suppress-cast-in-subtree"` on the Target; the Source,
+graph and entry order remained unchanged.
 
 | Input String | Native first Amount with target casting disabled | Target XSD |
 | --- | --- | --- |
@@ -95,10 +89,8 @@ enabled setting. The graph and target-entry order are unchanged.
 | `not-a-number` | Exact input text | Invalid |
 | `00029` | `00029` | Valid |
 
-All four runs succeed, retain the second Amount `17` and Label `safe`, and keep
-their source files and sentinels unchanged. Their native saved/resaved designs
-are byte-identical. Successful execution of the invalid-number case does not
-make its output schema-valid.
+All four runs preserved `17` and `safe`, with byte-identical designs after
+resave. Successful execution did not make `not-a-number` schema-valid.
 
 Ferrule's ordinary typed writer normalizes the three numeric strings and
 rejects the invalid one. Its explicit

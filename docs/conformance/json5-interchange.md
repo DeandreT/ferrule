@@ -21,26 +21,16 @@ export inspect it, and direct browser codec helpers apply the same refusal.
 
 ## Reference and scope
 
-The reference GUI identified itself as MapForce Enterprise 2026 release 2, x64;
-the executable version was 28.2.0.0. It ran offline in an isolated Wine prefix
-and virtual display. These are black-box observations, not native Windows ABI
-qualification or proof of the installed files' original acquisition provenance.
-Original reference files and samples were not edited. Fixtures were independently
-authored; no vendor implementation, license data or bundled sample is reproduced.
+MapForce Enterprise 2026 release 2 x64 (28.2.0.0) ran offline under Wine.
+These self-authored cases are black-box observations, not native Windows ABI
+or installation-provenance evidence. All five saved designs reproduced their
+complete bytes after reopen. **Use JSON5** saved `json5="1"` on the component's
+`json` element; changing the instance filename alone did not. Modern `file`
+children carried `inputinstance` or `outputinstance` roles.
 
-Five designs were saved, closed, reopened and saved again. Complete bytes matched
-after reopening; declaration reordering caused by target edits was retained in
-the comparison. The actual controls were **Use JSON5** and the input/output JSON
-filename. Selecting the checkbox saved `json5="1"` on that component's `json`
-element. Changing the filename to `.json5` did not enable the checkbox or add the
-attribute. Modern filenames were nested `file` elements with `inputinstance` or
-`outputinstance` roles.
-
-Runtime comparisons covered 40 scenarios per engine: 32 source flag/extension
-cases, four target controls, three repeats, and one corrected retry. The object
-contained a string, integer, Boolean, number and ordered integer array. Independent
-expected types, values, field order and formatting policy were frozen before
-execution. Full output files and errors were retained, not sampled prefixes.
+The frozen comparison covered 40 scenarios per engine (32 source, four
+target, three repeats and one corrected retry) over a typed object and
+ordered array. The comparison retained full values, order and errors.
 
 ## Results and limits
 
@@ -69,10 +59,9 @@ execution. Full output files and errors were retained, not sampled prefixes.
   byte-identical, a repeated refusal still produced no output, and a corrected
   retry succeeded without replacing the retained original failure evidence.
 
-The driver had a reporting-guard failure after a repeated refusal; its original
-result was retained. A separate non-executing finalizer corrected the expected
-absence of output. The revised accounting explicitly includes the corrected
-retry instead of counting target controls twice.
+A reporting check initially mistook expected missing output on a repeated
+refusal for a driver failure. Corrected accounting retains the refusal and
+includes the corrected retry once.
 
 ## Regression ownership
 

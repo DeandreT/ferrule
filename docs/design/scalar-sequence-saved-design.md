@@ -1,71 +1,23 @@
 # Scalar sequence saved-design interchange
 
-This design is the bounded deliverable for [#203](https://github.com/DeandreT/ferrule/issues/203). It inventories a possible saved-design representation of the existing scalar `filter_map_v1` operation. It changes no importer, exporter, model, engine, backend, or GUI code.
-
-**Keep the typed refusal for all 17 transform recipes.** The
-[native controls](../conformance/scalar-sequence-native-controls.md) distinguish
-source from dense positions, full consumption from early ItemAt, and capture
-failure on a nonempty range from empty-range success. No candidate reconstructs
-the complete descriptor. The current
-exporter must retain `MfdError::UnsupportedSequenceComposition { item }` for every
-such descriptor, including an unselected or otherwise valid one. XML parsing,
-a warning-free preflight, or a successful Ferrule reimport cannot establish
-behavior in another authoring application.
+**All 17 `filter_map_v1` transform recipes refuse MFD export**, even if the
+descriptor is unselected. The [native controls](../conformance/scalar-sequence-native-controls.md)
+separate original and dense positions, eager and partial consumption, and
+capture failure on nonempty and empty ranges. None reproduces the whole
+descriptor. The seven legacy controls retain their own admission.
 
 ## Evidence and statuses
 
-[Generated source positions](generated-source-position.md) preserve a directly
-selected producer's original ordinal independently of compact scope positions.
-They do not by themselves establish a dense mapped consumer position or qualify
-the two-owner `filter_map_v1` interchange contract below.
+The [Ferrule execution contract](scalar-sequence-composition.md) and the
+[export guard](../../crates/mfd/src/export.rs) answer different questions.
+Generate, Position and scalar UDF components exist in saved designs; that
+does not connect two private owners or reproduce ordered captures and
+eager errors. [Direct producer positions](generated-source-position.md)
+supply an original ordinal, not a dense post-filter consumer position.
 
-The original inventory and frozen literals come from repository source only.
-Later isolated native observations are recorded separately; they do not rewrite
-the frozen recipes. The source snapshot includes the current declared-ancestor
-ownership implementation for nested cloned targets; this design does not replace
-or flatten it.
-
-Statuses have distinct meanings:
-
-- **Source path exists** means a current Ferrule importer/exporter branch represents a legacy construct. It is not a new save/reopen or external execution observation.
-- **Candidate, UNVERIFIED** means native components or scalar interfaces suggest an experiment, but complete descriptor and execution preservation has not been shown.
-- **Rejected** means current admission refuses the form, or this proposal excludes it until an explicit representation is justified. It never means that a failed external experiment has been observed here.
-
-Every new `filter_map_v1` cell below is currently **Rejected by the exporter**, regardless of the tentative native vocabulary.
-
-| Cell | Source evidence | Interchange status |
-| --- | --- | --- |
-| Legacy inclusive Generate, explicit bounds | `export/node.rs` emits `core/generate-sequence` with lower/upper ordered pins; `import.rs::sequence_expr` reconstructs `Generate` | Limited native decimal/anySimpleType-bound controls saved/reopened and matched complete values; exact Int-bound descriptor reconstruction remains unverified |
-| Legacy omitted lower bound | Export leaves the lower connection absent; import retains optional `from`; native engine defaults to 1 | The saved and reopened decimal probe with upper bound 3 produced the same `1,2,3` as an explicit lower 1. |
-| Reversed or absent/null bounds | Native engine yields an empty sequence, with existing expression short circuits | Source result fixed; external empty/null/coercion/error order UNVERIFIED |
-| Dynamic bounds and bound errors | Both bound expressions complete before coercion, except an absent bound short circuit | Candidate UNVERIFIED; a later upper expression error must precede an earlier lower coercion error |
-| Primitive item cap | Existing Generate refuses more than 1,000,000 items before materialization | Native invariant; no inspected saved component establishes that same refusal |
-| Predicate scalar interface | `export/udf.rs` retains ordered typed input ports and scalar output; filter has true/false outputs | Required integer input declarations and a Boolean output were observed in the limited native candidate; invocation order, exact Bool boundary and descriptor reconstruction remain UNVERIFIED |
-| Total predicate constants/arithmetic | Existing UDF scalar bodies admit ordinary constants/calls | Small candidate probes only; this does not admit a transform |
-| Predicate/mapper `If` and nested scalar UDF | Export emits lazy conditional and nested UDF wires with cycle/depth admission | Interfaces exist; execution, argument adaptation order, and transitive stage identities UNVERIFIED |
-| Reached or unselected `Raise` in a stage | Filter/map admits lazy Raise; current scalar UDF exporter rejects that node as context-sensitive or non-scalar | Rejected by current UDF export and by the transform guard; no substitution with an empty value |
-| Zero ordered captures | Stage signature still has item and original source position | Candidate UNVERIFIED |
-| One or multiple parent captures | Native evaluates once, in declaration order, checking each exact tag before the next capture | Candidate UNVERIFIED; ordinary fan-out wires do not prove once-only evaluation |
-| Captures on an empty range | Native still evaluates captures after an empty admitted source | The complex-variable/full-row candidate succeeds with an empty output despite a capture that fails on a nonempty control; that candidate is Rejected. Separately guarded captures remain UNVERIFIED |
-| Parent Position capture | Resolves in its actual parent document/frame before stages | Candidate UNVERIFIED; cannot replace with an inner or compacted position |
-| Private or foreign owner capture | Model/native lexical admission forbids either private owner in captures/source bounds | Rejected; no implicit context fallback |
-| Mapper exact Int/Bool/String/finite Float | Ordinary return adapter precedes strict tag/finiteness checks | Scalar ports exist; complete strict boundary and original causes UNVERIFIED |
-| Null/JsonNull/XmlNil or nonfinite stage output | Native rejects it with the original adapted value or binary64 bits | Rejected as successful output; saved null/absent collapse is insufficient |
-| Source owner versus output owner | Two different uniquely owned unframed empty-path source IDs; only output is downstream-visible | Required descriptor relation; current native wire vocabulary has no qualified two-owner reconstruction |
-| Original source position | Stages receive 1-based pre-filter index; it is not the generated integer when lower is not 1 | Observed in the bounded dropped-item mapper control; complete descriptor reconstruction remains UNVERIFIED |
-| Dense output position | Consumer sees 1-based position of the completed mapped sequence | Direct Position on the tested mapper/filter outputs failed native validation; a complex-variable control retained original positions and produced dense output positions after dropping an item, but failed the eager-error/ItemAt contract |
-| Generated scope rows | Legacy export wires producer to a row-shaped target entry and positions to its iteration stage | Source path exists for legacy; transformed scalar row/target reconstruction UNVERIFIED |
-| Exists consumer | Legacy import recognizes a filter whose value feed is the direct generator and whose predicate depends on it | Source path exists for that legacy shape; transformed/mapped input is not a supported new producer |
-| ItemAt consumer | Legacy import requires the direct generated producer; index is a parent expression | Source path exists for direct legacy form; the tested complex-variable candidate returns its first value instead of propagating the later mapper error, so that candidate is Rejected |
-| Aggregate consumer | Legacy import recognizes one generated dependency with an optional filter and computed value expression | Source path exists; it reconstructs a legacy reducer, not a two-owner filter/map descriptor |
-| Eager completion before any consumer | Filter/map fully generates, captures, predicates and maps before Exists, ItemAt or Aggregate begins | Required; unguarded complex-variable/ItemAt fails the late-error control. A count-guarded variant preserves that one late error, but complete eager/capture/invocation semantics remain UNVERIFIED |
-| Shared source/work limits and cancellation | Run-wide native state reserves atomically and checks synchronous boundaries before charged work | No inspected native saved-design component carries this host contract; remain Rejected until a faithful policy is established |
-| Repeated invocations or two consumers | Each reached consumer evaluates a fresh descriptor; run controls remain shared | Candidate UNVERIFIED; neither memoization nor duplicate per-item capture evaluation is allowed |
-| FailureIteration::Sequence with transform | Initial model contract explicitly refuses this consumer | Rejected; legacy failure generators unchanged |
-| Other generators, nested transforms, sorting/grouping/joins or structured stage values | Outside the initial transform's admitted source/body/output domain | Rejected; not widened by interchange |
-| Nested cloned target branches | Current importer uses declared target lineage and exact binding ownership, preserving placeholder slots | Existing ownership source remains authoritative; copied target/scope interchange is outside these probes |
-
-The relevant source paths are [`export.rs`](../../crates/mfd/src/export.rs), [`export/node.rs`](../../crates/mfd/src/export/node.rs), [`export/udf.rs`](../../crates/mfd/src/export/udf.rs), [`export/position.rs`](../../crates/mfd/src/export/position.rs), [`import.rs`](../../crates/mfd/src/import.rs), [`import/sequence_scalar.rs`](../../crates/mfd/src/import/sequence_scalar.rs), [`import/udf/scalar.rs`](../../crates/mfd/src/import/udf/scalar.rs), and [`import/target_iteration/branch_owners.rs`](../../crates/mfd/src/import/target_iteration/branch_owners.rs). The exact execution contract is in [`engine/filter_map.rs`](../../crates/engine/src/filter_map.rs) and the [ordered sequence design](scalar-sequence-composition.md). Historical comments or proposal prose saying implementation is unsupported do not override the current reached execution code.
+“Unverified” below describes a reference behavior or descriptor relation.
+“Reject” is the Ferrule interchange decision. A saved candidate can agree
+on output values while failing on datatype, owner, error order or work limits.
 
 ## Frozen synthetic controls
 
@@ -73,11 +25,11 @@ The [24 complete descriptor recipes](fixtures/scalar-sequence-saved-design203.js
 
 The generated integers deliberately start at 3. The position control generates `[3,4,5,6,7]`, captures parent position 7 once, retains items greater than 4, and maps `item * 10 + source_position + capture`. Its values are `[60,71,82]`, stage positions `[3,4,5]`, and consumer positions `[1,2,3]`. Equal numeric values elsewhere do not establish frame or owner identity.
 
-The parent-position recipe’s `root_shell` is a descriptive frozen annotation, not the serialized Project used by the public materializer. That materializer supplies seven ordinary `Parents` rows; only the seventh contains one empty `Driver` child. Its multihop `Parents/Driver` iteration has no filter, sort or window, preserving `Parents` position 7 and `Driver` position 1. The capture therefore reads ordinary parent Position 7, and the frozen values remain `[60,71,82]`.
-
-The controls distinguish a false predicate suppressing Raise; a late mapper Raise before Exists or ItemAt can return an earlier value; captures on an empty range; first-capture tag refusal before a later Raise; upper expression failure before lower coercion; atomic source reservation and cancellation; nested all-argument evaluation before adaptation; exact four scalar output tags; and a strict Null-output refusal. The repeated-row and scalar target shells have no unrelated sorting, grouping, filtering, failure rules or named targets. The parent-position case describes its parent invocation explicitly; the public-run materializer must preserve that frame, not silently substitute a constant or compacted Position.
-
-Literal typed expectations are written before any saved-design candidate. Complete unexpected successes, values, origin tags/payloads, binary64 bits, errors and ordered cause chains must be retained before comparison. These recipes freeze stage entry/result order, not every internal debug-hook event. A diagnostic prefix is evidence of work already done, never a successful partial sequence.
+The parent-position materializer supplies seven `Parents` rows; only the
+seventh has a `Driver` child. Thus its genuine parent position is 7, not a
+substituted constant or compact child index. The recipes also distinguish
+lazy `Raise`, bound/capture error order, empty-range captures, all four output
+tags, Null refusal, cancellation and cumulative limits.
 
 ## Bounded public qualification
 
@@ -147,41 +99,19 @@ describes the external evidence, not permission to export that recipe.
 | 22 | Nested later argument before adaptation | Pin order alone does not establish which exception reaches the caller. |
 | 23 | Sum over all mapped items | The existing legacy reducer is a different descriptor; no qualified reconstruction. |
 
-The refusal decision needs no further preview of the same failing candidates.
-The smallest useful **new transform** check requires a new topology with an
-explicit account of both owners and the shared host boundary. Check its
-saved/reopened descriptor against case 7 first. If it loses an owner or
-signature, stop there. If it passes, use the empty failing capture and late
-ItemAt cases before widening execution coverage. A positive legacy probe changes
-only its legacy cell.
-
 ## Minimum experiment before changing interchange
 
-A prospective probe may use the existing native vocabulary: Generate; a scalar predicate UDF with ordered `[item, source_position, captures...]` ports; the true filter output; a separate scalar mapper UDF; then one consumer. This is an experiment topology, not a chosen faithful representation. In particular, mapper-before-filter wires, extra source-position feeds, and ordinary parent capture fan-out can have different sequencing or alignment.
-
-Begin with the constant-true identity recipe and the legacy controls. In an ordinary authoring application, create each small design through visible controls, save it, close it, reopen it, save a second complete copy, and retain both complete files and all siblings. Observe actual parameter order, datatype declarations, library/function identities, pin directions and true/false output selection. Never invent unseen control coordinates or infer a component's evaluation policy from its name.
-
-Compare both complete saved component/pin/edge structures against the frozen recipe under an explicit bijection. Numeric IDs may be newly allocated on reopen, but the two private owners must remain distinct; ordered signatures, capture identity, parent frame/document, selected consumer and all reference relations must be preserved. No lossy normalization may remove an error branch, unused admitted stage parameter, capture, source position, output position or consumer edge. An existing importer returning a legacy reducer is not exact `filter_map_v1` reconstruction.
-
-Then compare complete executable outputs and original errors for the positive and distinguishing controls. Observe the empty-range capture and eager-late-error cases before admitting captures or eager consumers. Retain actual originals before comparison; establish a complete public-run materializer separately before comparing native execution. Save/reopen alone is descriptor preservation, not execution qualification, and parsing alone establishes neither.
-
-The host item/work/cancellation contract remains a blocker to general native interchange even if small constant examples agree. No new policy opt-out, weaker host limit, hidden custom component, or metadata-only success claim is introduced here. A Ferrule-specific annotation that only Ferrule reads would be a distinct extension design and cannot be described as ordinary native interoperability; it is outside this proposal.
+Use a different topology. Start with case 7: save, reopen and compare both
+complete structures under an explicit ID bijection. Keep the two owners,
+ordered signatures, capture edges, consumer and parent frame distinct.
+Then exercise the empty failing capture and late ItemAt error before
+widening the cohort. Matching output values alone cannot prove once-only
+evaluation, shared budgets or cancellation.
 
 ## Admission, refusals and follow-on ownership
 
-No production admission is recommended yet. Preserve the existing global typed transform refusal before artifact preparation in both compatibility and native export entry points. Preserve legacy import/export behavior and current nested-clone ownership. Do not fall back to a bare Generate, scalar map, legacy reducer, empty result, warning-only dropped filter, or partial design.
-
-No importer/exporter implementation issue is justified for the tested candidates. After reviewed ordinary save/reopen and complete execution evidence establish a faithful bounded form, the minimum disjoint follow-ons would be:
-
-1. A focused importer recognizer in a new sequence-composition module, with a small fallible call seam in the graph/sequence importer. It would require a unique complete topology, exact stage/capture signatures and transitive UDFs, explicit source/output owner reconstruction, and typed refusal for ambiguous or unsupported forms. It must preserve declared target lineage and allocate no accidental shared private owners.
-2. A focused exporter planner/renderer in a new sequence-composition module, with the existing preflight refusal replaced only for the qualified form. Preflight must finish before any siblings/design are published; unrelated forms retain the same typed refusal. It depends on the reviewed representation and the importer round-trip controls, with no shared module edits in parallel.
-
-These are conditional file-ownership boundaries, not created issues or authorization to implement them. If the experiment cannot preserve captures, positions, strict/error order, eager completion or host controls, document that finite limitation and keep refusal; do not broaden the feature to manufacture compatibility. Engine, model, generated backends, GUI authoring, generic interchange, annotations and JSON5 remain outside this design.
-
-- [x] Inventory source vocabulary and current typed refusals.
-- [x] Freeze synthetic descriptors, identities, ordering, positions and logical outcomes.
-- [x] Independently review this design and complete literals.
-- [x] Materialize all 24 complete public Projects and input shells.
-- [x] Qualify all 24 native comparisons and 51 separate typed export-refusal controls.
-- [x] Decide the tested candidates: retain the typed refusal; record the observed counterexamples and the unverified cells.
-- [ ] For a **new candidate only**, establish complete descriptor and execution preservation before opening importer/exporter implementation issues.
+Preflight, extension export and native export must preserve
+`MfdError::UnsupportedSequenceComposition { item }` before publication.
+Reconstructing a bare Generate, a legacy reducer or a partial design loses
+the transform. Legacy importer/exporter shapes and declared clone ownership
+are unchanged. A new form needs both descriptor and execution evidence.

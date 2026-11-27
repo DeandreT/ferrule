@@ -3,7 +3,7 @@
 The explicit [group-by generation profile](../code-generation.md#explicit-owned-group-by)
 uses authenticated paired contexts throughout source traversal, grouping and
 target construction. Its source ownership rules are defined in
-[Source ownership](source-ownership.md#group-by-occurrence-identity).
+[Source ownership](source-ownership.md#group-member-occurrence-identity).
 
 ## Terminal observations and grouped contexts
 
