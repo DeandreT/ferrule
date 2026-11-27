@@ -181,6 +181,9 @@ pub fn run(
             .args(["run", "--release", "--offline", "-j1", "--target-dir"])
             .arg(target)
             .args([
+                // Keep lint failures independent of the caller's compiler and linker flags.
+                "--config",
+                "build.warnings=\"deny\"",
                 "--config",
                 "profile.release.debug=0",
                 "--config",
@@ -191,8 +194,6 @@ pub fn run(
             .env_remove("CARGO_TARGET_DIR")
             .env_remove("CARGO_BUILD_TARGET_DIR")
             .env_remove("CARGO_BUILD_BUILD_DIR")
-            .env_remove("CARGO_ENCODED_RUSTFLAGS")
-            .env("RUSTFLAGS", "-D warnings")
             .arg("--")
             .arg(root.0.join("cases.json"))
             .arg(root.0.join("source-schema.json"))
