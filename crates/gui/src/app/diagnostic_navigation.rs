@@ -247,7 +247,7 @@ impl FerruleApp {
         self.narrow_pane = WorkspacePane::Source;
     }
 
-    fn show_inspector_for_navigation(&mut self) {
+    pub(super) fn show_inspector_for_navigation(&mut self) {
         self.show_inspector_panel = true;
         self.compact_dock_open = true;
         self.compact_dock = SideDock::Inspector;

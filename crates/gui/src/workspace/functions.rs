@@ -388,6 +388,7 @@ impl FerruleApp {
         let unavailable_blocks =
             source_conflicts(&self.project.source, &self.project.extra_sources);
         let mut requested_function = None;
+        let mut open_field_inspector = false;
         let mut error = None;
         sequence_consumer_duplication::begin(ui.ctx());
         let mut planned_edits = Vec::new();
@@ -483,6 +484,7 @@ impl FerruleApp {
                 ui,
             );
             canvas.viewport_width = interaction.viewport_width;
+            open_field_inspector = interaction.open_field_inspector;
             if interaction.focused {
                 self.mapping_workspace.focused = MappingDocument::Target(target_index);
             }
@@ -491,6 +493,9 @@ impl FerruleApp {
             planned_edits = viewer.planned_edits;
         });
         self.queue_canvas_edits(MappingDocument::Target(target_index), planned_edits);
+        if let Some(canvas) = self.mapping_workspace.target_canvases.get(&target_index) {
+            self.field_inspector_navigation(ui.ctx(), canvas.tools_id, open_field_inspector);
+        }
         if let Some(node) = sequence_consumer_duplication::take(ui.ctx()) {
             self.apply_sequence_duplication_request(MappingDocument::Target(target_index), node);
         }

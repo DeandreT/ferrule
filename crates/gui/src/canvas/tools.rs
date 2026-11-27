@@ -6,6 +6,10 @@ use egui_snarl::ui::SnarlViewer;
 use egui_snarl::{InPinId, NodeId, OutPinId, Snarl};
 use std::collections::{BTreeMap, BTreeSet};
 
+#[path = "field_wiring.rs"]
+mod field_wiring;
+pub(crate) use field_wiring::{active_field, dismiss_wiring, field_wiring, select_field};
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct Edge {
     pub from: CanvasNode,
@@ -53,6 +57,8 @@ struct State {
     widths: BTreeMap<CanvasNode, f32>,
     edit_requested: Option<CanvasNode>,
     focus: Option<Focus>,
+    wiring: Option<field_wiring::FieldWiring>,
+    follow_requested: Option<crate::canvas_search::FieldPin>,
     trace: Trace,
     edges: Vec<Edge>,
     bright: BTreeSet<Edge>,
@@ -133,7 +139,8 @@ pub(crate) fn begin(
             .node_ids()
             .map(|(_, node)| *node)
             .collect::<BTreeSet<_>>();
-        if state.edges != edges || state.nodes != current_nodes {
+        let connections_changed = state.edges != edges || state.nodes != current_nodes;
+        if connections_changed {
             state.preview = None;
             state.undo.clear();
             state.redo.clear();
@@ -183,12 +190,19 @@ pub(crate) fn begin(
             state.focus = None;
         }
         state.picker.retain(|edge| state.edges.contains(edge));
+        field_wiring::refresh(state, viewer, connections_changed);
         recompute(state);
     });
 }
 
 fn recompute(state: &mut State) {
     state.bright.clear();
+    if let Some(wiring) = &state.wiring {
+        state
+            .bright
+            .extend(wiring.connections.iter().map(|(edge, _)| *edge));
+        return;
+    }
     let Some(focus) = state.focus else {
         return;
     };
@@ -274,7 +288,7 @@ pub(crate) fn wire_bright(
 ) -> Option<bool> {
     let _ = (viewer, snarl);
     read(ctx, |state| {
-        state.focus.map(|_| {
+        (state.focus.is_some() || state.wiring.is_some()).then(|| {
             state
                 .visual_edges
                 .get(&(from, to))
@@ -329,6 +343,7 @@ fn choose(ctx: &egui::Context, viewer: &mut GraphViewer<'_>, edge: Edge) {
         }
     }
     edit(ctx, |state| {
+        state.wiring = None;
         state.focus = if state.focus == Some(Focus::Edge(edge)) {
             None
         } else {
@@ -342,6 +357,7 @@ fn choose(ctx: &egui::Context, viewer: &mut GraphViewer<'_>, edge: Edge) {
 
 pub(crate) fn node_click(ctx: &egui::Context, node: CanvasNode) {
     edit(ctx, |state| {
+        state.wiring = None;
         state.focus = if state.focus == Some(Focus::Node(node)) {
             None
         } else {
@@ -355,6 +371,7 @@ pub(crate) fn node_click(ctx: &egui::Context, node: CanvasNode) {
 
 pub(crate) fn clear(ctx: &egui::Context) {
     edit(ctx, |state| {
+        state.wiring = None;
         state.focus = None;
         state.picker.clear();
         state.bright.clear();
@@ -793,7 +810,15 @@ pub(crate) fn toolbar(
     if preview {
         propose(&mut state, snarl, selected, wire, ui.available_width());
     }
-    if let Some(focus) = state.focus {
+    if let Some(wiring) = &state.wiring {
+        ui.horizontal_wrapped(|ui| {
+            ui.label(&wiring.label);
+            if ui.button("Show field wiring").clicked() {
+                ui.ctx()
+                    .data_mut(|data| data.insert_temp(id.with("show_field_wiring"), true));
+            }
+        });
+    } else if let Some(focus) = state.focus {
         let summary = match focus {
             Focus::Edge(edge) => edge_label(viewer, edge),
             Focus::Node(node) => format!(
@@ -808,6 +833,18 @@ pub(crate) fn toolbar(
         };
         ui.horizontal_wrapped(|ui| {
             ui.label(summary);
+            if let Focus::Edge(Edge {
+                to: node @ CanvasNode::TargetBlock(_),
+                input,
+                ..
+            }) = focus
+                && ui.button("Follow target field").clicked()
+            {
+                state.follow_requested = Some(crate::canvas_search::FieldPin {
+                    node,
+                    semantic: input,
+                });
+            }
             for (mode, label) in [
                 (Trace::Direct, "Direct"),
                 (Trace::Inputs, "← Inputs"),
@@ -828,7 +865,8 @@ pub(crate) fn toolbar(
         }
     }
     let editing = search_open
-        || ui.ctx().egui_wants_keyboard_input()
+        || (ui.ctx().egui_wants_keyboard_input()
+            && (state.wiring.is_none() || ui.ctx().text_edit_focused()))
         || egui::Popup::is_any_open(ui.ctx())
         || GraphViewer::properties_open(ui.ctx());
     let picker_keyboard = !search_open
@@ -836,7 +874,8 @@ pub(crate) fn toolbar(
         && !GraphViewer::properties_open(ui.ctx());
     // Another open modal takes Escape as Cancel; it is drawn after the canvas,
     // so leave the key unconsumed. The connection picker is handled here.
-    let escape = !crate::ui_kit::other_modal_open(ui.ctx(), id.with("picker"))
+    let escape = (state.wiring.is_some() || state.focus.is_some() || !state.picker.is_empty())
+        && !crate::ui_kit::other_modal_open(ui.ctx(), id.with("picker"))
         && (!editing || (!state.picker.is_empty() && picker_keyboard))
         && ui.input_mut(|input| input.consume_key(egui::Modifiers::NONE, egui::Key::Escape));
     if !state.picker.is_empty() {
@@ -914,6 +953,8 @@ pub(crate) fn toolbar(
             }
             return;
         }
+    } else if escape && state.wiring.take().is_some() {
+        recompute(&mut state);
     } else if escape {
         state.focus = None;
         state.bright.clear();
@@ -1076,12 +1117,23 @@ pub(crate) fn take_edit(ctx: &egui::Context, node: CanvasNode) -> bool {
     .unwrap_or(false)
 }
 
+pub(crate) fn take_follow_request(ctx: &egui::Context) -> Option<crate::canvas_search::FieldPin> {
+    edit(ctx, |state| state.follow_requested.take()).flatten()
+}
+
 pub(crate) fn selected_node(ctx: &egui::Context, node: CanvasNode) -> bool {
     read(ctx, |state| state.selected.contains(&node)).unwrap_or(false)
 }
 
 pub(crate) fn focused_node(ctx: &egui::Context, node: CanvasNode) -> bool {
     read(ctx, |state| {
+        if let Some(wiring) = &state.wiring {
+            return wiring.pin.node == node
+                || state
+                    .bright
+                    .iter()
+                    .any(|edge| edge.from == node || edge.to == node);
+        }
         state.focus.is_some_and(|focus| match focus {
             Focus::Node(value) => value == node,
             Focus::Edge(edge) => edge.from == node || edge.to == node,
