@@ -4,6 +4,8 @@
 `to_bytes_bounded(schema, instance, options, limits)` are opt-in in-memory
 boundaries. Construct immutable `XbrlLimits` from `XbrlLimitOptions`, or use
 `XbrlLimits::default()`. Existing file/string APIs retain their behavior.
+To select this codec from a mapping host, see the
+[bounded document payload profile](../../docs/design/bounded-document-payloads.md).
 
 The bounded APIs reuse the native typed table reader and renderer. Namespace
 bindings in `XbrlBoundaryOptions` are required for selected concepts; equal local

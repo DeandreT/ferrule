@@ -2,13 +2,13 @@
 
 JSON5 companions accept one complete JSON5 object and return complete strict JSON. They are an explicit, additive generation profile: ordinary JSON APIs, descriptor codecs and default generated artifacts retain their existing behavior.
 
-The shared policy, both language integrations and CLI selection are merged: [policy PR #151](https://github.com/DeandreT/ferrule/pull/151), [Rust PR #153](https://github.com/DeandreT/ferrule/pull/153), [C# PR #155](https://github.com/DeandreT/ferrule/pull/155) and [CLI PR #156](https://github.com/DeandreT/ferrule/pull/156). The coverage below is specific to this profile within [#96](https://github.com/DeandreT/ferrule/issues/96).
-
 ## Explicit generation and public APIs
 
 Select `codegen_rust::emit_with_json5(program, options)` or `codegen_csharp::emit_with_json5(program)` to add the companions. Ordinary `emit` does not add them. C# includes the optional package-free runtime sources; Rust uses the existing local `codegen-runtime` dependency. Neither backend infers selection from a file suffix or stored `json5` settings.
 
-The CLI increment adds `generate --json5-adapters` and the public writer `cli::generate_project_with_json5_adapters`. The flag defaults to false and conflicts with `--csv-output`; ordinary `generate_project` retains its existing artifact tree. Unsupported projects refuse before destination publication. The complete artifact tree is staged and published into a new destination; an existing destination is not replaced. See [Code generation](code-generation.md#explicit-json5-companions) for the commands.
+Use `generate --json5-adapters` or `cli::generate_project_with_json5_adapters`.
+It conflicts with `--csv-output`. Ineligible projects refuse before publication;
+the [writer](code-generation.md#output-filesystem) requires a new destination.
 
 | Route | Rust generated method | C# generated method | Input and owned result |
 | --- | --- | --- | --- |
@@ -134,19 +134,6 @@ python3 scripts/generate_json5_identifiers.py \
 
 Duplicate input properties survive normalization and retain last-value-wins typed reading. Every lexical number is checked before projection, including an overwritten or undeclared member. `NaN`, signed infinities and decimal overflow to nonfinite values refuse at Syntax. Exact decimal and hexadecimal integer tokens use checked signed/unsigned 64-bit ranges. Decimal floating tokens keep their spelling, with a leading plus removed and missing decimal-side zeros supplied; they are not rounded and rewritten by the normalizer. Typed projection still applies the declared Int or Float domain, so a syntactically valid unsigned integer or an integer not exactly representable as Float can refuse at Input. Integer `-0` normalizes to `0`; a floating negative-zero lexical retains its sign.
 
-The current shared 75-record syntax fixture declares **48 normalization successes and 27 Syntax refusals**. Its two former Unicode deferrals, raw and escaped `雪`, now declare the same normalized name. The earlier ASCII-only inventory recorded 46 syntax successes and 29 refusals; six of those successes were later refused at Input, leaving 40 public successes in that historical inventory. Syntax fixtures alone do not establish a revised public mapping count. Root arrays, undeclared fields, required presence, null/type adaptation and numeric representability still belong to projection. This inventory is distinct from the compiled public-call cohort below. The existing local JSON5 reader is also separate; its nullable/nonfinite verification lane remains [#130](https://github.com/DeandreT/ferrule/issues/130).
-
-The separate [#135](https://github.com/DeandreT/ferrule/issues/135) regression source freezes these inventories:
-
-| Inventory | Literal expectations |
-| --- | --- |
-| Identifier documents | 75: 32 normalized results and 43 syntax refusals, in each language |
-| C# original UTF-16 encoding | 6 unpaired-surrogate refusals, including failure after a valid multibyte prefix |
-| Membership/domain | 40 rows: Rust checks 37 valid scalars plus 3 invalid `char`-domain integers; C# checks all 40 integer inputs |
-| Scaled budget conservation | 8 exact/one-over controls per language, covering syntax work, original bytes, normalized bytes and container depth |
-
-These are independently authored literal regression expectations, not additional generated mapping calls, physical boundary measurements or native/desktop evidence. They cover start/continuation categories, combining and supplementary scalars, Unicode-version changes, raw/escaped aliases, malformed surrogate escapes, exclusions and original error offsets. On **2026-10-10**, the pinned generator completed two independent output sets and a read-only byte check. Focused Rust verification passed nine syntax/identifier tests, 368 ordinary JSON tests, six runtime adapter tests and three C# emitter tests; all 185 C# smoke groups also passed. The corrected compiled public cohort completed 92 Rust and 92 C# JSON5 calls with no comparison failures. Four successful typed Unicode-name baseline checks in each language are separate from those 184 calls. Formatting and strict warnings passed for the affected Rust packages and CLI test targets. This verification does not rerun or extend the historical 48 physical calls or their memory measurements.
-
 ## Runtime limits and typed causes
 
 MiB means 1,048,576 bytes. The limits below apply to one API call; the policy limits above apply separately to each embedded schema.
@@ -165,23 +152,7 @@ Rust returns `Json5BoundaryError`, retaining source/target schema, syntax, input
 
 These are serialized-boundary limits, not a process-memory ceiling or a streaming contract. Complete source text, normalized text, parsed input, mapped instances and serialized output can coexist. Output limits can be checked after allocation; buffer capacity, allocator/GC/runtime overhead and host-owned data are separate. See [Memory use and boundary limits](memory-and-limits.md).
 
-<a id="physical-boundary-checks-and-measured-memory"></a>
-
-## Physical boundary checks
-
-- Original, exactly 64 MiB
-- Original, 64 MiB + 1 byte
-- Normalized, exactly 64 MiB
-- Normalized, 64 MiB + 1 byte
-- Output, exactly 64 MiB
-- Output, 64 MiB + 1 byte
-
-The public API does not expose the intermediate normalized buffer. These limits concern document bytes, not whole-process memory.
-
-<a id="increment-checklist"></a>
-
 The [allocation fixtures](../examples/performance/json5-allocations/README.md)
-exercise the exact and one-byte-over original, normalized and output limits.
-
-The [Unicode controls](../examples/performance/json5-newline/README.md)
+exercise the exact and one-byte-over original, normalized and output limits;
+the [Unicode controls](../examples/performance/json5-newline/README.md)
 include the final LF in the encoded output size.

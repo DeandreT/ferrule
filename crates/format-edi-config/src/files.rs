@@ -387,10 +387,7 @@ pub(super) fn resolve_message_config(
         let Ok(doc) = roxmltree::Document::parse(&text) else {
             continue;
         };
-        let matches = doc
-            .descendants()
-            .any(|node| node.has_tag_name("MessageType") && node.text() == Some(message_type));
-        if matches {
+        if super::selected_layout(&doc, message_type).is_some() {
             if found.is_some() {
                 return Err(ConfigError::Invalid(format!(
                     "message type `{message_type}` has multiple configuration files"

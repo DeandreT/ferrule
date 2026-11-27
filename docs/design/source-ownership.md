@@ -1,102 +1,59 @@
 # Explicit source ownership: contributor capability matrix
 
-This design defines explicit source ownership contracts and their semantic prerequisites. [#432](https://github.com/DeandreT/ferrule/issues/432) and [#452](https://github.com/DeandreT/ferrule/issues/452) coordinate implementation; linked issues and PRs track assignment, progress and verification.
-
-The owner/path foundation ([#433](https://github.com/DeandreT/ferrule/issues/433)) defines strict `SourceOwner`, `OwnedSourceRef` and `SourceSelector` data types. Owned field/position nodes ([#434](https://github.com/DeandreT/ferrule/issues/434)) and collection selectors ([#435](https://github.com/DeandreT/ferrule/issues/435)) add representation and typed capability gates. Interpreter execution, generated Rust/C#, native export and GUI authoring require their own qualification; wire representation alone does not enable them.
+An explicit source reference names an endpoint and a path within it. Reading,
+iterating and generating code for that reference each require an admitted
+operation; saving the reference does not authorize any of them.
 
 ## Ownership rules
 
-An owner selects immutable primary or one exact named endpoint. Preserve name bytes; reject empty named owners without trimming, alias/prefix fallback or new path restrictions. Paths are endpoint-local. Owned `[]` differs from inherited/null selection; absent-frame differs from root-frame. Preserve legacy fallback, while owned reads never borrow another endpoint. Generated item IDs, function inputs and JoinId remain separate identities.
+`SourceOwner` is either Primary or one exact, nonempty named endpoint. Do not
+trim names, resolve aliases or borrow a same-path value from another endpoint.
+`OwnedSourceRef` paths are endpoint-local: `[]` selects the root; an absent
+frame differs from an explicit root frame. An inherited selector, a generated
+item, a function input and a `JoinId` each have a different identity.
 
-Keep structural validity separate from executable capability. Preserve strict new forms and reject unsupported execution/emission, including directly constructed Program validation. P2 checks new-kind potential branches, called functions and demanded paths without changing legacy laziness. Codegen keeps its reachable lowering/metadata rules; native export needs whole-design checks before writing. Preserve saved GUI owner data/IDs/wires; the native editor authors only the forms described under [native editor authoring](#native-editor-authoring) and never converts saved legacy forms automatically.
+Validate the wire form separately from each executable capability, including
+hand-built Programs. Check potentially reached branches, calls and required
+paths without changing legacy laziness. Native export checks the whole design
+before publication. The editor preserves saved owners, IDs and wires.
 
 ## Native editor authoring
 
-The native editor authors owned fields, positions, source iterations, bounded
-exact-owner Lookups, and Count/direct-field Sum, Average, Minimum and Maximum
-aggregates. Other owned operators stay read-only. A legacy path names its endpoint only by
-leading text, so two cases are ambiguous: a named alias that the primary input
-or any input can define (the conservative alias-shadowing check), and a primary
-path whose first segment equals a named alias. Wiring a pin in either case
-creates an `OwnedSourceField` with the pin's exact owner, its absolute
-endpoint-local path and its innermost repetition as `frame` (`None` outside
-repetition). Once a project holds any owned form, every addressable pin authors
-owned reads. Duplicate or blank aliases and per-item dynamic inputs remain
-unaddressable and keep the refusal message. Projects without either condition
-author legacy `SourceField` paths exactly as before.
+An ambiguous source pin authors an `OwnedSourceField`: the chosen endpoint,
+absolute local path and innermost repetition (`None` outside repetition).
+Ambiguity includes a named alias that any input could define and a primary
+path beginning with a named alias. Once any owned form is present, all
+addressable pins use owned reads. Blank/duplicate aliases and per-item dynamic
+inputs are unaddressable; other legacy projects keep `SourceField`.
 
-Owned reads are visible canvas nodes titled with their owner; legacy fields
-stay hidden behind source pins. In an ambiguous or owned project the scope
-editor offers owner-qualified collections, producing `ScopeIteration::OwnedSource`
-for ordinary constructed scopes; owned scopes with per-item document outputs or
-specialized constructions stay read-only. A position's properties likewise
-choose an owner and collection, and the palette inserts an owned position once
-the project uses ownership. A legacy scope or position converts only on that
-explicit choice. Wires record as typed connect commands; scope and property
-choices record as snapshots.
+Owned fields appear as canvas nodes. Ordinary constructed scopes can choose
+owner-qualified iteration; positions can choose an owner and collection.
+Showing a legacy form never converts it. Per-item document outputs and
+specialized scopes stay read-only.
 
-The canvas menu's **Lookup from one input** action creates an explicit-owner
-Lookup with one disconnected needle input and valid fields from the selected
-static endpoint. The **Input**, **Collection**, **Key** and **Return field**
-controls use endpoint-local paths, including nested repeating collections and
-scalar fields below non-repeating wrappers. Primary and named inputs with the
-same path remain distinct, including a named alias shadowed by a primary field.
-Changing the owner or collection keeps fields that still exist and selects the
-first valid local field for those that do not. The needle node and wires do not
-change. A missing match returns Null; another input cannot supply the match.
+**Lookup from one input** creates a disconnected needle with valid local
+collection, key and return fields. Changing the endpoint or collection keeps
+valid fields, defaults others to the first available field, and leaves the
+needle and wires alone. **Use an exact input** converts a saved legacy Lookup
+only on request; an invalid saved path is not repaired on display.
 
-The ordinary **Lookup** palette entry and its legacy path form remain available.
-A saved legacy Lookup converts only through **Use an exact input**. Rendering,
-opening settings and invalid saved paths do not trigger conversion or repair.
-Creation and property changes use typed InsertNode/EditNode history commands;
-Undo/Redo and the layout sidecar retain IDs, wires and positions on primary and
-named-target canvases.
+The [aggregate editor](owned-collection-aggregates.md#native-editor) offers
+Count and direct-field Sum, Average, Minimum and Maximum. Lookup and these
+aggregates use static endpoints (at most 4,096 schema nodes and 64 levels
+each). Dynamic inputs, document sets, unavailable owners, functions, grouped
+scopes and their descendants stay read-only for these operations. Other owned
+operators, including CollectionFind, have no such authoring permission.
 
-**Count**, **Sum**, **Average**, **Minimum** and **Maximum from one input** create
-bounded owner-qualified aggregates. Count includes collections of empty groups;
-the other operations select an item scalar without crossing nested repetition.
-These forms have no argument or computed value. Their Input/Collection/Value
-controls are endpoint-local and their legacy conversion is explicit. Other
-aggregate forms stay read-only; Sum, Average, Minimum and Maximum reject Decimal
-values. See the [native aggregate editor](owned-collection-aggregates.md#native-editor).
+The same check applies to creation, assignment, conversion and needle edits.
+It walks potential branches, consumers and grouping ancestry: adding grouping
+cannot invalidate an existing descendant, and controls skip unsuitable
+defaults. An excluded child does not disable an ordinary sibling. Computed
+properties, filter/map and failures are outside this inspector subset;
+presence conditions have their own admission. Rejected edits leave graphs,
+wires and history intact. Typed node/wire commands and scope snapshots
+preserve Undo/Redo, node identity and layout on primary and named canvases.
 
-Blank or duplicate named owners, dynamic inputs, document sets and non-static
-schema choices are not offered. Stored unavailable owners remain read-only.
-Lookup and bounded aggregate authoring is confined to ungrouped ordinary target scopes and excludes isolated
-functions and expressions shared with specialized item, failure, dynamic-output
-or construction contexts. The picker admits at most 4096 schema nodes and 64
-levels per endpoint. CollectionFind and other owned operators remain unchanged.
-
-The same closed, typed-input policy protects conversion and needle edits: even
-parent inputs of legacy Lookup, Aggregate and dynamic-field operators inherit
-those operators' excluded contexts. Every potential branch is inspected, not
-only the branch selected by the current input. Output wires are checked against
-the actual receiving scope and its ancestry; an excluded child does not prevent
-creation or connections in an ordinary sibling. Rejected wire actions leave the
-graph, existing wires, orphan-field state and history unchanged.
-
-Inspector expression selectors use that same admission boundary for bindings,
-filters, grouping, sort keys and window bounds, including indirect Lookup and aggregate
-dependencies. Computed-property, filter/map and failure expressions stay outside this
-owned-expression authoring subset; presence conditions retain their separate scalar
-admission policy. Saved unsupported scope expressions are displayed read-only.
-Scope edits also check newly excluded expression placements before recording
-history, without validating or repairing unrelated incomplete project content.
-
-Grouped scopes and their descendants keep owned Lookups and aggregates read-only, even if an
-individual expression would execute there. Introducing an owned expression can
-activate owned admission for the whole group and invalidate existing legacy
-siblings. Creation, assignment, conversion and needle edits use this same
-boundary; adding grouping to a subtree that already uses a Lookup or aggregate is refused.
-Nongrouped siblings remain independently authorable.
-Prospective scope changes compare the complete grouping ancestry of every
-reachable descendant owned expression, including already read-only grouped descendants.
-Grouping defaults are chosen in the proposed grouped context, skipping owned-expression
-dependencies and leaving the control unset when no ordinary candidate exists.
-
-Generated admission is one explicit capability set per entry point; each
-generation companion below is a named preset of independent capabilities. See
-[owned generation capabilities and presets](../code-generation.md#owned-generation-capabilities-and-presets).
+For generated entry points, see the [capabilities and presets](../code-generation.md#owned-generation-capabilities-and-presets).
 
 ## Scalar target construction
 
@@ -132,52 +89,26 @@ and children use the resulting grouped context. These distinct roles also govern
 dependency discovery. See [the generated group-by contract](../code-generation.md#explicit-owned-group-by)
 for ordering, explicit profile selection and metadata admission.
 
-Adjacent grouping compares only the last constructed run. Filtering before
-grouping can bring equal keys together; removing an unretained run afterward
-does not merge neighboring runs. The [adjacent contract](owned-group-adjacent-by.md)
-uses the same authenticated occurrence and member rules under its own explicit
-generation companion.
-
-Starting grouping retains the first false prefix and starts each subsequent
-group at a true Boolean boundary. Boundary evaluation precedes member retention;
-dropping a group does not recompute boundaries. The
-[Starting contract](owned-group-starting-with.md) uses the same member identity
-and root-pin rules with Boolean controls and no grouping-key text charge.
-
-Ending grouping closes the current group at each true Boolean boundary; the
-candidates after the last true boundary form a trailing group. Boundary
-evaluation precedes member retention, and dropping a group never reopens or
-merges its neighbors. The [Ending contract](owned-group-ending-with.md) uses the
-same member identity, root-pin rules and Boolean-control resource model.
-
-Fixed-block grouping fills consecutive blocks of a positive size evaluated once
-in the receiving parent after window bounds; the last block may be partial.
-Member retention runs per candidate, and dropping a block never refills its
-neighbors. The [IntoBlocks contract](owned-group-into-blocks.md) uses the same
-member identity and root-pin rules and charges no grouping-key text.
+| Grouping | What establishes a group after candidate selection |
+| --- | --- |
+| [By](owned-group-by.md) | Equal keys belong to one group, even when their members are not adjacent. |
+| [AdjacentBy](owned-group-adjacent-by.md) | A contiguous run of equal keys. Dropping an intervening run does not merge its neighbors. |
+| [StartingWith](owned-group-starting-with.md) | Keep the first false prefix; each subsequent true boundary starts a group. |
+| [EndingWith](owned-group-ending-with.md) | A true boundary closes its group; keep the trailing members. |
+| [IntoBlocks](owned-group-into-blocks.md) | Evaluate a positive size once in the parent after window bounds. Keep a partial last block; dropping one never refills it. |
 
 ## Parent-context scalar sequence selection
 
-`SequenceItemAt` over Generate, Tokenize, TokenizeByLength or TokenizeRegex uses
-the receiving source context for both producer arguments and its once-evaluated
-index. Production completes first, including empty and null-suppressed sequences;
-producer errors precede the index. The consumer creates no source frame, so
-endpoint ownership, parent pins and group representative/member positions retain
-their ordinary meaning. Nested eligible ItemAt expressions use that same rule.
-
-The explicit generated companion selects an orthogonal consumer permission
-beside the target-control profile. Inherited closed contexts and owned failure
-eligibility remain authoritative. See [the ItemAt contract](owned-sequence-item-at.md)
-for admission, complete named catalogues and resource boundaries.
+[ItemAt](owned-sequence-item-at.md) finishes Generate, Tokenize,
+TokenizeByLength or TokenizeRegex before evaluating its index once, even for
+an empty sequence. Both phases keep the receiving frames; no item frame is
+created. Its consumer permission is separate from target and failure controls.
 
 ## Failure-rule endpoint walks
 
-An owned failure rule walks rows from exactly its declared endpoint, beside the
-unchanged legacy `source` and `sequence` forms. The selected owner's absent or
-empty collection yields no rows and is never repaired by another endpoint with
-the same path; an unsupplied owner is a typed failure. Rule order, selection and
-lazy messages keep their legacy meaning. See the
-[failure contract](owned-failure-sources.md).
+An [owned failure rule](owned-failure-sources.md) walks the declared owner:
+absent or empty collections yield no rows; an unsupplied owner fails. Rule
+order, selection and lazy messages follow the legacy contract.
 
 ## Owned path-hierarchy input collections
 
@@ -214,56 +145,35 @@ Native export and GUI authoring remain closed.
 
 ## Recursive collection roots
 
-An owned recursive collection walk selects its root collection from exactly its
-declared endpoint, beside the unchanged legacy `recursive_collect` form. Child,
-descent and value paths stay relative to each selected group and never select
-an endpoint, and the generated item stays a private declaration. Only a Basic
-parent-context ItemAt consumes the owned producer. See the
-[recursive collection contract](owned-recursive-collect.md).
+[RecursiveCollect](owned-recursive-collect.md) selects only its root by
+endpoint. Child, descent and value paths are local to each group; the item
+is private. Only Basic parent-context ItemAt consumes this owned producer.
 
 ## Generated-item predicates
 
-`SequenceExists` over the same four producers evaluates producer arguments in
-the receiving source context, then evaluates its predicate once per item until
-the first true result. The predicate context appends only a private scalar item
-frame: the item declaration and empty-path ordinary reads see it, while owned
-reads keep the receiving owner, pins and positions. Producer errors precede the
-predicate, and an empty sequence never evaluates it. RecursiveCollect, FilterMap
-and closed operators inside the predicate remain closed. See
-[the Exists contract](owned-sequence-exists.md).
+[Exists](owned-sequence-exists.md) uses the four scalar producers admitted
+by ItemAt. A private item frame supplies the predicate's ordinary reads;
+owned reads keep their receiving pins and positions. Scanning stops at
+the first `true`; empty input never evaluates the predicate.
 
 ## Owned recursive filtering
 
-A recursive-filter scope with an owned source selector filters groups from
-exactly that endpoint; the selector is its only owner and the plan's children
-and items stay relative to each visited group. Visited groups and items keep the
-owner and a same-shape collection identity, so the predicate's owned reads and
-positions resolve the current item and innermost group without falling back.
-See the [recursive filter contract](owned-recursive-filter.md).
+[RecursiveFilter](owned-recursive-filter.md) takes its only owner from the
+source selector. Child and item paths stay local to the visited group; the
+predicate can read its current item and innermost group position.
 
 ## Owned search
 
-Owned Lookup and CollectionFind walk one collection of exactly their declared
-endpoint, beside the unchanged legacy nodes. A lookup needle executes once in
-the parent context; key, value, predicate and find value read only the selected
-item, which is the latest occurrence of its owner. The latest active frame of
-the same owner anchors the walk, so a search inside an owned row, group or block
-sees only that row's, group's or block's items. An absent or empty selected
-collection misses without consulting another endpoint, Null-like keys never
-match, and the first match in source order wins with a miss as `Null`. See the
-[search contract](owned-lookup-find.md).
+[Lookup and CollectionFind](owned-lookup-find.md) walk the collection anchored
+by its latest same-owner prefix. A lookup's needle runs once in the parent;
+its key and return path are item-relative. Find evaluates its predicate and
+return expression in the item context. The first match wins; a miss is `Null`.
 
 ## Owned collection aggregates
 
-An owned aggregate qualifies one collection of exactly its declared endpoint
-with the owned search walk, beside the unchanged legacy aggregate. Its value
-path or expression reads each selected item as the latest occurrence of its
-owner, while the `join` separator or `item_at` index evaluates once in the
-parent context after every item value. A grouped or block scope therefore
-reduces only its members, an ordinary owned row anchors same-owner walks at
-that row, and an absent or empty collection reduces as empty without consulting
-another endpoint. Every legacy reducer keeps its empty, null and type policy.
-See the [aggregate contract](owned-collection-aggregates.md).
+[Collection aggregates](owned-collection-aggregates.md) use the search walk.
+A value path or expression reads each selected item; a separator or index
+runs once in the parent after the items, even for an empty collection.
 
 ## Owned join identity
 
@@ -280,75 +190,43 @@ refuse owned joins; the GUI shows a saved one read-only.
 
 ## Owned join tuples
 
-Each owned join source contributes members only from its declared endpoint,
-anchored by the latest active frame of the same owner, so a source equal to an
-active owned row is that row; another endpoint with the same path never
-supplies members. Tuples keep left-major order, duplicates and the legacy
-Null-like key exclusion. Strict `owned_join_field` and
-`owned_join_source_position` reads bind one member by its full identity and
-return a scalar or its raw source position; the flattened tuple position reuses
-`join_position` and follows the legacy filter, sort and compaction phases. A
-tuple context admits only those reads and pure scalar nodes. The interpreter
-and an explicit generation companion execute owned joins. See the
-[owned join contract](owned-joins.md).
+[Join members](owned-joins.md#members-and-tuples) keep their own endpoint
+and raw source position. Tuples retain left-major order and duplicates;
+null-like keys never match. `join_position` is the flattened tuple
+position and changes through filtering, sorting and compaction.
 
 ## Owned joined aggregates
 
-A strict `owned_join_aggregate` reduces the tuples of one owned plan with the
-legacy reducers, beside the unchanged legacy `join_aggregate`. The plan runs in
-the aggregate's receiving context, so active-source correlation binds by owner
-and absolute collection: a source equal to an active owned row is that row, a
-source inside an owned group or block walks only its members, and a same-path
-source of another owner keeps its own root walk. The optional expression reads
-each tuple with only this join active and the closed tuple subset; the
-argument runs once in the receiving context after every tuple value. Empty,
-null and type policies, positions, stage order and equality are the legacy
-ones, and the `JoinId` stays independent. The owned join generation companion
-executes it; see the [owned join contract](owned-joins.md#joined-aggregates).
+A [joined aggregate](owned-joins.md#joined-aggregates) runs its owned plan
+in the receiving context. Only this join's members are active in the tuple
+expression; the argument runs once back in the parent. A group contributes
+its own members while another owner with the same path keeps its own walk.
 
 ## Dynamic source-field objects
 
-An owned dynamic source-field read selects its open object from exactly its
-declared endpoint and frame, beside the unchanged legacy `dynamic_source_field`
-node. The key is a parent-context scalar evaluated before any source access;
-a missing chosen property is Null and never borrowed from another owner or
-frame. Root paths, absent frames and explicit root pins keep their distinct
-owned-field meanings. See the [dynamic source-field contract](owned-dynamic-field.md).
+A [dynamic field](owned-dynamic-field.md) evaluates its key in the parent
+before accessing the declared owner's open object. A missing property is
+`Null`. A root path, an absent frame and an explicit root pin remain distinct.
 
 ## Dynamic driver loading
 
-An owned dynamic driver names its collection by exact endpoint, beside the
-unchanged legacy driver path. A loading scope walks exactly that collection in
-its receiving context and roots each loaded document under its own driver row;
-nested loading, driver reads and positions never borrow another driver,
-document or endpoint, and legacy aliases never reach an owned dynamic source.
-See the [dynamic loading contract](owned-dynamic-loading.md).
+[Dynamic loading](owned-dynamic-loading.md) roots each document under its
+own driver row. Nested driver reads and positions cannot borrow another
+driver's frame. A legacy alias never selects an owned dynamic source.
 
 ## Document-set paths
 
-An ungrouped owned scope selecting a document-set endpoint with no active
-document walks each member in set order; the member's document roots its
-owner, so nested scopes and reads of that owner see it and never re-enter the
-set, while other owners keep their own roots and documents. A strict
-`owned_source_document_path` returns the location of exactly its owner's
-active member and fails with a typed `MissingDocumentPath` otherwise: another
-owner's document, an uniterated set and an ancestor never answer it. Grouped
-scopes and every other owned walker keep refusing document sets, and dynamic
-owners and the XML document-set boundary adapters stay closed. See the
-[document-path contract](owned-document-path.md).
+An ungrouped owned scope enters each member in set order. Nested reads of
+that owner stay in the active document. The [document-path expression](owned-document-path.md)
+returns its location or `MissingDocumentPath`; another owner or ancestor
+cannot supply it. Grouped scopes and other owned walkers refuse document sets.
 
 ## Generated-item reductions
 
-`SequenceAggregate` over the same four producers evaluates producer arguments in
-the receiving source context, then its predicate and value expression once per
-item in order, and finally its argument once in the receiving context, even for
-an empty sequence. The item phases append only a private scalar item frame with
-the raw item position; owned reads keep the receiving owner, pins and positions,
-and the argument never sees the item. Count, sum, avg, min, max, join and
-item_at keep their empty, numeric and typed-failure rules. RecursiveCollect,
-FilterMap and closed operators in any phase remain closed, and collection and
-joined aggregates keep their own scopes. See
-[the aggregate contract](owned-sequence-aggregate.md).
+A [sequence aggregate](owned-sequence-aggregate.md) shares ItemAt's four
+scalar producers. Only the predicate and value expression see the private
+item and its raw position. The argument runs in the receiving context,
+including for an empty sequence.
 
 ## Owned XML element serialization
 
@@ -405,103 +283,29 @@ Interpreter, generated Rust and generated C# share the selection and the legacy
 construction's ordering, renaming and omission rules. Native export and GUI
 authoring remain closed; the GUI shows the saved scope read-only.
 
-## Existing coordinated issues
+<a id="existing-coordinated-issues"></a>
+<a id="specialized-follow-on-issues"></a>
 
-Reuse these existing scopes; the capability column concerns **explicit ownership**.
-
-| Issue / scope | Dependency | Capability contract |
-|---|---|---|
-| [#433](https://github.com/DeandreT/ferrule/issues/433) DTOs | None | Strict owner/path data types; execution qualifies separately |
-| [#434](https://github.com/DeandreT/ferrule/issues/434) owned field/position nodes | [#433](https://github.com/DeandreT/ferrule/issues/433) | Strict new kinds, schema checks and closed typed gates |
-| [#435](https://github.com/DeandreT/ferrule/issues/435) collection/root/nested selector | [#434](https://github.com/DeandreT/ferrule/issues/434) | Source slot/getters/mutators must preserve owner |
-| [#436](https://github.com/DeandreT/ferrule/issues/436) interpreter registry/basic frames | [#435](https://github.com/DeandreT/ferrule/issues/435) | exact scalar, collection and position reads; separate generated/function contexts |
-| [#437](https://github.com/DeandreT/ferrule/issues/437) Rust runtime registry/walks | [#435](https://github.com/DeandreT/ferrule/issues/435) | preserve legacy context; no emitter opening alone |
-| [#438](https://github.com/DeandreT/ferrule/issues/438) C# runtime registry/walks | [#435](https://github.com/DeandreT/ferrule/issues/435) | separate registry from legacy merged named wrapper |
-| [#439](https://github.com/DeandreT/ferrule/issues/439) paired basic lowering/emission | [#436](https://github.com/DeandreT/ferrule/issues/436),[#437](https://github.com/DeandreT/ferrule/issues/437),[#438](https://github.com/DeandreT/ferrule/issues/438) | scalar AND collection/position/nesting, checked in all three engines |
-| [#440](https://github.com/DeandreT/ferrule/issues/440) sort/filter/windows | [#439](https://github.com/DeandreT/ferrule/issues/439) | parent/item phases and frame provenance |
-| [#441](https://github.com/DeandreT/ferrule/issues/441) group-by/post-group filter | [#440](https://github.com/DeandreT/ferrule/issues/440) | grouped frame and representative item |
-| [#442](https://github.com/DeandreT/ferrule/issues/442) adjacent grouping | [#441](https://github.com/DeandreT/ferrule/issues/441) | adjacent key/item frames |
-| [#443](https://github.com/DeandreT/ferrule/issues/443) starting-boundary grouping | [#442](https://github.com/DeandreT/ferrule/issues/442) | boundary phases/positions |
-| [#444](https://github.com/DeandreT/ferrule/issues/444) ending-boundary grouping | [#443](https://github.com/DeandreT/ferrule/issues/443) | membership and frame positions |
-| [#445](https://github.com/DeandreT/ferrule/issues/445) fixed-block grouping | [#444](https://github.com/DeandreT/ferrule/issues/444) | block/window membership |
-| [#446](https://github.com/DeandreT/ferrule/issues/446) Lookup/CollectionFind | [#445](https://github.com/DeandreT/ferrule/issues/445) | parent needle, owned item predicate/value, missing result Null |
-| [#447](https://github.com/DeandreT/ferrule/issues/447) collection aggregates | [#446](https://github.com/DeandreT/ferrule/issues/446) | item predicate/value versus parent argument; excludes generated sequences |
-| [#448](https://github.com/DeandreT/ferrule/issues/448) join wire/identity | [#447](https://github.com/DeandreT/ferrule/issues/447) | owner+collection and separate JoinId; execution closed |
-| [#449](https://github.com/DeandreT/ferrule/issues/449) join tuples | [#448](https://github.com/DeandreT/ferrule/issues/448) | source-row versus flattened tuple positions |
-| [#450](https://github.com/DeandreT/ferrule/issues/450) joined aggregates/correlation | [#449](https://github.com/DeandreT/ferrule/issues/449) | active-source and argument phases |
-| [#451](https://github.com/DeandreT/ferrule/issues/451) document-path metadata | [#450](https://github.com/DeandreT/ferrule/issues/450) | exact owned document-set member and physical row metadata; excludes dynamic loading/XML routes |
-| [#452](https://github.com/DeandreT/ferrule/issues/452) specialized matrix | Coordination | Defines focused operator contracts and semantic prerequisites |
-
-## Specialized follow-on issues
-
-[#463](https://github.com/DeandreT/ferrule/issues/463)–[#474](https://github.com/DeandreT/ferrule/issues/474) depend directly on [#439](https://github.com/DeandreT/ferrule/issues/439). [#475](https://github.com/DeandreT/ferrule/issues/475) also depends on [#439](https://github.com/DeandreT/ferrule/issues/439); [#451](https://github.com/DeandreT/ferrule/issues/451) is conditional only when an explicitly included owned document-metadata consumer needs it. An operator's special producer is a prerequisite only for combinations using that producer. Common IR/runtime/emitter file edits require coordination, not blanket serialization behind joins or metadata work.
-
-Each specialized operator qualifies owned integration, interpreter execution, lowering and Rust/C# runtime/emission before its capability opens. Native export and GUI owner authoring qualify separately. The source column identifies legacy behavior and the responsible edit boundary.
-
-| Issue / operator | Direct dependency | Source ownership / focused missing behavior |
-|---|---|---|
-| [#463](https://github.com/DeandreT/ferrule/issues/463) RecursiveCollect | [#439](https://github.com/DeandreT/ferrule/issues/439) | `mapping/model/graph.rs`, `engine/sequence.rs`, runtime recursive contexts; owned root collection, relative child/descent/value paths |
-| [#464](https://github.com/DeandreT/ferrule/issues/464) RecursiveFilter construction | [#439](https://github.com/DeandreT/ferrule/issues/439) | `engine/recursive_filter.rs`, runtime filter/context; reuse [#435](https://github.com/DeandreT/ferrule/issues/435) selector, retain copied group/items/positions |
-| [#465](https://github.com/DeandreT/ferrule/issues/465) PathHierarchy | [#439](https://github.com/DeandreT/ferrule/issues/439) | mapping plan, engine/runtime builders; qualify input collection, not generated output paths |
-| [#466](https://github.com/DeandreT/ferrule/issues/466) AdjacencyTree | [#439](https://github.com/DeandreT/ferrule/issues/439) | mapping adjacency and engine/runtime tree; qualify rows, keep key/parent relative and root expression in parent |
-| [#467](https://github.com/DeandreT/ferrule/issues/467) DynamicSourceField | [#439](https://github.com/DeandreT/ferrule/issues/439) | graph, resolver/context and emitters; exact object/key/frame lookup, not document loading |
-| [#468](https://github.com/DeandreT/ferrule/issues/468) XmlMixedContent expression | [#439](https://github.com/DeandreT/ferrule/issues/439) | expression, XML validation/runtime; exact atomization and replacement occurrence phases |
-| [#469](https://github.com/DeandreT/ferrule/issues/469) XmlSerialize expression | [#439](https://github.com/DeandreT/ferrule/issues/439) | expression and XML runtime; owned structured read, unchanged schema/options/error order |
-| [#470](https://github.com/DeandreT/ferrule/issues/470) XmlMixedContent construction | [#439](https://github.com/DeandreT/ferrule/issues/439) | scope evaluation and mixed runtime; reuse selector and actual item's XML metadata/children |
-| [#471](https://github.com/DeandreT/ferrule/issues/471) failure-rule Source iteration | [#439](https://github.com/DeandreT/ferrule/issues/439) | project, failure runtime/emitters; strict owned iteration beside legacy; first failure before publication |
-| [#472](https://github.com/DeandreT/ferrule/issues/472) SequenceExists | [#439](https://github.com/DeandreT/ferrule/issues/439) + used producer gate | sequence/context/reducers; separate generated item from endpoint read; first-true/empty-false behavior |
-| [#473](https://github.com/DeandreT/ferrule/issues/473) SequenceItemAt | [#439](https://github.com/DeandreT/ferrule/issues/439) + used producer gate | sequence/context; values before parent index; one-based bounds/Null/error behavior |
-| [#474](https://github.com/DeandreT/ferrule/issues/474) SequenceAggregate | [#439](https://github.com/DeandreT/ferrule/issues/439) + used producer gate | sequence/aggregate runtimes; item predicate/value, parent argument; separate from [#447](https://github.com/DeandreT/ferrule/issues/447)/#450 |
-| [#475](https://github.com/DeandreT/ferrule/issues/475) dynamic driver loading | [#439](https://github.com/DeandreT/ferrule/issues/439); [#451](https://github.com/DeandreT/ferrule/issues/451) only if needed | dynamic path/source iteration and context walks; driver/loaded owner identity, success-only cache and laziness |
-| [#476](https://github.com/DeandreT/ferrule/issues/476) pipeline pre-input gate | [#434](https://github.com/DeandreT/ferrule/issues/434); coordinate [#435](https://github.com/DeandreT/ferrule/issues/435) | CLI `pipeline.rs`/`pipeline_preview.rs`; reject unsupported owned stages/targets before read/decode |
-
-Source shorthand omits `crates/` and `src/`; issues supply exact file lists. Reconcile callers/C# runtime helpers; registration alone is not equivalence. Key anchors: `mapping/src/source_owner.rs`, `engine/src/resolve.rs`, `codegen/src/lower.rs`.
-
-Legacy native planners have restrictions and warning/refusal paths, not explicit-owner support. DynamicSourceField warns/skips; some sequence renderers skip unexported items. Preserve that behavior and add strict owned gates without claiming universal legacy refusal or partial owned export.
-
-Ordinary sequence arguments and dynamic bindings/children use core reads/frames. Preserve Generate-only FilterMap, CopyCurrentSource/concat contexts and deliberate primary-only helpers; add no arbitrary endpoint producer.
+The [original ownership design](https://github.com/DeandreT/ferrule/issues/432)
+and [operator breakdown](https://github.com/DeandreT/ferrule/issues/452)
+give the history. The contracts above describe each operator's supported
+shape. For example, an owned dynamic field does not authorize document
+loading, and a scoped sequence consumer does not authorize an arbitrary
+endpoint as its producer. Legacy native planners retain their own warning
+and skip paths; they are not an export strategy for explicit owners.
 
 ## Pipeline admission is all-stage, all-target
 
-The engine evaluates **every stage and every primary/named stage target**, including disconnected stages and targets not selected for publication (`engine/src/pipeline.rs`). Selected outputs control publication only. [#476](https://github.com/DeandreT/ferrule/issues/476) must not introduce pruning.
+The engine evaluates every stage and every primary/named stage target,
+including disconnected stages and targets not selected for publication.
+Selection controls which outputs are published. Filesystem and preview hosts must check capabilities
+before acquisition, including called graphs and potential branches, with
+structural and identity errors retaining precedence. An unsupported
+disconnected stage must not reach a loader, parser or observer.
 
-The filesystem and preview host seams validate, then read/decode, then call the engine (`cli/src/pipeline.rs`; `pipeline_preview.rs`). Add P2 capability checks before acquisition, preserving structural/identity precedence and engine refusal before evaluation/publication. Pipeline hosts require their own all-stage and all-target admission gate.
+<a id="acceptance-checklist"></a>
 
-Test an unselected/disconnected owned stage or named target: refuse before reader/parser/loader/debug/trace callbacks, leave output markers unchanged and produce no preview result. Cover every engine-evaluated stage/target's called graphs and new-kind branches, preserving P2 valid-unused-storage rules and legacy laziness. [#476](https://github.com/DeandreT/ferrule/issues/476) enables neither owned execution nor pruning.
-
-## Acceptance checklist
-
-- Reconcile one focused scope/current callers and coordinate common files; add only real semantic prerequisites.
-- Specify complete expected values/errors for colliding owners, missing selected owner, root/nested/group frames, positions, phases, limits and laziness.
-- Preserve strict new wire, old-reader refusal and legacy behavior. Keep unsupported execution/emission rejected while dependencies land.
-- Split representation/gates, interpreter/runtime and paired emission into buildable PRs where needed. Compare complete three-engine results before opening only that operator.
-- Gate native export/GUI authoring separately; preserve saved owner data/IDs/wires. Run focused checks and required CI, then update status from results.
-
-```mermaid
-flowchart TD
-  P1["#433 DTOs"] --> P2["#434 owned nodes / closed gates"]
-  P2 --> P3["#435 scope selector / closed gates"]
-  P3 --> I["#436 interpreter"]
-  P3 --> R["#437 Rust runtime"]
-  P3 --> C["#438 CSharp runtime"]
-  I --> B["#439 paired basic ownership"]
-  R --> B
-  C --> B
-  B --> W["#440 sort/filter/windows"]
-  W --> G1["#441 group-by"]
-  G1 --> G2["#442 adjacent"]
-  G2 --> G3["#443 starting"]
-  G3 --> G4["#444 ending"]
-  G4 --> G5["#445 blocks"]
-  G5 --> L["#446 lookup/find"]
-  L --> A["#447 collection aggregates"]
-  A --> J0["#448 join wire"]
-  J0 --> J1["#449 tuples"]
-  J1 --> J2["#450 joined aggregates"]
-  J2 --> D["#451 document metadata"]
-  B --> S["#463–#474 independent specialized scopes"]
-  B --> LD["#475 dynamic loading"]
-  D -. "only included owned metadata behavior" .-> LD
-  P2 --> H["#476 all-stage/target pre-input gate"]
-  P3 -. "later scope composition" .-> H
-```
+The [portable cohorts](../../conformance/README.md#portable-basic-cohorts)
+exercise colliding owners, missing sources, pinned frames, phase order and
+typed failures. Interpreter results, compiled Rust/C# calls, native export
+and editor authoring are separate evidence.

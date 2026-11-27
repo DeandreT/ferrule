@@ -27,8 +27,8 @@ Joins, sorting, grouping, generated sequences, copies, multiple targets, and
 retained preview results may require additional collections or clones. A
 file-host pipeline run drops each host input and unselected stage target after
 its last reading stage, so a linear chain holds about one input and one output
-at a time. A small serialized file can still create many owned strings and tree
-nodes. One very wide row has a different allocation pattern from many short rows.
+at a time. A small serialized file can still create many owned strings and
+tree nodes. One very wide row has a different allocation pattern from many short rows.
 Grouping owns each group's member collection but borrows intermediate ancestors
 crossed by a multi-hop source path.
 
@@ -71,14 +71,14 @@ deny-by-default filesystem roots and HTTP origins, plus explicit work,
 evaluation-depth and join-row budgets. It enforces a policy inside the process
 and is not a sandbox.
 
-The [PDF worker contract](pdf-worker-contract.md) is a proposed filesystem host
-route for #104. Its Linux child, transport limits, deadline, cancellation and
-owned cleanup require implementation and qualification. Current PDF library and
-payload calls remain in-process; no worker or RSS ceiling is claimed here.
+For file-backed PDFs, the CLI and native editor offer an opt-in
+[Linux x86_64 worker](pdf-worker-contract.md#eligible-host-and-compatibility).
+It isolates extraction; mapping and output remain in the parent. Payload calls
+stay in-process. Neither route promises a whole-process RSS ceiling.
 
 See [Project files](project-files.md), [Supported formats](formats.md),
 [Code generation](code-generation.md), and the
-[payload API](../README.md#quick-start) for the full boundary contracts.
+[payload API](running-mappings.md#rust-payload-host) for the full boundary contracts.
 Relevant implementations include
 [payload budgets](../crates/cli/src/payload.rs),
 [ordinary CSV encoding](../crates/format-csv/src/lib.rs),
@@ -101,17 +101,6 @@ mapping allocations. Buffer capacity can exceed logical length. Multiple live
 buffers, runtime overhead, JIT/GC, allocator behavior, and host-owned inputs
 remain outside an individual output-byte limit.
 
-<a id="compiled-xml-host-observations"></a>
-
-## XML boundary fixtures
-
-- [Combined static input bytes](../crates/cli/tests/code_generation/xml_input_sets/combined_bytes.rs)
-- [Combined primary-list output bytes](../crates/cli/tests/code_generation/xml_dynamic_outputs/combined_output_bytes.rs)
-- [Dynamic input request count](../crates/cli/tests/code_generation/xml_dynamic_inputs/request_count.rs)
-- [Late graph exception versus mixed-output count](../crates/cli/tests/code_generation/xml_mixed_named_outputs/late_mapping_count.rs)
-
-Byte limits and document-count limits measure different resources. Neither limits whole-process memory.
-
 ## Plan and measure a large-file run
 
 - [ ] Record the route, backend, build profile, input format, row count,
@@ -129,10 +118,10 @@ Byte limits and document-count limits measure different resources. Neither limit
   debug/release, warm/cold, setup/publication, and measurement-phase limits.
 - [ ] Check disk space for inputs, artifacts, compilation, and retained results.
 
-Whole-process peaks for bounded filter/map workloads do not attribute individual
-allocations or bound RAM for arbitrary large files.
-
-This page describes source contracts and measurement practice. It supplies no
-universal improvement claim or total-RAM cap.
-
-Whole-process memory includes executable verification as well as parsing.
+Use the [scalar filter/map hosts](../examples/performance/scalar-sequences/README.md)
+to compare capture and output costs. For many short rows versus one wide JSON
+value, the [fixture preparer](../scripts/performance/json_output_set_memory.py)
+and [filesystem host](../crates/cli/examples/json_output_set_memory.rs) separate
+input preparation from execution and full-output verification. For PDF inputs,
+the [resource profiler](../crates/cli/examples/pdf_worker_profile/main.rs)
+compares in-process extraction with the packaged worker.

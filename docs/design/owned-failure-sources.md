@@ -65,11 +65,9 @@ eager catalogue requirements.
 
 ## Qualification
 
-The [portable corpus](../../conformance/basic-owned-failure-sources/README.md)
-pairs same-path Primary and named rows with opposite flags and records complete
-expected outputs and typed failures. The CLI `code_generation` tests run every
-call through the interpreter; the ignored host test builds generated Rust and
-C# libraries and checks the same calls:
+The [corpus](../../conformance/basic-owned-failure-sources/README.md) puts
+opposite flags on same-path rows of different owners. The ordinary checks
+use the interpreter; generated Rust/C# have a separate ignored test:
 
 ```sh
 cargo test -p cli --test code_generation --features codegen-tests \

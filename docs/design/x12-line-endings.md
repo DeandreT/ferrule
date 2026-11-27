@@ -1,7 +1,7 @@
 # Explicit X12 segment line endings
 
-Issue [#1426](https://github.com/DeandreT/ferrule/issues/1426). Source preparation;
-the implementation and tests have not yet been compiled or executed.
+An explicitly identified X12 target chooses its segment suffix. LF is the
+default on every host.
 
 ## Selection and bytes
 
@@ -61,57 +61,26 @@ private reference behavior are not inferred or activated.
 
 ## Compatibility and artifact identity
 
-This 0.1 implementation intentionally adds public metadata fields to
-FormatOptions, X12BoundaryOptions and X12Descriptor. **Rust source compatibility
-is not unchanged:** exhaustive downstream literals/patterns must migrate.
-FormatOptions/X12BoundaryOptions literals may use `..Default::default()` or an
-explicit LF field; exhaustive patterns may add `..`. Descriptor literals must
-set `segment_line_ending: X12SegmentLineEnding::Lf`. Known workspace exhaustive
-construction sites in descriptor production/tests and the exhaustive JSON5
-FormatOptions admission pattern were migrated. The private runtime Profile
-test constructor was also updated. The new X12OutputLimit error variant requires
-exhaustive downstream EdiFormatError matches to account for it.
+Adding `segment_line_ending` changes Rust source compatibility for exhaustive
+`FormatOptions`, `X12BoundaryOptions` and `X12Descriptor` literals or patterns.
+Use `..Default::default()` where supported, or set the LF field explicitly;
+descriptor literals use `X12SegmentLineEnding::Lf`. Exhaustive
+`EdiFormatError` matches must handle `X12OutputLimit`.
 
-No version bump or package interchangeability is promised. Rust runtime source
-identity honestly changes globally, including newly regenerated default-LF
-manifested libraries. Existing generated libraries remain bound to their old
-runtime; runtime identity checks must not be weakened or old hashes fabricated.
+Saved default-LF bytes and C# runtime membership stay unchanged. Only an
+explicit CRLF C# target includes `FerruleX12.OutputPolicy.cs`; its manifest
+hashes the actual runtime inventory. Rust source identity changes even for
+regenerated LF libraries; an existing library remains tied to its own runtime.
 
-Default LF descriptor members/order and C# runtime inventories remain unchanged.
-Every existing C# runtime template stays byte-identical, including its original
-checkout line endings. The optional partial is not added to global ordinary
-identifier-word admission: its external type names are globally qualified and
-its additional types are private nested members. Existing public mapping method
-text is retained for LF; only selected output calls choose the additional
-internal helper. Manifested CRLF C# output hashes its actual selected runtime
-inventory. The project already compiles Runtime/**/*.cs, so selected membership
-is sufficient; no default project-template change is needed.
+<a id="authored-unexecuted-validation"></a>
 
-The existing 9,217-line `csharp_composition.txt` is protected and must pass
-unchanged on qualified source bytes. No update flag, token delta or regeneration
-is part of this change. Source-byte conservation is not a claim that the
-artifact-record test has run.
+## Test coverage
 
-## Authored, unexecuted validation
-
-- Mapping tests: strict string enum, omitted/explicit LF canonical bytes, CRLF,
-  malformed/duplicate full and staged descriptors, nested duplicates, capability
-  placement, plain/version-2 refusal, mismatch/unknown capability and delegated
-  project/pipeline/document persistence.
-- Native/runtime/admission tests: suffix bytes, repeated segments, internal
-  holes/trailing omissions, final termination, empty output, CR/LF conflicts,
-  exact/+1 small ceilings, unchanged caller data and old error precedence.
-- CLI tests: file/bounded payload/named target forwarding and source/foreign
-  dialect/ordinary-generation/export/shared-document refusals.
-- Pure C# generation tests: deterministic selection, preserved old runtime
-  files, one optional partial, manifested actual runtime inventory, CSV/static
-  forwarding and unchanged ordinary identity acceptance.
-- Modest Rust and package-free C# Release consumers: default LF and CRLF,
-  supplied trailers and repeating-interchange completion, repeated public
-  string/byte/context/noncontext calls, caller snapshots, literal ASCII expected
-  wires and C# bounded parser/duplicate/precedence/small expansion-limit cases.
-
-These tests are not automatically ignored. Parent must authorize and run finite
-qualification after the existing compiler lane drains, resolve compiler/test
-findings, and check the protected record without regeneration. Whole-MFD or
-private reference equivalence is not established by these generic cases.
+[Mapping persistence](../../crates/mapping/tests/x12_line_endings.rs),
+[CLI routes](../../crates/cli/tests/x12_line_endings.rs),
+[Rust document hosts](../../crates/codegen-rust/tests/x12_documents/line_endings.rs)
+and [C# hosts](../../crates/codegen-csharp/tests/x12/line_endings.rs) exercise
+different boundaries. The controls distinguish LF/CRLF bytes, final trailers,
+exact/+1 output limits and caller immutability. The C# composition record
+protects the default artifact; these generic fixtures do not prove parity for
+a particular saved design.

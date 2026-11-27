@@ -20,22 +20,22 @@ admission precede evaluation. At each reached consumer:
    present, in a context that appends one private scalar item frame to the
    receiving context. A non-Boolean predicate fails with a typed error naming
    the predicate node.
-3. For each selected item, evaluate the value expression in that same item
-   context, or use the item itself when there is no expression. Rejected items
-   never evaluate the expression.
-4. After every item, evaluate the argument once in the receiving context, even
+3. For each selected item, evaluate the value expression in that same context,
+   or use the item itself. Rejected items skip the expression.
+   [`decimal_sum`](decimal-mapping-operations.md) folds the value immediately;
+   a type error or overflow stops the next projection.
+4. After the last item, evaluate the argument once in the receiving context, even
    when the sequence is empty or every item was rejected.
-5. Reduce the selected values with the existing count, sum, avg, min, max, join
-   or item_at rules.
+5. Finish the reduction. `join` takes a separator, `item_at` takes a one-based
+   index, and `decimal_sum` refuses an extra argument.
 
 A producer error prevents every later phase, an item-phase error prevents later
 items and the argument, and Null or JsonNull producer arguments finish
-production with an empty sequence. An empty reduction gives count 0, sum 0, an
-empty join and Null for avg, min, max and item_at. Numeric reducers skip values
-that are not numbers, keep exact integer results, retain the integer or float
-tag of a mixed min or max, and fail with typed integer-overflow or non-finite
-errors. Join uses the argument as its separator and item_at as its one-based
-index.
+production with an empty sequence. With valid arguments, no selected items
+means integer zero for count/sum, decimal zero for `decimal_sum`, an empty
+string for join, and Null for avg, min, max and item_at. Ordinary numeric
+reducers retain their numeric-string, overflow and non-finite policies; a
+mixed min or max keeps the selected integer or float tag.
 
 ## Item and endpoint identity
 
@@ -59,9 +59,9 @@ The consumer permission is orthogonal to target-control and failure policies.
 Only the explicit profile admits it; other public generation wrappers, including
 the SequenceExists, recursive-filter, owned search and owned dynamic-field
 profiles, keep their closed consumer policy. Legacy and owned
-RecursiveCollect, FilterMap and other producers stay closed, as do collection
-aggregates over source paths ([#447](https://github.com/DeandreT/ferrule/issues/447))
-and joined aggregates ([#450](https://github.com/DeandreT/ferrule/issues/450)).
+RecursiveCollect, FilterMap and other producers stay closed in this profile.
+[Owned collection](owned-collection-aggregates.md) and
+[joined aggregates](owned-joins.md) have their own profiles.
 A phase containing a closed operator, such as a collection aggregate, lookup or
 user function call, does not gain permission from an owned read in another
 phase. Owned failure predicates and messages retain their separate scalar

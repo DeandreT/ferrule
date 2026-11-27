@@ -1,17 +1,9 @@
 # Trusted and restricted execution profiles
 
-Ferrule's execution host chooses one of two profiles for each run:
-**trusted**, the default, or **restricted**, where the host supplies a
-`RestrictedPolicy`. This contract states what authority each profile grants,
-which acquisition routes the restricted policy governs, how its budgets are
-counted, and the typed refusal for each case.
-
-A restricted profile **enforces a policy inside the ferrule process. It is not a
-sandbox.** Mapping evaluation, format readers and writers, and the HTTP client
-keep running in the host's process with the host's operating-system privileges.
-A host that needs to contain hostile mappings or inputs must also run ferrule
-under an operating-system isolation mechanism, such as a container, a separate
-user account or a seccomp/AppContainer profile.
+Execution defaults to **trusted**. A host can instead supply a
+`RestrictedPolicy` to authorize acquisition and meter evaluation.
+**Restricted is an in-process policy, not a sandbox.** Mapping code, codecs
+and the HTTP client retain the process's OS privileges.
 
 ## Profiles
 
@@ -22,30 +14,17 @@ user account or a seccomp/AppContainer profile.
 | Execution budgets | None beyond the existing per-feature bounds | Explicit work, depth and join-row budgets |
 | Typed failures | Unchanged | Plus `PolicyRefusal` and `ExecutionBudgetExceeded` |
 
-Trusted is `ExecutionPolicy::Trusted`. It is what every API, CLI command and the
-GUI use when no policy is supplied. A trusted run behaves exactly as it did
-before profiles existed: it performs no policy checks and keeps no budget state,
-and it produces the same values, errors, trace events and debug callbacks.
-
-Restricted is `ExecutionPolicy::Restricted(RestrictedPolicy)`. Its access lists
-deny by default: a policy without roots allows no filesystem access, and one
-without origins allows no HTTP request. All three budgets must be set
-explicitly; none is inferred.
+`ExecutionPolicy::Trusted` performs no policy checks or budget accounting.
+`ExecutionPolicy::Restricted` denies paths and origins unless explicitly
+allowed; all three budgets are required.
 
 ### Neighbouring mechanisms that are not execution profiles
 
-- **Imported-resource confinement.** Package roots, `ferrule-package.json`
-  manifests and EDI/JSON catalog roots confine where `import-mfd` and its
-  importers *look up* design resources. That is import-time resource lookup. It
-  does not restrict what a mapping reads or writes when it runs, and confining
-  imports does not make a run sandboxed.
-- **Per-feature bounds.** Format byte limits, generated-sequence and regex caps,
-  filter/map item and work ceilings, user-function nesting and the recursive
-  filter/tree depth limits bound individual features. They stay in force in
-  both profiles, but they are not universal limits. A small graph whose nodes
-  share inputs can still require exponentially many evaluations without
-  touching any of them, because the interpreter re-evaluates a shared node for
-  each consumer instead of memoizing it. The restricted budgets close that gap.
+Import roots, package manifests and EDI/JSON catalogs confine design-time
+resource lookup, not runtime I/O. Format limits, regex caps, UDF depth and
+filter/map ceilings bound individual features in both profiles. They cannot
+bound a graph that repeatedly evaluates shared inputs; that is why the
+restricted interpreter also charges work.
 
 ## Acquisition rights governed by the restricted policy
 
@@ -237,12 +216,7 @@ roots resolve from the policy file's directory.
 
 ## Out of scope
 
-- Process, memory, CPU or wall-time isolation, and syscall or network
-  filtering.
-- PDF worker sandboxing and its policy (#104, #326, #328). A restricted run
-  still checks a PDF input's path before the in-process reader or the worker
-  receives it.
-- Offline bundle construction and verification (#105). Bundles package
-  resources and are not an execution sandbox.
-- Restricting the GUI, `run-rest-json`, code generation or generated
-  mappings.
+Process isolation, syscall filtering, PDF-worker containment and offline
+packaging are separate policies. The PDF input path still requires
+authorization. The GUI, `run-rest-json`, code generation and generated
+mappings do not acquire this profile from a mapping.

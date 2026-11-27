@@ -1,47 +1,32 @@
 # GitHub Pages deployment
 
-The public site is [deandret.github.io/ferrule](https://deandret.github.io/ferrule/).
-The [site workflow](../.github/workflows/site.yml) builds the WebAssembly demo,
-combines it with `site/`, uploads the `github-pages` artifact, and deploys that
-artifact through the `github-pages` environment. Repository Settings → Pages →
-Build and deployment → Source must be **GitHub Actions** (`build_type: workflow`).
-This repository setting persists separately from the workflow file.
+The [site workflow](../.github/workflows/site.yml) combines the static files in
+`site/` with the built WebAssembly demo, uploads the `github-pages` artifact,
+and deploys it to [deandret.github.io/ferrule](https://deandret.github.io/ferrule/).
+In **Settings → Pages → Build and deployment**, the source must be **GitHub Actions**
+(`build_type: workflow`). This is a repository setting, separate from the workflow.
 
 ## Diagnosing a future failure
 
-Inspect the actual failed run and repository configuration before editing a
-working build or permissions:
-
 ```sh
-gh api repos/DeandreT/ferrule --jq '{has_pages, permissions}'
-gh api repos/DeandreT/ferrule/pages
 gh run list --repo DeandreT/ferrule --workflow site.yml --limit 5
 gh run view RUN_ID --repo DeandreT/ferrule --log-failed
 gh api repos/DeandreT/ferrule/actions/runs/RUN_ID/artifacts
+gh api repos/DeandreT/ferrule --jq '{has_pages, permissions}'
+gh api repos/DeandreT/ferrule/pages
 ```
 
-Bind the run's main commit and actual artifact ID/digest before retrying. A Pages
-API 404 alone is insufficient to distinguish a missing site from inaccessible
-configuration. Check repository access, `has_pages`, workflow permissions and the
-deployment log together. Preserve any existing publishing source, domain and
-environment rules when diagnosing an already-enabled site.
+1. Identify the failed job, source commit and artifact. A successful build or
+   upload does not prove deployment.
+2. If deployment returns 404, check repository access and the Pages source.
+   The workflow needs `pages: write`, `id-token: write`, and the `github-pages`
+   environment. A 404 alone does not establish which setting is wrong. Preserve
+   any existing custom domain and environment rules.
+3. After correcting the cause, an authorized maintainer can retry failed jobs
+   on the same run with `gh run rerun RUN_ID --repo DeandreT/ferrule --failed`
+   while its artifact is available. If it has expired, rebuild the intended
+   revision. Follow the same run through completion before retrying again.
+4. Check the public landing page, docs and demo, including the generated JS and
+   Wasm and the demo's default mapping result.
 
-When the successful build's artifact remains unexpired and the configuration
-cause has been repaired, retry its failed jobs:
-
-```sh
-gh run rerun RUN_ID --repo DeandreT/ferrule --failed
-```
-
-Observe the same run to its new attempt and terminal conclusion. Immediately
-after the retry request, the API can show `queued` with the previous attempt
-number; the observed #247 retry advanced from attempt 1 to attempt 2 shortly
-afterward. Re-read the same run rather than submitting another retry. If the
-artifact has expired, dispatch the existing site workflow on the intended main
-revision to produce a fresh artifact instead.
-
-Verify the deployment result and the public URL, then fetch the root, docs and
-demo assets. A successful build or uploaded artifact alone does not establish
-publication. Local #247 originals, full downloaded/published bodies, provider
-responses, logs and browser screenshots are retained under
-`target/qualification/247-pages-1`; selected non-secret identities are checked in.
+See GitHub's [custom workflow requirements](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages).

@@ -127,6 +127,5 @@ Run the offline tests with an on-disk private temporary directory, for example:
 TMPDIR="$HOME/.cache/ferrule-evidence-tests" python3 -B scripts/ci/test-evidence-lifecycle.py
 ```
 
-Create that private directory first. These tests do not contact a provider or
-supervisor, start producers, or qualify a live deployment. This work is **Part
-of #360**, not completion of its external-provider/containment/canary gates.
+Create that private directory first. The tests exercise the offline library.
+Deployment requires separate provider, containment and canary evidence.

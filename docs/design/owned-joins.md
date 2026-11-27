@@ -87,9 +87,9 @@ descendants. Grouping an owned join is a validation error.
  "expression":4,"arg":5}
 ```
 
-`owned_join_aggregate` reduces the tuples of one owned plan with the legacy
-`count`, `sum`, `avg`, `min`, `max`, `join` and `item_at` reducers, beside the
-unchanged legacy `join_aggregate`. Its payload is strict: an owned plan, a
+`owned_join_aggregate` reduces the tuples of one owned plan with `count`,
+`sum`, `avg`, `min`, `max`, `join`, `item_at` or `decimal_sum`.
+The legacy `join_aggregate` is unchanged. The payload is strict: an owned plan, a
 `JoinId`, an optional tuple `expression` and an optional `arg`; legacy plans,
 unknown keys and empty named owners are refused, and readers that predate the
 kind refuse it.
@@ -119,9 +119,10 @@ with the `Join` capability, and reads of another or an enclosing join are
 inactive. Without an expression each tuple contributes Null. The argument then
 evaluates once in the receiving context, after every tuple value and even when
 there are no tuples, where the aggregate's own tuple reads are inactive.
-Reducer empty, null and type policies are the legacy ones: `count` counts
-tuples, an empty `sum` is zero, other empty reducers are Null, non-numeric text
-is skipped, and overflow or a non-finite value is a typed failure.
+With no tuples, `count` and `sum` return integer zero, `join` returns the
+empty string, and `avg`, `min`, `max` and `item_at` return Null with valid
+arguments. `decimal_sum` returns decimal zero. It folds each projected
+Decimal before visiting the next tuple; Null is an error, not a skipped term.
 
 A joined aggregate is admitted only in Basic contexts. A join tuple, failure
 rules, generated items, legacy item contexts, isolated functions and dynamic
@@ -130,38 +131,26 @@ of its source identities.
 
 ## Generation profile
 
-`codegen::lower_with_basic_owned_joins` admits owned joins and owned joined
-aggregates with the owned Lookup and CollectionFind profile. Joined aggregates
-belong to this profile because they plan and read tuples with the same members,
-positions and closed tuple subset as join scopes. The owned dynamic
-source-field companion, built on the same profile, the owned XML serialization
-and mixed-content companions built on it and the owned collection-aggregate
-companion stay separate siblings, and their reads stay closed here. Every earlier lowering
-route refuses an owned join at its preflight, and every earlier validator,
-named-input planner and emitter, including the ordinary ones and directly
-constructed Program validation, refuses an owned join scope or joined
-aggregate with the `Join` capability. Owned join sources keep their endpoints
-optional in the named-input catalogue.
+`codegen::lower_with_basic_owned_joins` extends the
+[owned search profile](owned-lookup-find.md#generation-profile). Both join
+scopes and joined aggregates use the same tuple walk and positions
+(`BasicScopeContext::owned_inner_join` / `FerruleBasicScopeContext.OwnedInnerJoin`).
+Aggregates evaluate the tuple expression there and use the shared reducer.
+The [decimal fold](decimal-mapping-operations.md) stops at its first
+overflow or non-Decimal operand before visiting a later tuple.
 
-Generated Rust calls `BasicScopeContext::owned_inner_join`, which walks each
-source with `walk_owned_source_cohort`; generated C# calls
-`FerruleBasicScopeContext.OwnedInnerJoin`. Both read members with their owned
-field resolvers and renumber tuples with `with_owned_join_position` /
-`WithOwnedJoinPosition`. A joined aggregate calls the same entry point in its
-receiving context, evaluates its expression in each returned tuple context and
-reduces with the shared reducers. `.mfd` export and GUI authoring stay closed;
-the GUI shows saved owned join reads and joined aggregates read-only.
+Endpoints remain optional until reached. Ordinary emitters and presets
+without `Join` refuse scopes and joined aggregates, including direct Program
+validation. Dynamic fields, XML serialization/mixed content and collection
+aggregates have separate capabilities. Native MFD export refuses owned joins;
+the editor displays saved reads and aggregates read-only.
 
 ## Qualification
 
-The [portable corpus](../../conformance/basic-owned-joins/README.md) records
-complete expected outputs and typed failures for same-path sources, duplicate
-and null keys, multi-stage and singleton joins, controls, correlation with an
-active owned row, empty sides and refusals, and for joined aggregates: every
-reducer, same-owner correlation, grouped members, parent arguments, singleton
-stages, empty sides and typed reducer, argument and owner failures. The CLI `code_generation` tests run
-every call through the interpreter; the ignored host test builds generated Rust
-and C# libraries and checks the same calls:
+The [corpus](../../conformance/basic-owned-joins/README.md) covers duplicate
+and null keys, singleton/multi-stage joins, active rows and group members,
+parent arguments, empty sides and typed failures. Compare compiled calls
+separately from interpreter results:
 
 ```sh
 cargo test -p cli --test code_generation --features codegen-tests \

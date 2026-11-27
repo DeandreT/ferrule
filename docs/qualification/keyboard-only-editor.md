@@ -12,20 +12,15 @@ The native Open and Save As choosers belong to the operating system and are not
 covered. The tests press Ctrl+O only with unsaved work, so the shortcut stops at
 Ferrule's own confirmation dialog.
 
-Supported paths are ordinary tests. Each gap is an ignored test that asserts the
-desired behaviour, so it fails until the product is fixed:
+Run the keyboard harness from the repository root:
 
 ```sh
 cargo nextest run --profile ci --locked -p gui -E 'test(keyboard_accessibility)'
-cargo nextest run --profile ci --locked -p gui -E 'test(keyboard_accessibility)' --run-ignored only
 ```
-
-When a fix lands, remove that test's `#[ignore]` and update this page.
 
 ## Workflows
 
-Result classes: **supported**, **missing shortcut** (works by Tab but has no
-direct key), **inaccessible control** (no keyboard path).
+<a id="candidate-product-issues"></a>
 
 | Workflow | Keys | Result | Test |
 | --- | --- | --- | --- |
@@ -116,24 +111,3 @@ Arrow keys follow the graph layout rather than egui's spatial search:
   Right, moving its edge 10 units as a drag would. Its height handle ("Resize
   visible fields · Source: Order") takes Up and Down, showing one fewer or one
   more field. The corner grip combines both and is not a Tab stop.
-
-## Candidate product issues
-
-1. **Select canvas nodes from the keyboard.** Fixed by #1163.
-2. **Let forward Tab traverse the whole canvas.** Fixed by #1163.
-3. **Release Shift+Tab from the canvas.** Fixed by #1163.
-4. **Give the mapping tab one visible Tab stop.** Fixed by #1165.
-5. **Close modal dialogs with Escape.** Fixed by #1164.
-6. **Move focus into dialogs when they open.** Fixed by #1164.
-7. **Return focus when a dialog closes.** Fixed by #1164.
-8. **Match dialog footer Tab order to the visual order.** Fixed by #1164.
-9. **Let Tab leave the Preview input.** Fixed by #1165. Ctrl+Tab types a tab
-   character.
-10. **Name icon-only and canvas focus stops.** Icon-only buttons and the
-    scope-tree resize corner: fixed by #1165. Canvas pins, node frames and
-    collapse buttons: fixed by #1163.
-11. **Keep focus on Add binding after activation.** Fixed by #1165. Focus moves
-    to the new binding's target field.
-12. **Add a Preview shortcut.** Fixed by #1165 with Ctrl+Shift+P.
-13. **Follow the canvas layout with arrow keys; operate endpoint scrollbars and
-    resize handles from the keyboard.** Fixed by #1211.
