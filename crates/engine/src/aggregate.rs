@@ -358,45 +358,8 @@ fn compare_int_float(integer: i64, float: f64) -> std::cmp::Ordering {
 }
 
 /// Total scalar order used by scope sorting.
-///
-/// Mapping keys are normally schema-homogeneous, but open or dynamically
-/// computed data can mix scalar domains. Treating those pairs as equal while
-/// ordering same-domain pairs violates transitivity, so sorting uses an
-/// explicit domain order: missing, boolean, numeric, string, XML nil. NaN is
-/// ordered after every other numeric value.
 pub(crate) fn sort_value_ordering(left: &Value, right: &Value) -> std::cmp::Ordering {
-    use std::cmp::Ordering;
-
-    match (left, right) {
-        (Value::Null | Value::JsonNull(_), Value::Null | Value::JsonNull(_)) => Ordering::Equal,
-        (Value::Bool(left), Value::Bool(right)) => left.cmp(right),
-        (Value::Int(left), Value::Int(right)) => left.cmp(right),
-        (Value::Float(left), Value::Float(right)) => match (left.is_nan(), right.is_nan()) {
-            (true, true) => Ordering::Equal,
-            (true, false) => Ordering::Greater,
-            (false, true) => Ordering::Less,
-            (false, false) => left.partial_cmp(right).unwrap_or(Ordering::Equal),
-        },
-        (Value::Int(_), Value::Float(right)) if right.is_nan() => Ordering::Less,
-        (Value::Float(left), Value::Int(_)) if left.is_nan() => Ordering::Greater,
-        (Value::Int(left), Value::Float(right)) => compare_int_float(*left, *right),
-        (Value::Float(left), Value::Int(right)) => compare_int_float(*right, *left).reverse(),
-        (Value::String(left), Value::String(right)) => left.cmp(right),
-        (Value::Decimal(left), Value::Decimal(right)) => left.cmp(right),
-        (Value::XmlNil(_), Value::XmlNil(_)) => Ordering::Equal,
-        _ => sort_value_rank(left).cmp(&sort_value_rank(right)),
-    }
-}
-
-fn sort_value_rank(value: &Value) -> u8 {
-    match value {
-        Value::Null | Value::JsonNull(_) => 0,
-        Value::Bool(_) => 1,
-        Value::Int(_) | Value::Float(_) => 2,
-        Value::String(_) => 3,
-        Value::XmlNil(_) => 4,
-        Value::Decimal(_) => 5,
-    }
+    functions::compare_scope_sort_values(left, right)
 }
 
 fn value_text(value: &Value) -> String {
