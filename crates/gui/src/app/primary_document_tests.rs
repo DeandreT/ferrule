@@ -190,6 +190,7 @@ fn document_runs_and_previews_read_only_beneath_the_input_root() -> anyhow::Resu
 
     // Run publishes the same document to the saved target path.
     app.run_saved(false);
+    app.confirm_run_destinations();
     let deadline = Instant::now() + Duration::from_secs(20);
     while app.pending_file_run.is_some() && Instant::now() < deadline {
         app.poll_file_run(&context);
@@ -225,6 +226,7 @@ fn document_failures_are_reported_and_publish_nothing() -> anyhow::Result<()> {
     let session = app.primary_document.as_mut().expect("document session");
     session.input_root = directory.0.join("documents").display().to_string();
     app.run_saved(false);
+    app.confirm_run_destinations();
     let context = egui::Context::default();
     let deadline = Instant::now() + Duration::from_secs(20);
     while app.pending_file_run.is_some() && Instant::now() < deadline {
@@ -302,6 +304,7 @@ fn xml_document_projects_run_and_preview_one_document_set() -> anyhow::Result<()
     let output = directory.0.join("never-preview-output.xml");
     assert!(!output.exists());
     app.run_saved(false);
+    app.confirm_run_destinations();
     let deadline = Instant::now() + Duration::from_secs(20);
     while app.pending_file_run.is_some() && Instant::now() < deadline {
         app.poll_file_run(&context);

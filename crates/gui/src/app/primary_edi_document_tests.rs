@@ -65,6 +65,7 @@ fn edi_document_projects_save_preview_and_run_all_writable_families() -> anyhow:
             case["expected"]["output"].as_str().unwrap()
         );
         app.run_saved(false);
+        app.confirm_run_destinations();
         let deadline = Instant::now() + Duration::from_secs(60);
         while app.pending_file_run.is_some() && Instant::now() < deadline {
             app.poll_file_run(&context);

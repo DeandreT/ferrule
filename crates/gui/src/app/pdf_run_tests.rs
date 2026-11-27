@@ -126,11 +126,14 @@ fn owned_saved_run_publishes_the_exact_mapping_output() {
     let root = WorkerRoot::new("gui-run");
     let mut app = owned_app(&root, ReaderControls::default());
     let context = egui::Context::default();
+    app.output_path = root.work("new.json").display().to_string();
     app.run_saved(false);
+    app.confirm_run_destinations();
     let status = file_run_status(&app);
     finish_file_run(&mut app, &context);
     assert!(app.status.starts_with("wrote 1 record"), "{}", app.status);
-    assert_eq!(std::fs::read(root.work("out.json")).unwrap(), HELLO_JSON);
+    assert_eq!(std::fs::read(root.work("new.json")).unwrap(), HELLO_JSON);
+    assert_eq!(std::fs::read(root.work("out.json")).unwrap(), SENTINEL);
     let snapshot = status.snapshot();
     assert_eq!((snapshot.jobs_started, snapshot.jobs_closed), (1, 1));
     assert_eq!(snapshot.last_own_reap, Some(true));
@@ -143,7 +146,9 @@ fn cancelling_a_saved_run_stops_and_reaps_the_held_child_without_publishing() {
     let root = WorkerRoot::new("gui-cancel");
     let mut app = owned_app(&root, HOLD);
     let context = egui::Context::default();
+    app.output_path = root.work("new.json").display().to_string();
     app.run_saved(false);
+    app.confirm_run_destinations();
     let status = file_run_status(&app);
     let pid = wait_for_held_child(&status);
     frame(&mut app, &context, |app, context| {
@@ -158,6 +163,7 @@ fn cancelling_a_saved_run_stops_and_reaps_the_held_child_without_publishing() {
     assert_eq!(app.status, "run cancelled");
     assert!(app.run_report.is_none());
     assert_eq!(std::fs::read(root.work("out.json")).unwrap(), SENTINEL);
+    assert!(!root.work("new.json").exists());
     let snapshot = status.snapshot();
     assert_eq!(snapshot.phase, ExtractionPhase::Idle);
     assert_eq!(snapshot.last_own_reap, Some(true));
@@ -169,7 +175,9 @@ fn closing_the_app_defers_until_the_owned_child_is_reaped() {
     let root = WorkerRoot::new("gui-close");
     let mut app = owned_app(&root, HOLD);
     let context = egui::Context::default();
+    app.output_path = root.work("new.json").display().to_string();
     app.run_saved(false);
+    app.confirm_run_destinations();
     let status = file_run_status(&app);
     let pid = wait_for_held_child(&status);
 
@@ -196,6 +204,7 @@ fn closing_the_app_defers_until_the_owned_child_is_reaped() {
     assert_eq!(app.status, "run cancelled");
     assert!(!app.close_after_file_run);
     assert_eq!(std::fs::read(root.work("out.json")).unwrap(), SENTINEL);
+    assert!(!root.work("new.json").exists());
     assert_eq!(status.snapshot().last_own_reap, Some(true));
     assert!(released(pid));
 }

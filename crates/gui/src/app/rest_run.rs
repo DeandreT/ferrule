@@ -293,6 +293,7 @@ impl FerruleApp {
             && self.pending_auto_connect.is_none()
             && self.preview_draft.is_none()
             && self.pending_preview.is_none()
+            && self.run_destinations.is_none()
             && self.pending_file_run.is_none()
             && self.pending_pipeline_run.is_none()
             && self.rest_run_draft.is_none()

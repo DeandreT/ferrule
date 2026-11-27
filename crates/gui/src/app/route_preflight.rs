@@ -28,6 +28,7 @@ impl FerruleApp {
     pub(super) fn saved_run_preflight(
         &self,
         runtime_parameters: &engine::RuntimeParameters,
+        review_destinations: bool,
     ) -> anyhow::Result<()> {
         let project_path = self
             .document
@@ -42,7 +43,11 @@ impl FerruleApp {
             observers: SAVED_RUN_OBSERVERS,
             ..cli::RunRequest::default()
         };
-        cli::plan_file_run(&self.project, project_path, request).map(drop)
+        if review_destinations {
+            super::run_destinations::plan_review(&self.project, project_path, request).map(drop)
+        } else {
+            cli::plan_file_run(&self.project, project_path, request).map(drop)
+        }
     }
 }
 

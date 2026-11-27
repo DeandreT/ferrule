@@ -1701,6 +1701,7 @@ fn blank_run_paths_fall_back_to_stored_project_paths() {
     app.output_path.clear();
 
     app.run(&egui::Context::default());
+    app.confirm_run_destinations();
     wait_for_file_run_completion(&mut app);
 
     assert!(directory.join("output.xml").is_file(), "{}", app.status);
@@ -1741,16 +1742,20 @@ fn file_run_uses_shared_host_value_and_connected_default() -> anyhow::Result<()>
         });
 
     app.run(&egui::Context::default());
+    app.confirm_run_destinations();
     wait_for_file_run_completion(&mut app);
     assert!(app.diagnostics.is_empty(), "{}", app.status);
     assert_eq!(selected_run_value(&output_path)?, "override");
     assert!(!app.is_dirty(), "run values do not edit the project");
 
     app.host_parameters.entries.clear();
+    let fallback = directory.join("fallback.json");
+    app.output_path = fallback.display().to_string();
     app.run(&egui::Context::default());
+    app.confirm_run_destinations();
     wait_for_file_run_completion(&mut app);
     assert!(app.diagnostics.is_empty(), "{}", app.status);
-    assert_eq!(selected_run_value(&output_path)?, "fallback");
+    assert_eq!(selected_run_value(&fallback)?, "fallback");
     std::fs::remove_dir_all(directory)?;
     Ok(())
 }
@@ -1790,6 +1795,7 @@ fn invalid_host_value_reports_declared_type_and_does_not_publish() -> anyhow::Re
         });
 
     app.run(&egui::Context::default());
+    app.confirm_run_destinations();
     wait_for_file_run_completion(&mut app);
     assert!(!output_path.exists());
     assert!(app.diagnostics.items().iter().any(|item| {
@@ -2081,7 +2087,7 @@ fn wait_for_preview_completion(app: &mut FerruleApp) {
     assert!(app.pending_preview.is_none(), "preview worker completes");
 }
 
-fn wait_for_file_run_completion(app: &mut FerruleApp) {
+pub(super) fn wait_for_file_run_completion(app: &mut FerruleApp) {
     let context = egui::Context::default();
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
     while app.pending_file_run.is_some() && std::time::Instant::now() < deadline {
@@ -2611,11 +2617,15 @@ fn cancelling_paused_file_run_preserves_existing_output() {
 #[test]
 fn cancelling_ordinary_file_run_suppresses_late_success_and_publication() {
     let (mut app, project_path, output) = two_field_file_run_app("file-run-cancel");
+    let free = output.with_file_name("new.xml");
+    app.output_path = free.display().to_string();
     app.run(&egui::Context::default());
+    app.confirm_run_destinations();
     app.file_run_command(run_ui::FileRunCommand::Cancel);
     wait_for_file_run_completion(&mut app);
     assert_eq!(app.status, "run cancelled");
     assert_eq!(std::fs::read_to_string(&output).unwrap(), "old output");
+    assert!(!free.exists());
     assert!(app.run_report.is_none());
     std::fs::remove_dir_all(project_path.parent().unwrap()).unwrap();
 }

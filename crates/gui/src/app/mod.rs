@@ -104,6 +104,7 @@ mod primary_document;
 mod primary_xml_input;
 mod rest_run;
 mod route_preflight;
+mod run_destinations;
 #[path = "run.rs"]
 mod run_ui;
 mod scope_retirement;
@@ -491,6 +492,7 @@ pub struct FerruleApp {
     narrow_pane: WorkspacePane,
     last_layout_class: Option<LayoutClass>,
     show_run_setup: bool,
+    run_destinations: Option<run_destinations::DestinationReview>,
     file_run_breakpoint: Option<run_ui::FileBreakpoint>,
     file_run_value_condition: crate::preview::BreakpointValueConditionDraft,
     file_run_position_condition: crate::preview::BreakpointPositionConditionDraft,
@@ -698,6 +700,7 @@ impl Default for FerruleApp {
             narrow_pane: WorkspacePane::Canvas,
             last_layout_class: None,
             show_run_setup: false,
+            run_destinations: None,
             file_run_breakpoint: None,
             file_run_value_condition: Default::default(),
             file_run_position_condition: Default::default(),
@@ -1720,6 +1723,7 @@ impl FerruleApp {
         coalesce_history_change: bool,
     ) {
         self.show_run_settings(ui.ctx(), project_editing_enabled);
+        self.show_run_destinations(ui.ctx());
         self.show_mfd_import_dialog(ui.ctx());
         crate::appearance_editor::show(
             ui.ctx(),
