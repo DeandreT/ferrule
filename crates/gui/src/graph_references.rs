@@ -54,6 +54,8 @@ pub(crate) struct ProjectGraphReferences<'a> {
     failure_rules: &'a [FailureRule],
     extra_sources: &'a [NamedSource],
     primary_source: Option<&'a ir::SchemaNode>,
+    /// Schema root and optional logical target name for this canvas.
+    pub(crate) target: Option<(&'a str, Option<&'a str>)>,
     user_functions: Option<&'a crate::filter_map_editor::Functions>,
 }
 
@@ -79,6 +81,15 @@ impl<'a> ProjectGraphReferences<'a> {
         self.extra_sources.get(index)
     }
 
+    pub(crate) fn primary_source_root(self) -> Option<&'a str> {
+        self.primary_source.map(|schema| schema.name.as_str())
+    }
+
+    pub(crate) fn with_target(mut self, root: &'a str, name: Option<&'a str>) -> Self {
+        self.target = Some((root, name));
+        self
+    }
+
     pub(crate) fn source_alias_conflict(self, index: usize) -> Option<&'static str> {
         crate::canvas::source_alias_conflict(self.primary_source?, self.extra_sources, index)
     }
@@ -94,6 +105,7 @@ impl<'a> ProjectGraphReferences<'a> {
             failure_rules,
             extra_sources,
             primary_source: None,
+            target: None,
             user_functions: None,
         }
     }

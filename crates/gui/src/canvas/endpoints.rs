@@ -468,7 +468,7 @@ impl EndpointScrollState {
         true
     }
 
-    fn set_offset(&mut self, node: CanvasNode, total: usize, offset: usize) -> bool {
+    pub(crate) fn set_offset(&mut self, node: CanvasNode, total: usize, offset: usize) -> bool {
         let old = self.offset(node, total);
         let offset = offset.min(self.max_offset(node, total));
         if offset == 0 {
