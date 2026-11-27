@@ -89,10 +89,13 @@ Arrow keys follow the graph layout rather than egui's spatial search:
 
 - Enter or Space on a node frame selects the node, as a click does. On a
   collapse button it collapses or expands the node.
-- F2, Delete and Ctrl+F act on the node owning the focused frame, pin, collapse
-  or Edit button. With another canvas control or nothing focused they act on
-  the pointer selection as before. They never run while a text field has
-  focus.
+- F2 and Delete act on the node owning the focused frame, pin, collapse or Edit
+  button. With another canvas control or nothing focused, they act on the pointer
+  selection. Neither runs while a text field has focus.
+- Ctrl+F on the canvas opens **Find a field** without selecting an endpoint.
+  Type a name or path to search source and target fields. Up and Down choose a
+  match; Enter closes the finder and focuses the exact field pin. Escape closes
+  the finder without choosing a match.
 - Enter on a pin starts a connection and marks the pin. Enter on a pin of the
   other direction completes it through the same connection rules as a pointer
   drag, including type checks and undo. Enter on another pin of the same

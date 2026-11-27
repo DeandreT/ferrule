@@ -24,9 +24,11 @@ cargo run -p gui
   so the editor uses XML.
   Paste `<Input><Number>37</Number></Input>` as the input and choose **Preview**.
   Look for `<Value>37</Value>` inside `Output`. Preview doesn't write a file.
-- [ ] Save the project. To write the result, save the sample input as `input.xml`,
-  select it and an `output.xml` destination in **Run → Run settings**, then
-  choose **Run → Run**. Open `output.xml` and check the same value.
+- [ ] Save the project and save the sample input as `input.xml`. Select it in
+  **Run → Run settings**, then choose **Run → Run**. In **Review run destinations**,
+  use an unused filename such as `output.xml`. If you edit the path, choose
+  **Apply and recheck**. Choose **Run** to create the new file, then open it and
+  check for `<Value>37</Value>`.
 
 If you save as `mapping.json`, that [project file](project-files.md) contains
 the schemas and mapping. The editor saves canvas positions beside it in

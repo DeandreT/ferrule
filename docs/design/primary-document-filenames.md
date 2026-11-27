@@ -442,9 +442,11 @@ document project.
   artifacts under default options.
 - The editor opens a document project with its filename plan, saves the plan
   back unchanged and shows an input root (initially the project's folder) and
-  limits in place of the input file. Run publishes through the command-line
-  run; Preview performs the same run in memory. Debug Run, Debug Preview and
-  library generation are not offered for document projects.
+  limits in place of the input file. **Run → Run** opens **Review run destinations**.
+  Choose an unused output path. If you edit it, choose **Apply and recheck**.
+  Choose **Run** in the dialog to create the new file. Preview runs in memory.
+  Debug Run, Debug Preview and library generation are not offered for document
+  projects.
 
 Sources: [dynamic file-name rules](https://www.altova.com/manual/en/mapforceenterprise/2024.0/mffdynamic_input_output-per-comp.html),
 [simple-input defaults](https://www.altova.com/manual/en/mapforceenterprise/2024.0/mff_in_create_default_value.html),
