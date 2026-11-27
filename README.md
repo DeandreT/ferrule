@@ -1,55 +1,12 @@
 # ferrule
 
-ferrule is an open-source, Rust-native graphical data mapper. Connect source
-and target schemas with functions, filters, aggregates, lookups, and joins,
-then run the mapping from the native editor, the CLI, or an embedded Rust
-application.
+ferrule is an open-source graphical data mapper written in Rust. Connect source
+fields to target fields in the editor, then run the saved mapping from the CLI.
+For example, turn nested XML orders into one CSV row per item.
 
-Projects are [JSON files](docs/project-files.md) that preserve exact finite
-floating-point values when saved and reopened. The mapping engine and format
-adapters are separate, so one mapping can cross XML, JSON, tabular, database,
-EDI, binary, and other document formats without format-specific graph logic.
+## Quick start
 
-## Highlights
-
-- Visual mapping editor with undo/redo, saved canvas layouts, validation,
-  in-memory preview, and run reporting
-- Headless validation and execution with human-readable or JSON Lines
-  diagnostics
-- Nested iteration, outward value broadcast, filters, grouping, stable sorting,
-  sequence windows, aggregates, lookups, and duplicate-preserving inner joins
-- Multiple named inputs and outputs, including dynamic document paths
-- Best-effort `.mfd` import and export with actionable warnings
-- Deterministic Rust and package-free C# mapping-library generation for the
-  supported portable subset
-
-See [Supported formats](docs/formats.md) for the complete direction and feature
-matrix.
-
-## Choose Your Workflow
-
-| Goal | Guide |
-| --- | --- |
-| Create a visual mapping, including a flat worksheet table | [Your first mapping](docs/getting-started.md) |
-| Run or validate a saved project | [Quick Start](#quick-start) |
-| Map a warehouse order or shipment confirmation with X12 | [940 and 945 examples](examples/warehouse-x12/) |
-| Connect and edit mapping stages | [Mapping pipelines](docs/mapping-pipelines.md) |
-| Import/export an existing design with explicit limits | [`.mfd` interoperability](docs/mfd-interop.md) |
-| Embed a generated Rust or C# mapping | [Code generation](docs/code-generation.md) |
-| Plan a large-file workload | [Memory use and boundary limits](docs/memory-and-limits.md) |
-| Contribute and verify a change | [Development](docs/development.md) and [roadmap](ROADMAP.md) |
-
-Features, local tests, and external compatibility are separate claims. The
-[roadmap](ROADMAP.md) distinguishes current capabilities from
-remaining qualification work; the conformance inventory is incomplete and is
-not a parity percentage.
-
-## Quick Start
-
-ferrule pins Rust 1.98.1 in `rust-toolchain.toml`; rustup installs it on the
-first `cargo` command in the checkout. See [Toolchain baselines](docs/toolchains.md).
-
-Run the checked-in XML-to-CSV example:
+From the repository root, with [rustup](https://rustup.rs/) installed:
 
 ```sh
 cargo run -p cli -- run \
@@ -58,200 +15,15 @@ cargo run -p cli -- run \
   --output order-lines.csv
 ```
 
-Validate a project without reading its input:
+`order-lines.csv` should contain [six item rows](crates/cli/tests/fixtures/orders/expected_order_lines.csv).
+To build a mapping visually, run `cargo run -p gui` and follow
+[Your first mapping](docs/getting-started.md).
 
-```sh
-cargo run -p cli -- validate \
-  --project crates/cli/tests/fixtures/orders/project.json
-```
+## Learn more
 
-Launch the native visual editor:
-
-```sh
-cargo run -p gui
-```
-
-Run `cargo run -p cli -- --help` for the complete CLI. Input and
-output paths may be omitted when the project stores `source_path` and
-`target_path` values.
-
-Mappings with typed host inputs accept repeatable parameters:
-
-```sh
-cargo run -p cli -- run \
-  --project project.json \
-  --param correlation_id=txn-42 \
-  --param control_number=7001
-```
-
-CLI parameter values begin as strings and are coerced by each declaration's
-scalar type. Names are exact and duplicates are rejected before input is read.
-Saved input preview values apply only to the editor's preview and debug preview.
-Supplied run values override them; normal runs use connected defaults or require
-a host value, independently of the saved preview.
-
-Projects with additional targets can evaluate and publish only one target. This
-is useful when target paths intentionally overlap or a host needs one artifact
-class from a larger mapping:
-
-```sh
-cargo run -p cli -- run \
-  --project project.json \
-  --target audit \
-  --output audit.json
-```
-
-Use `--target primary` for the primary target. Without `--target`, ferrule
-evaluates every target and atomically rejects destination collisions.
-
-For a stateless, payload-compatible mapping, the CLI can stream one primary
-input and exactly one output artifact without creating input or output files.
-The configured `source_path` and `target_path` select the input/output formats:
-
-```sh
-ferrule run project.json - - < order.csv > invoice.csv
-```
-
-`-` is valid only for the primary input and one stdout artifact. Named sources
-keep their configured local paths. Dynamic named sources, SQLite, and
-update-existing XLSX remain filesystem-host operations; mappings that produce
-more than one artifact are rejected before stdout receives bytes. No success
-report is mixed into stdout; diagnostics remain on stderr.
-This is a transport option: parsed inputs, mapped rows, and serialized outputs
-are still materialized. See [Memory use](docs/memory-and-limits.md).
-
-Rust hosts can run the same interpreter without temporary input or output files:
-
-```rust
-let input = cli::PayloadDocument::new(
-    std::path::Path::new("order.json"),
-    request_body,
-)?;
-let outcome = cli::run_project_payloads(
-    std::path::Path::new("project.json"),
-    &cli::PayloadRunOptions::new(input)
-        .with_target(cli::TargetSelection::Named("audit")),
-)?;
-for artifact in outcome.artifacts {
-    publish(artifact.path, artifact.bytes)?;
-}
-```
-
-Logical paths select the format and identify returned artifacts. Payload runs
-accept named static or dynamic secondary inputs, typed runtime parameters, and
-tracing. Inputs and outputs are bounded to 64 MiB per document, with separate
-256 MiB input and output budgets per run and 4096 output artifacts; logical paths are limited to 4096 UTF-8 bytes
-and source names to 256. SQLite and update-existing XLSX operations remain
-filesystem APIs because they modify persistent state.
-Payload hosts can explicitly select design-time inputs with
-`.with_execution_purpose(engine::ExecutionPurpose::Preview)`; the default is a
-normal run.
-
-Payload hosts can record a run's clock and replay it with
-`.with_current_datetime("2026-10-13T07:08:09.123456789-07:00")?`.
-This accepts an ASCII `YYYY-MM-DDTHH:MM:SS[.fraction](Z|+HH:MM|-HH:MM)`
-value of at most 35 bytes: a valid Gregorian year 0001–9999 and date,
-hours 00–23, minutes/seconds 00–59, an optional 1–9 digit fraction, and an
-explicit offset within ±14:00. It rejects invalid values at the builder and
-preserves accepted spelling exactly, without UTC normalization. Evaluation and
-every selected output serializer share that value. Omitting the option keeps
-the existing single ambient clock sample; clock injection does not make random
-or GUID generation deterministic.
-
-Pipelines also support an [in-memory preview](docs/mapping-pipelines.md#in-memory-preview)
-that returns every stage's outputs, with stage-qualified tracing and debug
-controls. The GUI's Run Pipeline dialog keeps preview format paths separate
-from output files selected for saving.
-
-Generated Rust and C# libraries also expose bounded schema-shaped JSON methods
-such as `execute_json` and `GeneratedMapping.ExecuteJson`. Source-aware variants
-accept exact named JSON inputs, and output-set variants return the primary
-document plus ordered named target documents. See
-[code generation](docs/code-generation.md#json-host-boundary).
-
-## Common Workflows
-
-Bootstrap schemas from existing metadata:
-
-```sh
-cargo run -p cli -- import-xsd --xsd Orders.xsd
-cargo run -p cli -- import-json-schema --schema customers.schema.json
-cargo run -p cli -- import-db --db warehouse.db --table orders
-```
-
-Import or export a `.mfd` design:
-
-```sh
-cargo run -p cli -- import-mfd --mfd design.mfd --out project.json
-cargo run -p cli -- import-mfd --mfd package/maps/design.mfd --package-root package --out project.json
-cargo run -p cli -- import-mfd --mfd package/maps/design.mfd --package-manifest package/ferrule-package.json --out package/projects/project.json
-cargo run -p cli -- import-mfd --mfd design.mfd --edi-catalog-root edi-configs --out project.json
-cargo run -p cli -- import-mfd --mfd design.mfd --json-schema-root schemas --out project.json
-cargo run -p cli -- import-mfd --mfd chained.mfd --pipeline --out flow.json
-cargo run -p cli -- export-mfd --project project.json --out design.mfd
-cargo run -p cli -- export-mfd --project project.json --out design.mfd --profile native-mfd --check --report-json
-cargo run -p cli -- export-mfd --project project.json --out design.mfd --profile native-mfd
-```
-
-`export-mfd` defaults to `--profile ferrule-extensions`, preserving Ferrule's
-round-trip features. `--profile native-mfd` refuses known Ferrule-only
-dependencies and lossy exports before writing any artifacts. `--check` renders
-the export for compatibility inspection without writing files or directories;
-`--report-json` prints a versioned, deterministic report on stdout. See
-[`.mfd` interoperability](docs/mfd-interop.md#export) for the report's
-limits.
-
-For a supported connected XML design with up to 64 serial pass-through
-targets, `import-mfd --pipeline` writes a typed pipeline with one stage per
-target.
-Run it with `run-pipeline` by supplying its host inputs and selected stage
-outputs.
-
-Emit machine-readable validation diagnostics:
-
-```sh
-cargo run -p cli -- --diagnostics json validate --project project.json
-```
-
-Capture a deterministic execution trace without changing stdout or diagnostic
-output:
-
-```sh
-cargo run -p cli -- run --project project.json --trace-json run.trace.jsonl
-```
-
-Run a [mapping pipeline](docs/mapping-pipelines.md) and publish only selected
-stage targets after the complete graph succeeds:
-
-```sh
-cargo run -p cli -- run-pipeline --pipeline flow.json \
-  --input orders orders.json --output invoice invoice.json \
-  --named-output prepare audit audit.json
-```
-
-## Documentation
-
-- [Your first mapping and flat workbook setup](docs/getting-started.md)
-- [Mapping model and workspace architecture](docs/architecture.md)
-- [Offline project bundles](docs/offline-bundles.md)
-- [Editable architecture and qualification diagrams](docs/architecture-parity.drawio)
-- [Mapping pipelines](docs/mapping-pipelines.md)
-- [Execution trace JSON Lines contract](docs/tracing.md)
-- [Supported formats](docs/formats.md)
-- [`.mfd` interoperability](docs/mfd-interop.md)
-- [Rust and C# code generation](docs/code-generation.md)
-- [Portable Unicode casing](docs/unicode-casing.md)
-- [Runnable generated Rust and C# hosts](examples/codegen/)
-- [Memory use and boundary limits](docs/memory-and-limits.md)
-- [Development and verification checklist](docs/development.md)
-- [Compatibility and product-parity roadmap](ROADMAP.md)
-
-The integration fixtures under `crates/cli/tests/fixtures/` are executable
-examples covering XML, JSON, CSV, SQLite, X12, EDIFACT, and cross-source
-enrichment.
-
-## License
+- [Run and validate mappings](docs/running-mappings.md)
+- [Supported formats](docs/formats.md), including XML, JSON, spreadsheets and EDI
+- [Generate Rust or C# mapping libraries](docs/code-generation.md) for the supported subset
+- [All guides](docs/README.md) and [contributing](CONTRIBUTING.md)
 
 Licensed under the [GNU General Public License v3.0](LICENSE).
-
-ferrule is an independent project.

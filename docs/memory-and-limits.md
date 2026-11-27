@@ -78,7 +78,7 @@ payload calls remain in-process; no worker or RSS ceiling is claimed here.
 
 See [Project files](project-files.md), [Supported formats](formats.md),
 [Code generation](code-generation.md), and the
-[payload API](../README.md#quick-start) for the full boundary contracts.
+[payload API](running-mappings.md#rust-payload-host) for the full boundary contracts.
 Relevant implementations include
 [payload budgets](../crates/cli/src/payload.rs),
 [ordinary CSV encoding](../crates/format-csv/src/lib.rs),
