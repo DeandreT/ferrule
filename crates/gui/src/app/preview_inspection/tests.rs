@@ -340,3 +340,81 @@ fn a_capture_needs_the_same_cell_write_and_source_read_to_describe_runtime_prove
         .is_none()
     );
 }
+
+#[test]
+fn field_navigation_checks_live_mapping_input_attempt_and_selected_artifact_before_focus() {
+    let target = PreviewTarget::Primary;
+    let path = Path::new("orders.csv");
+    let mut app = FerruleApp {
+        project: mapping(),
+        preview_draft: Some(draft(target.clone(), path)),
+        ..Default::default()
+    };
+    app.execute_preview();
+    finish(&mut app);
+    assert!(app.inspect_selected_preview_cell(5, "Price"));
+    app.preview_inspection.pin(app.run_report.as_ref().unwrap());
+    let pin = Arc::clone(&app.preview_inspection.pinned.as_ref().unwrap().table);
+    let unchanged = |app: &FerruleApp| {
+        assert_eq!(
+            (app.preview_inspection.row, app.preview_inspection.column),
+            (5, 4)
+        );
+        assert!(!app.preview_inspection.row_focus && app.pending_preview.is_none());
+        assert!(Arc::ptr_eq(
+            &pin,
+            &app.preview_inspection.pinned.as_ref().unwrap().table
+        ));
+    };
+    // Equal target/header. Change the live graph without polling editor history.
+    let desc = app
+        .project
+        .root
+        .bindings
+        .iter()
+        .position(|b| b.target_field == "Desc")
+        .unwrap();
+    app.project.root.bindings[desc].node = 3;
+    app.inspect_preview_field(target.clone(), "Desc");
+    unchanged(&app);
+    assert!(app.status.contains("Stale preview"));
+    app.project.root.bindings[desc].node = 4;
+    let mut newer = draft(target.clone(), path);
+    newer.input_text.push('\n');
+    app.preview_draft = Some(newer);
+    app.inspect_preview_field(target.clone(), "Desc");
+    unchanged(&app);
+    app.preview_draft = None;
+    app.preview_inspection.attempt = Some("Preview cancelled.".into());
+    app.inspect_preview_field(target.clone(), "Desc");
+    unchanged(&app);
+    assert!(app.status.contains("cancelled"));
+
+    complete_artifacts(
+        &mut app,
+        draft(target.clone(), path),
+        vec![
+            ("orders.csv".into(), b"id,Desc\n1,old\n".to_vec(), 1),
+            ("other.csv".into(), b"other\nnew\n".to_vec(), 1),
+        ],
+    );
+    let report = app.run_report.as_mut().unwrap();
+    report.select_output(1); // Before the inspector decodes this selection.
+    app.inspect_preview_field(target, "Desc");
+    assert!(app.status.contains("Output selection has changed"));
+    assert_eq!(app.preview_inspection.column, 0);
+    assert!(!app.preview_inspection.row_focus && app.pending_preview.is_none());
+
+    let duplicate = mapping::NamedTarget {
+        name: "detail".into(),
+        schema: app.project.target.clone(),
+        root: app.project.root.clone(),
+        path: Some("detail.csv".into()),
+        options: Default::default(),
+    };
+    app.project.extra_targets = vec![duplicate.clone(), duplicate];
+    app.inspect_preview_field(PreviewTarget::Named("detail".into()), "Desc");
+    assert!(app.status.contains("Ambiguous target"));
+    assert_eq!(app.mapping_workspace.active, MappingDocument::Main);
+    assert!(app.preview_draft.is_none() && app.pending_preview.is_none());
+}

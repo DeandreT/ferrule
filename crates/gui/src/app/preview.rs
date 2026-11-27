@@ -1295,6 +1295,9 @@ impl FerruleApp {
                 );
                 self.run_report = Some(report);
                 self.show_run_report = true;
+                if let Some((target, field)) = self.preview_inspection.requested_field.take() {
+                    self.focus_captured_field(&target, &field);
+                }
                 self.diagnostics.clear();
             }
             Err(PreviewRunError::Failed(error)) => {
