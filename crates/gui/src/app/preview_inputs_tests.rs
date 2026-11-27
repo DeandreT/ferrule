@@ -78,6 +78,7 @@ fn required_input_preview_does_not_supply_a_normal_file_run() -> anyhow::Result<
     app.input_path = input_path.display().to_string();
     app.output_path = output_path.display().to_string();
     app.run(&egui::Context::default());
+    app.confirm_run_destinations();
     wait_for_file_run_completion(&mut app);
     assert!(!output_path.exists());
     assert!(

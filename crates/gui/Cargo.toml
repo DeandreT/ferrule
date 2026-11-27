@@ -30,6 +30,9 @@ egui-snarl = { workspace = true }
 lucide-icons = { workspace = true }
 rfd = { workspace = true }
 
+[target.'cfg(unix)'.dependencies]
+rustix = { workspace = true }
+
 [dev-dependencies]
 edit-ops = { workspace = true }
 format-json = { workspace = true }

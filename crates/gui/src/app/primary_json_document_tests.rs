@@ -80,6 +80,7 @@ fn json_document_projects_run_and_preview_one_document_set() -> anyhow::Result<(
     let output = directory.0.join("never-preview-output.json");
     assert!(!output.exists());
     app.run_saved(false);
+    app.confirm_run_destinations();
     let deadline = Instant::now() + Duration::from_secs(20);
     while app.pending_file_run.is_some() && Instant::now() < deadline {
         app.poll_file_run(&context);
