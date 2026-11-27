@@ -184,7 +184,8 @@ impl FerruleApp {
                     &self.project.extra_sources,
                 )
                 .with_user_functions(&self.project.user_functions)
-                .with_primary_source(&self.project.source),
+                .with_primary_source(&self.project.source)
+                .with_target(&self.project.target.name, None),
                 source_blocks: &source_blocks,
                 target_blocks: &target_blocks,
                 source_x12,

@@ -420,6 +420,10 @@ fn record_control_at(ctx: &egui::Context, canvas_id: egui::Id, id: egui::Id, nod
 #[derive(Clone, Copy)]
 struct PendingPinFocus(CanvasPin);
 
+pub(crate) fn request_pin(ctx: &egui::Context, canvas_id: egui::Id, pin: CanvasPin) {
+    ctx.data_mut(|data| data.insert_temp(pin_focus_id(canvas_id), PendingPinFocus(pin)));
+}
+
 fn take_pending_pin(
     ctx: &egui::Context,
     canvas_id: egui::Id,
@@ -511,9 +515,7 @@ fn pin_target(
         egui::Key::ArrowUp | egui::Key::ArrowDown => {
             let step = if key == egui::Key::ArrowUp { -1 } else { 1 };
             if let Some(revealed) = viewer.scroll_endpoint_field(widget.pin, step, snarl) {
-                ctx.data_mut(|data| {
-                    data.insert_temp(pin_focus_id(canvas_id), PendingPinFocus(revealed));
-                });
+                request_pin(ctx, canvas_id, revealed);
                 ctx.request_repaint();
                 return None;
             }

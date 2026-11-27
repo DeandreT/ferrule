@@ -81,10 +81,15 @@ fn saved_project() -> (Scratch, PathBuf) {
 /// The complete application UI. The window title command repaints every
 /// frame, so callers advance a fixed number of frames instead of settling.
 fn harness(app: FerruleApp) -> Harness<'static, FerruleApp> {
+    harness_at_scale(app, 1.0)
+}
+
+fn harness_at_scale(app: FerruleApp, scale: f32) -> Harness<'static, FerruleApp> {
     let mut frame = eframe::Frame::_new_kittest();
     let mut initialized = false;
     let mut harness = Harness::builder()
         .with_size((1280.0, 800.0))
+        .with_pixels_per_point(scale)
         // Unnamed controls are qualified explicitly below.
         .with_accessibility_check(false)
         .with_os(egui::os::OperatingSystem::Nix)
@@ -296,6 +301,56 @@ fn focus_indicator_drawn(harness: &Harness<'_, FerruleApp>, id: egui::Id) -> boo
                 || (shape.fill == active.bg_fill && active.bg_fill != inactive.bg_fill)
                 || (shape.stroke == active.bg_stroke && active.bg_stroke != inactive.bg_stroke))
     })
+}
+
+#[test]
+fn field_finder_reveals_both_orders_paths_and_restores_focus_on_no_match() {
+    for scale in [1.0, 1.5] {
+        let mut app = FerruleApp::default();
+        app.open_worked_example();
+        app.preview_draft = None;
+        let target = app
+            .main_canvas
+            .snarl
+            .node_ids()
+            .find(|(_, node)| **node == CanvasNode::TargetBlock(0))
+            .unwrap()
+            .0;
+        app.main_canvas.snarl.open_node(target, false);
+        let mut harness = harness_at_scale(app, scale);
+        let project = project_key(&harness);
+        let positions = CanvasLayout::capture_nodes(&harness.state().main_canvas.snarl);
+        assert!(tab_to(&mut harness, "Mapping canvas"));
+        for (arrow, expected) in [
+            (false, "Output Order/Items/Item/Desc · Source: Orders"),
+            (true, "Input Desc · Target: row"),
+        ] {
+            press_with(&mut harness, command(), egui::Key::F);
+            type_text(&mut harness, "dESc");
+            harness.get_by_label("Source  /Orders/Order/Items/Item/Desc");
+            harness.get_by_label("Target  row.Desc");
+            if arrow {
+                press(&mut harness, egui::Key::ArrowDown);
+            }
+            press(&mut harness, egui::Key::Enter);
+            assert_eq!(focused_name(&harness).as_deref(), Some(expected));
+        }
+        press_with(&mut harness, command(), egui::Key::F);
+        type_text(&mut harness, "not-an-orders-field");
+        press(&mut harness, egui::Key::Enter);
+        harness.get_by_label("No matching fields");
+        press(&mut harness, egui::Key::Escape);
+        assert_eq!(
+            focused_name(&harness).as_deref(),
+            Some("Input Desc · Target: row")
+        );
+        assert_eq!(project_key(&harness), project);
+        assert!(!harness.state().can_undo());
+        assert_eq!(
+            CanvasLayout::capture_nodes(&harness.state().main_canvas.snarl),
+            positions
+        );
+    }
 }
 
 #[test]
