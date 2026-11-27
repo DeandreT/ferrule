@@ -159,6 +159,8 @@ is `ProtocolError`. Never interpret an empty/malformed result as an empty PDF.
 
 ## Resource and child-ownership policy
 
+<a id="acceptance-gates"></a>
+
 | Profile control | Proposed policy |
 | --- | --- |
 | Address space | `RLIMIT_AS` soft and hard 512 MiB |

@@ -20,6 +20,8 @@ cargo nextest run --profile ci --locked -p gui -E 'test(keyboard_accessibility)'
 
 ## Workflows
 
+<a id="candidate-product-issues"></a>
+
 | Workflow | Keys | Result | Test |
 | --- | --- | --- | --- |
 | Open a recent project | Tab to the entry on the start view, Enter | Supported | `keyboard_accessibility_opens_a_recent_project_from_the_start_view` |

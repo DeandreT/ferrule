@@ -6,6 +6,9 @@ the checks for each kind of change.
 
 ## Claim a lane
 
+<a id="find-an-unclaimed-lane"></a>
+<a id="work-in-a-separate-branch-and-worktree"></a>
+
 Use [Contributing](../CONTRIBUTING.md) to find an unassigned issue, claim its
 paths, and start an independent branch and worktree. The issue owns the scope
 and status; a coordination index is not a reservation. `help wanted` identifies
@@ -61,7 +64,14 @@ results and handoffs in the issue.
 - Measurements need their own finite input/profile/trial plan and full output
   checks. An observed peak is not a universal RAM limit or a streaming promise.
 
+<a id="complete-or-hand-off"></a>
+
 Link the PR to the issue and record qualification evidence and remaining
 dependencies there. Update a [conformance cell](../conformance/README.md) only
 when that particular backend and workflow have the evidence its contract
 requires. A local fixture cannot establish whole-product parity.
+
+<a id="history"></a>
+
+The [archived coordination tables](https://github.com/DeandreT/ferrule/blob/d151ded4cf17ecd206146b718cc6ffce53b1adda/docs/parallel-work.md)
+preserve past assignments. Use the issue for current ownership.

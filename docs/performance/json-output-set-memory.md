@@ -102,6 +102,8 @@ sparse readings cannot locate an exclusive parser, mapper or writer peak.
 
 ## Correctness and scope
 
+<a id="correctness-closure-and-disk"></a>
+
 Eight untimed verifiers compared complete typed values, group origins,
 `RunOutcome` order and every output byte. All eight primary documents and four
 named documents matched the independent oracles. Measurements and verification

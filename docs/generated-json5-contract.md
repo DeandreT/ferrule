@@ -154,6 +154,8 @@ These are serialized-boundary limits, not a process-memory ceiling or a streamin
 
 ## Physical boundary checks and measured memory
 
+<a id="increment-checklist"></a>
+
 The [physical-boundary study](https://github.com/DeandreT/ferrule/pull/159)
 measured exact and one-byte-over inputs, normalized documents and outputs.
 The normalized sizes came from independent corpus recipes; the public API does

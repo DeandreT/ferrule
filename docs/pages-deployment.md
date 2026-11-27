@@ -29,6 +29,8 @@ gh api repos/DeandreT/ferrule/pages
 4. Check the public landing page, docs and demo, including the generated JS and
    Wasm and the demo's default mapping result.
 
+<a id="repair-of-247-on-2026-10-15"></a>
+
 See GitHub's [custom workflow requirements](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages)
 and the [recorded October deployment manifest](pages-deployment-evidence-2026-10-15.json)
 for an example of artifact-to-site verification.

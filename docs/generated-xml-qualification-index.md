@@ -160,6 +160,8 @@ is terminal after a failed load.
 
 ## Compiled resource qualification
 
+<a id="written-controls-and-retained-execution"></a>
+
 These four controls exercise real generated XML boundaries. They qualify only
 the route and resource shown. Each ordinary text/byte and context variant
 retains typed input, mapping or output ownership; no failure returns a partial result.

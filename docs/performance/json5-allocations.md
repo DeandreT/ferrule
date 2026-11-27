@@ -168,6 +168,8 @@ It preserves full materialization, validation and existing resource refusals.
 
 ## Reproduction and verification
 
+<a id="evidence-failures-and-cleanup"></a>
+
 The [verifier](../../examples/performance/json5-allocations/verify.py) checked
 the 96 physical calls (48 complete results and 48 typed refusals), six input
 recipes, exact returned bytes or original error chains, trace process IDs and

@@ -93,6 +93,8 @@ not establish retained roots, a heap graph or ownership of the RSS maximum.
 
 ## Output and resource controls
 
+<a id="complete-behavior-and-evidence-checks"></a>
+
 The physical comparison contained 48 complete results and 48 expected typed
 refusals. The verifier compared every input and returned byte or original
 exception, and tied the traces to the measured processes and artifacts.

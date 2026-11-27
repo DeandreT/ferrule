@@ -7,6 +7,8 @@ compatibility contracts live in [Supported formats](formats.md),
 
 ## Coordinate issue work
 
+<a id="keep-a-change-reviewable"></a>
+
 Follow [Contributing](../CONTRIBUTING.md) to claim an issue and
 [Parallel work](parallel-work.md) when paths, build resources or displays are
 shared. Keep a change to one user-visible outcome. Use a self-authored fixture

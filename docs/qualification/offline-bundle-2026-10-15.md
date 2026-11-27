@@ -48,6 +48,8 @@ or power-loss/network-storage durability.
 
 ## Build and evidence
 
+<a id="checks-and-originals"></a>
+
 These results were observed with Rust `1.97.0-nightly (9838411cb 2026-04-25)`,
 Linux x86_64 GNU, locked dependencies, two build jobs, incremental compilation
 off and dev/test debug information off. The [producer fixture](../../crates/cli/tests/offline_bundle.rs)
