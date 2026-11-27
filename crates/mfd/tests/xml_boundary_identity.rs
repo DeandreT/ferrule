@@ -5,6 +5,8 @@ use ir::{ScalarType, SchemaNode};
 use mapping::{Binding, FormatOptions, Graph, Node, Project, Scope};
 
 use test_support::TempDir;
+#[path = "../../format-xml/tests/support/no_namespace.rs"]
+mod no_namespace;
 
 #[test]
 fn pathless_xml_boundaries_roundtrip_without_format_inference() -> Result<(), Box<dyn Error>> {
@@ -102,8 +104,14 @@ fn pathless_xml_boundaries_roundtrip_without_format_inference() -> Result<(), Bo
     }
     let imported = mfd::import(&design)?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
-    assert_eq!(imported.project.source, source);
-    assert_eq!(imported.project.target, target);
+    assert_eq!(
+        imported.project.source,
+        no_namespace::from_plain_xsd(&source)
+    );
+    assert_eq!(
+        imported.project.target,
+        no_namespace::from_plain_xsd(&target)
+    );
     assert!(imported.project.source_options.xml_document);
     assert!(imported.project.target_options.xml_document);
     assert!(imported.project.source_path.is_none());

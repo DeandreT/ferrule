@@ -7,6 +7,8 @@ use mapping::{
 };
 
 use test_support::TempDir as Directory;
+#[path = "../../format-xml/tests/support/no_namespace.rs"]
+mod no_namespace;
 
 fn project(required_source: bool, required_target: bool) -> Project {
     let schema = |name: &str, required| {
@@ -439,8 +441,9 @@ fn ordinary_xml_uses_authoritative_xsd_without_private_required_annotation() {
         children.swap(0, 1);
     }
     let actual = publish_and_import(&p, &d.path().join("mapping.mfd"));
-    assert_eq!(actual.source, p.source);
-    assert_eq!(actual.target, p.target);
+    let expected_source = no_namespace::from_plain_xsd(&p.source);
+    assert_eq!(actual.source, expected_source);
+    assert_eq!(actual.target, no_namespace::from_plain_xsd(&p.target));
     let xml = std::fs::read_to_string(d.path().join("mapping.mfd")).unwrap();
     assert!(!xml.contains("ferrule-xml-attribute-required"));
     assert!(
@@ -463,7 +466,7 @@ fn ordinary_xml_uses_authoritative_xsd_without_private_required_annotation() {
                 .unwrap()
                 .project
                 .source,
-            p.source
+            expected_source
         );
     }
     let invalid = change_entry(&xml, "ID", 0, |entry| {

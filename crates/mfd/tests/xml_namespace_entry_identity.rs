@@ -303,8 +303,9 @@ fn recursive_entry_occurrences_keep_qualified_anchor_descendants() -> TestResult
     );
     let target = SchemaNode::group(
         "Output",
-        vec![SchemaNode::scalar("Result", ScalarType::String)],
-    );
+        vec![SchemaNode::scalar("Result", ScalarType::String).xml_unqualified()],
+    )
+    .xml_unqualified();
     let project = project(source, target, &[(&["Tree", "Value"], "Result")]);
     let directory = TempDir::new("xml_entry_identity")?;
     let text = exported(&project, &directory)?;
@@ -363,8 +364,9 @@ fn xsi_type_clone_entries_keep_the_element_namespace() -> TestResult {
     );
     let target = SchemaNode::group(
         "Output",
-        vec![SchemaNode::scalar("Result", ScalarType::String)],
-    );
+        vec![SchemaNode::scalar("Result", ScalarType::String).xml_unqualified()],
+    )
+    .xml_unqualified();
     let project = project(source, target, &[(&["Address", "Value"], "Result")]);
     let directory = TempDir::new("xml_entry_identity")?;
     let text = exported(&project, &directory)?;
@@ -411,8 +413,9 @@ fn legacy_root_uses_exported_type_namespace_without_qualifying_children() -> Tes
     let source = SchemaNode::group("Input", vec![address]);
     let target = SchemaNode::group(
         "Output",
-        vec![SchemaNode::scalar("Result", ScalarType::String)],
-    );
+        vec![SchemaNode::scalar("Result", ScalarType::String).xml_unqualified()],
+    )
+    .xml_unqualified();
     let project = project(source, target, &[(&["Address", "Value"], "Result")]);
     let directory = TempDir::new("xml_entry_identity")?;
     let text = exported(&project, &directory)?;

@@ -19,6 +19,12 @@ fn native_design_and_resave_select_expanded_names_and_report_root_mismatch() {
         .project;
         assert!(project.source.xml_closed_source_selection, "{design}");
         assert!(!project.target.xml_closed_source_selection);
+        // The ordinary structured adapter has no warning/empty-row policy.
+        let mismatch = std::fs::read_to_string(fixture("qualified-root.xml")).unwrap();
+        assert!(matches!(
+            format_xml::from_str_structured(&mismatch, &project.source),
+            Err(format_xml::XmlFormatError::UnsupportedStructuredInputSchema)
+        ));
         for (file, expected) in [
             (
                 "input.xml",

@@ -125,7 +125,8 @@ fn xml_character(character: char) -> bool {
 }
 
 fn metadata_supported(schema: &SchemaNode) -> bool {
-    schema.xml_name_alternatives.is_empty()
+    !schema.xml_closed_source_selection
+        && schema.xml_name_alternatives.is_empty()
         && schema.xml_wildcard_namespace.is_none()
         && schema.xml_wildcard_process_contents == XmlWildcardProcessContents::Skip
         && schema.xml_wildcard_excluded_names.is_none()

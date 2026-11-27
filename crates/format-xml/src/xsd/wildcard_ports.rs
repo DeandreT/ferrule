@@ -256,7 +256,16 @@ pub(super) fn resolve(parsed: &mut ParsedComplexType, state: &mut ParseState) {
             unowned.push(port.name);
         }
     }
-    let children = &parsed.children;
+    // Wildcard matching uses expanded names. A legacy local-name declaration
+    // must not consume a qualified look-alike that belongs to this wildcard.
+    if children.iter().any(|child| {
+        child.name == XML_ELEMENTS_FIELD
+            && child.xml_wildcard_process_contents != XmlWildcardProcessContents::Skip
+    }) {
+        for child in children.iter_mut().filter(|child| is_typed_element(child)) {
+            child.xml_namespace.get_or_insert(XmlNamespace::Unqualified);
+        }
+    }
     let mut position = 0;
     parsed.repeating_choices.retain_mut(|choice| {
         let projection = projection_choices.get(position).copied().unwrap_or(false);

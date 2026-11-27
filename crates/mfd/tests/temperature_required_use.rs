@@ -5,6 +5,8 @@ use mapping::{
 };
 use std::collections::BTreeMap;
 use std::path::PathBuf;
+#[path = "../../format-xml/tests/support/no_namespace.rs"]
+mod no_namespace;
 fn insert(nodes: &mut BTreeMap<NodeId, Node>, node: Node) -> NodeId {
     let id = nodes.keys().next_back().copied().unwrap_or(0) + 1;
     nodes.insert(id, node);
@@ -247,8 +249,14 @@ fn public_roundtrip(project: &Project, path: &std::path::Path) -> Project {
     .unwrap();
     assert!(imported.imported.warnings.is_empty());
     assert!(engine::validate(&imported.imported.project).is_empty());
-    assert_eq!(imported.imported.project.source, project.source);
-    assert_eq!(imported.imported.project.target, project.target);
+    assert_eq!(
+        imported.imported.project.source,
+        no_namespace::from_plain_xsd(&project.source)
+    );
+    assert_eq!(
+        imported.imported.project.target,
+        no_namespace::from_plain_xsd(&project.target)
+    );
     imported.imported.project
 }
 #[test]

@@ -21,6 +21,9 @@ the observed source shape. In this profile a well-formed look-alike root emits
 a warning and an empty row sequence; a different local root or malformed
 XML is still an error.
 
+The ordinary structured XML document adapter cannot report that warning and is
+not offered for this source policy. A caller can still supply typed input.
+
 When reading directly with an XSD, a look-alike root instead reports
 `UnexpectedRoot`. Closed groups select only children with the declared
 expanded name; a qualified look-alike cannot displace a later unqualified

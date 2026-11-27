@@ -7,6 +7,8 @@ use mapping::{Binding, FormatOptions, Graph, Node, Project, Scope};
 type TestResult = Result<(), Box<dyn Error>>;
 
 use test_support::TempDir;
+#[path = "../../format-xml/tests/support/no_namespace.rs"]
+mod no_namespace;
 
 fn qualified(node: SchemaNode, namespace: &str) -> SchemaNode {
     node.xml_qualified(namespace)
@@ -96,9 +98,16 @@ fn check_payloads(namespace: Option<Option<&str>>) -> TestResult {
             imported.project.target.child("document").unwrap().kind,
             project.target.child("document").unwrap().kind
         );
-        // This regression owns payload selection. The existing XSD boundary
-        // normalizes explicit unqualified metadata to its legacy representation.
-        if namespace != Some(None) {
+        if namespace.is_none() {
+            assert_eq!(
+                imported.project.source,
+                no_namespace::from_plain_xsd(&project.source)
+            );
+            assert_eq!(
+                imported.project.target,
+                no_namespace::from_plain_xsd(&project.target)
+            );
+        } else {
             assert_eq!(imported.project.source, project.source);
             assert_eq!(imported.project.target, project.target);
         }

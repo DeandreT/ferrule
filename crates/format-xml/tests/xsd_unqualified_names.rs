@@ -126,6 +126,31 @@ fn instances_without_qualified_look_alikes_read_as_before() -> Result<(), Box<dy
 }
 
 #[test]
+fn legacy_names_beside_a_lax_wildcard_do_not_steal_foreign_elements() -> Result<(), Box<dyn Error>>
+{
+    let marked = OPEN.replace(
+        r#"name="Head""#,
+        r#"name="Head" xmlns:l="urn:ferrule:xsd:legacy-name" l:namespace="legacy""#,
+    );
+    let schema = import(&marked, "Root")?;
+    let instance = from_str(
+        r#"<Root xmlns:q="urn:q"><q:Head>foreign</q:Head><Head>local</Head><Body/></Root>"#,
+        &schema,
+    )?;
+    assert_eq!(instance.field("Head"), Some(&text("local")));
+    let items = instance
+        .field(XML_ELEMENTS_FIELD)
+        .and_then(Instance::as_repeated)
+        .ok_or("missing wildcard")?;
+    assert_eq!(items.len(), 1);
+    assert_eq!(
+        items[0].field(XML_NAMESPACE_URI_FIELD),
+        Some(&text("urn:q"))
+    );
+    Ok(())
+}
+
+#[test]
 fn closed_declarations_select_only_unqualified_elements() -> Result<(), Box<dyn Error>> {
     let schema = import(CLOSED, "Root")?;
     let instance = from_str(

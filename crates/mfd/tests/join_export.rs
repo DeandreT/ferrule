@@ -10,6 +10,8 @@ use mapping::{
 };
 
 use test_support::TempDir;
+#[path = "../../format-xml/tests/support/no_namespace.rs"]
+mod no_namespace;
 
 fn scalar(name: &str, value: &str) -> (String, Instance) {
     (
@@ -401,8 +403,14 @@ fn join_virtual_wrappers_and_ordinary_keypaths_have_separate_namespace_tables() 
                 .all(|entry| matches!(entry.attribute("ns"), None | Some("0")))
         );
         let imported = import_exported(&path);
-        assert_eq!(imported.project.source, project.source);
-        assert_eq!(imported.project.target, project.target);
+        assert_eq!(
+            imported.project.source,
+            no_namespace::from_plain_xsd(&project.source)
+        );
+        assert_eq!(
+            imported.project.target,
+            no_namespace::from_plain_xsd(&project.target)
+        );
     }
 }
 

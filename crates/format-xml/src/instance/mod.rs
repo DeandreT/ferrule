@@ -154,8 +154,8 @@ pub(super) fn attribute_namespace<'a>(attribute: &roxmltree::Attribute<'a, '_>) 
 }
 
 /// Whether an element namespace names this declaration. A declaration without
-/// namespace identity (DTD, entry-tree, and closed XSD content without a target
-/// namespace) matches its local name in any namespace; an explicitly
+/// namespace identity (for example a DTD, entry tree or legacy name) matches
+/// its local name in any namespace; an explicitly
 /// unqualified one matches only unqualified elements.
 pub(super) fn declared_namespace_matches(schema: &SchemaNode, namespace: Option<&str>) -> bool {
     schema.xml_namespace.is_none() || schema.xml_namespace_matches(namespace)

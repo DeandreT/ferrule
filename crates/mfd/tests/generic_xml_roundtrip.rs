@@ -116,6 +116,29 @@ fn typed_entry_schema_preserves_mixed_fixed_and_generic_children() -> Result<(),
 }
 
 #[test]
+fn wildcard_fallback_does_not_silently_widen_a_declared_root() -> Result<(), Box<dyn Error>> {
+    let directory = TempDir::new("wildcard_name")?;
+    let path = directory.join("mapping.mfd");
+    let mut project = project();
+    project.source = project.source.xml_unqualified();
+    mfd::export(&project, &path)?;
+    assert!(matches!(
+        format_xml::xsd::import_root(&directory.join("mapping-source.xsd"), Some("Envelope")),
+        Err(format_xml::XmlFormatError::UnsupportedXmlWildcard { .. })
+    ));
+    let imported = mfd::import(&path)?;
+    assert!(imported.warnings.iter().any(|message| {
+        message.contains("xs:any wildcard cannot be represented")
+            && message.contains("falling back to the entry tree")
+    }));
+    assert!(matches!(
+        mfd::import_with_profile(&path, &Default::default(), mfd::ImportProfile::Executable),
+        Err(mfd::MfdError::IncompatibleImport(_))
+    ));
+    Ok(())
+}
+
+#[test]
 fn malformed_typed_entry_schema_warns_and_falls_back() -> Result<(), Box<dyn Error>> {
     let directory = TempDir::new("malformed")?;
     let path = export_project(&directory)?;
