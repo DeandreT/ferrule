@@ -1996,9 +1996,9 @@ fn worked_example_opens_an_unsaved_copy_and_previews_the_bundled_orders() {
     assert_eq!(draft.output_identity, "order-lines.csv");
     app.execute_preview();
     wait_for_preview_completion(&mut app);
-    let report = &app
+    let report = &mut app
         .run_report
-        .as_ref()
+        .as_mut()
         .expect("in-memory example preview")
         .report;
     assert_eq!(report.records_written, 6);
