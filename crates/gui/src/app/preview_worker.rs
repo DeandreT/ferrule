@@ -91,7 +91,17 @@ pub(super) fn run_preview_worker(
             PreviewRunError::Failed(format!("{error:#}"))
         }
     });
-    (result, trace.finish())
+    let trace = trace.finish();
+    let capture = result.as_ref().ok().and_then(|outcome| {
+        super::super::preview_inspection::Capture::new(
+            &project,
+            &draft,
+            acquisition.source,
+            outcome,
+            &trace,
+        )
+    });
+    (result, trace, capture)
 }
 
 #[allow(clippy::too_many_arguments)]

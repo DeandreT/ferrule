@@ -85,6 +85,7 @@ mod mfd_pipeline;
 mod new_mapping_ui;
 mod owned_worker;
 mod pdf_extraction;
+mod preview_inspection;
 mod preview_service;
 pub(crate) use preview_service::{PreviewService, PreviewServicePort};
 #[cfg(all(test, target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
@@ -511,6 +512,7 @@ pub struct FerruleApp {
     pdf_reader_controls: pdf_extraction::ReaderControls,
     preview_input_source: preview_service::PreviewInputSource,
     preview_service: PreviewServicePort,
+    preview_inspection: preview_inspection::Inspection,
     /// Close the window once owned previews and the service have finished.
     close_after_preview: bool,
     rest_run_draft: Option<rest_run::RestRunDraft>,
@@ -717,6 +719,7 @@ impl Default for FerruleApp {
             pdf_reader_controls: Default::default(),
             preview_input_source: Default::default(),
             preview_service: PreviewServicePort::default(),
+            preview_inspection: Default::default(),
             close_after_preview: false,
             rest_run_draft: None,
             pending_rest_run: None,
@@ -1734,11 +1737,7 @@ impl FerruleApp {
             self.palette,
         );
 
-        if let Some(report) = &mut self.run_report {
-            crate::run_report::show(ui.ctx(), &mut self.show_run_report, report);
-        } else {
-            self.show_run_report = false;
-        }
+        self.show_captured_results(ui.ctx());
 
         self.show_library_generation(ui.ctx());
         self.show_unsaved_confirmation(ui.ctx());
