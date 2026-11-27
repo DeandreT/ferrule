@@ -61,6 +61,9 @@ impl ReadSet {
     pub(crate) fn push_dynamic_loads(&mut self, loader: &ProjectDynamicSourceLoader<'_>) {
         for ((_, requested), instance) in loader.cache.borrow().iter() {
             let requested = Path::new(requested);
+            if http_url(requested).is_some() {
+                continue;
+            }
             let path = if requested.is_absolute() {
                 requested.to_path_buf()
             } else {

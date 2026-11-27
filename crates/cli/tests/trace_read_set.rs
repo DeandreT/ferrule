@@ -396,6 +396,29 @@ fn trace_cannot_replace_primary_or_named_inputs() -> TestResult {
 }
 
 #[test]
+fn create_new_protects_a_dynamically_loaded_document() -> TestResult {
+    let project = dynamic_project();
+    let original = "<Document><Item><Value>alpha</Value></Item></Document>";
+    let fixture = Fixture::new(
+        "create-new-dynamic",
+        &project,
+        &[
+            ("files.xml", "<Files><File>first.xml</File></Files>"),
+            ("first.xml", original),
+        ],
+    )?;
+    let output = fixture.dir.path().join("first.xml");
+    let design = fixture.dir.path().join("project.json");
+    let options = cli::RunOptions::new().with_output_path(&output);
+    let error = cli::PreparedFileRun::prepare(&project, &design, options.request())?
+        .execute_create_new(&options.observers(), None)
+        .unwrap_err();
+    assert!(error.to_string().contains("reserved"), "{error:#}");
+    assert_eq!(std::fs::read_to_string(output)?, original);
+    Ok(())
+}
+
+#[test]
 fn trace_cannot_replace_a_dynamically_loaded_document() -> TestResult {
     let fixture = Fixture::new(
         "dynamic",

@@ -241,6 +241,62 @@ fn run_cohort(cohort: &Cohort) -> TestResult<()> {
 }
 
 #[test]
+fn in_memory_document_create_new_gates_the_complete_output_and_preserves_a_late_competitor()
+-> TestResult<()> {
+    let temp = TempDir::new("create-new-primary-document")?;
+    let document = projects::document("literal_direct");
+    let project_path = temp.path().join("unsaved.json");
+    let output = temp.path().join("output.csv");
+    let input = temp.path().join("orders/input.csv");
+    let policy = cli::PrimaryDocumentPolicy::new(temp.path());
+    let mut parameters = engine::RuntimeParameters::new();
+    parameters.insert("Status", Value::String("ok".into()))?;
+    let run = |path: &Path, gate: &dyn Fn() -> bool| {
+        cli::run_primary_document_create_new(
+            &document,
+            &project_path,
+            path,
+            &policy,
+            Some(&parameters),
+            gate,
+        )
+    };
+    // No callback on evaluation failure.
+    assert!(run(&output, &|| panic!("missing input")).is_err());
+    std::fs::create_dir(temp.path().join("orders"))?;
+    std::fs::write(&input, "Key,Text,Count\nk1,x,1\n")?;
+    for refused in [
+        &project_path,
+        &input,
+        &temp.path().join("absent/output.csv"),
+    ] {
+        assert!(run(refused, &|| panic!("invalid destination")).is_err());
+    }
+    let error = run(&output, &|| false).unwrap_err();
+    assert!(matches!(
+        error.downcast_ref::<engine::EngineError>(),
+        Some(engine::EngineError::DebugCancelled)
+    ));
+    assert!(!output.exists());
+    let error = run(&output, &|| {
+        std::fs::write(&output, "another writer").unwrap();
+        true
+    })
+    .unwrap_err();
+    assert!(format!("{error:#}").contains(&output.display().to_string()));
+    assert_eq!(std::fs::read_to_string(&output)?, "another writer");
+    std::fs::remove_file(&output)?;
+    let result = run(&output, &|| true)?;
+    assert_eq!(result.artifacts[0].path, output);
+    assert_eq!(
+        std::fs::read_to_string(&output)?,
+        "Key,Text,Count,Status\nk1,x,1,ok\n"
+    );
+    assert_eq!(std::fs::read_dir(temp.path())?.count(), 2);
+    Ok(())
+}
+
+#[test]
 fn document_runs_refuse_unrouted_identities_missing_roots_and_input_replacement() -> TestResult<()>
 {
     let temp = TempDir::new("refusals")?;

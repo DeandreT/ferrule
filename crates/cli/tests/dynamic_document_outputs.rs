@@ -85,6 +85,37 @@ fn prepare(project: &Project) -> Result<(TempDir, PathBuf), Box<dyn Error>> {
 }
 
 #[test]
+fn create_new_preflights_every_dynamic_file_and_protects_consumed_members()
+-> Result<(), Box<dyn Error>> {
+    let project = project(3);
+    let (directory, design) = prepare(&project)?;
+    let output = directory.path().join("out");
+    let options = cli::RunOptions::new()
+        .with_output_path(&output)
+        .with_target(cli::TargetSelection::Primary);
+    std::fs::create_dir(&output)?;
+    let occupied = output.join("records-b.xml");
+    std::fs::write(&occupied, "existing")?;
+    let run = || {
+        cli::PreparedFileRun::prepare(&project, &design, options.request())?
+            .execute_create_new(&options.observers(), None)
+    };
+    assert!(run().is_err());
+    assert!(!output.join("records-a.xml").exists());
+    assert_eq!(std::fs::read_to_string(&occupied)?, "existing");
+    std::fs::remove_file(&occupied)?;
+    assert_eq!(run()?.primary_outputs.len(), 2);
+
+    let input = directory.path().join("input");
+    let options = cli::RunOptions::new().with_output_path(&input);
+    let error = cli::PreparedFileRun::prepare(&project, &design, options.request())?
+        .execute_create_new(&options.observers(), None)
+        .unwrap_err();
+    assert!(error.to_string().contains("reserved"), "{error:#}");
+    Ok(())
+}
+
+#[test]
 fn writes_every_dynamic_document_beneath_the_explicit_base() -> Result<(), Box<dyn Error>> {
     let (directory, project_path) = prepare(&project(3))?;
     let output = directory.path().join("output");

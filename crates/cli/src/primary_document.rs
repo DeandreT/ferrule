@@ -21,6 +21,9 @@ use mapping::{
     PrimaryRouteError,
 };
 
+use crate::output_documents::{
+    Publication, attach_new_file, check_destination, reject_protected_files,
+};
 use crate::{RunOutcome, WrittenOutput, absolute_mapping_path, resolve_run_path};
 
 /// Default number of documents one run may select.
@@ -508,11 +511,51 @@ pub fn run_primary_document_file(
     runtime_parameters: Option<&engine::RuntimeParameters>,
 ) -> anyhow::Result<RunOutcome> {
     let document = load_document_project(project_path)?;
+    run_primary_document_with_publication(
+        &document,
+        project_path,
+        output_path,
+        policy,
+        runtime_parameters,
+        Publication::Replace,
+    )
+}
+
+/// Runs an in-memory primary document and creates the chosen output in an
+/// existing directory only if its name is still unused. A connected output
+/// filename cannot be overridden.
+/// The gate runs once the complete document is staged, before it is published.
+pub fn run_primary_document_create_new(
+    document: &DocumentProject,
+    project_path: &Path,
+    output_path: &Path,
+    policy: &PrimaryDocumentPolicy,
+    parameters: Option<&engine::RuntimeParameters>,
+    before_publish: &dyn Fn() -> bool,
+) -> anyhow::Result<RunOutcome> {
+    run_primary_document_with_publication(
+        document,
+        project_path,
+        Some(output_path),
+        policy,
+        parameters,
+        Publication::CreateNew(before_publish),
+    )
+}
+
+fn run_primary_document_with_publication(
+    document: &DocumentProject,
+    project_path: &Path,
+    output_path: Option<&Path>,
+    policy: &PrimaryDocumentPolicy,
+    runtime_parameters: Option<&engine::RuntimeParameters>,
+    publication: Publication<'_>,
+) -> anyhow::Result<RunOutcome> {
     let mut execution = engine::ExecutionContext::new(project_path);
     if let Some(parameters) = runtime_parameters {
         execution = execution.with_parameters(parameters);
     }
-    let connected_output = engine::evaluate_output_filename(&document, &execution)?;
+    let connected_output = engine::evaluate_output_filename(document, &execution)?;
     if connected_output.is_some() && output_path.is_some() {
         bail!(
             "--output cannot override a connected output filename; bind its runtime parameter instead"
@@ -528,21 +571,34 @@ pub fn run_primary_document_file(
         "target_path",
         false,
     )?;
-    let active = absolute_mapping_path(project_path)?;
-    let output = execute_primary_document(&document, &active, policy, runtime_parameters)?;
-    let destination = comparable(&output_path);
-    if destination == comparable(project_path)
-        || output
-            .locations
-            .iter()
-            .any(|location| comparable(location) == destination)
-    {
-        bail!(
-            "output {} would replace the project or one of its input documents",
-            output_path.display()
-        );
+    if publication.is_create_new() {
+        crate::output_documents::check_new_static_parent(&output_path)?;
     }
-    publish(&output_path, &output.bytes)?;
+    let active = absolute_mapping_path(project_path)?;
+    let output = execute_primary_document(document, &active, policy, runtime_parameters)?;
+    if publication.is_create_new() {
+        let mut protected = vec![project_path];
+        protected.extend(output.locations.iter().map(PathBuf::as_path));
+        reject_protected_files(
+            std::iter::once(output_path.as_path()),
+            &protected,
+            publication,
+        )?;
+    } else {
+        let destination = comparable(&output_path);
+        if destination == comparable(project_path)
+            || output
+                .locations
+                .iter()
+                .any(|location| comparable(location) == destination)
+        {
+            bail!(
+                "output {} would replace the project or one of its input documents",
+                output_path.display()
+            );
+        }
+    }
+    publish(&output_path, &output.bytes, publication)?;
     let written = WrittenOutput {
         name: document.project().target.name.clone(),
         records_written: output.records,
@@ -581,30 +637,17 @@ fn comparable(path: &Path) -> PathBuf {
 
 static STAGE: AtomicU64 = AtomicU64::new(0);
 
-/// Writes a complete sibling file, then renames it over the destination.
-fn publish(path: &Path, bytes: &[u8]) -> anyhow::Result<()> {
-    match std::fs::symlink_metadata(path) {
-        Ok(metadata) if metadata.file_type().is_symlink() => {
-            bail!("output destination {} cannot be a symlink", path.display())
-        }
-        Ok(metadata) if !metadata.is_file() => {
-            bail!(
-                "output destination {} is not a regular file",
-                path.display()
-            )
-        }
-        Ok(_) => {}
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-        Err(error) => {
-            return Err(error).with_context(|| format!("checking output {}", path.display()));
-        }
-    }
+/// Writes a complete sibling file before attaching it to the destination.
+fn publish(path: &Path, bytes: &[u8], publication: Publication<'_>) -> anyhow::Result<()> {
+    check_destination(path, publication)?;
     let parent = path
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
         .unwrap_or_else(|| Path::new("."));
-    std::fs::create_dir_all(parent)
-        .with_context(|| format!("creating output directory {}", parent.display()))?;
+    if !publication.is_create_new() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("creating output directory {}", parent.display()))?;
+    }
     let name = path
         .file_name()
         .with_context(|| format!("output {} has no file name", path.display()))?
@@ -626,18 +669,22 @@ fn publish(path: &Path, bytes: &[u8]) -> anyhow::Result<()> {
                 return Err(error).with_context(|| format!("staging output {}", staged.display()));
             }
         };
-        let result = file
-            .write_all(bytes)
-            .and_then(|()| file.sync_all())
-            .and_then(|()| {
-                drop(file);
-                std::fs::rename(&staged, path)
+        let write = file.write_all(bytes).and_then(|()| file.sync_all());
+        drop(file);
+        let result = write
+            .with_context(|| format!("writing staged output {}", staged.display()))
+            .and_then(|()| match publication {
+                Publication::Replace => std::fs::rename(&staged, path)
+                    .with_context(|| format!("publishing output {}", path.display())),
+                Publication::CreateNew(_) => {
+                    publication.check_gate()?;
+                    attach_new_file(&staged, path)
+                }
             });
-        if let Err(error) = result {
+        if publication.is_create_new() || result.is_err() {
             let _ = std::fs::remove_file(&staged);
-            return Err(error).with_context(|| format!("publishing output {}", path.display()));
         }
-        return Ok(());
+        return result;
     }
     bail!("could not reserve a staging file for {}", path.display())
 }
