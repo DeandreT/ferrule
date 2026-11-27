@@ -131,6 +131,13 @@ impl FerruleApp {
 
     pub(super) fn rebase_history(&mut self) {
         self.clear_diagnostic_navigation();
+        if self
+            .saved_mapping
+            .as_ref()
+            .is_some_and(|saved| !saved.belongs_to(self.document_ui_id))
+        {
+            self.saved_mapping = None;
+        }
         let snapshot = self.live_snapshot();
         let origin = if self.saved_state.as_ref() == Some(&snapshot.state) {
             DocumentOrigin::Saved

@@ -1,5 +1,8 @@
 use std::path::PathBuf;
 
+pub(crate) mod broken_binding;
+use broken_binding::BrokenBinding;
+
 /// Format a known virtual binding only after resolving its exact typed owner.
 /// Engine/CLI issue text and serialized mapping field identities stay unchanged.
 pub(crate) fn validation_display_message(
@@ -16,38 +19,11 @@ pub(crate) fn validation_display_message(
     let Some(engine::ValidationOwner::Scope(owner)) = &issue.owner else {
         return issue.to_string();
     };
-    let mut scope = match &owner.target {
-        engine::ValidationEndpoint::Target => &project.root,
-        engine::ValidationEndpoint::NamedTarget { index, name } => {
-            let Some(target) = project
-                .extra_targets
-                .get(*index)
-                .filter(|target| target.name == *name)
-            else {
-                return issue.to_string();
-            };
-            &target.root
-        }
-        _ => return issue.to_string(),
+    let Some(scope) = broken_binding::target(project, &owner.target)
+        .and_then(|(_, root)| owner.path.iter().try_fold(root, broken_binding::child))
+    else {
+        return issue.to_string();
     };
-    for step in &owner.path {
-        let next = match step {
-            engine::ValidationScopeStep::Child(index) => scope.children.get(*index),
-            engine::ValidationScopeStep::DynamicChild(index) => {
-                scope.dynamic_children.get(*index).map(|child| &child.scope)
-            }
-            engine::ValidationScopeStep::Segment(index) => {
-                let mapping::ScopeIteration::Concatenate(segments) = &scope.iteration else {
-                    return issue.to_string();
-                };
-                segments.iter().nth(*index)
-            }
-        };
-        let Some(next) = next else {
-            return issue.to_string();
-        };
-        scope = next;
-    }
     let missing = scope.bindings.iter().find(|binding| {
         binding.target_field == ir::XML_TYPE_FIELD
             && !project.graph.nodes.contains_key(&binding.node)
@@ -89,6 +65,7 @@ pub struct Diagnostic {
     pub location: Option<DiagnosticLocation>,
     /// Fingerprint of the project that produced a validation owner.
     pub project_fingerprint: Option<String>,
+    pub(crate) broken_binding: Option<BrokenBinding>,
 }
 
 impl Diagnostic {
@@ -98,6 +75,7 @@ impl Diagnostic {
             message: message.into(),
             location: None,
             project_fingerprint: None,
+            broken_binding: None,
         }
     }
 
@@ -111,6 +89,7 @@ impl Diagnostic {
                 feature: issue.feature,
             }),
             project_fingerprint: None,
+            broken_binding: None,
         }
     }
 
@@ -120,6 +99,7 @@ impl Diagnostic {
             message: message.into(),
             location: None,
             project_fingerprint: None,
+            broken_binding: None,
         }
     }
 
@@ -147,6 +127,7 @@ impl Diagnostic {
         Self {
             level: DiagnosticLevel::Error,
             message: validation_display_message(project, &issue),
+            broken_binding: BrokenBinding::from_issue(project, &issue),
             location: issue.owner.map(DiagnosticLocation::Validation),
             project_fingerprint: Some(fingerprint.to_string()),
         }
@@ -258,8 +239,13 @@ impl Diagnostics {
                         {
                             ui.ctx().copy_text(item.message.clone());
                         }
+                        let action = if item.broken_binding.is_some() {
+                            "Inspect connection"
+                        } else {
+                            "Go to"
+                        };
                         if matches!(item.location, Some(DiagnosticLocation::Validation(_)))
-                            && ui.button("Go to").clicked()
+                            && ui.button(action).clicked()
                         {
                             navigate = Some(item.clone());
                         }

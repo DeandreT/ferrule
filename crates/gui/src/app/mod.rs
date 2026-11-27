@@ -50,6 +50,7 @@ pub(crate) use canvas_build::{
     SourcePinPolicy, semantic_canvas_wires, sync_endpoint_wires_with_owned_items,
     sync_endpoint_wires_with_policy, update_endpoint_connections_with_policy,
 };
+mod connection_repair;
 #[path = "csv_dialect.rs"]
 mod csv_dialect_ui;
 #[path = "diagnostic_navigation.rs"]
@@ -570,6 +571,8 @@ pub struct FerruleApp {
     source_schema_explorer: SchemaExplorerState,
     target_schema_explorer: SchemaExplorerState,
     focused_schema: Option<diagnostic_navigation::SchemaFocus>,
+    saved_mapping: Option<connection_repair::SavedMapping>,
+    connection_repair: Option<connection_repair::RepairDraft>,
     selected_scope: ScopePath,
     pending_scope_scroll: bool,
     selected_failure_rule: Option<usize>,
@@ -770,6 +773,8 @@ impl Default for FerruleApp {
             source_schema_explorer: SchemaExplorerState::default(),
             target_schema_explorer: SchemaExplorerState::default(),
             focused_schema: None,
+            saved_mapping: None,
+            connection_repair: None,
             selected_scope: Vec::new(),
             pending_scope_scroll: false,
             selected_failure_rule: None,
@@ -1268,6 +1273,7 @@ impl FerruleApp {
                 self.rebase_history();
                 let validation = cli::validate(&self.project);
                 let fingerprint = project_fingerprint(&self.project);
+                self.remember_saved_mapping(&fingerprint);
                 let mut diagnostics = validation
                     .into_iter()
                     .map(|issue| {
@@ -1600,7 +1606,8 @@ impl eframe::App for FerruleApp {
             self.show_pipeline_stage_close_guard(ui.ctx());
             return;
         }
-        let project_editing_enabled = self.ui_project_editing_enabled();
+        let project_editing_enabled =
+            self.ui_project_editing_enabled() && self.connection_repair.is_none();
         let [undo_shortcut, redo_shortcut, _] = history_shortcuts();
         let coalesce_history_change = ui.ctx().input(|input| {
             input.pointer.primary_down()
@@ -1731,6 +1738,7 @@ impl FerruleApp {
 
         self.show_library_generation(ui.ctx());
         self.show_unsaved_confirmation(ui.ctx());
+        self.show_connection_repair(ui.ctx());
         self.show_new_mapping_setup(ui.ctx());
         self.show_extra_source_setup(ui.ctx());
         self.show_extra_source_removal_confirmation(ui.ctx());
