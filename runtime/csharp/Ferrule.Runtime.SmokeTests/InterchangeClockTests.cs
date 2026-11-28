@@ -54,6 +54,7 @@ internal static partial class Program
         Equal(true, calls.SequenceEqual(Enum.GetValues<FerruleMapForceX12ClockField>()));
         var optionalBoundary = System.Text.Json.Nodes.JsonNode.Parse(boundary)!;
         optionalBoundary["schema"] = JsonSerializer.Serialize(Node("Envelope", [Node("Interchange", [Fields("ISA", 16, true), Node("Group", [Fields("GS", 8, true), Node("Message_850", [Fields("ST", 2), Fields("G69", 1), Fields("SE", 2)], true), Fields("GE", 2, true)], true), Fields("IEA", 2, true)], true)]));
+        InterchangeWriterPreparation(optionalBoundary.ToJsonString(), body);
         foreach (var (content, required, present) in new[] { ("", false, false), ("", true, true), ("  ", false, true), ("VALUE", false, true) })
         {
             var optionalMessage = Group(("ST", Group()), ("G69", Group(("E01", new FerruleScalar(FerruleValue.FromString(content))))));

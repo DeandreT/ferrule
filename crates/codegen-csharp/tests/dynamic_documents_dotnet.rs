@@ -14,6 +14,117 @@ fn generated_mapping_matches_dynamic_document_interpreter_output() {
         engine::run(&project, &source).expect("interpreter creates dynamic documents");
     let program = codegen::lower(&project).expect("dynamic documents lower");
     let artifacts = codegen_csharp::emit(&program).expect("dynamic document project emits");
+    run_harness(artifacts, HARNESS, "generated dynamic documents passed");
+
+    let Instance::DocumentSet(documents) = interpreted else {
+        panic!("interpreter should return a document set")
+    };
+    assert_eq!(
+        documents
+            .iter()
+            .map(|document| document.path())
+            .collect::<Vec<_>>(),
+        ["outputs/first.xml", "outputs/second.xml"]
+    );
+}
+
+#[test]
+fn standalone_x12_writer_is_independent_of_parameter_plan_initialization() {
+    use mapping::{
+        DocumentProject, EdiAutocomplete, EdiBoundaryKind, FormatOptions,
+        JsonParameterInvocationPlan, JsonParameterIteration, JsonSourceProperty, JsonSourceShape,
+        PrimarySourcePlan, X12Autocomplete,
+    };
+
+    let property = |name: &str, shape| JsonSourceProperty {
+        name: name.into(),
+        shape,
+    };
+    // A legal 22-level projection; properties arrays and property objects take the
+    // serialized parameter descriptor past JsonDocument's default 64 containers.
+    let mut unused = JsonSourceShape::String;
+    for _ in 0..21 {
+        unused = JsonSourceShape::Object {
+            properties: vec![property("child", unused)],
+        };
+    }
+    let invocation = JsonParameterInvocationPlan {
+        parameter: "Parameters".into(),
+        key_parameter: "Filename".into(),
+        key_member: "key".into(),
+        iteration: JsonParameterIteration::RootStringOccurrences,
+        projection: JsonSourceShape::Object {
+            properties: vec![
+                property("key", JsonSourceShape::String),
+                property("unused", unused),
+            ],
+        },
+    };
+    let source = JsonSourceShape::String;
+    let project = Project {
+        source: source.document_set_schema().unwrap(),
+        target: serde_json::from_str(include_str!(
+            "x12/repeating-envelope/fixtures/004010-schema.json"
+        ))
+        .unwrap(),
+        source_path: None,
+        target_path: None,
+        source_options: Default::default(),
+        target_options: FormatOptions {
+            edi_kind: Some(EdiBoundaryKind::X12),
+            x12_interchange_version: Some("00401".into()),
+            edi_autocomplete: Some(EdiAutocomplete::X12(X12Autocomplete {
+                request_acknowledgement: false,
+                transaction_set: Some("945".into()),
+            })),
+            ..Default::default()
+        },
+        graph: Graph {
+            nodes: BTreeMap::from([
+                (
+                    0,
+                    Node::Const {
+                        value: Value::String("input.json".into()),
+                    },
+                ),
+                (
+                    1,
+                    Node::RuntimeParameter {
+                        name: invocation.key_parameter.clone(),
+                        ty: ScalarType::String,
+                        preview: None,
+                    },
+                ),
+            ]),
+        },
+        root: Scope {
+            iteration: ScopeIteration::DynamicDocuments {
+                source: vec!["Documents".into()],
+                output_path: 1,
+            },
+            ..Default::default()
+        },
+        extra_sources: vec![],
+        extra_targets: vec![],
+        failure_rules: vec![],
+        user_functions: BTreeMap::new(),
+    };
+    let document = DocumentProject::new(project, PrimarySourcePlan { filename: 0 })
+        .with_json_source_projection(source.clone())
+        .unwrap();
+    let lowered = codegen::lower_document(&document).unwrap();
+    let artifacts = codegen_csharp::emit_invoked_grouped_with_mapforce_x12_writer(
+        &lowered,
+        &invocation,
+        &source,
+        &document.project().target_options,
+        &[],
+    )
+    .unwrap();
+    run_harness(artifacts, include_str!("x12/StandaloneWriter.cs"), "");
+}
+
+fn run_harness(artifacts: codegen::ArtifactSet, harness: &str, expected: &str) {
     let directory = TempDirectory::new();
     for file in artifacts.files() {
         let path = directory.path().join(file.path.as_str());
@@ -22,7 +133,7 @@ fn generated_mapping_matches_dynamic_document_interpreter_output() {
         }
         std::fs::write(path, &file.contents).expect("artifact is written");
     }
-    write_harness(directory.path());
+    write_harness(directory.path(), harness);
 
     let build = Command::new("dotnet")
         .env("DOTNET_ADD_GLOBAL_TOOLS_TO_PATH", "false")
@@ -52,21 +163,7 @@ fn generated_mapping_matches_dynamic_document_interpreter_output() {
         .output()
         .expect("generated harness starts");
     assert_command_succeeded("generated harness", &run);
-    assert_eq!(
-        String::from_utf8_lossy(&run.stdout).trim(),
-        "generated dynamic documents passed"
-    );
-
-    let Instance::DocumentSet(documents) = interpreted else {
-        panic!("interpreter should return a document set")
-    };
-    assert_eq!(
-        documents
-            .iter()
-            .map(|document| document.path())
-            .collect::<Vec<_>>(),
-        ["outputs/first.xml", "outputs/second.xml"]
-    );
+    assert_eq!(String::from_utf8_lossy(&run.stdout).trim(), expected);
 }
 
 fn project() -> Project {
@@ -164,7 +261,7 @@ fn member(portable: &str, resolved: &str, output_path: &str, value: &str) -> Doc
     .expect("fixture member is valid")
 }
 
-fn write_harness(root: &Path) {
+fn write_harness(root: &Path, harness: &str) {
     let directory = root.join("Harness");
     std::fs::create_dir_all(&directory).expect("harness directory is created");
     std::fs::write(
@@ -184,7 +281,7 @@ fn write_harness(root: &Path) {
 "#,
     )
     .expect("harness project is written");
-    std::fs::write(directory.join("Program.cs"), HARNESS).expect("harness source is written");
+    std::fs::write(directory.join("Program.cs"), harness).expect("harness source is written");
 }
 
 fn assert_command_succeeded(name: &str, result: &std::process::Output) {

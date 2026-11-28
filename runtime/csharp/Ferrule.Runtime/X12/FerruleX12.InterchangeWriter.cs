@@ -42,9 +42,10 @@ public static partial class FerruleX12
         writer.Flush();
     }
 
-    private static string RenderInterchangeDocument(string descriptor, FerruleInstance document, FerruleExecutionContext execution, Func<FerruleMapForceX12ClockField, string>? clock = null)
+    private sealed record InterchangeWriterPlan(Profile Profile, Dictionary<string, int> Minimums);
+
+    private static InterchangeWriterPlan PrepareInterchangeWriter(string descriptor)
     {
-        ArgumentNullException.ThrowIfNull(document); ArgumentNullException.ThrowIfNull(execution);
         RequireUtf8(descriptor, 2 * MaximumSchemaBytes, "interchange writer descriptor");
         using var parsed = JsonDocument.Parse(descriptor);
         var wrapper = parsed.RootElement; Fields(wrapper, ["boundary", "minimums"]);
@@ -64,6 +65,56 @@ public static partial class FerruleX12
             if (minimum is < 0 or > 1024 || node.Type is not null || !minimums.TryAdd(string.Join('\0', path), minimum))
                 throw Failure(FerruleX12Error.Schema, "Invalid writer minimum.");
         }
+        return new(profile, minimums);
+    }
+
+    private sealed class WriterPlanSlot
+    {
+        private volatile InterchangeWriterPlan? prepared;
+
+        internal InterchangeWriterPlan Get(string descriptor)
+        {
+            if (prepared is { } ready) return ready;
+            // Only the owning writer can reach this slot. A failed preparation leaves it empty.
+            lock (this)
+            {
+                return prepared ??= PrepareInterchangeWriter(descriptor);
+            }
+        }
+    }
+
+    /// <summary>One generated mapping's descriptor. Validation waits for its first write.</summary>
+    internal sealed class InterchangeDocumentWriter(string descriptor)
+    {
+        private readonly WriterPlanSlot preparation = new();
+
+        internal byte[] Serialize(FerruleInstance document, FerruleExecutionContext execution)
+            => Encoding.GetEncoding("ISO-8859-1").GetBytes(RenderInterchangeDocument(descriptor, document, execution, preparation: preparation));
+
+        internal byte[] SerializeWithClock(FerruleInstance document, FerruleExecutionContext execution, Func<FerruleMapForceX12ClockField, string> clock)
+        {
+            ArgumentNullException.ThrowIfNull(clock);
+            return Encoding.GetEncoding("ISO-8859-1").GetBytes(RenderInterchangeDocument(descriptor, document, execution, clock, preparation));
+        }
+
+        internal void Write(FerruleInstance document, FerruleExecutionContext execution, Stream output)
+        {
+            ArgumentNullException.ThrowIfNull(output);
+            WriteInterchangeText(RenderInterchangeDocument(descriptor, document, execution, preparation: preparation), output);
+        }
+
+        internal void WriteWithClock(FerruleInstance document, FerruleExecutionContext execution, Func<FerruleMapForceX12ClockField, string> clock, Stream output)
+        {
+            ArgumentNullException.ThrowIfNull(clock);
+            ArgumentNullException.ThrowIfNull(output);
+            WriteInterchangeText(RenderInterchangeDocument(descriptor, document, execution, clock, preparation), output);
+        }
+    }
+
+    private static string RenderInterchangeDocument(string descriptor, FerruleInstance document, FerruleExecutionContext execution, Func<FerruleMapForceX12ClockField, string>? clock = null, WriterPlanSlot? preparation = null)
+    {
+        ArgumentNullException.ThrowIfNull(document); ArgumentNullException.ThrowIfNull(execution);
+        var (profile, minimums) = preparation?.Get(descriptor) ?? PrepareInterchangeWriter(descriptor);
         List<(string Id, string? Date, string? Time)>? clockDefaults = null;
         if (clock is not null && profile.Autocomplete is not null)
         {

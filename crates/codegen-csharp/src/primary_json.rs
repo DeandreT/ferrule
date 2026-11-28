@@ -264,11 +264,24 @@ fn append_writer(
     ] {
         files.push(crate::file(path, contents.to_string()).map_err(PrimaryJsonEmitError::Emit)?);
     }
-    let mut code = format!(
-        "\npublic static partial class GeneratedMapping\n{{\n    public static byte[] SerializeMapForceX12Document(global::Ferrule.Runtime.FerruleInstance value, global::Ferrule.Runtime.FerruleExecutionContext execution) => global::Ferrule.Runtime.FerruleX12.SerializeMapForceDocumentBytes({0}, value, execution);\n    public static void WriteMapForceX12Document(global::Ferrule.Runtime.FerruleInstance value, global::Ferrule.Runtime.FerruleExecutionContext execution, global::System.IO.Stream output) => global::Ferrule.Runtime.FerruleX12.WriteMapForceDocument({0}, value, execution, output);\n}}\n",
+    let code = format!(
+        r#"
+public static partial class GeneratedMapping
+{{
+    // Keep standalone writes independent of the mapping's input plan initializers.
+    private static class InterchangeWriter
+    {{
+        internal static readonly global::Ferrule.Runtime.FerruleX12.InterchangeDocumentWriter Instance = new({});
+    }}
+
+    public static byte[] SerializeMapForceX12Document(global::Ferrule.Runtime.FerruleInstance value, global::Ferrule.Runtime.FerruleExecutionContext execution) => InterchangeWriter.Instance.Serialize(value, execution);
+    public static void WriteMapForceX12Document(global::Ferrule.Runtime.FerruleInstance value, global::Ferrule.Runtime.FerruleExecutionContext execution, global::System.IO.Stream output) => InterchangeWriter.Instance.Write(value, execution, output);
+    public static byte[] SerializeMapForceX12DocumentWithClock(global::Ferrule.Runtime.FerruleInstance value, global::Ferrule.Runtime.FerruleExecutionContext execution, global::System.Func<global::Ferrule.Runtime.FerruleMapForceX12ClockField, string> clock) => InterchangeWriter.Instance.SerializeWithClock(value, execution, clock);
+    public static void WriteMapForceX12DocumentWithClock(global::Ferrule.Runtime.FerruleInstance value, global::Ferrule.Runtime.FerruleExecutionContext execution, global::System.Func<global::Ferrule.Runtime.FerruleMapForceX12ClockField, string> clock, global::System.IO.Stream output) => InterchangeWriter.Instance.WriteWithClock(value, execution, clock, output);
+}}
+"#,
         literal::string(&descriptor)
     );
-    code.push_str(&format!("\npublic static partial class GeneratedMapping\n{{\n    public static byte[] SerializeMapForceX12DocumentWithClock(global::Ferrule.Runtime.FerruleInstance value, global::Ferrule.Runtime.FerruleExecutionContext execution, global::System.Func<global::Ferrule.Runtime.FerruleMapForceX12ClockField, string> clock) => global::Ferrule.Runtime.FerruleX12.SerializeMapForceDocumentBytesWithClock({0}, value, execution, clock);\n    public static void WriteMapForceX12DocumentWithClock(global::Ferrule.Runtime.FerruleInstance value, global::Ferrule.Runtime.FerruleExecutionContext execution, global::System.Func<global::Ferrule.Runtime.FerruleMapForceX12ClockField, string> clock, global::System.IO.Stream output) => global::Ferrule.Runtime.FerruleX12.WriteMapForceDocumentWithClock({0}, value, execution, clock, output);\n}}\n",literal::string(&descriptor)));
     files
         .iter_mut()
         .find(|f| f.path.as_str() == "GeneratedMapping.cs")
