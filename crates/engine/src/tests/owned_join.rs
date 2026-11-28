@@ -124,8 +124,8 @@ fn validation_checks_each_owner_collection_and_key() {
     .unwrap();
     let issues = messages(&project(singleton));
     assert!(
-        issues.contains(
-            &"join 3 singleton collection named `lookup` `Rows/id` crosses a repeating source level; join the repeating collection with a key path instead".to_string()
+        issues.iter().any(|issue| issue ==
+            "join 3 singleton collection named `lookup` `Rows/id` crosses a repeating source level; join the repeating collection with a key path instead"
         ),
         "{issues:?}"
     );

@@ -67,302 +67,314 @@ impl From<MfdExportProfile> for mfd::ExportProfile {
     }
 }
 
-#[derive(Subcommand)]
-enum Command {
-    /// Export a project and explicitly declared local resources as an offline bundle.
-    BundleProject {
-        /// Explicit source root. Every selected file path is relative to this directory.
-        #[arg(long)]
-        root: PathBuf,
-        #[arg(long, value_name = "RELATIVE_PROJECT")]
-        project: String,
-        /// One resource file relative to the source root; repeat as needed.
-        #[arg(long = "resource", value_name = "RELATIVE_FILE")]
-        resources: Vec<String>,
-        #[arg(long = "edi-catalog", value_name = "RELATIVE_DIRECTORY")]
-        edi_catalogs: Vec<String>,
-        #[arg(long = "json-schema-catalog", value_name = "RELATIVE_DIRECTORY")]
-        json_schema_catalogs: Vec<String>,
-        /// Include configured static local input files. Instance bytes are omitted by default.
-        #[arg(long)]
-        include_inputs: bool,
-        /// A directory that does not already exist.
-        #[arg(long)]
-        out: PathBuf,
-    },
-    /// Fetch one explicitly approved JSON response and map it to stdout.
-    RunRestJson {
-        #[arg(long, value_name = "PROJECT")]
-        project: PathBuf,
-        /// Host-owned JSON request description, separate from the project.
-        #[arg(long, value_name = "PATH")]
-        request: PathBuf,
-        /// Host-owned header values; credentials never belong in argv or projects.
-        #[arg(long, value_name = "PATH")]
-        header_values: Option<PathBuf>,
-        /// Grant one live request for this invocation. Default is denied.
-        #[arg(long)]
-        allow_live_rest: bool,
-        /// Permit cleartext HTTP explicitly; use HTTPS for protected data.
-        #[arg(long, requires = "allow_live_rest")]
-        allow_insecure_http: bool,
-        #[arg(long, value_name = "LOGICAL_JSON_PATH")]
-        response_identity: PathBuf,
-        #[arg(long, value_name = "LOGICAL_JSON_PATH")]
-        output_identity: PathBuf,
-        #[arg(long = "param", value_name = "NAME=VALUE")]
-        parameters: Vec<String>,
-    },
-    /// Run a mapping project, including configured PDF input. Output supports
-    /// CSV, XLSX, XML, JSON, SQLite, EDI, FlexText, and Protocol Buffers.
-    /// For SQLite the table name is the schema root's name.
-    Run {
-        /// Project file. `ferrule run PROJECT - -` streams one payload-compatible
-        /// primary input to one output artifact without temporary files.
-        #[arg(
-            value_name = "PROJECT",
-            required_unless_present = "project",
-            conflicts_with = "project"
-        )]
-        project_positional: Option<PathBuf>,
-        #[arg(long, value_name = "PROJECT", conflicts_with = "project_positional")]
-        project: Option<PathBuf>,
-        /// Input instance; defaults to the project's source_path.
-        #[arg(long, conflicts_with = "input_positional")]
-        input: Option<PathBuf>,
-        #[arg(
-            value_name = "INPUT",
-            allow_hyphen_values = true,
-            conflicts_with = "input"
-        )]
-        input_positional: Option<PathBuf>,
-        /// Output instance; defaults to the project's target_path.
-        #[arg(long, conflicts_with = "output_positional")]
-        output: Option<PathBuf>,
-        #[arg(
-            value_name = "OUTPUT",
-            allow_hyphen_values = true,
-            conflicts_with = "output"
-        )]
-        output_positional: Option<PathBuf>,
-        /// Evaluate and write only the primary target or one named target.
-        #[arg(long, value_name = "primary|NAME")]
-        target: Option<String>,
-        /// Extract configured filesystem PDF sources in the packaged Linux worker.
-        #[arg(long)]
-        pdf_worker: bool,
-        /// Retain closed successful PDF worker evidence folders.
-        #[arg(long, requires = "pdf_worker")]
-        keep_pdf_evidence: bool,
-        /// Write a deterministic, versioned JSON Lines execution trace.
-        #[arg(long, value_name = "PATH")]
-        trace_json: Option<PathBuf>,
-        /// Named host scalar in NAME=VALUE form. Repeat for multiple
-        /// parameters; declared mapping types apply during execution.
-        #[arg(long = "param", value_name = "NAME=VALUE")]
-        parameters: Vec<String>,
-        /// Run under a restricted policy file: allowed roots, HTTP origins and
-        /// explicit budgets. Policy enforcement, not a sandbox. Default: trusted.
-        #[arg(long, value_name = "FILE")]
-        restricted_policy: Option<PathBuf>,
-    },
-    /// Run a saved primary filename document project once over every document
-    /// its filename selects beneath an explicit local input root.
-    /// URIs, rooted and parent paths and symbolic links are refused; no network
-    /// source is reachable. The project's saved source path is never read.
-    RunDocument {
-        #[arg(long, value_name = "DOCUMENT_PROJECT")]
-        project: PathBuf,
-        /// Directory every selected filename resolves beneath.
-        #[arg(long, value_name = "DIR")]
-        input_root: PathBuf,
-        /// Output document in the plan's format; defaults to the project's target_path.
-        #[arg(long)]
-        output: Option<PathBuf>,
-        /// Largest accepted input document.
-        #[arg(long, value_name = "BYTES", default_value_t = format_csv::DEFAULT_LOCAL_DOCUMENT_BYTES)]
-        max_document_bytes: u64,
-        /// Most documents one run may select.
-        #[arg(long, value_name = "COUNT", default_value_t = cli::DEFAULT_MAX_PRIMARY_DOCUMENTS)]
-        max_documents: usize,
-        /// Named host scalar in NAME=VALUE form, including a filename parameter.
-        #[arg(long = "param", value_name = "NAME=VALUE")]
-        parameters: Vec<String>,
-    },
-    /// Run a typed graph of complete mapping stages and publish selected outputs.
-    RunPipeline {
-        #[arg(long, value_name = "PIPELINE")]
-        pipeline: PathBuf,
-        /// Host input name and file path. Repeat for each declared host input.
-        #[arg(long = "input", action = ArgAction::Append, num_args = 2, value_names = ["NAME", "PATH"])]
-        inputs: Vec<String>,
-        /// Stage ID and destination for its primary target. Repeat as needed.
-        #[arg(long = "output", action = ArgAction::Append, num_args = 2, value_names = ["STAGE", "PATH"])]
-        outputs: Vec<String>,
-        /// Stage ID, named target, and destination. Repeat as needed.
-        #[arg(long = "named-output", action = ArgAction::Append, num_args = 3, value_names = ["STAGE", "TARGET", "PATH"])]
-        named_outputs: Vec<String>,
-        /// Named host scalar in NAME=VALUE form, shared by all stages.
-        #[arg(long = "param", value_name = "NAME=VALUE")]
-        parameters: Vec<String>,
-        /// Run every stage under a restricted policy file. Default: trusted.
-        #[arg(long, value_name = "FILE")]
-        restricted_policy: Option<PathBuf>,
-    },
-    /// Check project graph, scope, and schema references without reading data.
-    Validate {
-        #[arg(long)]
-        project: PathBuf,
-    },
-    /// Generate a standalone Rust or C# mapping library.
-    #[command(group(
+use command_line::Command;
+
+// Clap emits the parser methods as sibling impls, so place the lint on the
+// module that contains those impls, not on the enum alone.
+#[allow(
+    clippy::large_unopt_stack_frames,
+    reason = "Clap generates a single debug parser for the complete command set"
+)]
+mod command_line {
+    use super::*;
+
+    #[derive(Subcommand)]
+    pub(super) enum Command {
+        /// Export a project and explicitly declared local resources as an offline bundle.
+        BundleProject {
+            /// Explicit source root. Every selected file path is relative to this directory.
+            #[arg(long)]
+            root: PathBuf,
+            #[arg(long, value_name = "RELATIVE_PROJECT")]
+            project: String,
+            /// One resource file relative to the source root; repeat as needed.
+            #[arg(long = "resource", value_name = "RELATIVE_FILE")]
+            resources: Vec<String>,
+            #[arg(long = "edi-catalog", value_name = "RELATIVE_DIRECTORY")]
+            edi_catalogs: Vec<String>,
+            #[arg(long = "json-schema-catalog", value_name = "RELATIVE_DIRECTORY")]
+            json_schema_catalogs: Vec<String>,
+            /// Include configured static local input files. Instance bytes are omitted by default.
+            #[arg(long)]
+            include_inputs: bool,
+            /// A directory that does not already exist.
+            #[arg(long)]
+            out: PathBuf,
+        },
+        /// Fetch one explicitly approved JSON response and map it to stdout.
+        RunRestJson {
+            #[arg(long, value_name = "PROJECT")]
+            project: PathBuf,
+            /// Host-owned JSON request description, separate from the project.
+            #[arg(long, value_name = "PATH")]
+            request: PathBuf,
+            /// Host-owned header values; credentials never belong in argv or projects.
+            #[arg(long, value_name = "PATH")]
+            header_values: Option<PathBuf>,
+            /// Grant one live request for this invocation. Default is denied.
+            #[arg(long)]
+            allow_live_rest: bool,
+            /// Permit cleartext HTTP explicitly; use HTTPS for protected data.
+            #[arg(long, requires = "allow_live_rest")]
+            allow_insecure_http: bool,
+            #[arg(long, value_name = "LOGICAL_JSON_PATH")]
+            response_identity: PathBuf,
+            #[arg(long, value_name = "LOGICAL_JSON_PATH")]
+            output_identity: PathBuf,
+            #[arg(long = "param", value_name = "NAME=VALUE")]
+            parameters: Vec<String>,
+        },
+        /// Run a mapping project, including configured PDF input. Output supports
+        /// CSV, XLSX, XML, JSON, SQLite, EDI, FlexText, and Protocol Buffers.
+        /// For SQLite the table name is the schema root's name.
+        Run {
+            /// Project file. `ferrule run PROJECT - -` streams one payload-compatible
+            /// primary input to one output artifact without temporary files.
+            #[arg(
+                value_name = "PROJECT",
+                required_unless_present = "project",
+                conflicts_with = "project"
+            )]
+            project_positional: Option<PathBuf>,
+            #[arg(long, value_name = "PROJECT", conflicts_with = "project_positional")]
+            project: Option<PathBuf>,
+            /// Input instance; defaults to the project's source_path.
+            #[arg(long, conflicts_with = "input_positional")]
+            input: Option<PathBuf>,
+            #[arg(
+                value_name = "INPUT",
+                allow_hyphen_values = true,
+                conflicts_with = "input"
+            )]
+            input_positional: Option<PathBuf>,
+            /// Output instance; defaults to the project's target_path.
+            #[arg(long, conflicts_with = "output_positional")]
+            output: Option<PathBuf>,
+            #[arg(
+                value_name = "OUTPUT",
+                allow_hyphen_values = true,
+                conflicts_with = "output"
+            )]
+            output_positional: Option<PathBuf>,
+            /// Evaluate and write only the primary target or one named target.
+            #[arg(long, value_name = "primary|NAME")]
+            target: Option<String>,
+            /// Extract configured filesystem PDF sources in the packaged Linux worker.
+            #[arg(long)]
+            pdf_worker: bool,
+            /// Retain closed successful PDF worker evidence folders.
+            #[arg(long, requires = "pdf_worker")]
+            keep_pdf_evidence: bool,
+            /// Write a deterministic, versioned JSON Lines execution trace.
+            #[arg(long, value_name = "PATH")]
+            trace_json: Option<PathBuf>,
+            /// Named host scalar in NAME=VALUE form. Repeat for multiple
+            /// parameters; declared mapping types apply during execution.
+            #[arg(long = "param", value_name = "NAME=VALUE")]
+            parameters: Vec<String>,
+            /// Run under a restricted policy file: allowed roots, HTTP origins and
+            /// explicit budgets. Policy enforcement, not a sandbox. Default: trusted.
+            #[arg(long, value_name = "FILE")]
+            restricted_policy: Option<PathBuf>,
+        },
+        /// Run a saved primary filename document project once over every document
+        /// its filename selects beneath an explicit local input root.
+        /// URIs, rooted and parent paths and symbolic links are refused; no network
+        /// source is reachable. The project's saved source path is never read.
+        RunDocument {
+            #[arg(long, value_name = "DOCUMENT_PROJECT")]
+            project: PathBuf,
+            /// Directory every selected filename resolves beneath.
+            #[arg(long, value_name = "DIR")]
+            input_root: PathBuf,
+            /// Output document in the plan's format; defaults to the project's target_path.
+            #[arg(long)]
+            output: Option<PathBuf>,
+            /// Largest accepted input document.
+            #[arg(long, value_name = "BYTES", default_value_t = format_csv::DEFAULT_LOCAL_DOCUMENT_BYTES)]
+            max_document_bytes: u64,
+            /// Most documents one run may select.
+            #[arg(long, value_name = "COUNT", default_value_t = cli::DEFAULT_MAX_PRIMARY_DOCUMENTS)]
+            max_documents: usize,
+            /// Named host scalar in NAME=VALUE form, including a filename parameter.
+            #[arg(long = "param", value_name = "NAME=VALUE")]
+            parameters: Vec<String>,
+        },
+        /// Run a typed graph of complete mapping stages and publish selected outputs.
+        RunPipeline {
+            #[arg(long, value_name = "PIPELINE")]
+            pipeline: PathBuf,
+            /// Host input name and file path. Repeat for each declared host input.
+            #[arg(long = "input", action = ArgAction::Append, num_args = 2, value_names = ["NAME", "PATH"])]
+            inputs: Vec<String>,
+            /// Stage ID and destination for its primary target. Repeat as needed.
+            #[arg(long = "output", action = ArgAction::Append, num_args = 2, value_names = ["STAGE", "PATH"])]
+            outputs: Vec<String>,
+            /// Stage ID, named target, and destination. Repeat as needed.
+            #[arg(long = "named-output", action = ArgAction::Append, num_args = 3, value_names = ["STAGE", "TARGET", "PATH"])]
+            named_outputs: Vec<String>,
+            /// Named host scalar in NAME=VALUE form, shared by all stages.
+            #[arg(long = "param", value_name = "NAME=VALUE")]
+            parameters: Vec<String>,
+            /// Run every stage under a restricted policy file. Default: trusted.
+            #[arg(long, value_name = "FILE")]
+            restricted_policy: Option<PathBuf>,
+        },
+        /// Check project graph, scope, and schema references without reading data.
+        Validate {
+            #[arg(long)]
+            project: PathBuf,
+        },
+        /// Generate a standalone Rust or C# mapping library.
+        #[command(group(
         clap::ArgGroup::new("x12_envelope_host")
             .args(["x12_adapters", "static_document_adapters"])
             .multiple(true)
     ))]
-    #[command(group(
+        #[command(group(
         clap::ArgGroup::new("csv_document_host")
             .args(["csv_document_adapters", "primary_documents"])
     ))]
-    Generate {
-        #[arg(long)]
-        project: PathBuf,
-        #[arg(long, value_enum)]
-        language: CodegenLanguage,
-        #[arg(long)]
-        out: PathBuf,
-        /// Local `codegen-runtime` crate used by generated Rust projects.
-        /// Required for Rust generation until the runtime is published.
-        #[arg(long)]
-        rust_runtime_path: Option<PathBuf>,
-        /// Include bounded CSV output methods for a flat primary target.
-        #[arg(long)]
-        csv_output: bool,
-        /// Include bounded, path-bearing CSV document-list output methods.
-        #[arg(long, conflicts_with_all = ["csv_output", "json5_adapters", "x12_adapters", "static_document_adapters", "csv_x12_adapters", "csv_json_adapters", "csv_document_adapters", "primary_documents"])]
-        csv_document_output: bool,
-        /// Include singular JSON5 text and UTF-8 byte companion methods.
-        #[arg(long, conflicts_with = "csv_output")]
-        json5_adapters: bool,
-        /// Include supported raw X12 text and strict UTF-8 document methods.
-        #[arg(long, conflicts_with_all = ["csv_output", "json5_adapters"])]
-        x12_adapters: bool,
-        /// Explicit ownership grammar for the primary X12 source. Requires
-        /// --x12-adapters or --static-document-adapters.
-        #[arg(long, value_enum, requires = "x12_envelope_host")]
-        x12_source_envelope_profile: Option<CodegenX12EnvelopeProfile>,
-        /// Explicit ownership grammar for the primary X12 target. Requires
-        /// --x12-adapters or --static-document-adapters.
-        #[arg(long, value_enum, requires = "x12_envelope_host")]
-        x12_target_envelope_profile: Option<CodegenX12EnvelopeProfile>,
-        /// Include static JSON/X12 inputs and explicitly selected C# document outputs.
-        #[arg(long, conflicts_with_all = ["csv_output", "json5_adapters", "x12_adapters"])]
-        static_document_adapters: bool,
-        /// Include all-row flat CSV input and singular X12 C# output methods.
-        #[arg(long, conflicts_with_all = ["csv_output", "json5_adapters", "x12_adapters", "static_document_adapters"])]
-        csv_x12_adapters: bool,
-        /// Explicit ownership grammar for the CSV companion's X12 target.
-        #[arg(long, value_enum, requires = "csv_x12_adapters")]
-        csv_x12_target_envelope_profile: Option<CodegenX12EnvelopeProfile>,
-        /// Include full-row CSV input and explicitly selected strict JSON C# outputs.
-        #[arg(long, conflicts_with_all = ["csv_output", "json5_adapters", "x12_adapters", "static_document_adapters", "csv_x12_adapters"])]
-        csv_json_adapters: bool,
-        /// Include complete single-document CSV input/output methods in Rust or C#.
-        #[arg(long, conflicts_with_all = ["csv_output", "json5_adapters", "x12_adapters", "static_document_adapters", "csv_x12_adapters", "csv_json_adapters"])]
-        csv_document_adapters: bool,
-        /// Generate a saved primary filename document project: one complete
-        /// document, in the plan's format, over every document its filename
-        /// selects through a host.
-        #[arg(long, alias = "primary-csv-documents", conflicts_with_all = ["csv_output", "json5_adapters", "x12_adapters", "static_document_adapters", "csv_x12_adapters", "csv_json_adapters", "csv_document_adapters"])]
-        primary_documents: bool,
-        /// Generate direct primary CSV acquisition and computed-path strict CSV
-        /// documents from a saved DocumentProject, selecting its exact row field.
-        #[arg(long, value_name = "ROWS_FIELD", conflicts_with_all = ["csv_output", "csv_document_output", "json5_adapters", "x12_adapters", "x12_source_envelope_profile", "x12_target_envelope_profile", "static_document_adapters", "csv_x12_adapters", "csv_x12_target_envelope_profile", "csv_json_adapters", "csv_document_adapters", "primary_documents", "raw_delimited_crlf"])]
-        primary_mapped_csv_documents: Option<String>,
-        /// Write unescaped target fields and CRLF records; target quoting must be disabled.
-        #[arg(long, requires = "csv_document_host")]
-        raw_delimited_crlf: bool,
-        #[command(flatten)]
-        identity: generate_args::GenerateIdentityArgs,
-    },
-    /// Import an XSD file's root element as a SchemaNode, printed as JSON --
-    /// a starting point for hand-authoring a project file's schema.
-    ImportXsd {
-        #[arg(long)]
-        xsd: PathBuf,
-    },
-    /// Import a JSON Schema file's root as a SchemaNode, printed as JSON.
-    ImportJsonSchema {
-        #[arg(long)]
-        schema: PathBuf,
-    },
-    /// Introspect a SQLite table as a SchemaNode, printed as JSON.
-    ImportDb {
-        #[arg(long)]
-        db: PathBuf,
-        #[arg(long)]
-        table: String,
-    },
-    /// Convert an .mfd design into a Ferrule project or runnable pipeline.
-    ImportMfd {
-        #[arg(long)]
-        mfd: PathBuf,
-        #[arg(long)]
-        out: PathBuf,
-        /// Import a connected serial XML design as a typed pipeline.
-        #[arg(long)]
-        pipeline: bool,
-        /// Import one connected EDI input and JSON output filename as a document plan.
-        #[arg(long, conflicts_with_all = ["pipeline", "require_executable"])]
-        filename_document: bool,
-        /// Refuse incomplete single-project imports before writing the project.
-        #[arg(long, conflicts_with = "pipeline")]
-        require_executable: bool,
-        /// Preserve supported row error order; refuse unsupported exception shapes.
-        #[arg(long)]
-        item_ordered_exceptions: bool,
-        /// Trusted root containing the mapping and all referenced resources.
-        #[arg(long, conflicts_with = "package_manifest")]
-        package_root: Option<PathBuf>,
-        /// Explicitly trusted portable package manifest. Its directory is the
-        /// package root and its relative catalogs are searched after direct
-        /// catalog flags.
-        #[arg(long, value_name = "FILE", conflicts_with = "package_root")]
-        package_manifest: Option<PathBuf>,
-        /// Trusted EDI configuration catalog. Repeat to search multiple
-        /// catalogs in declaration order after the mapping package.
-        #[arg(long = "edi-catalog-root", value_name = "DIR")]
-        edi_catalog_roots: Vec<PathBuf>,
-        /// Trusted JSON Schema catalog. Repeat to search multiple catalogs in
-        /// declaration order after the mapping package.
-        #[arg(long = "json-schema-root", value_name = "DIR")]
-        json_schema_catalog_roots: Vec<PathBuf>,
-    },
-    /// Convert a Ferrule project file into an .mfd design
-    /// (generated XSDs are written next to it).
-    ExportMfd {
-        #[arg(long)]
-        project: PathBuf,
-        #[arg(long)]
-        out: PathBuf,
-        /// Export a typed serial XML pipeline instead of a single project.
-        #[arg(long)]
-        pipeline: bool,
-        /// Preserve Ferrule extensions or require a native MFD export.
-        #[arg(long, value_enum, default_value_t = MfdExportProfile::FerruleExtensions)]
-        profile: MfdExportProfile,
-        /// Inspect the exact export without creating files or directories.
-        #[arg(long)]
-        check: bool,
-        /// Print one versioned JSON report on stdout.
-        #[arg(long)]
-        report_json: bool,
-    },
-    /// Print a Bash, Zsh, Fish or PowerShell completion script to stdout.
-    Completions {
-        #[arg(value_enum)]
-        shell: completions::CompletionShell,
-    },
+        Generate {
+            #[arg(long)]
+            project: PathBuf,
+            #[arg(long, value_enum)]
+            language: CodegenLanguage,
+            #[arg(long)]
+            out: PathBuf,
+            /// Local `codegen-runtime` crate used by generated Rust projects.
+            /// Required for Rust generation until the runtime is published.
+            #[arg(long)]
+            rust_runtime_path: Option<PathBuf>,
+            /// Include bounded CSV output methods for a flat primary target.
+            #[arg(long)]
+            csv_output: bool,
+            /// Include bounded, path-bearing CSV document-list output methods.
+            #[arg(long, conflicts_with_all = ["csv_output", "json5_adapters", "x12_adapters", "static_document_adapters", "csv_x12_adapters", "csv_json_adapters", "csv_document_adapters", "primary_documents"])]
+            csv_document_output: bool,
+            /// Include singular JSON5 text and UTF-8 byte companion methods.
+            #[arg(long, conflicts_with = "csv_output")]
+            json5_adapters: bool,
+            /// Include supported raw X12 text and strict UTF-8 document methods.
+            #[arg(long, conflicts_with_all = ["csv_output", "json5_adapters"])]
+            x12_adapters: bool,
+            /// Explicit ownership grammar for the primary X12 source. Requires
+            /// --x12-adapters or --static-document-adapters.
+            #[arg(long, value_enum, requires = "x12_envelope_host")]
+            x12_source_envelope_profile: Option<CodegenX12EnvelopeProfile>,
+            /// Explicit ownership grammar for the primary X12 target. Requires
+            /// --x12-adapters or --static-document-adapters.
+            #[arg(long, value_enum, requires = "x12_envelope_host")]
+            x12_target_envelope_profile: Option<CodegenX12EnvelopeProfile>,
+            /// Include static JSON/X12 inputs and explicitly selected C# document outputs.
+            #[arg(long, conflicts_with_all = ["csv_output", "json5_adapters", "x12_adapters"])]
+            static_document_adapters: bool,
+            /// Include all-row flat CSV input and singular X12 C# output methods.
+            #[arg(long, conflicts_with_all = ["csv_output", "json5_adapters", "x12_adapters", "static_document_adapters"])]
+            csv_x12_adapters: bool,
+            /// Explicit ownership grammar for the CSV companion's X12 target.
+            #[arg(long, value_enum, requires = "csv_x12_adapters")]
+            csv_x12_target_envelope_profile: Option<CodegenX12EnvelopeProfile>,
+            /// Include full-row CSV input and explicitly selected strict JSON C# outputs.
+            #[arg(long, conflicts_with_all = ["csv_output", "json5_adapters", "x12_adapters", "static_document_adapters", "csv_x12_adapters"])]
+            csv_json_adapters: bool,
+            /// Include complete single-document CSV input/output methods in Rust or C#.
+            #[arg(long, conflicts_with_all = ["csv_output", "json5_adapters", "x12_adapters", "static_document_adapters", "csv_x12_adapters", "csv_json_adapters"])]
+            csv_document_adapters: bool,
+            /// Generate a saved primary filename document project: one complete
+            /// document, in the plan's format, over every document its filename
+            /// selects through a host.
+            #[arg(long, alias = "primary-csv-documents", conflicts_with_all = ["csv_output", "json5_adapters", "x12_adapters", "static_document_adapters", "csv_x12_adapters", "csv_json_adapters", "csv_document_adapters"])]
+            primary_documents: bool,
+            /// Generate direct primary CSV acquisition and computed-path strict CSV
+            /// documents from a saved DocumentProject, selecting its exact row field.
+            #[arg(long, value_name = "ROWS_FIELD", conflicts_with_all = ["csv_output", "csv_document_output", "json5_adapters", "x12_adapters", "x12_source_envelope_profile", "x12_target_envelope_profile", "static_document_adapters", "csv_x12_adapters", "csv_x12_target_envelope_profile", "csv_json_adapters", "csv_document_adapters", "primary_documents", "raw_delimited_crlf"])]
+            primary_mapped_csv_documents: Option<String>,
+            /// Write unescaped target fields and CRLF records; target quoting must be disabled.
+            #[arg(long, requires = "csv_document_host")]
+            raw_delimited_crlf: bool,
+            #[command(flatten)]
+            identity: generate_args::GenerateIdentityArgs,
+        },
+        /// Import an XSD file's root element as a SchemaNode, printed as JSON --
+        /// a starting point for hand-authoring a project file's schema.
+        ImportXsd {
+            #[arg(long)]
+            xsd: PathBuf,
+        },
+        /// Import a JSON Schema file's root as a SchemaNode, printed as JSON.
+        ImportJsonSchema {
+            #[arg(long)]
+            schema: PathBuf,
+        },
+        /// Introspect a SQLite table as a SchemaNode, printed as JSON.
+        ImportDb {
+            #[arg(long)]
+            db: PathBuf,
+            #[arg(long)]
+            table: String,
+        },
+        /// Convert an .mfd design into a Ferrule project or runnable pipeline.
+        ImportMfd {
+            #[arg(long)]
+            mfd: PathBuf,
+            #[arg(long)]
+            out: PathBuf,
+            /// Import a connected serial XML design as a typed pipeline.
+            #[arg(long)]
+            pipeline: bool,
+            /// Import one connected EDI input and JSON output filename as a document plan.
+            #[arg(long, conflicts_with_all = ["pipeline", "require_executable"])]
+            filename_document: bool,
+            /// Refuse incomplete single-project imports before writing the project.
+            #[arg(long, conflicts_with = "pipeline")]
+            require_executable: bool,
+            /// Preserve supported row error order; refuse unsupported exception shapes.
+            #[arg(long)]
+            item_ordered_exceptions: bool,
+            /// Trusted root containing the mapping and all referenced resources.
+            #[arg(long, conflicts_with = "package_manifest")]
+            package_root: Option<PathBuf>,
+            /// Explicitly trusted portable package manifest. Its directory is the
+            /// package root and its relative catalogs are searched after direct
+            /// catalog flags.
+            #[arg(long, value_name = "FILE", conflicts_with = "package_root")]
+            package_manifest: Option<PathBuf>,
+            /// Trusted EDI configuration catalog. Repeat to search multiple
+            /// catalogs in declaration order after the mapping package.
+            #[arg(long = "edi-catalog-root", value_name = "DIR")]
+            edi_catalog_roots: Vec<PathBuf>,
+            /// Trusted JSON Schema catalog. Repeat to search multiple catalogs in
+            /// declaration order after the mapping package.
+            #[arg(long = "json-schema-root", value_name = "DIR")]
+            json_schema_catalog_roots: Vec<PathBuf>,
+        },
+        /// Convert a Ferrule project file into an .mfd design
+        /// (generated XSDs are written next to it).
+        ExportMfd {
+            #[arg(long)]
+            project: PathBuf,
+            #[arg(long)]
+            out: PathBuf,
+            /// Export a typed serial XML pipeline instead of a single project.
+            #[arg(long)]
+            pipeline: bool,
+            /// Preserve Ferrule extensions or require a native MFD export.
+            #[arg(long, value_enum, default_value_t = MfdExportProfile::FerruleExtensions)]
+            profile: MfdExportProfile,
+            /// Inspect the exact export without creating files or directories.
+            #[arg(long)]
+            check: bool,
+            /// Print one versioned JSON report on stdout.
+            #[arg(long)]
+            report_json: bool,
+        },
+        /// Print a Bash, Zsh, Fish or PowerShell completion script to stdout.
+        Completions {
+            #[arg(value_enum)]
+            shell: completions::CompletionShell,
+        },
+    }
 }
 
 impl Command {

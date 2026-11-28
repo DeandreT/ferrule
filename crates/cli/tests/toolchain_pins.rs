@@ -26,13 +26,43 @@ const WORKFLOWS: [&str; 3] = [
 ];
 
 #[test]
-fn rust_channel_is_an_exact_stable_release() -> anyhow::Result<()> {
+fn rust_channel_is_an_explicit_dated_nightly() -> anyhow::Result<()> {
     let channel = rust_channel()?;
-    let parts: Vec<_> = channel.split('.').collect();
+    let date = channel
+        .strip_prefix("nightly-")
+        .ok_or_else(|| anyhow::anyhow!("expected a dated nightly, got {channel}"))?;
+    let parts: Vec<_> = date.split('-').collect();
     assert_eq!(parts.len(), 3, "{channel}");
     assert!(
-        parts.iter().all(|part| part.parse::<u32>().is_ok()),
+        parts.iter().zip([4, 2, 2]).all(|(part, length)| {
+            part.len() == length && part.bytes().all(|byte| byte.is_ascii_digit())
+        }),
         "{channel}"
+    );
+    assert!((1..=12).contains(&parts[1].parse::<u32>()?), "{channel}");
+    assert!((1..=31).contains(&parts[2].parse::<u32>()?), "{channel}");
+    Ok(())
+}
+
+#[test]
+fn rust_toolchain_keeps_lint_format_and_wasm_components() -> anyhow::Result<()> {
+    let config: toml::Value = toml::from_str(&read("rust-toolchain.toml")?)?;
+    let toolchain = &config["toolchain"];
+    assert_eq!(toolchain["profile"].as_str(), Some("minimal"));
+    let components = toolchain["components"].as_array().unwrap();
+    for required in ["clippy", "rustfmt"] {
+        assert!(
+            components
+                .iter()
+                .any(|value| value.as_str() == Some(required))
+        );
+    }
+    assert!(
+        toolchain["targets"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|value| value.as_str() == Some("wasm32-unknown-unknown"))
     );
     Ok(())
 }
@@ -116,31 +146,81 @@ fn test_workflows_use_the_required_nextest_and_keep_doctests() -> anyhow::Result
 }
 
 #[test]
-fn fast_linkers_are_scoped_to_their_native_targets() -> anyhow::Result<()> {
+fn frontend_parallelism_is_automatic_for_generic_targets() -> anyhow::Result<()> {
     let config: toml::Value = toml::from_str(&read(".cargo/config.toml")?)?;
+    let build = config["build"].as_table().unwrap();
     assert!(
-        config.get("build").is_none(),
+        build.get("target").is_none(),
         "do not change the default target"
     );
+    assert!(
+        build.get("rustc-wrapper").is_none() && build.get("rustc-workspace-wrapper").is_none(),
+        "inherit the caller's compiler cache wrapper"
+    );
+    let flags = build["rustflags"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|flag| flag.as_str().unwrap())
+        .collect::<Vec<_>>();
+    assert_eq!(flags, ["-Zthreads=0"]);
+    let inherited = &config["env"]["CARGO_BUILD_RUSTFLAGS"];
+    assert_eq!(inherited["value"].as_str(), Some("-Zthreads=0"));
+    assert_eq!(inherited["force"].as_bool(), Some(false));
+    Ok(())
+}
+
+#[test]
+fn fast_linkers_are_scoped_to_their_native_targets() -> anyhow::Result<()> {
+    let config: toml::Value = toml::from_str(&read(".cargo/config.toml")?)?;
     let targets = config["target"].as_table().unwrap();
     assert_eq!(targets.len(), 2);
-    let linux = &targets["x86_64-unknown-linux-gnu"];
-    assert_eq!(linux["linker"].as_str(), Some("cc"));
-    assert!(
-        linux["rustflags"]
+    let environment = config["env"].as_table().unwrap();
+    assert!(environment.get("RUSTFLAGS").is_none());
+    assert!(environment.get("CARGO_ENCODED_RUSTFLAGS").is_none());
+    assert!(environment.get("RUSTC_WRAPPER").is_none());
+    for (target, prefix, linker, linker_flag) in [
+        (
+            "x86_64-unknown-linux-gnu",
+            "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU",
+            "cc",
+            "link-arg=-fuse-ld=mold",
+        ),
+        (
+            "x86_64-pc-windows-msvc",
+            "CARGO_TARGET_X86_64_PC_WINDOWS_MSVC",
+            "rust-lld.exe",
+            "linker-flavor=lld-link",
+        ),
+    ] {
+        assert_eq!(targets[target]["linker"].as_str(), Some(linker), "{target}");
+        let expected = ["-C", linker_flag, "-Zthreads=0"];
+        let flags = targets[target]["rustflags"]
             .as_array()
             .unwrap()
             .iter()
-            .any(|flag| flag.as_str() == Some("link-arg=-fuse-ld=mold"))
-    );
-    let windows = &targets["x86_64-pc-windows-msvc"];
-    assert_eq!(windows["linker"].as_str(), Some("rust-lld.exe"));
-    assert!(
-        windows["rustflags"]
-            .as_array()
+            .map(|flag| flag.as_str().unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(flags, expected, "{target}");
+        let propagated_flags = &environment[&format!("{prefix}_RUSTFLAGS")];
+        assert_eq!(propagated_flags["force"].as_bool(), Some(false), "{target}");
+        let flags = propagated_flags["value"]
+            .as_str()
             .unwrap()
-            .iter()
-            .any(|flag| flag.as_str() == Some("linker-flavor=lld-link"))
-    );
+            .split_whitespace()
+            .collect::<Vec<_>>();
+        assert_eq!(flags, expected, "{target}");
+        let propagated_linker = &environment[&format!("{prefix}_LINKER")];
+        assert_eq!(
+            propagated_linker["value"].as_str(),
+            Some(linker),
+            "{target}"
+        );
+        assert_eq!(
+            propagated_linker["force"].as_bool(),
+            Some(false),
+            "{target}"
+        );
+    }
     Ok(())
 }

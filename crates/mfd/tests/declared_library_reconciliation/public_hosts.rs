@@ -13,6 +13,7 @@ use dotnet_temp::DotnetTemp;
 mod xml_tree;
 
 const GUARD: ExecutionContract = ExecutionContract::ClosedPrimarySourceV1;
+const RUST_TOOLCHAIN: &str = include_str!("../../../../rust-toolchain.toml");
 
 fn save(directory: &Path, name: &str, value: &Json) {
     std::fs::write(
@@ -352,8 +353,6 @@ fn executable(selected: OsString) -> PathBuf {
         .map(|directory| directory.join(&filename))
         .find(|path| path.is_file())
         .unwrap_or_else(|| panic!("required preinstalled executable not found: {selected:?}"));
-    // Preserve argv[0]: following a Cargo shim's symlink to rustup would
-    // invoke rustup itself rather than Cargo.
     std::path::absolute(found).unwrap()
 }
 
@@ -406,9 +405,12 @@ fn checked(directory: &Path, label: &str, command: &mut Command) -> String {
     String::from_utf8(output.stdout).unwrap()
 }
 
-fn rust_command(cargo: &Path, directory: &Path) -> Command {
-    let mut command = Command::new(cargo);
-    command.current_dir(directory);
+fn rust_command(rustup: &Path, cargo: &Path, directory: &Path) -> Command {
+    let mut command = Command::new(rustup);
+    command
+        .current_dir(directory)
+        .args(["run", pinned_rust_channel()])
+        .arg(cargo);
     for (key, _) in std::env::vars_os() {
         let name = key.to_string_lossy();
         if name.starts_with("CARGO_PROFILE_")
@@ -419,7 +421,6 @@ fn rust_command(cargo: &Path, directory: &Path) -> Command {
                     | "CARGO_BUILD_BUILD_DIR"
                     | "CARGO_BUILD_JOBS"
                     | "CARGO_INCREMENTAL"
-                    | "CARGO_ENCODED_RUSTFLAGS"
                     | "CARGO_BUILD_TARGET"
             )
         {
@@ -428,11 +429,35 @@ fn rust_command(cargo: &Path, directory: &Path) -> Command {
     }
     let temp = directory.join(".tmp");
     std::fs::create_dir_all(&temp).unwrap();
-    command.env("TMPDIR", &temp).env("RUSTFLAGS", "-D warnings");
+    command.env("TMPDIR", &temp).env_remove("RUSTC");
     command
-        .env("RUSTUP_TOOLCHAIN", "1.98.1")
-        .env_remove("RUSTC");
-    command
+}
+
+fn pinned_rust_channel() -> &'static str {
+    RUST_TOOLCHAIN
+        .lines()
+        .find_map(|line| line.trim().strip_prefix("channel = "))
+        .expect("repository Rust toolchain must declare a channel")
+        .trim_matches('"')
+}
+
+#[test]
+fn rust_host_uses_pinned_cargo_and_inherits_compiler_flags() {
+    let directory = test_support::TempDir::new("imported-udf-cargo-policy").unwrap();
+    let rustup = directory.path().join("rustup");
+    let cargo = directory.path().join("pinned cargo");
+    let command = rust_command(&rustup, &cargo, directory.path());
+    assert_eq!(command.get_program(), rustup.as_os_str());
+    assert!(command.get_args().eq([
+        std::ffi::OsStr::new("run"),
+        std::ffi::OsStr::new(pinned_rust_channel()),
+        cargo.as_os_str(),
+    ]));
+    assert!(
+        command
+            .get_envs()
+            .all(|(name, _)| name != "RUSTFLAGS" && name != "CARGO_ENCODED_RUSTFLAGS")
+    );
 }
 
 fn verify_host_records(stdout: &str, spec: &Json, csharp: bool) {
@@ -523,7 +548,27 @@ fn imported_guarded_projects_run_ordinary_release_public_hosts() {
         .join("../codegen-runtime")
         .canonicalize()
         .unwrap();
-    let cargo = executable(std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into()));
+    let rustup = executable("rustup".into());
+    let cargo_path = checked(
+        &root,
+        "pinned-cargo-path",
+        Command::new(&rustup).current_dir(&root).args([
+            "which",
+            "--toolchain",
+            pinned_rust_channel(),
+            "cargo",
+        ]),
+    );
+    let cargo = Path::new(cargo_path.trim_end_matches(['\r', '\n']));
+    assert!(cargo.is_absolute() && cargo.is_file(), "{cargo:?}");
+    // Use that installation for every receipt, with rustup's toolchain environment.
+    let pinned_cargo = |directory: &Path| rust_command(&rustup, cargo, directory);
+    let cargo_version = checked(
+        &root,
+        "pinned-cargo-version",
+        pinned_cargo(&root).arg("--version"),
+    );
+    assert!(cargo_version.trim().starts_with("cargo "));
     let dotnet = executable(
         std::env::var_os("FERRULE_DOTNET_EXE")
             .or_else(|| std::env::var_os("DOTNET_HOST_PATH"))
@@ -586,11 +631,7 @@ fn imported_guarded_projects_run_ordinary_release_public_hosts() {
         assert_eq!(manifest.matches("[dependencies]").count(), 1);
         assert!(!manifest.contains("serde_json =") && !manifest.contains("roxmltree ="));
         std::fs::write(manifest_path, manifest.replace("[dependencies]", "[dependencies]\nserde_json = { version = \"=1.0.150\", features = [\"preserve_order\"] }\nroxmltree = \"=0.21.2\"" )).unwrap();
-        std::fs::write(
-            rust.join("rust-toolchain.toml"),
-            "[toolchain]\nchannel = \"1.98.1\"\nprofile = \"minimal\"\n",
-        )
-        .unwrap();
+        std::fs::write(rust.join("rust-toolchain.toml"), RUST_TOOLCHAIN).unwrap();
         std::fs::write(
             rust.join("src/main.rs"),
             include_str!("public_hosts/rust_host.rs.txt"),
@@ -604,22 +645,23 @@ fn imported_guarded_projects_run_ordinary_release_public_hosts() {
         let version = checked(
             &directory,
             "cargo-version",
-            rust_command(&cargo, &rust).arg("--version"),
+            pinned_cargo(&rust).arg("--version"),
         );
-        assert!(
-            version.trim().starts_with("cargo 1.98.1 "),
-            "wrong installed Cargo: {version}"
+        assert_eq!(
+            version.trim(),
+            cargo_version.trim(),
+            "wrong installed Cargo"
         );
         checked(
             &directory,
             "rust-lock",
-            rust_command(&cargo, &rust).args(["generate-lockfile", "--offline"]),
+            pinned_cargo(&rust).args(["generate-lockfile", "--offline"]),
         );
         let target = directory.join("rust-target");
         checked(
             &directory,
             "rust-build",
-            rust_command(&cargo, &rust)
+            pinned_cargo(&rust)
                 .args([
                     "build",
                     "--offline",
@@ -630,6 +672,9 @@ fn imported_guarded_projects_run_ordinary_release_public_hosts() {
                 ])
                 .arg(&target)
                 .args([
+                    // Deny local package lint warnings without replacing compiler flags.
+                    "--config",
+                    "build.warnings=\"deny\"",
                     "--config",
                     "profile.release.debug=0",
                     "--config",
