@@ -53,10 +53,11 @@ endpoint proxy is revealed so it can be distinguished from the other connections
 fields relative to the complete schema. Field identity and schema order remain
 unchanged; filtered visual row numbers are not semantic port indices.
 
-Ctrl+F searches the selected endpoint's complete schema, including unconnected
-fields. A matching unconnected field is temporarily revealed; clearing or closing
-the search, or switching endpoints, clears that exception. Connecting that field
-makes it a normal connected field.
+Press Ctrl+F on the canvas to open **Find a field**. Type a field name or path
+to search source and target fields, including unconnected ones. No endpoint
+selection is needed. Use Up or Down to choose a match. Enter closes the finder
+and focuses that field's exact pin, revealing it even if it was hidden. Escape
+closes the finder without choosing a match.
 
 Scrollbar paint, thumb and hit bounds use the measured real-field list, below
 the complete header and above proxy/footer controls. Tiny or invalid geometry

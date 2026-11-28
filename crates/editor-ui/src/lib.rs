@@ -10,6 +10,7 @@ mod document;
 mod edit_history;
 mod graph_command;
 mod graph_edit;
+pub mod mapping_checks;
 mod node_input;
 mod project_command;
 mod project_edit;

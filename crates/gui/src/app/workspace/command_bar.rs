@@ -255,6 +255,14 @@ impl FerruleApp {
             if menu_item(ui, "Preview…", Some(&shortcuts.preview), preview_blocked) {
                 self.begin_preview();
             }
+            let checks_blocked = self
+                .document
+                .saved_path()
+                .is_none()
+                .then_some("Save the mapping first");
+            if menu_item(ui, "Saved checks…", None, checks_blocked) {
+                self.open_saved_checks();
+            }
             let request_unavailable = self.rest_run_unavailable_reason();
             if menu_item(
                 ui,

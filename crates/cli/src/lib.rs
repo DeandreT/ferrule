@@ -52,6 +52,11 @@ mod project_paths;
 mod read_set;
 mod route_capability;
 mod sqlite_query;
+/// The public XML-to-CSV example, embedded for use by installed clients.
+pub mod orders_example {
+    pub const PROJECT: &[u8] = include_bytes!("../tests/fixtures/orders/project.json");
+    pub const INPUT: &str = include_str!("../tests/fixtures/orders/Orders.xml");
+}
 pub use bundle::{BundleCatalog, BundleCatalogKind, BundleOptions, BundleOutcome, bundle_project};
 pub use dynamic_source_fault::{
     DynamicSourceReadError, UndeclaredDynamicSource, UnsuppliedPayloadSource,
@@ -126,7 +131,7 @@ pub use primary_document::{
     DEFAULT_MAX_PRIMARY_DOCUMENTS, DocumentFormatError, MAX_PRIMARY_DOCUMENT_OUTPUT_BYTES,
     PrimaryDocumentError, PrimaryDocumentOutput, PrimaryDocumentPolicy, PrimaryInputError,
     check_primary_document, execute_primary_document, execute_primary_document_with_host,
-    load_document_project, run_primary_document_file,
+    load_document_project, run_primary_document_create_new, run_primary_document_file,
 };
 pub use project_paths::{
     mapping_identity_relative_to as pipeline_mapping_identity, rebase as rebase_project_paths,
@@ -150,6 +155,23 @@ pub use trace_json::JsonTraceFile;
 pub use format_csv::CsvFormatError;
 /// A bounded, quote-aware CSV sample for GUI schema authoring.
 pub use format_csv::CsvSample;
+
+/// Whether the in-memory preview writer selects delimited rows for this
+/// identity. Embedded formats take precedence over a `.csv` filename.
+pub fn preview_writes_csv(path: &Path, options: &FormatOptions) -> bool {
+    matches!(
+        format_selection::select(path, options, Direction::Output, false),
+        Ok(format_selection::SelectedFormat::Csv)
+    )
+}
+
+/// Whether primary payload bytes are read as an XML document.
+pub fn preview_reads_xml(path: &Path, options: &FormatOptions) -> bool {
+    matches!(
+        format_selection::select(path, options, Direction::Input, false),
+        Ok(format_selection::SelectedFormat::Xml(_))
+    )
+}
 
 pub fn sample_csv(
     path: &Path,

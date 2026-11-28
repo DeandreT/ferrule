@@ -9,3 +9,4 @@ description = "Platform-neutral editor document, selection, and history state"
 [dependencies]
 ir = { workspace = true }
 mapping = { workspace = true }
+serde = { workspace = true }

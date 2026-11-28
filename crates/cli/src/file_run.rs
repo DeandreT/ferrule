@@ -3,7 +3,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use anyhow::{Context, bail};
 use ir::{Instance, SchemaNode};
@@ -11,7 +11,9 @@ use mapping::FormatOptions;
 
 use crate::cancellation::{CancellableHook, NoDebugHook, check_cancelled};
 use crate::execution_policy::TRUSTED;
-use crate::output_documents::{OutputDestination, TargetOutput, write_target_outputs};
+use crate::output_documents::{
+    OutputDestination, Publication, TargetOutput, write_target_outputs_with_publication,
+};
 use crate::payload::PayloadRunOutcome;
 use crate::route_capability::{HostRoute, InputRole, PlannedPublication, RoutePlan, RouteRefusal};
 use crate::sqlite_query::PreparedQuery;
@@ -57,6 +59,8 @@ pub struct RunOptions<'a> {
     /// Optional live control point before ordinary target-field writes.
     pub debug_hook: Option<&'a dyn engine::DebugHook>,
     /// Called after evaluation succeeds and before any output staging begins.
+    /// [`PreparedFileRun::execute_create_new`] calls this after staging instead,
+    /// immediately before it starts attaching complete files to their final names.
     /// Returning false cancels the run without publishing target files.
     pub before_publish: Option<&'a dyn Fn() -> bool>,
     /// Host-owned artifact paths that mapping outputs must not replace. The
@@ -181,7 +185,8 @@ impl RunRequest<'_> {
 pub struct RunObservers<'a> {
     pub trace_sink: Option<&'a dyn TraceSink>,
     pub debug_hook: Option<&'a dyn engine::DebugHook>,
-    /// Called after evaluation succeeds and before any output staging begins.
+    /// Called after evaluation succeeds, before staging for legacy replacement
+    /// and immediately before attachment for create-new publication.
     /// Returning false cancels the run without publishing target files.
     pub before_publish: Option<&'a dyn Fn() -> bool>,
     /// Checked before each input acquisition, at interpreter control points,
@@ -415,8 +420,11 @@ fn run_project_value_with_pdf_reader(
     options: &RunOptions<'_>,
     reader: Option<&dyn FilesystemPdfReader>,
 ) -> anyhow::Result<RunOutcome> {
-    PreparedFileRun::prepare(project, project_path, options.request())?
-        .execute_with_optional_pdf_reader(&options.observers(), reader)
+    PreparedFileRun::prepare(project, project_path, options.request())?.execute_files(
+        &options.observers(),
+        reader,
+        Publication::Replace,
+    )
 }
 
 /// A filesystem run whose paths, targets and capabilities are fixed.
@@ -620,7 +628,29 @@ impl<'a> PreparedFileRun<'a> {
     }
 
     pub fn execute(self, observers: &RunObservers<'_>) -> anyhow::Result<RunOutcome> {
-        self.execute_with_optional_pdf_reader(observers, None)
+        self.execute_files(observers, None, Publication::Replace)
+    }
+
+    /// Publishes complete files only at unused names. Static outputs require
+    /// an existing parent directory. If a later name is taken during batch
+    /// publication, the error identifies complete files already published.
+    pub fn execute_create_new(
+        self,
+        observers: &RunObservers<'_>,
+        reader: Option<&dyn FilesystemPdfReader>,
+    ) -> anyhow::Result<RunOutcome> {
+        let cancelled = || {
+            observers
+                .cancellation
+                .is_some_and(|flag| flag.load(Ordering::Acquire))
+        };
+        let gate =
+            || !cancelled() && observers.before_publish.is_none_or(|gate| gate()) && !cancelled();
+        let evaluation_observers = RunObservers {
+            before_publish: None,
+            ..*observers
+        };
+        self.execute_files(&evaluation_observers, reader, Publication::CreateNew(&gate))
     }
 
     /// Executes with a caller-owned reader for configured filesystem PDF inputs.
@@ -629,42 +659,55 @@ impl<'a> PreparedFileRun<'a> {
         observers: &RunObservers<'_>,
         reader: &dyn FilesystemPdfReader,
     ) -> anyhow::Result<RunOutcome> {
-        self.execute_with_optional_pdf_reader(observers, Some(reader))
+        self.execute_files(observers, Some(reader), Publication::Replace)
     }
 
-    fn execute_with_optional_pdf_reader(
+    fn execute_files(
         self,
         observers: &RunObservers<'_>,
         reader: Option<&dyn FilesystemPdfReader>,
+        publication: Publication<'_>,
     ) -> anyhow::Result<RunOutcome> {
         if self.delivery != Delivery::Files {
             bail!("a prepared preview returns in-memory artifacts; use `preview`");
         }
-        let input_path = self.input_path.clone();
+        if publication.is_create_new() {
+            for target in &self.targets {
+                if let OutputDestination::Static(path) = &target.destination {
+                    crate::output_documents::check_new_static_parent(path)?;
+                }
+            }
+        }
         let output_path = self.targets[0].destination.path().to_path_buf();
         let request = self.request;
         let policy = request.policy();
-        let (targets, evaluated, current_datetime) = self.evaluate(observers, reader)?;
+        let (evaluated, current_datetime, read_set) = self.evaluate(observers, reader)?;
+        let mut protected = request.protected_output_paths.to_vec();
+        if publication.is_create_new() {
+            protected.extend(read_set.paths());
+        }
         let written = match &evaluated {
             Evaluated::Selected(output) => write_selected_target(
-                &targets[0],
+                &self.targets[0],
                 output,
                 &current_datetime,
-                request.protected_output_paths,
+                &protected,
                 policy,
+                publication,
             )?,
             Evaluated::All(outputs) => write_all_targets(
-                &targets,
+                &self.targets,
                 outputs,
                 &current_datetime,
-                request.protected_output_paths,
+                &protected,
                 policy,
+                publication,
             )?,
         };
 
         Ok(RunOutcome {
             records_written: written.records,
-            input_path,
+            input_path: self.input_path,
             output_path,
             primary_outputs: written.primary_outputs,
             extra_outputs: written.extra_outputs,
@@ -698,7 +741,7 @@ impl<'a> PreparedFileRun<'a> {
         let project = self.project;
         let project_path = self.project_path;
         let output_path = self.request.output_path;
-        let (_, evaluated, current_datetime) = self.evaluate(observers, reader)?;
+        let (evaluated, current_datetime, _) = self.evaluate(observers, reader)?;
         match &evaluated {
             Evaluated::Selected(output) => crate::payload::render_selected_outcome(
                 project,
@@ -720,32 +763,24 @@ impl<'a> PreparedFileRun<'a> {
     /// Acquires every input in plan order, evaluates the selected targets and
     /// releases all inputs before returning their values.
     fn evaluate(
-        self,
+        &self,
         observers: &RunObservers<'_>,
         reader: Option<&dyn FilesystemPdfReader>,
-    ) -> anyhow::Result<(Vec<PlannedProjectTarget<'a>>, Evaluated, String)> {
+    ) -> anyhow::Result<(Evaluated, String, read_set::ReadSet)> {
         observers.require_declared(self.request.observers)?;
-        let Self {
-            project,
-            project_path,
-            request,
-            input_path,
-            targets,
-            required_static_names,
-            primary_query,
-            named_queries,
-            delivery: _,
-            plan: _,
-        } = self;
+        let project = self.project;
+        let project_path = self.project_path;
+        let request = &self.request;
+        let input_path = &self.input_path;
         let policy = request.policy();
 
         check_cancelled(observers.cancellation)?;
-        let source_instance = match &primary_query {
+        let source_instance = match &self.primary_query {
             Some(query) => {
-                query.acquire(&input_path, &project.source, policy, observers.cancellation)?
+                query.acquire(input_path, &project.source, policy, observers.cancellation)?
             }
             None => read_instance_with_pdf_reader(
-                &input_path,
+                input_path,
                 &project.source,
                 &project.source_options,
                 reader,
@@ -753,14 +788,14 @@ impl<'a> PreparedFileRun<'a> {
             )?,
         };
         let mut read_set = read_set::ReadSet::new(project_path);
-        read_set.push_source(&input_path, &source_instance);
+        read_set.push_source(input_path, &source_instance);
 
         let project_dir = project_path.parent().unwrap_or_else(|| Path::new("."));
         let mut extras = Vec::with_capacity(project.extra_sources.len());
-        for extra in static_sources(project, required_static_names.as_ref()) {
+        for extra in static_sources(project, self.required_static_names.as_ref()) {
             check_cancelled(observers.cancellation)?;
             let path = named_source_path(project_path, extra);
-            let instance = match named_queries.get(extra.name.as_str()) {
+            let instance = match self.named_queries.get(extra.name.as_str()) {
                 Some(query) => query.acquire(&path, &extra.schema, policy, observers.cancellation),
                 None => read_instance_with_pdf_reader(
                     &path,
@@ -825,11 +860,11 @@ impl<'a> PreparedFileRun<'a> {
                 &execution,
             )?)
         };
-        allow_output_publication(&request, observers, &mut read_set, &dynamic_loader)?;
+        allow_output_publication(request, observers, &mut read_set, &dynamic_loader)?;
         // Target values own their data; inputs are no longer needed during serialization.
         drop(dynamic_loader);
         drop(source_instance);
-        Ok((targets, evaluated, current_datetime))
+        Ok((evaluated, current_datetime, read_set))
     }
 }
 
@@ -1007,6 +1042,7 @@ fn write_all_targets(
     current_datetime: &str,
     protected_output_paths: &[&Path],
     policy: &ExecutionPolicy,
+    publication: Publication<'_>,
 ) -> anyhow::Result<WrittenTargets> {
     if outputs.extras.len() + 1 != targets.len() {
         bail!("engine returned an unexpected number of target values");
@@ -1020,7 +1056,13 @@ fn write_all_targets(
     for (target, output) in targets.iter().skip(1).zip(&outputs.extras) {
         writes.push(target_write(target, &output.instance, current_datetime));
     }
-    let mut written = write_target_outputs(&writes, protected_output_paths, policy)?.into_iter();
+    let mut written = write_target_outputs_with_publication(
+        &writes,
+        protected_output_paths,
+        policy,
+        publication,
+    )?
+    .into_iter();
     let primary_result = written
         .next()
         .context("output batch did not return a primary target result")?;
@@ -1048,6 +1090,7 @@ fn write_selected_target(
     current_datetime: &str,
     protected_output_paths: &[&Path],
     policy: &ExecutionPolicy,
+    publication: Publication<'_>,
 ) -> anyhow::Result<WrittenTargets> {
     let instance = match (target.primary, output) {
         (true, engine::SelectedTargetOutput::Primary(instance)) => instance,
@@ -1056,10 +1099,11 @@ fn write_selected_target(
         }
         _ => bail!("engine returned a different target than requested"),
     };
-    let mut written = write_target_outputs(
+    let mut written = write_target_outputs_with_publication(
         &[target_write(target, instance, current_datetime)],
         protected_output_paths,
         policy,
+        publication,
     )?
     .into_iter();
     let result = written

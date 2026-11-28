@@ -344,8 +344,17 @@ pub(crate) fn finish(
         };
         name(&response, &widget.name);
         record_control_at(ctx, canvas_id, widget.id, widget.pin.node());
+        if response.clicked_by(egui::PointerButton::Primary) || response.gained_focus() {
+            select_target_pin(ctx, viewer, snarl, widget.pin);
+        }
         let radius = response.rect.width().min(response.rect.height()) * 0.5;
         if response.has_focus() {
+            if let Some(pin) =
+                crate::canvas_search::FieldPin::from_canvas(viewer, snarl, widget.pin)
+                && let Some(path) = crate::canvas_search::Fields::of(viewer).label(pin)
+            {
+                ctx.accesskit_node_builder(widget.id, |node| node.set_description(path));
+            }
             painter.circle_stroke(
                 response.rect.center(),
                 radius + 2.0,
@@ -392,6 +401,9 @@ pub(crate) fn finish(
         .or_else(|| navigate(ctx, canvas_id, surface.id, &pins, &controls, viewer, snarl));
     if let Some(id) = moved {
         ctx.memory_mut(|memory| memory.request_focus(id));
+        if let Some(widget) = pins.iter().find(|widget| widget.id == id) {
+            select_target_pin(ctx, viewer, snarl, widget.pin);
+        }
         ctx.request_repaint();
     }
     let reveal = ctx
@@ -419,6 +431,23 @@ fn record_control_at(ctx: &egui::Context, canvas_id: egui::Id, id: egui::Id, nod
 /// A pin an arrow key scrolled into view, focused once it has been drawn.
 #[derive(Clone, Copy)]
 struct PendingPinFocus(CanvasPin);
+
+pub(crate) fn request_pin(ctx: &egui::Context, canvas_id: egui::Id, pin: CanvasPin) {
+    ctx.data_mut(|data| data.insert_temp(pin_focus_id(canvas_id), PendingPinFocus(pin)));
+}
+
+fn select_target_pin(
+    ctx: &egui::Context,
+    viewer: &GraphViewer<'_>,
+    snarl: &Snarl<CanvasNode>,
+    pin: CanvasPin,
+) {
+    if let CanvasPin::Input(_) = pin
+        && let Some(field) = crate::canvas_search::FieldPin::from_canvas(viewer, snarl, pin)
+    {
+        crate::canvas_tools::select_field(ctx, viewer, field);
+    }
+}
 
 fn take_pending_pin(
     ctx: &egui::Context,
@@ -511,9 +540,7 @@ fn pin_target(
         egui::Key::ArrowUp | egui::Key::ArrowDown => {
             let step = if key == egui::Key::ArrowUp { -1 } else { 1 };
             if let Some(revealed) = viewer.scroll_endpoint_field(widget.pin, step, snarl) {
-                ctx.data_mut(|data| {
-                    data.insert_temp(pin_focus_id(canvas_id), PendingPinFocus(revealed));
-                });
+                request_pin(ctx, canvas_id, revealed);
                 ctx.request_repaint();
                 return None;
             }

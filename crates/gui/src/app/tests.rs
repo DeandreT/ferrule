@@ -1701,6 +1701,7 @@ fn blank_run_paths_fall_back_to_stored_project_paths() {
     app.output_path.clear();
 
     app.run(&egui::Context::default());
+    app.confirm_run_destinations();
     wait_for_file_run_completion(&mut app);
 
     assert!(directory.join("output.xml").is_file(), "{}", app.status);
@@ -1741,16 +1742,20 @@ fn file_run_uses_shared_host_value_and_connected_default() -> anyhow::Result<()>
         });
 
     app.run(&egui::Context::default());
+    app.confirm_run_destinations();
     wait_for_file_run_completion(&mut app);
     assert!(app.diagnostics.is_empty(), "{}", app.status);
     assert_eq!(selected_run_value(&output_path)?, "override");
     assert!(!app.is_dirty(), "run values do not edit the project");
 
     app.host_parameters.entries.clear();
+    let fallback = directory.join("fallback.json");
+    app.output_path = fallback.display().to_string();
     app.run(&egui::Context::default());
+    app.confirm_run_destinations();
     wait_for_file_run_completion(&mut app);
     assert!(app.diagnostics.is_empty(), "{}", app.status);
-    assert_eq!(selected_run_value(&output_path)?, "fallback");
+    assert_eq!(selected_run_value(&fallback)?, "fallback");
     std::fs::remove_dir_all(directory)?;
     Ok(())
 }
@@ -1790,6 +1795,7 @@ fn invalid_host_value_reports_declared_type_and_does_not_publish() -> anyhow::Re
         });
 
     app.run(&egui::Context::default());
+    app.confirm_run_destinations();
     wait_for_file_run_completion(&mut app);
     assert!(!output_path.exists());
     assert!(app.diagnostics.items().iter().any(|item| {
@@ -1980,6 +1986,76 @@ fn layout_failure_keeps_saved_project_and_editor_on_the_same_base() {
 }
 
 #[test]
+fn worked_example_opens_an_unsaved_copy_and_previews_the_bundled_orders() {
+    let mut app = FerruleApp::default();
+    let recents = app.recent_projects.clone();
+    app.open_worked_example();
+    assert!(app.document.saved_path().is_none());
+    assert!(app.observed_dirty());
+    assert_eq!(app.recent_projects, recents);
+    let draft = app
+        .preview_draft
+        .as_ref()
+        .expect("example opens Preview setup");
+    assert_eq!(draft.input_identity, "Orders.xml");
+    assert_eq!(draft.input_text, cli::orders_example::INPUT);
+    assert_eq!(draft.output_identity, "order-lines.csv");
+    app.execute_preview();
+    wait_for_preview_completion(&mut app);
+    let report = &mut app
+        .run_report
+        .as_mut()
+        .expect("in-memory example preview")
+        .report;
+    assert_eq!(report.records_written, 6);
+    assert_eq!(report.outputs.len(), 1);
+    let crate::run_report::OutputPreview::Text {
+        content,
+        total_bytes,
+        truncated,
+    } = report.outputs[0].preview()
+    else {
+        panic!("expected the complete CSV text");
+    };
+    assert_eq!(*total_bytes, 307);
+    assert!(!*truncated);
+    assert_eq!(
+        content.as_bytes(),
+        include_bytes!("../../../cli/tests/fixtures/orders/expected_order_lines.csv")
+    );
+    app.install_untitled_mapping(blank_project(), "other.json");
+    app.begin_preview();
+    assert!(app.preview_draft.as_ref().unwrap().input_text.is_empty());
+}
+
+#[test]
+fn worked_example_needs_no_files_in_its_launch_directory() -> anyhow::Result<()> {
+    let project = temporary_project_path("worked-example-launch");
+    let directory = project.parent().unwrap();
+    // A child gets its own cwd; other parallel tests keep theirs.
+    let run = std::process::Command::new(std::env::current_exe()?)
+        .current_dir(directory)
+        .args([
+            "--exact",
+            "app::tests::worked_example_opens_an_unsaved_copy_and_previews_the_bundled_orders",
+        ])
+        .output()?;
+    let created: Vec<_> = directory
+        .read_dir()?
+        .map(|entry| entry.map(|entry| entry.file_name()))
+        .collect::<std::io::Result<_>>()?;
+    std::fs::remove_dir_all(directory)?;
+    let stdout = String::from_utf8_lossy(&run.stdout);
+    assert!(
+        run.status.success() && stdout.contains("1 passed"),
+        "{stdout}\n{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert!(created.is_empty(), "preview wrote files: {created:?}");
+    Ok(())
+}
+
+#[test]
 fn preview_executes_an_unsaved_project_without_writing_its_logical_output() -> anyhow::Result<()> {
     let directory = std::env::temp_dir().join(format!(
         "ferrule-gui-preview-unsaved-{}",
@@ -2026,7 +2102,7 @@ fn preview_executes_an_unsaved_project_without_writing_its_logical_output() -> a
     Ok(())
 }
 
-fn wait_for_preview_completion(app: &mut FerruleApp) {
+pub(super) fn wait_for_preview_completion(app: &mut FerruleApp) {
     let context = egui::Context::default();
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
     while app.pending_preview.is_some() && std::time::Instant::now() < deadline {
@@ -2038,7 +2114,7 @@ fn wait_for_preview_completion(app: &mut FerruleApp) {
     assert!(app.pending_preview.is_none(), "preview worker completes");
 }
 
-fn wait_for_file_run_completion(app: &mut FerruleApp) {
+pub(super) fn wait_for_file_run_completion(app: &mut FerruleApp) {
     let context = egui::Context::default();
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
     while app.pending_file_run.is_some() && std::time::Instant::now() < deadline {
@@ -2568,11 +2644,15 @@ fn cancelling_paused_file_run_preserves_existing_output() {
 #[test]
 fn cancelling_ordinary_file_run_suppresses_late_success_and_publication() {
     let (mut app, project_path, output) = two_field_file_run_app("file-run-cancel");
+    let free = output.with_file_name("new.xml");
+    app.output_path = free.display().to_string();
     app.run(&egui::Context::default());
+    app.confirm_run_destinations();
     app.file_run_command(run_ui::FileRunCommand::Cancel);
     wait_for_file_run_completion(&mut app);
     assert_eq!(app.status, "run cancelled");
     assert_eq!(std::fs::read_to_string(&output).unwrap(), "old output");
+    assert!(!free.exists());
     assert!(app.run_report.is_none());
     std::fs::remove_dir_all(project_path.parent().unwrap()).unwrap();
 }

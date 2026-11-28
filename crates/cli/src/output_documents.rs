@@ -29,10 +29,64 @@ pub(super) struct TargetWriteResult {
     pub outputs: Vec<WrittenOutput>,
 }
 
+#[derive(Clone, Copy)]
+pub(super) enum Publication<'a> {
+    Replace,
+    /// The host commits to publication after every file is completely staged.
+    CreateNew(&'a dyn Fn() -> bool),
+}
+
+impl Publication<'_> {
+    pub(super) fn is_create_new(self) -> bool {
+        matches!(self, Self::CreateNew(_))
+    }
+
+    pub(super) fn check_gate(self) -> anyhow::Result<()> {
+        if let Self::CreateNew(gate) = self
+            && !gate()
+        {
+            return Err(engine::EngineError::DebugCancelled.into());
+        }
+        Ok(())
+    }
+
+    fn path_identity(self, path: &Path) -> anyhow::Result<PathBuf> {
+        let normalized = normalized_absolute(path)?;
+        // Canonicalization cannot recover the on-disk spelling of a name
+        // that doesn't exist yet (notably an unsaved design). Compare such
+        // destinations conservatively on platforms with case-insensitive volumes.
+        #[cfg(any(windows, target_os = "macos"))]
+        if self.is_create_new() {
+            use unicode_normalization::UnicodeNormalization;
+            let key: String = normalized
+                .to_string_lossy()
+                .nfd()
+                .flat_map(char::to_uppercase)
+                .collect();
+            return Ok(PathBuf::from(key));
+        }
+        Ok(normalized)
+    }
+}
+
 pub(super) fn write_target_outputs(
     targets: &[TargetOutput<'_>],
     protected_output_paths: &[&Path],
     policy: &engine::ExecutionPolicy,
+) -> anyhow::Result<Vec<TargetWriteResult>> {
+    write_target_outputs_with_publication(
+        targets,
+        protected_output_paths,
+        policy,
+        Publication::Replace,
+    )
+}
+
+pub(super) fn write_target_outputs_with_publication(
+    targets: &[TargetOutput<'_>],
+    protected_output_paths: &[&Path],
+    policy: &engine::ExecutionPolicy,
+    publication: Publication<'_>,
 ) -> anyhow::Result<Vec<TargetWriteResult>> {
     let planned = targets
         .iter()
@@ -43,13 +97,19 @@ pub(super) fn write_target_outputs(
     for file in planned.iter().flat_map(|target| &target.files) {
         policy.authorize_write(&file.final_path)?;
     }
-    validate_global_paths(&planned)?;
-    reject_protected_planned_files(&planned, protected_output_paths)?;
-    preflight_planned_targets(&planned)?;
+    validate_global_paths(&planned, publication)?;
+    reject_protected_files(
+        planned
+            .iter()
+            .flat_map(|target| target.files.iter().map(|file| file.final_path.as_path())),
+        protected_output_paths,
+        publication,
+    )?;
+    preflight_planned_targets(&planned, publication)?;
 
     let mut staged = Vec::with_capacity(planned.len());
     for target in &planned {
-        match StagedTarget::render(target) {
+        match StagedTarget::render(target, publication) {
             Ok(rendered) => staged.push(rendered),
             Err(error) => {
                 cleanup_stages(&staged);
@@ -62,10 +122,21 @@ pub(super) fn write_target_outputs(
         }
     }
 
-    if let Err(failure) = publish_staged_targets(&staged) {
-        return Err(failure.into_error(&stage_paths(&staged)));
+    match publication {
+        Publication::Replace => {
+            if let Err(failure) = publish_staged_targets(&staged) {
+                return Err(failure.into_error(&stage_paths(&staged)));
+            }
+            cleanup_stages(&staged);
+        }
+        Publication::CreateNew(_) => {
+            let result = preflight_publication(&staged, publication)
+                .and_then(|()| publication.check_gate())
+                .and_then(|()| publish_new_files(&staged));
+            cleanup_stages(&staged);
+            result?;
+        }
     }
-    cleanup_stages(&staged);
 
     Ok(staged.into_iter().map(StagedTarget::into_result).collect())
 }
@@ -206,12 +277,15 @@ fn output_parent(path: &Path) -> anyhow::Result<PathBuf> {
     Ok(parent.to_path_buf())
 }
 
-fn validate_global_paths(targets: &[PlannedTarget<'_>]) -> anyhow::Result<()> {
+fn validate_global_paths(
+    targets: &[PlannedTarget<'_>],
+    publication: Publication<'_>,
+) -> anyhow::Result<()> {
     let mut paths = Vec::new();
     for target in targets {
         for file in &target.files {
             paths.push((
-                normalized_absolute(&file.final_path)?,
+                publication.path_identity(&file.final_path)?,
                 target.name,
                 &file.final_path,
             ));
@@ -237,22 +311,17 @@ fn validate_global_paths(targets: &[PlannedTarget<'_>]) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn reject_protected_planned_files(
-    targets: &[PlannedTarget<'_>],
+pub(super) fn reject_protected_files<'a>(
+    files: impl Iterator<Item = &'a Path>,
     protected_output_paths: &[&Path],
+    publication: Publication<'_>,
 ) -> anyhow::Result<()> {
     let protected = protected_output_paths
         .iter()
-        .map(|path| normalized_absolute(path))
+        .map(|path| publication.path_identity(path))
         .collect::<anyhow::Result<Vec<_>>>()?;
-    for target in targets {
-        for file in &target.files {
-            reject_protected_path(
-                &normalized_absolute(&file.final_path)?,
-                &file.final_path,
-                &protected,
-            )?;
-        }
+    for path in files {
+        reject_protected_path(&publication.path_identity(path)?, path, &protected)?;
     }
     Ok(())
 }
@@ -354,38 +423,54 @@ fn lexical_normalize(path: &Path) -> PathBuf {
     normalized
 }
 
-fn preflight_planned_targets(targets: &[PlannedTarget<'_>]) -> anyhow::Result<()> {
+fn preflight_planned_targets(
+    targets: &[PlannedTarget<'_>],
+    publication: Publication<'_>,
+) -> anyhow::Result<()> {
     for target in targets {
-        prepare_stage_base(target)?;
+        prepare_stage_base(target, publication)?;
         for file in &target.files {
-            match std::fs::symlink_metadata(&file.final_path) {
-                Ok(metadata) if metadata.file_type().is_symlink() => {
-                    bail!(
-                        "output destination {} cannot be a symlink",
-                        file.final_path.display()
-                    )
-                }
-                Ok(metadata) if metadata.is_dir() => {
-                    bail!(
-                        "output destination {} is a directory",
-                        file.final_path.display()
-                    )
-                }
-                Ok(metadata) if metadata.is_file() => {}
-                Ok(_) => {
-                    bail!(
-                        "output destination {} is not a regular file",
-                        file.final_path.display()
-                    )
-                }
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-                Err(error) => {
-                    return Err(error).with_context(|| {
-                        format!("checking output destination {}", file.final_path.display())
-                    });
-                }
-            }
+            check_destination(&file.final_path, publication)?;
         }
+    }
+    Ok(())
+}
+
+pub(super) fn check_destination(path: &Path, publication: Publication<'_>) -> anyhow::Result<()> {
+    match std::fs::symlink_metadata(path) {
+        Ok(_) if publication.is_create_new() => {
+            bail!("output destination {} already exists", path.display())
+        }
+        Ok(metadata) if metadata.file_type().is_symlink() => {
+            bail!("output destination {} cannot be a symlink", path.display())
+        }
+        Ok(metadata) if metadata.is_dir() => {
+            bail!("output destination {} is a directory", path.display())
+        }
+        Ok(metadata) if metadata.is_file() => {}
+        Ok(_) => {
+            bail!(
+                "output destination {} is not a regular file",
+                path.display()
+            )
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => {
+            return Err(error)
+                .with_context(|| format!("checking output destination {}", path.display()));
+        }
+    }
+    Ok(())
+}
+
+/// A static create-new request must use an existing directory. Permission
+/// to create an entry there is tested by the subsequent staging operation.
+pub(super) fn check_new_static_parent(path: &Path) -> anyhow::Result<()> {
+    let parent = output_parent(path)?;
+    let metadata = std::fs::symlink_metadata(&parent)
+        .with_context(|| format!("checking output directory {}", parent.display()))?;
+    if !metadata.is_dir() {
+        bail!("output parent {} is not a directory", parent.display());
     }
     Ok(())
 }
@@ -404,8 +489,8 @@ struct StagedFile {
 }
 
 impl<'a> StagedTarget<'a> {
-    fn render(target: &'a PlannedTarget<'a>) -> anyhow::Result<Self> {
-        prepare_stage_base(target)?;
+    fn render(target: &'a PlannedTarget<'a>, publication: Publication<'_>) -> anyhow::Result<Self> {
+        prepare_stage_base(target, publication)?;
         let stage = create_stage_directory(&target.stage_base)?;
         let render_result = target
             .files
@@ -419,7 +504,9 @@ impl<'a> StagedTarget<'a> {
                 std::fs::create_dir_all(parent).with_context(|| {
                     format!("creating staged output directory {}", parent.display())
                 })?;
-                copy_existing_output(&file.final_path, &staged_path)?;
+                if !publication.is_create_new() {
+                    copy_existing_output(&file.final_path, &staged_path)?;
+                }
                 let records_written = if let Some(documents) = &target.csv_documents {
                     std::fs::write(&staged_path, &documents[index].bytes)
                         .with_context(|| format!("writing CSV output {}", staged_path.display()))?;
@@ -475,9 +562,15 @@ impl<'a> StagedTarget<'a> {
     }
 }
 
-fn prepare_stage_base(target: &PlannedTarget<'_>) -> anyhow::Result<()> {
-    std::fs::create_dir_all(&target.stage_base)
-        .with_context(|| format!("creating output directory {}", target.stage_base.display()))?;
+fn prepare_stage_base(
+    target: &PlannedTarget<'_>,
+    publication: Publication<'_>,
+) -> anyhow::Result<()> {
+    if !publication.is_create_new() || target.dynamic.is_some() {
+        std::fs::create_dir_all(&target.stage_base).with_context(|| {
+            format!("creating output directory {}", target.stage_base.display())
+        })?;
+    }
     let metadata = std::fs::symlink_metadata(&target.stage_base)
         .with_context(|| format!("reading output directory {}", target.stage_base.display()))?;
     if metadata.file_type().is_symlink() && target.dynamic.is_some() {
@@ -640,8 +733,38 @@ fn create_stage_directory(base: &Path) -> anyhow::Result<PathBuf> {
     bail!("could not allocate a unique dynamic output staging directory")
 }
 
+/// Never remove a published name: a racing writer may already have replaced it.
+fn publish_new_files(targets: &[StagedTarget<'_>]) -> anyhow::Result<()> {
+    let mut published = Vec::new();
+    for target in targets {
+        for file in &target.files {
+            let result = recheck_dynamic_path(target, &file.final_path)
+                .and_then(|()| attach_new_file(&file.staged_path, &file.final_path));
+            if let Err(error) = result {
+                if published.is_empty() {
+                    return Err(error);
+                }
+                bail!(
+                    "{error:#}; complete files already published: {}",
+                    published.join(", ")
+                );
+            }
+            published.push(file.final_path.display().to_string());
+        }
+    }
+    Ok(())
+}
+
+pub(super) fn attach_new_file(staged: &Path, path: &Path) -> anyhow::Result<()> {
+    match std::fs::hard_link(staged, path) {
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => Err(error)
+            .with_context(|| format!("output destination {} already exists", path.display())),
+        result => result.with_context(|| format!("publishing new output {}", path.display())),
+    }
+}
+
 fn publish_staged_targets(targets: &[StagedTarget<'_>]) -> Result<(), PublishFailure> {
-    preflight_publication(targets).map_err(PublishFailure::new)?;
+    preflight_publication(targets, Publication::Replace).map_err(PublishFailure::new)?;
 
     for target in targets {
         let backup_dir = target.stage.join("backup");
@@ -739,7 +862,10 @@ fn publish_staged_targets(targets: &[StagedTarget<'_>]) -> Result<(), PublishFai
     Ok(())
 }
 
-fn preflight_publication(targets: &[StagedTarget<'_>]) -> anyhow::Result<()> {
+fn preflight_publication(
+    targets: &[StagedTarget<'_>],
+    publication: Publication<'_>,
+) -> anyhow::Result<()> {
     for target in targets {
         if let Some((base, relative_paths)) = &target.dynamic {
             reject_symlinked_output_components(base, relative_paths)?;
@@ -751,35 +877,11 @@ fn preflight_publication(targets: &[StagedTarget<'_>]) -> anyhow::Result<()> {
                     file.final_path.display()
                 )
             })?;
-            std::fs::create_dir_all(parent)
-                .with_context(|| format!("creating output directory {}", parent.display()))?;
-            match std::fs::symlink_metadata(&file.final_path) {
-                Ok(metadata) if metadata.file_type().is_symlink() => {
-                    bail!(
-                        "output destination {} cannot be a symlink",
-                        file.final_path.display()
-                    )
-                }
-                Ok(metadata) if metadata.is_dir() => {
-                    bail!(
-                        "output destination {} is a directory",
-                        file.final_path.display()
-                    )
-                }
-                Ok(metadata) if metadata.is_file() => {}
-                Ok(_) => {
-                    bail!(
-                        "output destination {} is not a regular file",
-                        file.final_path.display()
-                    )
-                }
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-                Err(error) => {
-                    return Err(error).with_context(|| {
-                        format!("checking output destination {}", file.final_path.display())
-                    });
-                }
+            if !publication.is_create_new() || target.dynamic.is_some() {
+                std::fs::create_dir_all(parent)
+                    .with_context(|| format!("creating output directory {}", parent.display()))?;
             }
+            check_destination(&file.final_path, publication)?;
         }
         if let Some((base, relative_paths)) = &target.dynamic {
             reject_symlinked_output_components(base, relative_paths)?;

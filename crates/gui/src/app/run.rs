@@ -335,6 +335,7 @@ impl Drop for FileRunCore {
 impl FerruleApp {
     pub(super) fn clear_run_report(&mut self) {
         self.run_report = None;
+        self.preview_inspection = Default::default();
         self.show_run_report = false;
         self.clear_rest_run_session();
     }
@@ -348,7 +349,7 @@ impl FerruleApp {
     }
 
     fn start_saved_run(&mut self, debug: bool, ctx: &egui::Context) {
-        if self.rest_run_busy() {
+        if self.rest_run_busy() || self.run_destinations.is_some() {
             return;
         }
         if self.pending_file_run.is_some() || self.pending_pipeline_run.is_some() {
@@ -407,7 +408,7 @@ impl FerruleApp {
                 "Debug Run is not available for primary document projects"
             )),
             Some(_) => self.primary_document_preflight(),
-            None => self.saved_run_preflight(&runtime_parameters),
+            None => self.saved_run_preflight(&runtime_parameters, !debug),
         };
         if let Err(error) = preflight {
             let title = if debug {
@@ -431,16 +432,36 @@ impl FerruleApp {
     }
 
     pub(super) fn run_saved(&mut self, debug: bool) {
-        if self.rest_run_busy() {
+        if self.rest_run_busy()
+            || self.run_destinations.is_some()
+            || self.pending_file_run.is_some()
+        {
             return;
         }
-        let runtime_parameters = match self.host_parameters.compile() {
-            Ok(parameters) => parameters,
-            Err(error) => {
-                self.status = "run blocked".into();
-                self.diagnostics.error("Run blocked", error);
-                return;
-            }
+        if debug {
+            self.launch_file_run(None);
+        } else {
+            self.review_run_destinations();
+        }
+    }
+
+    /// An ordinary run requires the complete, reviewed request. Debug Run uses
+    /// its existing saved-file request and observer controls.
+    pub(super) fn launch_file_run(
+        &mut self,
+        reviewed: Option<super::run_destinations::ReviewedRun>,
+    ) {
+        let debug = reviewed.is_none();
+        let runtime_parameters = match &reviewed {
+            Some(run) => run.parameters.clone(),
+            None => match self.host_parameters.compile() {
+                Ok(parameters) => parameters,
+                Err(error) => {
+                    self.status = "run blocked".into();
+                    self.diagnostics.error("Run blocked", error);
+                    return;
+                }
+            },
         };
         let value_condition = if debug {
             match self.file_run_value_condition.compile() {
@@ -522,19 +543,6 @@ impl FerruleApp {
         };
         let input_path = nonempty_path(&self.input_path);
         let output_path = nonempty_path(&self.output_path);
-        let document_policy = match self
-            .primary_document
-            .as_ref()
-            .map(super::primary_document::PrimaryDocumentSession::policy)
-            .transpose()
-        {
-            Ok(policy) => policy,
-            Err(error) => {
-                self.status = "run blocked".into();
-                self.diagnostics.error("Run blocked", format!("{error:#}"));
-                return;
-            }
-        };
         let breakpoint = if debug {
             self.file_run_breakpoint
                 .clone()
@@ -623,13 +631,11 @@ impl FerruleApp {
                 let reader = reader.with_controls(reader_controls);
                 reader
             });
-            let result = match (&document_policy, &reader) {
-                // A document project reads only beneath its input root.
-                (Some(policy), _) => cli::run_primary_document_file(
-                    &project_path,
-                    output_path.as_deref(),
-                    policy,
-                    Some(&runtime_parameters),
+            let result = match (&reviewed, &reader) {
+                (Some(run), reader) => run.execute(
+                    options,
+                    reader.as_ref().map(|r| r as &dyn cli::FilesystemPdfReader),
+                    &gate,
                 ),
                 (None, Some(reader)) => {
                     cli::run_project_with_options_and_pdf_reader(&project_path, &options, reader)
@@ -662,6 +668,12 @@ impl FerruleApp {
 
     pub(super) fn file_run_command(&mut self, command: FileRunCommand) {
         if let Some(pending) = &mut self.pending_file_run {
+            if matches!(
+                pending.phase,
+                FileRunPhase::Publishing | FileRunPhase::Stopping
+            ) {
+                return;
+            }
             pending.command(command);
             self.status = match command {
                 FileRunCommand::Cancel => "stopping run",

@@ -57,6 +57,7 @@ fn fixed_width_document_projects_run_preview_and_save() -> anyhow::Result<()> {
     };
     assert_eq!(content.as_str(), "a_one+two_____5__ok__\n");
     app.run_saved(false);
+    app.confirm_run_destinations();
     let deadline = Instant::now() + Duration::from_secs(20);
     while app.pending_file_run.is_some() && Instant::now() < deadline {
         app.poll_file_run(&context);

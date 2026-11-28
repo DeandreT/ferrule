@@ -1,126 +1,287 @@
-//! Selected endpoint field search for the mapping canvas.
-
-use egui_snarl::{NodeId as SnarlNodeId, Snarl};
+//! Find fields by path, then reveal the selected semantic pin on this canvas.
 
 use crate::canvas::{CanvasNode, SourceBlock, TargetBlock};
 use crate::canvas_endpoints::EndpointScrollState;
+use crate::canvas_keyboard::focus::CanvasPin;
+use crate::graph_viewer::{GraphViewer, ProjectGraphReferences};
+use egui_snarl::{InPinId, OutPinId, Snarl};
+
+/// Catalog index, independent of filtering, scroll position and proxy pins.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct FieldPin {
+    pub node: CanvasNode,
+    pub semantic: usize,
+}
+
+impl FieldPin {
+    pub(crate) fn from_canvas(
+        viewer: &GraphViewer<'_>,
+        snarl: &Snarl<CanvasNode>,
+        pin: CanvasPin,
+    ) -> Option<Self> {
+        let node = *snarl.get_node(pin.node())?;
+        let total = match (node, pin) {
+            (CanvasNode::SourceBlock(i), CanvasPin::Output(_)) => {
+                viewer.source_blocks.get(i)?.leaves.len()
+            }
+            (CanvasNode::TargetBlock(i), CanvasPin::Input(_)) => {
+                viewer.target_blocks.get(i)?.leaves.len()
+            }
+            _ => return None,
+        };
+        Some(Self {
+            node,
+            semantic: viewer
+                .endpoint_scroll
+                .semantic_pin(node, pin.index(), total)?,
+        })
+    }
+
+    fn count(self, sources: &[SourceBlock], targets: &[TargetBlock]) -> Option<usize> {
+        match self.node {
+            CanvasNode::SourceBlock(i) => Some(sources.get(i)?.leaves.len()),
+            CanvasNode::TargetBlock(i) => Some(targets.get(i)?.leaves.len()),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct Fields<'a> {
+    sources: &'a [SourceBlock],
+    targets: &'a [TargetBlock],
+    owners: ProjectGraphReferences<'a>,
+}
+
+impl<'a> Fields<'a> {
+    pub(crate) fn of(viewer: &'a GraphViewer<'_>) -> Self {
+        Self {
+            sources: viewer.source_blocks,
+            targets: viewer.target_blocks,
+            owners: viewer.project_references,
+        }
+    }
+
+    pub(crate) fn label(self, pin: FieldPin) -> Option<String> {
+        match pin.node {
+            CanvasNode::SourceBlock(i) => {
+                let block = self.sources.get(i)?;
+                let leaf = block.leaves.get(pin.semantic)?;
+                let named = i.checked_sub(1).and_then(|i| self.owners.named_source(i));
+                let root = named
+                    .map(|s| s.schema.name.as_str())
+                    .or_else(|| self.owners.primary_source_root())
+                    .unwrap_or_else(|| block.title.trim_start_matches("Source: "));
+                let owner = named.map(|s| format!(" ({})", s.name)).unwrap_or_default();
+                // Named source frames/paths start with their runtime alias.
+                // The label already names the owner; the path starts at its schema.
+                let segments = leaf
+                    .frame
+                    .iter()
+                    .flatten()
+                    .chain(&leaf.path)
+                    .skip(usize::from(named.is_some()))
+                    .map(String::as_str);
+                let mut path = String::new();
+                for part in std::iter::once(root).chain(segments) {
+                    path.push('/');
+                    path.push_str(&part.replace('~', "~0").replace('/', "~1"));
+                }
+                Some(format!("Source{owner}  {path}"))
+            }
+            CanvasNode::TargetBlock(i) => {
+                let block = self.targets.get(i)?;
+                let leaf = block.leaves.get(pin.semantic)?;
+                let (root, owner) = self
+                    .owners
+                    .target
+                    .unwrap_or_else(|| (block.title.trim_start_matches("Target: "), None));
+                let owner = owner.map(|s| format!(" ({s})")).unwrap_or_default();
+                let mut path = String::new();
+                for part in std::iter::once(root)
+                    .chain(leaf.chain.iter().map(String::as_str))
+                    .chain([crate::target_xml_type::field_label(&leaf.field)])
+                {
+                    if part.contains(['.', '[', ']', '\\', '"']) {
+                        path.push_str(&format!("[{part:?}]"));
+                    } else {
+                        if !path.is_empty() {
+                            path.push('.');
+                        }
+                        path.push_str(part);
+                    }
+                }
+                Some(format!("Target{owner}  {path}"))
+            }
+            _ => None,
+        }
+    }
+
+    fn matches(self, query: &str) -> Vec<(FieldPin, String)> {
+        let query = query.trim().to_lowercase();
+        if query.is_empty() {
+            return Vec::new();
+        }
+        let sources = self
+            .sources
+            .iter()
+            .enumerate()
+            .map(|(i, b)| (CanvasNode::SourceBlock(i), b.leaves.len()));
+        let targets = self
+            .targets
+            .iter()
+            .enumerate()
+            .map(|(i, b)| (CanvasNode::TargetBlock(i), b.leaves.len()));
+        sources
+            .chain(targets)
+            .flat_map(|(node, count)| (0..count).map(move |semantic| FieldPin { node, semantic }))
+            .filter_map(|pin| {
+                let label = self.label(pin)?;
+                label
+                    .to_lowercase()
+                    .contains(&query)
+                    .then_some((pin, label))
+            })
+            .collect()
+    }
+}
+
+struct Revealed {
+    pin: FieldPin,
+    total: usize,
+    offset: usize,
+    was_open: bool,
+}
 
 #[derive(Default)]
 pub struct CanvasSearchState {
-    endpoint: Option<CanvasNode>,
+    open: bool,
     query: String,
-    match_cursor: usize,
-    request_focus: bool,
-    revealed_endpoint: Option<(CanvasNode, usize)>,
+    cursor: usize,
+    focus_query: bool,
+    return_focus: Option<egui::Id>,
+    pending: Option<FieldPin>,
+    revealed: Option<Revealed>,
 }
 
 impl CanvasSearchState {
     pub(crate) fn is_open(&self) -> bool {
-        self.endpoint.is_some()
-    }
-    pub fn open_selected(&mut self, selected: &[SnarlNodeId], snarl: &Snarl<CanvasNode>) -> bool {
-        let Some(&node_id) = selected.first().filter(|_| selected.len() == 1) else {
-            return false;
-        };
-        let Some(&endpoint) = snarl.get_node(node_id).filter(|node| {
-            matches!(
-                node,
-                CanvasNode::SourceBlock(_) | CanvasNode::TargetBlock(_)
-            )
-        }) else {
-            return false;
-        };
-        if self.endpoint != Some(endpoint) {
-            self.query.clear();
-            self.match_cursor = 0;
-        }
-        self.endpoint = Some(endpoint);
-        self.request_focus = true;
-        true
+        self.open
     }
 
-    pub fn active_match(
-        &self,
-        source_blocks: &[SourceBlock],
-        target_blocks: &[TargetBlock],
-    ) -> Option<(CanvasNode, usize)> {
-        let endpoint = self.endpoint?;
-        let matches = self.matches(source_blocks, target_blocks);
-        matches
-            .get(self.match_cursor.min(matches.len().saturating_sub(1)))
-            .copied()
-            .map(|field| (endpoint, field))
+    pub(crate) fn open(&mut self, return_focus: Option<egui::Id>) {
+        self.open = true;
+        self.focus_query = true;
+        self.return_focus = return_focus;
+        self.query.clear();
+        self.cursor = 0;
     }
 
-    fn matches(&self, source_blocks: &[SourceBlock], target_blocks: &[TargetBlock]) -> Vec<usize> {
-        let Some(endpoint) = self.endpoint else {
-            return Vec::new();
-        };
-        let query = self.query.trim().to_lowercase();
-        if query.is_empty() {
-            return Vec::new();
-        }
-        endpoint_fields(endpoint, source_blocks, target_blocks)
-            .into_iter()
-            .enumerate()
-            .filter_map(|(index, (label, path))| {
-                (label.to_lowercase().contains(&query) || path.to_lowercase().contains(&query))
-                    .then_some(index)
-            })
-            .collect()
+    pub(crate) fn request_reveal(&mut self, pin: FieldPin) {
+        self.open = false;
+        self.pending = Some(pin);
     }
 
-    fn update_reveal(
+    pub(crate) fn highlighted(&self) -> Option<(CanvasNode, usize)> {
+        self.revealed.as_ref().map(|r| (r.pin.node, r.pin.semantic))
+    }
+
+    /// Undo only the temporary endpoint projection installed by the last reveal.
+    pub(crate) fn clear_reveal(
         &mut self,
-        source_blocks: &[SourceBlock],
-        target_blocks: &[TargetBlock],
+        snarl: &mut Snarl<CanvasNode>,
         scroll: &mut EndpointScrollState,
-    ) -> bool {
-        let active = self.active_match(source_blocks, target_blocks);
-        let mut changed = false;
-        if let Some((previous, total)) = self.revealed_endpoint
-            && active.is_none_or(|(node, _)| node != previous)
-        {
-            changed |= scroll.clear_reveal(previous, total);
-            self.revealed_endpoint = None;
+    ) {
+        if let Some(previous) = self.revealed.take() {
+            let node = previous.pin.node;
+            scroll.clear_reveal(node, previous.total);
+            scroll.set_offset(node, previous.total, previous.offset);
+            let id = snarl
+                .node_ids()
+                .find(|(_, n)| **n == node)
+                .map(|(id, _)| id);
+            if let Some(id) = id
+                && !previous.was_open
+            {
+                snarl.open_node(id, false);
+            }
         }
-        if let Some((node, semantic)) = active {
-            let total = endpoint_fields(node, source_blocks, target_blocks).len();
-            changed |= scroll.reveal(node, total, semantic);
-            self.revealed_endpoint = Some((node, total));
+    }
+
+    pub(crate) fn apply_reveal(
+        &mut self,
+        snarl: &mut Snarl<CanvasNode>,
+        scroll: &mut EndpointScrollState,
+        sources: &[SourceBlock],
+        targets: &[TargetBlock],
+    ) -> Option<CanvasPin> {
+        let pin = self.pending.take()?;
+        let total = pin
+            .count(sources, targets)
+            .filter(|&total| pin.semantic < total)?;
+        let id = snarl.node_ids().find(|(_, n)| **n == pin.node)?.0;
+        self.clear_reveal(snarl, scroll);
+        self.revealed = Some(Revealed {
+            pin,
+            total,
+            offset: scroll.offset(pin.node, total),
+            was_open: snarl.get_node_info(id)?.open,
+        });
+        snarl.open_node(id, true);
+        scroll.reveal(pin.node, total, pin.semantic);
+        let visual = scroll.visual_pin_for_semantic(pin.node, pin.semantic, total)?;
+        debug_assert_eq!(
+            scroll.semantic_pin(pin.node, visual, total),
+            Some(pin.semantic)
+        );
+        match pin.node {
+            CanvasNode::SourceBlock(_) => Some(CanvasPin::Output(OutPinId {
+                node: id,
+                output: visual,
+            })),
+            CanvasNode::TargetBlock(_) => Some(CanvasPin::Input(InPinId {
+                node: id,
+                input: visual,
+            })),
+            _ => None,
         }
-        changed
     }
 }
 
-pub fn show(
+pub(crate) fn show(
     ctx: &egui::Context,
     id: egui::Id,
     viewport: egui::Rect,
     state: &mut CanvasSearchState,
-    source_blocks: &[SourceBlock],
-    target_blocks: &[TargetBlock],
-    scroll: &mut EndpointScrollState,
+    fields: Fields<'_>,
+    surface: egui::Id,
 ) {
-    if state.update_reveal(source_blocks, target_blocks, scroll) {
-        ctx.request_repaint();
-    }
-    let Some(endpoint) = state.endpoint else {
-        return;
-    };
-    let fields = endpoint_fields(endpoint, source_blocks, target_blocks);
-    if fields.is_empty() {
-        state.endpoint = None;
-        if state.update_reveal(source_blocks, target_blocks, scroll) {
-            ctx.request_repaint();
-        }
+    if !state.open {
         return;
     }
-
-    let width = 420.0_f32.min((viewport.width() - 24.0).max(240.0));
-    let position = egui::pos2(viewport.center().x - width / 2.0, viewport.top() + 12.0);
-    let mut close = false;
-    let mut move_match = 0_isize;
+    let query_id = id.with("field_query");
+    // Take navigation keys before the single-line editor sees Enter and drops focus.
+    let key = (!crate::ui_kit::modal_open(ctx))
+        .then(|| {
+            crate::canvas_keyboard::focus::take_key(
+                ctx,
+                query_id,
+                &[
+                    egui::Key::ArrowUp,
+                    egui::Key::ArrowDown,
+                    egui::Key::Enter,
+                    egui::Key::Escape,
+                ],
+            )
+        })
+        .flatten();
+    let mut close = key == Some(egui::Key::Escape);
+    let mut reveal = None;
+    let width = (viewport.width() - 32.0).clamp(80.0, 465.0);
+    let position = egui::pos2(
+        viewport.center().x - width * 0.5 - 6.0,
+        viewport.top() + 8.0,
+    );
     egui::Area::new(crate::graph_draft_ui::paint_canvas(ctx, id).with("field_search"))
         .order(egui::Order::Foreground)
         .fixed_pos(position)
@@ -128,240 +289,152 @@ pub fn show(
             egui::Frame::popup(ui.style()).show(ui, |ui| {
                 ui.set_width(width);
                 ui.horizontal(|ui| {
-                    let response = ui.add_sized(
-                        [(width - 142.0).max(120.0), ui.spacing().interact_size.y],
-                        egui::TextEdit::singleline(&mut state.query)
-                            .id(id.with("query"))
-                            .hint_text("Find field"),
-                    );
-                    if state.request_focus {
+                    let label = ui.strong("Find a field");
+                    let response = ui
+                        .add(
+                            egui::TextEdit::singleline(&mut state.query)
+                                .id(query_id)
+                                .hint_text("Field name or full path")
+                                .desired_width((ui.available_width() - 36.0).max(40.0)),
+                        )
+                        .labelled_by(label.id);
+                    if std::mem::take(&mut state.focus_query) {
                         response.request_focus();
-                        state.request_focus = false;
                     }
                     if response.changed() {
-                        state.match_cursor = 0;
+                        state.cursor = 0;
                     }
-
-                    let matches = state.matches(source_blocks, target_blocks);
-                    let position = if matches.is_empty() {
-                        "0/0".to_string()
-                    } else {
-                        format!(
-                            "{}/{}",
-                            state.match_cursor.min(matches.len() - 1) + 1,
-                            matches.len()
-                        )
-                    };
-                    ui.label(position);
-                    if crate::icons::button(
-                        ui,
-                        !matches.is_empty(),
-                        lucide_icons::Icon::ChevronUp,
-                        "Previous match",
-                    )
-                    .clicked()
-                    {
-                        move_match = -1;
-                    }
-                    if crate::icons::button(
-                        ui,
-                        !matches.is_empty(),
-                        lucide_icons::Icon::ChevronDown,
-                        "Next match",
-                    )
-                    .clicked()
-                    {
-                        move_match = 1;
-                    }
-                    if crate::icons::button(ui, true, lucide_icons::Icon::X, "Close field search")
-                        .clicked()
-                    {
-                        close = true;
-                    }
+                    close |=
+                        crate::icons::button(ui, true, lucide_icons::Icon::X, "Close field search")
+                            .clicked();
                 });
+                let matches = fields.matches(&state.query);
+                if matches.is_empty() {
+                    ui.weak(if state.query.trim().is_empty() {
+                        "Search source and target paths"
+                    } else {
+                        "No matching fields"
+                    });
+                    return;
+                }
+                state.cursor = state.cursor.min(matches.len() - 1);
+                match key {
+                    Some(egui::Key::ArrowUp) => {
+                        state.cursor = state.cursor.checked_sub(1).unwrap_or(matches.len() - 1)
+                    }
+                    Some(egui::Key::ArrowDown) => state.cursor = (state.cursor + 1) % matches.len(),
+                    Some(egui::Key::Enter) => reveal = Some(matches[state.cursor].0),
+                    _ => {}
+                }
+                egui::ScrollArea::vertical()
+                    .max_height((viewport.height() * 0.36).min(230.0))
+                    .show(ui, |ui| {
+                        for (i, (pin, label)) in matches.iter().enumerate() {
+                            let selected = state.cursor == i;
+                            let response =
+                                ui.add(egui::Button::selectable(selected, label.as_str()).wrap());
+                            if selected
+                                && matches!(key, Some(egui::Key::ArrowUp | egui::Key::ArrowDown))
+                            {
+                                response.scroll_to_me(None);
+                            }
+                            if response.clicked() {
+                                reveal = Some(*pin);
+                            }
+                        }
+                    });
+                ui.weak("↑ ↓  Choose     Enter  Reveal     Esc  Close");
             });
         });
-
-    // A modal dialog over the search takes its keys.
-    let (escape, previous, next) = if crate::ui_kit::modal_open(ctx) {
-        (false, false, false)
-    } else {
-        ctx.input_mut(|input| {
-            (
-                input.consume_key(egui::Modifiers::NONE, egui::Key::Escape),
-                input.consume_key(egui::Modifiers::SHIFT, egui::Key::Enter),
-                input.consume_key(egui::Modifiers::NONE, egui::Key::Enter),
-            )
-        })
-    };
-    close |= escape;
-    if previous {
-        move_match = -1;
-    } else if next {
-        move_match = 1;
-    }
     if close {
-        state.endpoint = None;
-        if state.update_reveal(source_blocks, target_blocks, scroll) {
-            ctx.request_repaint();
-        }
-        return;
+        state.open = false;
+        let restore = state
+            .return_focus
+            .take()
+            .filter(|id| ctx.read_response(*id).is_some())
+            .unwrap_or(surface);
+        ctx.memory_mut(|memory| memory.request_focus(restore));
+    } else if let Some(pin) = reveal {
+        state.request_reveal(pin);
     }
-
-    let matches = state.matches(source_blocks, target_blocks);
-    if !matches.is_empty() {
-        state.match_cursor = state.match_cursor.min(matches.len() - 1);
-        if move_match < 0 {
-            state.match_cursor = state
-                .match_cursor
-                .checked_sub(1)
-                .unwrap_or(matches.len() - 1);
-        } else if move_match > 0 {
-            state.match_cursor = (state.match_cursor + 1) % matches.len();
-        }
-    }
-    if state.update_reveal(source_blocks, target_blocks, scroll) {
+    if !state.open {
         ctx.request_repaint();
-    }
-}
-
-fn endpoint_fields<'a>(
-    endpoint: CanvasNode,
-    source_blocks: &'a [SourceBlock],
-    target_blocks: &'a [TargetBlock],
-) -> Vec<(&'a str, &'a str)> {
-    match endpoint {
-        CanvasNode::SourceBlock(block) => {
-            source_blocks.get(block).map_or_else(Vec::new, |section| {
-                section
-                    .pin_labels
-                    .iter()
-                    .zip(&section.leaves)
-                    .map(|(label, leaf)| (label.as_str(), leaf.label.as_str()))
-                    .collect()
-            })
-        }
-        CanvasNode::TargetBlock(block) => {
-            target_blocks.get(block).map_or_else(Vec::new, |section| {
-                section
-                    .pin_labels
-                    .iter()
-                    .zip(&section.leaves)
-                    .map(|(label, leaf)| (label.as_str(), leaf.label.as_str()))
-                    .collect()
-            })
-        }
-        CanvasNode::Graph(_) | CanvasNode::Placeholder(_) => Vec::new(),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::canvas::{SourceLeaf, TargetLeaf};
 
     #[test]
-    fn clearing_closing_and_switching_search_remove_temporary_filtered_fields() {
+    fn field_finder_distinguishes_named_sources_and_literal_path_separators() {
+        let mut project =
+            mapping::project_file::decode_bytes(cli::orders_example::PROJECT).unwrap();
+        project.extra_sources.push(mapping::NamedSource {
+            name: "repeat".into(),
+            path: "other.xml".into(),
+            schema: project.source.clone(),
+            options: Default::default(),
+            dynamic_path: None,
+        });
+        let scalar = |name| ir::SchemaNode::scalar(name, ir::ScalarType::String);
+        project.target = ir::SchemaNode::group(
+            "row",
+            vec![scalar("a.b"), ir::SchemaNode::group("a", vec![scalar("b")])],
+        );
+        let sources = crate::canvas::project_source_blocks(&project);
+        let targets = crate::canvas::target_blocks(&project.target);
+        let fields = Fields {
+            sources: &sources,
+            targets: &targets,
+            owners: ProjectGraphReferences::new(&[], &project.extra_sources)
+                .with_primary_source(&project.source)
+                .with_target("row", Some("archive")),
+        };
+        let found = fields.matches("/Orders/Order/Items/Item/Desc");
+        assert_eq!(found.len(), 2);
+        assert_eq!(found[0].0.node, CanvasNode::SourceBlock(0));
+        assert_eq!(found[1].0.node, CanvasNode::SourceBlock(1));
+        assert!(found[1].1.starts_with("Source (repeat)"));
+        assert_eq!(
+            fields.matches("row.a.b")[0].0.node,
+            CanvasNode::TargetBlock(1)
+        );
+        assert_eq!(
+            fields.matches("row[\"a.b\"]")[0].0.node,
+            CanvasNode::TargetBlock(0)
+        );
+    }
+
+    #[test]
+    fn field_finder_uses_the_semantic_pin_even_when_filtered_scrolled_and_collapsed() {
         let schema = ir::SchemaNode::group(
-            "source",
-            (0..5)
-                .map(|index| ir::SchemaNode::scalar(format!("s{index}"), ir::ScalarType::String))
+            "row",
+            (0..32)
+                .map(|i| ir::SchemaNode::scalar(format!("f{i}"), ir::ScalarType::String))
                 .collect(),
         );
-        let sources = crate::canvas::source_blocks(&schema);
         let targets = crate::canvas::target_blocks(&schema);
-        let source = CanvasNode::SourceBlock(0);
-        let target = CanvasNode::TargetBlock(0);
+        let node = CanvasNode::TargetBlock(0);
+        let mut snarl = Snarl::new();
+        let id = snarl.insert_node(egui::pos2(12.0, 30.0), node);
+        snarl.open_node(id, false);
         let mut scroll = EndpointScrollState::default();
-        scroll.set_connected(source, 5, [1]);
-        scroll.set_connected(target, 5, [2]);
-        scroll.set_connected_only(source, true);
-        scroll.set_connected_only(target, true);
-        let mut search = CanvasSearchState {
-            endpoint: Some(source),
-            query: "s3".into(),
-            ..Default::default()
-        };
-        assert!(search.update_reveal(&sources, &targets, &mut scroll));
-        assert_eq!(scroll.eligible_indices(source, 5), vec![1, 3]);
-        search.query.clear();
-        assert!(search.update_reveal(&sources, &targets, &mut scroll));
-        assert_eq!(scroll.eligible_indices(source, 5), vec![1]);
-        search.query = "s4".into();
-        search.update_reveal(&sources, &targets, &mut scroll);
-        assert_eq!(scroll.eligible_indices(source, 5), vec![1, 4]);
-        search.endpoint = Some(target);
-        assert!(search.update_reveal(&sources, &targets, &mut scroll));
-        assert_eq!(scroll.eligible_indices(source, 5), vec![1]);
-        assert_eq!(scroll.eligible_indices(target, 5), vec![2, 4]);
-        search.endpoint = None;
-        assert!(search.update_reveal(&sources, &targets, &mut scroll));
-        assert_eq!(scroll.eligible_indices(target, 5), vec![2]);
-        assert!(!search.update_reveal(&sources, &targets, &mut scroll));
-    }
-
-    #[test]
-    fn search_matches_compact_labels_and_full_paths_case_insensitively() {
-        let source = vec![SourceBlock {
-            title: "Source: row".into(),
-            frame: None,
-            leaves: vec![
-                SourceLeaf {
-                    label: "Workbook/Office/PrimaryKey".into(),
-                    frame: None,
-                    path: vec!["PrimaryKey".into()],
-                    ty: crate::schema_scalar::ScalarDomain::Single(ir::ScalarType::String),
-                },
-                SourceLeaf {
-                    label: "Workbook/Office/Name".into(),
-                    frame: None,
-                    path: vec!["Name".into()],
-                    ty: crate::schema_scalar::ScalarDomain::Single(ir::ScalarType::String),
-                },
-            ],
-            pin_labels: vec!["PrimaryKey".into(), "Name".into()],
-        }];
-        let mut state = CanvasSearchState {
-            endpoint: Some(CanvasNode::SourceBlock(0)),
-            query: "office/name".into(),
-            ..Default::default()
-        };
-
-        assert_eq!(state.matches(&source, &[]), vec![1]);
-        state.query = "PRIMARY".into();
-        assert_eq!(state.matches(&source, &[]), vec![0]);
-    }
-
-    #[test]
-    fn active_match_tracks_the_selected_target_field() {
-        let target = vec![TargetBlock {
-            title: "Target: row".into(),
-            chain: Vec::new(),
-            leaves: vec![
-                TargetLeaf {
-                    label: "first".into(),
-                    chain: Vec::new(),
-                    field: "first".into(),
-                    ty: crate::schema_scalar::ScalarDomain::Single(ir::ScalarType::String),
-                },
-                TargetLeaf {
-                    label: "second".into(),
-                    chain: Vec::new(),
-                    field: "second".into(),
-                    ty: crate::schema_scalar::ScalarDomain::Single(ir::ScalarType::String),
-                },
-            ],
-            pin_labels: vec!["first".into(), "second".into()],
-        }];
-        let state = CanvasSearchState {
-            endpoint: Some(CanvasNode::TargetBlock(0)),
-            query: "second".into(),
-            ..Default::default()
-        };
-
-        assert_eq!(
-            state.active_match(&[], &target),
-            Some((CanvasNode::TargetBlock(0), 1))
-        );
+        scroll.set_connected(node, 32, (0..31).step_by(2));
+        scroll.set_connected_only(node, true);
+        scroll.scroll_rows(node, 32, 2);
+        let mut search = CanvasSearchState::default();
+        search.request_reveal(FieldPin { node, semantic: 31 });
+        let visual = search
+            .apply_reveal(&mut snarl, &mut scroll, &[], &targets)
+            .unwrap();
+        assert_eq!(visual.node(), id);
+        assert_eq!(scroll.semantic_pin(node, visual.index(), 32), Some(31));
+        assert!(snarl.get_node_info(id).unwrap().open);
+        search.clear_reveal(&mut snarl, &mut scroll);
+        assert!(scroll.connected_only(node));
+        assert!(!scroll.eligible_indices(node, 32).contains(&31));
+        assert_eq!(scroll.offset(node, 32), 2);
+        assert!(!snarl.get_node_info(id).unwrap().open);
     }
 }

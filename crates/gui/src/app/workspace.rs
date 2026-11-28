@@ -2,6 +2,8 @@ use super::*;
 
 #[path = "workspace/command_bar.rs"]
 mod command_bar;
+#[path = "workspace/field_navigation.rs"]
+mod field_navigation;
 #[path = "workspace/inspector.rs"]
 mod inspector;
 #[path = "workspace/start_view.rs"]
@@ -137,6 +139,7 @@ impl FerruleApp {
         let function_inputs = self.function_inputs();
         let parameter_names = std::collections::BTreeMap::new();
         let mut requested_function = None;
+        let mut open_field_inspector = false;
         let source_paths =
             SourcePathCatalog::new(&self.project.source, &self.project.extra_sources)
                 .with_primary_source_options(&self.project.source_options)
@@ -184,7 +187,8 @@ impl FerruleApp {
                     &self.project.extra_sources,
                 )
                 .with_user_functions(&self.project.user_functions)
-                .with_primary_source(&self.project.source),
+                .with_primary_source(&self.project.source)
+                .with_target(&self.project.target.name, None),
                 source_blocks: &source_blocks,
                 target_blocks: &target_blocks,
                 source_x12,
@@ -229,6 +233,7 @@ impl FerruleApp {
                 ui,
             );
             self.main_canvas.viewport_width = interaction.viewport_width;
+            open_field_inspector = interaction.open_field_inspector;
             if interaction.focused {
                 self.mapping_workspace.focused = MappingDocument::Main;
             }
@@ -248,6 +253,7 @@ impl FerruleApp {
             planned_edits = viewer.planned_edits;
         });
         self.queue_canvas_edits(MappingDocument::Main, planned_edits);
+        self.field_inspector_navigation(ui.ctx(), self.main_canvas.tools_id, open_field_inspector);
         if let Some(node) = sequence_consumer_duplication::take(ui.ctx()) {
             self.apply_sequence_duplication_request(MappingDocument::Main, node);
         }

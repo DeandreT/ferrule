@@ -50,6 +50,7 @@ pub(crate) use canvas_build::{
     SourcePinPolicy, semantic_canvas_wires, sync_endpoint_wires_with_owned_items,
     sync_endpoint_wires_with_policy, update_endpoint_connections_with_policy,
 };
+mod connection_repair;
 #[path = "csv_dialect.rs"]
 mod csv_dialect_ui;
 #[path = "diagnostic_navigation.rs"]
@@ -84,6 +85,7 @@ mod mfd_pipeline;
 mod new_mapping_ui;
 mod owned_worker;
 mod pdf_extraction;
+mod preview_inspection;
 mod preview_service;
 pub(crate) use preview_service::{PreviewService, PreviewServicePort};
 #[cfg(all(test, target_os = "linux", target_arch = "x86_64", target_env = "gnu"))]
@@ -103,8 +105,10 @@ mod primary_document;
 mod primary_xml_input;
 mod rest_run;
 mod route_preflight;
+mod run_destinations;
 #[path = "run.rs"]
 mod run_ui;
+mod saved_checks;
 mod scope_retirement;
 #[path = "scopes.rs"]
 mod scope_ui;
@@ -474,6 +478,8 @@ pub struct FerruleApp {
     /// Owner of transient document editors, independent of canvas and history
     /// rebuilds. Only replacing the loaded mapping starts a new lifetime.
     document_ui_id: egui::Id,
+    /// Only this document lifetime opens Preview with the bundled orders sample.
+    worked_example: Option<egui::Id>,
     graph_drafts: graph_drafts::GraphDraftLifetimes,
     main_canvas: CanvasDocumentState,
     mapping_workspace: MappingWorkspace,
@@ -488,6 +494,7 @@ pub struct FerruleApp {
     narrow_pane: WorkspacePane,
     last_layout_class: Option<LayoutClass>,
     show_run_setup: bool,
+    run_destinations: Option<run_destinations::DestinationReview>,
     file_run_breakpoint: Option<run_ui::FileBreakpoint>,
     file_run_value_condition: crate::preview::BreakpointValueConditionDraft,
     file_run_position_condition: crate::preview::BreakpointPositionConditionDraft,
@@ -506,6 +513,7 @@ pub struct FerruleApp {
     pdf_reader_controls: pdf_extraction::ReaderControls,
     preview_input_source: preview_service::PreviewInputSource,
     preview_service: PreviewServicePort,
+    preview_inspection: preview_inspection::Inspection,
     /// Close the window once owned previews and the service have finished.
     close_after_preview: bool,
     rest_run_draft: Option<rest_run::RestRunDraft>,
@@ -549,6 +557,7 @@ pub struct FerruleApp {
     pending_mfd_pipeline_import: Option<mfd_pipeline::PendingMfdPipelineImport>,
     pending_pipeline_mfd_export: Option<mfd_pipeline::PipelineMfdExport>,
     show_run_report: bool,
+    saved_checks: Option<saved_checks::Window>,
     show_appearance_editor: bool,
     appearance_tab: AppearanceTab,
     theme: ThemeState,
@@ -568,6 +577,8 @@ pub struct FerruleApp {
     source_schema_explorer: SchemaExplorerState,
     target_schema_explorer: SchemaExplorerState,
     focused_schema: Option<diagnostic_navigation::SchemaFocus>,
+    saved_mapping: Option<connection_repair::SavedMapping>,
+    connection_repair: Option<connection_repair::RepairDraft>,
     selected_scope: ScopePath,
     pending_scope_scroll: bool,
     selected_failure_rule: Option<usize>,
@@ -678,6 +689,7 @@ impl Default for FerruleApp {
         Self {
             project,
             document_ui_id: new_document_ui_id(),
+            worked_example: None,
             graph_drafts: Default::default(),
             main_canvas,
             mapping_workspace,
@@ -692,6 +704,7 @@ impl Default for FerruleApp {
             narrow_pane: WorkspacePane::Canvas,
             last_layout_class: None,
             show_run_setup: false,
+            run_destinations: None,
             file_run_breakpoint: None,
             file_run_value_condition: Default::default(),
             file_run_position_condition: Default::default(),
@@ -708,6 +721,7 @@ impl Default for FerruleApp {
             pdf_reader_controls: Default::default(),
             preview_input_source: Default::default(),
             preview_service: PreviewServicePort::default(),
+            preview_inspection: Default::default(),
             close_after_preview: false,
             rest_run_draft: None,
             pending_rest_run: None,
@@ -750,6 +764,7 @@ impl Default for FerruleApp {
             pending_mfd_pipeline_import: None,
             pending_pipeline_mfd_export: None,
             show_run_report: false,
+            saved_checks: None,
             show_appearance_editor: false,
             appearance_tab: AppearanceTab::default(),
             theme: ThemeState::default(),
@@ -767,6 +782,8 @@ impl Default for FerruleApp {
             source_schema_explorer: SchemaExplorerState::default(),
             target_schema_explorer: SchemaExplorerState::default(),
             focused_schema: None,
+            saved_mapping: None,
+            connection_repair: None,
             selected_scope: Vec::new(),
             pending_scope_scroll: false,
             selected_failure_rule: None,
@@ -999,10 +1016,13 @@ fn pick_file(description: &str, extensions: &[&str]) -> std::sync::mpsc::Receive
     let description = description.to_string();
     let extensions: Vec<String> = extensions.iter().map(|e| e.to_string()).collect();
     std::thread::spawn(move || {
-        let result = rfd::FileDialog::new()
-            .add_filter(description, &extensions)
-            .pick_file()
-            .map(|p| p.display().to_string());
+        let dialog = rfd::FileDialog::new();
+        let dialog = if extensions.is_empty() {
+            dialog.set_title(description)
+        } else {
+            dialog.add_filter(description, &extensions)
+        };
+        let result = dialog.pick_file().map(|p| p.display().to_string());
         let _ = tx.send(result);
     });
     rx
@@ -1084,7 +1104,12 @@ impl FerruleApp {
     }
 
     fn ui_project_editing_enabled(&self) -> bool {
-        self.project_editing_enabled() && !self.pipeline_mfd_busy()
+        self.project_editing_enabled()
+            && !self.pipeline_mfd_busy()
+            && !self
+                .saved_checks
+                .as_ref()
+                .is_some_and(saved_checks::Window::editing)
     }
 
     fn handle_history_shortcuts(&mut self, context: &egui::Context, editing_enabled: bool) {
@@ -1265,6 +1290,7 @@ impl FerruleApp {
                 self.rebase_history();
                 let validation = cli::validate(&self.project);
                 let fingerprint = project_fingerprint(&self.project);
+                self.remember_saved_mapping(&fingerprint);
                 let mut diagnostics = validation
                     .into_iter()
                     .map(|issue| {
@@ -1597,7 +1623,8 @@ impl eframe::App for FerruleApp {
             self.show_pipeline_stage_close_guard(ui.ctx());
             return;
         }
-        let project_editing_enabled = self.ui_project_editing_enabled();
+        let project_editing_enabled =
+            self.ui_project_editing_enabled() && self.connection_repair.is_none();
         let [undo_shortcut, redo_shortcut, _] = history_shortcuts();
         let coalesce_history_change = ui.ctx().input(|input| {
             input.pointer.primary_down()
@@ -1710,6 +1737,8 @@ impl FerruleApp {
         coalesce_history_change: bool,
     ) {
         self.show_run_settings(ui.ctx(), project_editing_enabled);
+        self.show_run_destinations(ui.ctx());
+        self.show_saved_checks(ui.ctx());
         self.show_mfd_import_dialog(ui.ctx());
         crate::appearance_editor::show(
             ui.ctx(),
@@ -1720,14 +1749,11 @@ impl FerruleApp {
             self.palette,
         );
 
-        if let Some(report) = &mut self.run_report {
-            crate::run_report::show(ui.ctx(), &mut self.show_run_report, report);
-        } else {
-            self.show_run_report = false;
-        }
+        self.show_captured_results(ui.ctx());
 
         self.show_library_generation(ui.ctx());
         self.show_unsaved_confirmation(ui.ctx());
+        self.show_connection_repair(ui.ctx());
         self.show_new_mapping_setup(ui.ctx());
         self.show_extra_source_setup(ui.ctx());
         self.show_extra_source_removal_confirmation(ui.ctx());
@@ -1768,6 +1794,9 @@ impl FerruleApp {
 #[cfg(test)]
 #[path = "tests.rs"]
 mod tests;
+
+#[cfg(test)]
+mod workflow_integration_tests;
 
 #[cfg(test)]
 mod canvas_presentation_tests;

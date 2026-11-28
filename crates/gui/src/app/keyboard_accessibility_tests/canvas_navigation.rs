@@ -118,6 +118,100 @@ fn node_open(harness: &Harness<'_, FerruleApp>, node: CanvasNode) -> bool {
 }
 
 #[test]
+fn field_wiring_follows_the_named_binding_after_repair_and_undo() {
+    const EMPTY: &str = "No incoming connection.";
+    const DIRECT: &str = "Source  /Orders/Order/Items/Item/Desc  →  Target (audit)  row.Desc";
+    let mut project = mapping::project_file::decode_bytes(cli::orders_example::PROJECT).unwrap();
+    let mut audit = project.root.clone();
+    let desc = audit
+        .bindings
+        .iter()
+        .position(|b| b.target_field == "Desc")
+        .unwrap();
+    // Primary Desc goes through Uppercase (#4). Only audit.Desc is broken.
+    audit.bindings[desc].node = 404;
+    project.extra_targets.push(mapping::NamedTarget {
+        name: "audit".into(),
+        path: Some("audit.csv".into()),
+        schema: project.target.clone(),
+        root: audit,
+        options: Default::default(),
+    });
+    let mut repaired = project.clone();
+    repaired.extra_targets[0].root.bindings[desc].node = 3;
+    let mut app = FerruleApp::default();
+    app.install_untitled_mapping(project, "orders.json");
+    app.open_target_tab(0);
+    app.validate_now();
+    let diagnostics = app.diagnostics.items().to_vec();
+    let mut harness = harness(app);
+    let broken = harness.state().live_state();
+
+    let activate = |h: &mut Harness<'_, FerruleApp>, label: &str| {
+        h.get_by_label(label).focus();
+        press(h, egui::Key::Enter);
+    };
+    let inspect_pin = |h: &mut Harness<'_, FerruleApp>, count: usize, message: &str| {
+        // Re-enter the actual pin even if Undo left keyboard focus there.
+        h.get_by_label("Mapping canvas").focus();
+        h.step();
+        h.get_by_label("Input Desc · Target: row").focus();
+        h.run_steps(3);
+        assert_eq!(
+            h.state().mapping_workspace.active,
+            MappingDocument::Target(0)
+        );
+        assert!(h.state().connection_repair.is_none());
+        let canvas = &h.state().mapping_workspace.target_canvases[&0];
+        let wiring = crate::canvas_tools::field_wiring(&h.ctx, canvas.tools_id).unwrap();
+        assert_eq!(wiring.label, "Target (audit)  row.Desc");
+        assert_eq!(wiring.connections.len(), count);
+        h.get_by_label(message);
+    };
+
+    inspect_pin(&mut harness, 0, EMPTY);
+    activate(&mut harness, "Main mapping");
+    assert_eq!(
+        harness.state().mapping_workspace.active,
+        MappingDocument::Main
+    );
+    activate(&mut harness, "Inspect connection");
+    assert!(harness.state().connection_repair.is_some());
+    harness.get_by_label("Target 1 (audit): row.Desc");
+    harness.get_by_label("References missing node 404.");
+    assert_eq!(
+        harness.state().mapping_workspace.active,
+        MappingDocument::Target(0)
+    );
+    activate(&mut harness, "Connection");
+    activate(&mut harness, "Node 3: Desc");
+    assert!(harness.state().live_state() == broken);
+    assert!(!harness.state().can_undo());
+
+    activate(&mut harness, "Apply repair");
+    assert!(harness.state().diagnostics.is_empty());
+    assert!(harness.query_by_label(EMPTY).is_none());
+    inspect_pin(&mut harness, 1, DIRECT);
+    assert_eq!(
+        project_key(&harness),
+        crate::project_state::project_snapshot_key(&repaired)
+    );
+    assert_eq!(harness.state().history.undo_len(), 1);
+    assert_eq!(
+        harness.state().history.undo_label(),
+        Some("Repair connection")
+    );
+
+    press_with(&mut harness, command(), egui::Key::Z);
+    assert!(harness.query_by_label(DIRECT).is_none());
+    inspect_pin(&mut harness, 0, EMPTY);
+    assert!(harness.state().live_state() == broken);
+    assert!(!harness.state().can_undo());
+    harness.state_mut().validate_now();
+    assert_eq!(harness.state().diagnostics.items(), diagnostics);
+}
+
+#[test]
 fn keyboard_accessibility_arrows_move_between_canvas_nodes_in_layout_order() {
     let (_scratch, path) = saved_project();
     let mut harness = editor(&path);

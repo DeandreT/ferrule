@@ -365,6 +365,11 @@ impl FerruleApp {
             }
         };
         self.new_mapping_setup = None;
+        self.install_untitled_mapping(project, "mapping.json");
+        self.status = "new mapping ready".to_string();
+    }
+
+    pub(super) fn install_untitled_mapping(&mut self, project: Project, suggested_name: &str) {
         self.clear_run_report();
         self.project = project;
         self.document_ui_id = new_document_ui_id();
@@ -375,12 +380,11 @@ impl FerruleApp {
         self.mapping_workspace.reset();
         self.main_canvas = CanvasDocumentState::main(&self.project);
         self.reset_canvas_view();
-        self.document = DocumentLocation::untitled("mapping.json");
+        self.document = DocumentLocation::untitled(suggested_name);
         self.mark_unsaved();
         self.selected_scope.clear();
         self.rebase_history();
         self.diagnostics.clear();
-        self.status = "new mapping ready".to_string();
     }
 }
 

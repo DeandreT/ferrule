@@ -23,12 +23,20 @@ pdf-worker = { path = "../pdf-worker" }
 mfd = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+csv = { workspace = true }
+roxmltree = { workspace = true }
+sha2 = { workspace = true }
 anyhow = { workspace = true }
+base64 = "0.22"
+same-file = "1"
 egui = { workspace = true }
 eframe = { workspace = true, features = ["persistence"] }
 egui-snarl = { workspace = true }
 lucide-icons = { workspace = true }
 rfd = { workspace = true }
+
+[target.'cfg(unix)'.dependencies]
+rustix = { workspace = true }
 
 [dev-dependencies]
 edit-ops = { workspace = true }

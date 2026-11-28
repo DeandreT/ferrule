@@ -58,6 +58,138 @@ fn colliding_project() -> Project {
     project
 }
 
+#[test]
+fn create_new_concurrent_named_target_keeps_the_winner_and_legacy_can_replace_it()
+-> anyhow::Result<()> {
+    let dir = TempDir::new("cli-create-new-named")?;
+    let design = dir.path().join("project.json");
+    let output = dir.path().join("second.xml");
+    let first = dir.path().join("first-input.xml");
+    let second = dir.path().join("second-input.xml");
+    std::fs::write(&first, "<Source><Value>first</Value></Source>")?;
+    std::fs::write(&second, "<Source><Value>second</Value></Source>")?;
+    let project = project("second.xml");
+    let first_options = cli::RunOptions::new()
+        .with_input_path(&first)
+        .with_target(cli::TargetSelection::Named("second"));
+    let second_options = cli::RunOptions::new()
+        .with_input_path(&second)
+        .with_target(cli::TargetSelection::Named("second"));
+    // Both runs see an absent target and fully render. Schedule the second
+    // publisher in the first one's last gate, so it wins deterministically.
+    let gate = || {
+        let run =
+            cli::PreparedFileRun::prepare(&project, &design, second_options.request()).unwrap();
+        let winner = run
+            .execute_create_new(&second_options.observers(), None)
+            .unwrap();
+        assert_eq!(winner.artifacts[0].path, output);
+        true
+    };
+    let observers = cli::RunObservers {
+        before_publish: Some(&gate),
+        ..Default::default()
+    };
+    let error = cli::PreparedFileRun::prepare(&project, &design, first_options.request())?
+        .execute_create_new(&observers, None)
+        .expect_err("the earlier run lost the attachment race");
+    assert!(format!("{error:#}").contains(&output.display().to_string()));
+    assert!(std::fs::read_to_string(&output)?.contains(">second<"));
+
+    cli::run_project_value_with_options(&project, &design, &first_options)?;
+    assert!(std::fs::read_to_string(output)?.contains(">first<"));
+    assert!(!dir.path().join("stored-primary.xml").exists());
+    Ok(())
+}
+
+#[test]
+fn create_new_late_batch_collision_reports_complete_primary_and_keeps_both_names()
+-> anyhow::Result<()> {
+    let dir = TempDir::new("cli-create-new-partial")?;
+    let design = dir.path().join("project.json");
+    let primary = dir.path().join("stored-primary.xml");
+    let secondary = dir.path().join("second.xml");
+    let input = dir.path().join("input.xml");
+    std::fs::write(&input, "<Source><Value>mapped</Value></Source>")?;
+    let project = project("second.xml");
+    let gate = || {
+        assert!(!primary.exists());
+        std::fs::write(&secondary, "competitor").unwrap();
+        true
+    };
+    let options = cli::RunOptions::new()
+        .with_input_path(&input)
+        .with_before_publish(&gate);
+    let error = cli::PreparedFileRun::prepare(&project, &design, options.request())?
+        .execute_create_new(&options.observers(), None)
+        .unwrap_err();
+    let message = error.to_string();
+    assert!(message.contains("already published"), "{message}");
+    for path in [&primary, &secondary] {
+        assert!(message.contains(&path.display().to_string()), "{message}");
+    }
+    assert_eq!(
+        format_xml::read(&primary, &project.target)?
+            .field("Value")
+            .and_then(Instance::as_scalar),
+        Some(&Value::String("mapped".into()))
+    );
+    assert_eq!(std::fs::read_to_string(secondary)?, "competitor");
+    assert_eq!(std::fs::read_dir(dir.path())?.count(), 3);
+    Ok(())
+}
+
+#[test]
+fn create_new_cancellation_at_publish_leaves_no_outputs_or_stages() -> anyhow::Result<()> {
+    let dir = TempDir::new("cli-create-new-cancel")?;
+    let input = dir.path().join("input.xml");
+    std::fs::write(&input, "<Source><Value>mapped</Value></Source>")?;
+    let project = project("second.xml");
+    let design = dir.path().join("project.json");
+    let options = cli::RunOptions::new()
+        .with_input_path(&input)
+        .with_before_publish(&|| false);
+    let error = cli::PreparedFileRun::prepare(&project, &design, options.request())?
+        .execute_create_new(&options.observers(), None)
+        .unwrap_err();
+    assert!(matches!(
+        error.downcast_ref::<engine::EngineError>(),
+        Some(engine::EngineError::DebugCancelled)
+    ));
+    assert_eq!(std::fs::read_dir(dir.path())?.count(), 1);
+    Ok(())
+}
+
+#[test]
+fn create_new_refuses_unsaved_design_and_missing_static_parent() -> anyhow::Result<()> {
+    let dir = TempDir::new("cli-create-new-static")?;
+    let design = dir.path().join("unsaved.xml");
+    let missing = dir.path().join("missing/output.xml");
+    let input = dir.path().join("input.xml");
+    std::fs::write(&input, "<Source><Value>mapped</Value></Source>")?;
+    let project = project("second.xml");
+    let mut refused = vec![design.clone(), missing, input.clone()];
+    if cfg!(any(windows, target_os = "macos")) {
+        refused.push(dir.path().join("UNSAVED.xml"));
+    }
+    for output in &refused {
+        let options = cli::RunOptions::new()
+            .with_input_path(&input)
+            .with_output_path(output);
+        let observers = cli::RunObservers {
+            before_publish: Some(&|| panic!("invalid destination passed preflight")),
+            ..Default::default()
+        };
+        assert!(
+            cli::PreparedFileRun::prepare(&project, &design, options.request())?
+                .execute_create_new(&observers, None)
+                .is_err()
+        );
+    }
+    assert_eq!(std::fs::read_dir(dir.path())?.count(), 1);
+    Ok(())
+}
+
 fn project_with_unavailable_unselected_source() -> Project {
     Project {
         execution_contract: None,
