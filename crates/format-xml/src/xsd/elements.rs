@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use ir::{ScalarType, SchemaKind, SchemaNode};
+use ir::{ScalarType, SchemaKind, SchemaNode, XmlNamespace};
 use roxmltree::Node;
 
 use crate::XmlFormatError;
@@ -83,13 +83,8 @@ fn parse_element_level(
     } else {
         SchemaNode::scalar(name, ScalarType::String)
     };
-    node.xml_namespace = declaration_namespace(
-        el,
-        schema_el,
-        state.substitutions.effective_namespace(schema_path),
-        false,
-    );
-    record_ambiguous_namespace(&node, schema_el, schema_path, state);
+    node.xml_namespace =
+        element_declaration_namespace(el, schema_el, schema_path, &node.name, state);
     apply_exported_alternative_view(el, &mut node, schema_el, schema_path, state);
     apply_fixed_value(el, &mut node);
     apply_default_value(el, &mut node, state);
@@ -103,22 +98,31 @@ fn parse_element_level(
     }
 }
 
-/// Records an element declaration whose namespace is unknowable because its
-/// chameleon document is reached through several namespace contexts.
-fn record_ambiguous_namespace(
-    node: &SchemaNode,
+/// A declaration in a document with no target namespace has an exact name,
+/// unless a chameleon include leaves its effective namespace ambiguous.
+fn element_declaration_namespace(
+    declaration: &Node,
     schema_el: &Node,
     schema_path: &Path,
+    name: &str,
     state: &mut ParseState,
-) {
-    if node.xml_namespace.is_none()
-        && schema_el.attribute("targetNamespace").is_none()
+) -> Option<XmlNamespace> {
+    let namespace = declaration_namespace(
+        declaration,
+        schema_el,
+        state.substitutions.effective_namespace(schema_path),
+        false,
+    );
+    if namespace.is_some() || super::is_legacy_name(declaration) {
+        return namespace;
+    }
+    if schema_el.attribute("targetNamespace").is_none()
         && state.substitutions.namespace_contexts(schema_path) > 1
     {
-        state
-            .ambiguous_unqualified_elements
-            .insert(node.name.clone());
+        state.ambiguous_unqualified_elements.insert(name.to_owned());
+        return None;
     }
+    Some(XmlNamespace::Unqualified)
 }
 
 fn apply_fixed_value(declaration: &Node<'_, '_>, node: &mut SchemaNode) {
@@ -197,13 +201,8 @@ pub(super) fn parse_element_declaration_inner(
 ) -> Option<SchemaNode> {
     if !state.enter(schema_path, "element", name) {
         let mut node = SchemaNode::recursive_group(name, name);
-        node.xml_namespace = declaration_namespace(
-            declaration,
-            schema_el,
-            state.substitutions.effective_namespace(schema_path),
-            false,
-        );
-        record_ambiguous_namespace(&node, schema_el, schema_path, state);
+        node.xml_namespace =
+            element_declaration_namespace(declaration, schema_el, schema_path, name, state);
         return Some(node);
     }
     let mut node = parse_element(declaration, schema_el, schema_path, state);

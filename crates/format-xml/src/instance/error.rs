@@ -51,6 +51,8 @@ pub enum XmlFormatError {
     Write(#[from] quick_xml::Error),
     #[error("expected root element `{expected}`, found `{found}`")]
     UnexpectedRoot { expected: String, found: String },
+    #[error("unsupported closed XML source selection profile for `{0}`")]
+    UnsupportedClosedSourceSelection(String),
     #[error("missing required element `{0}`")]
     MissingElement(String),
     #[error("cannot parse `{value}` as {ty:?} for element `{name}`")]

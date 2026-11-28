@@ -1,6 +1,8 @@
 use super::super::*;
 
 pub(crate) mod effective_declarations;
+#[path = "../../../../tests/support/no_namespace.rs"]
+mod no_namespace;
 
 #[test]
 fn export_then_import_roundtrips() {
@@ -37,7 +39,7 @@ fn export_then_import_roundtrips() {
     std::fs::write(&path, text).unwrap();
     let imported = import(&path).unwrap();
     std::fs::remove_file(&path).unwrap();
-    assert_eq!(imported, schema);
+    assert_eq!(imported, no_namespace::from_plain_xsd(&schema));
 }
 
 #[test]
@@ -390,7 +392,7 @@ fn export_uses_an_abstract_common_base_for_sibling_alternatives() {
     std::fs::write(&path, xsd).unwrap();
     let imported = import(&path).unwrap();
     std::fs::remove_file(path).unwrap();
-    assert_eq!(imported, schema);
+    assert_eq!(imported, no_namespace::from_plain_xsd(&schema));
 }
 
 #[test]

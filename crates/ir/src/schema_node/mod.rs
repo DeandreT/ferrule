@@ -31,6 +31,10 @@ pub struct SchemaNode {
     /// current default namespace. Non-XML formats ignore this metadata.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub xml_namespace: Option<XmlNamespace>,
+    /// Imported physical XML source with the observed unqualified nested
+    /// repeated-group selection policy. Writers do not use this flag.
+    #[serde(default, skip_serializing_if = "core::ops::Not::not")]
+    pub xml_closed_source_selection: bool,
     /// Additional exact XML namespace identities accepted for this local
     /// element name.
     ///
@@ -306,6 +310,8 @@ impl<'de> Deserialize<'de> for SchemaNode {
             #[serde(default)]
             xml_namespace: Option<XmlNamespace>,
             #[serde(default)]
+            xml_closed_source_selection: bool,
+            #[serde(default)]
             xml_name_alternatives: Vec<XmlNamespace>,
             #[serde(default)]
             xml_wildcard_namespace: Option<XmlWildcardNamespaceConstraint>,
@@ -400,6 +406,7 @@ impl<'de> Deserialize<'de> for SchemaNode {
         let node = Self {
             name: repr.name,
             xml_namespace: repr.xml_namespace,
+            xml_closed_source_selection: repr.xml_closed_source_selection,
             xml_name_alternatives: repr.xml_name_alternatives,
             xml_wildcard_namespace: repr.xml_wildcard_namespace,
             xml_wildcard_process_contents: repr.xml_wildcard_process_contents,

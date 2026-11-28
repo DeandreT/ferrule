@@ -63,6 +63,7 @@ public static partial class FerruleXml
         "json_any",
         "json_unique_items",
         "xml_type_alternatives",
+        "xml_closed_source_selection",
     };
     private static readonly HashSet<string> StructuredNodeProperties = new(
         StructuredNullMetadata

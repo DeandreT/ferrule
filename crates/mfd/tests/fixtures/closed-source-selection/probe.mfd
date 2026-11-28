@@ -1,0 +1,82 @@
+<?xml version='1.0' encoding='utf-8'?>
+<mapping version="26">
+  <resources />
+  <component name="defaultmap" uid="1" editable="1">
+    <properties SelectedLanguage="builtin" />
+    <structure>
+      <children>
+        <component name="Input" library="xml" kind="14" uid="2">
+          <view ltx="0" rbx="300" rby="350" />
+          <data>
+            <root>
+              <header>
+                <namespaces>
+                  <namespace />
+                  <namespace uid="http://www.altova.com/mapforce" />
+                </namespaces>
+              </header>
+              <entry name="FileInstance" ns="1" expanded="1">
+                <entry name="document" ns="1" expanded="1">
+                  <entry name="Input" expanded="1">
+                    <entry outkey="10" name="Row" expanded="1">
+                      <entry outkey="11" name="Inner" expanded="1">
+                        <entry outkey="12" name="Count" expanded="1" />
+                      </entry>
+                    </entry>
+                  </entry>
+                </entry>
+              </entry>
+            </root>
+            <document inputinstance="input.xml" schema="input.xsd" instanceroot="{}Input" />
+          </data>
+        </component>
+        <component name="Results" library="xml" kind="14" uid="3">
+          <properties XSLTDefaultOutput="1" AddSchemaLocation="0" />
+          <view ltx="350" rbx="650" rby="350" />
+          <data>
+            <root>
+              <header>
+                <namespaces>
+                  <namespace />
+                  <namespace uid="http://www.altova.com/mapforce" />
+                </namespaces>
+              </header>
+              <entry name="FileInstance" ns="1" expanded="1">
+                <entry name="document" ns="1" expanded="1">
+                  <entry name="Results" expanded="1">
+                    <entry inpkey="20" name="Row" expanded="1">
+                      <entry inpkey="21" name="Inner" expanded="1">
+                        <entry inpkey="22" name="Count" expanded="1" />
+                      </entry>
+                    </entry>
+                  </entry>
+                </entry>
+              </entry>
+            </root>
+            <document outputinstance="output.xml" schema="results.xsd" instanceroot="{}Results" />
+          </data>
+        </component>
+      </children>
+      <graph directed="1">
+        <edges />
+        <vertices>
+          <vertex vertexkey="10">
+            <edges>
+              <edge vertexkey="20" />
+            </edges>
+          </vertex>
+          <vertex vertexkey="11">
+            <edges>
+              <edge vertexkey="21" />
+            </edges>
+          </vertex>
+          <vertex vertexkey="12">
+            <edges>
+              <edge vertexkey="22" />
+            </edges>
+          </vertex>
+        </vertices>
+      </graph>
+    </structure>
+  </component>
+</mapping>

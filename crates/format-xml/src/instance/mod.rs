@@ -13,7 +13,10 @@ pub use error::XmlFormatError;
 pub use finalization::{
     XmlWriteFinalizationError, XmlWritePreflight, to_string_with_options_and_finalizer,
 };
-pub use read::{XmlReadOptions, from_str, from_str_with_options, read, read_with_options};
+pub use read::{
+    XmlReadOptions, from_str, from_str_with_options, from_str_with_warnings, read,
+    read_with_options,
+};
 pub use soap::{from_wsdl_message_str, read_wsdl_message};
 pub use structured::from_str_structured;
 pub use write::{XmlWriteOptions, to_string, to_string_with_options, write, write_with_options};
@@ -151,8 +154,8 @@ pub(super) fn attribute_namespace<'a>(attribute: &roxmltree::Attribute<'a, '_>) 
 }
 
 /// Whether an element namespace names this declaration. A declaration without
-/// namespace identity (DTD, entry-tree, and closed XSD content without a target
-/// namespace) matches its local name in any namespace; an explicitly
+/// namespace identity (for example a DTD, entry tree or legacy name) matches
+/// its local name in any namespace; an explicitly
 /// unqualified one matches only unqualified elements.
 pub(super) fn declared_namespace_matches(schema: &SchemaNode, namespace: Option<&str>) -> bool {
     schema.xml_namespace.is_none() || schema.xml_namespace_matches(namespace)

@@ -186,6 +186,7 @@ fn metadata(node: &SchemaNode) -> Result<(), Json5ProfileError> {
     let SchemaNode {
         name: _,
         xml_namespace,
+        xml_closed_source_selection,
         xml_name_alternatives,
         xml_wildcard_namespace,
         xml_wildcard_process_contents,
@@ -265,6 +266,7 @@ fn metadata(node: &SchemaNode) -> Result<(), Json5ProfileError> {
         json_formats
     );
     off!(
+        xml_closed_source_selection,
         repeating,
         attribute,
         text,

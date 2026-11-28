@@ -85,6 +85,7 @@ pub(super) fn validate(descriptor: &str) -> Result<(), Json5ProfileError> {
                 | "xml_default_type"
                 | "database_relation" => default(value.is_null(), field)?,
                 "repeating"
+                | "xml_closed_source_selection"
                 | "attribute"
                 | "text"
                 | "nillable"

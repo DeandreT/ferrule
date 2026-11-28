@@ -1535,7 +1535,7 @@ impl PortTree {
             force_root_port,
             root_attr,
             target_branches,
-            xml_entry_schema_is_exact(schema),
+            xml_entry_schema_is_exact(schema) && wildcard_fallback_names_are_exact(schema),
             false,
             namespaces,
         )
@@ -1882,12 +1882,38 @@ impl PortTree {
     }
 }
 
+// A wildcard XSD that the reader cannot interpret can be replaced silently
+// by a typed entry tree. Those entries match by local name: they cannot take
+// over an explicitly unqualified declaration without widening its input.
+fn wildcard_fallback_names_are_exact(schema: &SchemaNode) -> bool {
+    let mut pending = vec![schema];
+    let mut wildcard = false;
+    let mut explicit = false;
+    while let Some(node) = pending.pop() {
+        wildcard |= matches!(
+            node.name.as_str(),
+            ir::XML_ELEMENTS_FIELD | ir::XML_ATTRIBUTES_FIELD
+        );
+        explicit |= node.xml_namespace.is_some();
+        if wildcard && explicit {
+            return false;
+        }
+        if let SchemaKind::Group { children, .. } = &node.kind {
+            pending.extend(children);
+        }
+    }
+    true
+}
+
 fn xml_entry_schema_is_exact(node: &SchemaNode) -> bool {
     // Entry metadata has no form for exclusions, so a fallback tree would
-    // widen the wildcard.
+    // widen the wildcard. Physical root selection also requires the real
+    // XSD, never a typed fallback. Ordinary entry names have no namespace
+    // URI to encode for an unqualified declaration.
     if node.json_array_wrapper
+        || node.xml_closed_source_selection
         || node.has_xml_wildcard_exclusions()
-        || node.xml_namespace.is_some()
+        || !node.xml_name_in_no_namespace()
         || node.recursive_ref.is_some()
         || node.nullable
         || node.container_nullable
