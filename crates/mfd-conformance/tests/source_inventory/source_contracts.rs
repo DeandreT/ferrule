@@ -250,7 +250,51 @@ fn check_identities(inventory: &Value, ledger: &BTreeSet<String>) {
         .values()
         .map(|row| text(&row["canonical_id"]).to_owned())
         .collect();
-    assert_eq!(&canonical, ledger);
+    // The frozen companion predates the workflow, adapter and operation reconciliations.
+    // Require the exact complement rather than allowing arbitrary new IDs.
+    assert!(canonical.is_subset(ledger));
+    let additions: BTreeSet<_> = ledger.difference(&canonical).map(String::as_str).collect();
+    assert_eq!(
+        additions,
+        BTreeSet::from([
+            "authoring.assisted-connections",
+            "authoring.define-procedure-recordset",
+            "authoring.discover-procedure-recordset",
+            "authoring.stylesheet-documentation",
+            "connectors.db-action-trace",
+            "connectors.db-bulk-insert",
+            "connectors.db-transaction-rollback",
+            "connectors.oauth-credential",
+            "connectors.select-with-inputs",
+            "connectors.select-without-inputs",
+            "connectors.stored-procedure-call",
+            "connectors.stored-procedure-source",
+            "connectors.stored-procedure-target",
+            "deployment.credential-transfer",
+            "formats.quick-edi-to-xml",
+            "formats.sign-xml-xbrl-output",
+            "formats.xlsx-create",
+            "formats.xlsx-update",
+            "functions.read-binary-file",
+            "functions.write-binary-file",
+            "interop.configured-resource-alias",
+            "interop.named-credential-resolution",
+            "mapping.dynamic-node-names",
+            "mapping.dynamic-node-type-selection",
+            "mapping.parse-csv-string",
+            "mapping.parse-edi-string",
+            "mapping.parse-fixed-text-string",
+            "mapping.parse-flextext-string",
+            "mapping.parse-json-string",
+            "mapping.parse-xml-string",
+            "mapping.serialize-csv-string",
+            "mapping.serialize-edi-string",
+            "mapping.serialize-fixed-text-string",
+            "mapping.serialize-flextext-string",
+            "mapping.serialize-json-string",
+            "mapping.serialize-xml-string",
+        ])
+    );
     let normalized: BTreeSet<_> = maps
         .iter()
         .filter_map(|(id, row)| {

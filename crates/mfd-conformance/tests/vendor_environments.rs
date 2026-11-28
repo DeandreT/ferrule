@@ -125,6 +125,16 @@ fn schema_v2_preserves_every_legacy_row_and_assessment() {
                 .as_array_mut()
                 .expect("current capabilities")
                 .truncate(historical_count);
+            // Later capabilities can append evidence. Keep the historical
+            // prefix exact after the separately checked XML qualification.
+            let historical_evidence_count = previous["evidence"]
+                .as_array()
+                .expect("historical evidence")
+                .len();
+            current["evidence"]
+                .as_array_mut()
+                .expect("current evidence")
+                .truncate(historical_evidence_count);
         }
         for capability in current["capabilities"]
             .as_array_mut()

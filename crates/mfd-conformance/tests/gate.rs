@@ -395,14 +395,12 @@ fn cli_reports_json_and_uses_exit_status_for_gate_result() {
 }
 
 fn temporary_ledger_path() -> PathBuf {
-    let target = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target");
-    std::fs::create_dir_all(&target).expect("target directory");
     static NEXT: AtomicUsize = AtomicUsize::new(0);
     let time = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("clock")
         .as_nanos();
-    target.join(format!(
+    std::env::temp_dir().join(format!(
         "mfd-conformance-{}-{time}-{}.json",
         std::process::id(),
         NEXT.fetch_add(1, Ordering::Relaxed)
