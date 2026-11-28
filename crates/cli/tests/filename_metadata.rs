@@ -430,6 +430,59 @@ fn unknown_controls_and_ambiguous_pins_never_become_metadata_noops() -> Result {
 }
 
 #[test]
+fn format_declarations_cannot_hide_a_reader_or_writer_policy_in_text() -> Result {
+    let fixture = Fixture::new()?;
+    let original = metadata(31);
+    let expected = mapping::document_project_file::encode_pretty(&fixture.import(&original)?)?;
+    for (tag, last_attribute) in [
+        ("text", "inputinstance=\"unused-source.hl7\""),
+        ("json", "outputinstance=\"unused-target.json\""),
+    ] {
+        let end = format!("{last_attribute}/>");
+        assert_eq!(original.matches(&end).count(), 1);
+        let design =
+            |body: &str| original.replace(&end, &format!("{last_attribute}>{body}</{tag}>"));
+        let start = format!("<{tag} ");
+        let (before, after) = original.split_once(&start).unwrap();
+        let (prefix, contents) = before.rsplit_once("<data>").unwrap();
+        for supported in [
+            design("\r\n<!--layout-->\t "),
+            original.replace(&start, &format!("<{tag} xmlns=\"\" ")),
+            format!("{prefix}<data xmlns=\"\">{contents}{start}{after}"),
+        ] {
+            assert_ne!(supported, original);
+            assert_eq!(
+                mapping::document_project_file::encode_pretty(&fixture.import(&supported)?)?,
+                expected,
+            );
+        }
+        for rejected in [
+            "encoding=1000",
+            "<![CDATA[\u{a0}]]>",
+            "<?setting encoding='1'?>",
+        ] {
+            fixture.refuse(
+                &design(rejected),
+                Some("unsupported endpoint transport settings"),
+            )?;
+        }
+        for uri in ["urn:foreign", ""] {
+            fixture.refuse(
+                &original.replace(&start, &format!("<w:{tag} xmlns:w=\"{uri}\" ")),
+                Some("unsupported endpoint transport settings"),
+            )?;
+        }
+        for rejected in ["encoding=1", "<?setting encoding='1'?>"] {
+            fixture.refuse(
+                &original.replace(&start, &format!("{rejected}{start}")),
+                Some("unsupported endpoint data controls"),
+            )?;
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn reader_and_cast_metadata_without_a_preserved_policy_still_refuse() -> Result {
     let fixture = Fixture::new()?;
     let original = metadata(31);

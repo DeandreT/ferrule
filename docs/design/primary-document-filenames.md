@@ -170,6 +170,13 @@ is admitted only as exact `UTF-8` on the JSON target, whose result is UTF-8
 bytes. Duplicate property blocks, unknown or namespaced properties, conflicting
 values, and source-side target-encoding settings refuse.
 
+Inside an endpoint's `data`, `text`, or `json` declaration, XML layout
+whitespace and comments are allowed. Character data such as `encoding=1000`
+is not a supported way to declare a reader policy: import refuses it instead
+of producing the same plan as an empty declaration. Processing instructions
+also refuse. A namespace-qualified format element is not the unqualified
+`text` or `json` element. An unprefixed element under `xmlns=""` is unqualified.
+
 A required filename parameter may have no `sources`, an empty `sources`, or
 one empty keyless `datapoint` with absent or zero `pos`. That placeholder cannot
 name a default feed. Keyed placeholders, optional parameters, duplicate blocks,

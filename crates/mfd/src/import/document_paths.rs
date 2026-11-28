@@ -69,6 +69,20 @@ fn unsupported(reason: &str) -> MfdError {
     MfdError::UnsupportedImport(format!("filename endpoints: {reason}"))
 }
 
+// Only XML layout whitespace may separate declaration elements. In particular,
+// nonbreaking space is data, even when it appears inside a CDATA section.
+fn transport_text(node: roxmltree::Node<'_, '_>) -> bool {
+    node.children()
+        .filter(|child| child.is_text())
+        .any(|child| {
+            !child
+                .text()
+                .unwrap_or_default()
+                .bytes()
+                .all(|b| matches!(b, b' ' | b'\t' | b'\r' | b'\n'))
+        })
+}
+
 fn empty_filename_sources(component: roxmltree::Node<'_, '_>) -> bool {
     let sources = component
         .children()
@@ -275,6 +289,19 @@ pub(super) struct Endpoints {
     output_feed: u32,
 }
 
+fn unqualified_transport_element(node: roxmltree::Node<'_, '_>) -> bool {
+    match node.tag_name().namespace() {
+        None => true,
+        // roxmltree reports both xmlns="" and a prefix bound to "" as Some("").
+        // Only the former spells an unqualified element.
+        Some("") => node.document().input_text()[node.range()]
+            .strip_prefix('<')
+            .and_then(|name| name.strip_prefix(node.tag_name().name()))
+            .is_some_and(|tail| tail.starts_with([' ', '\t', '\r', '\n', '/', '>'])),
+        Some(_) => false,
+    }
+}
+
 impl Endpoints {
     pub(super) fn inputs(&self) -> BTreeSet<u32> {
         [self.input, self.output].into()
@@ -329,13 +356,16 @@ impl Endpoints {
                 })
                 || component.children().any(|node| {
                     node.is_element()
-                        && (node.tag_name().namespace().is_some()
+                        && (!unqualified_transport_element(node)
                             || !matches!(node.tag_name().name(), "data" | "view" | "properties"))
                 })
             {
                 return Err(unsupported("unsupported endpoint component controls"));
             }
-            if data.attributes().len() != 0 {
+            if data.attributes().len() != 0
+                || transport_text(*data)
+                || data.children().any(|node| node.is_pi())
+            {
                 return Err(unsupported("unsupported endpoint data controls"));
             }
             let formats = data
@@ -345,20 +375,25 @@ impl Endpoints {
             let [format] = formats.as_slice() else {
                 return Err(unsupported("requires one endpoint format declaration"));
             };
-            if format.attributes().any(|attribute| {
-                attribute.namespace().is_some()
-                    || !(if is_edi {
-                        matches!(
-                            attribute.name(),
-                            "type" | "kind" | "config" | "inputinstance" | "outputinstance"
-                        )
-                    } else {
-                        matches!(
-                            attribute.name(),
-                            "schema" | "inputinstance" | "outputinstance"
-                        )
-                    })
-            }) || format.children().any(|node| node.is_element())
+            if !unqualified_transport_element(*format)
+                || transport_text(*format)
+                || format.attributes().any(|attribute| {
+                    attribute.namespace().is_some()
+                        || !(if is_edi {
+                            matches!(
+                                attribute.name(),
+                                "type" | "kind" | "config" | "inputinstance" | "outputinstance"
+                            )
+                        } else {
+                            matches!(
+                                attribute.name(),
+                                "schema" | "inputinstance" | "outputinstance"
+                            )
+                        })
+                })
+                || format
+                    .children()
+                    .any(|node| node.is_element() || node.is_pi())
                 || data
                     .children()
                     .any(|node| node.is_element() && node != *format && !node.has_tag_name("root"))
