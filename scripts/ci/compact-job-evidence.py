@@ -34,6 +34,12 @@ def require(condition, message):
 
 
 def hook_ancestry():
+    # The active bin link may select a versioned directory, but not another
+    # installation. Anchor containment to the configured installation path.
+    installation = os.path.dirname(os.path.dirname(WORKER))
+    worker = os.path.realpath(WORKER, strict=True)
+    require(os.path.commonpath((installation, worker)) == installation
+            and worker != installation, "Configured worker is outside its runner installation")
     ancestors = set()
     pid = os.getpid()
     worker_seen = False
@@ -44,8 +50,8 @@ def hook_ancestry():
         # links may be unreadable. Only this account can be the job worker;
         # account-owned ancestors must remain fully inspectable.
         if process.stat().st_uid == os.getuid():
-            executable = os.path.realpath(process / "exe")
-            worker_seen |= executable == WORKER
+            executable = os.path.realpath(process / "exe", strict=True)
+            worker_seen |= executable == worker
         fields = (process / "stat").read_text().rsplit(")", 1)[1].split()
         pid = int(fields[1])
     require(worker_seen, "Evidence compaction requires the actual pre-job hook")
