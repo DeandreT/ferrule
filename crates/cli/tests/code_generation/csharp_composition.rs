@@ -134,7 +134,11 @@ impl Artifacts for () {
 }
 
 /// One saved project through every public C# generation profile.
-fn generated(directory: &Path, project: &Path) -> Vec<(&'static str, String)> {
+fn generated(
+    directory: &Path,
+    project: &Path,
+    design: &Project,
+) -> anyhow::Result<Vec<(&'static str, String)>> {
     PROFILES
         .iter()
         .map(|(name, profile)| {
@@ -146,11 +150,29 @@ fn generated(directory: &Path, project: &Path) -> Vec<(&'static str, String)> {
                 profile.clone(),
             );
             let line = match result {
-                Ok(_) => match artifact_files(&output) {
-                    Ok(files_) => files(files_),
-                    Err(error) => format!("unreadable:{error}"),
-                },
+                Ok(_) => {
+                    let contents = artifact_files(&output)
+                        .map_err(|error| anyhow::anyhow!("reading {}: {error}", output.display()))?;
+                    fs::remove_dir_all(&output)?;
+                    files(contents)
+                }
                 Err(error) => {
+                    if error.chain().any(|cause| cause.is::<std::io::Error>()) {
+                        return Err(error.context(format!("I/O failure on {name}")));
+                    }
+                    // Only an identical, independently reproducible design refusal
+                    // is recordable. The saved generation path also loads a file,
+                    // stages artifacts and publishes a directory. Some of those
+                    // failures (e.g. destination already exists) have no io::Error.
+                    let admission = cli::check_generate_project(
+                        design, &GenerateTarget::CSharp, profile.clone(),
+                    );
+                    if !matches!(admission, Err(ref cause) if format!("{cause:#}") == format!("{error:#}")) {
+                        return Err(error.context(format!(
+                            "could not record {name} for {}: file generation failed without a matching in-memory refusal",
+                            project.display()
+                        )));
+                    }
                     // The complete cause chain, without host paths.
                     let text = format!("{error:#}")
                         .replace(&directory.display().to_string(), "<output>")
@@ -163,8 +185,7 @@ fn generated(directory: &Path, project: &Path) -> Vec<(&'static str, String)> {
                     format!("err:{} {summary}", digest(&text))
                 }
             };
-            let _ = fs::remove_dir_all(&output);
-            (*name, line)
+            Ok((*name, line))
         })
         .collect()
 }
@@ -503,10 +524,11 @@ pub(super) fn saved_subjects() -> TestResult<Vec<(String, Project)>> {
     }
     paths.sort();
     for path in paths {
-        let Ok(text) = fs::read_to_string(&path) else {
+        let bytes = fs::read(&path)?;
+        let Ok(text) = std::str::from_utf8(&bytes) else {
             continue;
         };
-        if let Ok(project) = mapping::project_file::decode_str(&text) {
+        if let Ok(project) = mapping::project_file::decode_str(text) {
             let relative = path
                 .strip_prefix(&root)?
                 .to_string_lossy()
@@ -541,10 +563,10 @@ fn block(title: &str, lines: Vec<(&'static str, String)>) -> String {
 }
 
 /// Records `jobs` on a few threads, keeping their order.
-fn parallel<T: Sync>(jobs: &[T], run: impl Fn(usize, &T) -> String + Sync) -> Vec<String> {
+fn parallel<T: Sync, R: Send>(jobs: &[T], run: impl Fn(usize, &T) -> R + Sync) -> Vec<R> {
     let threads = std::thread::available_parallelism().map_or(1, |count| count.get().min(4));
     let next = AtomicUsize::new(0);
-    let blocks = Mutex::new(vec![String::new(); jobs.len()]);
+    let blocks = Mutex::new((0..jobs.len()).map(|_| None).collect::<Vec<_>>());
     std::thread::scope(|scope| {
         for _ in 0..threads {
             scope.spawn(|| {
@@ -554,12 +576,17 @@ fn parallel<T: Sync>(jobs: &[T], run: impl Fn(usize, &T) -> String + Sync) -> Ve
                         break;
                     };
                     let block = run(index, job);
-                    blocks.lock().expect("record blocks")[index] = block;
+                    blocks.lock().expect("record blocks")[index] = Some(block);
                 }
             });
         }
     });
-    blocks.into_inner().expect("record blocks")
+    blocks
+        .into_inner()
+        .expect("record blocks")
+        .into_iter()
+        .map(|block| block.expect("every job returned a block"))
+        .collect()
 }
 
 fn render() -> TestResult<String> {
@@ -599,27 +626,53 @@ fn render() -> TestResult<String> {
     ));
     let directory = TempDir::new("csharp_composition")?;
     let saved = saved_subjects()?;
-    let blocks = parallel(&saved, |index, (title, project)| {
-        let root = directory.0.join(index.to_string());
-        let lines = match fs::create_dir(&root)
-            .map_err(|error| error.to_string())
-            .and_then(|()| {
-                let path = root.join("project.json");
-                mapping::project_file::encode_pretty(project)
-                    .map_err(|error| error.to_string())
-                    .and_then(|text| fs::write(&path, text).map_err(|error| error.to_string()))
-                    .map(|()| path)
-            }) {
-            Ok(path) => generated(&root, &path),
-            Err(error) => vec![("save", format!("unsaved:{error}"))],
-        };
-        let _ = fs::remove_dir_all(&root);
-        block(&format!("saved/{title}"), lines)
-    });
+    let blocks = parallel(
+        &saved,
+        |index, (title, project)| -> anyhow::Result<String> {
+            let root = directory.0.join(index.to_string());
+            fs::create_dir(&root)?;
+            let path = root.join("project.json");
+            fs::write(&path, mapping::project_file::encode_pretty(project)?)?;
+            let lines = generated(&root, &path, project)
+                .map_err(|error| error.context(format!("saved/{title}")))?;
+            fs::remove_dir_all(&root)?;
+            Ok(block(&format!("saved/{title}"), lines))
+        },
+    );
     for block_ in blocks {
-        output.push_str(&block_);
+        output.push_str(&block_?);
     }
     Ok(output)
+}
+
+#[test]
+fn operational_failures_cannot_be_recorded_as_profile_refusals() -> TestResult<()> {
+    let directory = TempDir::new("composition-publication-guard")?;
+    let project = json_marker_project();
+    let path = directory.0.join("project.json");
+    fs::write(&path, mapping::project_file::encode_pretty(&project)?)?;
+    let target = directory.0.join("ordinary");
+    fs::create_dir(&target)?;
+    fs::write(target.join("keep"), b"preexisting output")?;
+    let error = generated(&directory.0, &path, &project).unwrap_err();
+    assert!(format!("{error:#}").contains("already exists"), "{error:#}");
+    assert_eq!(fs::read(target.join("keep"))?, b"preexisting output");
+    fs::remove_dir_all(&target)?;
+
+    // Actual denial-independent filesystem failure while loading the saved
+    // design, followed by the same design successfully published and read.
+    let error = generated(&directory.0, &directory.0.join("missing.json"), &project).unwrap_err();
+    assert!(error.chain().any(|cause| cause.is::<std::io::Error>()));
+    let rows = generated(&directory.0, &path, &project)?;
+    assert!(
+        rows.iter()
+            .any(|(route, row)| *route == "ordinary" && row.starts_with("ok:"))
+    );
+    assert!(
+        rows.iter()
+            .any(|(route, row)| *route == "csv_output" && row.starts_with("err:"))
+    );
+    Ok(())
 }
 
 #[test]
