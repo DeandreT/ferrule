@@ -1330,19 +1330,18 @@ public static partial class FerruleX12
             return;
         if (isaRepetition && syntax.Repetition is { } repetition && text == repetition.ToString())
             return;
-        if (
-            text.Any(character =>
+        // Composite elements have already been built from validated components.
+        foreach (char character in text)
+            if (
                 char.IsControl(character)
                 || character == syntax.Element
                 || character == syntax.Segment
                 || !repeated && character == syntax.Repetition
             )
-        )
-            throw Failure(
-                FerruleX12Error.Value,
-                "X12 output contains an unrepresentable delimiter or control character."
-            );
-        // Composite elements have already been built from validated components.
+                throw Failure(
+                    FerruleX12Error.Value,
+                    "X12 output contains an unrepresentable delimiter or control character."
+                );
     }
 
     private static void RequireUtf8(string text, int maximum, string label)

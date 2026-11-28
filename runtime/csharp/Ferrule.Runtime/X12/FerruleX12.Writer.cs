@@ -460,26 +460,23 @@ public static partial class FerruleX12
         RequireUtf8(text, MaximumDocumentBytes, "X12 field");
         if (!deferEmpty || text.Length > 0)
             ValidateText(node, text, path);
-        if (
-            !(isaComponent && text == syntax.Component.ToString())
-            && !(
-                isaRepetition
-                && syntax.Repetition is { } repetition
-                && text == repetition.ToString()
-            )
-            && text.Any(character =>
+        if (isaComponent && text == syntax.Component.ToString())
+            return text;
+        if (isaRepetition && syntax.Repetition is { } repetition && text == repetition.ToString())
+            return text;
+        foreach (char character in text)
+            if (
                 char.IsControl(character)
                 || character == syntax.Element
                 || character == syntax.Component
                 || character == syntax.Segment
                 || character == syntax.Repetition
             )
-        )
-            throw Failure(
-                FerruleX12Error.Value,
-                "X12 scalar contains an unrepresentable delimiter.",
-                path: string.Join('/', path)
-            );
+                throw Failure(
+                    FerruleX12Error.Value,
+                    "X12 scalar contains an unrepresentable delimiter.",
+                    path: string.Join('/', path)
+                );
         return text;
     }
 }
