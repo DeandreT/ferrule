@@ -1018,7 +1018,11 @@ public static partial class FerruleX12
                 "X12 fixed value does not match.",
                 path: string.Join('/', path)
             );
-        ulong count = (ulong)text.EnumerateRunes().Count();
+        if (node.Length is null && node.Constraint is null)
+            return;
+        ulong count = 0;
+        foreach (var _ in text.EnumerateRunes())
+            count++;
         if (node.Length is { } length && !length.Contains(count))
             throw Failure(
                 FerruleX12Error.Value,

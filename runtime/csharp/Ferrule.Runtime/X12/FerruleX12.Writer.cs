@@ -467,13 +467,7 @@ public static partial class FerruleX12
                 && syntax.Repetition is { } repetition
                 && text == repetition.ToString()
             )
-            && text.Any(character =>
-                char.IsControl(character)
-                || character == syntax.Element
-                || character == syntax.Component
-                || character == syntax.Segment
-                || character == syntax.Repetition
-            )
+            && ContainsReservedCharacter(text, syntax, syntax.Component, syntax.Repetition)
         )
             throw Failure(
                 FerruleX12Error.Value,

@@ -161,6 +161,28 @@ internal static partial class Program
                 )
             )
         );
+        // A component separator is valid between components but not inside a scalar.
+        // Fixed and length failures still take precedence over delimiter failures.
+        foreach (
+            var (field, value, message) in new[]
+            {
+                ("LIN01", "00\u00856", "X12 scalar contains an unrepresentable delimiter."),
+                ("LIN02", "V*", "X12 fixed value does not match."),
+                ("LIN03", "🙂:", "X12 string length is outside its declared interval."),
+                ("LIN03", "Véndor:🙂0007", "X12 scalar contains an unrepresentable delimiter."),
+            }
+        )
+        {
+            var invalid = X12Replace(line, field, Scalar(Text(value)));
+            var error = X12Error(FerruleX12Error.Value, () =>
+                FerruleX12.SerializeEmbeddedBytes(
+                    descriptor,
+                    X12Replace((FerruleGroup)instance, "LIN", invalid)
+                )
+            );
+            Equal("LIN/" + field, error.FieldPath);
+            Equal(message, error.Message);
+        }
 
         string lfWire = X12UnicodeWire.Replace("~\n", "\n", StringComparison.Ordinal);
         string lfDescriptor = X12Descriptor(
