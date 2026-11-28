@@ -268,12 +268,16 @@ fn append_writer(
         r#"
 public static partial class GeneratedMapping
 {{
-    private static readonly global::Ferrule.Runtime.FerruleX12.InterchangeDocumentWriter InterchangeWriter = new({});
+    // Keep standalone writes independent of the mapping's input plan initializers.
+    private static class InterchangeWriter
+    {{
+        internal static readonly global::Ferrule.Runtime.FerruleX12.InterchangeDocumentWriter Instance = new({});
+    }}
 
-    public static byte[] SerializeMapForceX12Document(global::Ferrule.Runtime.FerruleInstance value, global::Ferrule.Runtime.FerruleExecutionContext execution) => InterchangeWriter.Serialize(value, execution);
-    public static void WriteMapForceX12Document(global::Ferrule.Runtime.FerruleInstance value, global::Ferrule.Runtime.FerruleExecutionContext execution, global::System.IO.Stream output) => InterchangeWriter.Write(value, execution, output);
-    public static byte[] SerializeMapForceX12DocumentWithClock(global::Ferrule.Runtime.FerruleInstance value, global::Ferrule.Runtime.FerruleExecutionContext execution, global::System.Func<global::Ferrule.Runtime.FerruleMapForceX12ClockField, string> clock) => InterchangeWriter.SerializeWithClock(value, execution, clock);
-    public static void WriteMapForceX12DocumentWithClock(global::Ferrule.Runtime.FerruleInstance value, global::Ferrule.Runtime.FerruleExecutionContext execution, global::System.Func<global::Ferrule.Runtime.FerruleMapForceX12ClockField, string> clock, global::System.IO.Stream output) => InterchangeWriter.WriteWithClock(value, execution, clock, output);
+    public static byte[] SerializeMapForceX12Document(global::Ferrule.Runtime.FerruleInstance value, global::Ferrule.Runtime.FerruleExecutionContext execution) => InterchangeWriter.Instance.Serialize(value, execution);
+    public static void WriteMapForceX12Document(global::Ferrule.Runtime.FerruleInstance value, global::Ferrule.Runtime.FerruleExecutionContext execution, global::System.IO.Stream output) => InterchangeWriter.Instance.Write(value, execution, output);
+    public static byte[] SerializeMapForceX12DocumentWithClock(global::Ferrule.Runtime.FerruleInstance value, global::Ferrule.Runtime.FerruleExecutionContext execution, global::System.Func<global::Ferrule.Runtime.FerruleMapForceX12ClockField, string> clock) => InterchangeWriter.Instance.SerializeWithClock(value, execution, clock);
+    public static void WriteMapForceX12DocumentWithClock(global::Ferrule.Runtime.FerruleInstance value, global::Ferrule.Runtime.FerruleExecutionContext execution, global::System.Func<global::Ferrule.Runtime.FerruleMapForceX12ClockField, string> clock, global::System.IO.Stream output) => InterchangeWriter.Instance.WriteWithClock(value, execution, clock, output);
 }}
 "#,
         literal::string(&descriptor)
